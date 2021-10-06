@@ -1639,6 +1639,7 @@ cc_library(
     name = "test_passes",
     srcs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+        "lib/Analysis/test_shape_component_analysis.cc",
         "lib/Analysis/test_userange_analysis.cc",
         "lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo_pass.cc",
         "lib/Dialect/mhlo/transforms/materialize_broadcasts_pass.cc",
@@ -1652,6 +1653,7 @@ cc_library(
         ":lhlo",
         ":materialize_broadcasts",  # build-cleaner: keep
         ":pass_details",
+        ":shape_component_analysis",
         ":transforms_pass_details",
         ":unfuse_batch_norm",  # build-cleaner: keep
         ":userange_analysis",
@@ -1716,6 +1718,7 @@ cc_library(
         ":ral_legalize_to_llvm",
         ":ral_lower_to_library_call",
         ":rank_specialization",
+        ":reshape_simplifier",
         ":sink_constants_to_control_flow",
         ":test_passes",
         ":transforms_pass_details",
@@ -1779,6 +1782,22 @@ cc_library(
 )
 
 cc_library(
+    name = "shape_component_analysis",
+    srcs = ["lib/Analysis/shape_component_analysis.cc"],
+    hdrs = [
+        "include/mlir-hlo/Analysis/shape_component_analysis.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:TensorDialect",
+    ],
+)
+
+cc_library(
     name = "buffer_reuse",
     srcs = ["lib/Transforms/buffer_reuse.cc"],
     hdrs = [
@@ -1793,6 +1812,24 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "reshape_simplifier",
+    srcs = ["lib/Transforms/reshape_simplifier.cc"],
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":shape_component_analysis",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],
