@@ -146,12 +146,12 @@ absl::Status InferenceContext::InitFromGraph(
     output_ids_.push_back(output->id);
     preallocated_ids.insert(output->id);
   }
-  precision_ = create_info.precision;
 
   MetalDevice metal_device(device_id);
   RETURN_IF_ERROR(ReserveGraphTensors(create_info, metal_device.GetInfo(),
                                       graph, preallocated_ids));
-  RETURN_IF_ERROR(Compile(graph, metal_device.GetInfo(), create_info.hints));
+  RETURN_IF_ERROR(Compile(graph, metal_device.GetInfo(), create_info.precision,
+                          create_info.hints));
   RETURN_IF_ERROR(Merge());
   RETURN_IF_ERROR(CompileOperations(&metal_device));
   RETURN_IF_ERROR(AllocateTensors(&metal_device, preallocated_ids));
@@ -200,6 +200,7 @@ absl::Status InferenceContext::ReserveGraphTensors(
 
 absl::Status InferenceContext::Compile(const GraphFloat32& graph,
                                        const GpuInfo& gpu_info,
+                                       CalculationsPrecision precision,
                                        ModelHints hints) {
   std::map<ValueId, TensorDescriptor> tensor_descriptors;
   const auto values = graph.values();
@@ -232,7 +233,7 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     std::string op_name = node.operation.type + " " + std::to_string(node.id);
     GPUOperationsSubgraph gpu_subgraph;
     if (hints.Check(ModelHints::kAllowSpecialKernels) &&
-        GPUSubgraphFromGraph(gpu_info, precision_, graph, node.id,
+        GPUSubgraphFromGraph(gpu_info, precision, graph, node.id,
                              tensor_descriptors, &consumed_nodes, &gpu_subgraph,
                              &op_name)
             .ok()) {
@@ -263,7 +264,7 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
       }
       consumed_nodes.insert(node.id);
       OperationDef op_def;
-      op_def.precision = precision_;
+      op_def.precision = precision;
       for (int j = 0; j < inputs.size(); ++j) {
         op_def.src_tensors.push_back(tensor_reserver_.Get(inputs[j]->id));
       }
@@ -489,9 +490,11 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
 
   std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
   for (auto& usage : buffer_usages) {
-    const auto& shape = tensor_reserver_.Get(usage.first).shape;
+    const auto& t = tensor_reserver_.Get(usage.first);
+    const auto& shape = t.shape;
+    const size_t element_size = t.data_type == DataType::FLOAT32 ? 4 : 2;
     const size_t buffer_size =
-        shape.b * shape.w * shape.h * AlignByN(shape.c, 4);
+        shape.b * shape.w * shape.h * AlignByN(shape.c, 4) * element_size;
     graph_ids_to_shared_buffer_tensors_[usage.first] =
         buffer_usage_records.size();
     buffer_usage_records.push_back({buffer_size,
@@ -503,12 +506,10 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
   RETURN_IF_ERROR(AssignObjectsToTensors(
       buffer_usage_records, MemoryStrategy::GREEDY_BEST, &buffer_assignment));
 
-  const bool f32_storage = precision_ == CalculationsPrecision::F32;
-  size_t dataTypeSize = f32_storage ? sizeof(float) : sizeof(HalfBits);
   shared_buffers_.resize(buffer_assignment.object_sizes.size());
   for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
     // Initialize metal buffer
-    NSUInteger bufferSize = dataTypeSize * buffer_assignment.object_sizes[i];
+    NSUInteger bufferSize = buffer_assignment.object_sizes[i];
 
     if (bufferSize > device->GetInfo().GetMaxBufferSize()) {
       std::string error("Tensor id: ");

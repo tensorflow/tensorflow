@@ -126,7 +126,7 @@ class InferenceContext {
     kPreallocated
   };
   absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
-                       ModelHints hints);
+                       CalculationsPrecision precision, ModelHints hints);
 
   absl::Status ReserveGraphTensors(const CreateInferenceInfo& create_info,
                                    const GpuInfo& gpu_info,
@@ -184,7 +184,6 @@ class InferenceContext {
   std::vector<int> task_ids_with_preallocated_tensors_;
   std::vector<ValueId> input_ids_;
   std::vector<ValueId> output_ids_;
-  CalculationsPrecision precision_;
   std::map<ValueId, MetalSpatialTensor> preallocated_tensors_;
 
   std::map<ValueId, TensorDescriptor> const_tensors_descs_;
