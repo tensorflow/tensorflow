@@ -849,9 +849,32 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
       return failure();
   }
 
-  CreateReplaceOpAndInfer<tosa::AvgPool2dOp>(rewriter, op, output_type,
-                                             tfl_avgpool_op.input(),
-                                             kernel_size, stride, pad);
+  auto average_etype = output_type.getElementType();
+  if (mlir::quant::UniformQuantizedType output_qtype =
+          average_etype.dyn_cast_or_null<mlir::quant::UniformQuantizedType>()) {
+    if (output_qtype.getStorageTypeIntegralWidth() != 32) {
+      average_etype = mlir::quant::UniformQuantizedType::get(
+          true, rewriter.getIntegerType(32), rewriter.getF32Type(),
+          output_qtype.getScale(), output_qtype.getZeroPoint(),
+          std::numeric_limits<int32_t>::min(),
+          std::numeric_limits<int32_t>::max());
+    }
+  } else if (average_etype.isa<IntegerType>()) {
+    average_etype = rewriter.getI32Type();
+  }
+
+  auto average_type = output_type.clone(average_etype);
+
+  Value result = CreateOpAndInfer<tosa::AvgPool2dOp>(
+      rewriter, op->getLoc(), average_type, tfl_avgpool_op.input(), kernel_size,
+      stride, pad);
+
+  if (average_type != output_type) {
+    result = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(), output_type,
+                                            result);
+  }
+
+  rewriter.replaceOp(op, result);
   return success();
 }
 
