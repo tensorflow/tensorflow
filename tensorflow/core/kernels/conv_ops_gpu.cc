@@ -153,10 +153,11 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvSignature>> AutotuneFusedConv(
 
     if (CudnnUseFrontend()) {
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
+      auto element_type = se::dnn::ToDataType<T>::value;
       if (!stream->parent()
                ->GetFusedConvolveExecutionPlans(
-                   se::dnn::ConvolutionKind::FORWARD,
-                   se::dnn::ToDataType<T>::value, conv_scale, side_input_scale,
+                   se::dnn::ConvolutionKind::FORWARD, element_type,
+                   element_type, element_type, conv_scale, side_input_scale,
                    stream, input_desc, filter_desc, bias_desc, output_desc,
                    conv_desc, activation_mode, &runners)
                .ok()) {

@@ -3280,6 +3280,32 @@ cudnnDataType_t GetRnnComputeType(dnn::DataType data_type) {
   }
 }
 
+dnn::DataType GetConvActivationType(dnn::DataType data_type) {
+  switch (data_type) {
+    case dnn::DataType::kFloat:
+    case dnn::DataType::kDouble:
+      return data_type;
+    // TODO(awpr): it's not clear whether float-precision activations on
+    // half-precision convs are supported; double-check.
+    case dnn::DataType::kHalf:
+      return CudnnEnvVar<ConvDoFP32ComputationFP16Input>::IsEnabled()
+                 ? dnn::DataType::kFloat
+                 : dnn::DataType::kHalf;
+    case dnn::DataType::kInt8:
+    case dnn::DataType::kInt32:  // TODO(awpr): does int32 do blending in float?
+      return dnn::DataType::kFloat;
+#if CUDNN_VERSION >= 8200
+    // TODO(awpr): as with kHalf, this is not clear.
+    case dnn::DataType::kBF16:
+      return CudnnEnvVar<ConvDoFP32ComputationFP16Input>::IsEnabled()
+                 ? dnn::DataType::kFloat
+                 : dnn::DataType::kBF16;
+#endif
+    default:
+      LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
+  }
+}
+
 dnn::DataType GetConvAccumulatorType(dnn::DataType data_type) {
   switch (data_type) {
     case dnn::DataType::kFloat:
@@ -3492,7 +3518,8 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
 
 port::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
 GetCudnnFusedOperationGraph(
-    dnn::ConvolutionKind kind, dnn::DataType element_type, double alpha,
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType bias_type, dnn::DataType output_type, double alpha,
     double alpha2, Stream* stream, const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     dnn::BatchDescriptor bias_descriptor,
@@ -3500,7 +3527,13 @@ GetCudnnFusedOperationGraph(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::ActivationMode activation_mode, CudnnHandle& cudnn) {
   cudnnBackendDescriptorType_t conv_mode = GetCudnnConvolutionType(kind);
-  cudnnDataType_t cudnn_type = ToCudnnDataType(element_type);
+  cudnnDataType_t cudnn_input_type = ToCudnnDataType(input_type);
+  cudnnDataType_t cudnn_output_type = ToCudnnDataType(output_type);
+  cudnnDataType_t cudnn_bias_type = ToCudnnDataType(bias_type);
+  cudnnDataType_t accumulator_type =
+      ToCudnnDataType(GetConvAccumulatorType(input_type));
+  cudnnDataType_t activation_type =
+      ToCudnnDataType(GetConvActivationType(input_type));
 
   // CUDNN fused operation supports the pattern in the form of
   // Conv + Add + BiasAdd + Act. Therefore, we need to build a graph of the
@@ -3511,7 +3544,7 @@ GetCudnnFusedOperationGraph(
   // Act    : input: tensor_bias;           output: tensor_y
   int vector_size, vector_dim;
   std::tie(vector_size, vector_dim) =
-      GetTensorVectorSizeAndDim(input_descriptor, element_type);
+      GetTensorVectorSizeAndDim(input_descriptor, input_type);
   std::vector<int64_t> input_dims = input_descriptor.vectorized_dims(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
   std::vector<int64_t> input_strides = input_descriptor.vectorized_strides(
@@ -3528,13 +3561,13 @@ GetCudnnFusedOperationGraph(
                       .setStrides(input_dims.size(), input_strides.data())
                       .setId('x')
                       .setAlignment(32)
-                      .setDataType(cudnn_type)
+                      .setDataType(cudnn_input_type)
                       .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_x);
 
   std::tie(vector_size, vector_dim) =
-      GetTensorVectorSizeAndDim(output_descriptor, element_type);
+      GetTensorVectorSizeAndDim(output_descriptor, output_type);
   std::vector<int64_t> output_dims = output_descriptor.vectorized_dims(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
   std::vector<int64_t> output_strides = output_descriptor.vectorized_strides(
@@ -3544,7 +3577,7 @@ GetCudnnFusedOperationGraph(
                       .setStrides(output_dims.size(), output_strides.data())
                       .setId('y')
                       .setAlignment(32)
-                      .setDataType(cudnn_type)
+                      .setDataType(cudnn_output_type)
                       .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_y);
@@ -3554,13 +3587,13 @@ GetCudnnFusedOperationGraph(
                       .setStrides(output_dims.size(), &output_strides[0])
                       .setId('z')
                       .setAlignment(32)
-                      .setDataType(cudnn_type)
+                      .setDataType(cudnn_input_type)
                       .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_z);
 
   std::tie(vector_size, vector_dim) =
-      GetTensorVectorSizeAndDim(filter_descriptor, element_type);
+      GetTensorVectorSizeAndDim(filter_descriptor, input_type);
   std::vector<int64_t> filter_dims = filter_descriptor.vectorized_dims(
       dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
   std::vector<int64_t> filter_strides = filter_descriptor.vectorized_strides(
@@ -3570,7 +3603,7 @@ GetCudnnFusedOperationGraph(
                       .setStrides(filter_dims.size(), filter_strides.data())
                       .setId('w')
                       .setAlignment(32)
-                      .setDataType(cudnn_type)
+                      .setDataType(cudnn_input_type)
                       .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_w);
@@ -3578,11 +3611,17 @@ GetCudnnFusedOperationGraph(
   // For the purposes of the cudnn graph, say that the bias tensor has the same
   // layout as the output tensor.  It doesn't actually matter, because bias is a
   // 1D array.  But we need to get the correct vectorization, otherwise the
-  // cudnn graph API rejects this tensor.
+  // cudnn graph API rejects this tensor, even though vectorized float tensors
+  // aren't even a thing in cuDNN.
   bias_descriptor.set_layout(output_descriptor.layout());
 
+  // Even more unnecessarily subtle: since vectorized float tensors don't exist,
+  // `GetVectorSizeAndDim` ignores vectorized layouts for floating-point types,
+  // so we have to ask it for vector sizes as if the type were `input_type`, as
+  // opposed to `bias_type`.  For non-int8 types, these are the same anyway, so
+  // this only affects int8 convolutions.
   std::tie(vector_size, vector_dim) =
-      GetTensorVectorSizeAndDim(bias_descriptor, element_type);
+      GetTensorVectorSizeAndDim(bias_descriptor, input_type);
   std::vector<int64_t> bias_dims = bias_descriptor.vectorized_dims(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
   std::vector<int64_t> bias_strides = bias_descriptor.vectorized_strides(
@@ -3592,20 +3631,20 @@ GetCudnnFusedOperationGraph(
                       .setStrides(bias_dims.size(), bias_strides.data())
                       .setId('b')
                       .setAlignment(32)
-                      .setDataType(cudnn_type)
+                      .setDataType(cudnn_bias_type)
                       .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_b);
 
   std::tie(vector_size, vector_dim) =
-      GetTensorVectorSizeAndDim(output_descriptor, element_type);
+      GetTensorVectorSizeAndDim(output_descriptor, output_type);
   auto tensor_conv = cudnn_frontend::TensorBuilder()
                          .setDim(output_dims.size(), &output_dims[0])
                          .setStrides(output_dims.size(), &output_strides[0])
                          .setVirtual()
                          .setId('C')
                          .setAlignment(32)
-                         .setDataType(cudnn_type)
+                         .setDataType(accumulator_type)
                          .setVectorCountAndDimension(vector_size, vector_dim)
                          .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_conv);
@@ -3616,7 +3655,7 @@ GetCudnnFusedOperationGraph(
                         .setVirtual()
                         .setId('A')
                         .setAlignment(32)
-                        .setDataType(cudnn_type)
+                        .setDataType(activation_type)
                         .setVectorCountAndDimension(vector_size, vector_dim)
                         .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_add);
@@ -3627,7 +3666,7 @@ GetCudnnFusedOperationGraph(
                          .setVirtual()
                          .setId('B')
                          .setAlignment(32)
-                         .setDataType(cudnn_type)
+                         .setDataType(activation_type)
                          .setVectorCountAndDimension(vector_size, vector_dim)
                          .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_bias);
@@ -3639,7 +3678,6 @@ GetCudnnFusedOperationGraph(
 
   int conv_dim = convolution_descriptor.ndims();
 
-  auto accumulator_type = ToCudnnDataType(GetConvAccumulatorType(element_type));
   CHECK_NE(convolution_descriptor.pad_alignment(),
            dnn::PadAlignment::kTensorFlowPadding)
       << "TensorFlow padding alignment is not supported.";
@@ -3656,23 +3694,20 @@ GetCudnnFusedOperationGraph(
           .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_desc);
 
-  // Beta is the scaling factor for output.
-  double beta = 0.0;
-
   // CUDNN Operation
   auto conv_op = cudnn_frontend::OperationBuilder(conv_mode)
                      .setxDesc(tensor_x)
                      .setyDesc(tensor_conv)
                      .setwDesc(tensor_w)
                      .setcDesc(conv_desc)
-                     .setAlpha(alpha)
-                     .setBeta(beta)
+                     .setAlpha(1.0f)
+                     .setBeta(0.0f)
                      .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_op);
 
   auto add_desc = cudnn_frontend::PointWiseDescBuilder()
                       .setMode(CUDNN_POINTWISE_ADD)
-                      .setMathPrecision(cudnn_type)
+                      .setMathPrecision(activation_type)
                       .build();
   auto add_op = cudnn_frontend::OperationBuilder(
                     CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
@@ -3687,7 +3722,7 @@ GetCudnnFusedOperationGraph(
 
   auto bias_add_desc = cudnn_frontend::PointWiseDescBuilder()
                            .setMode(CUDNN_POINTWISE_ADD)
-                           .setMathPrecision(cudnn_type)
+                           .setMathPrecision(activation_type)
                            .build();
 
   // If the activation is the identity function, then the bias-add is the last
@@ -3717,8 +3752,9 @@ GetCudnnFusedOperationGraph(
     case dnn::ActivationMode::kRelu:
       act_desc.emplace(cudnn_frontend::PointWiseDescBuilder()
                            .setMode(CUDNN_POINTWISE_RELU_FWD)
-                           .setMathPrecision(cudnn_type)
+                           .setMathPrecision(activation_type)
                            .build());
+      RETURN_MSG_IF_CUDNN_ERROR(*act_desc);
       act_op.emplace(cudnn_frontend::OperationBuilder(
                          CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
                          .setxDesc(bias_add_op.getOutputTensor())
@@ -4346,8 +4382,9 @@ class CudnnFusedConvRunner
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
-    dnn::ConvolutionKind kind, dnn::DataType element_type,
-    double conv_input_scale, double side_input_scale, Stream* stream,
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType bias_type, dnn::DataType output_type, double conv_input_scale,
+    double side_input_scale, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
@@ -4358,9 +4395,10 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   auto op_graph_status = GetCudnnFusedOperationGraph(
-      kind, element_type, conv_input_scale, side_input_scale, stream,
-      input_descriptor, filter_descriptor, bias_descriptor, output_descriptor,
-      convolution_descriptor, activation_mode, cudnn);
+      kind, input_type, bias_type, output_type, conv_input_scale,
+      side_input_scale, stream, input_descriptor, filter_descriptor,
+      bias_descriptor, output_descriptor, convolution_descriptor,
+      activation_mode, cudnn);
   if (!op_graph_status.status().ok()) {
     return port::Status(port::error::INTERNAL,
                         absl::StrCat("Cudnn graph failed to build: ",
@@ -4400,7 +4438,7 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
         engine_config,
         /*disable_winograd*/ !CudnnEnvVar<WinogradNonfused>::IsEnabled(),
         /*disable_nondeterminism*/ RequireCudnnDeterminism(),
-        /*disable_tensor_core*/ !IsTensorMathEnabled(stream, element_type));
+        /*disable_tensor_core*/ !IsTensorMathEnabled(stream, input_type));
   };
 
   cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
