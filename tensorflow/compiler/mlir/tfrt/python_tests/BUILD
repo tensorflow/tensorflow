@@ -168,8 +168,8 @@ py_strict_test(
 )
 
 py_strict_test(
-    name = "tf_sum_test",
-    srcs = ["tf_sum_test.py"],
+    name = "tf_reduction_test",
+    srcs = ["tf_reduction_test.py"],
     python_version = "PY3",
     tags = [
         "no_oss",
