@@ -824,6 +824,7 @@ bool MemorySpaceAssignment::Allocation::operator==(
          uses() == other.uses() && memory_space() == other.memory_space() &&
          chunk() == other.chunk() && start_time() == other.start_time() &&
          end_time() == other.end_time() &&
+         earliest_available_time() == other.earliest_available_time() &&
          is_copy_allocation() == other.is_copy_allocation() &&
          is_scoped_allocation() == other.is_scoped_allocation();
 }
