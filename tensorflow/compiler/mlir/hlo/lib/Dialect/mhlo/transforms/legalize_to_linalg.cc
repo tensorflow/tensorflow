@@ -742,58 +742,6 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
   }
 };
 
-//===----------------------------------------------------------------------===//
-// lmhlo.convolution conversion pattern.
-//===----------------------------------------------------------------------===//
-
-/// Converts lmhlo.convolution operation to a linalg.conv op.
-struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
- public:
-  using OpConversionPattern<lmhlo::ConvOp>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      lmhlo::ConvOp op, ArrayRef<Value> args,
-      ConversionPatternRewriter& rewriter) const final {
-    if (!HasCanonicalDimensionNumbers(op.dimension_numbers())) return failure();
-
-    // TODO: LHS dilation for deconvolution not supported yet.
-    // TODO(jurahul): Window reversal is not supported yet.
-    if (op.lhs_dilation() || op.hasWindowReversal()) {
-      return failure();
-    }
-
-    llvm::SmallVector<Attribute, 4> strides;
-    if (auto window_strides = op.window_strides()) {
-      auto range = window_strides->getValues<Attribute>();
-      strides.assign(range.begin(), range.end());
-    }
-    auto strides_arg = ArrayAttr::get(op.getContext(), strides);
-
-    llvm::SmallVector<Attribute, 2> dilation;
-    if (auto rhs_dilation = op.rhs_dilation()) {
-      auto range = rhs_dilation->getValues<Attribute>();
-      dilation.assign(range.begin(), range.end());
-    } else {
-      // Default dilation of 1.
-      dilation.resize(2, IntegerAttr::get(rewriter.getIntegerType(64), 1));
-    }
-    auto dilation_arg = ArrayAttr::get(op.getContext(), dilation);
-
-    // Set padding only if it is non-zero.
-    DenseIntElementsAttr padding = op.paddingAttr();
-    if (!padding ||
-        !llvm::any_of(padding.getValues<APInt>(),
-                      [](APInt int_val) { return !int_val.isNullValue(); })) {
-      padding = nullptr;
-    }
-
-    // The order of input and filter are switched with linalg.conv.
-    rewriter.replaceOpWithNewOp<linalg::ConvOp>(
-        op, args[1], args[0], args[2], strides_arg, dilation_arg, padding);
-    return success();
-  }
-};
-
 /// Base class for lowering HLO operations that have one operand and one result,
 /// and are semantically equivalent to a copy of the input to the output (like
 /// transpose, some reshape, etc.). The derived classes need to provide a method
@@ -2977,7 +2925,6 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
   // clang-format off
   patterns->insert<BroadcastConverter<lmhlo::BroadcastOp>,
                    ConstConverterBuffer,
-                   ConvToLinalgConverter,
                    IotaConverter<lmhlo::IotaOp>,
                    LhloBroadcastInDimConverter,
                    PointwiseToLinalgConverter<lmhlo::AbsOp>,
