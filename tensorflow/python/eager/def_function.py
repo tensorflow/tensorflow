@@ -531,7 +531,7 @@ class Function(object):
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
     """
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._python_function = python_function
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function,
@@ -571,7 +571,7 @@ class Function(object):
   def __setstate__(self, state):
     """Restore from pickled state."""
     self.__dict__ = state
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._key_for_call_stats = self._get_key_for_call_stats()
 
