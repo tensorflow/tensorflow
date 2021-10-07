@@ -250,6 +250,9 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(op)) {
     return Thunk::Kind::kCholesky;
   }
+  if (mlir::isa<mlir::lmhlo::TriangularSolveOp>(op)) {
+    return Thunk::Kind::kTriangularSolve;
+  }
   return tensorflow::errors::Unimplemented(
       "Operation is not supported by BefThunk.");
 }

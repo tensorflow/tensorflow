@@ -42,6 +42,7 @@ cc_library(
         "custom_call_pattern.cc",
         "gemm_pattern.cc",
         "lmhlo_to_gpu.cc",
+        "triangular_solve_pattern.cc",
     ],
     hdrs = [
         "lmhlo_to_gpu.h",
@@ -62,6 +63,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/xla:attribute_exporter",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",

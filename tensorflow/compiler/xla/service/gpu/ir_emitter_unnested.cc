@@ -1606,6 +1606,16 @@ Status IrEmitterUnnested::EmitTriangularSolve(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(TriangularSolveOptions_Transpose transpose_a,
                       ConvertTranspose(triangular_solve_op.transpose_a()));
 
+  if (IsBefThunkEnabled()) {
+    std::vector<BufferAllocation::Slice> buffers = {a_slice, b_slice,
+                                                    output_slice};
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Thunk> thunk,
+        CreateBefThunk(GetThunkInfo(op), op, std::move(buffers)));
+    AddThunkToThunkSequence(std::move(thunk));
+    return Status::OK();
+  }
+
   ThunkSequence thunks;
 
   // Triangular solve is in-place on 'b', so copy 'b' to the output if they
