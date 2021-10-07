@@ -42,10 +42,6 @@ table BinaryProgram {
 table InferenceContext {
   driver_version:string;
   binary_programs:[BinaryProgram];
-  need_flush:bool;
-  flush_periodically:bool;
-  flush_period:int32;
-  need_manual_release:bool;
   nodes:[CLNode];
   tensors:[TensorDescWithId];
   const_tensors:[TensorDescWithId];

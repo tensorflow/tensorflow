@@ -166,6 +166,19 @@ bool CanUseSubBuffer(const GpuInfo& gpu_info) {
 
 }  // namespace
 
+void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
+  if (gpu_info.IsMali()) {
+    need_flush = true;
+    need_manual_release = gpu_info.mali_info.IsValhall() ? false : true;
+
+    flush_periodically = true;
+    flush_period = 24;
+  }
+  if (gpu_info.IsPowerVR()) {
+    need_flush = true;
+  }
+}
+
 absl::Status InferenceContext::InitFromGraph(
     const CreateInferenceInfo& create_info, const GraphFloat32& graph,
     Environment* env, std::vector<uint8_t>* serialized_model) {
@@ -177,17 +190,7 @@ absl::Status InferenceContext::InitFromGraph(
 
   RETURN_IF_ERROR(
       ReserveGraphTensors(create_info, creation_context.GetGpuInfo(), graph));
-  if (env->device().GetInfo().IsMali()) {
-    need_flush_ = true;
-    need_manual_release_ =
-        env->device().GetInfo().mali_info.IsValhall() ? false : true;
-
-    flush_periodically_ = true;
-    flush_period_ = 24;
-  }
-  if (env->device().GetInfo().IsPowerVR()) {
-    need_flush_ = true;
-  }
+  execution_hints_.Init(env->device().GetInfo());
   CopyInAndOutIds(graph);
   RETURN_IF_ERROR(ConvertOperations(creation_context.GetGpuInfo(), graph,
                                     create_info.precision, create_info.hints));
@@ -260,6 +263,8 @@ absl::Status InferenceContext::RestoreDeserialized(
   creation_context.context = &env->context();
   creation_context.queue = env->queue();
   creation_context.cache = env->program_cache();
+
+  execution_hints_.Init(env->device().GetInfo());
 
   RETURN_IF_ERROR(
       AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
@@ -781,21 +786,23 @@ absl::Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
   if (recordable_queue_->IsSupported()) {
     return recordable_queue_->Execute(queue);
   }
-  if (need_manual_release_) {
-    if (prev_enqueue_start_point_.is_valid()) {
-      prev_enqueue_start_point_.Wait();
+  if (execution_hints_.need_manual_release) {
+    if (execution_hints_.prev_enqueue_start_point.is_valid()) {
+      execution_hints_.prev_enqueue_start_point.Wait();
     }
-    RETURN_IF_ERROR(queue->EnqueueEvent(&prev_enqueue_start_point_));
+    RETURN_IF_ERROR(
+        queue->EnqueueEvent(&execution_hints_.prev_enqueue_start_point));
   }
   int counter = 0;
   for (auto& node : nodes_) {
     RETURN_IF_ERROR(node.cl_operation.AddToQueue(queue));
     counter++;
-    if (flush_periodically_ && counter % flush_period_ == 0) {
+    if (execution_hints_.flush_periodically &&
+        counter % execution_hints_.flush_period == 0) {
       clFlush(queue->queue());
     }
   }
-  if (need_flush_) {
+  if (execution_hints_.need_flush) {
     clFlush(queue->queue());
   }
   return absl::OkStatus();

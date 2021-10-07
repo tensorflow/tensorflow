@@ -150,18 +150,23 @@ class InferenceContext {
 
   void ReleaseCPURepresentation();
 
-  // performance hacks
-  bool need_flush_ = false;
+  struct ExecutionHints {
+    bool need_flush = false;
 
-  bool flush_periodically_ = false;
-  int flush_period_ = 1;
+    bool flush_periodically = false;
+    int flush_period = 1;
 
-  // In order to reduce memory leak on Mali a pipeline needs to be synchronized
-  // with CPU to prevent growing internal global OpenCL kernel pool. One trick
-  // is to enqueue an event from a previous run. Most of the time is should
-  // already be executed on GPU and should not stall the pipeline.
-  bool need_manual_release_ = false;
-  CLEvent prev_enqueue_start_point_;
+    // In order to reduce memory leak on Mali a pipeline needs to be
+    // synchronized with CPU to prevent growing internal global OpenCL kernel
+    // pool. One trick is to enqueue an event from a previous run. Most of the
+    // time is should already be executed on GPU and should not stall the
+    // pipeline.
+    bool need_manual_release = false;
+    CLEvent prev_enqueue_start_point;
+
+    void Init(const GpuInfo& gpu_info);
+  };
+  ExecutionHints execution_hints_;
 
   // Directly mapped nodes from graph, but some of them "inactive" due
   //  to fusion (inactive = fused).
