@@ -1331,8 +1331,26 @@ def _maybe_get_dtype(x):
   return x
 
 
-def maybe_promote_tensors(*tensors, force_same_dtype=True):
-  """Promote tensors if numpy style promotion is enabled."""
+def maybe_promote_tensors(*tensors, force_same_dtype=False):
+  """Promotes tensors if numpy style promotion is enabled.
+
+  This function promotes `tensors` according to numpy promotion rules
+  if numpy style promotion is enabled.  Otherwise, if
+  `force_same_dtype` is `True`, it force-casts `tensors[1:]` to
+  `tensor[0]`'s dtype. Note that this force-cast can be problematic.
+  For example, when some `tensors[1:]` elements can be silently
+  downcasted.
+
+  Args:
+    *tensors: the list of tensors to promote.
+    force_same_dtype: bool (optional, default to `False`). When numpy
+      style promotion is disabled and `force_same_dtype` is `True`,
+      this function will force-casts `tensors[1:]` to `tensor[0]`'s
+      dtype (which could be problematic).
+
+  Returns:
+    The promoted list of tensors.
+  """
   if not tensors:
     return tensors
   if not ops._numpy_style_type_promotion:
@@ -1375,7 +1393,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
         # force_same_dtype=False to preserve existing TF behavior
         # TODO(b/178860388): Figure out why binary_op_wrapper and
         #   r_binary_op_wrapper use different force_same_dtype values.
-        x, y = maybe_promote_tensors(x, y, force_same_dtype=False)
+        x, y = maybe_promote_tensors(x, y)
         return func(x, y, name=name)
       except (TypeError, ValueError) as e:
         # Even if dispatching the op failed, the RHS may be a tensor aware
@@ -1410,7 +1428,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
     with ops.name_scope(None, op_name, [x, y]) as name:
       # TODO(b/178860388): Figure out why binary_op_wrapper and
       #   r_binary_op_wrapper use different force_same_dtype values.
-      y, x = maybe_promote_tensors(y, x)
+      y, x = maybe_promote_tensors(y, x, force_same_dtype=True)
       return func(x, y, name=name)
 
   # Propagate func.__doc__ to the wrappers
@@ -1842,7 +1860,7 @@ ops.Tensor._override_operator("__invert__", invert_)
 
 def _promote_dtypes_decorator(fn):
   def wrapper(x, y, *args, **kwargs):
-    x, y = maybe_promote_tensors(x, y, force_same_dtype=False)
+    x, y = maybe_promote_tensors(x, y)
     return fn(x, y, *args, **kwargs)
   return tf_decorator.make_decorator(fn, wrapper)
 
