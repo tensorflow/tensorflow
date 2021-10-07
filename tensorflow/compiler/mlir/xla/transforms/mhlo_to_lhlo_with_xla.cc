@@ -1031,7 +1031,7 @@ StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
     builder_.clearInsertionPoint();
     auto global_var = builder_.create<memref::GlobalOp>(
         loc, constant_name, builder_.getStringAttr("private"), memref_type,
-        initial_value, true);
+        initial_value, true, /*alignment=*/IntegerAttr());
     SymbolTable(module_).insert(global_var);
     global_var.getOperation()->moveBefore(&module_.front());
 
