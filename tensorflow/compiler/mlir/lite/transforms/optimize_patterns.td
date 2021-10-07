@@ -982,3 +982,16 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
   [(I32ElementsVal $indices),     // lookup is not implemented for i64
    (HasRank<1> $indices),  // lookup isn't implemented for any other rank
    (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later
+
+def AreInputDimensionsOneInAxes : Constraint<CPred<
+  "AreInputDimensionsOneInAxes($0, $1)">>;
+
+// Eliminate cumulative summations if the input's dimension in axis is 1.
+def EliminateCumSumInclusive : Pat<
+  (TFL_CumsumOp
+     $input,
+     (ConstantOp I32ElementsAttr:$axis),
+     ConstBoolAttrFalse,
+     $reverse),
+  (replaceWithValue $input),
+  [(AreInputDimensionsOneInAxes $input, $axis)]>;

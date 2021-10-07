@@ -2565,4 +2565,48 @@ func @multiUsesDontOptimizeTopK(%arg: tensor<3x10xf32>) -> (tensor<3x5xf32>, ten
   return %0, %1, %2 : tensor<3x5xf32>, tensor<3x5xi32>, tensor<3x10xf32>
 }
 
+// CHECK-LABEL:   func @eliminateCumSumCheckIndices
+func @eliminateCumSumCheckIndices(%arg: tensor<1x2x1x3xf32>) -> (tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>) {
+  %axis_m4 = constant dense<-4> : tensor<i32>
+  %axis_m3 = constant dense<-3> : tensor<i32>
+  %axis_m2 = constant dense<-2> : tensor<i32>
+  %axis_m1 = constant dense<-1> : tensor<i32>
+  %axis_00 = constant dense<0> : tensor<i32>
+  %axis_p1 = constant dense<1> : tensor<i32>
+  %axis_p2 = constant dense<2> : tensor<i32>
+  %axis_p3 = constant dense<3> : tensor<i32>
+  %res_m4 = "tfl.cumsum"(%arg, %axis_m4) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>  // Eliminated
+  %res_m3 = "tfl.cumsum"(%arg, %axis_m3) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>
+  %res_m2 = "tfl.cumsum"(%arg, %axis_m2) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>  // Eliminated
+  %res_m1 = "tfl.cumsum"(%arg, %axis_m1) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>
+  %res_00 = "tfl.cumsum"(%arg, %axis_00) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>  // Eliminated
+  %res_p1 = "tfl.cumsum"(%arg, %axis_p1) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>
+  %res_p2 = "tfl.cumsum"(%arg, %axis_p2) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>  // Eliminated
+  %res_p3 = "tfl.cumsum"(%arg, %axis_p3) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>
+  return %res_m4, %res_m3, %res_m2, %res_m1, %res_00, %res_p1, %res_p2, %res_p3 : tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>
 
+  // CHECK-DAG: %[[AXIS_M3:.*]] = constant dense<-3> : tensor<i32>
+  // CHECK-DAG: %[[AXIS_M1:.*]] = constant dense<-1> : tensor<i32>
+  // CHECK-DAG: %[[AXIS_P1:.*]] = constant dense<1> : tensor<i32>
+  // CHECK-DAG: %[[AXIS_P3:.*]] = constant dense<3> : tensor<i32>
+  // CHECK: %[[RES_M3:.*]] = "tfl.cumsum"(%arg0, %[[AXIS_M3]]) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>
+  // CHECK: %[[RES_M1:.*]] = "tfl.cumsum"(%arg0, %[[AXIS_M1]]) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>
+  // CHECK: %[[RES_P1:.*]] = "tfl.cumsum"(%arg0, %[[AXIS_P1]]) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>
+  // CHECK: %[[RES_P3:.*]] = "tfl.cumsum"(%arg0, %[[AXIS_P3]]) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>
+  // CHECK: return %arg0, %[[RES_M3]], %arg0, %[[RES_M1]], %arg0, %[[RES_P1]], %arg0, %[[RES_P3]] : tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>
+}
+
+// CHECK-LABEL:   func @eliminateCumSumCheckAttributes
+func @eliminateCumSumCheckAttributes(%arg: tensor<1x2x1x3xf32>) -> (tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>) {
+  %axis = constant dense<2> : tensor<i32>
+  %res_ff = "tfl.cumsum"(%arg, %axis) {exclusive = false, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>  // Eliminated
+  %res_ft = "tfl.cumsum"(%arg, %axis) {exclusive = false, reverse =  true} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>  // Eliminated
+  %res_tf = "tfl.cumsum"(%arg, %axis) {exclusive =  true, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>
+  %res_tt = "tfl.cumsum"(%arg, %axis) {exclusive =  true, reverse =  true} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>
+  return %res_ff, %res_ft, %res_tf, %res_tt: tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>
+
+  // CHECK: %[[AXIS:.*]] = constant dense<2> : tensor<i32>
+  // CHECK: %[[RES_TF:.*]] = "tfl.cumsum"(%arg0, %[[AXIS]]) {exclusive = true, reverse = false} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>
+  // CHECK: %[[RES_TT:.*]] = "tfl.cumsum"(%arg0, %[[AXIS]]) {exclusive = true, reverse = true} : (tensor<1x2x1x3xf32>, tensor<i32>) -> tensor<1x2x1x3xf32>
+  // CHECK: return %arg0, %arg0, %[[RES_TF]], %[[RES_TT]] : tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>, tensor<1x2x1x3xf32>
+}
