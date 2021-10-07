@@ -1450,6 +1450,8 @@ py_library(
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/ops/ragged:ragged_functional_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
     ],
 )
 
@@ -2008,6 +2010,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework",
+        "//tensorflow/python/ops/ragged:ragged_math_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
     ],
 )
 
