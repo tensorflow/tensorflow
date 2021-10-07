@@ -138,6 +138,18 @@ py_strict_test(
 )
 
 py_strict_test(
+    name = "tf_select_test",
+    srcs = ["tf_select_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
     name = "tf_strided_slice_test",
     srcs = ["tf_strided_slice_test.py"],
     python_version = "PY3",
