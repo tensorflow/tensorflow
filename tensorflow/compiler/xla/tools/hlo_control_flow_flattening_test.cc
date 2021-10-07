@@ -279,7 +279,7 @@ TEST_F(HloControlFlowFlatteningTest, AllReduceStartAndDone) {
 
   ENTRY CRS {
     input = f32[8]{0} parameter(0)
-    crs = (f32[8]{0}, f32[8]{0}) all-reduce-start(input), replica_groups={}, to_apply=add
+    crs = f32[8]{0} all-reduce-start(input), replica_groups={}, to_apply=add
     ROOT done = f32[8]{0} all-reduce-done(crs)
   }
   )";

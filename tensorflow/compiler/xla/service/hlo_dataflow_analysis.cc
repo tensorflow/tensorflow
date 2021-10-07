@@ -932,39 +932,16 @@ bool HloDataflowAnalysis::UpdateAllGatherDoneValueSet(
   return changed;
 }
 
-bool HloDataflowAnalysis::UpdateAllReduceStartValueSet(
-    HloInstruction* all_reduce_start) {
-  CHECK_EQ(all_reduce_start->opcode(), HloOpcode::kAllReduceStart);
-  bool changed = false;
-  // AllReduceStart forwards the operand values to element {0} of its output.
-  for (int64_t i = 0; i < all_reduce_start->operand_count(); ++i) {
-    const HloValueSet& operand_value_set =
-        GetValueSet(all_reduce_start->operand(i));
-
-    ShapeIndex output_index = {0};
-    if (all_reduce_start->operand_count() > 1) {
-      output_index.push_back(i);
-    }
-
-    HloValueSet& value_set = GetValueSet(all_reduce_start, output_index);
-    if (value_set != operand_value_set) {
-      value_set = operand_value_set;
-      changed = true;
-    }
-  }
-  return changed;
-}
-
 bool HloDataflowAnalysis::UpdateAllReduceDoneValueSet(
     HloInstruction* all_reduce_done) {
   CHECK_EQ(all_reduce_done->opcode(), HloOpcode::kAllReduceDone);
   bool changed = false;
-  // AllReduceDone forwards the operand value at {1} to its output.
+  // AllReduceDone forwards its only operand.
   for (auto& pair : GetInstructionValueSet(all_reduce_done)) {
     const ShapeIndex& output_index = pair.first;
     HloValueSet& value_set = pair.second;
 
-    ShapeIndex operand_index = {1};
+    ShapeIndex operand_index = {};
     for (int64_t i : output_index) {
       operand_index.push_back(i);
     }
@@ -1080,8 +1057,6 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateCopyDoneValueSet(instruction);
     case HloOpcode::kConditional:
       return UpdateConditionalValueSet(instruction);
-    case HloOpcode::kAllReduceStart:
-      return UpdateAllReduceStartValueSet(instruction);
     case HloOpcode::kAllReduceDone:
       return UpdateAllReduceDoneValueSet(instruction);
     case HloOpcode::kCollectivePermuteStart:
@@ -1304,19 +1279,8 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             define_value_at(/*index=*/{});
           }
           break;
-        case HloOpcode::kAllReduceStart:
-          // AllReduceStart produces a tuple of
-          // {aliased operand, destination buffer}.
-          define_value_at(/*index=*/{});
-          define_value_at(/*index=*/{1});
-          if (instruction->operand_count() > 1) {
-            for (int64_t i = 0; i < instruction->operand_count(); ++i) {
-              define_value_at(/*index=*/{1, i});
-            }
-          }
-          break;
         case HloOpcode::kAllReduceDone:
-          // AllReduceDone's output aliases its input tuple element {1}.
+          // AllReduceDone's output aliases its input.
           break;
         case HloOpcode::kCollectivePermuteStart:
           // CollectivePermuteStart produces a tuple of
@@ -1583,6 +1547,16 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(HloInstruction* instruction) {
       in_place_pairs.push_back(
           {HloUse{instruction, operand_index, {operand_shape_index}},
            output_shape_index});
+    }
+    return in_place_pairs;
+  } else if (instruction->opcode() == HloOpcode::kAllReduceStart) {
+    if (instruction->operands().size() == 1) {
+      return {{HloUse{instruction, 0, {}}, {}}};
+    }
+    std::vector<std::pair<HloUse, ShapeIndex>> in_place_pairs;
+    in_place_pairs.reserve(instruction->operands().size());
+    for (int i = 0; i < instruction->operands().size(); i++) {
+      in_place_pairs.push_back({HloUse{instruction, i, {}}, {i}});
     }
     return in_place_pairs;
   } else if (instruction->opcode() != HloOpcode::kFusion) {

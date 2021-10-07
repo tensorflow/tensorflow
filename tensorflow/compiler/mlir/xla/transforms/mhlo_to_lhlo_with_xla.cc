@@ -1135,8 +1135,7 @@ StatusOr<lmhlo_gpu::AllReduceStartOp> LhloDialectEmitter::EmitAllReduceStartOp(
   for (const HloInstruction* operand : instr->operands()) {
     TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
   }
-  // Only include result index {1}. {0} always aliases the inputs.
-  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{1}));
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{}));
 
   Location loc = getLocation(instr);
   mlir::Type token_type = mlir::mhlo::TokenType::get(builder_.getContext());
