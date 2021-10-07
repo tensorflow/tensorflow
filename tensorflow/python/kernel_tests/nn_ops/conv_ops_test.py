@@ -155,7 +155,8 @@ def GetTestConfigs():
     test_configs += [("NCHW", True)]
   return test_configs
 
-
+@test_util.run_all_without_tensor_float_32(
+        "Avoid TF32 conv on GPU")
 class Conv2DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
@@ -2602,6 +2603,8 @@ class Conv2DTest(test.TestCase):
               padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]))
 
 
+@test_util.run_all_without_tensor_float_32(
+        "Avoid TF32 conv on GPU")
 class DepthwiseConv2DTest(test.TestCase):
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, stride, padding,
@@ -2696,6 +2699,8 @@ class DepthwiseConv2DTest(test.TestCase):
         expected=expected_output)
 
 
+@test_util.run_all_without_tensor_float_32(
+        "Avoid TF32 conv on GPU")
 class SeparableConv2DTest(test.TestCase):
 
   def _InitValues(self, sizes):
@@ -2879,6 +2884,8 @@ class SeparableConv2DTest(test.TestCase):
     self._testSeparableConv2dExplicitPadding("NCHW")
 
 
+@test_util.run_all_without_tensor_float_32(
+        "Avoid TF32 conv on GPU")
 class DeepConv2DTest(test.TestCase):
 
   def _CompareFwdConv2D(self, tensor_in_sizes, filter_in_sizes, conv_strides,
@@ -3212,6 +3219,8 @@ def GetInceptionBackFilterTest(input_size, filter_size, output_size, strides,
   return Test
 
 
+@test_util.run_all_without_tensor_float_32(
+        "Avoid TF32 conv on GPU")
 class FusedConv2DTest(test.TestCase):
 
   def _CreateNumpyTensor(self, shape):
