@@ -181,3 +181,15 @@ py_strict_test(
         "//third_party/py/numpy",
     ],
 )
+
+py_strict_test(
+    name = "tf_compile_test",
+    srcs = ["tf_compile_test.py"],
+    data = glob(["regression_tests/*"]),
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform",
+    ],
+)
