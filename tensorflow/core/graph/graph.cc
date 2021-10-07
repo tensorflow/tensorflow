@@ -174,6 +174,50 @@ void Node::UpdateProperties() {
   }
 }
 
+void Node::RunForwardTypeInference() {
+  if (props_->fwd_type_fn == nullptr) {
+    return;
+  }
+
+  std::vector<Node*> input_nodes(props_->input_types.size(), nullptr);
+  for (const auto& edge : in_edges_) {
+    if (edge->IsControlEdge()) {
+      continue;
+    }
+    DCHECK(edge->dst_input() < input_nodes.size()) << DebugString();
+    input_nodes.at(edge->dst_input()) = edge->src();
+  }
+
+  // Note: technically, we could use a very generic type when some of the inputs
+  // are unknown. But there is an expectation that a node will have complete
+  // inputs soon, so updating intermediate types is largely unnecessary.
+
+  for (const auto* node : input_nodes) {
+    if (node == nullptr) {
+      // Incomplete inputs, bail.
+      props_->node_def.clear_experimental_type();
+      return;
+    }
+  }
+
+  std::vector<std::reference_wrapper<const FullTypeDef>> input_types;
+  for (const auto* node : input_nodes) {
+    if (node->def().has_experimental_type()) {
+      input_types.emplace_back(node->def().experimental_type());
+    } else {
+      // Incomplete inputs, bail.
+      props_->node_def.clear_experimental_type();
+      return;
+    }
+  }
+
+  const auto infer_type = props_->fwd_type_fn(input_types);
+  const FullTypeDef infer_typedef = infer_type.ValueOrDie();
+  if (infer_typedef.type_id() != TFT_UNSET) {
+    *(props_->node_def.mutable_experimental_type()) = infer_typedef;
+  }
+}
+
 const std::string& Node::name() const { return props_->node_def.name(); }
 const std::string& Node::type_string() const { return props_->node_def.op(); }
 const NodeDef& Node::def() const { return props_->node_def; }
@@ -485,10 +529,19 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
                                    ? Node::NC_FUNCTION_OP
                                    : Node::GetNodeClassForOp(node_def.op());
 
-  Node* node = AllocateNode(
-      std::make_shared<NodeProperties>(&op_reg_data->op_def,
-                                       std::move(node_def), inputs, outputs),
-      nullptr, node_class);
+  if (op_reg_data->type_ctor != nullptr) {
+    const auto ctor_type =
+        full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def);
+    const FullTypeDef ctor_typedef = ctor_type.ValueOrDie();
+    if (ctor_typedef.type_id() != TFT_UNSET) {
+      *(node_def.mutable_experimental_type()) = ctor_typedef;
+    }
+  }
+
+  Node* node = AllocateNode(std::make_shared<NodeProperties>(
+                                &op_reg_data->op_def, std::move(node_def),
+                                inputs, outputs, op_reg_data->fwd_type_fn),
+                            nullptr, node_class);
   return node;
 }
 
@@ -563,6 +616,21 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
   CHECK(dest->in_edges_.insert(e).second);
   edges_.push_back(e);
   ++num_edges_;
+
+  if (!e->IsControlEdge()) {
+    if (dest->in_edges_.size() >= dest->props_->input_types.size()) {
+      // Note: this only produces consistent results at graph construction,
+      // and only when all incoming edges are up-to-date.
+      // If the graph is subsequently modified, or if the node is added before
+      // any of its upstream nodes, this type information would change as well.
+      // In general, graph transformations should run shole-graph type inference
+      // when done, and should not rely on types being fully up to date
+      // after each AddNode.
+      // TODO(mdan): Should we even run type inference here any more?
+      dest->RunForwardTypeInference();
+    }
+  }
+
   return e;
 }
 
@@ -577,6 +645,11 @@ void Graph::RemoveEdge(const Edge* e) {
   edges_[e->id_] = nullptr;
   RecycleEdge(e);
   --num_edges_;
+
+  if (!e->IsControlEdge()) {
+    // This may clear the node type if enough edges are removed.
+    e->dst_->RunForwardTypeInference();
+  }
 }
 
 void Graph::RecycleEdge(const Edge* e) {
