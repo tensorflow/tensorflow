@@ -34,19 +34,11 @@ struct CholeskyRewritePattern
   FailureOr<Value> matchAndRewriteOp(
       lmhlo_gpu::CholeskyOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    if (!llvm::all_of(adaptor.getOperands(), [](Value operand) {
-          return operand.getType().isa<tfrt::gpu::BufferType>();
-        }))
-      return rewriter.notifyMatchFailure(op, "expected buffer operands");
-
-    chain = rewriter
-                .create<tfrt::gpu::MemCopyOp>(op.getLoc(), adaptor.output(),
-                                              adaptor.input(), stream, chain)
-                .getResult();
+    chain = rewriter.create<tfrt::gpu::MemCopyOp>(
+        op.getLoc(), adaptor.output(), adaptor.input(), stream, chain);
 
     auto handle =
-        rewriter.create<tfrt::gpu::SolverCreateOp>(op.getLoc(), stream)
-            .getResult();
+        rewriter.create<tfrt::gpu::SolverCreateOp>(op.getLoc(), stream);
 
     cublasFillMode_t fill_mode =
         op.is_lower() ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
@@ -67,11 +59,9 @@ struct CholeskyRewritePattern
     auto batch =
         rewriter.create<tfrt::compiler::ConstantI32Op>(op.getLoc(), batch_size);
 
-    chain = rewriter
-                .create<tfrt::gpu::SolverPotrfBatchOp>(
-                    op.getLoc(), handle, fill_mode, n, data_type,
-                    adaptor.output(), n, adaptor.info(), batch, chain)
-                .getResult();
+    chain = rewriter.create<tfrt::gpu::SolverPotrfBatchOp>(
+        op.getLoc(), handle, fill_mode, n, data_type, adaptor.output(), n,
+        adaptor.info(), batch, chain);
     rewriter.eraseOp(op);
     return chain;
   }

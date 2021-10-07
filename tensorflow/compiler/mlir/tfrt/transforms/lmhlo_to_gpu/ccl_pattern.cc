@@ -97,11 +97,8 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::AllGatherOp srcOp, Value chain,
     Value input = mapping.lookup(operands[i]);
     Value output = mapping.lookup(results[i]);
 
-    chain =
-        rewriter
-            .create<tfrt::gpu::CclAllGatherOp>(srcOp.getLoc(), handle, input,
-                                               output, nccl_data_type, chain)
-            .getResult();
+    chain = rewriter.create<tfrt::gpu::CclAllGatherOp>(
+        srcOp.getLoc(), handle, input, output, nccl_data_type, chain);
   }
   return chain;
 }
@@ -135,11 +132,9 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::AllReduceOp srcOp, Value chain,
     Value input = mapping.lookup(operands[i]);
     Value output = mapping.lookup(results[i]);
 
-    chain = rewriter
-                .create<tfrt::gpu::CclAllReduceOp>(
-                    srcOp.getLoc(), handle, input, output, nccl_data_type,
-                    reduction_op, chain)
-                .getResult();
+    chain = rewriter.create<tfrt::gpu::CclAllReduceOp>(
+        srcOp.getLoc(), handle, input, output, nccl_data_type, reduction_op,
+        chain);
   }
   return chain;
 }
@@ -173,11 +168,9 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::ReduceScatterOp srcOp,
     Value input = mapping.lookup(operands[i]);
     Value output = mapping.lookup(results[i]);
 
-    chain = rewriter
-                .create<tfrt::gpu::CclReduceScatterOp>(
-                    srcOp.getLoc(), handle, input, output, nccl_data_type,
-                    reduction_op, chain)
-                .getResult();
+    chain = rewriter.create<tfrt::gpu::CclReduceScatterOp>(
+        srcOp.getLoc(), handle, input, output, nccl_data_type, reduction_op,
+        chain);
   }
   return chain;
 }
@@ -202,23 +195,16 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::AllToAllOp srcOp, Value chain,
     Value output = mapping.lookup(results[i]);
 
     if (srcOp.split_dimension().hasValue()) {
-      chain =
-          rewriter
-              .create<tfrt::gpu::CclAllToAllOp>(srcOp.getLoc(), handle, input,
-                                                output, nccl_data_type, chain)
-              .getResult();
+      chain = rewriter.create<tfrt::gpu::CclAllToAllOp>(
+          srcOp.getLoc(), handle, input, output, nccl_data_type, chain);
     } else {
       Value peer = rewriter.create<tfrt::compiler::ConstantI32Op>(
           srcOp.getLoc(), rewriter.getI32Type(), i);
 
-      chain = rewriter
-                  .create<tfrt::gpu::CclSendOp>(srcOp.getLoc(), handle, input,
-                                                peer, nccl_data_type, chain)
-                  .getResult();
-      chain = rewriter
-                  .create<tfrt::gpu::CclRecvOp>(srcOp.getLoc(), handle, output,
-                                                peer, nccl_data_type, chain)
-                  .getResult();
+      chain = rewriter.create<tfrt::gpu::CclSendOp>(
+          srcOp.getLoc(), handle, input, peer, nccl_data_type, chain);
+      chain = rewriter.create<tfrt::gpu::CclRecvOp>(
+          srcOp.getLoc(), handle, output, peer, nccl_data_type, chain);
     }
   }
   return chain;
@@ -271,11 +257,6 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
   FailureOr<Value> matchAndRewriteOp(
       CclOpType op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    if (!llvm::all_of(adaptor.getOperands(), [](Value operand) {
-          return operand.getType().isa<tfrt::gpu::BufferType>();
-        }))
-      return rewriter.notifyMatchFailure(op, "expected buffer operands");
-
     if (mlir::failed(
             BufferOperandsEqualsOpArguments(op, adaptor.getOperands()))) {
       return rewriter.notifyMatchFailure(
@@ -289,10 +270,8 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
       mapping.map(std::get<0>(pair), std::get<1>(pair));
 
     auto context =
-        rewriter.create<tfrt::gpu::StreamGetContextOp>(op.getLoc(), stream)
-            .getResult();
-    auto handle = rewriter.create<xla::gpu::CclCreateOp>(op.getLoc(), context)
-                      .getResult();
+        rewriter.create<tfrt::gpu::StreamGetContextOp>(op.getLoc(), stream);
+    auto handle = rewriter.create<xla::gpu::CclCreateOp>(op.getLoc(), context);
 
     auto out_chain_or =
         CclOpConversionRewrite(op, chain, stream, handle, mapping, rewriter);
