@@ -276,6 +276,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.fused_batch_norm_v3 = "FusedBatchNormV3";
     csinfo_.fused_batch_norm_grad_v3 = "FusedBatchNormGradV3";
     csinfo_.fused_conv2d = "_FusedConv2D";
+    csinfo_.fused_conv3d = "_FusedConv3D";
     csinfo_.fused_depthwise_conv2d = "_FusedDepthwiseConv2dNative";
     csinfo_.fused_matmul = "_FusedMatMul";
     csinfo_.identity = "Identity";
@@ -307,6 +308,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         "_MklNativeConv2DBackpropFilterWithBias";
     csinfo_.mkl_native_fused_batch_norm_ex = "_MklNativeFusedBatchNormEx";
     csinfo_.mkl_native_fused_conv2d = "_MklNativeFusedConv2D";
+    csinfo_.mkl_native_fused_conv3d = "_MklNativeFusedConv3D";
     csinfo_.mkl_native_fused_depthwise_conv2d =
         "_MklNativeFusedDepthwiseConv2dNative";
     csinfo_.mkl_native_fused_matmul = "_MklNativeFusedMatMul";
@@ -499,6 +501,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                  : csinfo_.mkl_fused_conv2d,
                       CopyAttrsAllCheckConstFilter, FusedConv2DRewrite,
                       GetRewriteCause()});
+    rinfo_.push_back({csinfo_.fused_conv3d, csinfo_.mkl_native_fused_conv3d,
+                      CopyAttrsAllCheckConstFilter, AlwaysRewrite,
+                      kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.fused_depthwise_conv2d,
                       native_fmt ? csinfo_.mkl_native_fused_depthwise_conv2d
                                  : csinfo_.mkl_fused_depthwise_conv2d,
@@ -943,6 +948,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string fused_batch_norm_v3;
     string fused_batch_norm_grad_v3;
     string fused_conv2d;
+    string fused_conv3d;
     string fused_depthwise_conv2d;
     string fused_matmul;
     string identity;
@@ -971,6 +977,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_native_conv2d_grad_filter_with_bias;
     string mkl_native_fused_batch_norm_ex;
     string mkl_native_fused_conv2d;
+    string mkl_native_fused_conv3d;
     string mkl_native_fused_depthwise_conv2d;
     string mkl_native_fused_matmul;
     string mkl_native_pad_with_conv2d;
@@ -3764,6 +3771,7 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
       n->type_string() != csinfo_.fused_conv2d &&
       n->type_string() != csinfo_.fused_depthwise_conv2d &&
       n->type_string() != csinfo_.fused_matmul &&
+      n->type_string() != csinfo_.fused_conv3d &&
       !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()),
                                 T)) {
     return nullptr;

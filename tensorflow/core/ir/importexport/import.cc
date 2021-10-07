@@ -985,9 +985,7 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
   // TODO(aminim): remove dependency on the global registry and allow for
   // injection.
   Graph graph(OpRegistry::Global());
-  GraphDef preprocessed_graphdef(graphdef);
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
-      options, std::move(preprocessed_graphdef), &graph));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(options, graphdef, &graph));
   return ImportGraphAndFunctionsToMlir(context, graph, debug_info,
                                        graph.flib_def());
 }

@@ -220,7 +220,8 @@ TEST_F(XlaBuilderTest, ShapeInferenceError) {
   Add(x, y);
   auto statusor = BuildHloModule(&b);
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(), HasSubstr("shape inference"));
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Shapes must be equal rank"));
 }
 
 TEST_F(XlaBuilderTest, DynamicDimensionReshapeToR0) {

@@ -851,6 +851,17 @@ foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
      (AllElementsAreBool<"false"> $constant)]>;
 }
 
+// Remove reductions that do nothing: input and output have the same size.
+foreach ReduceOp = [TFL_ReduceAnyOp, TFL_ReduceAllOp,
+                    TFL_ReduceMinOp, TFL_ReduceMaxOp,
+                    TFL_MeanOp, TFL_SumOp, TFL_ReduceProdOp] in {
+  def EliminateNoOpReductionOp#ReduceOp : Pat<
+    (ReduceOp:$output $input, $index, $keep_dims),
+    (replaceWithValue $input),
+    [(IsTailOfShape $input, $output),
+     (IsTailOfShape $output, $input)]>;
+}
+
 // Remove (log-)softmax before arg-minmax as (log-)softmax is monotonic.
 foreach ArgMinMaxOp = [TFL_ArgMinOp, TFL_ArgMaxOp] in {
   def RemoveSoftmaxOpBefore#ArgMinMaxOp : Pat<

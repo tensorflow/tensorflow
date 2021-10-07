@@ -21,10 +21,10 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
-from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.keras.layers.preprocessing import category_encoding
@@ -36,8 +36,7 @@ def batch_wrapper(dataset, batch_size, strategy, repeat=None):
     dataset = dataset.repeat(repeat)
   # TPUs currently require fully defined input shapes, drop_remainder ensures
   # the input will have fully defined shapes.
-  if isinstance(strategy,
-                (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+  if backend.is_tpu_strategy(strategy):
     return dataset.batch(batch_size, drop_remainder=True)
   else:
     return dataset.batch(batch_size)

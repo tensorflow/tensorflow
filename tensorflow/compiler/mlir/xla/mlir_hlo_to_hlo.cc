@@ -284,7 +284,7 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
 }
 
 static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
-    mlir::mhlo::ConvDimensionNumbers input) {
+    mlir::mhlo::ConvDimensionNumbersAttr input) {
   return xla::ConvertConvDimensionNumbers(input);
 }
 
@@ -809,7 +809,7 @@ LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
       lhs, rhs, Convert_window_strides(op.window_strides()),
       Convert_padding(op.padding()), Convert_lhs_dilation(op.lhs_dilation()),
       Convert_rhs_dilation(op.rhs_dilation()),
-      Convert_dimension_numbers(op.dimension_numbers()),
+      xla::ConvertConvDimensionNumbers(op.dimension_numbers()),
       Convertuint64_t(op.feature_group_count()),
       Convertuint64_t(op.batch_group_count()),
       Unwrap(Convert_precision_config(op.precision_config())),

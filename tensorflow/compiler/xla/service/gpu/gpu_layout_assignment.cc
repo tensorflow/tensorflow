@@ -185,15 +185,14 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   // The custom call returns a tuple of (actual_result, scratch_buffer);
   // call_result_buf is the logical buffer for actual_result, the thing that
   // contains the result of the conv call.
-  TF_ASSIGN_OR_RETURN(const LogicalBuffer* call_result_buf,
-                      constraints->points_to_analysis().GetBufferDefinedAt(
-                          instr, /*index=*/{0}));
+  TF_ASSIGN_OR_RETURN(
+      const LogicalBuffer* call_result_buf,
+      points_to_analysis_->GetBufferDefinedAt(instr, /*index=*/{0}));
 
   // Set layouts of the instructions' shapes.
-  TF_RETURN_IF_ERROR(constraints->SetOperandLayout(lhs_shape, instr, 0));
-  TF_RETURN_IF_ERROR(constraints->SetOperandLayout(rhs_shape, instr, 1));
-  TF_RETURN_IF_ERROR(
-      constraints->SetBufferLayout(result_shape.layout(), *call_result_buf));
+  TF_RETURN_IF_ERROR(SetOperandLayout(lhs_shape, instr, 0));
+  TF_RETURN_IF_ERROR(SetOperandLayout(rhs_shape, instr, 1));
+  TF_RETURN_IF_ERROR(SetBufferLayout(result_shape.layout(), *call_result_buf));
   // instr->operand(2), if exists, is the bias buffer. There is no need to
   // assign layout to it, as it has only one dimension.
 
@@ -206,7 +205,7 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
           instr->ToString());
     }
     // The side input layout must match the output layout.
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(*output_shape, instr, 3));
+    TF_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, 3));
   }
   return Status::OK();
 }
@@ -250,22 +249,17 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       LayoutUtil::SetToDefaultLayout(&op1_shape);
       Shape output_shape = instruction->shape();
       LayoutUtil::SetToDefaultLayout(&output_shape);
-      TF_RETURN_IF_ERROR(
-          constraints->SetOperandLayout(op0_shape, instruction, 0));
-      TF_RETURN_IF_ERROR(
-          constraints->SetOperandLayout(op1_shape, instruction, 1));
-      TF_RETURN_IF_ERROR(
-          constraints->SetInstructionLayout(output_shape, instruction));
+      TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(SetOperandLayout(op1_shape, instruction, 1));
+      TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
     } else if (instruction->opcode() == HloOpcode::kFft) {
       // cuFFT requires a dim0 major layout.
       Shape op0_shape = instruction->operand(0)->shape();
       LayoutUtil::SetToDefaultLayout(&op0_shape);
       Shape output_shape = instruction->shape();
       LayoutUtil::SetToDefaultLayout(&output_shape);
-      TF_RETURN_IF_ERROR(
-          constraints->SetOperandLayout(op0_shape, instruction, 0));
-      TF_RETURN_IF_ERROR(
-          constraints->SetInstructionLayout(output_shape, instruction));
+      TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
     } else if (instruction->opcode() == HloOpcode::kSort &&
                instruction->operand(0)->shape().rank() > 1) {
       // Make sure that all the operands and the output(s) have the same layout.
@@ -275,22 +269,18 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       for (int64_t i = 0; i < instruction->operand_count(); ++i) {
         Shape shape = instruction->operand(i)->shape();
         *shape.mutable_layout() = keys_layout;
-        TF_RETURN_IF_ERROR(
-            constraints->SetOperandLayout(shape, instruction, i));
+        TF_RETURN_IF_ERROR(SetOperandLayout(shape, instruction, i));
         const LogicalBuffer* output_buffer;
         if (instruction->shape().IsArray()) {
           TF_ASSIGN_OR_RETURN(
               output_buffer,
-              constraints->points_to_analysis().GetBufferDefinedAt(instruction,
-                                                                   {}));
+              points_to_analysis_->GetBufferDefinedAt(instruction, {}));
         } else {
           TF_ASSIGN_OR_RETURN(
               output_buffer,
-              constraints->points_to_analysis().GetBufferDefinedAt(instruction,
-                                                                   {i}));
+              points_to_analysis_->GetBufferDefinedAt(instruction, {i}));
         }
-        TF_RETURN_IF_ERROR(
-            constraints->SetBufferLayout(keys_layout, *output_buffer));
+        TF_RETURN_IF_ERROR(SetBufferLayout(keys_layout, *output_buffer));
       }
     } else if (instruction->opcode() == HloOpcode::kTriangularSolve) {
       // TODO(phawkins): Ideally we would relax this constraint. What we
@@ -312,24 +302,21 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       set_fortran_layout(&op0_shape);
       set_fortran_layout(&op1_shape);
       set_fortran_layout(&output_shape);
-      TF_RETURN_IF_ERROR(
-          constraints->SetOperandLayout(op0_shape, instruction, 0));
-      TF_RETURN_IF_ERROR(
-          constraints->SetOperandLayout(op1_shape, instruction, 1));
-      TF_RETURN_IF_ERROR(
-          constraints->SetInstructionLayout(output_shape, instruction));
+      TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(SetOperandLayout(op1_shape, instruction, 1));
+      TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
     } else if (instruction->opcode() == HloOpcode::kReduceScatter) {
       // XLA:GPU can only support reduce-scatter where the scatter dimension
       // is the most major dimension in the layout.
       auto ars = Cast<HloReduceScatterInstruction>(instruction);
-      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+      TF_RETURN_IF_ERROR(SetInstructionLayout(
           ShapeUtil::MoveDimToMajor(ars->shape(), ars->scatter_dimension()),
           ars));
     } else if (instruction->opcode() == HloOpcode::kAllGather) {
       // XLA:GPU can only support all-gathers where the gather dimension is the
       // most major dimension in the layout.
       auto ag = Cast<HloAllGatherInstruction>(instruction);
-      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+      TF_RETURN_IF_ERROR(SetInstructionLayout(
           ShapeUtil::MoveDimToMajor(ag->shape(), ag->all_gather_dimension()),
           ag));
     } else if (instruction->opcode() == HloOpcode::kAllToAll &&
@@ -337,7 +324,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       // XLA:GPU can only support all-to-all with split dimensions where the
       // split dimension is the most major dimension in the layout.
       auto* all_to_all = Cast<HloAllToAllInstruction>(instruction);
-      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+      TF_RETURN_IF_ERROR(SetInstructionLayout(
           ShapeUtil::MoveDimToMajor(all_to_all->shape(),
                                     *all_to_all->split_dimension()),
           all_to_all));
@@ -357,7 +344,7 @@ Status GpuLayoutAssignment::PropagateOperandConstraint(
       instruction->custom_call_target() ==
           kCudnnBatchNormForwardInferenceCallTarget &&
       layout_constraint.operand_no() == 0) {
-    TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+    TF_RETURN_IF_ERROR(SetInstructionLayout(
         layout_constraint.shape_layout().shape(), instruction));
   }
 
@@ -369,11 +356,11 @@ Status GpuLayoutAssignment::PropagateOperandConstraint(
       instruction->custom_call_target() ==
           kCudnnBatchNormForwardTrainingCallTarget &&
       layout_constraint.operand_no() == 0) {
-    TF_ASSIGN_OR_RETURN(const LogicalBuffer* out_buf,
-                        constraints->points_to_analysis().GetBufferDefinedAt(
-                            instruction, /*index=*/{0}));
-    TF_RETURN_IF_ERROR(constraints->SetBufferLayout(
-        layout_constraint.shape_layout().layout(), *out_buf));
+    TF_ASSIGN_OR_RETURN(
+        const LogicalBuffer* out_buf,
+        points_to_analysis_->GetBufferDefinedAt(instruction, /*index=*/{0}));
+    TF_RETURN_IF_ERROR(
+        SetBufferLayout(layout_constraint.shape_layout().layout(), *out_buf));
   }
 
   // Like forward training, cudnn batchnorm backward returns a tuple {output,
@@ -384,14 +371,14 @@ Status GpuLayoutAssignment::PropagateOperandConstraint(
       instruction->custom_call_target() == kCudnnBatchNormBackwardCallTarget &&
       (layout_constraint.operand_no() == 0 ||
        layout_constraint.operand_no() == 4)) {
-    TF_ASSIGN_OR_RETURN(const LogicalBuffer* out_buf,
-                        constraints->points_to_analysis().GetBufferDefinedAt(
-                            instruction, /*index=*/{0}));
-    TF_RETURN_IF_ERROR(constraints->SetBufferLayout(
-        layout_constraint.shape_layout().layout(), *out_buf));
+    TF_ASSIGN_OR_RETURN(
+        const LogicalBuffer* out_buf,
+        points_to_analysis_->GetBufferDefinedAt(instruction, /*index=*/{0}));
+    TF_RETURN_IF_ERROR(
+        SetBufferLayout(layout_constraint.shape_layout().layout(), *out_buf));
 
     int64_t operand_to_set = layout_constraint.operand_no() == 0 ? 4 : 0;
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+    TF_RETURN_IF_ERROR(SetOperandLayout(
         layout_constraint.shape_layout().shape(), instruction, operand_to_set));
   }
 
@@ -414,26 +401,26 @@ Status GpuLayoutAssignment::PropagateBufferConstraint(
   if (instruction->opcode() == HloOpcode::kCustomCall &&
       instruction->custom_call_target() ==
           kCudnnBatchNormForwardInferenceCallTarget) {
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-        shape_with_layout, instruction, /*operand_no=*/0));
+    TF_RETURN_IF_ERROR(
+        SetOperandLayout(shape_with_layout, instruction, /*operand_no=*/0));
   }
 
   if (instruction->opcode() == HloOpcode::kCustomCall &&
       instruction->custom_call_target() ==
           kCudnnBatchNormForwardTrainingCallTarget &&
       buf.index() == ShapeIndex({0})) {
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-        shape_with_layout, instruction, /*operand_no=*/0));
+    TF_RETURN_IF_ERROR(
+        SetOperandLayout(shape_with_layout, instruction, /*operand_no=*/0));
   }
   if (instruction->opcode() == HloOpcode::kCustomCall &&
       instruction->custom_call_target() == kCudnnBatchNormBackwardCallTarget &&
       buf.index() == ShapeIndex({0})) {
     // batchnorm backward has two operands, "operand" and "grad_output" whose
     // layouts must both match that of the result at tuple-index 0.
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-        shape_with_layout, instruction, /*operand_no=*/0));
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-        shape_with_layout, instruction, /*operand_no=*/4));
+    TF_RETURN_IF_ERROR(
+        SetOperandLayout(shape_with_layout, instruction, /*operand_no=*/0));
+    TF_RETURN_IF_ERROR(
+        SetOperandLayout(shape_with_layout, instruction, /*operand_no=*/4));
   }
 
   return LayoutAssignment::PropagateBufferConstraint(buffer_constraint,

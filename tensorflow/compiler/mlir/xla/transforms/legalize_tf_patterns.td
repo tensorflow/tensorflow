@@ -811,3 +811,10 @@ def : Pat<(TF_XlaDotV2Op $lhs, $rhs, $dimension_numbers, $precision_config),
                             (ToDotDimNumsAttr $dimension_numbers),
                             (ToPrecisionConfigsAttr $precision_config)),
           [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
+
+//===----------------------------------------------------------------------===//
+// XlaEisumOp op.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_XlaEinsumOp $lhs, $rhs, $equation),
+          (HLO_EinsumOp $lhs, $rhs, $equation)>;

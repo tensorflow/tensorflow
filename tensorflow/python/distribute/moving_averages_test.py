@@ -19,8 +19,8 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
-from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -187,8 +187,7 @@ class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(all_combinations_eager)
   def testReplicaContextEager(self, distribution, use_function):
-    if not use_function and isinstance(
-        distribution, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+    if not use_function and strategy_test_lib.is_tpu_strategy(distribution):
       self.skipTest("TPUStrategy doesn't support pure eager execution.")
     if isinstance(distribution,
                   collective_all_reduce_strategy.CollectiveAllReduceStrategy):
@@ -249,8 +248,7 @@ class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(all_combinations)
   def testReplicaContextGraph(self, distribution):
-    if isinstance(distribution,
-                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+    if strategy_test_lib.is_tpu_strategy:
       self.skipTest("b/139550827: Cannot do variable.assign in replica context "
                     "of TPUStrategy")
     if isinstance(distribution,

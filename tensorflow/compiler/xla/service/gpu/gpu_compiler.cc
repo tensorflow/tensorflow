@@ -164,7 +164,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 #if BEF_EXECUTABLE
-#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu.h"
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
@@ -1191,9 +1191,15 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }
 
   // Dump computation proto state and buffer assignment for debug and test, if
-  // dump is enabled.
-  if (DumpingEnabledForHloModule(gpu_executable->module())) {
-    auto hlo_proto = absl::make_unique<HloProto>(*hlo_proto_);
+  // dump or embed_ir_in_executable is enabled.
+  if (embed_ir_in_executable ||
+      DumpingEnabledForHloModule(gpu_executable->module())) {
+    auto hlo_proto = absl::make_unique<HloProto>();
+    if (hlo_proto_) {
+      *hlo_proto = *hlo_proto_;
+    } else {
+      *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
+    }
     *hlo_proto->mutable_buffer_assignment() = buffer_assignment->ToProto();
     gpu_executable->set_hlo_proto(std::move(hlo_proto));
   }

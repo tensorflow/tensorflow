@@ -23,6 +23,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <set>
+#include <unordered_map>
+#include <utility>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -1395,7 +1398,9 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
   LogicalResult matchAndRewrite(DynamicBroadcastInDimOp op,
                                 PatternRewriter& rewriter) const override {
     auto type = op.getType().dyn_cast<RankedTensorType>();
-    if (!type || !type.hasStaticShape()) {
+    auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
+    if (!type || !type.hasStaticShape() || !operandType ||
+        !operandType.hasStaticShape()) {
       return rewriter.notifyMatchFailure(op, "requires static shape");
     }
     rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
@@ -4544,8 +4549,7 @@ void MhloDialect::printAttribute(Attribute attr, DialectAsmPrinter& os) const {
 
 /// Helpers for attributes parsing.
 
-static ParseResult parseDims(DialectAsmParser& parser,
-                             SmallVector<int64_t>& dims) {
+static ParseResult parseDims(AsmParser& parser, SmallVector<int64_t>& dims) {
   dims.clear();
   if (parser.parseLSquare()) return failure();
   while (failed(parser.parseOptionalRSquare())) {
@@ -4562,7 +4566,7 @@ static ParseResult parseDims(DialectAsmParser& parser,
 ///   bar = something_parsed_by_different_custom_parser
 /// >
 static ParseResult parseStruct(
-    DialectAsmParser& parser, ArrayRef<StringRef> keywords,
+    AsmParser& parser, ArrayRef<StringRef> keywords,
     ArrayRef<llvm::function_ref<ParseResult()>> parseFuncs) {
   assert(keywords.size() == parseFuncs.size());
   SmallVector<bool> seen(keywords.size(), false);
@@ -4595,35 +4599,49 @@ static ParseResult parseStruct(
   return success();
 }
 
+// Helpers to print an optional array or integer field, to simplify writing
+// attribute printers.
+template <typename T>
+static void printField(AsmPrinter& printer, StringRef name, T field,
+                       StringRef& separator) {
+  if (field != 0) {
+    printer << separator << name << " = " << field;
+    separator = ", ";
+  }
+}
+template <typename T>
+static void printField(AsmPrinter& printer, StringRef name, ArrayRef<T> field,
+                       StringRef& separator) {
+  if (!field.empty()) {
+    printer << separator << name << " = [";
+    llvm::interleaveComma(field, printer);
+    printer << "]";
+    separator = ", ";
+  }
+}
+template <typename... Ts>
+static void printStruct(AsmPrinter& printer, StringRef name,
+                        Ts... printFields) {
+  printer << name << "<";
+  StringRef separator = "";
+  // Fold expression to print each entry in the parameter pack.
+  // TODO(mhlo-team): this can be simplified when TF moves to C++17.
+  using unused = int[];
+  (void)unused{0, (printField(printer, std::get<0>(printFields),
+                              std::get<1>(printFields), separator),
+                   0)...};
+  printer << ">";
+}
+
 // Custom printer and parser for ScatterDimensionNumbersAttr.
 void ScatterDimensionNumbersAttr::print(
     ::mlir::DialectAsmPrinter& printer) const {
-  printer << "scatter<";
-  auto update_window_dims = getUpdateWindowDims();
-  StringRef separator = "";
-  if (!update_window_dims.empty()) {
-    printer << "update_window_dims = [";
-    llvm::interleaveComma(update_window_dims, printer);
-    printer << "]";
-    separator = ", ";
-  }
-  auto inserted_window_dims = getInsertedWindowDims();
-  if (!inserted_window_dims.empty()) {
-    printer << separator << "inserted_window_dims = [";
-    llvm::interleaveComma(inserted_window_dims, printer);
-    printer << "]";
-    separator = ", ";
-  }
-  auto scatter_dims_to_operand_dims = getScatterDimsToOperandDims();
-  if (!scatter_dims_to_operand_dims.empty()) {
-    printer << separator << "scatter_dims_to_operand_dims = [";
-    llvm::interleaveComma(scatter_dims_to_operand_dims, printer);
-    printer << "]";
-    separator = ", ";
-  }
-  if (getIndexVectorDim())
-    printer << separator << "index_vector_dim = " << getIndexVectorDim();
-  printer << ">";
+  printStruct(printer, "scatter",
+              std::make_pair("update_window_dims", getUpdateWindowDims()),
+              std::make_pair("inserted_window_dims", getInsertedWindowDims()),
+              std::make_pair("scatter_dims_to_operand_dims",
+                             getScatterDimsToOperandDims()),
+              std::make_pair("index_vector_dim", getIndexVectorDim()));
 }
 Attribute ScatterDimensionNumbersAttr::parse(DialectAsmParser& parser,
                                              Type type) {
@@ -4654,32 +4672,10 @@ Attribute ScatterDimensionNumbersAttr::parse(DialectAsmParser& parser,
 // Custom printer and parser for GatherDimensionNumbersAttr.
 void GatherDimensionNumbersAttr::print(
     ::mlir::DialectAsmPrinter& printer) const {
-  printer << "gather<";
-  StringRef separator = "";
-  auto offset_dims = getOffsetDims();
-  if (!offset_dims.empty()) {
-    printer << "offset_dims = [";
-    llvm::interleaveComma(offset_dims, printer);
-    printer << "]";
-    separator = ", ";
-  }
-  auto collapsed_slice_dims = getCollapsedSliceDims();
-  if (!collapsed_slice_dims.empty()) {
-    printer << separator << "collapsed_slice_dims = [";
-    llvm::interleaveComma(collapsed_slice_dims, printer);
-    printer << "]";
-    separator = ", ";
-  }
-  auto start_index_map = getStartIndexMap();
-  if (!start_index_map.empty()) {
-    printer << separator << "start_index_map = [";
-    llvm::interleaveComma(start_index_map, printer);
-    printer << "]";
-    separator = ", ";
-  }
-  if (getIndexVectorDim())
-    printer << separator << "index_vector_dim = " << getIndexVectorDim();
-  printer << ">";
+  printStruct(printer, "gather", std::make_pair("offset_dims", getOffsetDims()),
+              std::make_pair("collapsed_slice_dims", getCollapsedSliceDims()),
+              std::make_pair("start_index_map", getStartIndexMap()),
+              std::make_pair("index_vector_dim", getIndexVectorDim()));
 }
 
 Attribute GatherDimensionNumbersAttr::parse(DialectAsmParser& parser,
@@ -4711,36 +4707,14 @@ Attribute GatherDimensionNumbersAttr::parse(DialectAsmParser& parser,
 
 // Custom printer and parser for DotDimensionNumbersAttr.
 void DotDimensionNumbersAttr::print(::mlir::DialectAsmPrinter& printer) const {
-  printer << "dot<";
-  StringRef separator = "";
-  auto lhs_batching_dimensions = getLhsBatchingDimensions();
-  if (!lhs_batching_dimensions.empty()) {
-    printer << "lhs_batching_dimensions = [";
-    llvm::interleaveComma(lhs_batching_dimensions, printer);
-    printer << "]";
-    separator = ", ";
-  }
-  auto rhs_batching_dimensions = getRhsBatchingDimensions();
-  if (!rhs_batching_dimensions.empty()) {
-    printer << separator << "rhs_batching_dimensions = [";
-    llvm::interleaveComma(rhs_batching_dimensions, printer);
-    printer << "]";
-    separator = ", ";
-  }
-  auto lhs_contracting_dimensions = getLhsContractingDimensions();
-  if (!lhs_contracting_dimensions.empty()) {
-    printer << separator << "lhs_contracting_dimensions = [";
-    llvm::interleaveComma(lhs_contracting_dimensions, printer);
-    printer << "]";
-    separator = ", ";
-  }
-  auto rhs_contracting_dimensions = getRhsContractingDimensions();
-  if (!rhs_contracting_dimensions.empty()) {
-    printer << separator << "rhs_contracting_dimensions = [";
-    llvm::interleaveComma(rhs_contracting_dimensions, printer);
-    printer << "]";
-  }
-  printer << ">";
+  printStruct(
+      printer, "dot",
+      std::make_pair("lhs_batching_dimensions", getLhsBatchingDimensions()),
+      std::make_pair("rhs_batching_dimensions", getRhsBatchingDimensions()),
+      std::make_pair("lhs_contracting_dimensions",
+                     getLhsContractingDimensions()),
+      std::make_pair("rhs_contracting_dimensions",
+                     getRhsContractingDimensions()));
 }
 
 Attribute DotDimensionNumbersAttr::parse(DialectAsmParser& parser, Type type) {
@@ -4768,6 +4742,259 @@ Attribute DotDimensionNumbersAttr::parse(DialectAsmParser& parser, Type type) {
       lhs_contracting_dimensions, rhs_contracting_dimensions);
 }
 
+namespace {
+enum NonSpatialDim : int64_t {
+  IOBatch = -1,    // Input or output batch dimension
+  IOFeature = -2,  // Input or output feature dimension
+  KIFeature = -3,  // Kernel input feature dimension
+  KOFeature = -4,  // Kernel output feature dimensions.
+};
+
+char NonSpatialDimToString(NonSpatialDim dim) {
+  switch (dim) {
+    case IOBatch:
+      return 'b';
+    case IOFeature:
+      return 'f';
+    case KIFeature:
+      return 'i';
+    case KOFeature:
+      return 'o';
+  }
+}
+}  // namespace
+
+// Custom printer and parser for convolution attribute.
+void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
+  // TODO(b/202040055): we should check the attribute invariant and print the
+  // "raw" form if they are violated, otherwise we'll crash here.
+  auto print_dim =
+      [&p](ArrayRef<int64_t> spatial_dims,
+           ArrayRef<std::pair<int64_t, NonSpatialDim>> non_spatial_dims) {
+        llvm::SmallVector<int64_t> dims(non_spatial_dims.size() +
+                                        spatial_dims.size());
+        // Fill each element of dims with a (< 0) NonSpatialDim enum or a (>=0)
+        // spatial dimension index.
+        for (const std::pair<int64_t, NonSpatialDim>& non_spatial_dim :
+             non_spatial_dims) {
+          dims[non_spatial_dim.first] = non_spatial_dim.second;
+        }
+        for (auto spatial_dim : llvm::enumerate(spatial_dims)) {
+          dims[spatial_dim.value()] = static_cast<int64_t>(spatial_dim.index());
+        }
+
+        // Each dimension numbers will be printed as a comma separated list
+        // surrounded by square brackets, e.g., [b, 0, 1, 2, f]
+        p << '[';
+        llvm::interleaveComma(dims, p, [&](int64_t dim) {
+          if (dim >= 0) {
+            p << dim;
+          } else {
+            p << NonSpatialDimToString(static_cast<NonSpatialDim>(dim));
+          }
+        });
+        p << ']';
+      };
+
+  print_dim(dnums.getInputSpatialDimensions(),
+            {{dnums.getInputBatchDimension(), IOBatch},
+             {dnums.getInputFeatureDimension(), IOFeature}});
+  p << "x";
+  print_dim(dnums.getKernelSpatialDimensions(),
+            {{dnums.getKernelInputFeatureDimension(), KIFeature},
+             {dnums.getKernelOutputFeatureDimension(), KOFeature}});
+  p << "->";
+  print_dim(dnums.getOutputSpatialDimensions(),
+            {{dnums.getOutputBatchDimension(), IOBatch},
+             {dnums.getOutputFeatureDimension(), IOFeature}});
+}
+
+// Custom printer and parser for ConvDimensionNumbersAttr.
+void ConvDimensionNumbersAttr::print(::mlir::DialectAsmPrinter& printer) const {
+  printer << "conv<";
+  printConvolutionDimensions(printer, *this);
+  printer << ">";
+}
+
+ParseResult parseConvolutionDimensions(AsmParser& parser,
+                                       ConvDimensionNumbersAttr& dnums) {
+  // If the attribute is written with `#mhlo.conv raw<`, we parse it as a struct
+  // instead of the compressed format. This enables writing tests covering
+  // impossible/invalid internal representation for the attribute.
+  if (succeeded(parser.parseOptionalKeyword("raw"))) {
+    int64_t input_batch_dimension = 0;
+    int64_t input_feature_dimension = 0;
+    SmallVector<int64_t> input_spatial_dimensions;
+    int64_t kernel_input_feature_dimension = 0;
+    int64_t kernel_output_feature_dimension = 0;
+    SmallVector<int64_t> kernel_spatial_dimensions;
+    int64_t output_batch_dimension = 0;
+    int64_t output_feature_dimension = 0;
+    SmallVector<int64_t> output_spatial_dimensions;
+    if (failed(parseStruct(
+            parser,
+            {"input_batch_dimension", "input_feature_dimension",
+             "input_spatial_dimensions", "kernel_input_feature_dimension",
+             "kernel_output_feature_dimension", "kernel_spatial_dimensions",
+             "output_batch_dimension", "output_feature_dimension",
+             "output_spatial_dimensions"},
+            {
+                [&]() { return parser.parseInteger(input_batch_dimension); },
+                [&]() { return parser.parseInteger(input_feature_dimension); },
+                [&]() { return parseDims(parser, input_spatial_dimensions); },
+                [&]() {
+                  return parser.parseInteger(kernel_input_feature_dimension);
+                },
+                [&]() {
+                  return parser.parseInteger(kernel_output_feature_dimension);
+                },
+                [&]() { return parseDims(parser, kernel_spatial_dimensions); },
+                [&]() { return parser.parseInteger(output_batch_dimension); },
+                [&]() { return parser.parseInteger(output_feature_dimension); },
+                [&]() { return parseDims(parser, output_spatial_dimensions); },
+            }))) {
+      parser.emitError(parser.getCurrentLocation())
+          << "failed parsing dot dimension numbers attribute";
+      return failure();
+    }
+    dnums = ConvDimensionNumbersAttr::get(
+        parser.getBuilder().getContext(), input_batch_dimension,
+        input_feature_dimension, input_spatial_dimensions,
+        kernel_input_feature_dimension, kernel_output_feature_dimension,
+        kernel_spatial_dimensions, output_batch_dimension,
+        output_feature_dimension, output_spatial_dimensions);
+    return success();
+  }
+
+  // Parsing a single set of dim numbers gives the spatial dimensions as a
+  // single ArrayRef<int64_t> and a list of non-spatial dimensions as
+  // IntegerAttrs (indexed by the NonSpatialDim enum).
+  using parse_dim_result_t =
+      std::pair<llvm::SmallVector<int64_t>,
+                std::unordered_map<NonSpatialDim, int64_t, std::hash<int64_t>>>;
+
+  // Note that the allowed_non_spatial_dims is a set (as opposed to unordered
+  // set) because its used to print a list of allowed non spatial dims in the
+  // error messages, so making it a set keeps the error messages deterministic.
+  auto parse_dims =
+      [&](std::set<NonSpatialDim, std::greater<>> allowed_non_spatial_dims,
+          parse_dim_result_t& parsed_dims) -> ParseResult {
+    // Parse the starting [
+    if (parser.parseLSquare()) {
+      return failure();
+    }
+    llvm::SmallVector<int64_t> spatial_dims;
+    std::unordered_map<NonSpatialDim, int64_t, std::hash<int64_t>>
+        non_spatial_dims;
+
+    int64_t index = 0;
+    do {
+      int64_t spatial_dim;
+      OptionalParseResult parseResult =
+          parser.parseOptionalInteger(spatial_dim);
+      if (parseResult.hasValue()) {
+        if (parseResult.getValue().failed()) {
+          return failure();
+        }
+        // We were successful in parsing an integer. Add its index to the
+        // spatial dims.
+        spatial_dims.push_back(index);
+      } else {
+        // We did not parse an integer. We expect a keyword token.
+        StringRef keyword;
+        if (parser.parseKeyword(&keyword)) {
+          return failure();
+        }
+        if (keyword.size() != 1 || allowed_non_spatial_dims.empty()) {
+          return parser.emitError(parser.getCurrentLocation(),
+                                  "Unexpected keyword ")
+                 << keyword;
+        }
+        // Check if the keyword matches one of the allowed non-spatial dims.
+        // If so, add it to the non_spatial dims and remove it from the
+        // allowed set so that it won't be allowed again.
+        bool is_allowed = false;
+        for (NonSpatialDim allowed : allowed_non_spatial_dims) {
+          if (keyword[0] == NonSpatialDimToString(allowed)) {
+            non_spatial_dims.insert({allowed, index});
+            allowed_non_spatial_dims.erase(allowed);
+            is_allowed = true;
+            break;
+          }
+        }
+
+        if (!is_allowed) {
+          mlir::InFlightDiagnostic diag = parser.emitError(
+              parser.getCurrentLocation(), "Unexpected dimension ");
+          diag << keyword << ", expecting ";
+          llvm::interleaveComma(
+              allowed_non_spatial_dims, diag,
+              [&](NonSpatialDim dim) { diag << NonSpatialDimToString(dim); });
+          return diag;
+        }
+      }
+      index++;
+    } while (parser.parseOptionalComma().succeeded());
+
+    // Make sure all expected non-spatial dimensions are parsed.
+    if (!allowed_non_spatial_dims.empty()) {
+      mlir::InFlightDiagnostic diag =
+          parser.emitError(parser.getCurrentLocation(), "Expected dimensions ");
+      llvm::interleaveComma(
+          allowed_non_spatial_dims, diag,
+          [&](NonSpatialDim dim) { diag << NonSpatialDimToString(dim); });
+      diag << " not specified";
+      return diag;
+    }
+
+    // parse ending ]
+    if (parser.parseRSquare()) {
+      return failure();
+    }
+
+    parsed_dims = std::make_pair(spatial_dims, non_spatial_dims);
+    return success();
+  };
+
+  parse_dim_result_t parsed_dims;
+  if (parse_dims({IOBatch, IOFeature}, parsed_dims)) {
+    return failure();
+  }
+  llvm::SmallVector<int64_t> input_spatial_dimensions = parsed_dims.first;
+  int64_t input_batch_dimension = parsed_dims.second[IOBatch];
+  int64_t input_feature_dimension = parsed_dims.second[IOFeature];
+  if (parser.parseKeyword("x")) return failure();
+  if (parse_dims({KIFeature, KOFeature}, parsed_dims)) {
+    return failure();
+  }
+  llvm::SmallVector<int64_t> kernel_spatial_dimensions = parsed_dims.first;
+  int64_t kernel_input_feature_dimension = parsed_dims.second[KIFeature];
+  int64_t kernel_output_feature_dimension = parsed_dims.second[KOFeature];
+  if (parser.parseArrow()) {
+    return failure();
+  }
+  if (parse_dims({IOBatch, IOFeature}, parsed_dims)) {
+    return failure();
+  }
+  llvm::SmallVector<int64_t> output_spatial_dimensions = parsed_dims.first;
+  int64_t output_batch_dimension = parsed_dims.second[IOBatch];
+  int64_t output_feature_dimension = parsed_dims.second[IOFeature];
+  dnums = ConvDimensionNumbersAttr::get(
+      parser.getBuilder().getContext(), input_batch_dimension,
+      input_feature_dimension, input_spatial_dimensions,
+      kernel_input_feature_dimension, kernel_output_feature_dimension,
+      kernel_spatial_dimensions, output_batch_dimension,
+      output_feature_dimension, output_spatial_dimensions);
+
+  return success();
+}
+
+Attribute ConvDimensionNumbersAttr::parse(DialectAsmParser& parser, Type type) {
+  if (failed(parser.parseLess())) return {};
+  ConvDimensionNumbersAttr dnums;
+  parseConvolutionDimensions(parser, dnums);
+  return dnums;
+}
 //===----------------------------------------------------------------------===//
 // Shape inference
 //===----------------------------------------------------------------------===//

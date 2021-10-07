@@ -190,15 +190,6 @@ class RnnStateTensorDescriptor {
   virtual ~RnnStateTensorDescriptor() {}
 };
 
-// Specifies the execution plan in convolution.
-class ConvolveExecutionPlan {
- public:
-  virtual ~ConvolveExecutionPlan() {}
-  virtual std::string getTag() const { return "unknown"; }
-  virtual void* get_raw_desc() const { return nullptr; }
-  virtual int64_t getWorkspaceSize() const { return -1; }
-};
-
 // Returns a string representation of the given quantization mode.
 std::string QuantizedActivationModeString(QuantizedActivationMode mode);
 
@@ -795,21 +786,14 @@ class AlgorithmDesc {
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
                                         : AlgorithmProto::DEFAULT_MATH);
   }
-  AlgorithmDesc(Tag a, void* b) {
-    proto_.set_exec_plan_id(a);
-    exec_plan_desc_ = b;
-  }
+  explicit AlgorithmDesc(Tag a) { proto_.set_exec_plan_id(a); }
   bool IsExecutionPlan() const { return exec_plan_id() != ""; }
   bool tensor_ops_enabled() const {
     return proto_.math_type() == AlgorithmProto::TENSOR_OP_MATH;
   }
   Index algo_id() const { return proto_.algo_id(); }
   Tag exec_plan_id() const { return proto_.exec_plan_id(); }
-  void* exec_plan_desc() const { return exec_plan_desc_; }
   bool operator==(const AlgorithmDesc& other) const {
-    if (IsExecutionPlan()) {
-      return exec_plan_id() == other.exec_plan_id();
-    }
     return algo_id() == other.algo_id() &&
            tensor_ops_enabled() == other.tensor_ops_enabled();
   }
@@ -821,9 +805,6 @@ class AlgorithmDesc {
 
  private:
   AlgorithmProto proto_;
-  // We keep a pointer for the execution plan if cuDNN v8 is used. Note,
-  // AlgorithmDesc doesn't own it.
-  void* exec_plan_desc_;
 };
 
 // Describes the result from a perf experiment.
@@ -854,6 +835,50 @@ class ProfileResult {
   // convolutions.
   size_t scratch_size_ = 0;
 };
+
+// Backend-specific data shared between repeated launches of the same
+// convolution.
+template <typename Sig>
+class OpRunner;
+
+// An abstract class owning cached state for a particular op/configuration.
+//
+// The primary motivation for this is cuDNN backend ExecutionPlans, which are
+// costly to recreate.
+//
+// All OpRunners must be outlived by their parent Stream.
+template <typename... Args>
+class OpRunner<port::Status(Args...)> {
+ public:
+  virtual ~OpRunner() {}
+
+  // Get a description of the runner, for uniqueness of autotune entries.
+  //
+  // Since this is used to determine whether runners are equivalent for the
+  // purpose of scoring autotune entries, it shall be unique among runners of
+  // the same op and parameters.
+  virtual std::string ToString() const = 0;
+
+  // Get the number of bytes of scratch space needed for `operator()`.
+  virtual port::StatusOr<size_t> GetWorkspaceSize() const = 0;
+
+  // Launch the operation, with the signature determined by `Sig`.
+  virtual port::Status operator()(Args... args) const = 0;
+};
+
+using ConvSignature = port::Status(Stream*, DeviceMemoryBase /* input_data */,
+                                   DeviceMemoryBase /* filter_data */,
+                                   DeviceMemoryBase /* output_data */,
+                                   DeviceMemoryBase /* scratch_memory */,
+                                   ProfileResult*);
+using ConvRunner = OpRunner<ConvSignature>;
+
+using FusedConvSignature = port::Status(
+    Stream*, DeviceMemoryBase /* input_data */,
+    DeviceMemoryBase /* filter_data */, DeviceMemoryBase /* side_input_data */,
+    DeviceMemoryBase /* bias_data */, DeviceMemoryBase /* output_data */,
+    DeviceMemoryBase /* scratch_memory */, ProfileResult*);
+using FusedConvRunner = OpRunner<FusedConvSignature>;
 
 // Describes the configuration for the algorithms that will used.
 //
@@ -926,17 +951,6 @@ class AlgorithmConfig {
     return !(*this == other);
   }
   std::string ToString() const;
-  void set_plan(std::shared_ptr<const dnn::ConvolveExecutionPlan> plan) {
-    plan_ = std::move(plan);
-  }
-  const dnn::ConvolveExecutionPlan* get_plan() const { return plan_.get(); }
-  void set_plan_no_scratch(
-      std::shared_ptr<const dnn::ConvolveExecutionPlan> plan) {
-    plan_no_scratch_ = std::move(plan);
-  }
-  const dnn::ConvolveExecutionPlan* get_plan_no_scratch() const {
-    return plan_no_scratch_.get();
-  }
 
   // TODO(ruochengw): After cl/380702564, add support for algorithm configs with
   // cuDNN Frontend APIs.
@@ -960,8 +974,6 @@ class AlgorithmConfig {
   absl::optional<AlgorithmDesc> algorithm_;
   absl::optional<AlgorithmDesc> algorithm_no_scratch_;
   absl::optional<size_t> scratch_size_;
-  std::shared_ptr<const dnn::ConvolveExecutionPlan> plan_;
-  std::shared_ptr<const dnn::ConvolveExecutionPlan> plan_no_scratch_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
@@ -1355,12 +1367,13 @@ class DnnSupport {
       std::vector<AlgorithmDesc>* out_algorithms);
 
   virtual bool GetConvolveExecutionPlans(
-      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans);
+      std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,

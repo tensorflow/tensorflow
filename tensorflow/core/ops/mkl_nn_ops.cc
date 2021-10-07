@@ -104,6 +104,50 @@ with respect to the filter.
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklNativeFusedConv3D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("args: num_args * T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, float}")
+    .Attr("num_args: int >= 0")
+    .Attr("strides: list(int) >= 5")
+    .Attr("is_filter_const: bool = false")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
+    .Attr("fused_ops: list(string) = []")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("leakyrelu_alpha: float = 0.2")
+    .SetShapeFn(shape_inference::Conv3DShape)
+    .Doc(R"doc(
+MKL version of Conv3D operator that does not depend on layout propagation.
+Uses oneDNN APIs to perform 3D convolution.
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_FusedConv3D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("args: num_args * T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, float}")
+    .Attr("num_args: int >= 0")
+    .Attr("strides: list(int) >= 5")
+    .Attr("is_filter_const: bool = false")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
+    .Attr("fused_ops: list(string) = []")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("leakyrelu_alpha: float = 0.2")
+    .SetShapeFn(shape_inference::Conv3DShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
 REGISTER_OP("_MklNativeDepthwiseConv2dNative")
     .Input("input: T")
     .Input("filter: T")

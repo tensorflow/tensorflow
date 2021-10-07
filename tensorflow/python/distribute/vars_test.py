@@ -22,8 +22,8 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
-from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
@@ -41,9 +41,6 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import checkpoint_management as ckpt_manager
 from tensorflow.python.training.tracking import util as trackable_utils
-
-
-_TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
 
 
 def strategy_and_run_tf_function_combinations():
@@ -166,7 +163,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
   @combinations.generate(strategy_and_run_tf_function_combinations())
   def testAssignPerReplicaVal(self, distribution, experimental_run_tf_function):
 
-    if isinstance(distribution, _TPU_STRATEGIES):
+    if strategy_test_lib.is_tpu_strategy(distribution):
       self.skipTest("Assigning PerReplica values is not supported. See"
                     " sponge/80ba41f8-4220-4516-98ce-bbad48f9f11a.")
 
@@ -787,7 +784,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(strategy_and_run_tf_function_combinations())
   def testAssignPerReplicaVal(self, distribution, experimental_run_tf_function):
 
-    if isinstance(distribution, _TPU_STRATEGIES):
+    if strategy_test_lib.is_tpu_strategy(distribution):
       self.skipTest("Assigning PerReplica values is not supported. See"
                     " sponge/80ba41f8-4220-4516-98ce-bbad48f9f11a.")
 
@@ -946,7 +943,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
         variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
     ]
     for aggregation in aggregations:
-      if isinstance(distribution, _TPU_STRATEGIES):
+      if strategy_test_lib.is_tpu_strategy(distribution):
         resolver = tpu_cluster_resolver.TPUClusterResolver("")
         tpu_strategy_util.initialize_tpu_system(resolver)
       with distribution.scope():

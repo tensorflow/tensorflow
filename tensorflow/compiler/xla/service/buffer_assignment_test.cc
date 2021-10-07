@@ -1592,6 +1592,27 @@ TEST_F(BufferAssignmentTest, TupleCustomCallAsOutput) {
       GetAllocation(*assignment, custom_call, /*index=*/{1}).maybe_live_out());
 }
 
+TEST_F(BufferAssignmentTest, CustomCallAliasedBuffer) {
+  // Test a computation with custom call aliasing.
+  const char* const kModuleString = R"(
+    HloModule xla_computation_f
+    ENTRY xla_computation_f {
+      parameter.1 = f32[2,3,4,5] parameter(0)
+      parameter.2 = f32[2,3,4,5] parameter(1)
+      add = f32[2,3,4,5] add(parameter.1, parameter.2)
+      ROOT custom-call = f32[2,3,4,5] custom-call(add, parameter.2), custom_call_target="dm_softmax", operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]}, output_to_operand_aliasing={{}: (0, {})}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+  std::unique_ptr<BufferAssignment> assignment =
+      RunBufferAssignment(module.get());
+  HloInstruction* custom_call = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(
+      assignment->SharesTopLevelSlice(custom_call, custom_call->operand(0)));
+}
+
 TEST_F(BufferAssignmentTest, TupleCallAsOutput) {
   // Test a computation which returns a tuple call value.
   auto module = CreateNewVerifiedModule();

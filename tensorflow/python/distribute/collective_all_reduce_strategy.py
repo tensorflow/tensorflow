@@ -42,7 +42,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.platform import remote_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base
 from tensorflow.python.util import deprecation
@@ -463,11 +462,6 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           scoped_allocator_enabled_ops=("CollectiveReduce",),
           device_filters=("/job:%s/task:%d" % (task_type, task_id),))
       self._collective_ops_configured = True
-      if context.context().coordination_service is None:
-        coordination_service = remote_utils.coordination_service_type(
-            cluster_resolver.rpc_layer)
-        if coordination_service:
-          context.context().configure_coordination_service(coordination_service)
 
     # Starting a std server in eager mode and in independent worker mode.
     if (context.executing_eagerly() and

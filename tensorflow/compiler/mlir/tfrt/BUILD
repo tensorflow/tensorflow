@@ -24,6 +24,7 @@ package_group(
         "//learning/serving/contrib/tfrt/mlir/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
+        "//platforms/xla/tests/gpu/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
     ]),
@@ -481,7 +482,8 @@ cc_library(
         "//platforms/xla/tests/gpu:__pkg__",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:passes",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_gpu_binary",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core/platform:errors",
@@ -617,6 +619,7 @@ tf_cc_binary(
         "gpu",
         "no_oss",
     ],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir:passes",
@@ -624,7 +627,8 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
-        "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:passes",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_gpu_binary",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",

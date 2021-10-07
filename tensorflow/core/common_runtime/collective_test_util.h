@@ -91,7 +91,8 @@ std::unique_ptr<CollectiveTestEnv> CreateCollectiveTestEnv(
 
 core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
     const CollectiveTestEnv& test_env, int rank, const string& collective_name,
-    CollectiveType collective_type, DataType dtype, const TensorShape& shape);
+    CollectiveType collective_type, DataType dtype, const TensorShape& shape,
+    const std::vector<std::vector<int>> user_specified_rank_per_worker = {{}});
 
 std::vector<int> GenerateEvenSubdivOffsets(int num_devices_per_worker,
                                            int num_subdivs);

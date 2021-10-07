@@ -531,9 +531,9 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
       if (instruction->shape().rank() != operand->shape().rank()) {
         continue;
       }
-      TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
-          buffer_constraint.layout(), instruction, operand_no,
-          /*mandatory=*/true));
+      TF_RETURN_IF_ERROR(SetArrayOperandLayout(buffer_constraint.layout(),
+                                               instruction, operand_no,
+                                               /*mandatory=*/true));
     }
     return PropagateBufferConstraintToUses(buffer_constraint, constraints);
   }

@@ -58,7 +58,9 @@ from tensorflow.python.types import core as core_types
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
+
 
 ops.NotDifferentiable("TPUReplicatedInput")
 
@@ -907,6 +909,7 @@ class XLAOptions(
 
 
 @tf_export(v1=["tpu.replicate"])
+@traceback_utils.filter_traceback
 def replicate(
     computation: Callable[..., Any],
     inputs: Optional[List[List[core_types.Tensor]]] = None,
@@ -1931,6 +1934,7 @@ def split_compile_and_shard(
 
 
 @tf_export(v1=["tpu.shard"])
+@traceback_utils.filter_traceback
 def shard(
     computation: Callable[..., Any],
     inputs: Optional[List[core_types.Tensor]] = None,
@@ -2017,6 +2021,7 @@ def shard(
 
 
 @tf_export(v1=["tpu.batch_parallel"])
+@traceback_utils.filter_traceback
 def batch_parallel(
     computation: Callable[..., Any],
     inputs: Optional[List[List[Optional[core_types.Tensor]]]] = None,
@@ -2079,6 +2084,7 @@ def batch_parallel(
 
 
 @tf_export(v1=["tpu.rewrite"])
+@traceback_utils.filter_traceback
 def rewrite(
     computation: Callable[..., Any],
     inputs: Optional[List[List[Optional[core_types.Tensor]]]] = None,

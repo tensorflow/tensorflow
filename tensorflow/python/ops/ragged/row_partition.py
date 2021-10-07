@@ -518,6 +518,7 @@ class RowPartition(composite_tensor.CompositeTensor):
                                                       preferred_dtype)
       uniform_row_length.shape.assert_has_rank(0)
 
+      nvals = math_ops.cast(nvals, uniform_row_length.dtype)
       # Find nrows.
       const_row_length = tensor_util.constant_value(uniform_row_length)
       if nrows is None:
@@ -531,8 +532,8 @@ class RowPartition(composite_tensor.CompositeTensor):
           nrows = 0
         else:
           nrows = nvals // const_row_length
-      nrows = ops.convert_to_tensor(
-          nrows, uniform_row_length.dtype, name="nrows")
+      nrows = math_ops.cast(
+          nrows, name="nrows", dtype=uniform_row_length.dtype)
       const_nrows = tensor_util.constant_value(nrows)
       const_nvals = tensor_util.constant_value(nvals)
 
@@ -675,45 +676,31 @@ class RowPartition(composite_tensor.CompositeTensor):
       return self._value_rowids
     return segment_id_ops.row_splits_to_segment_ids(self._row_splits)
 
-  def nvals(self, out_type=None):
+  def nvals(self):
     """Returns the number of values partitioned by this `RowPartition`.
 
     If the sequence partitioned by this `RowPartition` is a tensor, then
     `nvals` is the size of that tensor's outermost dimension -- i.e.,
     `nvals == values.shape[0]`.
 
-    Args:
-      out_type: `dtype` for the returned tensor.  Defaults to `self.dtype`.
-
     Returns:
       scalar integer Tensor
     """
-    if out_type is None:
-      return self._row_splits[-1]
-    else:
-      out_type = dtypes.as_dtype(out_type)
-      return math_ops.cast(self._row_splits[-1], dtype=out_type)
+    return self._row_splits[-1]
 
-  def nrows(self, out_type=None):
+  def nrows(self):
     """Returns the number of rows created by this `RowPartition`.
 
-    Args:
-      out_type: `dtype` for the returned tensor.  Defaults to `self.dtype`.
-
     Returns:
       scalar integer Tensor
     """
-    if out_type is None:
-      out_type = self.dtype
-    else:
-      out_type = dtypes.as_dtype(out_type)
     if self._nrows is not None:
-      return math_ops.cast(self._nrows, out_type)
+      return self._nrows
     nsplits = tensor_shape.dimension_at_index(self._row_splits.shape, 0)
     if nsplits.value is None:
-      return array_ops.shape(self._row_splits, out_type=out_type)[0] - 1
+      return array_ops.shape(self._row_splits, out_type=self.dtype)[0] - 1
     else:
-      return constant_op.constant(nsplits.value - 1, dtype=out_type)
+      return constant_op.constant(nsplits.value - 1, dtype=self.dtype)
 
   def uniform_row_length(self):
     """Returns the length of each row in this partition, if rows are uniform.
@@ -853,6 +840,31 @@ class RowPartition(composite_tensor.CompositeTensor):
       Whether a RowPartition is known to be uniform statically.
     """
     return self._uniform_row_length is not None
+
+  def static_check(self):
+    """Checks if the object is internally consistent.
+
+    Raises:
+      ValueError if inconsistent.
+    """
+    my_dtype = self.dtype
+    if self._uniform_row_length is not None:
+      if self._uniform_row_length.dtype != my_dtype:
+        raise ValueError("_uniform_row_length.dtype=" +
+                         str(self._uniform_row_length.dtype) + ", not " +
+                         str(my_dtype))
+
+    if self._row_lengths is not None and self._row_lengths.dtype != my_dtype:
+      raise ValueError("_row_lengths.dtype=" + str(self._row_lengths.dtype) +
+                       ", not " + str(my_dtype))
+
+    if self._value_rowids is not None and self._value_rowids.dtype != my_dtype:
+      raise ValueError("_value_rowids.dtype=" + str(self._value_rowids.dtype) +
+                       ", not " + str(my_dtype))
+
+    if self._nrows is not None and self._nrows.dtype != my_dtype:
+      raise ValueError("_nrows.dtype=" + str(self._nrows.dtype) + ", not " +
+                       str(my_dtype))
 
   #=============================================================================
   # Transformation
@@ -1243,7 +1255,7 @@ def _merge_tensors(t1, t2, name, validate):
   elif t1 is t2:
     return t1, True
   else:
-    err_msg = ("RowPartition.merge_precomuted_encodings: partitions "
+    err_msg = ("RowPartition.merge_precomputed_encodings: partitions "
                "have incompatible %s" % name)
     if not t1.shape.is_compatible_with(t2.shape):
       raise ValueError(err_msg)
@@ -1252,6 +1264,5 @@ def _merge_tensors(t1, t2, name, validate):
       return control_flow_ops.with_dependencies(checks, t1), True
     else:
       return t1, False
-
 
 _row_partition_factory_key = object()  # unique private object

@@ -35,6 +35,7 @@
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -56,77 +57,6 @@ struct MatrixDescriptor {
   int64_t num_cols;
 };
 
-static cudaDataType_t MlirTypeToCudaDataType(mlir::Type type) {
-  if (type.isF16()) return CUDA_R_16F;
-  if (type.isF32()) return CUDA_R_32F;
-  if (type.isF64()) return CUDA_R_64F;
-  if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
-    auto element_type = complex_type.getElementType();
-    if (element_type.isF32()) return CUDA_C_32F;
-    if (element_type.isF64()) return CUDA_C_64F;
-  }
-  llvm_unreachable("unsupported type");
-}
-
-static cublasComputeType_t MlirTypeToBlasComputeType(mlir::Type type) {
-  if (auto complexType = type.dyn_cast<mlir::ComplexType>())
-    return MlirTypeToBlasComputeType(complexType.getElementType());
-  if (type.isF16()) return CUBLAS_COMPUTE_16F;
-  if (type.isF32()) return CUBLAS_COMPUTE_32F;
-  if (type.isF64()) return CUBLAS_COMPUTE_64F;
-  llvm_unreachable("unsupported type");
-}
-
-// TODO(b/176561997): remove this once lhlo_gpu ops have properly typed alpha
-// and beta attributes. We can't use std::complex here because the effect of
-// instantiating it for anything other than float, double, or long double is
-// unspecified. We need it for APFloat.
-template <class T>
-struct Complex {
-  T real;
-  T imag;
-};
-
-// TODO(b/176561997): remove this once lhlo_gpu ops have properly typed alpha
-// and beta attributes.
-mlir::Value MakeScalingFactorConstant(mlir::OpBuilder& builder,
-                                      mlir::Location loc, mlir::Type type,
-                                      Complex<llvm::APFloat> value) {
-  // Dummy boolean we need to pass to convert functions. Since this whole
-  // funciton will go away when the scaling factors are properly typed
-  // (b/176561997), we won't worry about possible losses during conversions for
-  // now.
-  bool losesInfo = false;
-  if (type.isF32()) {
-    value.real.convert(llvm::APFloat::IEEEsingle(),
-                       llvm::RoundingMode::NearestTiesToEven, &losesInfo);
-    return builder.create<tfrt::compiler::ConstantF32Op>(loc, value.real);
-  }
-  if (type.isF64()) {
-    value.real.convert(llvm::APFloat::IEEEdouble(),
-                       llvm::RoundingMode::NearestTiesToEven, &losesInfo);
-    return builder.create<tfrt::compiler::ConstantF64Op>(loc, value.real);
-  }
-  if (type == mlir::ComplexType::get(builder.getF32Type())) {
-    value.real.convert(llvm::APFloat::IEEEsingle(),
-                       llvm::RoundingMode::NearestTiesToEven, &losesInfo);
-    value.imag.convert(llvm::APFloat::IEEEsingle(),
-                       llvm::RoundingMode::NearestTiesToEven, &losesInfo);
-    return builder.create<tfrt::compiler::ConstantComplexF32Op>(loc, value.real,
-                                                                value.imag);
-  }
-  if (type == mlir::ComplexType::get(builder.getF64Type())) {
-    value.real.convert(llvm::APFloat::IEEEdouble(),
-                       llvm::RoundingMode::NearestTiesToEven, &losesInfo);
-    value.imag.convert(llvm::APFloat::IEEEdouble(),
-                       llvm::RoundingMode::NearestTiesToEven, &losesInfo);
-    return builder.create<tfrt::compiler::ConstantComplexF64Op>(loc, value.real,
-                                                                value.imag);
-  }
-
-  llvm_unreachable("unsupported type");
-}
-
 FloatAttr GetBeta(lmhlo_gpu::GEMMOp op) { return nullptr; }
 Value GetBias(lmhlo_gpu::GEMMOpAdaptor op) { return nullptr; }
 
@@ -140,9 +70,9 @@ FailureOr<Value> CreateTfrtOps(
     GemmOp op, typename GemmOp::Adaptor adaptor, mlir::Value chain,
     mlir::Value stream, int64_t batch_size, mlir::Type element_type,
     MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
-    MatrixDescriptor output_matrix, Complex<llvm::APFloat> alpha,
-    Complex<llvm::APFloat> beta, cublasGemmAlgo_t algorithm,
-    mlir::OpBuilder& builder) {
+    MatrixDescriptor output_matrix, llvm::APFloat alpha_real,
+    llvm::APFloat alpha_imaginary, llvm::APFloat beta_real,
+    cublasGemmAlgo_t algorithm, mlir::OpBuilder& builder) {
   auto loc = op.getLoc();
   if (auto bias = GetBias(adaptor)) {
     auto copy_op = builder.create<tfrt::gpu::MemCopyOp>(loc, adaptor.output(),
@@ -163,16 +93,17 @@ FailureOr<Value> CreateTfrtOps(
       loc, output_matrix.num_cols);
   auto k = builder.create<tfrt::compiler::ConstantI32Op>(loc, k_val);
 
-  auto const_alpha =
-      MakeScalingFactorConstant(builder, loc, mlir_compute_type, alpha);
+  auto const_alpha = MakeScalingFactorConstant(builder, loc, mlir_compute_type,
+                                               alpha_real, alpha_imaginary);
 
   auto lda =
       builder.create<tfrt::compiler::ConstantI32Op>(loc, lhs_matrix.num_rows);
   auto ldb =
       builder.create<tfrt::compiler::ConstantI32Op>(loc, rhs_matrix.num_rows);
 
-  auto const_beta =
-      MakeScalingFactorConstant(builder, loc, mlir_compute_type, beta);
+  llvm::APFloat fp_zero = APFloat::getZero(alpha_imaginary.getSemantics());
+  auto const_beta = MakeScalingFactorConstant(builder, loc, mlir_compute_type,
+                                              beta_real, fp_zero);
 
   auto ldc = builder.create<tfrt::compiler::ConstantI32Op>(
       loc, output_matrix.num_rows);
@@ -187,7 +118,7 @@ FailureOr<Value> CreateTfrtOps(
   auto rhs_op = rhs_matrix.transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
 
   const auto data_type = MlirTypeToCudaDataType(element_type);
-  const auto compute_type = MlirTypeToBlasComputeType(mlir_compute_type);
+  const auto compute_type = MlirTypeToCublasComputeType(mlir_compute_type);
 
   if (batch_size != 1) {
     int64_t lhs_stride_val = lhs_matrix.num_rows * lhs_matrix.num_cols;
@@ -301,11 +232,9 @@ FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
       adaptor.output(), /*transpose=*/false, output_shape.dimensions(row_dim),
       output_shape.dimensions(col_dim)};
 
-  Complex<llvm::APFloat> alpha{op.alpha_real(), op.alpha_imag()};
   // Use zero with alpha's semantic if no beta_arg is supplied.
-  llvm::APFloat fp_zero = APFloat::getZero(alpha.real.getSemantics());
-  Complex<llvm::APFloat> beta{fp_zero, fp_zero};
-  if (auto attr = GetBeta(op)) beta.real = attr.getValue();
+  llvm::APFloat beta_real = APFloat::getZero(op.alpha_real().getSemantics());
+  if (auto attr = GetBeta(op)) beta_real = attr.getValue();
 
   if (xla::LayoutUtil::Minor(output_shape.layout(), row_dim) != 0) {
     std::swap(lhs_matrix, rhs_matrix);
@@ -316,8 +245,8 @@ FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
       op.algorithm().getValueOr(CUBLAS_GEMM_DEFAULT));
 
   return CreateTfrtOps(op, adaptor, chain, stream, batch_size, element_type,
-                       lhs_matrix, rhs_matrix, output_matrix, alpha, beta,
-                       algorithm, builder);
+                       lhs_matrix, rhs_matrix, output_matrix, op.alpha_real(),
+                       op.alpha_imag(), beta_real, algorithm, builder);
 }
 
 template <class GemmOpType>

@@ -16,7 +16,7 @@ limitations under the License.
 // This file implements logic for lowering LHLO GPU dialect to TFRT CUDA
 // dialect.
 
-#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu.h"
 
 #include <memory>
 #include <utility>
@@ -41,18 +41,26 @@ limitations under the License.
 namespace tensorflow {
 
 void populateCclConversionPattern(RewritePatternSet&, TypeConverter&);
+void populateCholeskyConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCustomCallConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateGemmConversionPattern(RewritePatternSet&, TypeConverter&);
 
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h.inc"
-
 namespace {
+
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/gpu_passes.h.inc"
 
 struct ConvertLmhloToGpuPass
     : public ConvertLmhloToGpuPassBase<ConvertLmhloToGpuPass> {
  private:
   void runOnFunction() override;
+
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<mlir::gpu::GPUDialect, tfrt::compiler::TFRTDialect,
+                    tfrt::gpu::GpuDialect,
+                    tfrt::gpu::conversion::GpuConversionDialect,
+                    xla::gpu::XlirDialect>();
+  }
 };
 
 }  // namespace
@@ -63,6 +71,7 @@ void ConvertLmhloToGpuPass::runOnFunction() {
 
   RewritePatternSet patterns(context);
   populateCclConversionPattern(patterns, converter);
+  populateCholeskyConversionPattern(patterns, converter);
   populateCustomCallConversionPattern(patterns, converter);
   populateGemmConversionPattern(patterns, converter);
   populateFuncOpTypeConversionPattern(patterns, converter);
@@ -102,6 +111,10 @@ void ConvertLmhloToGpuPass::runOnFunction() {
 
 std::unique_ptr<FunctionPass> createConvertLmhloToGpuPass() {
   return std::make_unique<ConvertLmhloToGpuPass>();
+}
+
+void registerConvertLmhloToGpuPass() {
+  ::mlir::registerPass([] { return createConvertLmhloToGpuPass(); });
 }
 
 }  // namespace tensorflow

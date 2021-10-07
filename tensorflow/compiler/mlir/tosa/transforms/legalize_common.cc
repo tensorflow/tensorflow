@@ -1162,18 +1162,29 @@ llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
   ElementsAttr dim_elem;
   if (!matchPattern(dim_value, m_Constant(&dim_elem))) return llvm::None;
 
-  assert(dim_elem.getType().getRank() == 0 && "expected scalar tensor");
-  int32_t dim = dim_elem.getValue<IntegerAttr>({}).getInt();
-
+  if (dim_elem.getNumElements() > 1) {
+    op->emitOpError("ExpandDims: expected single dimension to expand");
+    return llvm::None;
+  }
+  int32_t dim = dim_elem.getValue<IntegerAttr>({0}).getInt();
+  int32_t input_size = input_shape.size();
   SmallVector<int64_t> reshape_dims;
-  if (dim < 0 || dim >= input_shape.size()) {  // add dim at end of tensor
-    dim = input_shape.size();
+  if (dim >= input_size) {  // add dim at end of tensor
+    dim = input_size;
     for (int i = 0; i < input_shape.size(); i++) {
       reshape_dims.emplace_back(input_shape[i]);
     }
     reshape_dims.emplace_back(1);
   } else {
-    for (int i = 0; i < input_shape.size(); i++) {
+    if (dim < 0) {
+      dim += input_size;
+      if (dim < 0) {
+        op->emitOpError(
+            "ExpandDims: dimension to expand + size of input shape < 0");
+        return llvm::None;
+      }
+    }
+    for (int i = 0; i < input_size; i++) {
       if (i == dim) {
         reshape_dims.emplace_back(1);
       }
@@ -1220,6 +1231,10 @@ llvm::Optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
       }
     }
   } else {
+    for (auto& dim : squeeze_dims) {
+      dim = dim < 0 ? dim + input_shape.size() : dim;
+    }
+
     // Remove only specified dims.
     // First sort the array so they can be picked off in sequence.
     std::sort(squeeze_dims.begin(), squeeze_dims.end(),
@@ -1941,6 +1956,8 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
   }
 
   auto input_shape = input_type.getShape();
+
+  if (axis < 0) axis += input_type.getRank();
 
   SmallVector<Value> results_vec;
 

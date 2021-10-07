@@ -28,7 +28,7 @@ namespace xla {
 
 // Converts the conv dimensions attribute to XLA HLO.
 ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
-    mlir::mhlo::ConvDimensionNumbers input);
+    mlir::mhlo::ConvDimensionNumbersAttr input);
 
 StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
     llvm::StringRef input);

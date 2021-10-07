@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -233,6 +234,7 @@ class RoundTest(test_util.TensorFlowTestCase):
         self.assertAllClose(y_tf_np, y_np, atol=1e-2)
 
 
+@test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class MatMulTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   """Test for matmul."""
@@ -399,6 +401,7 @@ class SquaredDifferenceTest(test_util.TensorFlowTestCase):
         self.assertAllClose(z, z_tf)
 
 
+@test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class ApproximateEqualTest(test_util.TensorFlowTestCase):
 
@@ -438,6 +441,20 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
           (ValueError, errors.InvalidArgumentError),
           "Shapes must be equal rank|must be of the same shape"):
         math_ops.approximate_equal(x, y)
+
+  def testApproximateEqualShapeXla(self):
+
+    @def_function.function(jit_compile=True)
+    def approximate_equal(x, y):
+      return math_ops.approximate_equal(x, y)
+
+    for dtype in [np.float32, np.double]:
+      x = np.array([1, 2], dtype=dtype)
+      y = np.array([[1, 2]], dtype=dtype)
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          "Shapes must be equal rank|must be of the same shape"):
+        approximate_equal(x, y)
 
 
 @test_util.run_all_in_graph_and_eager_modes
