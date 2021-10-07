@@ -2732,6 +2732,16 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   auto input_shape = input_type.getShape();
   auto output_shape = output_type.getShape();
 
+  if (input_type.isDynamicDim(1) || input_type.isDynamicDim(2)) {
+    op->emitOpError("ConvertResizeOp: resize dynamic input not supported.");
+    return llvm::None;
+  }
+
+  if (output_type.isDynamicDim(1) || output_type.isDynamicDim(2)) {
+    op->emitOpError("ConvertResizeOp: resize dynamic output not supported.");
+    return llvm::None;
+  }
+
   size_t input_height = input_shape[1];
   size_t input_width = input_shape[2];
   size_t output_height = output_shape[1];
