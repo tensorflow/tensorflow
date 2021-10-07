@@ -95,6 +95,8 @@ SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 # are not detected by Global TAP.
 # TODO(jiaweix): remove this flag and related args (b/198782192)
 ENCODE_VARIABLES_BY_RESOURCE_ID = True
+# TODO(b/201533914): Remove this flag and related args
+USE_FULL_TRACE_TYPE = False
 
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
@@ -3213,7 +3215,8 @@ class Function(object):
       # kwargs is empty.
       inputs = (args, kwargs)
       hashable_input_signature = function_trace_type.get_arg_spec(
-          inputs, include_tensor_ranks_only, ENCODE_VARIABLES_BY_RESOURCE_ID)
+          inputs, include_tensor_ranks_only, ENCODE_VARIABLES_BY_RESOURCE_ID,
+          USE_FULL_TRACE_TYPE)
     else:
       del args, kwargs
       assert not include_tensor_ranks_only
