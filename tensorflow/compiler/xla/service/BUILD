@@ -1803,6 +1803,7 @@ cc_library(
     deps = [
         ":fusion_queue",
         ":hlo",
+        ":hlo_dataflow_analysis",
         ":hlo_graph_dumper",
         ":hlo_pass",
         ":hlo_reachability",
