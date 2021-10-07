@@ -88,7 +88,7 @@ namespace internal {
 // pass to `free` (memref.global). The LLVM lowering of `memref.global` sets the
 // allocated pointer to the magic value 0xDEADBEEF.
 template <typename T, int rank>
-static bool IsStaticStorageDuration(StridedMemRefType<T, rank>* memref) {
+inline bool IsStaticStorageDuration(StridedMemRefType<T, rank>* memref) {
   return reinterpret_cast<std::intptr_t>(memref->basePtr) == 0xDEADBEEF;
 }
 }  // namespace internal
@@ -135,8 +135,20 @@ struct ConvertTensor {
     auto* buffer = new MemrefTensorBuffer(
         memref->basePtr, memref->data, size,
         /*owner=*/!internal::IsStaticStorageDuration(memref));
+
+    // Construct a tensor from the memory buffer.
     auto ptr = core::RefCountPtr<MemrefTensorBuffer>(buffer);
-    return tensorflow::Tensor(dtype, std::move(shape), std::move(ptr));
+    tensorflow::Tensor tensor(dtype, std::move(shape), std::move(ptr));
+
+    // Incorrect alignment will lead to a segfault in the downstream Tensorflow
+    // kernels, check it before returning to the runtime.
+    if (internal::IsStaticStorageDuration(memref)) {
+      assert(tensor.IsAligned() && "global memref is not aligned");
+    } else {
+      assert(tensor.IsAligned() && "allocated memref is not aligned");
+    }
+
+    return tensor;
   }
 };
 
