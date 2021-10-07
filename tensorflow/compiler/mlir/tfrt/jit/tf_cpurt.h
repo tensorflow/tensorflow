@@ -51,7 +51,7 @@ class MemrefTensorBuffer : public TensorBuffer {
   }
 
   size_t size() const override { return size_; }
-  bool OwnsMemory() const override { return true; }
+  bool OwnsMemory() const override { return owner_; }
   TensorBuffer* root_buffer() override { return this; }
 
  private:
