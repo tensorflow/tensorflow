@@ -3045,14 +3045,16 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
     }
   }
 
-  // A Broadcast that feeds a unary element-wise operation can sink the
-  // broadcast after the unary element-wise operation.
-  TF_ASSIGN_OR_RETURN(
-      bool sink_succeeded,
-      TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(broadcast));
-  changed_ |= sink_succeeded;
-  if (sink_succeeded) {
-    return Status::OK();
+  if (options_.enable_sink_broadcast()) {
+    // A Broadcast that feeds a unary element-wise operation can sink the
+    // broadcast after the unary element-wise operation.
+    TF_ASSIGN_OR_RETURN(
+        bool sink_succeeded,
+        TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(broadcast));
+    changed_ |= sink_succeeded;
+    if (sink_succeeded) {
+      return Status::OK();
+    }
   }
 
   // A scalar broadcast feeding an instruction which only permutes (reshape,

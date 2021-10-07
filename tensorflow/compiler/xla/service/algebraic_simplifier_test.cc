@@ -3369,6 +3369,34 @@ TEST_F(AlgebraicSimplifierTest, NegativePadding) {
       has_negative_padding(computation->root_instruction()->operand(0)));
 }
 
+TEST_F(AlgebraicSimplifierTest, CanDisableBroadcastSinking) {
+  // Some broadcasts can be sunk (or delayed). This test verifies that we can
+  // disable this behavior when necessary.
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {}), "scalar"));
+  HloInstruction* broadcast =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::MakeShape(F32, {512, 16}), param, {}));
+  builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {512, 16}), HloOpcode::kNegate, broadcast));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Negate(m::Broadcast(m::Parameter(0)))));
+
+  // Verify that we can disable the broadcast sinking optimization.
+  AlgebraicSimplifierOptions opts = default_options_;
+  opts.set_enable_sink_broadcast(false);
+  AlgebraicSimplifier simplifier(opts);
+
+  // Nothing has changed since broadcast sinking is disabled.
+  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+}
+
 TEST_F(AlgebraicSimplifierTest, CanDisableNegativePadding) {
   // Verify that a pad instruction with negative padding is replaced with a
   // pad with non-negative padding followed by a slice.
