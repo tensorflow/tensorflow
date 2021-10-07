@@ -106,8 +106,7 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err =
-          executable->InitializeCallFrame(operands, &call_frame, nullptr))
+  if (auto err = executable->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {

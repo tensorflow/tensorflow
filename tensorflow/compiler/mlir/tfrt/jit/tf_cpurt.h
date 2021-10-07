@@ -76,8 +76,6 @@ struct TensorflowConversionContext
 
   llvm::SmallDenseMap<const void*, const Tensor*> tensor_operands;
 
-  void error(const char* message) override { assert(false); }
-
   void* forward(size_t size, size_t alignment,
                 llvm::ArrayRef<unsigned> candidates) override {
     // TODO(ecg): Do the real buffer forwarding here.
