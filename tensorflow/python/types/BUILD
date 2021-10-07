@@ -25,7 +25,6 @@ py_strict_library(
         "core.py",
         "distribute.py",
         "internal.py",
-        "trace.py",
     ],
     srcs_version = "PY3",
     visibility = [
