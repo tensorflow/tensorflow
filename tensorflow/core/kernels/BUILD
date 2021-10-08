@@ -4155,6 +4155,7 @@ tf_kernel_library(
     deps = NN_DEPS + [
         ":redux_functor",
         "//tensorflow/core/profiler/lib:scoped_annotation",
+        "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([

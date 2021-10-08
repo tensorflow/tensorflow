@@ -3520,24 +3520,7 @@ def bias_add(value, bias, data_format=None, name=None):
       value = ops.convert_to_tensor(value, name="input")
       bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
 
-    # TODO(duncanriach): Implement deterministic functionality at CUDA kernel
-    #   level.
-    if config.is_op_determinism_enabled():
-      # Note that this code does not implement the same error checks as the
-      # pre-existing C++ ops.
-      if data_format == "NCHW":
-        broadcast_shape_head = [1, array_ops.size(bias)]
-        broadcast_shape_tail = array_ops.ones(
-            array_ops.rank(value) - 2, dtype=dtypes.int32)
-        broadcast_shape = array_ops.concat(
-            [broadcast_shape_head, broadcast_shape_tail], 0)
-        return math_ops.add(
-            value, array_ops.reshape(bias, broadcast_shape), name=name)
-      else:  # data_format == 'NHWC' or data_format == None
-        return math_ops.add(value, bias, name=name)
-    else:
-      return gen_nn_ops.bias_add(
-          value, bias, data_format=data_format, name=name)
+    return gen_nn_ops.bias_add(value, bias, data_format=data_format, name=name)
 
 
 def bias_add_v1(value, bias, name=None):
