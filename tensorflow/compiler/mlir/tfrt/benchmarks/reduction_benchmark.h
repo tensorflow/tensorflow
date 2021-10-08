@@ -134,7 +134,7 @@ void RunReductionMlirBenchmark(::testing::benchmark::State& state,
 
   for (auto s : state) {
     executable->Execute(call_frame, exec_ctx);
-    if (auto err = executable->ReturnResults(converter, &call_frame))
+    if (auto err = executable->ReturnResults(converter, exec_ctx, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 
