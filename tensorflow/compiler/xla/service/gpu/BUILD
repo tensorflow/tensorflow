@@ -1761,6 +1761,7 @@ cc_library(
     ] + select({
         ":is_bef_executable_enabled": [
             "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_gpu",
+            "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_gpu_binary",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             "@tf_runtime//:bef",
@@ -1779,6 +1780,18 @@ cc_library(
         ":nvptx_compiler_impl",
     ]),
     alwayslink = True,  # Contains compiler registration
+)
+
+cc_library(
+    name = "nvptx_helper",
+    srcs = ["nvptx_helper.cc"],
+    hdrs = ["nvptx_helper.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:cuda_libdevice_path",
+    ],
 )
 
 cc_library(
@@ -1802,6 +1815,7 @@ cc_library(
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
         ":ir_emission_utils",
+        ":nvptx_helper",
         ":target_constants",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:node_hash_map",

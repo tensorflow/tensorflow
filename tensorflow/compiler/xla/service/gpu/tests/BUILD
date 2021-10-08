@@ -711,6 +711,7 @@ tf_cc_binary(
         "//tensorflow/core:lib",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
+        "//tensorflow/compiler/xla/service/gpu:nvptx_helper",
     ]),
 )
 
