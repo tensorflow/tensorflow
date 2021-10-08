@@ -370,6 +370,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:computation_layout",
+        "//tensorflow/compiler/xla/service:custom_call_status_internal",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
@@ -385,7 +386,6 @@ cc_library(
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor/host:host_stream",
         "@com_google_absl//absl/strings",
@@ -862,11 +862,14 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla/service:custom_call_status_internal",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
