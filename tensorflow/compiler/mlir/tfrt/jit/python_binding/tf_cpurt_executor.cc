@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "mlir/Transforms/Bufferize.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -220,6 +221,15 @@ using PyBindingReturnValueConverter =
     ReturnValueConverter<PyBindingConversionContext>;
 }  // namespace
 
+template <typename T>
+static bool IsAligned(const T* ptr) {
+#if EIGEN_MAX_ALIGN_BYTES == 0
+  return true;
+#else
+  return reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0;
+#endif
+}
+
 // Converts StridedMemrefType to the Python array. This struct satisfies
 // ReturnStridedMemref's concept (see cpurt.h).
 //
@@ -234,6 +244,7 @@ struct MemrefToPyArray {
   template <typename T, int rank>
   static py::array Convert(const ConversionContext&, void* memref_ptr) {
     auto* memref = static_cast<StridedMemRefType<T, rank>*>(memref_ptr);
+    assert(IsAligned(memref->data) && "returned memref must be aligned");
 
     auto memref_sizes = Sizes(memref);
     auto memref_strides = Strides(memref);
