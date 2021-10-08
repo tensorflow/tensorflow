@@ -2763,9 +2763,16 @@ LogicalResult RngUniformOp::inferReturnTypeComponents(
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(SelectOp op) {
-  // TODO(jpienaar): Update to allow broadcastable and unranked inputs. This
-  // corresponds to the client side HLO.
-  return success();
+  // Either, all operands could be the same shape ...
+  if (succeeded(verifyCompatibleShapes(op.getOperandTypes()))) return success();
+
+  // ... or the predicate could be a scalar and the remaining two operands could
+  // be of the same shape.
+  auto predTy = op.pred().getType().dyn_cast<RankedTensorType>();
+  bool predMayBeScalar = !predTy || predTy.getRank() == 0;
+  if (!predMayBeScalar) return failure();
+  return verifyCompatibleShapes(
+      {op.on_true().getType(), op.on_false().getType()});
 }
 
 OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
