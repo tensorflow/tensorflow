@@ -28,7 +28,6 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/stream_executor/data_type.h"
@@ -780,26 +779,24 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64_t Index;
+  typedef std::string Tag;
   AlgorithmDesc() : AlgorithmDesc(0, false) {}
   AlgorithmDesc(Index a, bool use_tensor_ops) {
-    proto_.set_is_cudnn_frontend(false);
     proto_.set_algo_id(a);
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
                                         : AlgorithmProto::DEFAULT_MATH);
   }
-  AlgorithmDesc(int64_t engine_id,
-                const absl::flat_hash_map<int64_t, int64_t>& tuning_knobs);
-  bool is_cudnn_frontend() const { return proto_.is_cudnn_frontend(); }
-
+  explicit AlgorithmDesc(Tag a) { proto_.set_exec_plan_id(a); }
+  bool IsExecutionPlan() const { return exec_plan_id() != ""; }
   bool tensor_ops_enabled() const {
     return proto_.math_type() == AlgorithmProto::TENSOR_OP_MATH;
   }
   Index algo_id() const { return proto_.algo_id(); }
-
-  absl::flat_hash_map<int64_t, int64_t> TuningKnobs() const;
-
-  bool operator==(const AlgorithmDesc& other) const;
-
+  Tag exec_plan_id() const { return proto_.exec_plan_id(); }
+  bool operator==(const AlgorithmDesc& other) const {
+    return algo_id() == other.algo_id() &&
+           tensor_ops_enabled() == other.tensor_ops_enabled();
+  }
   uint64_t hash() const;
 
   AlgorithmProto ToProto() const { return proto_; }
@@ -864,9 +861,6 @@ class OpRunner<port::Status(Args...)> {
 
   // Get the number of bytes of scratch space needed for `operator()`.
   virtual port::StatusOr<size_t> GetWorkspaceSize() const = 0;
-
-  // Convert to an AlgorithmDesc for AoT compilation or autotuning.
-  virtual port::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const = 0;
 
   // Launch the operation, with the signature determined by `Sig`.
   virtual port::Status operator()(Args... args) const = 0;
@@ -1372,7 +1366,7 @@ class DnnSupport {
       CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
-  virtual port::Status GetConvolveExecutionPlans(
+  virtual bool GetConvolveExecutionPlans(
       dnn::ConvolutionKind kind, dnn::DataType input_type,
       dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor,
@@ -1380,39 +1374,6 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
-
-  virtual port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
-  ConvolveRunnerFromDesc(
-      const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-      dnn::DataType element_type, dnn::DataType output_type,
-      const dnn::BatchDescriptor& input_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor);
-
-  virtual port::Status GetFusedConvolveExecutionPlans(
-      dnn::ConvolutionKind kind, dnn::DataType element_type,
-      dnn::DataType bias_type, dnn::DataType output_type,
-      double conv_input_scale, double side_input_scale, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const dnn::BatchDescriptor& bias_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      dnn::ActivationMode activation_mode,
-      std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
-
-  virtual port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
-  FusedConvolveRunnerFromDesc(
-      const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-      dnn::DataType element_type, dnn::DataType bias_type,
-      dnn::DataType output_type, double conv_scale, double side_input_scale,
-      const dnn::BatchDescriptor& input_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const dnn::BatchDescriptor& bias_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      dnn::ActivationMode activation_mode);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,

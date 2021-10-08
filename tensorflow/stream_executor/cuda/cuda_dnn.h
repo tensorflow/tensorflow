@@ -210,7 +210,7 @@ class CudnnSupport : public dnn::DnnSupport {
       CudaComputeCapability cuda_compute_capability,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
-  port::Status GetConvolveExecutionPlans(
+  bool GetConvolveExecutionPlans(
       dnn::ConvolutionKind kind, dnn::DataType input_type,
       dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor,
@@ -219,14 +219,6 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans)
       override;
-
-  port::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
-      const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-      dnn::DataType element_type, dnn::DataType output_type,
-      const dnn::BatchDescriptor& input_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor) override;
 
   port::Status GetFusedConvolveExecutionPlans(
       dnn::ConvolutionKind kind, dnn::DataType input_type,
@@ -238,20 +230,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode,
-      std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans)
-      override;
-
-  port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
-  FusedConvolveRunnerFromDesc(
-      const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-      dnn::DataType element_type, dnn::DataType bias_type,
-      dnn::DataType output_type, double conv_scale, double side_input_scale,
-      const dnn::BatchDescriptor& input_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const dnn::BatchDescriptor& bias_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      dnn::ActivationMode activation_mode) override;
+      std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
 
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;

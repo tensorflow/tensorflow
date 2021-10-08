@@ -3383,7 +3383,7 @@ std::tuple<int, int> GetTensorVectorSizeAndDim(
 
 port::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
 GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
-                       dnn::DataType output_type,
+                       dnn::DataType output_type, Stream* stream,
                        const dnn::BatchDescriptor& input_descriptor,
                        const dnn::FilterDescriptor& filter_descriptor,
                        const dnn::BatchDescriptor& output_descriptor,
@@ -3513,7 +3513,7 @@ port::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
 GetCudnnFusedOperationGraph(
     dnn::ConvolutionKind kind, dnn::DataType input_type,
     dnn::DataType bias_type, dnn::DataType output_type, double alpha,
-    double alpha2, const dnn::BatchDescriptor& input_descriptor,
+    double alpha2, Stream* stream, const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     dnn::BatchDescriptor bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
@@ -3873,42 +3873,6 @@ GetFirstWorkingExecutionPlan(
   return port::Status(port::error::UNKNOWN,
                       "CUDNN failed to get a working plan.");
 }
-
-static port::StatusOr<cudnn_frontend::ExecutionPlan> RebuildExecutionPlan(
-    const CudnnHandle& cudnn, const dnn::AlgorithmDesc& desc,
-    const cudnn_frontend::OperationGraph& op_graph) {
-  if (!desc.is_cudnn_frontend()) {
-    return port::InternalError(
-        "Got legacy cuDNN algorithm enum in RebuildExecutionPlan.");
-  }
-
-  auto engine = cudnn_frontend::EngineBuilder()
-                    .setOperationGraph(op_graph)
-                    .setGlobalEngineIdx(desc.algo_id())
-                    .build();
-  RETURN_MSG_IF_CUDNN_ERROR(engine);
-
-  for (auto& knob : engine.getSupportedKnobs()) {
-    const auto it =
-        desc.TuningKnobs().find(static_cast<int64_t>(knob.getKnobType()));
-    if (it != desc.TuningKnobs().end()) {
-      knob.setChoice(it->second);
-    }
-  }
-
-  auto engine_config =
-      cudnn_frontend::EngineConfigBuilder().setEngine(engine).build();
-  RETURN_MSG_IF_CUDNN_ERROR(engine_config);
-
-  auto plan = cudnn_frontend::ExecutionPlanBuilder()
-                  .setHandle(cudnn.handle())
-                  .setEngineConfig(engine_config)
-                  .build();
-  RETURN_MSG_IF_CUDNN_ERROR(plan);
-
-  return {std::move(plan)};
-}
-
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 }  // namespace
@@ -4031,17 +3995,10 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
     return size_in_bytes;
   }
 
-  port::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
-    return algo_;
-  }
-
   port::Status operator()(
       Stream* stream, DeviceMemoryBase input_data, DeviceMemoryBase filter_data,
       DeviceMemoryBase output_data, DeviceMemoryBase scratch_memory,
       dnn::ProfileResult* output_profile_result) const override {
-    // Check that the current stream supports tensor ops if they're requested.
-    SE_RETURN_IF_ERROR(UseTensorOps(stream, input_type_, algo_).status());
-
     if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
         stream->parent()->implementation()) {
       return port::InternalError(
@@ -4217,139 +4174,6 @@ port::Status CudnnSupport::DoConvolve(
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
-struct BackendDescriptorDeleter {
-  void operator()(cudnnBackendDescriptor_t desc) {
-    cudnnBackendDestroyDescriptor(desc);
-  }
-};
-
-using BackendDescriptor = std::unique_ptr<void, BackendDescriptorDeleter>;
-
-port::StatusOr<BackendDescriptor> CreateBackendDesc(
-    cudnnBackendDescriptorType_t type) {
-  void* result;
-  RETURN_IF_CUDNN_ERROR(cudnnBackendCreateDescriptor(type, &result));
-  return BackendDescriptor(result);
-}
-
-// Get the values of a CUDNN_TYPE_BACKEND_DESCRIPTOR attribute as a vector.
-//
-// This is fetching the entirety of a single sequence-valued attribute, as
-// opposed to a sequence of multiple attributes.  The distinction is a bit
-// meaningless, but this is the presentation the cuDNN docs use, so it may as
-// well be consistent.
-port::StatusOr<std::vector<BackendDescriptor>> GetDescriptorAttribute(
-    cudnnBackendDescriptor_t desc, cudnnBackendAttributeName_t name,
-    cudnnBackendDescriptorType_t type) {
-  int64_t n;
-  RETURN_IF_CUDNN_ERROR(cudnnBackendGetAttribute(
-      desc, name, CUDNN_TYPE_BACKEND_DESCRIPTOR, 0, &n, nullptr));
-
-  std::vector<BackendDescriptor> result(n);
-  for (int i = 0; i < n; ++i) {
-    SE_ASSIGN_OR_RETURN(result[i], CreateBackendDesc(type));
-  }
-
-  std::vector<cudnnBackendDescriptor_t> raw_ptrs;
-  raw_ptrs.reserve(result.size());
-  absl::c_transform(result, std::back_inserter(raw_ptrs),
-                    [](const BackendDescriptor& ptr) { return ptr.get(); });
-
-  // This API evidently does a deep copy of the descriptors into the pointers in
-  // the output array, rather than writing pointers to the descriptors into the
-  // output array.  So, this writes the memory behind each BackendDescriptor in
-  // result, rather than writing the contents of raw_ptrs.
-  RETURN_IF_CUDNN_ERROR(cudnnBackendGetAttribute(
-      desc, name, CUDNN_TYPE_BACKEND_DESCRIPTOR, n, &n, raw_ptrs.data()));
-
-  return result;
-}
-
-// Extract the engine ID and tuning knobs from the ExecutionPlan, and return
-// them in the form of an AlgorithmDesc for use with RebuildExecutionPlan.
-port::StatusOr<dnn::AlgorithmDesc> ExecutionPlanToAlgorithmDesc(
-    const cudnn_frontend::ExecutionPlan& plan) {
-  SE_ASSIGN_OR_RETURN(
-      auto engine_cfgs,
-      GetDescriptorAttribute(plan.get_raw_desc(),
-                             CUDNN_ATTR_EXECUTION_PLAN_ENGINE_CONFIG,
-                             CUDNN_BACKEND_ENGINECFG_DESCRIPTOR));
-  if (engine_cfgs.size() != 1) {
-    return port::InternalError(
-        "CUDNN_ATTR_EXECUTION_PLAN_ENGINE_CONFIG had more than one element.");
-  }
-
-  SE_ASSIGN_OR_RETURN(
-      auto engines,
-      GetDescriptorAttribute(engine_cfgs[0].get(), CUDNN_ATTR_ENGINECFG_ENGINE,
-                             CUDNN_BACKEND_ENGINE_DESCRIPTOR));
-  if (engines.size() != 1) {
-    return port::InternalError(
-        "CUDNN_ATTR_ENGINECFG_ENGINE had more than one element.");
-  }
-
-  int64_t n;
-  int64_t engine_id;
-  RETURN_IF_CUDNN_ERROR(
-      cudnnBackendGetAttribute(engines[0].get(), CUDNN_ATTR_ENGINE_GLOBAL_INDEX,
-                               CUDNN_TYPE_INT64, 1, &n, &engine_id));
-
-  // Apparently for CUDNN_ATTR_ENGINECFG_KNOB_CHOICES only, trying to query the
-  // number of elements in the attribute by using an output limit value of 0
-  // just returns 0; the only way to find out how many there are is to
-  // pre-allocate space for every existing knob type (as an upper bound on the
-  // number of knob choices a config can have), and then look back at how many
-  // were filled.
-  std::vector<BackendDescriptor> knobs(CUDNN_KNOB_TYPE_COUNTS);
-  for (int i = 0; i < knobs.size(); ++i) {
-    SE_ASSIGN_OR_RETURN(
-        knobs[i], CreateBackendDesc(CUDNN_BACKEND_KNOB_CHOICE_DESCRIPTOR));
-  }
-  std::vector<cudnnBackendDescriptor_t> raw_knob_ptrs;
-  raw_knob_ptrs.reserve(knobs.size());
-  absl::c_transform(knobs, std::back_inserter(raw_knob_ptrs),
-                    [](const BackendDescriptor& ptr) { return ptr.get(); });
-  RETURN_IF_CUDNN_ERROR(cudnnBackendGetAttribute(
-      engine_cfgs[0].get(), CUDNN_ATTR_ENGINECFG_KNOB_CHOICES,
-      CUDNN_TYPE_BACKEND_DESCRIPTOR, raw_knob_ptrs.size(), &n,
-      raw_knob_ptrs.data()));
-  knobs.resize(n);
-
-  absl::flat_hash_map<int64_t, int64_t> tuning_knobs;
-  for (const auto& knob : knobs) {
-    cudnnBackendKnobType_t knob_type;
-    int64_t knob_value;
-
-    RETURN_IF_CUDNN_ERROR(
-        cudnnBackendGetAttribute(knob.get(), CUDNN_ATTR_KNOB_CHOICE_KNOB_TYPE,
-                                 CUDNN_TYPE_KNOB_TYPE, 1, &n, &knob_type));
-    if (n != 1) {
-      return port::InternalError(
-          absl::StrCat("Knob should have exactly one KNOB_TYPE; had ", n));
-    }
-
-    RETURN_IF_CUDNN_ERROR(
-        cudnnBackendGetAttribute(knob.get(), CUDNN_ATTR_KNOB_CHOICE_KNOB_VALUE,
-                                 CUDNN_TYPE_INT64, 1, &n, &knob_value));
-    if (n != 1) {
-      return port::InternalError(
-          absl::StrCat("Knob should have exactly one KNOB_VALUE; had ", n));
-    }
-
-    auto emplaced = tuning_knobs.try_emplace(knob_type, knob_value).second;
-    if (!emplaced) {
-      return port::InternalError(absl::StrFormat(
-          "cuDNN gave multiple knob values for the same knob type.\n"
-          "  KNOB_TYPE: %d\n"
-          "  new KNOB_VALUE: %d\n"
-          "  old KNOB_VALUE: %d",
-          knob_type, knob_value, tuning_knobs.at(knob_type)));
-    }
-  }
-
-  return dnn::AlgorithmDesc(engine_id, tuning_knobs);
-}
-
 // An OpRunner implemented by an ExecutionPlan.
 //
 // This is an ad-hoc base class holding the implementation of ToString and
@@ -4367,10 +4191,6 @@ class CudnnExecutionPlanRunner : public dnn::OpRunner<Sig> {
     auto result = plan_.getWorkspaceSize();
     RETURN_MSG_IF_CUDNN_ERROR(plan_);
     return result;
-  }
-
-  port::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
-    return ExecutionPlanToAlgorithmDesc(plan_);
   }
 
  protected:
@@ -4436,8 +4256,7 @@ class CudnnConvRunner : public CudnnExecutionPlanRunner<dnn::ConvSignature> {
       if (!timer->Stop(AsGpuStream(stream))) {
         return port::Status(port::error::INTERNAL, "Failed to stop timer");
       }
-      SE_ASSIGN_OR_RETURN(auto desc, ToAlgorithmDesc());
-      output_profile_result->set_algorithm(desc);
+      output_profile_result->set_algorithm(dnn::AlgorithmDesc{plan_.getTag()});
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
       output_profile_result->set_scratch_size(scratch_memory.size());
@@ -4479,7 +4298,7 @@ class ScalingParam {
   float as_float_;
 };
 
-port::Status CudnnSupport::GetConvolveExecutionPlans(
+bool CudnnSupport::GetConvolveExecutionPlans(
     dnn::ConvolutionKind kind, dnn::DataType input_type,
     dnn::DataType output_type, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor,
@@ -4489,31 +4308,33 @@ port::Status CudnnSupport::GetConvolveExecutionPlans(
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  SE_ASSIGN_OR_RETURN(
-      auto op_graph,
-      GetCudnnOperationGraph(kind, input_type, output_type, input_descriptor,
-                             filter_descriptor, output_descriptor,
-                             convolution_descriptor, cudnn));
+  auto op_graph_status = GetCudnnOperationGraph(
+      kind, input_type, output_type, stream, input_descriptor,
+      filter_descriptor, output_descriptor, convolution_descriptor, cudnn);
+  if (!op_graph_status.status().ok()) {
+    return false;
+  }
+  auto op_graph = op_graph_status.ConsumeValueOrDie();
 
   auto heur = cudnn_frontend::EngineHeuristicsBuilder()
                   .setOperationGraph(*op_graph)
                   .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
                   .build();
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
+  RETURN_FALSE_IF_CUDNN_ERROR(heur);
 
   auto fallback = cudnn_frontend::EngineFallbackListBuilder()
                       .setOperationGraph(*op_graph)
                       .setOperation(GetCudnnConvolutionType(kind))
                       .build();
-  RETURN_MSG_IF_CUDNN_ERROR(fallback);
+  RETURN_FALSE_IF_CUDNN_ERROR(fallback);
 
   // cuDNN frontend sneakily puts error messages on the object and returns
   // partially-initialized results when there's an error; make sure to check
   // them.
   int64_t engine_count = heur.getEngineConfigCount();
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
+  RETURN_FALSE_IF_CUDNN_ERROR(heur);
   auto& heur_configs = heur.getEngineConfig(engine_count);
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
+  RETURN_FALSE_IF_CUDNN_ERROR(heur);
 
   auto& fallback_configs = fallback.getFallbackList();
 
@@ -4569,57 +4390,10 @@ port::Status CudnnSupport::GetConvolveExecutionPlans(
 
   VLOG(4) << "\nReturned execution plans size: " << out_exec_plans->size();
 
-  return port::Status::OK();
+  return true;
 #else
-  return port::UnimplementedError(
-      "Cudnn execution plans are only supported with Cudnn >= 8.1.");
+  return false;
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
-}
-
-port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
-CudnnSupport::ConvolveRunnerFromDesc(
-    const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-    dnn::DataType element_type, dnn::DataType output_type,
-    const dnn::BatchDescriptor& input_descriptor,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    const dnn::ConvolutionDescriptor& convolution_descriptor) {
-  if (!algorithm_desc.is_cudnn_frontend()) {
-    CudnnConvolutionDescriptor conv(
-        convolution_descriptor,
-        ToCudnnDataType(GetConvAccumulatorType(element_type)));
-    conv.set_use_tensor_op_math(algorithm_desc.tensor_ops_enabled());
-
-    return {std::make_unique<CudnnLegacyConvRunner>(
-        parent_, cudnn_.get(), algorithm_desc, element_type, output_type, kind,
-        /* input_nd = */
-        CudnnTensorDescriptor(
-            input_descriptor,
-            ToCudnnDataType(element_type, input_descriptor.layout())),
-        /* output_nd = */
-        CudnnTensorDescriptor(
-            output_descriptor,
-            ToCudnnDataType(element_type, output_descriptor.layout())),
-        /* filter = */
-        CudnnFilterDescriptor(
-            filter_descriptor,
-            ToCudnnDataType(element_type, filter_descriptor.layout())),
-        std::move(conv))};
-  }
-
-  auto cudnn = cudnn_->GetHandle(parent_, nullptr);
-
-  SE_ASSIGN_OR_RETURN(
-      auto op_graph,
-      GetCudnnOperationGraph(kind, element_type, output_type, input_descriptor,
-                             filter_descriptor, output_descriptor,
-                             convolution_descriptor, cudnn));
-
-  SE_ASSIGN_OR_RETURN(auto execution_plan,
-                      RebuildExecutionPlan(cudnn, algorithm_desc, *op_graph));
-
-  return {std::make_unique<CudnnConvRunner>(parent_, cudnn_.get(),
-                                            std::move(execution_plan))};
 }
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
@@ -4686,8 +4460,7 @@ class CudnnFusedConvRunner
       if (!timer->Stop(AsGpuStream(stream))) {
         return port::Status(port::error::INTERNAL, "Failed to stop timer");
       }
-      SE_ASSIGN_OR_RETURN(auto desc, ToAlgorithmDesc());
-      profile_result->set_algorithm(desc);
+      profile_result->set_algorithm(dnn::AlgorithmDesc{plan_.getTag()});
       profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
       profile_result->set_scratch_size(scratch_memory.size());
       VLOG(4) << "conv with plan " << plan_.getTag()
@@ -4738,10 +4511,6 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
         /*algo=*/ToConvForwardAlgo(algo_),
         /*sizeInBytes=*/&size_in_bytes));
     return size_in_bytes;
-  }
-
-  port::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
-    return algo_;
   }
 
   port::Status operator()(Stream* stream, DeviceMemoryBase input_data,
@@ -4853,67 +4622,6 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
   CudnnActivationDescriptor activation_desc_;
 };
 
-port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
-CudnnSupport::FusedConvolveRunnerFromDesc(
-    const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-    dnn::DataType element_type, dnn::DataType bias_type,
-    dnn::DataType output_type, double conv_scale, double side_input_scale,
-    const dnn::BatchDescriptor& input_descriptor,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    dnn::ActivationMode activation_mode) {
-  if (!algorithm_desc.is_cudnn_frontend()) {
-    CudnnTensorDescriptor conv_input_nd(
-        input_descriptor,
-        ToCudnnDataType(element_type, input_descriptor.layout()));
-    CudnnTensorDescriptor output_nd(
-        output_descriptor,
-        ToCudnnDataType(output_type, input_descriptor.layout()));
-    CudnnFilterDescriptor filter(
-        filter_descriptor,
-        ToCudnnDataType(element_type, filter_descriptor.layout()));
-    CudnnTensorDescriptor bias_nd(bias_descriptor, ToCudnnDataType(bias_type));
-
-    CudnnConvolutionDescriptor conv(
-        convolution_descriptor,
-        ToCudnnDataType(GetConvAccumulatorType(element_type)));
-    conv.set_use_tensor_op_math(algorithm_desc.tensor_ops_enabled());
-
-    // CUDNN v6 only supports CUDNN_NOT_PROPAGATE_NAN as the reluNanOpt for
-    // activation descriptor. Note that this will change the nan propagation
-    // behavior from separate conv, bias, and relu (which by default is
-    // CUDNN_PROPAGATE_NAN).
-    //
-    // TODO(awpr): reevaluate this for newer cuDNN versions.
-    CudnnActivationDescriptor activation_desc(activation_mode,
-                                              CUDNN_NOT_PROPAGATE_NAN,
-                                              output_descriptor.value_max());
-
-    return {std::make_unique<CudnnLegacyFusedConvRunner>(
-        parent_, cudnn_.get(), algorithm_desc, element_type, conv_scale,
-        side_input_scale, std::move(conv_input_nd), std::move(output_nd),
-        std::move(filter), std::move(bias_nd), std::move(conv),
-        std::move(activation_desc))};
-  }
-
-  auto cudnn = cudnn_->GetHandle(parent_, nullptr);
-
-  SE_ASSIGN_OR_RETURN(
-      auto op_graph, GetCudnnFusedOperationGraph(
-                         kind, element_type, bias_type, output_type, conv_scale,
-                         side_input_scale, input_descriptor, filter_descriptor,
-                         bias_descriptor, output_descriptor,
-                         convolution_descriptor, activation_mode, cudnn));
-
-  SE_ASSIGN_OR_RETURN(auto execution_plan,
-                      RebuildExecutionPlan(cudnn, algorithm_desc, *op_graph));
-
-  return {std::make_unique<CudnnFusedConvRunner>(parent_, cudnn_.get(),
-                                                 std::move(execution_plan))};
-}
-
 port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
     dnn::ConvolutionKind kind, dnn::DataType input_type,
     dnn::DataType bias_type, dnn::DataType output_type, double conv_input_scale,
@@ -4929,8 +4637,9 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   auto op_graph_status = GetCudnnFusedOperationGraph(
       kind, input_type, bias_type, output_type, conv_input_scale,
-      side_input_scale, input_descriptor, filter_descriptor, bias_descriptor,
-      output_descriptor, convolution_descriptor, activation_mode, cudnn);
+      side_input_scale, stream, input_descriptor, filter_descriptor,
+      bias_descriptor, output_descriptor, convolution_descriptor,
+      activation_mode, cudnn);
   if (!op_graph_status.status().ok()) {
     return port::Status(port::error::INTERNAL,
                         absl::StrCat("Cudnn graph failed to build: ",
@@ -5584,7 +5293,7 @@ port::Status CudnnSupport::DoFusedConvolve(
   // CUDNN v6 only supports CUDNN_NOT_PROPAGATE_NAN as the reluNanOpt for
   // activation descriptor. Note that this will change the nan propagation
   // behavior from separate conv, bias, and relu (which by default is
-  // CUDNN_PROPAGATE_NAN).
+  // CUDNN_PROPAGATE_NAN.
   CudnnActivationDescriptor activation_desc(
       activation_mode, CUDNN_NOT_PROPAGATE_NAN, output_descriptor.value_max());
 
