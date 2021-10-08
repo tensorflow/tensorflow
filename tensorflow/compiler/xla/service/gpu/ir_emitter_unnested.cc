@@ -2727,11 +2727,6 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
           instr->SetAndSanitizeName(llvm_ir::SanitizeConstantName(
               module->name() + "_" + instr->name()));
         }
-        if (instr->shape().IsTuple() &&
-            computation == module->entry_computation() &&
-            instr != computation->root_instruction()) {
-          return InternalError("Non-root tuple types are not handled.");
-        }
       }
     }
   }

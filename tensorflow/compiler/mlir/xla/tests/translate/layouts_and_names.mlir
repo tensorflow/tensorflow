@@ -20,7 +20,7 @@ func @main(%arg0: tensor<128x224x224x4xf16>, %arg1: tensor<64x7x7x4xf16>) -> ten
     >,
     feature_group_count = 1 : i64,
     lhs_dilations = dense<1> : tensor<2xi64>,
-    minor_to_major = dense<[ 1, 3, 2, 0 ]> : tensor<4xindex>,
+    xla_shape = "f16[128,64,112,112]{1,3,2,0}",
     padding = dense<3> : tensor<2x2xi64>,
     precision_config = [ "DEFAULT", "DEFAULT" ],
     rhs_dilations = dense<1> : tensor<2xi64>,
@@ -28,7 +28,7 @@ func @main(%arg0: tensor<128x224x224x4xf16>, %arg1: tensor<64x7x7x4xf16>) -> ten
   } : (tensor<128x224x224x4xf16>, tensor<64x7x7x4xf16>)-> tensor<128x64x112x112xf16> loc("root.42")
 
   // CHECK: s32[1,1]{0,1} constant({ {42} })
-  %cst_1 = "std.constant"() {value = dense<[[42]]> : tensor<1x1xi32>, minor_to_major = dense<[0, 1]> : tensor<2xindex>} : () -> tensor<1x1xi32>
+  %cst_1 = "std.constant"() {value = dense<[[42]]> : tensor<1x1xi32>, xla_shape = "s32[1,1]{0,1}"} : () -> tensor<1x1xi32>
 
   return %0 : tensor<128x64x112x112xf16>
 }
