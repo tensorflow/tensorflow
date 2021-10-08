@@ -83,6 +83,11 @@ struct PoolParameters {
   TensorFormat data_format;
 };
 
+// Checks if the sizes of the paddings are less than the size of window.
+// This is required for MaxPool because it pads with -inf, so the pooling
+// window cannot fully cover the padded area.
+Status CheckPaddingSize(PoolParameters& params);
+
 // An implementation of MaxPooling (forward).
 // TODO (yongtang): Remove MaxPoolingOp and use MaxPoolingV2Op,
 //     QuantizedMaxPoolingOp depends on MaxPoolingOp so keep intact for now
