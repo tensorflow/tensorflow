@@ -429,6 +429,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/tpu:tpu_strategy_util",
         "//tensorflow/python/util:tf_export",
     ],
 )

@@ -43,6 +43,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -504,6 +505,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # some cases.
     local_devices, local_device_type = self._initialize_local_devices(
         cluster_resolver, self._worker_device)
+    if local_device_type == "TPU":
+      tpu_strategy_util.initialize_tpu_system()
 
     self._collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=1 + self._collective_key_base)
