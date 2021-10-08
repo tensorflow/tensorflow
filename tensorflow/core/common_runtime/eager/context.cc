@@ -76,6 +76,8 @@ auto* eager_context_created =
 
 }  // namespace
 
+const int64_t EagerContext::kGlobalRendezvousId = -1;
+
 // Find the rendezvous instance corresponding to the step id, or create a
 // new instance if not existing.
 Rendezvous* EagerContext::LocalRendezvousTable::FindOrCreate(
@@ -86,7 +88,7 @@ Rendezvous* EagerContext::LocalRendezvousTable::FindOrCreate(
     iter =
         table_.insert({step_id, new IntraProcessRendezvous(device_mgr)}).first;
     // Global rendezvous: ref-count should be 1 upon creation.
-    if (step_id == -1) {
+    if (step_id == EagerContext::kGlobalRendezvousId) {
       return iter->second;
     }
   }

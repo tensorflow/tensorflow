@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 #include "absl/types/span.h"
+#include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -373,6 +374,19 @@ TEST_F(EagerContextTest, ReuseGlobalRendezvous) {
   EXPECT_FALSE(context()->GetReuseRendezvousForFunctions());
 
   TestGlobalRendezvous(context(), true);
+}
+
+TEST_F(EagerContextTest, StepId) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+
+  EXPECT_EQ(context()->GetDistributedManager(), nullptr);
+  context()->SetDistributedManager(
+      std::make_unique<tensorflow::EagerContextDistributedManager>(context()));
+  auto* ctx_dist_mgr = context()->GetDistributedManager();
+
+  EXPECT_EQ(ctx_dist_mgr->step_id(), 0);
+  EXPECT_EQ(ctx_dist_mgr->GetNextStepId(), 1);
+  EXPECT_EQ(ctx_dist_mgr->step_id(), 1);
 }
 
 }  // namespace
