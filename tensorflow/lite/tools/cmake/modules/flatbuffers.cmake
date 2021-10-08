@@ -63,10 +63,9 @@ endif()
 # purposes the FLATC_INSTALL_PREFIX is already in cache and is just used in this module.
 # In case of standard flatbuffers build (as a dependency) the variable needs to be set. 
 if(NOT DEFINED FLATC_INSTALL_PREFIX)
-  set(FLATC_INSTALL_PREFIX <INSTALL_DIR>  CACHE PATH "Flatc installation directory")
+  set(FLATC_INSTALL_PREFIX <INSTALL_DIR> CACHE PATH "Flatc installation directory")
 endif()
 
-#message(STATUS $CACHE{FLATC_INSTALL_PREFIX})
 ExternalProject_Add(flatbuffers-flatc
   PREFIX ${CMAKE_BINARY_DIR}/flatbuffers-flatc
   SOURCE_DIR ${CMAKE_BINARY_DIR}/flatbuffers
