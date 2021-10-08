@@ -1242,6 +1242,63 @@ class NNAPIOpBuilder {
     return kTfLiteOk;
   }
 
+  // Lower UNPACK into RESHAPE + SPLIT when possible.
+  TfLiteStatus TransformUnpackIntoSupportedOps(int lite_node_index,
+                                               TfLiteNode* node,
+                                               TfLiteRegistration* reg) {
+    auto& input_tensor = context_->tensors[node->inputs->data[0]];
+
+    auto* builtin = reinterpret_cast<TfLiteUnpackParams*>(node->builtin_data);
+    int axis = builtin->axis < 0 ? builtin->axis + input_tensor.dims->size
+                                 : builtin->axis;
+    TF_LITE_ENSURE(context_, axis >= 0);
+    TF_LITE_ENSURE(context_, axis < (input_tensor.dims->size - 1));
+    int num_splits = builtin->num;
+    TF_LITE_ENSURE(context_, num_splits == input_tensor.dims->data[axis]);
+    TF_LITE_ENSURE(context_, num_splits == node->outputs->size);
+
+    // Step 1: RESHAPE
+    std::vector<int32_t> intermediate_shape(input_tensor.dims->size - 1);
+    std::copy(input_tensor.dims->data, input_tensor.dims->data + axis,
+              intermediate_shape.begin());
+    intermediate_shape[axis] =
+        input_tensor.dims->data[axis] * input_tensor.dims->data[axis + 1];
+    std::copy(input_tensor.dims->data + axis + 2,
+              input_tensor.dims->data + input_tensor.dims->size,
+              intermediate_shape.begin() + axis + 1);
+
+    TF_LITE_ENSURE_STATUS(AddTensorInput(node->inputs->data[0],
+                                         /*hybrid_op=*/false,
+                                         NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+    TF_LITE_ENSURE_STATUS(AddVectorInt32Operand(intermediate_shape.data(),
+                                                intermediate_shape.size()));
+    int reshape_output_ann_index = -1;
+    float scale = input_tensor.params.scale;
+    // Quantized tensor with zero scale is not valid in NNAPI.
+    if (IsQuantized(input_tensor.type) && scale == 0.0f) {
+      scale = 1.0f;
+    }
+    TF_LITE_ENSURE_STATUS(AddIntermediateOutputTensor(
+        input_tensor.type, intermediate_shape.size(),
+        reinterpret_cast<uint32_t*>(intermediate_shape.data()), scale,
+        input_tensor.params.zero_point, &reshape_output_ann_index));
+    TF_LITE_ENSURE_STATUS(
+        FinalizeAddOperation(ANEURALNETWORKS_RESHAPE, lite_node_index));
+
+    // Step 2: SPLIT
+    augmented_inputs_.push_back(reshape_output_ann_index);
+    TF_LITE_ENSURE_STATUS(AddScalarInt32Operand(axis));
+    TF_LITE_ENSURE_STATUS(AddScalarInt32Operand(num_splits));
+    for (int i = 0; i < num_splits; i++) {
+      int lite_output_index = node->outputs->data[i];
+      TF_LITE_ENSURE_STATUS(AddTensorOutput(
+          lite_output_index, NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED));
+    }
+    TF_LITE_ENSURE_STATUS(
+        FinalizeAddOperation(ANEURALNETWORKS_SPLIT, lite_node_index));
+    return kTfLiteOk;
+  }
+
   // Lower SPLIT_V into SLICEs.
   TfLiteStatus TransformSplitVIntoSupportedOps(int lite_node_index,
                                                TfLiteNode* node,
@@ -3222,6 +3279,28 @@ bool NNAPIDelegateKernel::Validate(
              NNAPIValidationFailureType::kUnsupportedOperandValue,
              "NNAPI does not support axis being the last dimension", &val_ctx);
     } break;
+    case kTfLiteBuiltinUnpack: {
+      ExpectOpVersion(version, 2, &val_ctx);
+      ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
+                                 &val_ctx);
+      const auto input_type = context->tensors[node->inputs->data[0]].type;
+      EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteUInt8,
+                           kTfLiteInt8);
+      Expect(context->tensors[node->inputs->data[0]].dims->size > 1,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "NNAPI does not support unpacking a rank-1 tensor", &val_ctx);
+      Expect(context->tensors[node->inputs->data[0]].dims->size <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "NNAPI does not support unpacking a tensor with rank > 4",
+             &val_ctx);
+      const auto* builtin =
+          reinterpret_cast<const TfLiteUnpackParams*>(node->builtin_data);
+      Expect(builtin->axis != -1 &&
+                 builtin->axis !=
+                     context->tensors[node->inputs->data[0]].dims->size - 1,
+             NNAPIValidationFailureType::kUnsupportedOperandValue,
+             "NNAPI does not support axis being the last dimension", &val_ctx);
+    } break;
     case kTfLiteBuiltinSquaredDifference: {
       ExpectOpVersion(version, 2, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
@@ -4946,6 +5025,12 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     if (reg->builtin_code == kTfLiteBuiltinPack) {
       TF_LITE_ENSURE_STATUS(
           builder.TransformPackIntoSupportedOps(node_index, node, reg));
+      continue;
+    }
+    // Delegate UNPACK by lowering it into RESHAPE + SPLIT.
+    if (reg->builtin_code == kTfLiteBuiltinUnpack) {
+      TF_LITE_ENSURE_STATUS(
+          builder.TransformUnpackIntoSupportedOps(node_index, node, reg));
       continue;
     }
     // Delegate SPLIT_V by lowering it into SLICEs.
