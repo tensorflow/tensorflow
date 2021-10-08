@@ -536,6 +536,9 @@ struct MklMatMulParams {
   memory::dims a_strides;
   memory::dims b_strides;
   memory::dims c_strides;
+#ifdef DNNL_AARCH64_USE_ACL
+  int aarch64_counter;
+#endif
 
   MklMatMulParams(memory::dims a_dims, memory::dims b_dims, memory::dims c_dims,
                   memory::dims a_strides, memory::dims b_strides,
@@ -697,7 +700,9 @@ class MklMatMulPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(params.b_strides);
     key_creator.AddAsKey(params.c_strides);
     key_creator.AddAsKey(typeid(T).name());
-
+#ifdef DNNL_AARCH64_USE_ACL
+    key_creator.AddAsKey(params.aarch64_counter);
+#endif
     return key_creator.GetKey();
   }
 
