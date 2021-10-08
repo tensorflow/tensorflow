@@ -104,7 +104,7 @@ class IrEmitterUnnested : public IrEmitter {
   //             has a value of 0..N-1 to identify the element being process.
   using EmitElementFunction = std::function<void(
       const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-      llvm::Value* x_loc, int64_t x_iter_num)>;
+      llvm::Value* x_loc, llvm::Value* x_iter_num)>;
 
   using ConstantGenerator = std::function<llvm::Value*(int64_t)>;
 
@@ -546,7 +546,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Generate a single element of the tile (update the accumulator state) for a
   // given reducer of index `i`.
   void GenerateElementForReducer(
-      int i, int partial_result_index, const HloComputation* reducer,
+      int i, llvm::Value* partial_result_index, const HloComputation* reducer,
       const ReductionCodegenState& codegen_state,
       const llvm_ir::IrArray::Index& index_without_linear,
       const llvm_ir::IrArray::Index& input_index, int num_partial_results,
