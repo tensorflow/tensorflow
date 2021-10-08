@@ -1020,7 +1020,7 @@ TEST_F(HloVerifierTest, AllReduceStartAndDone) {
   }
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
-    start = (f32[2,3], f32[2,3]) all-reduce-start(p0), to_apply=add
+    start = f32[2,3] all-reduce-start(p0), to_apply=add
     ROOT done = f32[2,3] all-reduce-done(start)
   }
   )";
@@ -1041,7 +1041,7 @@ TEST_F(HloVerifierTest, AllReduceStartAndDoneWrongType) {
   }
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
-    start = f32[2,3] all-reduce-start(p0), to_apply=add
+    start = (f32[2,3], f32[2,3]) all-reduce-start(p0), to_apply=add
     ROOT done = f32[2,3] all-reduce-done(start)
   }
   )";
@@ -1051,7 +1051,7 @@ TEST_F(HloVerifierTest, AllReduceStartAndDoneWrongType) {
   auto status = verifier().Run(module.get()).status();
   EXPECT_THAT(status.error_message(),
               HasSubstr("Expected instruction to have shape equal to "
-                        "(f32[2,3], f32[2,3])"));
+                        "f32[2,3]"));
 }
 
 TEST_F(HloVerifierTest, AllReduceStartAndMultipleDone) {

@@ -75,9 +75,8 @@ FailureOr<Value> CreateTfrtOps(
     cublasGemmAlgo_t algorithm, mlir::OpBuilder& builder) {
   auto loc = op.getLoc();
   if (auto bias = GetBias(adaptor)) {
-    auto copy_op = builder.create<tfrt::gpu::MemCopyOp>(loc, adaptor.output(),
-                                                        bias, stream, chain);
-    chain = copy_op.getResult();
+    chain = builder.create<tfrt::gpu::MemCopyOp>(loc, adaptor.output(), bias,
+                                                 stream, chain);
   }
 
   auto k_val = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
@@ -110,9 +109,7 @@ FailureOr<Value> CreateTfrtOps(
 
   auto algo = builder.create<tfrt::gpu::BlasGemmAlgoOp>(loc, algorithm);
 
-  auto blas_handle_type = builder.getType<tfrt::gpu::BlasHandleType>();
-  auto blas_handle =
-      builder.create<tfrt::gpu::BlasCreateOp>(loc, blas_handle_type, stream);
+  auto blas_handle = builder.create<tfrt::gpu::BlasCreateOp>(loc, stream);
 
   auto lhs_op = lhs_matrix.transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
   auto rhs_op = rhs_matrix.transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
@@ -257,11 +254,6 @@ struct GemmRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<GemmOpType> {
   FailureOr<Value> matchAndRewriteOp(
       GemmOpType op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    if (!llvm::all_of(adaptor.getOperands(), [](Value operand) {
-          return operand.getType().isa<tfrt::gpu::BufferType>();
-        }))
-      return rewriter.notifyMatchFailure(op, "expected buffer operands");
-
     auto result = GemmOpConversionRewrite(op, adaptor, chain, stream, rewriter);
     if (failed(result)) return failure();
 

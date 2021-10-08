@@ -197,7 +197,10 @@ py_strict_test(
 py_strict_test(
     name = "tf_compile_test",
     srcs = ["tf_compile_test.py"],
-    data = glob(["regression_tests/*"]),
+    data = glob(
+        ["regression_tests/*"],
+        exclude = ["regression_tests/*.disabled.mlir"],
+    ),
     python_version = "PY3",
     deps = [
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",

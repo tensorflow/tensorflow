@@ -37,11 +37,6 @@ struct CustomCallRewritePattern
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::CustomCallOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    if (!llvm::all_of(adaptor.getOperands(), [](Value operand) {
-          return operand.getType().isa<tfrt::gpu::BufferType>();
-        }))
-      return rewriter.notifyMatchFailure(op, "expected buffer operands");
-
     int64_t target_args_count, target_results_count;
     llvm::SmallVector<int64_t, 4> args_to_target_args,
         results_to_target_results;
@@ -67,17 +62,14 @@ struct CustomCallRewritePattern
     }
 
     mlir::Type chain_type = rewriter.getType<tfrt::compiler::ChainType>();
-    auto out_chain =
-        rewriter
-            .create<xla::gpu::CustomCallOp>(
-                op.getLoc(), chain_type, stream, chain, adaptor.getOperands(),
-                rewriter.getI64ArrayAttr(args_to_target_args),
-                op.backend_config().str(),
-                rewriter.getI64ArrayAttr(results_to_target_results),
-                target_args_count, target_results_count)
-            .getResult();
+    chain = rewriter.create<xla::gpu::CustomCallOp>(
+        op.getLoc(), chain_type, stream, chain, adaptor.getOperands(),
+        rewriter.getI64ArrayAttr(args_to_target_args),
+        op.backend_config().str(),
+        rewriter.getI64ArrayAttr(results_to_target_results), target_args_count,
+        target_results_count);
     rewriter.eraseOp(op);
-    return out_chain;
+    return chain;
   }
 };
 

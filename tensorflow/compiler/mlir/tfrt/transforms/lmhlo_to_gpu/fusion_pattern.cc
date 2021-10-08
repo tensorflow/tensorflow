@@ -256,7 +256,8 @@ static llvm::Expected<RewriteData> Match(mlir::lmhlo::FusionOp fusion_op) {
 
 // Replaces fusion_op with gpu.launch_func.
 static void Rewrite(mlir::lmhlo::FusionOp fusion_op,
-                    mlir::PatternRewriter& rewriter, ArrayRef<Value> captures,
+                    mlir::PatternRewriter& rewriter,
+                    mlir::SymbolTable& symbol_table, ArrayRef<Value> captures,
                     ThunkSequence* thunks, ArrayRef<ConstantInfo> constants,
                     mlir::StringRef gpu_module_data) {
   mlir::OpBuilder::InsertionGuard guard(rewriter);
@@ -264,6 +265,7 @@ static void Rewrite(mlir::lmhlo::FusionOp fusion_op,
 
   rewriter.setInsertionPoint(fusion_op->getParentOfType<mlir::FuncOp>());
   auto gpu_module = rewriter.create<mlir::gpu::GPUModuleOp>(loc, "gpu_module");
+  symbol_table.insert(gpu_module);
   gpu_module->setAttr("nvvm.cubin", rewriter.getStringAttr(gpu_module_data));
   SmallVector<mlir::NamedAttribute, 4> const_attrs;
   for (const auto& constant : constants) {
@@ -337,8 +339,9 @@ mlir::LogicalResult FusionRewritePattern::matchAndRewrite(
   });
 
   // Replace the lmhlo.fusion ops with gpu.launch_func.
+  mlir::SymbolTable symbol_table(module_op);
   for (const auto& data : rewrites) {
-    Rewrite(data.fusion_op, rewriter, data.captures.getArrayRef(),
+    Rewrite(data.fusion_op, rewriter, symbol_table, data.captures.getArrayRef(),
             data.thunks.get(), data.constants, data.gpu_module_data);
   }
 

@@ -95,6 +95,8 @@ SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 # are not detected by Global TAP.
 # TODO(jiaweix): remove this flag and related args (b/198782192)
 ENCODE_VARIABLES_BY_RESOURCE_ID = True
+# TODO(b/201533914): Remove this flag and related args
+USE_FULL_TRACE_TYPE = False
 
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
@@ -232,30 +234,19 @@ class _InterpolateFunctionError(object):
     if not exc or not isinstance(exc, errors.OpError):
       return False
     message = compat.as_text(exc.message)
-    _, tags = error_interpolation.parse_message(message)
+    _, func_tags, _ = error_interpolation.parse_message(message)
     g = None
-    func_stack = []
-    for t in tags:
-      if t.type == "function_node":
-        # TODO(mdan): Tests should cover this.
-        if t.name == compat.as_str(self._func.name):
-          g = self._func.graph
-        elif g:
-          next_func = g._get_function(t.name)  # pylint: disable=protected-access
-          if next_func is not None and isinstance(next_func,
-                                                  _EagerDefinedFunction):
-            g = next_func.graph
-        if g:
-          func_stack.append(g.name)
-        else:
-          func_stack.append("<unknown>")
+    for func_tag in func_tags:
+      # TODO(mdan): Tests should cover this.
+      if func_tag.name == compat.as_str(self._func.name):
+        g = self._func.graph
+      elif g:
+        next_func = g._get_function(func_tag.name)  # pylint: disable=protected-access
+        if next_func is not None and isinstance(next_func,
+                                                _EagerDefinedFunction):
+          g = next_func.graph
     if g:
-      message = error_interpolation.interpolate(message, g)
-      if len(func_stack) >= 2:
-        message += "\n\nFunction call stack:\n"
-        message += " -> ".join(func_stack)
-        message += "\n"
-      exc._message = message  # pylint: disable=protected-access
+      exc._message = error_interpolation.interpolate(message, g)  # pylint: disable=protected-access
     return False
 
 
@@ -3213,7 +3204,8 @@ class Function(object):
       # kwargs is empty.
       inputs = (args, kwargs)
       hashable_input_signature = function_trace_type.get_arg_spec(
-          inputs, include_tensor_ranks_only, ENCODE_VARIABLES_BY_RESOURCE_ID)
+          inputs, include_tensor_ranks_only, ENCODE_VARIABLES_BY_RESOURCE_ID,
+          USE_FULL_TRACE_TYPE)
     else:
       del args, kwargs
       assert not include_tensor_ranks_only

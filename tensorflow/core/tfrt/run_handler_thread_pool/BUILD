@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//third_party/eigen3",
         "@tf_runtime//:hostcontext",
     ],

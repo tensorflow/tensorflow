@@ -78,6 +78,18 @@ func @transpose(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
 
 // -----
 
+// CHECK-LABEL: Testing : select
+func @select(%arg0: tensor<i1>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>) -> tensor<2xindex> {
+  %0 = "mhlo.select"(%arg0, %arg1, %arg2)  : (tensor<i1>, tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
+// CHECK: %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>:
+// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0];
+// CHECK-NEXT: s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1];
+  return %1 : tensor<2xindex>
+}
+
+// -----
+
 // CHECK-LABEL: Testing : dim
 func @dim(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   %c0 = constant 0 : index

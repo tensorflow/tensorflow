@@ -161,7 +161,7 @@ LogicalResult MoveIntoAssumingOpMatchAndRewrite(Operation *op,
 
         // Yield the previous results and also the new ones.
         auto mapped_results = llvm::to_vector<8>(llvm::map_range(
-            yield_op.operands(),
+            yield_op.getOperands(),
             [&](Value v) { return mapping.lookupOrDefault(v); }));
         mapped_results.append(new_op->getResults().begin(),
                               new_op->getResults().end());
@@ -241,7 +241,8 @@ struct MoveOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
       return llvm::is_contained(new_op->getResults(), v);
     };
     auto yield_op = cast<shape::AssumingYieldOp>(body->getTerminator());
-    if (llvm::none_of(yield_op.operands(), is_new_op_result)) return success();
+    if (llvm::none_of(yield_op.getOperands(), is_new_op_result))
+      return success();
 
     // If the assuming region yields any of the new op's results, these values
     // can instead bypass the assuming region. There is no need to yield them
@@ -259,7 +260,7 @@ struct MoveOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
 
           // Collect new yield operands.
           SmallVector<Value, 2> new_yield_operands;
-          for (Value result : yield_op.operands()) {
+          for (Value result : yield_op.getOperands()) {
             if (is_new_op_result(result)) {
               replacement_values.push_back(result);
             } else {
@@ -316,8 +317,8 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
           // Map result values of preceding assuming op.
           auto yield_op_a =
               llvm::dyn_cast<shape::AssumingYieldOp>(body_a->getTerminator());
-          for (auto pair :
-               llvm::zip(preceding_op->getResults(), yield_op_a.operands())) {
+          for (auto pair : llvm::zip(preceding_op->getResults(),
+                                     yield_op_a.getOperands())) {
             mapping.map(std::get<0>(pair),
                         mapping.lookupOrDefault(std::get<1>(pair)));
           }
@@ -331,10 +332,10 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
           SmallVector<Value, 4> mapped_results;
           auto yield_op_b =
               llvm::dyn_cast<shape::AssumingYieldOp>(body_b->getTerminator());
-          for (Value v : yield_op_a.operands()) {
+          for (Value v : yield_op_a.getOperands()) {
             mapped_results.push_back(mapping.lookupOrDefault(v));
           }
-          for (Value v : yield_op_b.operands()) {
+          for (Value v : yield_op_b.getOperands()) {
             mapped_results.push_back(mapping.lookupOrDefault(v));
           }
           return mapped_results;

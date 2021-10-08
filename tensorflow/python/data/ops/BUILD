@@ -32,6 +32,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:smart_cond",
@@ -47,7 +48,7 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/data/util:traverse",
-        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//third_party/py/numpy",
     ],
 )

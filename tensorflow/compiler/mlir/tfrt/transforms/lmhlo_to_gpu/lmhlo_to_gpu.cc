@@ -44,6 +44,8 @@ void populateCclConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCholeskyConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCustomCallConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateGemmConversionPattern(RewritePatternSet&, TypeConverter&);
+void populateTriangularSolveConversionPattern(RewritePatternSet&,
+                                              TypeConverter&);
 
 namespace {
 
@@ -74,6 +76,7 @@ void ConvertLmhloToGpuPass::runOnFunction() {
   populateCholeskyConversionPattern(patterns, converter);
   populateCustomCallConversionPattern(patterns, converter);
   populateGemmConversionPattern(patterns, converter);
+  populateTriangularSolveConversionPattern(patterns, converter);
   populateFuncOpTypeConversionPattern(patterns, converter);
   populateReturnOpTypeConversionPattern(patterns, converter);
 
@@ -85,7 +88,8 @@ void ConvertLmhloToGpuPass::runOnFunction() {
   wrap_target.addLegalDialect<lmhlo_gpu::LmhloGpuDialect>();
   wrap_target.addLegalOp<lmhlo::AllGatherOp, lmhlo::AllReduceOp,
                          lmhlo::ReduceScatterOp, lmhlo::AllToAllOp,
-                         lmhlo::CollectivePermuteOp, lmhlo::CustomCallOp>();
+                         lmhlo::CollectivePermuteOp, lmhlo::CustomCallOp,
+                         lmhlo::TriangularSolveOp>();
   tfrt::gpu::populateGpuAsyncConversionPatterns(patterns, converter,
                                                 wrap_target);
 

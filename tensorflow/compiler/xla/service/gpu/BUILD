@@ -2528,6 +2528,7 @@ cc_library(
     ],
 )
 
+# TODO(b/187959015): Expand test patterns; see cl/377552996.
 test_suite(
     name = "bef_thunk_tests",
     tests = [
@@ -2535,9 +2536,22 @@ test_suite(
         # E.g., it takes ~1300s for 256x128 matrix.
         # "//tensorflow/compiler/xla/client/lib:svd_test_gpu",
         "//tensorflow/compiler/xla/service/gpu:custom_call_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:kernel_thunk_test",
         "//tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test",
+        # TODO(b/187959015): Enable when complex number types are supported.
+        #"//tensorflow/compiler/xla/tests:cholesky_test_gpu",
+        # TODO(b/187959015): Enable when complex number types are supported.
+        #"//tensorflow/compiler/xla/tests:dot_operation_test_gpu",
         "//tensorflow/compiler/xla/tests:multioutput_fusion_test_gpu",
-        "//tensorflow/compiler/xla/tests:triangular_solve_test_gpu",
+        # TODO(b/187959015): Enable when complex number types are supported.
+        # "//tensorflow/compiler/xla/tests:triangular_solve_test_gpu",
         "//tensorflow/compiler/xla/tests:while_test_gpu",
+    ],
+)
+
+test_suite(
+    name = "bef_executable_tests",
+    tests = [
+        "//tensorflow/compiler/xla/service/gpu/tests:bef_executable_test_gpu",
     ],
 )

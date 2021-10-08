@@ -16,6 +16,7 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -1104,15 +1105,39 @@ class ReciprocalNoNanTest(test_util.TensorFlowTestCase):
       self.assertEqual(y.dtype.base_dtype, x.dtype.base_dtype)
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class EqualityTest(test_util.TensorFlowTestCase):
+class EqualityTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
+  @test_util.run_all_in_graph_and_eager_modes
   def testEqualityNone(self):
     x = constant_op.constant([1.0, 2.0, 0.0, 4.0], dtype=dtypes.float32)
     self.assertNotEqual(x, None)
     self.assertNotEqual(None, x)
     self.assertFalse(math_ops.tensor_equals(x, None))
     self.assertTrue(math_ops.tensor_not_equals(x, None))
+
+  @parameterized.named_parameters(
+      (f"-is_equals={is_equals}-float_literal_type={type(float_literal)}"  # pylint: disable=g-complex-comprehension
+       f"-float_literal={float_literal}", is_equals, float_literal)
+      for float_literal in [4.6, np.float32(4.6), 4.4, np.float32(4.4)]
+      for is_equals in [True, False])
+  def testEqualityNoDowncast(self, is_equals, float_literal):
+    if (tf2.enabled() and isinstance(float_literal, np.float32) or
+        not tf2.enabled() and isinstance(float_literal, float)):
+      # TODO(b/199262800): Remove this skip
+      self.skipTest("There is a bug in type promotion.")
+    if is_equals:
+      op = math_ops.tensor_equals
+    else:
+      op = math_ops.tensor_not_equals
+    x = constant_op.constant(4)
+    try:
+      result = op(x, float_literal)
+      if isinstance(result, ops.Tensor):
+        result = self.evaluate(result)
+    except TypeError:
+      # Throwing a TypeError is OK
+      return
+    self.assertEqual(result, not is_equals)
 
 
 @test_util.run_all_in_graph_and_eager_modes

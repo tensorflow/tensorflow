@@ -49,6 +49,15 @@ void TfThreadPoolWorkQueue::AddTask(tfrt::TaskFunction work) {
   });
 }
 
+void TfThreadPoolWorkQueue::AddTask(const tfrt::ExecutionContext& exec_ctx,
+                                    tfrt::TaskFunction work) {
+  int64_t id = 0;
+  if (auto* request_context = exec_ctx.request_ctx()) {
+    id = request_context->id();
+  }
+  AddTask(tensorflow::tfrt_stub::WrapWork(id, "inter", std::move(work)));
+}
+
 llvm::Optional<tfrt::TaskFunction> TfThreadPoolWorkQueue::AddBlockingTask(
     tfrt::TaskFunction work, bool allow_queuing) {
   AddTask(std::move(work));
