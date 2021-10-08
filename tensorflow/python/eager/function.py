@@ -234,30 +234,19 @@ class _InterpolateFunctionError(object):
     if not exc or not isinstance(exc, errors.OpError):
       return False
     message = compat.as_text(exc.message)
-    _, tags = error_interpolation.parse_message(message)
+    _, func_tags, _ = error_interpolation.parse_message(message)
     g = None
-    func_stack = []
-    for t in tags:
-      if t.type == "function_node":
-        # TODO(mdan): Tests should cover this.
-        if t.name == compat.as_str(self._func.name):
-          g = self._func.graph
-        elif g:
-          next_func = g._get_function(t.name)  # pylint: disable=protected-access
-          if next_func is not None and isinstance(next_func,
-                                                  _EagerDefinedFunction):
-            g = next_func.graph
-        if g:
-          func_stack.append(g.name)
-        else:
-          func_stack.append("<unknown>")
+    for func_tag in func_tags:
+      # TODO(mdan): Tests should cover this.
+      if func_tag.name == compat.as_str(self._func.name):
+        g = self._func.graph
+      elif g:
+        next_func = g._get_function(func_tag.name)  # pylint: disable=protected-access
+        if next_func is not None and isinstance(next_func,
+                                                _EagerDefinedFunction):
+          g = next_func.graph
     if g:
-      message = error_interpolation.interpolate(message, g)
-      if len(func_stack) >= 2:
-        message += "\n\nFunction call stack:\n"
-        message += " -> ".join(func_stack)
-        message += "\n"
-      exc._message = message  # pylint: disable=protected-access
+      exc._message = error_interpolation.interpolate(message, g)  # pylint: disable=protected-access
     return False
 
 

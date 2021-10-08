@@ -671,10 +671,11 @@ class DepthwiseConv2DTest(test.TestCase):
           err = gradient_checker.compute_gradient_error(
               filter_tensor, filter_shape, depthwise_conv2d, output_shape)
       except errors.InvalidArgumentError as e:
+        # TODO(xjun): Tests depend on error messages could be brittle.
         # Grouped convolution kernel is only registered for cuDNN 7. Silently
         # return when we are running on an earlier version or without GPU.
-        if grouped_conv and e.message.startswith(
-            "No OpKernel was registered to support Op 'DepthwiseConv2dNative'"):
+        if grouped_conv and ("No OpKernel was registered to support Op "
+                             "'DepthwiseConv2dNative'") in e.message:
           tf_logging.warn("Skipping grouped convolution test")
           return
         raise e
