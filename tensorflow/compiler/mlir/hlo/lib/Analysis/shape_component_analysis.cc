@@ -83,6 +83,8 @@ struct ShapeVisitor {
         } else if (auto transpose =
                        instruction.getDefiningOp<mhlo::TransposeOp>()) {
           backwardTransposeShape(transpose);
+        } else if (auto select = instruction.getDefiningOp<mhlo::SelectOp>()) {
+          backwardSelectShape(select);
         } else if (auto arg = instruction.dyn_cast<BlockArgument>()) {
           backwardArgumentShape(arg);
         } else if (instruction.getDefiningOp() &&
@@ -153,6 +155,8 @@ struct ShapeVisitor {
         } else if (auto transpose =
                        instruction.getDefiningOp<mhlo::TransposeOp>()) {
           forwardTransposeShape(transpose);
+        } else if (auto select = instruction.getDefiningOp<mhlo::SelectOp>()) {
+          forwardSelectShape(select);
         } else if (instruction.getDefiningOp() &&
                    instruction.getDefiningOp()
                        ->hasTrait<OpTrait::SameOperandsAndResultShape>()) {
@@ -444,6 +448,16 @@ struct ShapeVisitor {
     auto in = lookup(ShapeOrValueOfTensor::getShapeOf(op.operand()));
     auto elem = op.permutation().cast<DenseIntElementsAttr>();
     for (const auto &val : elem) dims.push_back(in[val.getZExtValue()]);
+  }
+  void backwardSelectShape(mhlo::SelectOp op) {
+    forwards_worklist.push_back(ShapeOrValueOfTensor::getShapeOf(op));
+    backwards_worklist.push_back(
+        ShapeOrValueOfTensor::getShapeOf(op.on_true()));
+  }
+  void forwardSelectShape(mhlo::SelectOp op) {
+    auto &dims = insert(ShapeOrValueOfTensor::getShapeOf(op));
+    // Forward the `on_true` operand, it has the same shape as the output.
+    dims = lookup(ShapeOrValueOfTensor::getShapeOf(op.on_true()));
   }
   void backwardSameOperandsShape(Value op) {
     forwards_worklist.push_back(ShapeOrValueOfTensor::getShapeOf(op));
