@@ -26,6 +26,10 @@
 *<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *<NOTES SHOULD BE GROUPED PER AREA>
+* `tf.lite`:
+  * GPU
+    * Adds GPU Delegation support for serialization to Java API. This boosts
+      initialization time upto 90% when OpenCL is available.
 
 # Thanks to our Contributors
 
