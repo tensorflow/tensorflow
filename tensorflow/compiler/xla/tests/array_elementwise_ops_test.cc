@@ -2358,13 +2358,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2F32s) {
   auto inf = std::numeric_limits<float>::infinity();
   std::vector<float> ys;
   std::vector<float> xs;
-  const auto ys = {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f};
-  const auto xs = {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f};
-  const auto n = ys.size() * xs.size();
+  const auto _ys = {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f};
+  const auto _xs = {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f};
+  const auto n = _ys.size() * _xs.size();
   ys.reserve(n);
   xs.reserve(n);
-  for (auto y : ys) {
-    for (auto x : xs) {
+  for (auto y : _ys) {
+    for (auto x : _xs) {
       ys.push_back(y);
       xs.push_back(x);
     }
@@ -2381,8 +2381,12 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
   auto inf = std::numeric_limits<float>::infinity();
   std::vector<std::complex<float>> ys;
   std::vector<std::complex<float>> xs;
-  for (auto y : {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f}) {
-    for (auto x : {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f}) {
+  const auto _ys = {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f};
+  const auto _xs = {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f};
+  ys.reserve(_ys.size());
+  xs.reserve(_xs.size());
+  for (auto y : _ys) {
+    for (auto x : _xs) {
       ys.push_back(y);
       xs.push_back(x);
     }

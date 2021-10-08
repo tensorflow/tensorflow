@@ -97,6 +97,7 @@ StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
   TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &attr_lists));
 
   std::vector<NodeDef> out;
+  out.reserve(attr_lists.size());
   for (int i = 0; i < attr_lists.size(); i++) {
     out.emplace_back();
     NodeDef& inserted = out.back();

@@ -232,7 +232,7 @@ std::string ImportGraphDef(const std::string &proto,
     Set_TF_Status_from_Status(status, s);
     return "// error";
   }
-  for (unsigned i = 0, e = node_names.size(); i < e; i++) {
+  for (size_t i = 0, e = node_names.size(); i < e; i++) {
     const string &name = node_names[i];
     if (name.empty()) continue;
 
