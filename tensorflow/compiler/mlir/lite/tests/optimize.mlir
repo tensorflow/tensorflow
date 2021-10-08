@@ -1522,6 +1522,17 @@ func @ConvertIdentityScatterNd(%arg0: tensor<4x3xf32>) -> tensor<4x3xf32> {
 // CHECK-NEXT: return %[[ARG]] : tensor<4x3xf32>
 }
 
+func @DontConvertIdentityScatterNdWithLargerOutputDimSize(%arg0: tensor<1xf32>) -> tensor<2xf32> {
+  %cst = constant dense<[[0]]> : tensor<1x1xi32>
+  %shape = constant dense<[2]> : tensor<1xi32>
+  %0 = "tfl.scatter_nd"(%cst, %arg0, %shape) : (tensor<1x1xi32>, tensor<1xf32>, tensor<1xi32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+
+// CHECK-LABEL: DontConvertIdentityScatterNdWithLargerOutputDimSize
+// CHECK: %[[SCATTER_ND:.*]] = "tfl.scatter_nd"(%{{.*}}, %arg0, %{{.*}})
+// CHECK-NEXT: return %[[SCATTER_ND]] : tensor<2xf32>
+}
+
 func @ReshapeAddUnknownShape(%arg0: tensor<*xf32>) -> tensor<3x4xf32> {
   %cst = constant dense<[3, 4]> : tensor<2xi32>
   %cst_0 = constant dense<1.000000e+00> : tensor<3x4xf32>
