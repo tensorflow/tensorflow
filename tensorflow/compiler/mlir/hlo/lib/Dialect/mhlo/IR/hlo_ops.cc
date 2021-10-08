@@ -2017,6 +2017,114 @@ class DynamicReshapeOpSameShapeOpResult
     return failure();
   }
 };
+
+// Canonicalizes
+// %c4_i32 = constant 4 : i32
+// %shape = tensor.from_elements %0, %c4_i32 : tensor<2xi32>
+// %1 = "mhlo.dynamic_reshape"(%tensor, %shape)  -> tensor<?x?xf32>
+//
+// into:
+//
+// %c4_i32 = constant 4 : i32
+// %shape = tensor.from_elements %0, %c4_i32 : tensor<2xi32>
+// %t = "mhlo.dynamic_reshape"(%tensor, %shape)  -> tensor<?x4xf32>
+// %2 = tensor.cast(%t) tensor<?x4xf32> -> tensor<?x?xf32>
+struct DynamicReshapeOpPartialShapeInference
+    : public OpRewritePattern<DynamicReshapeOp> {
+  using OpRewritePattern<DynamicReshapeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DynamicReshapeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto loc = op.getLoc();
+    auto output_shape =
+        op.output_shape().getDefiningOp<tensor::FromElementsOp>();
+    if (!output_shape) {
+      return failure();
+    }
+    auto result_type = op.getResult().getType().cast<RankedTensorType>();
+    SmallVector<int64_t, 4> result_dims(result_type.getRank());
+    bool has_uninfered_static_dim = false;
+    for (auto element : llvm::enumerate(output_shape.elements())) {
+      int64_t new_value = -1;
+      if (result_type.isDynamicDim(element.index())) {
+        if (ConstantIntOp constant_op =
+                element.value().getDefiningOp<ConstantIntOp>()) {
+          new_value = constant_op.getValue();
+        } else if (ConstantIndexOp constant_op =
+                       element.value().getDefiningOp<ConstantIndexOp>()) {
+          new_value = constant_op.getValue();
+        }
+      }
+
+      if (new_value != -1) {
+        has_uninfered_static_dim = true;
+        result_dims[element.index()] = new_value;
+      } else {
+        result_dims[element.index()] = result_type.getDimSize(element.index());
+      }
+    }
+    if (!has_uninfered_static_dim) {
+      return failure();
+    }
+    auto new_type = result_type.clone(result_dims);
+    auto new_op = rewriter.create<DynamicReshapeOp>(
+        loc, new_type, op.operand(), output_shape);
+    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, op.getType(), new_op);
+    return success();
+  }
+};
+
+// Canonicalizes
+// %cst_shape = constant dense<[a, b, .. c]> : tensor<nxi32>
+// %0 = "mhlo.dynamic_reshape"(%tensor, %cst_shape)  -> tensor<?x?x?xf32>
+//
+// into:
+//
+// %cst_shape = constant dense<[a, b, .. c]> : tensor<nxi32>
+// %t = "mhlo.dynamic_reshape"(%tensor, %cst_shape)  -> tensor<axbxcxf32>
+// %1 = tensor.cast(%t) tensor<axbxcxf32> -> tensor<?x?x?xf32>
+//
+// The mhlo.dynamic_reshape will be further canonicalized into mhlo.reshape
+// by DynamicReshapeOpNotActuallyDynamic
+class DynamicReshapeOpShapeInference
+    : public OpRewritePattern<DynamicReshapeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DynamicReshapeOp op,
+                                PatternRewriter& rewriter) const override {
+    Operation* shape_def_op = op.output_shape().getDefiningOp();
+    if (!shape_def_op) return failure();
+    DenseIntElementsAttr cst_attr;
+    if (auto cst_shape = dyn_cast<mlir::ConstantOp>(shape_def_op)) {
+      cst_attr = cst_shape.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
+    } else if (auto mhlo_cst_shape = dyn_cast<ConstOp>(shape_def_op)) {
+      cst_attr =
+          mhlo_cst_shape.value().dyn_cast_or_null<DenseIntElementsAttr>();
+    }
+    if (!cst_attr) return failure();
+    auto elem_ty = cst_attr.getType().cast<ShapedType>().getElementType();
+    SmallVector<int64_t, 4> dims;
+    if (elem_ty.isInteger(64) || elem_ty.isIndex()) {
+      std::copy(cst_attr.getValues<int64_t>().begin(),
+                cst_attr.getValues<int64_t>().end(), std::back_inserter(dims));
+    } else if (elem_ty.isInteger(32)) {
+      std::copy(cst_attr.getValues<int32_t>().begin(),
+                cst_attr.getValues<int32_t>().end(), std::back_inserter(dims));
+    } else {
+      return failure();
+    }
+    auto result_ty = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!result_ty) return failure();
+    RankedTensorType new_ty =
+        RankedTensorType::get(dims, result_ty.getElementType());
+    if (new_ty == result_ty) return failure();
+    auto new_reshape = rewriter.create<DynamicReshapeOp>(
+        op.getLoc(), new_ty, op.operand(), op.output_shape());
+    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, op.getType(), new_reshape);
+    return success();
+  }
+};
 }  // namespace
 
 void DynamicReshapeOp::getCanonicalizationPatterns(
@@ -2024,7 +2132,9 @@ void DynamicReshapeOp::getCanonicalizationPatterns(
   // clang-format off
   results.insert<
       DynamicReshapeOpNotActuallyDynamic,
+      DynamicReshapeOpPartialShapeInference,
       DynamicReshapeOpSameShapeOpResult,
+      DynamicReshapeOpShapeInference,
       RemoveRedundantDynamicBroadcast,
       RemoveRedundantDynamicReshape,
       RemoveRedundantRank1DynamicReshape,

@@ -691,6 +691,26 @@ func @dynamic_reshape_of_dynamic_reshape(%arg0: tensor<?xf16>, %shape: tensor<?x
   return %4 : tensor<?xf16>
 }
 
+// CHECK-LABEL: @dynamic_reshape_shape_inference
+func @dynamic_reshape_shape_inference(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+  %cst = constant dense<[2, 3, 4]> : tensor<3xindex>
+  // CHECK: mhlo.reshape
+  // CHECK-SAME: -> tensor<2x3x4xf32>
+  %0 = "mhlo.dynamic_reshape"(%arg0, %cst) : (tensor<?x?x?xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// CHECK-LABEL: @dynamic_reshape_partial_shape_inference
+func @dynamic_reshape_partial_shape_inference(%arg0: tensor<?x?x?xf32>, %arg1: index) -> tensor<?x?x?xf32> {
+  %c3 = constant 3 : index
+  %c4 = constant 4 : index
+  %shape = tensor.from_elements %arg1, %c3, %c4 : tensor<3xindex>
+  // CHECK: mhlo.dynamic_reshape
+  // CHECK-SAME: -> tensor<?x3x4xf32>
+  %0 = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?x?x?xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
 // CHECK-LABEL: do_not_dce_while_with_outfeed
 func @do_not_dce_while_with_outfeed(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: mhlo.while
