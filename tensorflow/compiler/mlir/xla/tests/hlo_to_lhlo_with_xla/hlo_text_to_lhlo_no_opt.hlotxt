@@ -284,12 +284,11 @@ add {
 }
 
 // CHECK-LABEL: func @test_async_all_reduce
-// CHECK-SAME: [[INPUT_BYTES:%.*]]: memref<32xi8> {lmhlo.params = 0
-// CHECK-SAME: [[OUTPUT_BYTES:%.*]]: memref<32xi8>
+// CHECK-SAME: [[BUFFER:%.*]]: memref<32xi8>
 %test_async_all_reduce {
   param0 = f32[8] parameter(0)
-  // CHECK:  [[INPUT:%.*]] = memref.view [[INPUT_BYTES]]{{.*}} : memref<32xi8> to memref<8xf32>
-  // CHECK:  [[OUTPUT:%.*]] = memref.view [[OUTPUT_BYTES]]{{.*}} : memref<32xi8> to memref<8xf32>
+  // CHECK:  [[INPUT:%.*]] = memref.view [[BUFFER]]{{.*}} : memref<32xi8> to memref<8xf32>
+  // CHECK:  [[OUTPUT:%.*]] = memref.view [[BUFFER]]{{.*}} : memref<32xi8> to memref<8xf32>
   // CHECK:  [[TOKEN:%.*]] = "lmhlo_gpu.all_reduce_start"([[INPUT]], [[OUTPUT]])
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
@@ -297,9 +296,8 @@ add {
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
-  // CHECK:  [[INPUT_1:%.*]] = memref.view [[INPUT_BYTES]]{{.*}} : memref<32xi8> to memref<8xf32>
-  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[INPUT_1]], [[OUTPUT]])
-  start = (f32[8], f32[8]) all-reduce-start(param0),
+  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[OUTPUT]])
+  start = f32[8] all-reduce-start(param0),
       channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
   ROOT done = f32[8] all-reduce-done(start)
 }
@@ -316,17 +314,15 @@ add {
 }
 
 // CHECK-LABEL: func @test_async_all_reduce_two_operands
-// CHECK-SAME: [[INPUT0_BYTES:%.*]]: memref<32xi8> {lmhlo.params = 0
-// CHECK-SAME: [[INPUT1_BYTES:%.*]]: memref<36xi8> {lmhlo.params = 1
-// CHECK-SAME: [[OUTPUT1_BYTES:%.*]]: memref<36xi8>
-// CHECK-SAME: [[OUTPUT0_BYTES:%.*]]: memref<32xi8>
+// CHECK-SAME: [[BUFFER0:%.*]]: memref<32xi8>
+// CHECK-SAME: [[BUFFER1:%.*]]: memref<36xi8>
 %test_async_all_reduce_two_operands {
   param0 = f32[8] parameter(0)
   param1 = f32[9] parameter(1)
-  // CHECK:  [[INPUT0:%.*]] = memref.view [[INPUT0_BYTES]]{{.*}} : memref<32xi8> to memref<8xf32>
-  // CHECK:  [[INPUT1:%.*]] = memref.view [[INPUT1_BYTES]]{{.*}} : memref<36xi8> to memref<9xf32>
-  // CHECK:  [[OUTPUT0:%.*]] = memref.view [[OUTPUT0_BYTES]]{{.*}} : memref<32xi8> to memref<8xf32>
-  // CHECK:  [[OUTPUT1:%.*]] = memref.view [[OUTPUT1_BYTES]]{{.*}} : memref<36xi8> to memref<9xf32>
+  // CHECK:  [[INPUT0:%.*]] = memref.view [[BUFFER0]]{{.*}} : memref<32xi8> to memref<8xf32>
+  // CHECK:  [[INPUT1:%.*]] = memref.view [[BUFFER1]]{{.*}} : memref<36xi8> to memref<9xf32>
+  // CHECK:  [[OUTPUT0:%.*]] = memref.view [[BUFFER0]]{{.*}} : memref<32xi8> to memref<8xf32>
+  // CHECK:  [[OUTPUT1:%.*]] = memref.view [[BUFFER1]]{{.*}} : memref<36xi8> to memref<9xf32>
   // CHECK:  [[TOKEN:%.*]] = "lmhlo_gpu.all_reduce_start"([[INPUT0]], [[INPUT1]], [[OUTPUT0]], [[OUTPUT1]])
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
@@ -334,10 +330,8 @@ add {
   // CHECK:  }) {
   // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
   // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
-  // CHECK:  [[INPUT0_1:%.*]] = memref.view [[INPUT0_BYTES]]{{.*}} : memref<32xi8> to memref<8xf32>
-  // CHECK:  [[INPUT1_1:%.*]] = memref.view [[INPUT1_BYTES]]{{.*}} : memref<36xi8> to memref<9xf32>
-  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[INPUT0_1]], [[INPUT1_1]], [[OUTPUT0]], [[OUTPUT1]])
-  start = ((f32[8], f32[9]), (f32[8], f32[9])) all-reduce-start(param0, param1),
+  // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]], [[OUTPUT0]], [[OUTPUT1]])
+  start = (f32[8], f32[9]) all-reduce-start(param0, param1),
       channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
   ROOT done = (f32[8], f32[9]) all-reduce-done(start)
 }

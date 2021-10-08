@@ -1902,7 +1902,7 @@ TEST_F(ShapeInferenceTest, BinOpBroadcastBadDimension) {
       ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, tensor, vec8, {});
   ASSERT_FALSE(inferred_status_error1.ok());
   ASSERT_THAT(inferred_status_error1.status().error_message(),
-              HasSubstr("Automatic"));
+              HasSubstr("Shapes must be equal rank"));
 
   // broadcast_dimension out of bounds for tensor's rank
   auto inferred_status_error2 =

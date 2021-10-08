@@ -279,7 +279,7 @@ TEST_F(HloControlFlowFlatteningTest, AllReduceStartAndDone) {
 
   ENTRY CRS {
     input = f32[8]{0} parameter(0)
-    crs = (f32[8]{0}, f32[8]{0}) all-reduce-start(input), replica_groups={}, to_apply=add
+    crs = f32[8]{0} all-reduce-start(input), replica_groups={}, to_apply=add
     ROOT done = f32[8]{0} all-reduce-done(crs)
   }
   )";
@@ -495,6 +495,102 @@ TEST_F(HloControlFlowFlatteningTest, AllGatherStartAndDone) {
   LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::CustomCall(op::Parameter(0))));
+}
+
+TEST_F(HloControlFlowFlatteningTest, MatchLtUseInferedLoopCount) {
+  absl::string_view hlo_string = R"(
+  HloModule While
+  While.body {
+    loop_var.1 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    multiply = s32[3]{0} multiply(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple = (s32[], s32[3]{0}) tuple(add, multiply)
+  }
+  While.condition {
+    loop_var.2 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[] constant(100)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  ENTRY While {
+    constant.3 = s32[] constant(42)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[], s32[3]{0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=While.condition, body=While.body
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  EXPECT_EQ(GetLoopBound(*module->entry_computation()->root_instruction(), 123),
+            100);
+}
+
+TEST_F(HloControlFlowFlatteningTest, MatchGtUseInferedLoopCount) {
+  absl::string_view hlo_string = R"(
+  HloModule While
+  While.body {
+    loop_var.1 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    multiply = s32[3]{0} multiply(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple = (s32[], s32[3]{0}) tuple(add, multiply)
+  }
+  While.condition {
+    loop_var.2 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[] constant(50)
+    ROOT greater-than = pred[] compare(constant.2, get-tuple-element.3), direction=GT
+  }
+  ENTRY While {
+    constant.3 = s32[] constant(42)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[], s32[3]{0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=While.condition, body=While.body
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  EXPECT_EQ(GetLoopBound(*module->entry_computation()->root_instruction(), 123),
+            50);
+}
+
+TEST_F(HloControlFlowFlatteningTest, NotMatchEqUseDefaultLoopCount) {
+  absl::string_view hlo_string = R"(
+  HloModule While
+  While.body {
+    loop_var.1 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    multiply = s32[3]{0} multiply(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple = (s32[], s32[3]{0}) tuple(add, multiply)
+  }
+  While.condition {
+    loop_var.2 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[] constant(100)
+    ROOT equal = pred[] compare(get-tuple-element.3, constant.2), direction=EQ
+  }
+  ENTRY While {
+    constant.3 = s32[] constant(42)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[], s32[3]{0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=While.condition, body=While.body
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  EXPECT_EQ(GetLoopBound(*module->entry_computation()->root_instruction(), 123),
+            123);
 }
 
 }  // namespace

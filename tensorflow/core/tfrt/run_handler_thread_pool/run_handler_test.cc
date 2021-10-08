@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/synchronization/barrier.h"
+#include "absl/synchronization/notification.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -114,6 +115,23 @@ TEST(RunHandlerUtilTest, PrioritySchedulingTest) {
   EXPECT_EQ(sorted_active_list[1], 4);
   EXPECT_EQ(sorted_active_list[2], 3);
   EXPECT_EQ(sorted_active_list[3], 1);
+}
+
+TEST(RunHandlerUtilTest, IntraOpThreadPool) {
+  int num_threads = 2;
+  RunHandlerPool::Options pool_options;
+  pool_options.num_intra_op_threads = num_threads;
+  pool_options.num_inter_op_threads = num_threads;
+  pool_options.num_threads_in_sub_thread_pool = {2};
+  std::unique_ptr<RunHandlerPool> pool(new RunHandlerPool(pool_options));
+
+  RunHandlerOptions options = RunHandlerOptions();
+  auto handler = pool->Get(/*step_id=*/1, /*timeout_in_ms=*/0, options);
+  auto* intra_pool = handler->AsIntraThreadPoolInterface();
+
+  absl::Notification notification;
+  intra_pool->Schedule([&notification]() { notification.Notify(); });
+  notification.WaitForNotification();
 }
 
 class RunHandlerThreadPoolTest

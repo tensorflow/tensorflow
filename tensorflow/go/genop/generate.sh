@@ -65,12 +65,11 @@ fi
 # Ensure that protoc-gen-go is available in $PATH
 # Since ${PROTOC} will require it.
 export PATH=$PATH:${GOPATH}/bin
-mkdir -p ../vendor
 for FILE in ${TF_DIR}/tensorflow/core/framework/*.proto \
     ${TF_DIR}/tensorflow/core/protobuf/*.proto \
     ${TF_DIR}/tensorflow/stream_executor/*.proto; do
   ${PROTOC} \
     -I ${TF_DIR} \
-    --go_out=../vendor \
+    --go_out=${GOPATH}/src \
     $FILE
 done

@@ -19,6 +19,7 @@ import os
 
 from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -174,7 +175,7 @@ def _set_save_dataset_attributes(dataset, shard_func, path):
   else:
     use_shard_func = True
 
-  wrapped_func = dataset_ops.StructuredFunctionWrapper(
+  wrapped_func = structured_function.StructuredFunctionWrapper(
       shard_func,
       "save()",
       input_structure=dataset.element_spec,
@@ -219,7 +220,7 @@ class _LoadDataset(dataset_ops.DatasetSource):
     else:
       self._element_spec = element_spec
     self._compression = compression
-    self._reader_func = dataset_ops.StructuredFunctionWrapper(
+    self._reader_func = structured_function.StructuredFunctionWrapper(
         reader_func,
         "load()",
         # Dataset of datasets of input elements

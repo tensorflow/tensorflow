@@ -29,9 +29,22 @@ def BufferReuse : FunctionPass<"buffer-reuse"> {
   let constructor = "createBufferReusePass()";
 }
 
+def ReshapeSimplifier : FunctionPass<"reshape-simplifier"> {
+  let summary = "";
+  let description = [{
+    This pass tries to simplify dynamic reshapes.
+  }];
+  let constructor = "createReshapeSimplifierPass()";
+}
+
 def TestUserange : FunctionPass<"test-print-userange"> {
   let summary = "Test pass for checking userange intervals.";
   let constructor = "createTestUserangePass()";
+}
+
+def TestShapeComponentAnalysis : FunctionPass<"test-print-shape-components"> {
+  let summary = "Test pass for analyzing shape components.";
+  let constructor = "createTestShapeComponentAnalysisPass()";
 }
 
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

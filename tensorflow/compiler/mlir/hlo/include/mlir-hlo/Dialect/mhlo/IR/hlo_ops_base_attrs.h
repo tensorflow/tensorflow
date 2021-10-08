@@ -18,8 +18,22 @@ limitations under the License.
 #define MHLO_IR_HLO_OPS_BASE_ATTRS_H_
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/Operation.h"
 
 #define GET_ATTRDEF_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc"
+
+namespace mlir {
+namespace mhlo {
+// Custom printer and parser for struct attributes.
+void printConvolutionDimensions(AsmPrinter &p, ConvDimensionNumbersAttr dnums);
+void printConvolutionDimensions(AsmPrinter &p, Operation *,
+                                ConvDimensionNumbersAttr dnums);
+ParseResult parseConvolutionDimensions(AsmParser &parser,
+                                       ConvDimensionNumbersAttr &dnums);
+
+}  // namespace mhlo
+}  // namespace mlir
 
 #endif  // MHLO_IR_HLO_OPS_BASE_ATTRS_H_

@@ -16,6 +16,7 @@
 
 add_mlir_library(MLIRBufferTransforms
   buffer_reuse.cc
+  reshape_simplifier.cc
 
   DEPENDS
   LMHLOTransformsPassIncGen

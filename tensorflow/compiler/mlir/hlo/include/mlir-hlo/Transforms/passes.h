@@ -29,8 +29,14 @@ class FunctionPass;
 /// Creates a pass that reuses buffers which are already allocated.
 std::unique_ptr<FunctionPass> createBufferReusePass();
 
+/// Creates a pass that tries to simplify dynamic reshapes.
+std::unique_ptr<FunctionPass> createReshapeSimplifierPass();
+
 /// Creates a pass that tests the useranges of the UserangeAnalysis.
 std::unique_ptr<FunctionPass> createTestUserangePass();
+
+/// Creates a pass that prints the analysis results of ShapeComponentsAnalysis.
+std::unique_ptr<FunctionPass> createTestShapeComponentAnalysisPass();
 
 }  // namespace mlir
 

@@ -54835,6 +54835,7 @@ op {
     has_minimum: true
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "TPUExecuteAndUpdateVariables"
@@ -54871,6 +54872,7 @@ op {
     has_minimum: true
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "TPUOrdinalSelector"

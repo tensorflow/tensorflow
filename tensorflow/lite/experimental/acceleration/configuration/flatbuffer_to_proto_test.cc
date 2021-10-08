@@ -214,6 +214,24 @@ TEST_F(ConversionTest, NNAPIExecutionPriority) {
       proto::NNAPIExecutionPriority::NNAPI_PRIORITY_UNDEFINED);
 }
 
+TEST_F(ConversionTest, NNAPISupportLibraryHandle) {
+  settings_.tflite_settings.reset(new TFLiteSettingsT());
+  settings_.tflite_settings->nnapi_settings.reset(new NNAPISettingsT());
+  NNAPISettingsT* input_settings =
+      settings_.tflite_settings->nnapi_settings.get();
+
+  proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
+  proto::NNAPISettings output_settings =
+      compute.tflite_settings().nnapi_settings();
+  EXPECT_EQ(output_settings.support_library_handle(), 0);
+
+  input_settings->support_library_handle = std::numeric_limits<int64_t>::max();
+  compute = ConvertFromFlatbuffer(settings_);
+  output_settings = compute.tflite_settings().nnapi_settings();
+  EXPECT_EQ(output_settings.support_library_handle(),
+            std::numeric_limits<int64_t>::max());
+}
+
 TEST_F(ConversionTest, GPUSettings) {
   settings_.tflite_settings.reset(new TFLiteSettingsT());
   settings_.tflite_settings->gpu_settings.reset(new GPUSettingsT());

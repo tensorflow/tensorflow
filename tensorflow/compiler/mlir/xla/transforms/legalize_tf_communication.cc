@@ -334,7 +334,7 @@ Value CreateSinkToken(OpBuilder& builder, Location loc, ArrayRef<Value> tokens,
 }
 
 // Replaces `tf._XlaHostComputeMlir` with individual `mhlo.send` and `mhlo.recv`
-// ops per operand and result. Unique Channel Id's are assigned per transfer.
+// ops per operand and result. Unique Channel IDs are assigned per transfer.
 // Sink tokens are created across all `mhlo.send` ops first and then by
 // all `mhlo.recv` ops.
 Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
@@ -874,7 +874,7 @@ void LegalizeTFCommunication::runOnOperation() {
   if (failed(GetFunctionsToRewrite(module, funcs_to_rewrite)))
     return signalPassFailure();
 
-  // Module level counter to make sure Channel Id's are unique.
+  // Module level counter to make sure Channel IDs are unique.
   int64_t channel_id = 1;
   OpBuilder builder(&getContext());
   for (const auto& func_and_name : funcs_to_rewrite) {

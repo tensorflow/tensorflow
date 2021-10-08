@@ -223,7 +223,8 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 void ModelDatasetOp::MakeDatasetFromOptions(OpKernelContext* ctx,
                                             DatasetBase* input,
                                             model::AutotuneAlgorithm algorithm,
-                                            bool cpu_budget, bool ram_budget,
+                                            int64_t cpu_budget,
+                                            int64_t ram_budget,
                                             DatasetBase** output) {
   *output = new ModelDatasetOp::Dataset(
       DatasetContext(DatasetContext::Params(

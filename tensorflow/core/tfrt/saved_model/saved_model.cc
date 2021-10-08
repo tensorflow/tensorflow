@@ -434,20 +434,6 @@ StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
   return result;
 }
 
-StatusOr<RCReference<tfrt::BEFFile>> OpenBefFile(
-    const SavedModel::Options& options, const tfrt::BefBuffer& bef) {
-  DCHECK(options.runtime);
-  auto* core_runtime = options.runtime->core_runtime();
-  DCHECK(core_runtime);
-  auto* host_context = core_runtime->GetHostContext();
-  DCHECK(host_context);
-  auto bef_file =
-      BEFFile::Open(bef, host_context->GetKernelRegistry(),
-                    host_context->diag_handler(), host_context->allocator());
-  TF_RET_CHECK(bef_file) << "failed to open BEF";
-  return bef_file;
-}
-
 tensorflow::Status InitSavedModel(
     const InitializersAndSignatures& initializers_and_signatures,
     tfrt::BEFFile* bef_file, const SavedModel::Options& options,
@@ -613,7 +599,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
     // Step 3: Initialize runtime states using special BEF functions.
     auto init_start_time = absl::Now();
-    TF_ASSIGN_OR_RETURN(auto bef_file, OpenBefFile(options, bef));
+    TF_ASSIGN_OR_RETURN(auto bef_file,
+                        CreateBefFileFromBefBuffer(*options.runtime, bef));
 
     auto tpu_model_resource = std::make_unique<tpu::TpuModelResource>();
     auto resource_context =
@@ -1120,8 +1107,9 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
       options_.compile_options, module.get(), &loading_result->bef));
 
   // Step 3: Initialize runtime states using special BEF functions.
-  TF_ASSIGN_OR_RETURN(loading_result->bef_file,
-                      OpenBefFile(options_, loading_result->bef));
+  TF_ASSIGN_OR_RETURN(
+      loading_result->bef_file,
+      CreateBefFileFromBefBuffer(*options_.runtime, loading_result->bef));
   TF_RETURN_IF_ERROR(RunInitializers(
       /*initializers_and_signatures=*/{}, options_.model_metadata,
       loading_result->bef_file.get(), *options_.runtime,

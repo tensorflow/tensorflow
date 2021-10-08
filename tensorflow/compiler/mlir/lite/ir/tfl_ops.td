@@ -2953,7 +2953,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
     NoSideEffect,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    TFL_OperandHasRankRange<0, 1, 4>,
+    TFL_OperandHasRankAtLeast<0, 1>,
     SameOperandsAndResultShape,
     FixedOutputRangeInterface,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
@@ -4421,7 +4421,7 @@ the output tensor can vary depending on how many true values there are in
   }];
 
   let arguments = (ins
-    TFL_BoolTensor:$input
+    TFL_TensorOf<[I1, F32, TFL_Int32Or64, I8, UI8, UI32]>:$condition
   );
 
   let results = (outs

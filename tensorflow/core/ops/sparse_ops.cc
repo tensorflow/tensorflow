@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -159,6 +160,8 @@ REGISTER_OP("DeserializeSparse")
     .Attr("Tserialized: {string, variant} = DT_STRING")
     .SetShapeFn([](InferenceContext* c) {
       // serialized sparse is [?, ..., ?, 3] vector.
+      ShapeHandle unused_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &unused_shape));
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), -1), 3, &unused));
       c->set_output(0, c->Matrix(InferenceContext::kUnknownDim,

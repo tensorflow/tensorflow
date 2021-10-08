@@ -94,16 +94,11 @@ struct OptimizationProfileConfig {
         profile->setShapeValues(name, nvinfer1::OptProfileSelector::kMAX,
                                 max[idx].d, max[idx].nbDims);
       }
-      if (input->isExecutionTensor()) {
-        VLOG(2) << "Setting input dimensions for " << name << ", "
-                << ::tensorflow::tensorrt::DebugString(opt[i]);
-        profile->setDimensions(name, nvinfer1::OptProfileSelector::kMIN,
-                               min[i]);
-        profile->setDimensions(name, nvinfer1::OptProfileSelector::kOPT,
-                               opt[i]);
-        profile->setDimensions(name, nvinfer1::OptProfileSelector::kMAX,
-                               max[i]);
-      }
+      VLOG(2) << "Setting input dimensions for " << name << ", "
+              << ::tensorflow::tensorrt::DebugString(opt[i]);
+      profile->setDimensions(name, nvinfer1::OptProfileSelector::kMIN, min[i]);
+      profile->setDimensions(name, nvinfer1::OptProfileSelector::kOPT, opt[i]);
+      profile->setDimensions(name, nvinfer1::OptProfileSelector::kMAX, max[i]);
     }
     return Status::OK();
   }

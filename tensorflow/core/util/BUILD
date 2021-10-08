@@ -15,6 +15,11 @@ load(
     "tf_cuda_library",
     "tf_cuda_only_cc_test",
     "tf_kernel_library",
+    "tf_mkl_kernel_library",
+)
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "mkl_deps",
 )
 
 # buildifier: disable=same-origin-load
@@ -390,6 +395,20 @@ cc_library(
     visibility = [
         "//tensorflow:internal",
     ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_util",
+    srcs = ["mkl_util.cc"],
+    hdrs = ["mkl_util.h"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/kernels:ops_util",
+    ] + mkl_deps(),
 )
 
 cc_library(

@@ -37,7 +37,7 @@ namespace {
 
 void GetModelDatasetParams(const Options& options,
                            model::AutotuneAlgorithm* algorithm,
-                           bool* cpu_budget, bool* ram_budget) {
+                           int64_t* cpu_budget, int64_t* ram_budget) {
   *algorithm = model::AutotuneAlgorithm::HILL_CLIMB;
   *cpu_budget = options.autotune_options().cpu_budget();
   *ram_budget = options.autotune_options().ram_budget();
@@ -64,8 +64,8 @@ void MakeDatasetHelper(OpKernelContext* ctx, bool has_captured_ref,
   }
   if (ShouldUseAutotuning(options)) {
     model::AutotuneAlgorithm algorithm;
-    bool cpu_budget;
-    bool ram_budget;
+    int64_t cpu_budget;
+    int64_t ram_budget;
     GetModelDatasetParams(options, &algorithm, &cpu_budget, &ram_budget);
     ModelDatasetOp::MakeDatasetFromOptions(ctx, input, algorithm, cpu_budget,
                                            ram_budget, output);

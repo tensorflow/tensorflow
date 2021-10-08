@@ -1391,6 +1391,16 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
                       GetAllocationSlice(cholesky_op.scratch()));
   TF_ASSIGN_OR_RETURN(auto info_buffer, GetAllocationSlice(cholesky_op.info()));
 
+  if (IsBefThunkEnabled()) {
+    std::vector<BufferAllocation::Slice> buffers = {
+        operand_buffer, a_buffer, workspace_buffer, info_buffer};
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Thunk> thunk,
+        CreateBefThunk(GetThunkInfo(op), op, std::move(buffers)));
+    AddThunkToThunkSequence(std::move(thunk));
+    return Status::OK();
+  }
+
   ThunkSequence thunks;
 
   if (operand_buffer != a_buffer) {
@@ -1595,6 +1605,16 @@ Status IrEmitterUnnested::EmitTriangularSolve(mlir::Operation* op) {
                       GetAllocationSlice(triangular_solve_op.output()));
   TF_ASSIGN_OR_RETURN(TriangularSolveOptions_Transpose transpose_a,
                       ConvertTranspose(triangular_solve_op.transpose_a()));
+
+  if (IsBefThunkEnabled()) {
+    std::vector<BufferAllocation::Slice> buffers = {a_slice, b_slice,
+                                                    output_slice};
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Thunk> thunk,
+        CreateBefThunk(GetThunkInfo(op), op, std::move(buffers)));
+    AddThunkToThunkSequence(std::move(thunk));
+    return Status::OK();
+  }
 
   ThunkSequence thunks;
 

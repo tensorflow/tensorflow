@@ -81,8 +81,8 @@ class TfrtGraphExecutionState {
     return graph_execution_state_->flib_def();
   }
 
-  Status OptimizeGraph(
-      std::unique_ptr<tensorflow::Graph>& graph,
+  StatusOr<std::unique_ptr<tensorflow::Graph>> OptimizeGraph(
+      const tensorflow::Graph& graph,
       const tensorflow::BuildGraphOptions& build_graph_options);
 
   std::unique_ptr<tensorflow::GraphExecutionState> graph_execution_state_;

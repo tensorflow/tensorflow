@@ -537,9 +537,15 @@ cuda_py_test(
     srcs = ["function_trace_type_test.py"],
     python_version = "PY3",
     deps = [
+        ":function",
         ":function_trace_type",
-        ":test",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -618,7 +624,13 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:pywrap_tf_session",
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/types",
+        "//third_party/py/numpy",
     ],
 )
 

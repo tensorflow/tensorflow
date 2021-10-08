@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/tfrt/utils/test_util.h"
+#include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/support/latch.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -99,18 +101,29 @@ TEST_F(TfThreadpoolWorkQueueTest, RunningNonBlockingTask) {
   EXPECT_EQ(n, 10);
 }
 
+std::unique_ptr<tfrt::HostContext> CreateTestHostContext() {
+  return std::make_unique<tfrt::HostContext>(
+      [](const tfrt::DecodedDiagnostic&) {}, tfrt::CreateMallocAllocator(),
+      tfrt::CreateMultiThreadedWorkQueue(1, 1));
+}
+
 TEST_F(TfThreadpoolWorkQueueTest, RunningMixedTask) {
+  auto host = CreateTestHostContext();
+  tfrt::RequestContextBuilder req_ctx_builder{host.get(),
+                                              /*resource_context=*/nullptr};
+  auto req_ctx = std::move(req_ctx_builder).build();
+  tfrt::ExecutionContext exec_ctx(std::move(*req_ctx));
   tfrt::latch latch(20);
   int n = 0;
   tensorflow::mutex m;
   for (int i = 0; i < 10; ++i) {
-    tf_threadpool_cwq_.AddTask(tfrt::TaskFunction([&n, &m, &latch] {
-      {
-        tensorflow::mutex_lock lock(m);
-        ++n;
-      }
-      latch.count_down();
-    }));
+    tf_threadpool_cwq_.AddTask(exec_ctx, tfrt::TaskFunction([&n, &m, &latch] {
+                                 {
+                                   tensorflow::mutex_lock lock(m);
+                                   ++n;
+                                 }
+                                 latch.count_down();
+                               }));
     tf_threadpool_cwq_.AddBlockingTask(tfrt::TaskFunction([&n, &m, &latch] {
                                          {
                                            tensorflow::mutex_lock lock(m);

@@ -278,7 +278,9 @@ class UniqueWithCountsTest(test.TestCase):
     tf_y, tf_idx, tf_count = self.evaluate([y, idx, count])
 
     self.assertEqual(len(x), len(tf_idx))
-    self.assertEqual(len(tf_y), len(np.unique(x)))
+    # TODO(b/202197513): numpy>=1.20.0 makes np.unique() treat np.nan as equal
+    # so len(np.unique(x)) == 3. So this no longer can be tested this way.
+    # self.assertEqual(len(tf_y), len(np.unique(x)))
     for i in range(len(x)):
       if np.isnan(x[i]):
         self.assertTrue(np.isnan(tf_y[tf_idx[i]]))

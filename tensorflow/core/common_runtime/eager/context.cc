@@ -76,6 +76,44 @@ auto* eager_context_created =
 
 }  // namespace
 
+// Find the rendezvous instance corresponding to the step id, or create a
+// new instance if not existing.
+Rendezvous* EagerContext::LocalRendezvousTable::FindOrCreate(
+    int64_t step_id, DeviceMgr* device_mgr) {
+  mutex_lock l(table_lock_);
+  auto iter = table_.find(step_id);
+  if (iter == table_.end()) {
+    iter =
+        table_.insert({step_id, new IntraProcessRendezvous(device_mgr)}).first;
+    // Global rendezvous: ref-count should be 1 upon creation.
+    if (step_id == -1) {
+      return iter->second;
+    }
+  }
+  iter->second->Ref();
+  return iter->second;
+}
+
+void EagerContext::LocalRendezvousTable::Remove(int64_t step_id) {
+  mutex_lock l(table_lock_);
+  auto iter = table_.find(step_id);
+  if (iter != table_.end()) {
+    table_.erase(iter);
+  }
+}
+
+void EagerContext::LocalRendezvousTable::CleanUpAll() {
+  mutex_lock l(table_lock_);
+  for (auto iter = table_.begin(); iter != table_.end(); iter++) {
+    // Unref all redezvous instance, except for global rendezvous,
+    // which is cleaned up elsewhere when necessary.
+    if (iter->first == -1) {
+      continue;
+    }
+    iter->second->Unref();
+  }
+}
+
 EagerContext::EagerContext(
     const SessionOptions& opts,
     ContextDevicePlacementPolicy default_device_placement_policy, bool async,
@@ -130,6 +168,11 @@ EagerContext::EagerContext(
         opts.config, local_device_mgr(),
         MaybeCreateNcclCommunicator(opts.config)));
   }
+
+  // Initialization of local_rendezvous_table_ needs to happen before the
+  // initialization of global_rendezvous_for_functions_ because the latter
+  // depends on the former.
+  local_rendezvous_table_ = std::make_unique<LocalRendezvousTable>();
   global_rendezvous_for_functions_ =
       core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
 }
@@ -924,13 +967,10 @@ Status EagerContext::SyncExecutors() {
     sg.Update(s);
   }
 #endif  // !IS_MOBILE_PLATFORM
-  {
-    // Reset the global function rendezvous, which otherwise stores a failure
-    // state.
-    mutex_lock l(global_rendezvous_mu_);
-    global_rendezvous_for_functions_ =
-        core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
-  }
+
+  // Reset the global rendezvous, which otherwise stores a failure state.
+  ResetGlobalRendezvousForFunction();
+
   return sg.as_summary_status();
 }
 

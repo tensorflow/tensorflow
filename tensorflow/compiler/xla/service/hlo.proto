@@ -448,6 +448,19 @@ message HloModuleProto {
 
   // True if the module contains dynamic computation.
   bool is_dynamic = 11;
+
+  xla.OpSharding spmd_output_sharding = 12;
+
+  // The type of optimization profile in use.
+  enum ProfileType {
+    INVALID = 0;
+    FLAG = 1;
+    FUSION = 2;
+    LAYOUT = 3;
+  }
+
+  // The optimization profiles that this module contains.
+  repeated ProfileType profile_type = 15;
 }
 
 // Serialization of LogicalBuffer.

@@ -1462,13 +1462,19 @@ SpmdPartitioningVisitor::MakePartitioningState() {
   state.b = &b_;
   state.module = module_;
   state.num_replicas = num_replicas_;
-  state.partition_id = partition_id_;
-  state.collective_ops_creator = collective_ops_creator_;
   state.next_channel_id = next_channel_id_;
   state.reshard_cache = &reshard_cache_;
   state.partitioner = partitioner_;
   if (!device_groups_.empty()) {
+    // Use the original collective creator and partition_id to call
+    // CreatePerGroupPartitioningState(). Current collective_ops_creator_ and
+    // partition_id_ have been rewritten to be subgrouped.
+    state.collective_ops_creator = *visiting_collective_ops_creator_;
+    state.partition_id = *visiting_partition_id_;
     return CreatePerGroupPartitioningState(state, device_groups_, &b_);
+  } else {
+    state.collective_ops_creator = collective_ops_creator_;
+    state.partition_id = partition_id_;
   }
   return state;
 }
@@ -1617,9 +1623,18 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
         visiting_hlo_sharding_ = hlo->sharding();
         hlo->set_sharding(group_sharding.sharding);
         // Update device_groups and num_partitions.
+        // Set device_groups_, visiting_partition_id_ and
+        // visiting_collective_ops_creator_ before MakePartitioningState() which
+        // uses them.
         device_groups_ = group_sharding.device_groups;
         visiting_num_partitions_ = num_partitions_;
         num_partitions_ = num_partitions_ / group_sharding.device_groups.size();
+        visiting_partition_id_ = partition_id_;
+        visiting_collective_ops_creator_ = std::move(collective_ops_creator_);
+        auto grouped_state = MakePartitioningState();
+        collective_ops_creator_ =
+            std::move(grouped_state.collective_ops_creator);
+        partition_id_ = grouped_state.partition_id;
 
         // Update sharding for the operands.
         visiting_hlo_operand_shardings_.reserve(hlo->operand_count());
@@ -1671,9 +1686,13 @@ Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
 
   if (!device_groups_.empty()) {
     device_groups_.clear();
-    GetPartitionedHlo(hlo).set_state(MakePartitioningState());
     num_partitions_ = *visiting_num_partitions_;
     visiting_num_partitions_.reset();
+    collective_ops_creator_ = *visiting_collective_ops_creator_;
+    visiting_collective_ops_creator_.reset();
+    partition_id_ = *visiting_partition_id_;
+    visiting_partition_id_.reset();
+    GetPartitionedHlo(hlo).set_state(MakePartitioningState());
   }
 
   if (!visiting_state_.empty()) {

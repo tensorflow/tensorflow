@@ -180,6 +180,34 @@ py_library(
 )
 
 tf_py_fuzz_target(
+    name = "abs_fuzz",
+    srcs = ["abs_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "acos_fuzz",
+    srcs = ["acos_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "acosh_fuzz",
+    srcs = ["acosh_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "add_fuzz",
+    srcs = ["add_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
     name = "constant_fuzz",
     srcs = ["constant_fuzz.py"],
     tags = ["notap"],  # Run in OSS only.

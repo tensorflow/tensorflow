@@ -363,6 +363,35 @@ static bool ShapeMatchesReduceWithKeepAxes(Value input,
   return true;
 }
 
+// Returns `true` if all the `axes` dimensions of `input` are 1.
+static bool AreInputDimensionsOneInAxes(Value input,
+                                        const mlir::Attribute &axes) {
+  RankedTensorType input_type =
+      input.getType().dyn_cast_or_null<RankedTensorType>();
+  if (!input_type) return false;
+  auto type_shape = input_type.getShape();
+
+  DenseIntElementsAttr axes_attr =
+      axes.dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!axes_attr) return false;
+
+  for (auto a : axes_attr.getValues<APInt>()) {
+    int64_t axis = a.getSExtValue();
+    if (axis < 0) {
+      axis += type_shape.size();
+    }
+    if (axis < 0 || axis >= type_shape.size()) {
+      // `axis` is not a valid axis in input.
+      return false;
+    }
+    if (type_shape[axis] != 1) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 static bool FloatValueEquals(const Attribute &attr, double value) {
   auto fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
   if (!fp_attr) return false;

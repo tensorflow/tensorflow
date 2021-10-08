@@ -491,6 +491,10 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
   }
   int num_elements = GetNumElements(t.dims);
   switch (t.type) {
+    case kTfLiteComplex64: {
+      return CreateInputTensorData<std::complex<float>>(
+          num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
+    }
     case kTfLiteFloat32: {
       return CreateInputTensorData<float>(
           num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));

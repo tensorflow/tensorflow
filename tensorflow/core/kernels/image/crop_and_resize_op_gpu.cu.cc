@@ -43,15 +43,30 @@ __global__ void CropAndResizeKernel(
     int num_boxes, int batch, int image_height, int image_width,
     int crop_height, int crop_width, int depth, int method_id,
     float extrapolation_value, float* __restrict__ crops_ptr) {
+  // Precompute some constants outside the loop.
+  //
+  // The compiler doesn't hoist them outside the loop because of the
+  // `continue`'s in the loop -- it isn't sure that these are always reached.
+  const float height_scale_factor =
+      crop_height > 1 ? (image_height - 1) / static_cast<float>(crop_height - 1)
+                      : 0;
+  const float width_scale_factor =
+      crop_width > 1 ? (image_width - 1) / static_cast<float>(crop_width - 1)
+                     : 0;
+  // These may seem trivial, but the implicit int->float conversion here is
+  // actually expensive.
+  float image_height_minus_one = image_height - 1;
+  float image_width_minus_one = image_width - 1;
+
   GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w + crop_width * (h + crop_height * b))
-    int idx = out_idx;
-    const int d = idx % depth;
+    uint32_t idx = out_idx;
+    const uint32_t d = idx % depth;
     idx /= depth;
-    const int x = idx % crop_width;
+    const uint32_t x = idx % crop_width;
     idx /= crop_width;
-    const int y = idx % crop_height;
-    const int b = idx / crop_height;
+    const uint32_t y = idx % crop_height;
+    const uint32_t b = idx / crop_height;
 
     const float y1 = boxes_ptr[b * 4];
     const float x1 = boxes_ptr[b * 4 + 1];
@@ -63,24 +78,20 @@ __global__ void CropAndResizeKernel(
       continue;
     }
 
-    const float height_scale =
-        (crop_height > 1) ? (y2 - y1) * (image_height - 1) / (crop_height - 1)
-                          : 0;
-    const float width_scale =
-        (crop_width > 1) ? (x2 - x1) * (image_width - 1) / (crop_width - 1) : 0;
-
-    const float in_y = (crop_height > 1)
-                           ? y1 * (image_height - 1) + y * height_scale
-                           : 0.5 * (y1 + y2) * (image_height - 1);
-    if (in_y < 0 || in_y > image_height - 1) {
+    const float in_y =
+        (crop_height > 1)
+            ? y1 * image_height_minus_one + y * (y2 - y1) * height_scale_factor
+            : 0.5f * (y1 + y2) * image_height_minus_one;
+    if (in_y < 0 || in_y > image_height_minus_one) {
       crops_ptr[out_idx] = extrapolation_value;
       continue;
     }
 
-    const float in_x = (crop_width > 1)
-                           ? x1 * (image_width - 1) + x * width_scale
-                           : 0.5 * (x1 + x2) * (image_width - 1);
-    if (in_x < 0 || in_x > image_width - 1) {
+    const float in_x =
+        (crop_width > 1)
+            ? x1 * image_width_minus_one + x * (x2 - x1) * width_scale_factor
+            : 0.5f * (x1 + x2) * image_width_minus_one;
+    if (in_x < 0 || in_x > image_width_minus_one) {
       crops_ptr[out_idx] = extrapolation_value;
       continue;
     }
@@ -164,14 +175,14 @@ __global__ void CropAndResizeBackpropImageKernel(
 
     const float in_y = (crop_height > 1)
                            ? y1 * (image_height - 1) + y * height_scale
-                           : 0.5 * (y1 + y2) * (image_height - 1);
+                           : 0.5f * (y1 + y2) * (image_height - 1);
     if (in_y < 0 || in_y > image_height - 1) {
       continue;
     }
 
     const float in_x = (crop_width > 1)
                            ? x1 * (image_width - 1) + x * width_scale
-                           : 0.5 * (x1 + x2) * (image_width - 1);
+                           : 0.5f * (x1 + x2) * (image_width - 1);
     if (in_x < 0 || in_x > image_width - 1) {
       continue;
     }
@@ -266,14 +277,14 @@ __global__ void CropAndResizeBackpropBoxesKernel(
 
     const float in_y = (crop_height > 1)
                            ? y1 * (image_height - 1) + y * height_scale
-                           : 0.5 * (y1 + y2) * (image_height - 1);
+                           : 0.5f * (y1 + y2) * (image_height - 1);
     if (in_y < 0 || in_y > image_height - 1) {
       continue;
     }
 
     const float in_x = (crop_width > 1)
                            ? x1 * (image_width - 1) + x * width_scale
-                           : 0.5 * (x1 + x2) * (image_width - 1);
+                           : 0.5f * (x1 + x2) * (image_width - 1);
     if (in_x < 0 || in_x > image_width - 1) {
       continue;
     }
@@ -322,8 +333,8 @@ __global__ void CropAndResizeBackpropBoxesKernel(
       dy1 = image_grad_y * (image_height - 1 - y * height_ratio);
       dy2 = image_grad_y * (y * height_ratio);
     } else {
-      dy1 = image_grad_y * 0.5 * (image_height - 1);
-      dy2 = image_grad_y * 0.5 * (image_height - 1);
+      dy1 = image_grad_y * 0.5f * (image_height - 1);
+      dy2 = image_grad_y * 0.5f * (image_height - 1);
     }
 
     float dx1, dx2;
@@ -331,8 +342,8 @@ __global__ void CropAndResizeBackpropBoxesKernel(
       dx1 = image_grad_x * (image_width - 1 - x * width_ratio);
       dx2 = image_grad_x * (x * width_ratio);
     } else {
-      dx1 = image_grad_x * 0.5 * (image_width - 1);
-      dx2 = image_grad_x * 0.5 * (image_width - 1);
+      dx1 = image_grad_x * 0.5f * (image_width - 1);
+      dx2 = image_grad_x * 0.5f * (image_width - 1);
     }
 
     GpuAtomicAdd(grads_boxes_ptr + b * 4 + 0, dy1);

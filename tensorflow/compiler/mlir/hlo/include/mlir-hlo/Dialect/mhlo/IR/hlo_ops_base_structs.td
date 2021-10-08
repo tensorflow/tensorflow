@@ -16,20 +16,6 @@ limitations under the License.
 #ifndef HLO_OPS_BASE_STRUCTS
 #define HLO_OPS_BASE_STRUCTS
 
-def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
-  StructFieldAttr<"input_batch_dimension",I64Attr>,
-  StructFieldAttr<"input_feature_dimension", I64Attr>,
-  StructFieldAttr<"input_spatial_dimensions", I64ElementsAttr>,
-  StructFieldAttr<"kernel_input_feature_dimension", I64Attr>,
-  StructFieldAttr<"kernel_output_feature_dimension", I64Attr>,
-  StructFieldAttr<"kernel_spatial_dimensions", I64ElementsAttr>,
-  StructFieldAttr<"output_batch_dimension", I64Attr>,
-  StructFieldAttr<"output_feature_dimension", I64Attr>,
-  StructFieldAttr<"output_spatial_dimensions", I64ElementsAttr>] > {
-
-  let summary = "Structure of dimension information for conv op";
-}
-
 
 // Represents a unique identifier for each Send/Recv instruction pair or
 // optionally for collective instructions (AllReduce, CollectivePermute,

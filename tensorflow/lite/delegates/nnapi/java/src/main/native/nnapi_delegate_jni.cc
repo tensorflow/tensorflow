@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
-using namespace tflite;
+using tflite::StatefulNnApiDelegate;
 
 extern "C" {
 
@@ -31,13 +31,14 @@ Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
   options.execution_preference =
       (StatefulNnApiDelegate::Options::ExecutionPreference)preference;
   if (accelerator_name) {
-    options.accelerator_name = env->GetStringUTFChars(accelerator_name, NULL);
+    options.accelerator_name =
+        env->GetStringUTFChars(accelerator_name, nullptr);
   }
   if (cache_dir) {
-    options.cache_dir = env->GetStringUTFChars(cache_dir, NULL);
+    options.cache_dir = env->GetStringUTFChars(cache_dir, nullptr);
   }
   if (model_token) {
-    options.model_token = env->GetStringUTFChars(model_token, NULL);
+    options.model_token = env->GetStringUTFChars(model_token, nullptr);
   }
 
   if (max_delegated_partitions >= 0) {

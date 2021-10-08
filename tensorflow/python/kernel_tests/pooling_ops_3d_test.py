@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -500,6 +501,19 @@ class PoolingTest(test.TestCase):
         window=(3, 3, 3),
         strides=(1, 1, 1),
         padding="SAME")
+
+  def testMaxPool3DZeroPoolSize(self):
+    # Test case for GitHub issue 51936.
+    for f in [nn_ops.max_pool3d, nn_ops.avg_pool3d]:
+      with self.session():
+        with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+          input_sizes = [3, 4, 10, 11, 12]
+
+          input_data = 1.
+          input_tensor = constant_op.constant(
+              input_data, shape=input_sizes, name="input")
+          pool_3d = f(input_tensor, ksize=[2, 2, 0], strides=1, padding="VALID")
+          self.evaluate(pool_3d)
 
 
 if __name__ == "__main__":

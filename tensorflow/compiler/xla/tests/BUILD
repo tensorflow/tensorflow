@@ -993,6 +993,7 @@ xla_test(
         "interpreter",
     ],
     tags = [
+        "nozapfhahn",
         "optonly",
     ],
     deps = [

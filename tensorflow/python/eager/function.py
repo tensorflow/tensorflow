@@ -95,63 +95,12 @@ SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 # are not detected by Global TAP.
 # TODO(jiaweix): remove this flag and related args (b/198782192)
 ENCODE_VARIABLES_BY_RESOURCE_ID = True
+# TODO(b/201533914): Remove this flag and related args
+USE_FULL_TRACE_TYPE = False
 
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
     "Time for tf.function to build a graph (us).")
-
-
-# TODO(b/195985838): cleanup this function.
-def _make_input_signature_hashable(elem):
-  """Rewrite input signature to be hashable.
-
-  We replace nested variables in the input signature with TensorSpec in order to
-  be hashable.
-
-  Args:
-    elem: Input signature element
-
-  Returns:
-    A hashable object for the requested input signature
-  """
-  try:
-    hash(elem)
-  except TypeError:
-    # TODO(slebedev): consider using nest.
-    if isinstance(elem, tuple):
-      return tuple(map(_make_input_signature_hashable, elem))
-
-    # TFE_Py_EncodeArg weakrefs arguments it does not recognize, and we expect
-    # all recognized types to be hashable.
-    assert isinstance(elem, weakref.ReferenceType)
-    v = elem()
-
-    if resource_variable_ops.is_resource_variable(v):
-      # We special case variables here to use unique_id as the cache key. This
-      # ensures we have to retrace whenever a different variable is passed in.
-      # This is needed to support cases where the user may use the id of a
-      # variable in the function perhaps as a lookup in a dictionary.
-      #
-      # This choice leads to more retracing when we could have possibly used the
-      # shape and dtype instead. However, we expect the number of variables in a
-      # program to be bounded, and correspondingly the number of retraces.
-      #
-      # Note we also include the class name to avoid collisions with strings.
-      return v.__class__, v._unique_id  # pylint: disable=protected-access
-
-    if _is_ndarray(v):
-      # Numpy arrays are not hashable, but when calling functions we treat them
-      # in the same way as tf.Tensors.
-      if not hasattr(v, "shape") or not hasattr(v, "dtype"):
-        # TODO(tomhennigan) De-dup with _as_ndarray in _convert_numpy_inputs.
-        v = _as_ndarray(v)
-      return tensor_spec.TensorSpec(v.shape, v.dtype)
-
-    raise ValueError("Arguments to a tf.function must be a nested structure of "
-                     "Tensors, Variables, NumPy arrays, or hashable Python "
-                     f"objects, got {type(v)}.")
-
-  return elem
 
 
 CacheKey = collections.namedtuple("CacheKey", [
@@ -285,30 +234,19 @@ class _InterpolateFunctionError(object):
     if not exc or not isinstance(exc, errors.OpError):
       return False
     message = compat.as_text(exc.message)
-    _, tags = error_interpolation.parse_message(message)
+    _, func_tags, _ = error_interpolation.parse_message(message)
     g = None
-    func_stack = []
-    for t in tags:
-      if t.type == "function_node":
-        # TODO(mdan): Tests should cover this.
-        if t.name == compat.as_str(self._func.name):
-          g = self._func.graph
-        elif g:
-          next_func = g._get_function(t.name)  # pylint: disable=protected-access
-          if next_func is not None and isinstance(next_func,
-                                                  _EagerDefinedFunction):
-            g = next_func.graph
-        if g:
-          func_stack.append(g.name)
-        else:
-          func_stack.append("<unknown>")
+    for func_tag in func_tags:
+      # TODO(mdan): Tests should cover this.
+      if func_tag.name == compat.as_str(self._func.name):
+        g = self._func.graph
+      elif g:
+        next_func = g._get_function(func_tag.name)  # pylint: disable=protected-access
+        if next_func is not None and isinstance(next_func,
+                                                _EagerDefinedFunction):
+          g = next_func.graph
     if g:
-      message = error_interpolation.interpolate(message, g)
-      if len(func_stack) >= 2:
-        message += "\n\nFunction call stack:\n"
-        message += " -> ".join(func_stack)
-        message += "\n"
-      exc._message = message  # pylint: disable=protected-access
+      exc._message = error_interpolation.interpolate(message, g)  # pylint: disable=protected-access
     return False
 
 
@@ -2879,28 +2817,6 @@ class FunctionSpec(object):
     return inputs, kwargs, flat_inputs, filtered_flat_inputs
 
 
-def _as_ndarray(value):
-  """Converts value to an ndarray, assumes _is_ndarray(value)."""
-  # TODO(tomhennigan) Support __array_interface__ too.
-  return value.__array__()
-
-
-def _is_ndarray(value):
-  """Tests whether the given value is an ndarray (and not a TF tensor/var)."""
-  # TODO(tomhennigan) Support __array_interface__ too.
-  return hasattr(value, "__array__") and not (
-      isinstance(value, ops.Tensor)
-      or isinstance(value, resource_variable_ops.BaseResourceVariable)
-      or hasattr(value, "_should_act_as_resource_variable")
-
-      # For legacy reasons we do not automatically promote Numpy strings.
-      or isinstance(value, np.str_)
-      # NumPy dtypes have __array__ as unbound methods.
-      or isinstance(value, type)
-      # CompositeTensors should be flattened instead.
-      or isinstance(value, composite_tensor.CompositeTensor))
-
-
 def _convert_numpy_inputs(inputs):
   """Convert numpy array inputs to tensors."""
   # We assume that any CompositeTensors have already converted their components
@@ -2924,7 +2840,7 @@ def _convert_numpy_inputs(inputs):
         hasattr(value, "_should_act_as_resource_variable") or
         isinstance(value, (np.str_, type, composite_tensor.CompositeTensor))):
       # This case is equivalent to _is_ndarray(value) == True
-      a = _as_ndarray(value)
+      a = value.__array__()
       if not isinstance(a, np.ndarray):
         raise TypeError(f"The output of __array__ must be an np.ndarray, "
                         f"got {type(a)} from {value}.")
@@ -3108,10 +3024,9 @@ class Function(object):
     self._capture_by_value = capture_by_value
     self.tracing_count = 0
     if self.input_signature is not None:
-      self._hashable_input_signature = _make_input_signature_hashable(
-          self.flat_input_signature)
+      self._hashable_input_signature = hash(self.flat_input_signature)
 
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     # _descriptor_cache is a of instance of a class to an instance-specific
     # `Function`, used to make sure defun-decorated methods create different
     # functions for each instance.
@@ -3288,9 +3203,9 @@ class Function(object):
       # This reduces ambiguity, for example, when args contains a dict and
       # kwargs is empty.
       inputs = (args, kwargs)
-      input_signature = function_trace_type.make_input_signature(
-          inputs, include_tensor_ranks_only, ENCODE_VARIABLES_BY_RESOURCE_ID)
-      hashable_input_signature = _make_input_signature_hashable(input_signature)
+      hashable_input_signature = function_trace_type.get_arg_spec(
+          inputs, include_tensor_ranks_only, ENCODE_VARIABLES_BY_RESOURCE_ID,
+          USE_FULL_TRACE_TYPE)
     else:
       del args, kwargs
       assert not include_tensor_ranks_only

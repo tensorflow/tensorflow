@@ -110,7 +110,7 @@ def _get_tpu_strategy_creator(steps_per_run,
 
     # Steps per run is only supported in TF 1.x
     if tf2.enabled():
-      strategy = tpu_lib.TPUStrategy(resolver, device_assignment, **kwargs)
+      strategy = tpu_lib.TPUStrategyV2(resolver, device_assignment, **kwargs)
     else:
       strategy = tpu_lib.TPUStrategyV1(resolver, steps_per_run,
                                        device_assignment, **kwargs)
