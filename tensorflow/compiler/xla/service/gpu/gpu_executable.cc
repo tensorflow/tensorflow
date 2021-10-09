@@ -531,14 +531,11 @@ tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
 
 // TODO(hanbinyoon): Support profiling analogous to ScopedAnnotation in
 // ExecuteThunks().
-static Status ExecuteBef(
-    const tfrt::RCReference<tfrt::BEFFile>& bef_file,
-    absl::string_view entry_function_name,
-    const ServiceExecutableRunOptions* run_options,
-    const BufferAllocations& buffer_allocations,
-    const std::vector<BufferAllocation>& allocations,
-    const std::set<se::DeviceMemoryBase>& buffers_in_result,
-    bool block_host_until_done) {
+static Status ExecuteBef(const tfrt::RCReference<tfrt::BEFFile>& bef_file,
+                         absl::string_view entry_function_name,
+                         const ServiceExecutableRunOptions* run_options,
+                         const BufferAllocations& buffer_allocations,
+                         size_t num_allocations, bool block_host_until_done) {
   if (!block_host_until_done) {
     return Unimplemented(
         "Currently, we always block the host until BEF execution is "
@@ -553,9 +550,9 @@ static Status ExecuteBef(
 
   // Create execution context.
   TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
+  auto resource_ctx = std::make_unique<tfrt::ResourceContext>();
   tfrt::RequestContextBuilder request_context_builder(
-      runtime_and_queue.core_runtime->GetHostContext(),
-      /*resource_context=*/nullptr);
+      runtime_and_queue.core_runtime->GetHostContext(), resource_ctx.get());
   tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
   TF_RETURN_IF_ERROR(runtime_and_queue.work_queue->InitializeRequest(
       &request_context_builder, &intra_op_threadpool));
@@ -577,17 +574,10 @@ static Status ExecuteBef(
       static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(*borrowed_stream)
           .GetAsyncValue());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
-  for (int i = 0; i < allocations.size(); i++) {
-    if (allocations[i].is_entry_computation_parameter()) {
-      auto input = buffer_allocations.GetDeviceAddress(i);
-      buffers.push_back(CreateGpuBuffer(&input));
-    }
-  }
-  for (auto output : buffers_in_result) {
-    buffers.push_back(CreateGpuBuffer(&output));
-  }
-  for (auto& buffer : buffers) {
-    args.push_back(buffer.get());
+  for (size_t i = 0; i < num_allocations; i++) {
+    auto input = buffer_allocations.GetDeviceAddress(i);
+    buffers.push_back(CreateGpuBuffer(&input));
+    args.push_back(buffers.back().get());
   }
   if (args.size() != function->num_arguments())
     return InternalError("Unexpected argument count.");
@@ -771,8 +761,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     }
 
     TF_RETURN_IF_ERROR(ExecuteBef(bef_file, module_name_, run_options,
-                                  buffer_allocations, allocations_,
-                                  buffers_in_result, block_host_until_done));
+                                  buffer_allocations, allocations_.size(),
+                                  block_host_until_done));
   } else {
     return FailedPrecondition("Expected BefBuffer is not supplied.");
   }
