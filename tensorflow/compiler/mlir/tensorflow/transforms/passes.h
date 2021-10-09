@@ -235,6 +235,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLowerQuantizedPass();
 }  // namespace TF
 
 namespace tf_executor {
+
+// Creates a pass to chain control outputs of while loop body.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFExecutorConvertControlToDataOutputsPass();
+
 // Creates a pass to merge IslandOps from TFExecutor dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorIslandCoarseningPass();
 
