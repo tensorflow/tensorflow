@@ -514,7 +514,7 @@ Status CompileMlirToXlaHlo(
 
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
+    llvm::StringRef device_type, bool use_tuple_args_rets, bool analyse_graph,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
@@ -530,12 +530,11 @@ Status CompileSerializedMlirToXlaHlo(
   tensor_or_resource_shapes.reserve(arg_shapes.size());
   for (const auto& arg_shape : arg_shapes)
     tensor_or_resource_shapes.push_back({arg_shape});
-  return CompileMlirToXlaHlo(mlir_module.get(), tensor_or_resource_shapes,
-                             device_type, use_tuple_args, analyse_graph,
-                             /*use_return_tuple=*/true,
-                             /*use_resource_updates_for_aliases=*/false,
-                             shape_representation_fn, compilation_result,
-                             custom_legalization_passes);
+  return CompileMlirToXlaHlo(
+      mlir_module.get(), tensor_or_resource_shapes, device_type,
+      use_tuple_args_rets, analyse_graph, use_tuple_args_rets,
+      /*use_resource_updates_for_aliases=*/false, shape_representation_fn,
+      compilation_result, custom_legalization_passes);
 }
 
 // Rewrites the given module with specified args. For each of the constant args,

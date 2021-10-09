@@ -127,7 +127,7 @@ Status CompileMlirToXlaHlo(
 // metadata and stores them in CompilationResult.
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args, bool analyse_graph,
+    llvm::StringRef device_type, bool use_tuple_args_rets, bool analyse_graph,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
