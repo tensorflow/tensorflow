@@ -330,7 +330,8 @@ class AutotuneEntry {
       return algorithm_config_.ToString();
     }
     return absl::StrCat("{", op_runners_.primary->ToString(), ", ",
-                        op_runners_.no_scratch_fallback->ToString(), "}");
+        (op_runners_.no_scratch_fallback ?
+         op_runners_.no_scratch_fallback->ToString() : ""), "}");
   }
 
  private:
