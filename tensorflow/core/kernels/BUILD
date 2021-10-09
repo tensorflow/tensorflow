@@ -6824,6 +6824,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/platform:strong_hash",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
         "//third_party/icu/data:conversion_data",
