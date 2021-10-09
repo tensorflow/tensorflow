@@ -1734,7 +1734,7 @@ Status MarkForCompilation(
 
 std::atomic<int64_t>* GetPointerToFuel(int64_t initial_value) {
   static std::atomic<int64_t>* fuel = [&]() {
-    std::atomic<int64>* fuel = new std::atomic<int64>;
+    std::atomic<int64_t>* fuel = new std::atomic<int64_t>;
     *fuel = initial_value;
     return fuel;
   }();

@@ -71,8 +71,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class AutotuneResult;
-
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -553,16 +551,21 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                                    /*is_contrib=*/false}};
 
     auto config_or = AutotuneFusedConv<T>(
-        cudnn_use_autotune, AutotuneConv::GetInstance(), conv_parameters,
-        context, input_desc, filter_desc, bias_desc, output_desc, conv_desc,
-        dnn_activation_mode, kConvScale, kSideInputScale, input_ptr, filter_ptr,
-        output_ptr, bias_ptr, side_input_ptr, ConvolveScratchSize());
+        cudnn_use_autotune, FusedConvAutotuneMap::GetInstance(),
+        conv_parameters, context, input_desc, filter_desc, bias_desc,
+        output_desc, conv_desc, dnn_activation_mode, kConvScale,
+        kSideInputScale, input_ptr, filter_ptr, output_ptr, bias_ptr,
+        side_input_ptr, ConvolveScratchSize());
     OP_REQUIRES_OK(context, config_or.status());
     auto algorithm_config = config_or.ConsumeValueOrDie();
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
     Status cudnn_launch_status;
     if (CudnnUseFrontend()) {
+      auto plan_and_scratch_or =
+          AllocateScratchOrFallback(&scratch_allocator, algorithm_config);
+      OP_REQUIRES_OK(context, plan_and_scratch_or.status());
+      auto plan_and_scratch = plan_and_scratch_or.ConsumeValueOrDie();
       cudnn_launch_status = stream->FusedConvolveWithExecutionPlan(
           input_desc, input_ptr,            // input
           kConvScale,                       // input_scale
@@ -572,7 +575,9 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           bias_desc, bias_ptr,              // bias
           dnn_activation_mode,              // activation
           output_desc, &output_ptr,         // output
-          &scratch_allocator, algorithm_config, nullptr);
+          std::get<se::DeviceMemoryBase>(plan_and_scratch),
+          *std::get<const se::dnn::ConvolveExecutionPlan*>(plan_and_scratch),
+          nullptr);
     } else {
       cudnn_launch_status = stream->FusedConvolveWithAlgorithm(
           input_desc, input_ptr,            // input

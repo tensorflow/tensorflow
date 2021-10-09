@@ -1041,6 +1041,10 @@ struct Options {
   // Enable cross-program prefetch freeing optimization where the
   // cross-program-prefetched buffer can be reused.
   bool enable_cross_program_prefetch_freeing = true;
+
+  // An optional memory space assignment autotuning config, which is used
+  // to sort allocated buffers.
+  absl::optional<std::vector<uint64_t>> autotuning_config = absl::nullopt;
 };
 
 // A struct representing an asynchronous copy with its logical start and end

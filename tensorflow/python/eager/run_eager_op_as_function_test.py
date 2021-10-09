@@ -22,6 +22,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import critical_section_ops
 from tensorflow.python.ops import math_ops
@@ -47,6 +48,7 @@ GPU = "/device:GPU:0"
 
 
 # TODO(srbs): Why can't we use absl parameterized here?
+@test_util.with_eager_op_as_function(only_as_function=True)
 class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def __init__(self):
@@ -109,6 +111,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._benchmark_matmul(self._m_1000_by_1000, GPU)
 
 
+@test_util.with_eager_op_as_function(only_as_function=True)
 class RunEagerOpAsFunctionTest(test.TestCase):
 
   def setUp(self):
@@ -173,5 +176,4 @@ class RunEagerOpAsFunctionTest(test.TestCase):
     cs.execute(lambda: 1.0)
 
 if __name__ == "__main__":
-  context.enable_run_eager_op_as_function()
   test.main()

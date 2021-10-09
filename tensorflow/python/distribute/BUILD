@@ -302,7 +302,9 @@ py_library(
     name = "tpu_util",
     srcs = ["tpu_util.py"],
     deps = [
+        ":packed_distributed_variable",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/tpu:tpu_py",
     ],
 )
@@ -865,14 +867,51 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":packed_distributed_variable",
+        ":tpu_replicated_variable",
         ":tpu_util",
         ":values",
         ":values_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops_gen",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
+    ],
+)
+
+py_library(
+    name = "tpu_replicated_variable",
+    srcs = ["tpu_replicated_variable.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_util",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:resource_variable_ops_gen",
+        "//tensorflow/python:tpu_partition_ops_gen",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/training/tracking:base",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_replicated_variable_test",
+    srcs = ["tpu_replicated_variable_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_replicated_variable",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:dtypes",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -2132,6 +2171,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "nomac",  # TODO(b/201788023): Attempt MultiProcessCluster to fix this.
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
     deps = [
@@ -2156,6 +2196,44 @@ distribute_py_test(
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "distributed_table_test",
+    srcs = ["distributed_table_test.py"],
+    python_version = "PY3",
+    tags = [
+        "multi_and_single_gpu",
+        "notsan",  # Tsan failure doesn't seem to be caused by TF.
+    ],
+    deps = [
+        ":combinations",
+        ":device_util",
+        ":multi_worker_test_base",
+        ":parameter_server_strategy_v2",
+        ":ps_values",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
+        "//tensorflow/python/distribute/coordinator:coordinator_context",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/keras/saving",
+        "//tensorflow/python/module",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/training:server_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )

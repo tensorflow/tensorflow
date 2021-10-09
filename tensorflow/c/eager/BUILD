@@ -768,6 +768,7 @@ tf_cuda_cc_test(
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check="],
     tags = [
+        "no_oss",  # TODO(b/200848572)
         "no_windows",
         "noasan",  # leaks gRPC server instances
     ],

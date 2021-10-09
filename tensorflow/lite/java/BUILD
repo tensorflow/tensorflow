@@ -249,9 +249,22 @@ android_library(
     ],
 )
 
+# 'tensorflowlite_java' is the public android_library target for the TF Lite Java
+# APIs & Runtime, including experimental APIs, but EXCLUDING NATIVE CODE dependencies.
 android_library(
     name = "tensorflowlite_java",
     srcs = [":java_srcs"],
+    proguard_specs = ["proguard.flags"],
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+# 'tensorflowlite_java_stable' is the public android_library target for the TF Lite Java
+# APIs & Runtime, excluding experimental APIs, and EXCLUDING NATIVE CODE dependencies.
+android_library(
+    name = "tensorflowlite_java_stable",
+    srcs = [":java_stable_srcs"],
     proguard_specs = ["proguard.flags"],
     deps = [
         "@org_checkerframework_qual",
@@ -359,11 +372,12 @@ java_test_with_tflite(
 java_test(
     name = "TensorFlowLiteNoNativeLibTest",
     size = "small",
-    srcs = [":java_srcs"] + ["src/test/java/org/tensorflow/lite/TensorFlowLiteNoNativeLibTest.java"],
+    srcs = ["src/test/java/org/tensorflow/lite/TensorFlowLiteNoNativeLibTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.TensorFlowLiteNoNativeLibTest",
     visibility = ["//visibility:private"],
     deps = [
+        ":tensorflowlite_javalib",
         "@com_google_truth",
         "@junit",
         "@org_checkerframework_qual",
@@ -373,7 +387,7 @@ java_test(
 java_test_with_tflite(
     name = "TensorFlowLiteInvalidNativeLibTest",
     size = "small",
-    srcs = [":java_srcs"] + ["src/test/java/org/tensorflow/lite/TensorFlowLiteInvalidNativeLibTest.java"],
+    srcs = ["src/test/java/org/tensorflow/lite/TensorFlowLiteInvalidNativeLibTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.TensorFlowLiteInvalidNativeLibTest",
     tflite_jni_binaries = [
@@ -381,6 +395,7 @@ java_test_with_tflite(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":tensorflowlite_javalib",
         "@com_google_truth",
         "@junit",
         "@org_checkerframework_qual",

@@ -222,6 +222,12 @@ class TargetVerifierMetadata {
     return shape_size_function_(shape);
   }
 
+  void SetShapeSize(std::function<int64_t(const Shape&)> shape_size_function) {
+    CHECK(shape_size_function_ == nullptr)
+        << "shape_size_function_ is already set";
+    shape_size_function_ = shape_size_function;
+  }
+
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
 
   virtual bool IsLayoutSensitive() const = 0;

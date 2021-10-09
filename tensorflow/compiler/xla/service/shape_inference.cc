@@ -161,8 +161,7 @@ Status VerifyReducerShape(const ProgramShape& reducer_shape,
 
 StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                                        const Window& window,
-                                       PrimitiveType element_type,
-                                       bool allow_negative_padding) {
+                                       PrimitiveType element_type) {
   if (window.dimensions_size() != base_shape.rank()) {
     return InvalidArgument(
         "Window has dimension %d but base shape has dimension %d.",
@@ -179,14 +178,6 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     }
     if (dim.stride() <= 0) {
       return InvalidArgument("Window %s has a non-positive stride.",
-                             window.DebugString());
-    }
-    if (!allow_negative_padding && dim.padding_low() < 0) {
-      return InvalidArgument("Window %s has a negative low padding.",
-                             window.DebugString());
-    }
-    if (!allow_negative_padding && dim.padding_high() < 0) {
-      return InvalidArgument("Window %s has a negative high padding.",
                              window.DebugString());
     }
     if (dim.base_dilation() < 1) {
@@ -1830,8 +1821,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       ShapeUtil::MakeShape(lhs.element_type(), input_spatial_dims);
   TF_ASSIGN_OR_RETURN(
       Shape window_output_shape,
-      InferWindowOutputShape(base_shape, window, lhs.element_type(),
-                             /*allow_negative_padding=*/true));
+      InferWindowOutputShape(base_shape, window, lhs.element_type()));
 
   std::vector<int64_t> dimensions(num_dims);
   dimensions[dnums.output_batch_dimension()] = input_batch / batch_group_count;
@@ -2369,8 +2359,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Window& window) {
   TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of reduce-window"));
   return InferWindowOutputShape(operand_shape, window,
-                                init_value_shape.element_type(),
-                                /*allow_negative_padding=*/false);
+                                init_value_shape.element_type());
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferSelectAndScatterShape(
@@ -2419,8 +2408,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   // Check if the result shape of window operation matches the source shape.
   TF_ASSIGN_OR_RETURN(const Shape& window_result_shape,
                       InferWindowOutputShape(operand_shape, window,
-                                             operand_shape.element_type(),
-                                             /*allow_negative_padding=*/false));
+                                             operand_shape.element_type()));
   if (!ShapeUtil::CompatibleIgnoringFpPrecision(source_shape,
                                                 window_result_shape)) {
     return InvalidArgument(

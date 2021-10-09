@@ -84,7 +84,7 @@ struct LaunchGeneric {
   void operator()(OpKernelContext* ctx, const Tensor& input,
                   const Tensor& filter, int row_stride, int col_stride,
                   int row_dilation, int col_dilation, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     CHECK(data_format == FORMAT_NHWC) << "Generic conv implementation only "
                                          "supports NHWC tensor format for now.";
@@ -152,7 +152,7 @@ struct LaunchGrouped {
   void operator()(OpKernelContext* ctx, const Tensor& input,
                   const Tensor& filter, int row_stride, int col_stride,
                   int row_dilation, int col_dilation, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     DCHECK(data_format == FORMAT_NHWC)
         << "Grouped conv implementation only "
@@ -242,7 +242,7 @@ struct LaunchConv2DOp<CPUDevice, T> {
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
                   const Padding& padding,
-                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
       ctx->SetStatus(errors::Unimplemented(
@@ -1105,7 +1105,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                     conv_desc.group_count()};
 
   auto config_or = AutotuneUnfusedConv(
-      cudnn_use_autotune, AutotuneConv::GetInstance(), conv_parameters, ctx,
+      cudnn_use_autotune, ConvAutotuneMap::GetInstance(), conv_parameters, ctx,
       se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
       filter_ptr, conv_desc, output_desc, output_ptr, ConvolveScratchSize);
   OP_REQUIRES_OK(ctx, config_or.status());
@@ -1120,10 +1120,16 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     } else {
       VLOG(4) << "Convolution Autotune has been turned off";
     }
+    auto plan_and_scratch_or =
+        AllocateScratchOrFallback(&scratch_allocator, algorithm_config);
+    OP_REQUIRES_OK(ctx, plan_and_scratch_or.status());
+    auto plan_and_scratch = plan_and_scratch_or.ConsumeValueOrDie();
     cudnn_launch_status = stream->ConvolveWithExecutionPlan(
         se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
-        filter_ptr, output_desc, output_ptr, conv_desc, &scratch_allocator,
-        algorithm_config, nullptr);
+        filter_ptr, output_desc, output_ptr, conv_desc,
+        std::get<se::DeviceMemoryBase>(plan_and_scratch),
+        *std::get<const se::dnn::ConvolveExecutionPlan*>(plan_and_scratch),
+        nullptr);
   } else {
     VLOG(4) << "Convolution Algorithm: "
             << algorithm_config.algorithm()->algo_id();

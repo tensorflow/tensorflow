@@ -452,6 +452,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Assumes that the input is conjunction.
   StatusOr<bool> TrySimplifyTautologicalCompare(HloInstruction* conjunction);
 
+  // Tries to simlplify (bitcast-convert (concat (bitcast-convert A) ...)) where
+  // the types of inner and outer bitcast-convert cancel out.
+  StatusOr<bool> TrySimplifyTautologicalBitcastConvert(HloInstruction* bitcast);
+
   // Useful when we want to use the same visitor over multiple computations.
   void ResetState(HloComputation* computation);
 

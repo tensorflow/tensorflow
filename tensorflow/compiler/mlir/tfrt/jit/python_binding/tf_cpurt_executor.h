@@ -41,8 +41,7 @@ class TfCpurtExecutor {
   // Compiles mlir module and caches it. Returns a handle, that can be passed to
   // execute function.
   Handle Compile(const std::string& mlir_module, const std::string& entrypoint,
-                 Specialization specialization, bool codegen_reductions,
-                 bool codegen_cwise);
+                 Specialization specialization, bool vectorize);
 
   // Executes compiled mlir module with Python array arguments. Converts
   // returned memrefs into Python arrays.

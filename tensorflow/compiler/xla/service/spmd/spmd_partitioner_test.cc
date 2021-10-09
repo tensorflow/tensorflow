@@ -8398,6 +8398,35 @@ ENTRY entry {
                             op::Broadcast(op::Constant())));
 }
 
+TEST_F(SpmdPartitioningTest, SubgroupManualReduce) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  constant = f32[] constant(0),
+    sharding={devices=[2,2]0,1,2,3 last_tile_dims={manual,replicated}}
+  param = f32[2,2] parameter(0),
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+  ROOT reduce = f32[2] reduce(param, constant), dimensions={0}, to_apply=sum,
+    sharding={devices=[2,2]0,1,2,3 last_tile_dims={manual,replicated}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              op::AllReduce(op::Reduce(op::Parameter(0), op::Constant())));
+  EXPECT_EQ(root->replica_groups().size(), 2);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

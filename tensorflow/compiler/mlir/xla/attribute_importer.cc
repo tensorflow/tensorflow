@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 
+#include <sys/types.h>
+
 #include <vector>
 
 #include "tensorflow/compiler/xla/util.h"
@@ -72,28 +74,16 @@ mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
       scatter_dims_to_operand_dims, dnums.index_vector_dim());
 }
 
-mlir::mhlo::DotDimensionNumbers ConvertDotDimensionNumbers(
+mlir::mhlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
     const DotDimensionNumbers& dnums, mlir::Builder* builder) {
-  std::vector<int64_t> rhs_contracting_dimensions(
-      dnums.rhs_contracting_dimensions().begin(),
-      dnums.rhs_contracting_dimensions().end());
-  std::vector<int64_t> lhs_contracting_dimensions(
-      dnums.lhs_contracting_dimensions().begin(),
-      dnums.lhs_contracting_dimensions().end());
-  std::vector<int64_t> rhs_batch_dimensions(
-      dnums.rhs_batch_dimensions().begin(), dnums.rhs_batch_dimensions().end());
-  std::vector<int64_t> lhs_batch_dimensions(
-      dnums.lhs_batch_dimensions().begin(), dnums.lhs_batch_dimensions().end());
-
-  // Push the attributes into our new DictionaryAttr.
-  auto lhs_batch_dims_attr = Convert(lhs_batch_dimensions, builder);
-  auto rhs_batch_dims_attr = Convert(rhs_batch_dimensions, builder);
-  auto lhs_contracting_dims_attr = Convert(lhs_contracting_dimensions, builder);
-  auto rhs_contracting_dims_attr = Convert(rhs_contracting_dimensions, builder);
-
-  return mlir::mhlo::DotDimensionNumbers::get(
-      lhs_batch_dims_attr, rhs_batch_dims_attr, lhs_contracting_dims_attr,
-      rhs_contracting_dims_attr, builder->getContext());
+  auto arrayref = [](absl::Span<const int64_t> array) {
+    return llvm::ArrayRef<int64_t>{array.data(), array.size()};
+  };
+  return mlir::mhlo::DotDimensionNumbersAttr::get(
+      builder->getContext(), arrayref(dnums.lhs_batch_dimensions()),
+      arrayref(dnums.rhs_batch_dimensions()),
+      arrayref(dnums.lhs_contracting_dimensions()),
+      arrayref(dnums.rhs_contracting_dimensions()));
 }
 
 mlir::mhlo::ConvDimensionNumbers ConvertConvDimensionNumbers(

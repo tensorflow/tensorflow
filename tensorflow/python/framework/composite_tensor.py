@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tensor-like objects that are composed from tf.Tensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 
 import six

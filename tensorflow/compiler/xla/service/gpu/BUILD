@@ -18,7 +18,6 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
@@ -470,12 +469,12 @@ cc_library(
 
 alias(
     name = "virtual_nccl",
-    actual = if_cuda("@local_config_nccl//:nccl", ":empty"),
+    actual = if_nccl("@local_config_nccl//:nccl", ":empty"),
 )
 
 alias(
     name = "virtual_rccl",
-    actual = if_rocm("@local_config_rocm//rocm:rccl", ":empty"),
+    actual = if_nccl("@local_config_rocm//rocm:rccl", ":empty"),
 )
 
 tf_cuda_library(
@@ -524,16 +523,16 @@ tf_cuda_library(
         "//tensorflow/compiler/mlir/xla:attribute_exporter",
         "//tensorflow/stream_executor/gpu:gpu_activation_header",
         "@llvm-project//mlir:IR",
-    ] + if_cuda([
+    ] + if_gpu_is_configured([
+        ":virtual_nccl_utils",
+    ]) + if_cuda_is_configured([
+        ":virtual_nccl",
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
     ]) + if_rocm([
+        ":virtual_rccl",
         "//tensorflow/stream_executor/rocm:rocm_activation",
         "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
-    ]) + if_nccl([
-        ":virtual_nccl",
-        ":virtual_nccl_utils",
-        ":virtual_rccl",
     ]),
 )
 
@@ -556,7 +555,7 @@ tf_cuda_library(
     deps = [
         "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/compiler/xla/service:global_device_id",
-    ] + if_nccl([
+    ] + if_gpu_is_configured([
         ":virtual_nccl_utils",
     ]),
 )
@@ -575,9 +574,14 @@ filegroup(
 
 tf_cuda_library(
     name = "nccl_utils",
-    srcs = if_cuda_or_rocm([":nccl_utils_srcs"]),
-    hdrs = if_cuda_or_rocm([":nccl_utils_hdrs"]),
-    deps = if_cuda_or_rocm([
+    srcs = if_gpu_is_configured([":nccl_utils_srcs"]),
+    hdrs = if_gpu_is_configured([":nccl_utils_hdrs"]),
+    local_defines = if_cuda_is_configured([
+        "GOOGLE_CUDA=1",
+    ]) + if_nccl([
+        "GOOGLE_XCCL=1",
+    ]),
+    deps = if_gpu_is_configured([
         ":gpu_executable_run_options",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -593,8 +597,9 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/gpu:gpu_types_header",
         "//tensorflow/stream_executor/lib",
-    ]) + if_nccl([
+    ]) + if_cuda_is_configured([
         ":virtual_nccl",
+    ]) + if_rocm([
         ":virtual_rccl",
     ]) + select({
         ":is_bef_thunk_enabled": [
@@ -607,7 +612,7 @@ tf_cuda_library(
 
 alias(
     name = "virtual_nccl_utils",
-    actual = if_cuda_or_rocm(":nccl_utils", ":empty"),
+    actual = if_nccl(":nccl_utils", ":empty"),
 )
 
 bool_flag(
@@ -686,9 +691,11 @@ cc_library(
     deps = [
         ":custom_call_thunk",
         "@llvm-project//llvm:Support",
-    ] + if_nccl([
-        ":virtual_nccl",
+    ] + if_gpu_is_configured([
         ":virtual_nccl_utils",
+    ]) + if_cuda_is_configured([
+        ":virtual_nccl",
+    ]) + if_rocm([
         ":virtual_rccl",
     ]) + select({
         ":is_bef_thunk_enabled": [
@@ -835,16 +842,13 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ]) + select({
         ":is_bef_thunk_enabled": [
-            ":virtual_nccl",
-            ":virtual_nccl_utils",
-            ":virtual_rccl",
             ":xlir_kernels",
             ":xlir_opdefs",
             "@llvm-project//llvm:Support",
             "@llvm-project//mlir:GPUTransforms",
             "@llvm-project//mlir:Pass",
             "//tensorflow/compiler/mlir/hlo:lhlo",
-            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:passes",
             "//tensorflow/compiler/mlir/xla:attribute_exporter",
             "//tensorflow/compiler/xla/service:collective_ops_utils",
             "//tensorflow/core/tfrt/runtime:work_queue_interface",
@@ -1717,7 +1721,7 @@ cc_library(
         "//tensorflow/stream_executor:stream_executor_headers",
     ] + select({
         ":is_bef_executable_enabled": [
-            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:passes",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             "@tf_runtime//:bef",

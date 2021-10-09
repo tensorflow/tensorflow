@@ -51,11 +51,10 @@ struct BufferizeExtractSliceOp : public OpConversionPattern<ExtractSliceOp> {
   using OpConversionPattern<ExtractSliceOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      ExtractSliceOp op, ArrayRef<Value> operands,
+      ExtractSliceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (!op->getParentOfType<TiledLoopOp>()) return failure();
 
-    ExtractSliceOp::Adaptor adaptor(operands, op->getAttrDictionary());
     rewriter.replaceOpWithNewOp<SubViewOp>(
         op, adaptor.source(), op.getMixedOffsets(), op.getMixedSizes(),
         op.getMixedStrides());
@@ -68,11 +67,10 @@ struct BufferizeFillOp : public OpConversionPattern<FillOp> {
   using OpConversionPattern<FillOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      FillOp op, ArrayRef<Value> operands,
+      FillOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (!op->getParentOfType<TiledLoopOp>()) return failure();
 
-    linalg::FillOpAdaptor adaptor(operands, op->getAttrDictionary());
     rewriter.create<FillOp>(op.getLoc(), adaptor.value(), adaptor.output());
     rewriter.replaceOp(op, adaptor.output());
     return success();
@@ -84,11 +82,10 @@ struct BufferizeInitTensorOp : public OpConversionPattern<InitTensorOp> {
   using OpConversionPattern<InitTensorOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      InitTensorOp op, ArrayRef<Value> operands,
+      InitTensorOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (!op->getParentOfType<TiledLoopOp>()) return failure();
 
-    linalg::InitTensorOpAdaptor adaptor(operands, op->getAttrDictionary());
     rewriter.replaceOpWithNewOp<memref::AllocOp>(
         op, getTypeConverter()->convertType(op.getType()).cast<MemRefType>(),
         adaptor.sizes());
@@ -130,10 +127,8 @@ struct BufferizeInsertSliceOp : public OpConversionPattern<InsertSliceOp> {
   using OpConversionPattern<InsertSliceOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      InsertSliceOp op, ArrayRef<Value> operands,
+      InsertSliceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    InsertSliceOp::Adaptor adaptor(operands, op->getAttrDictionary());
-
     Value sourceMemRef = adaptor.source();
     assert(sourceMemRef.getType().isa<MemRefType>());
 
@@ -184,9 +179,10 @@ struct BufferizeLinalgYieldOp : public OpConversionPattern<linalg::YieldOp> {
   using OpConversionPattern<linalg::YieldOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      linalg::YieldOp op, ArrayRef<Value> operands,
+      linalg::YieldOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (!mlir::dyn_cast<TiledLoopOp>(op->getParentOp()) || operands.empty())
+    if (!mlir::dyn_cast<TiledLoopOp>(op->getParentOp()) ||
+        adaptor.getOperands().empty())
       return failure();
 
     rewriter.replaceOpWithNewOp<linalg::YieldOp>(op);
@@ -200,9 +196,8 @@ struct BufferizeTiledLoopOp : public OpConversionPattern<TiledLoopOp> {
   using OpConversionPattern<TiledLoopOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TiledLoopOp loop, ArrayRef<Value> operands,
+      TiledLoopOp loop, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    TiledLoopOp::Adaptor adaptor(operands, loop->getAttrDictionary());
     if (loop.getNumResults() == 0) return failure();
     // The following code to set distribution_type is due to the following bug
     // causing distribution_types to return an ArrayAttr instead of an
@@ -266,11 +261,9 @@ struct BufferizeVectorTransferReadOp
   using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      vector::TransferReadOp readOp, ArrayRef<Value> operands,
+      vector::TransferReadOp readOp, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (readOp.getShapedType().isa<MemRefType>()) return failure();
-    vector::TransferReadOp::Adaptor adaptor(operands,
-                                            readOp->getAttrDictionary());
     rewriter.replaceOpWithNewOp<vector::TransferReadOp>(
         readOp, readOp.getType(), adaptor.source(), adaptor.indices(),
         adaptor.permutation_map(), adaptor.padding(), adaptor.mask(),
@@ -284,11 +277,9 @@ struct BufferizeVectorTransferWriteOp
   using OpConversionPattern<vector::TransferWriteOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      vector::TransferWriteOp writeOp, ArrayRef<Value> operands,
+      vector::TransferWriteOp writeOp, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (writeOp.getShapedType().isa<MemRefType>()) return failure();
-    vector::TransferWriteOp::Adaptor adaptor(operands,
-                                             writeOp->getAttrDictionary());
     rewriter.create<vector::TransferWriteOp>(
         writeOp.getLoc(), adaptor.vector(), adaptor.source(), adaptor.indices(),
         adaptor.permutation_map(),

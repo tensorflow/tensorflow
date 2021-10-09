@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for loss scaling utilities in tensorflow.ops.nn."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations

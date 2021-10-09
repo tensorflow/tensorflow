@@ -18,8 +18,6 @@
 // Pattern to lower lmhlo collective ops to tfrt_gpu/xlir dialect.
 //
 //===----------------------------------------------------------------------===//
-#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/ccl_pattern.h"
-
 #include <functional>
 #include <string>
 
@@ -30,7 +28,7 @@
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
-#include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
+#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace {
@@ -252,33 +250,34 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::CollectivePermuteOp srcOp,
 
 template <class CclOpType>
 LogicalResult BufferOperandsEqualsOpArguments(CclOpType op,
-                                              ArrayRef<Value> operands) {
+                                              ValueRange operands) {
   if (operands.size() != op.operands().size() + op.results().size()) {
     return mlir::failure();
   }
   return mlir::success();
 }
 
-template <>
 LogicalResult BufferOperandsEqualsOpArguments(lmhlo::CollectivePermuteOp op,
-                                              ArrayRef<Value> operands) {
+                                              ValueRange operands) {
   // lmhlo::CollectivePermuteOp's input and output count are not variable.
   return mlir::success();
 }
 
 template <class CclOpType>
 struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
+  using typename tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType>::OpAdaptor;
   using tfrt::gpu::GpuAsyncOpConversionPattern<
       CclOpType>::GpuAsyncOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
-      CclOpType op, Value chain, Value stream, ArrayRef<Value> operands,
+      CclOpType op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    if (!all_of(operands, [](Value operand) {
+    if (!llvm::all_of(adaptor.getOperands(), [](Value operand) {
           return operand.getType().isa<tfrt::gpu::BufferType>();
         }))
       return rewriter.notifyMatchFailure(op, "expected buffer operands");
 
-    if (mlir::failed(BufferOperandsEqualsOpArguments(op, operands))) {
+    if (mlir::failed(
+            BufferOperandsEqualsOpArguments(op, adaptor.getOperands()))) {
       return rewriter.notifyMatchFailure(
           op,
           "Number of buffer operands does not match the number of op inputs "
@@ -286,7 +285,7 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
     }
 
     BlockAndValueMapping mapping;
-    for (auto pair : llvm::zip_first(op->getOperands(), operands))
+    for (auto pair : llvm::zip_first(op->getOperands(), adaptor.getOperands()))
       mapping.map(std::get<0>(pair), std::get<1>(pair));
 
     auto context =
@@ -310,13 +309,14 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
 
 }  // namespace
 
-void populateCclConversionPattern(RewritePatternSet& patterns) {
+void populateCclConversionPattern(RewritePatternSet& patterns,
+                                  TypeConverter& converter) {
   patterns.add<CclRewritePattern<lmhlo::AllGatherOp>,
                CclRewritePattern<lmhlo::AllReduceOp>,
                CclRewritePattern<lmhlo::ReduceScatterOp>,
                CclRewritePattern<lmhlo::AllToAllOp>,
                CclRewritePattern<lmhlo::CollectivePermuteOp>>(
-      patterns.getContext());
+      converter, patterns.getContext());
 }
 
 }  // namespace tensorflow

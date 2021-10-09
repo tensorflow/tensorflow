@@ -604,6 +604,8 @@ Status ImporterBase::ConvertDeferredFunctions() {
     // added correctly.
     GraphImportConfig specs;
     specs.enable_shape_inference = specs_.enable_shape_inference;
+    specs.unconditionally_use_set_output_shapes =
+        specs_.unconditionally_use_set_output_shapes;
     for (const auto& name_and_value : func_def->attr()) {
       if (name_and_value.first == "_input_shapes") {
         auto& list = name_and_value.second.list();

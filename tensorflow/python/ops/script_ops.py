@@ -15,10 +15,6 @@
 """Script Language Operators."""
 
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 
 # Used by py_util.cc to get tracebacks.

@@ -37,7 +37,7 @@ class RaggedTensorToSparseTest : public ::tensorflow::OpsTestBase {
   // populates the `splits` input with the given values.
   template <typename T>
   void BuildRaggedTensorToSparseGraph(
-      const std::vector<std::vector<int64>>& rt_nested_splits,
+      const std::vector<std::vector<int64_t>>& rt_nested_splits,
       const TensorShape& rt_dense_values_shape,
       const std::vector<T>& rt_dense_values) {
     const auto& dtype = DataTypeToEnum<T>::v();

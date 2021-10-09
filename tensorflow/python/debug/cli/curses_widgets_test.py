@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Unit tests for curses-based CLI widgets."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.debug.cli import curses_widgets
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.framework import test_util

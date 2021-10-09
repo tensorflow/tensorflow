@@ -253,35 +253,31 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
 }
 
 static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
-    mlir::mhlo::DotDimensionNumbers dot_dimension_numbers_attr) {
+    mlir::mhlo::DotDimensionNumbersAttr dot_dimension_numbers_attr) {
   xla::DotDimensionNumbers dot_dimension_numbers;
 
   auto rhs_contracting_dimensions =
-      dot_dimension_numbers_attr.rhs_contracting_dimensions()
-          .cast<mlir::DenseIntElementsAttr>();
+      dot_dimension_numbers_attr.getRhsContractingDimensions();
   auto lhs_contracting_dimensions =
-      dot_dimension_numbers_attr.lhs_contracting_dimensions()
-          .cast<mlir::DenseIntElementsAttr>();
+      dot_dimension_numbers_attr.getLhsContractingDimensions();
   auto rhs_batch_dimensions =
-      dot_dimension_numbers_attr.rhs_batching_dimensions()
-          .cast<mlir::DenseIntElementsAttr>();
+      dot_dimension_numbers_attr.getRhsBatchingDimensions();
   auto lhs_batch_dimensions =
-      dot_dimension_numbers_attr.lhs_batching_dimensions()
-          .cast<mlir::DenseIntElementsAttr>();
+      dot_dimension_numbers_attr.getLhsBatchingDimensions();
 
   for (const auto& val : rhs_contracting_dimensions) {
-    dot_dimension_numbers.add_rhs_contracting_dimensions(val.getSExtValue());
+    dot_dimension_numbers.add_rhs_contracting_dimensions(val);
   }
   for (const auto& val : lhs_contracting_dimensions) {
-    dot_dimension_numbers.add_lhs_contracting_dimensions(val.getSExtValue());
+    dot_dimension_numbers.add_lhs_contracting_dimensions(val);
   }
 
   for (const auto& val : rhs_batch_dimensions) {
-    dot_dimension_numbers.add_rhs_batch_dimensions(val.getSExtValue());
+    dot_dimension_numbers.add_rhs_batch_dimensions(val);
   }
 
   for (const auto& val : lhs_batch_dimensions) {
-    dot_dimension_numbers.add_lhs_batch_dimensions(val.getSExtValue());
+    dot_dimension_numbers.add_lhs_batch_dimensions(val);
   }
 
   return dot_dimension_numbers;

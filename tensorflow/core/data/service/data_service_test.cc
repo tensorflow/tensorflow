@@ -53,8 +53,8 @@ tstring LocalTempFilename() {
   return tstring(path);
 }
 
-std::vector<int64> Range(const int64 range) {
-  std::vector<int64> result;
+std::vector<int64_t> Range(const int64 range) {
+  std::vector<int64_t> result;
   for (int64 i = 0; i < range; ++i) {
     result.push_back(i);
   }
@@ -64,7 +64,7 @@ std::vector<int64> Range(const int64 range) {
 TEST(DataServiceTest, RangeDataset_NoShard) {
   TestCluster cluster(/*num_workers=*/5);
   TF_ASSERT_OK(cluster.Initialize());
-  DatasetClient<int64> dataset_client(cluster);
+  DatasetClient<int64_t> dataset_client(cluster);
 
   EXPECT_THAT(
       dataset_client.Read(RangeDataset(20), ProcessingModeDef::OFF,
@@ -80,14 +80,14 @@ TEST(DataServiceTest, RangeDataset_NoShard) {
 TEST(DataServiceTest, RangeDataset_DynamicShard) {
   TestCluster cluster(/*num_workers=*/5);
   TF_ASSERT_OK(cluster.Initialize());
-  DatasetClient<int64> dataset_client(cluster);
+  DatasetClient<int64_t> dataset_client(cluster);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      DatasetClient<int64>::WorkerResultMap worker_results,
+      DatasetClient<int64_t>::WorkerResultMap worker_results,
       dataset_client.Read(RangeDataset(20), ProcessingModeDef::DYNAMIC,
                           TARGET_WORKERS_AUTO));
 
-  std::vector<int64> result;
+  std::vector<int64_t> result;
   for (const auto& worker_result : worker_results) {
     result.insert(result.end(), worker_result.second.begin(),
                   worker_result.second.end());
@@ -101,7 +101,7 @@ using DataServiceTest_DataShard =
 TEST_P(DataServiceTest_DataShard, RangeDataset_DataShard) {
   TestCluster cluster(/*num_workers=*/5);
   TF_ASSERT_OK(cluster.Initialize());
-  DatasetClient<int64> dataset_client(cluster);
+  DatasetClient<int64_t> dataset_client(cluster);
 
   EXPECT_THAT(
       dataset_client.Read(RangeDataset(20), GetParam(), TARGET_WORKERS_LOCAL),
@@ -120,7 +120,7 @@ INSTANTIATE_TEST_SUITE_P(ShardingPolicy, DataServiceTest_DataShard,
 TEST(DataServiceTest, RangeDataset_HintShard) {
   TestCluster cluster(/*num_workers=*/5);
   TF_ASSERT_OK(cluster.Initialize());
-  DatasetClient<int64> dataset_client(cluster);
+  DatasetClient<int64_t> dataset_client(cluster);
 
   EXPECT_THAT(
       dataset_client.Read(RangeDatasetWithShardHint(20),

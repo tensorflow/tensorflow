@@ -18,10 +18,6 @@ Additionally it provides `generate()`, `combine()` and `times()` with
 `tf.distribute.Strategy` customizations as a default.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import re

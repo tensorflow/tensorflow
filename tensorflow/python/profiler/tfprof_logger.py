@@ -16,10 +16,6 @@
 
 OpLogProto is used to add extra model information for offline analysis.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 

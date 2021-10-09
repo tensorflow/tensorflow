@@ -83,6 +83,7 @@ cc_library(
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",

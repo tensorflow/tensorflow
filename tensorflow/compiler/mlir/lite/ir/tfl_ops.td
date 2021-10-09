@@ -4409,7 +4409,7 @@ the output tensor can vary depending on how many true values there are in
   }];
 
   let arguments = (ins
-    TFL_BoolTensor:$input
+    TFL_BoolTensor:$condition
   );
 
   let results = (outs

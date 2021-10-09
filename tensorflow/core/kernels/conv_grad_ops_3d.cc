@@ -1524,10 +1524,16 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       } else {
         VLOG(4) << "Convolution Autotune has been turned off";
       }
+      auto plan_and_scratch_or =
+          AllocateScratchOrFallback(&scratch_allocator, algorithm_config);
+      OP_REQUIRES_OK(context, plan_and_scratch_or.status());
+      auto plan_and_scratch = plan_and_scratch_or.ConsumeValueOrDie();
       cudnn_launch_status = stream->ConvolveWithExecutionPlan(
           se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
           filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-          &scratch_allocator, algorithm_config, nullptr);
+          std::get<se::DeviceMemoryBase>(plan_and_scratch),
+          *std::get<const se::dnn::ConvolveExecutionPlan*>(plan_and_scratch),
+          nullptr);
     } else {
       cudnn_launch_status = stream->ConvolveWithAlgorithm(
           se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
@@ -1930,10 +1936,16 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       } else {
         VLOG(4) << "Convolution Autotune has been turned off";
       }
+      auto plan_and_scratch_or =
+          AllocateScratchOrFallback(&scratch_allocator, algorithm_config);
+      OP_REQUIRES_OK(context, plan_and_scratch_or.status());
+      auto plan_and_scratch = plan_and_scratch_or.ConsumeValueOrDie();
       cudnn_launch_status = stream->ConvolveWithExecutionPlan(
           se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
           filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
-          conv_desc, &scratch_allocator, algorithm_config, nullptr);
+          conv_desc, std::get<se::DeviceMemoryBase>(plan_and_scratch),
+          *std::get<const se::dnn::ConvolveExecutionPlan*>(plan_and_scratch),
+          nullptr);
     } else {
       cudnn_launch_status = stream->ConvolveWithAlgorithm(
           se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,

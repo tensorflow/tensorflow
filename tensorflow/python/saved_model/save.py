@@ -14,10 +14,6 @@
 # ==============================================================================
 """Exports a SavedModel from a Trackable Python object."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import gc
@@ -464,20 +460,21 @@ def _gen_save_and_restore_functions(checkpoint_factory_map):
   for obj, factory_data_list in checkpoint_factory_map.items():
     for factory_data in factory_data_list:
       saveable_factory = factory_data.factory
-      checkpoint_key = factory_data.checkpoint_key
       attribute_name = factory_data.name
 
       # If object revives as a resource (or TPU/Mirrored) variable,
       # there is no need to trace the save and restore functions.
-      if not (resource_variable_ops.is_resource_variable(obj) or
-              resource_variable_ops.is_resource_variable(saveable_factory)):
-        concrete_save, concrete_restore, saveable = (
-            saveable_object_util.build_traceable_saveable(
-                saveable_factory, checkpoint_key, obj))
-        if not saveable:
-          continue
-        saveable_fn_map.setdefault(obj, {})[attribute_name] = (
-            concrete_save, concrete_restore)
+      if (resource_variable_ops.is_resource_variable(obj) or
+          resource_variable_ops.is_resource_variable(saveable_factory) or
+          not callable(saveable_factory)):
+        continue
+      concrete_save, concrete_restore = (
+          saveable_object_util.trace_save_restore_functions(
+              saveable_factory, obj))
+      if not concrete_save:
+        continue
+      saveable_fn_map.setdefault(obj, {})[attribute_name] = (
+          concrete_save, concrete_restore)
   return saveable_fn_map
 
 

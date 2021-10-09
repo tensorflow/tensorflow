@@ -14,10 +14,6 @@
 # ==============================================================================
 """Contains functions to use mixed precision with the graph rewrite."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import config
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import optimizer

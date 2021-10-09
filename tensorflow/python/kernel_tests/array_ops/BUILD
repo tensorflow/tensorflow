@@ -58,6 +58,7 @@ cuda_py_test(
     name = "gather_op_test",
     size = "medium",
     srcs = ["gather_op_test.py"],
+    shard_count = 3,
     deps = [
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",

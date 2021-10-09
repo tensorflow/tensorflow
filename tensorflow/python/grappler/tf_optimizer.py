@@ -14,10 +14,6 @@
 # =============================================================================
 """Provides a proper python API for the symbols exported through swig."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 
 from tensorflow.core.framework import graph_pb2

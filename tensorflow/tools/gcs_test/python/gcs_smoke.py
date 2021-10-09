@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Smoke test for reading records from GCS to TensorFlow."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 import sys
 import time

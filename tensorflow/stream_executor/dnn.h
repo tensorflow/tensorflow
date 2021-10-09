@@ -194,9 +194,9 @@ class RnnStateTensorDescriptor {
 class ConvolveExecutionPlan {
  public:
   virtual ~ConvolveExecutionPlan() {}
-  virtual std::string getTag() { return "unknown"; }
-  virtual void* get_raw_desc() { return nullptr; }
-  virtual int64_t getWorkspaceSize() { return -1; }
+  virtual std::string getTag() const { return "unknown"; }
+  virtual void* get_raw_desc() const { return nullptr; }
+  virtual int64_t getWorkspaceSize() const { return -1; }
 };
 
 // Returns a string representation of the given quantization mode.
@@ -926,11 +926,16 @@ class AlgorithmConfig {
     return !(*this == other);
   }
   std::string ToString() const;
-  void set_plan(std::unique_ptr<dnn::ConvolveExecutionPlan>& plan) {
+  void set_plan(std::shared_ptr<const dnn::ConvolveExecutionPlan> plan) {
     plan_ = std::move(plan);
   }
-  void set_plan_no_scratch(std::unique_ptr<dnn::ConvolveExecutionPlan>& plan) {
+  const dnn::ConvolveExecutionPlan* get_plan() const { return plan_.get(); }
+  void set_plan_no_scratch(
+      std::shared_ptr<const dnn::ConvolveExecutionPlan> plan) {
     plan_no_scratch_ = std::move(plan);
+  }
+  const dnn::ConvolveExecutionPlan* get_plan_no_scratch() const {
+    return plan_no_scratch_.get();
   }
 
   // TODO(ruochengw): After cl/380702564, add support for algorithm configs with

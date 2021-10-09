@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrappers for Datasets and Iterators."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export

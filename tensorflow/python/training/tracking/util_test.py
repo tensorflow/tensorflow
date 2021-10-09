@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import os
 import weakref
@@ -874,7 +870,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
     with self.assertRaisesRegex(
         errors_impl.NotFoundError,
-        "Failed to restore from checkpoint or SavedModel"):
+        "Error when restoring from checkpoint or SavedModel"):
       load_checkpoint.restore(saved_model_dir + "no").expect_partial()
 
     load_checkpoint.restore(saved_model_dir).expect_partial()

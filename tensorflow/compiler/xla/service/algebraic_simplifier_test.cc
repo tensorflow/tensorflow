@@ -7800,5 +7800,24 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationSelMaxBcast) {
                                      m::Broadcast(m::ConstantScalar())))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SimplifyRedundantBitcastConvert) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0)
+      p1 = s32[10] parameter(1)
+      b0 = u32[10] bitcast-convert(p0)
+      b1 = u32[10] bitcast-convert(p1)
+      c = u32[20] concatenate(b0, b1), dimensions={0}
+      ROOT out = s32[20] bitcast-convert(c)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(1))));
+}
+
 }  // namespace
 }  // namespace xla

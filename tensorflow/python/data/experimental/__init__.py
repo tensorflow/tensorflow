@@ -90,10 +90,6 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@UNKNOWN_CARDINALITY
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.data.experimental import service
 from tensorflow.python.data.experimental.ops.batching import dense_to_ragged_batch

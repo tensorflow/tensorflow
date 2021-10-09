@@ -14,10 +14,6 @@
 # ==============================================================================
 """Helper classes that list&validate all attributes to serialize to SavedModel."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 
 from tensorflow.python.keras.saving.saved_model import json_utils

@@ -63,7 +63,7 @@ namespace mlir {
 namespace TF {
 namespace {
 
-using mhlo::DotDimensionNumbers;
+using mhlo::DotDimensionNumbersAttr;
 
 class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
  public:
@@ -1023,15 +1023,15 @@ class ConvertSortToTfTopk : public OpConversionPattern<mhlo::SortOp> {
 // A struct to hold information about dimensions of dot_general operands.
 class DotDimensionsInfo {
  public:
-  DotDimensionsInfo(ShapedType type, DenseIntElementsAttr batch_dimensions,
-                    DenseIntElementsAttr contracting_dimensions) {
+  DotDimensionsInfo(ShapedType type, ArrayRef<int64_t> batch_dimensions,
+                    ArrayRef<int64_t> contracting_dimensions) {
     const int rank = type.getRank();
-    for (const int dim : batch_dimensions.getValues<int64_t>()) {
+    for (const int dim : batch_dimensions) {
       batch_dimensions_.axes.push_back(dim);
       batch_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
 
-    for (const int dim : contracting_dimensions.getValues<int64_t>()) {
+    for (const int dim : contracting_dimensions) {
       contracting_dimensions_.axes.push_back(dim);
       contracting_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
@@ -1078,7 +1078,7 @@ class DotDimensionsInfo {
 };
 
 Value ConvertDot(PatternRewriter &rewriter, Value lhs, Value rhs,
-                 DotDimensionNumbers dot_dimension_numbers,
+                 DotDimensionNumbersAttr dot_dimension_numbers,
                  ShapedType result_type, mlir::Location loc) {
   auto lhs_type = lhs.getType().cast<ShapedType>();
   auto rhs_type = rhs.getType().cast<ShapedType>();
@@ -1087,11 +1087,11 @@ Value ConvertDot(PatternRewriter &rewriter, Value lhs, Value rhs,
 
   // Collects lhs and rhs dimensions information.
   DotDimensionsInfo lhs_dot_dimensions_info(
-      lhs_type, dot_dimension_numbers.lhs_batching_dimensions(),
-      dot_dimension_numbers.lhs_contracting_dimensions());
+      lhs_type, dot_dimension_numbers.getLhsBatchingDimensions(),
+      dot_dimension_numbers.getLhsContractingDimensions());
   DotDimensionsInfo rhs_dot_dimensions_info(
-      rhs_type, dot_dimension_numbers.rhs_batching_dimensions(),
-      dot_dimension_numbers.rhs_contracting_dimensions());
+      rhs_type, dot_dimension_numbers.getRhsBatchingDimensions(),
+      dot_dimension_numbers.getRhsContractingDimensions());
 
   // Transposes lhs shape to be in the order of {batch_dimensions,
   // out_dimensions, contracting dimensions}.
@@ -1173,13 +1173,13 @@ Value ConvertDot(PatternRewriter &rewriter, Value lhs, Value rhs,
 Value ConvertDotOp(PatternRewriter &rewriter, Operation *old_op) {
   auto dot_op = cast<mhlo::DotOp>(old_op);
   auto lhs_rank = dot_op.lhs().getType().cast<ShapedType>().getRank();
-  auto dot_dimension_numbers = DotDimensionNumbers::get(
-      /*lhs_batching_dimensions=*/rewriter.getI64TensorAttr({}),
-      /*rhs_batching_dimensions=*/rewriter.getI64TensorAttr({}),
-      /*lhs_contracting_dimensions=*/
-      rewriter.getI64TensorAttr({lhs_rank == 1 ? 0 : 1}),
-      /*rhs_contracting_dimensions=*/rewriter.getI64TensorAttr({0}),
-      rewriter.getContext());
+  auto dot_dimension_numbers =
+      DotDimensionNumbersAttr::get(rewriter.getContext(),
+                                   /*lhs_batching_dimensions=*/{},
+                                   /*rhs_batching_dimensions=*/{},
+                                   /*lhs_contracting_dimensions=*/
+                                   {lhs_rank == 1 ? 0 : 1},
+                                   /*rhs_contracting_dimensions=*/{0});
   return ConvertDot(rewriter, dot_op.lhs(), dot_op.rhs(), dot_dimension_numbers,
                     dot_op.getResult().getType().cast<ShapedType>(),
                     dot_op.getLoc());

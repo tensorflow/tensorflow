@@ -135,8 +135,9 @@ Status DataServiceDispatcherClient::RegisterDataset(
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
     int64_t dataset_id, const ProcessingModeDef& processing_mode,
-    const absl::optional<JobKey>& job_key, absl::optional<int64> num_consumers,
-    TargetWorkers target_workers, int64_t& job_client_id) {
+    const absl::optional<JobKey>& job_key,
+    absl::optional<int64_t> num_consumers, TargetWorkers target_workers,
+    int64_t& job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);

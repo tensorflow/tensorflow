@@ -16,19 +16,6 @@ limitations under the License.
 #ifndef HLO_OPS_BASE_STRUCTS
 #define HLO_OPS_BASE_STRUCTS
 
-//===----------------------------------------------------------------------===//
-// Dot dimensions enum definitions.
-//===----------------------------------------------------------------------===//
-
-def DotDimensionNumbers : StructAttr<"DotDimensionNumbers", HLO_Dialect, [
-                StructFieldAttr<"lhs_batching_dimensions",   I64ElementsAttr>,
-                StructFieldAttr<"rhs_batching_dimensions",   I64ElementsAttr>,
-                StructFieldAttr<"lhs_contracting_dimensions", I64ElementsAttr>,
-                StructFieldAttr<"rhs_contracting_dimensions", I64ElementsAttr>
-  ]> {
-  let summary = "Structure of dimension information for dot product";
-}
-
 def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
   StructFieldAttr<"input_batch_dimension",I64Attr>,
   StructFieldAttr<"input_feature_dimension", I64Attr>,

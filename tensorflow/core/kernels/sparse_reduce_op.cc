@@ -201,8 +201,8 @@ class SparseReduceOp : public OpKernel {
       }
     }
 
-    auto CoordinatesToFlatIndex = [](ArraySlice<int64> coords,
-                                     ArraySlice<int64> strides) -> int64 {
+    auto CoordinatesToFlatIndex = [](ArraySlice<int64_t> coords,
+                                     ArraySlice<int64_t> strides) -> int64 {
       if (strides.empty()) {  // Reduce all.
         return 0;
       }
@@ -295,7 +295,7 @@ class SparseReduceSparseOp : public OpKernel {
                    ctx->allocate_output(
                        0, TensorShape({nnz, reduction.reduced_shape.dims()}),
                        &out_indices_t));
-    typename TTypes<int64>::Matrix out_indices_mat =
+    typename TTypes<int64_t>::Matrix out_indices_mat =
         out_indices_t->matrix<int64_t>();
     // For keep_dims. We don't explicitly set dim fields for reduced dims below.
     out_indices_mat.setZero();

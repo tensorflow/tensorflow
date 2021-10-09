@@ -19,10 +19,6 @@ This file is necessary to avoid cyclic dependencies between ops.py and
 control_flow_ops.py.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import traceback
 

@@ -31,6 +31,7 @@ namespace {
 using test::function::NDef;
 
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
+constexpr char kOptionsDataset[] = "OptionsDataset";
 
 Status OptimizeWithInjectPrefetch(const GrapplerItem &item, GraphDef *output,
                                   bool autotune) {
@@ -64,8 +65,10 @@ TEST_P(AutotuneSetting, InjectPrefetchTest) {
 
   GraphDef output;
   TF_ASSERT_OK(OptimizeWithInjectPrefetch(item, &output, autotune));
-  EXPECT_EQ(graph_utils::ContainsNodeWithOp(kPrefetchDataset, output),
-            autotune);
+  EXPECT_EQ(autotune,
+            graph_utils::ContainsNodeWithOp(kPrefetchDataset, output));
+  EXPECT_EQ(autotune, graph_utils::ContainsGraphNodeWithName(
+                          "inject/prefetch_range", output));
 }
 
 INSTANTIATE_TEST_SUITE_P(Test, AutotuneSetting, ::testing::Values(false, true));
@@ -105,7 +108,33 @@ TEST(AlreadyPrefetched, InjectPrefetchTest) {
   GraphDef output;
   TF_ASSERT_OK(OptimizeWithInjectPrefetch(item, &output, true));
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp(kPrefetchDataset, output));
-  EXPECT_EQ(output.node_size(), 6);
+  EXPECT_EQ(6, output.node_size());
+}
+
+TEST(OptionsFollowedByPrefetched, InjectPrefetchTest) {
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("range", "RangeDataset", {"start", "stop", "step"},
+            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+             {"output_types", gtl::ArraySlice<DataType>{}}}),
+       NDef("prefetch", kPrefetchDataset, {"range"},
+            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+             {"output_types", gtl::ArraySlice<DataType>{}}}),
+       NDef("options", kOptionsDataset, {"prefetch"},
+            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+             {"output_types", gtl::ArraySlice<DataType>{}}}),
+       NDef("Sink", "Identity", {"options"}, {})});
+
+  item.fetch.push_back("Sink");
+
+  GraphDef output;
+  TF_ASSERT_OK(OptimizeWithInjectPrefetch(item, &output, true));
+  EXPECT_FALSE(graph_utils::ContainsGraphNodeWithName("inject/prefetch_options",
+                                                      output));
+  EXPECT_EQ(7, output.node_size());
 }
 
 }  // namespace

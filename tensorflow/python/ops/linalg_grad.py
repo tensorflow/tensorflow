@@ -33,10 +33,6 @@ References:
     [Ionescu et al., 2015](https://arxiv.org/abs/1509.07838)
     ([pdf](https://arxiv.org/pdf/1509.07838.pdf))
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops

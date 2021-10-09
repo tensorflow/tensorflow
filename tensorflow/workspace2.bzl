@@ -497,8 +497,8 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "absl_py",
-        sha256 = "588a23406b2e28ea368897dbebc1210165414e87212d4fdd4b2ee968f0a772c6",
-        strip_prefix = "abseil-py-pypi-v0.10.0",
+        sha256 = "0d37dc61cf29b04e42ed13b5fe3f578c05a1d07c75e5d7df826f0c2dc8dd2f53",
+        strip_prefix = "abseil-py-pypi-v0.14.1",
         system_build_file = "//third_party/systemlibs:absl_py.BUILD",
         system_link_files = {
             "//third_party/systemlibs:absl_py.absl.BUILD": "absl/BUILD",
@@ -507,8 +507,8 @@ def _tf_repositories():
             "//third_party/systemlibs:absl_py.absl.logging.BUILD": "absl/logging/BUILD",
         },
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-py/archive/pypi-v0.10.0.tar.gz",
-            "https://github.com/abseil/abseil-py/archive/pypi-v0.10.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-py/archive/pypi-v0.14.1.tar.gz",
+            "https://github.com/abseil/abseil-py/archive/pypi-v0.14.1.tar.gz",
         ],
     )
 

@@ -320,10 +320,10 @@ cuda_py_test(
         "no_windows",  # TODO(b/184424727): Re-enable this.
     ],
     deps = [
-        ":profiler",
         ":test",
         "//tensorflow/core/profiler/protobuf:trace_events_proto_py",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python/profiler:profiler_v2",
         "//tensorflow/python/profiler:trace",
     ],
 )
@@ -532,6 +532,24 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "function_trace_type_test",
+    size = "medium",
+    srcs = ["function_trace_type_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":function",
+        ":function_trace_type",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
 py_library(
     name = "test",
     srcs = ["test.py"],
@@ -602,6 +620,21 @@ py_library(
 )
 
 py_library(
+    name = "function_trace_type",
+    srcs = ["function_trace_type.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "function",
     srcs = ["function.py"],
     srcs_version = "PY3",
@@ -611,6 +644,7 @@ py_library(
         ":core",
         ":execute",
         ":forwardprop_util",
+        ":function_trace_type",
         ":graph_only_ops",
         ":tape",
         "//tensorflow/python:dtypes",
@@ -740,6 +774,7 @@ cuda_py_test(
         ":test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/data",
@@ -765,6 +800,7 @@ tf_xla_py_test(
         ":test",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],

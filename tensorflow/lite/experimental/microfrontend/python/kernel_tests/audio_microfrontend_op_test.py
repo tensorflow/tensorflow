@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for AudioMicrofrontend."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow as tf
 
 from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op as frontend_op

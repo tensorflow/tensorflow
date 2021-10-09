@@ -305,6 +305,9 @@ HloModuleProto HloModule::ToProto() const {
     }
   }
   proto.set_is_dynamic(is_dynamic_);
+  if (has_spmd_output_sharding()) {
+    *proto.mutable_spmd_output_sharding() = spmd_output_sharding().ToProto();
+  }
   return proto;
 }
 
@@ -440,6 +443,11 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   module->set_is_dynamic(proto.is_dynamic());
 
+  if (proto.has_spmd_output_sharding()) {
+    TF_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
+                        HloSharding::FromProto(proto.spmd_output_sharding()));
+    module->set_spmd_output_sharding(hlo_sharding);
+  }
   return std::move(module);
 }
 

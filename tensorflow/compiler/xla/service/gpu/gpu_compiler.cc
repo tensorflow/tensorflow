@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -164,7 +165,7 @@ limitations under the License.
 
 #if BEF_EXECUTABLE
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
-#include "tfrt/gpu/pass/pass.h"  // from @tf_runtime
+#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #endif  // BEF_EXECUTABLE
@@ -325,7 +326,6 @@ Status GpuCompiler::OptimizeHloModule(
 
     // Expand random number generation.
     pipeline.AddPass<RngExpander>();
-    pipeline.AddPass<BitcastDtypesExpander>();
     pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
     // Comparison total order expander
@@ -411,6 +411,7 @@ Status GpuCompiler::OptimizeHloModule(
       options.set_replace_transpose_with_bitcast(false);
       options.set_enable_conv_operand_swap(false);
       pipeline.AddPass<AlgebraicSimplifier>(options);
+      pipeline.AddPass<BitcastDtypesExpander>();
       // AlgebraicSimplifier may add contracting dimensions to a dot.
       pipeline.AddPass<DotDecomposer>();
       // Only merge "smallish" dots.  This threshold was not set carefully, but
@@ -749,18 +750,13 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
   // LHLO -> TFRT Dialect (gpu kernels)
   mlir::PassManager pm(mlir_module.getContext(),
                        mlir::PassManager::Nesting::Implicit);
-  pm.addPass(tensorflow::createLmhloGpuAsyncConversionPass());
+  pm.addPass(tensorflow::createConvertLmhloToGpuPass());
   pm.addPass(mlir::createGpuAsyncRegionPass());
   tfrt::gpu::populateGpuToTfrtGpuPasses(pm);
+  pm.addPass(mlir::createCanonicalizerPass());
   if (pm.run(mlir_module).failed()) {
     return InternalError(
         "Failed to lower LHLO to TFRT Dialect with gpu kernels.");
-  }
-
-  // Perform DCE with empty pattern set.
-  if (failed(mlir::applyPatternsAndFoldGreedily(
-          mlir_module, mlir::RewritePatternSet(mlir_module.getContext())))) {
-    return InternalError("Failed to remove dead ops.");
   }
 
   // TFRT Dialect -> BEF
@@ -1178,6 +1174,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         profile_index_map->GetProfileIndexFor(*module->entry_computation());
   }
 
+  // Make it shared to be captured in the following lambda.
+  std::shared_ptr<const BufferAssignment> buffer_assignment(
+      std::move(compile_module_results.buffer_assignment));
+
   GpuVersion gpu_version = GetGpuVersion(stream_exec);
   auto* gpu_executable = new GpuExecutable(
       {std::move(backend_result.first), std::move(backend_result.second),
@@ -1187,7 +1187,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
        compile_module_results.module_name, compile_module_results.output_shape,
        std::move(compile_module_results.allocations),
        std::move(buffer_assignment_proto),
-       compile_module_results.buffer_assignment->ToVerboseString(),
+       [buffer_assignment] { return buffer_assignment->ToVerboseString(); },
        std::move(module), profile_index, std::move(profile_printer),
        std::move(profile_index_map)});
   if (embed_ir_in_executable) {
@@ -1199,12 +1199,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   // dump is enabled.
   if (DumpingEnabledForHloModule(gpu_executable->module())) {
     auto hlo_proto = absl::make_unique<HloProto>(*hlo_proto_);
-    *hlo_proto->mutable_buffer_assignment() =
-        compile_module_results.buffer_assignment->ToProto();
+    *hlo_proto->mutable_buffer_assignment() = buffer_assignment->ToProto();
     gpu_executable->set_hlo_proto(std::move(hlo_proto));
   }
-  gpu_executable->set_debug_info(
-      compile_module_results.buffer_assignment->GetStats().ToString());
+  gpu_executable->set_debug_info(buffer_assignment->GetStats().ToString());
   return std::unique_ptr<Executable>(gpu_executable);
 }
 

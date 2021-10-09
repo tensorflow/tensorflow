@@ -725,15 +725,11 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     // uneven partitioning.
     if (windowed_at_contracting_dims) {
       auto& to_mask = windowed_op_is_lhs ? lhs : rhs;
-      to_mask =
-          to_mask.PadWithValue(b->AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::Zero(output_base_shape.element_type()))));
+      to_mask = to_mask.PadWithZero();
     }
     if (operands_sharded_at_contracting_dims) {
-      auto zero = b->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::Zero(output_base_shape.element_type())));
-      lhs = lhs.PadWithValue(zero);
-      rhs = rhs.PadWithValue(zero);
+      lhs = lhs.PadWithZero();
+      rhs = rhs.PadWithZero();
     }
 
     // Get slice sharding, sharding dim, and lhs/rhs concat dim.
@@ -1653,19 +1649,15 @@ StatusOr<HloInstruction*> PartitionBaseCase(
   // LHS and RHS have the same partitioned contracting dimensions.
   if (lhs_contracting_partitions == rhs_contracting_partitions &&
       lhs_contracting_partitions == num_partitions) {
-    auto zero = b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::Zero(output_base_shape.element_type())));
     // Pad both sides with zero, since NaN at one side cannot be masked by zero
     // on the other side.
     if (ShapeSizeInBytes(lhs.base_shape()) <
         ShapeSizeInBytes(rhs.base_shape())) {
-      lhs =
-          lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithValue(zero);
-      rhs = rhs.PadWithValue(zero);
+      lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithZero();
+      rhs = rhs.PadWithZero();
     } else {
-      lhs = lhs.PadWithValue(zero);
-      rhs =
-          rhs.Reshard(*lhs_sharding_transposed_to_match_rhs).PadWithValue(zero);
+      lhs = lhs.PadWithZero();
+      rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs).PadWithZero();
     }
     TF_ASSIGN_OR_RETURN(
         auto dot, create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
@@ -1765,16 +1757,12 @@ StatusOr<HloInstruction*> PartitionBaseCase(
   // the contracting dimensions.
   if (output_sharding.IsReplicated() && (should_partition_contracting_dim(0) ||
                                          should_partition_contracting_dim(1))) {
-    auto zero = b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::Zero(output_base_shape.element_type())));
     if (should_partition_contracting_dim(0)) {
-      lhs =
-          lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithValue(zero);
-      rhs = rhs.PadWithValue(zero);
+      lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithZero();
+      rhs = rhs.PadWithZero();
     } else {
-      lhs = lhs.PadWithValue(zero);
-      rhs =
-          rhs.Reshard(*lhs_sharding_transposed_to_match_rhs).PadWithValue(zero);
+      lhs = lhs.PadWithZero();
+      rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs).PadWithZero();
     }
     TF_ASSIGN_OR_RETURN(
         auto dot, create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
@@ -2398,8 +2386,7 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
     }
     lhs_skipped_dims.push_back(i);
   }
-  lhs = lhs.PadWithValue(
-      CreateZero(ShapeUtil::MakeShape(lhs.base_shape().element_type(), {}), b),
+  lhs = lhs.PadWithZero(
       /*left_padded_dims=*/{}, lhs_skipped_dims);
   std::vector<int64_t> rhs_skipped_dims;
   for (int64_t i = 0; i < rhs.base_shape().rank(); ++i) {
@@ -2408,8 +2395,7 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
     }
     rhs_skipped_dims.push_back(i);
   }
-  rhs = rhs.PadWithValue(
-      CreateZero(ShapeUtil::MakeShape(rhs.base_shape().element_type(), {}), b),
+  rhs = rhs.PadWithZero(
       /*left_padded_dims=*/{}, rhs_skipped_dims);
   top_level_sharding_to_reset.emplace_back(lhs.hlo(), lhs_sharding);
   lhs.hlo()->set_sharding(lhs_grouped.sharding);

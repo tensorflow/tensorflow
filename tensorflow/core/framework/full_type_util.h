@@ -30,10 +30,10 @@ namespace tensorflow {
 
 namespace full_type {
 
-// Helpers that allow shorthand expression for the more common kinds of type
-// constructors.
 // TODO(mdan): Specific helpers won't get too far. Use a parser instead.
 
+// Helpers that allow shorthand expression for the more common kinds of type
+// constructors.
 // Note: The arity below refers to the number of arguments of parametric types,
 // not to the number of return values from a particular op.
 

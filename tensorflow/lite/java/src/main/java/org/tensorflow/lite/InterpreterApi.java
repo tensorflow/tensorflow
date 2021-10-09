@@ -221,7 +221,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     null, or if an error occurs when running inference.
    */
   public void runForMultipleInputsOutputs(
-      @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs);
+      Object @NonNull [] inputs, @NonNull Map<Integer, Object> outputs);
 
   /**
    * Explicitly updates allocations for all tensors, if necessary.

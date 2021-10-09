@@ -60,10 +60,6 @@ ops above and associated assignment operations), tf.function traces a second
 time if it sees variables on the first call.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import threading
 import types as types_lib

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Various classes representing distributed values for PS."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import copy
 import threading

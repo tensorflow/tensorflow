@@ -70,31 +70,26 @@ static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
   auto module = tfrt::gpu::wrapper::ModuleLoadData(*current, blob.data());
   if (!module) return module.takeError();
 
-  return tfrt::gpu::GpuModule(context.ValueRef(), std::move(*module));
-}
+  // Resolve constants.
+  for (const auto& constant : gpu_module_data->constants) {
+    if (constant.content.empty()) continue;
 
-// TODO(hanbinyoon): Expose this in ccl_wrapper.h.
-static llvm::Expected<int> ToWidthInBytes(ncclDataType_t data_type) {
-  switch (data_type) {
-    case ncclInt8:
-    case ncclUint8:
-      return 1;
-    case ncclFloat16:
-#if defined(__CUDA_BF16_TYPES_EXIST__)
-    case ncclBfloat16:
-#endif
-      return 2;
-    case ncclInt32:
-    case ncclUint32:
-    case ncclFloat32:
-      return 4;
-    case ncclInt64:
-    case ncclUint64:
-    case ncclFloat64:
-      return 8;
-    default:
-      return tfrt::MakeStringError("Unknown ncclDataType_t: ", data_type);
+    auto global = tfrt::gpu::wrapper::ModuleGetGlobal(
+        module->get(), constant.symbol_name.data());
+    if (!global) return global.takeError();
+
+    const void* constant_content =
+        static_cast<const void*>(constant.content.data());
+    tfrt::gpu::GpuPointer constant_content_ptr(
+        const_cast<void*>(constant_content), current->platform());
+
+    if (auto error = tfrt::gpu::wrapper::MemcpyAsync(
+            *current, global->base, constant_content_ptr, global->size_bytes,
+            tfrt::gpu::wrapper::Stream(nullptr, current->platform()))) {
+      return error;
+    }
   }
+  return tfrt::gpu::GpuModule(context.ValueRef(), std::move(*module));
 }
 
 static tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
@@ -142,7 +137,7 @@ static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(
       xccl_ctx->collective_permute_source_target.target_peer;
 
   auto type = static_cast<ncclDataType_t>(*data_type);
-  auto width = ToWidthInBytes(type);
+  auto width = tfrt::gpu::wrapper::GetCclDataTypeSizeBytes(type);
   if (!width)
     return tfrt::MakeErrorAsyncValueRef(llvm::toString(width.takeError()));
   assert(*width != 0);

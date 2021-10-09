@@ -10,6 +10,7 @@ package_group(
     name = "friends",
     packages = [
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         "//tensorflow/c/eager/...",
         "//tensorflow/compiler/mlir/tfrt/...",
@@ -39,6 +40,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/eager:virtual_device",
         "//tensorflow/core/tpu:virtual_device",
+        "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
@@ -161,6 +163,7 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:op_def_proto_cc",
         "//tensorflow/core/framework:versions_proto_cc",
@@ -172,6 +175,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

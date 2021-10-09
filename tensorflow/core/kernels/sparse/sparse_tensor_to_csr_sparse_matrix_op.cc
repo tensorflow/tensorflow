@@ -190,7 +190,7 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
                          TensorShape({batch_size + 1}));
 
       auto batch_ptr = batch_ptr_t.vec<int32>();
-      auto indices = indices_t.matrix<int64>();
+      auto indices = indices_t.matrix<int64_t>();
 
       batch_ptr(0) = 0;
       for (int i = 0; i < batch_size; ++i) {
