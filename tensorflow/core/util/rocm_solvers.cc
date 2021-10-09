@@ -244,7 +244,6 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
 
 TF_CALL_LAPACK_TYPES(GETRF_INSTANCE);
 
-<<<<<<< HEAD
 #define GEQRF_INSTANCE(Scalar, type_prefix)                                      \
   template <>                                                                    \
   Status GpuSolver::Geqrf(int m, int n, Scalar* dev_A, int lda, Scalar* dev_tau, \
@@ -320,18 +319,6 @@ TF_CALL_LAPACK_TYPES_NO_REAL(UNGQR_INSTANCE);
         rocm_blas_handle_, uplo, n, reinterpret_cast<ROCmScalar*>(dev_A),     \
         lda, dev_lapack_info));                                               \
     return Status::OK();                                                      \
-=======
-#define POTRF_INSTANCE(Scalar, type_prefix)                                    \
-  template <>                                                                  \
-  Status GpuSolver::Potrf<Scalar>(rocblas_fill uplo, int n, Scalar* dev_A,     \
-                                  int lda, int* dev_lapack_info) {             \
-    mutex_lock lock(handle_map_mutex);                                         \
-    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                    \
-    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(potrf, type_prefix)(                  \
-        rocm_blas_handle_, uplo, n, reinterpret_cast<ROCmScalar*>(dev_A), lda, \
-        dev_lapack_info));                                                     \
-    return Status::OK();                                                       \
->>>>>>> 7f185962b837844e88168bc2aad364a9e599292c
   }
 
 TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
