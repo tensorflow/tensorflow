@@ -100,7 +100,7 @@ Status GetEagerOperationAndNumRetvals(const Operation& operation,
                                       EagerOperation* eager_op,
                                       int* num_retvals) {
   const char* name = operation.name().c_str();  // Shorthand
-  absl::optional<tensorflow::EagerRemoteFunctionParams> remote_func_params =
+  absl::optional<tensorflow::EagerFunctionParams> remote_func_params =
       absl::nullopt;
   if (operation.is_function()) {
     if (operation.is_component_function()) {
@@ -177,7 +177,7 @@ Status AddOpRetvalsToResponse(
     std::function<TensorProto*()> add_tensor_proto_fn,
     std::function<TensorShapeProto*()> add_shape_proto_fn,
     std::function<string*()> add_device_fn = nullptr) {
-  if (op_id == kInvalidRemoteOpId) {
+  if (op_id == kInvalidOpId) {
     // Copy the output tensors back along with the response, since the op id
     // is invalid which cannot be added to RemoteMgr.
     for (int i = 0; i < num_retvals; i++) {

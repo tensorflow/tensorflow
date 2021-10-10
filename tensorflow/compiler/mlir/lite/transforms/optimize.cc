@@ -207,7 +207,8 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
 // of `indices` are from 0 to n-1, the output tensor are identical to the
 // `params`.
 bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
-                                              DenseIntElementsAttr indices) {
+                                              DenseIntElementsAttr indices,
+                                              Type output_type) {
   auto params_type = params.getType().dyn_cast<RankedTensorType>();
   auto indices_type = indices.getType().dyn_cast<RankedTensorType>();
   // Checks the shape of `params` is [n, ...], shape of `indices` is [n, 1]. 2D
@@ -217,6 +218,10 @@ bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
       indices_type.getDimSize(0) != params_type.getDimSize(0) ||
       indices_type.getDimSize(1) != 1)
     return false;
+
+  // Checks the `params_type` is equal to `output_type`. If not equal, we
+  // cannot replace the scatter_nd/gather_nd op with `params`.
+  if (params_type != output_type) return false;
 
   // Checks the value in `indices` is from 0 to n-1.
   int cur_value = 0;

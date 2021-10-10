@@ -509,10 +509,9 @@ void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments) {
   if (!experiments.empty()) {
     constexpr float TEN_MINUTES = 60.0 * 10.0;
     LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
-        << "The input pipeline is subject to tf.data experiments. "
-           "Please see `go/tf-data-experiments` for more details.\n"
-        << "The experiments \"" << absl::StrJoin(experiments, ",")
-        << "\" are applied.";
+        << "The input pipeline is subject to the following tf.data experiments:"
+        << " " << absl::StrJoin(experiments, ", ") << ". "
+        << "See `go/tf-data-experiments` for more details.";
   }
   for (auto& experiment : experiments) {
     metrics::RecordTFDataExperiment(experiment);

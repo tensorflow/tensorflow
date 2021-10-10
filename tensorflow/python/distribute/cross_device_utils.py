@@ -265,10 +265,11 @@ class CollectiveReplicaLauncher(object):
     self._group_size = group_size
     self._collective_keys = collective_keys
     self._device = device
-    # Created lazily in _get_ordering_token to avoid creating tensors on TPUs
-    # before the user has a chance to call initialize_system.
-    self._ordering_token = None
-    self._ordering_token_init_lock = threading.Lock()
+    if self._use_ordering_token():
+      with ops.init_scope(), ops.device(device):
+        self._ordering_token = resource_variable_ops.ResourceVariable(0.)
+    else:
+      self._ordering_token = None
 
   def _control_input(self, control_input):
     if control_input is not None and not self._use_ordering_token():
@@ -319,14 +320,8 @@ class CollectiveReplicaLauncher(object):
                                                     self._device)
 
   def _get_ordering_token(self, communication_hint):
-    if self._use_ordering_token():
-      with self._ordering_token_init_lock:
-        if self._ordering_token is None:
-          with ops.init_scope(), ops.device(self._device):
-            self._ordering_token = resource_variable_ops.ResourceVariable(0.)
-        if communication_hint == 'NCCL':
-          return self._ordering_token.handle
-
+    if self._use_ordering_token() and communication_hint == 'NCCL':
+      return self._ordering_token.handle
     return None
 
   def can_order_nccl(self):

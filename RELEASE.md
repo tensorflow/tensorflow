@@ -26,6 +26,10 @@
 *<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *<NOTES SHOULD BE GROUPED PER AREA>
+* `tf.lite`:
+  * GPU
+    * Adds GPU Delegation support for serialization to Java API. This boosts
+      initialization time upto 90% when OpenCL is available.
 
 # Thanks to our Contributors
 
@@ -297,6 +301,10 @@ This release contains contributions from many people at Google, as well as:
     *   When saving a model, not specifying a namespace whitelist for custom
         ops with a namespace will now default to allowing rather than rejecting
         them all.
+*   `tf.distribute.TPUStrategy`:
+    * Added a new constructor option `experimental_spmd_xla_partitioning` to
+      enable SPMD (Single Program Multiple Data) support for spatial
+      partitioning. See https://www.tensorflow.org/api_docs/python/tf/distribute/TPUStrategy#experimental_split_to_logical_devices.
 
 ## Thanks to our Contributors
 

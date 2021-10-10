@@ -530,12 +530,11 @@ Status CompileSerializedMlirToXlaHlo(
   tensor_or_resource_shapes.reserve(arg_shapes.size());
   for (const auto& arg_shape : arg_shapes)
     tensor_or_resource_shapes.push_back({arg_shape});
-  return CompileMlirToXlaHlo(mlir_module.get(), tensor_or_resource_shapes,
-                             device_type, use_tuple_args, analyse_graph,
-                             /*use_return_tuple=*/true,
-                             /*use_resource_updates_for_aliases=*/false,
-                             shape_representation_fn, compilation_result,
-                             custom_legalization_passes);
+  return CompileMlirToXlaHlo(
+      mlir_module.get(), tensor_or_resource_shapes, device_type, use_tuple_args,
+      analyse_graph, /*use_return_tuple=*/true,
+      /*use_resource_updates_for_aliases=*/false, shape_representation_fn,
+      compilation_result, custom_legalization_passes);
 }
 
 // Rewrites the given module with specified args. For each of the constant args,

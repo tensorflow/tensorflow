@@ -152,6 +152,8 @@ class ReductionCodegenInfo {
 
   bool IsRaceFree() const { return is_race_free_; }
 
+  int GetNumPartialResults() const { return num_partial_results_; }
+
  private:
   friend class ReductionCodegenState;
 
@@ -190,16 +192,16 @@ class ReductionCodegenState {
   bool IsRaceFree() const { return reduction_codegen_info_.IsRaceFree(); }
 
   const ReductionCalculationState& GetCalculationStateFor(
-      int output_idx, int operand_idx) const {
-    const ReductionOpState& op_state = state_.at(output_idx);
+      const HloInstruction* instruction, int operand_idx) const {
+    const ReductionOpState& op_state = state_.at(instruction);
     CHECK_LT(operand_idx, op_state.size());
     return op_state[operand_idx];
   }
 
   void SetCalculationStateFor(
-      const ReductionCalculationState& calculation_state, int output_idx,
-      int operand_idx) {
-    ReductionOpState& op_state = state_[output_idx];
+      const ReductionCalculationState& calculation_state,
+      const HloInstruction* instruction, int operand_idx) {
+    ReductionOpState& op_state = state_[instruction];
     CHECK_EQ(operand_idx, op_state.size());
     op_state.push_back(calculation_state);
   }
@@ -210,8 +212,8 @@ class ReductionCodegenState {
   // One state per reduction operand.
   using ReductionOpState = absl::InlinedVector<ReductionCalculationState, 2>;
 
-  // output_index -> operand_idx -> cache
-  absl::flat_hash_map<int, ReductionOpState> state_;
+  // HloInstruction -> operand_idx -> cache
+  absl::flat_hash_map<const HloInstruction*, ReductionOpState> state_;
 };
 
 }  // end namespace gpu

@@ -954,6 +954,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   }
 }
 
+void SetXlaShape(mlir::Operation* op, const Shape& shape) {
+  op->setAttr("xla_shape",
+              mlir::Builder(op->getContext())
+                  .getStringAttr(shape.ToString(/*print_layout=*/true)));
+}
+
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionWithLayout(
     const HloInstruction* instruction,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
@@ -967,12 +973,15 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionWithLayout(
   //
   // Minor-to-major is a permutation of [0, rank), presenting tensor dimensions
   // in physical minor-to-major order.
-  if (instruction->shape().IsArray() &&
-      !instruction->shape().layout().minor_to_major().empty() &&
-      instruction->shape().layout() !=
-          LayoutUtil::MakeDescendingLayout(
-              instruction->shape().dimensions().size())) {
-    SetLayoutForMlir(op, instruction->shape());
+  if (instruction->shape().IsArray()) {
+    if (!instruction->shape().layout().minor_to_major().empty() &&
+        instruction->shape().layout() !=
+            LayoutUtil::MakeDescendingLayout(
+                instruction->shape().dimensions().size())) {
+      SetXlaShape(op, instruction->shape());
+    }
+  } else {
+    SetXlaShape(op, instruction->shape());
   }
   return op;
 }

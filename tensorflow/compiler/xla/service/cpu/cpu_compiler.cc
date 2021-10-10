@@ -37,10 +37,10 @@ limitations under the License.
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Error.h"
-#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -93,6 +93,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -155,6 +156,50 @@ void LoadMLIRDialects(mlir::MLIRContext& context) {
 }  // namespace
 
 namespace xla {
+
+namespace {
+
+// For each computation in the module, determines whether that computation
+// calls a custom-call function, either directly or indirectly (e.g. because it
+// calls another computation that does).
+absl::flat_hash_map<const HloComputation*, bool>
+ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
+  absl::flat_hash_map<const HloComputation*, bool> custom_call_map;
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(&module);
+
+  // Can never fail because we always return an OK status from the visitor.
+  TF_CHECK_OK(call_graph->VisitNodes([&custom_call_map](
+                                         const CallGraphNode& node) {
+    const HloComputation* computation = node.computation();
+
+    for (const HloInstruction* instruction : computation->instructions()) {
+      // The computation contains a custom-call instruction directly.
+      if (DynCast<HloCustomCallInstruction>(instruction)) {
+        custom_call_map[computation] = true;
+        return Status::OK();
+      }
+      // The computation calls something that contains a custom-call
+      // instruction (directly or indirectly). This lookup relies on the call
+      // graph traversing callees before callers, so that the map is always
+      // populated for all callees at this point.
+      for (const HloComputation* callee : instruction->called_computations()) {
+        bool callee_contains_custom_call = FindOrDie(custom_call_map, callee);
+        if (callee_contains_custom_call) {
+          custom_call_map[computation] = true;
+          return Status::OK();
+        }
+      }
+    }
+
+    custom_call_map[computation] = false;
+    return Status::OK();
+  }));
+
+  return custom_call_map;
+}
+
+}  // namespace
+
 namespace cpu {
 using BufferInfo = cpu_function_runtime::BufferInfo;
 
@@ -769,6 +814,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   IrEmitter ir_emitter(&mlir_context, *module, *assignment, llvm_module.get(),
                        std::move(instruction_to_profile_idx),
                        std::move(computation_to_profile_idx),
+                       ModuleComputationsTransitivelyContainCustomCall(*module),
                        &target_machine_features,
 #ifdef MEMORY_SANITIZER
                        /*emit_code_for_msan=*/true
@@ -992,12 +1038,14 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     }
 
     LLVMTargetMachineFeatures target_machine_features(target_machine.get());
-    IrEmitter ir_emitter(&mlir_context, *module, *assignment, &llvm_module,
-                         std::move(instruction_to_profile_idx),
-                         std::move(computation_to_profile_idx),
-                         &target_machine_features,
-                         // TODO(b/66051036): Run full msan for AOT.
-                         /*emit_code_for_msan=*/false);
+    IrEmitter ir_emitter(
+        &mlir_context, *module, *assignment, &llvm_module,
+        std::move(instruction_to_profile_idx),
+        std::move(computation_to_profile_idx),
+        ModuleComputationsTransitivelyContainCustomCall(*module),
+        &target_machine_features,
+        // TODO(b/66051036): Run full msan for AOT.
+        /*emit_code_for_msan=*/false);
 
     TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 

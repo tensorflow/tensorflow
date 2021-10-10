@@ -202,6 +202,7 @@ py_strict_test(
         exclude = ["regression_tests/*.disabled.mlir"],
     ),
     python_version = "PY3",
+    tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
         "//tensorflow/python:client_testlib",

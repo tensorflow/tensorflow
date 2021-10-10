@@ -91,9 +91,10 @@ message AdagradParameters {
 // accum(new) = beta2 == 1.0 ?
 //              accum(old) + grad^2 :
 //              beta2 * accum(old) + (1 - beta2) * grad^2
-// mom_accum(new) = momentum * mom_accum(old) + accum(new)^(-1.0 / exponent)
+// accum_with_exponent = (accum(new) + epsilon)^(-1.0 / exponent)
+// mom_accum(new) = momentum * mom_accum(old) + accum_with_exponent
 // update = use_nesterov ?
-//          momentum * mom_accum(new) + accum(new)^(-1.0 / exponent) :
+//          momentum * mom_accum(new) + accum_with_exponent :
 //          mom_accum(new)
 // var(new) = var(old) - lr * grad * update
 // Algorithm described in https://arxiv.org/abs/2002.11803.
@@ -109,6 +110,9 @@ message AdagradMomentumParameters {
 
   // Moving average parameter for the gradient^2 accumulator.
   float beta2 = 4;
+
+  // Offset added to the Adagrad accumulator.
+  float epsilon = 5;
 }
 
 // Algorithm in http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.

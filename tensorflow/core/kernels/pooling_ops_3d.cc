@@ -366,6 +366,19 @@ class MaxPooling3dGradOp : public OpKernel {
 
     OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
                                             padding_, &out, &padding));
+
+    const int64_t depth = GetTensorDim(tensor_in, data_format_, 'C');
+    const int64_t in_batch = GetTensorDim(tensor_in, data_format_, 'N');
+    TensorShape out_shape = ShapeFromFormat(data_format_, in_batch,
+                                            {{out[2], out[1], out[0]}}, depth);
+    OP_REQUIRES(
+        context, tensor_out.shape() == out_shape,
+        errors::InvalidArgument("Expected orig_output shape to be ", out_shape,
+                                ", but got ", tensor_out.shape()));
+    OP_REQUIRES(context, out_backprop.shape() == out_shape,
+                errors::InvalidArgument("Expected grad shape to be ", out_shape,
+                                        ", but got ", out_backprop.shape()));
+
     LaunchMaxPooling3dGradOp<Device, T>::launch(
         context, tensor_in, tensor_out, out_backprop, window, stride, out,
         padding, data_format_, input_backprop);
@@ -712,6 +725,14 @@ class MaxPooling3dGradGradOp : public OpKernel {
     Pool3dParameters params{context,  ksize_,       stride_,
                             padding_, data_format_, tensor_in.shape()};
     if (!context->status().ok()) return;  // params is invalid
+    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected orig_output shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", tensor_out.shape()));
+    OP_REQUIRES(
+        context, out_grad_backprop.shape() == tensor_in.shape(),
+        errors::InvalidArgument("Expected grad shape to be ", tensor_in.shape(),
+                                ", but got ", out_grad_backprop.shape()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(

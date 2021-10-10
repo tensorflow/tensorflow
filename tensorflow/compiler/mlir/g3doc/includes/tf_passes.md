@@ -114,6 +114,59 @@ Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op only
 inside device cluster. This would allow shape inference pass to further
 refine operand/result shapes of these ops. This is only safe to do when
 compiling to XLA.
+### `-tf-executor-convert-control-to-data-outputs`: Chain control outputs of while loop body
+This pass converts the control outputs of a while loop body function to data
+outputs. Thus, inter iteration control dependencies are transformed to
+data dependencies. Since data dependencies can express which particular
+operations in the while loop body are dependent on which inputs, it captures
+inter iteration parallelism in while loop. Control dependencies on the other
+hand create a barrier at the end of while loop body thus blocking any
+parallelism across iterations.
+
+For example, the following while loop body has a `%barrier` at the end.
+Although there is no data/control dependency between `tf.AssignVariableOp`
+for `%arg0` to `tf.AssignVariableOp` for `%arg1` across any iteration, the
+while loop body has a control barrier (`%barrier`) at the end which forces
+a dependency and the two assign variable ops must wait for each other to
+complete before starting the next iteration. Transforming these control
+outputs to data outputs removes the dependency between the two assign
+variable ops, thus allowing them to run in parallel across iterations.
+
+Before:
+
+```mlir
+!tf_res = type tensor<!tf_type.resource<tensor<f32>>>
+func @while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>) {
+  %graph:4 = tf_executor.graph {
+    %assign_0_control = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (!tf_res, tensor<f32>) -> ()
+    %assign_1_control = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg3) : (!tf_res, tensor<f32>) -> ()
+    %add_out, %add_control = tf_executor.island wraps "tf.Add"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %mul_out, %mul_control = tf_executor.island wraps "tf.Mul"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %barrier = tf_executor.island(%assign_0_control, %assign_1_control, %add_control, %mul_control) wraps "tf.NoOp"() : () -> ()
+    tf_executor.fetch %arg0, %arg1, %add_out, %mul_out, %barrier : !tf_res, !tf_res, tensor<f32>, tensor<f32>, !tf_executor.control
+  }
+  return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
+}
+```
+
+After:
+
+```mlir
+func @while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>, %chain_0: tensor<i32>, %chain_1: tensor<i32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>, tensor<i32>, tensor<i32>) {
+  %graph:6 = tf_executor.graph {
+    %_, %chain_0_src = tf_executor.island wraps "tf.Identity"(%chain_0) : (tensor<i32>) -> tensor<i32>
+    %_, %chain_1_src = tf_executor.island wraps "tf.Identity"(%chain_1) : (tensor<i32>) -> tensor<i32>
+    %assign_0_control = tf_executor.island(%chain_0_src) wraps "tf.AssignVariableOp"(%arg0, %arg2) : (!tf_res, tensor<f32>) -> ()
+    %assign_1_control = tf_executor.island(%chain_1_src) wraps "tf.AssignVariableOp"(%arg1, %arg3) : (!tf_res, tensor<f32>) -> ()
+    %add_out, %add_control = tf_executor.island wraps "tf.Add"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %mul_out, %mul_control = tf_executor.island wraps "tf.Mul"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %chain_0_sink, %_ = tf_executor.island(%assign_0_control) wraps "tf.Identity"(%chain_0) : (tensor<i32>) -> tensor<i32>
+    %chain_1_sink, %_ = tf_executor.island(%assign_1_control) wraps "tf.Identity"(%chain_1) : (tensor<i32>) -> tensor<i32>
+    tf_executor.fetch %arg0, %arg1, %add_out, %mul_out, %chain_0_sink, %chain_1_sink : !tf_res, !tf_res, tensor<f32>, tensor<f32>, tensor<i32>, tensor<i32>
+  }
+  return %graph#0, %graph#1, %graph#2, %graph#3, %graph#4, %graph#5 : !tf_res, !tf_res, tensor<f32>, tensor<f32>, tensor<i32>, tensor<i32>
+}
+```
 ### `-tf-executor-graph-pruning`: Prunes unreachable ops in a tf_executor.graph
 This pass removes ops from a `tf_executor.graph` that are not transitively, via
 data or control dependencies, connected to the associated `tf_executor.fetch`

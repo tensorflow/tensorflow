@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -85,7 +86,7 @@ constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
 // Array attribute. Same shape as infeed result, but contains a
 // minor_to_major array for every tensor.
 constexpr char kLayoutAttr[] = "layout";
-constexpr char kDefaultLayoutAttrName[] = "minor_to_major";
+constexpr char kDefaultLayoutAttrName[] = "xla_shape";
 
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
@@ -201,6 +202,22 @@ static xla::Layout ExtractLayout(
     return xla::LayoutUtil::MakeLayout(minor_to_major);
   }
   return xla::LayoutUtil::MakeDescendingLayout(rank);
+}
+
+static xla::Shape ExtractXlaShape(mlir::Operation* op) {
+  if (auto attr = op->getAttrOfType<mlir::StringAttr>(kDefaultLayoutAttrName)) {
+    return *xla::ParseShape(
+        absl::string_view(attr.getValue().data(), attr.getValue().size()));
+  } else {
+    std::vector<xla::Shape> subshapes;
+    for (mlir::Value result : op->getResults()) {
+      subshapes.push_back(xla::TypeToShape(result.getType()));
+    }
+    if (subshapes.size() > 1) {
+      return xla::ShapeUtil::MakeTupleShape(subshapes);
+    }
+    return subshapes[0];
+  }
 }
 
 #define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)                \
@@ -1408,10 +1425,8 @@ LogicalResult ConvertToHloModule::Lower(
     if (options_.propagate_layouts) {
       auto* shape = xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
                         ->mutable_shape();
-      if (shape->tuple_shapes().empty())
-        // TODO(kramm): merge this with ConvertLayout.
-        *shape->mutable_layout() =
-            ExtractLayout(inst, shape->dimensions().size()).ToProto();
+      // TODO(kramm): merge this with ConvertLayout.
+      *shape = ExtractXlaShape(inst).ToProto();
     }
 
     // For infeed ops stemming back to InfeedDequeueTuple, respect the layout
@@ -1477,9 +1492,13 @@ LogicalResult ConvertToHloModule::Lower(
   }
 
   if (matchPattern(inst, m_Constant(&const_attr))) {
-    xla::Layout layout;
-    layout = ExtractLayout(inst, const_attr.getType().getRank());
-    auto literal_or = CreateArrayLiteralFromAttr(const_attr, layout);
+    if (!inst->getResult(0).getType().isa<ShapedType>()) {
+      return inst->emitError(
+          "expected shaped type during constant mhlo -> hlo translation");
+    }
+
+    auto literal_or =
+        CreateArrayLiteralFromAttr(const_attr, ExtractXlaShape(inst).layout());
     if (!literal_or.ok())
       return inst->emitError(literal_or.status().ToString());
     auto constant = xla::ConstantLiteral(builder, literal_or.ValueOrDie());

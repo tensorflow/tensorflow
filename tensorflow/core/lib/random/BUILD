@@ -1,8 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -53,7 +53,11 @@ cc_library(
 cc_library(
     name = "philox_random",
     hdrs = ["philox_random.h"],
-    deps = ["//tensorflow/core/platform:types"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/lite:__subpackages__",
+    ],
 )
 
 cc_library(

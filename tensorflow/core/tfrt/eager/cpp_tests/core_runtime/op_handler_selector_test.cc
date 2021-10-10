@@ -305,6 +305,10 @@ class FakeOperation : public ImmediateExecutionOperation {
     llvm_unreachable("unimplemented method.");
   }
 
+  void SetStepId(int64_t step_id) override {
+    llvm_unreachable("unimplemented method.");
+  }
+
   static bool classof(const AbstractOperation* ptr) { return true; }
 
   AttrBuilder* GetAttrs() { return &attrs_; }

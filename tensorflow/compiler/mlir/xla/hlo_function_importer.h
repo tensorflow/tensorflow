@@ -68,7 +68,7 @@ class HloFunctionImporter {
       mlir::OpBuilder* builder);
 
   static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
-                               llvm::StringRef attr_name = "minor_to_major");
+                               llvm::StringRef attr_name);
 
   // TODO(b/179166199): move this to attribute_importer.h.
   // Converts XLA instruction source target pairs to MLIR attribute.

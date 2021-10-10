@@ -69,6 +69,13 @@ option(TFLITE_ENABLE_GPU "Enable GPU" OFF)
 option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
 
 option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
+if(TFLITE_KERNEL_TEST AND ${CMAKE_CROSSCOMPILING})
+  set(TFLITE_HOST_TOOLS_DIR "" CACHE PATH "Host tools directory")
+  if(TFLITE_HOST_TOOLS_DIR STREQUAL "")
+    message(FATAL_ERROR "Path to the natively compiled 'flatc' compiler binary has not been provided!\
+                        Please specify it using -DTFLITE_HOST_TOOLS_DIR=<flatc_dir_path> launch argument.")
+  endif()
+endif()
 
 set(CMAKE_CXX_STANDARD 14)  # Some components require C++14.
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

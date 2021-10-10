@@ -280,7 +280,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
     TF_RET_CHECK(shape.IsArray());
     if (shape.layout() !=
         xla::LayoutUtil::MakeDescendingLayout(shape.dimensions().size())) {
-      load->setAttr("minor_to_major", GetLayoutAttribute(shape.layout(), &b));
+      load->setAttr("xla_shape",
+                    b.getStringAttr(shape.ToString(/*print_layout=*/true)));
     }
     loads.push_back(load);
   }
@@ -502,7 +503,8 @@ StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
     llvm::SmallVector<int64_t, 4> minor_to_major(
         shape.layout().minor_to_major().begin(),
         shape.layout().minor_to_major().end());
-    load->setAttr("minor_to_major", GetLayoutAttribute(shape.layout(), b));
+    load->setAttr("xla_shape",
+                  b->getStringAttr(shape.ToString(/*print_layout=*/true)));
   }
   return load.getResult();
 }
