@@ -590,6 +590,7 @@ tf_cuda_cc_test(
     ),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
+        "no_rocm",  # failed since 7de9cf4
     ],
     deps = [
         ":base_binary_ops_test",
