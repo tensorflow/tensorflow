@@ -138,7 +138,6 @@ float GetFloatVectorElement(__m128 v) {
 
 #ifdef __AVX2__
 constexpr int kFloatValuesPerAvx2Vector = 8;
-constexpr int kFloatValuesPerSseVector = 4;
 template <int PerVectorSize>
 inline int RoundDownVectors(int size) {
   return size & ~(PerVectorSize - 1);
