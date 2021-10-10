@@ -469,7 +469,7 @@ TEST_F(ShapeTreeTest, IterateOrder) {
 TEST_F(ShapeTreeTest, ReverseIterateOrder) {
   ShapeTree<int> t(nested_tuple_shape_, 42);
   std::vector<ShapeIndex> v;
-  v.reserve(t.size())
+  v.reserve(t.leaf_count());
   for (auto it = t.rbegin(); it != t.rend(); ++it) {
     v.push_back(it->first);
   }
