@@ -119,7 +119,7 @@ struct ConcatGroup {
       return slice;
     }
     std::vector<int64_t> element_shape;
-    element_shape.reserve(shape.rank());
+    element_shape.reserve(shape.rank() -1);
     for (int64_t i = 0; i < shape.rank(); ++i) {
       if (i != concat_dim) {
         element_shape.push_back(shape.dimensions(i));
@@ -134,7 +134,7 @@ struct ConcatGroup {
     if (inserted_concat_dim) {
       for (int64_t i = 0; i < input_elements.size(); ++i) {
         std::vector<int64_t> element_shape;
-        element_shape.reserve(input_elements[i]->shape().rank());
+        element_shape.reserve(input_elements[i]->shape().rank() + 1);
         for (int64_t j = 0; j < input_elements[i]->shape().rank(); ++j) {
           if (j == concat_dim) {
             element_shape.push_back(1);
@@ -874,7 +874,7 @@ Status RewriteLoopWithConcatGroups(HloInstruction* loop,
         const int64_t data_shape_rank = data_shape.rank();
         broadcast_dims.reserve(data_shape_rank);
         broadcast_shape.reserve(data_shape_rank + 1);
-        for (int64_t j = 0; j < ; ++j) {
+        for (int64_t j = 0; j < data_shape_rank; ++j) {
           if (j < operand_concat_dim) {
             broadcast_dims.push_back(j);
           } else {

@@ -376,7 +376,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
     HloRunner::ReplicatedExecuteOptions opts;
   };
   std::vector<ExecutableInfo> executables;
-  const devices_vec = std::vector<std::vector<int64_t>>{{0, 1}, {1, 2}, {0, 1, 2}};
+  const auto devices_vec = std::vector<std::vector<int64_t>>{{0, 1}, {1, 2}, {0, 1, 2}};
   executables.reserve(devices_vec.size());
   for (const auto& devices : devices_vec) {
     executables.emplace_back();
