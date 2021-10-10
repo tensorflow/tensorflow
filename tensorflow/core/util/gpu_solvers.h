@@ -274,19 +274,6 @@ class GpuSolver {
               rocblas_diagonal diag, int m, int n, const Scalar* alpha,
               const Scalar* A, int lda, Scalar* B, int ldb);
 
-  // Cholesky factorization
-  // Computes the Cholesky factorization A = L * L^H for a single matrix.
-  template <typename Scalar>
-  Status Potrf(rocblas_fill uplo, int n, Scalar* dev_A, int lda,
-              int* dev_lapack_info);
-
-  // Computes the Cholesky factorization A = L * L^H for a batch of small matrices.
-  template <typename Scalar>
-  Status PotrfBatched(rocblas_fill uplo, int n,
-                      const Scalar* const host_a_dev_ptrs[], int lda,
-                      DeviceLapackInfo* dev_lapack_info,
-                      int batch_size);
-
   // QR factorization.
   // Computes QR factorization A = Q * R.
   // Returns Status::OK() if the kernel was launched successfully.
