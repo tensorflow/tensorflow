@@ -142,10 +142,12 @@ struct ConvertTensor {
 
     // Incorrect alignment will lead to a segfault in the downstream Tensorflow
     // kernels, check it before returning to the runtime.
+    // TODO(b/202748431): Downgrade checks to dynamic checks after finding the
+    // root cause of misaligned tensors.
     if (internal::IsStaticStorageDuration(memref)) {
-      assert(tensor.IsAligned() && "global memref is not aligned");
+      CHECK(tensor.IsAligned()) << "global memref is not aligned";
     } else {
-      assert(tensor.IsAligned() && "allocated memref is not aligned");
+      CHECK(tensor.IsAligned()) << "allocated memref is not aligned";
     }
 
     return tensor;
