@@ -108,6 +108,13 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   auto operation = CreateDepthwiseConvPlus1x1Conv(op_def, gpu_info, dw_attr,
                                                   conv_attr, relu_attr_ptr);
   *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+  std::string fused_nodes = std::to_string(dw_node->id);
+  if (relu_node) {
+    fused_nodes += " " + std::to_string(relu_node->id);
+  }
+  fused_nodes += " " + std::to_string(conv_node->id);
+  gpu_subgraph->operations[0].name =
+      "depthwise_conv_plus_1x1_conv " + fused_nodes;
   consumed_nodes->insert(dw_node->id);
   if (relu_node) {
     consumed_nodes->insert(relu_node->id);
@@ -224,6 +231,11 @@ absl::Status TryFCFCAdd(
     fc = CreateFCFCAdd(gpu_info, op_def, fc0_attr, fc1_attr);
   }
   *gpu_op = absl::make_unique<FCFCAdd>(std::move(fc));
+  const std::string fused_nodes = std::to_string(fc0_node->id) + " " +
+                                  std::to_string(fc1_node->id) + " " +
+                                  std::to_string(add_node->id);
+  gpu_subgraph->operations[0].name =
+      "fully_connected_x2_and_add " + fused_nodes;
   consumed_nodes->insert(fc0_node->id);
   consumed_nodes->insert(fc1_node->id);
   consumed_nodes->insert(add_node->id);
@@ -235,28 +247,25 @@ absl::Status GPUSubgraphFromGraph(
     const GpuInfo& gpu_info, CalculationsPrecision precision,
     const GraphFloat32& graph, NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
-    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph,
-    std::string* name) {
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
   if ((gpu_info.IsAdreno() || gpu_info.IsNvidia() || gpu_info.IsMali() ||
        (gpu_info.IsApple() && gpu_info.apple_info.IsBionic())) &&
       TryDepthwiseConvPlus1x1Conv(gpu_info, precision, graph, first_node_id,
                                   tensor_descriptors, consumed_nodes,
                                   gpu_subgraph)
           .ok()) {
-    *name = "depthwise_conv_plus_1x1_conv";
     return absl::OkStatus();
   }
   if ((gpu_info.IsIntel() || gpu_info.IsNvidia()) &&
       TryFCFCAdd(gpu_info, precision, graph, first_node_id, tensor_descriptors,
                  consumed_nodes, gpu_subgraph)
           .ok()) {
-    *name = "fully_connected_x2_and_add";
     return absl::OkStatus();
   }
   if (TryFusedPointwiseConv(graph, first_node_id, precision, tensor_descriptors,
                             consumed_nodes, gpu_subgraph)
           .ok()) {
-    *name = "slice_mul_mean_concat";
+    gpu_subgraph->operations[0].name = "slice_mul_mean_concat";
     return absl::OkStatus();
   }
   return absl::NotFoundError("No special combination.");
