@@ -33,14 +33,14 @@ namespace tensorflow {
 #if GOOGLE_CUDA
 namespace {
 
-se::dnn::AlgorithmDesc ToAlgorithmDesc(se::dnn::AlgorithmDesc desc) {
+StatusOr<se::dnn::AlgorithmDesc> ToAlgorithmDesc(se::dnn::AlgorithmDesc desc) {
   return desc;
 }
 
 template <typename Sig>
-se::dnn::AlgorithmDesc ToAlgorithmDesc(
+StatusOr<se::dnn::AlgorithmDesc> ToAlgorithmDesc(
     const std::unique_ptr<const se::dnn::OpRunner<Sig>>& runner) {
-  return se::dnn::AlgorithmDesc(runner->ToString());
+  return runner->ToAlgorithmDesc();
 }
 
 void ToAutotuneResult(const se::dnn::AlgorithmDesc& desc,
@@ -80,7 +80,7 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
             ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
             : static_cast<se::ScratchAllocator*>(&scratch_allocator);
 
-    const se::dnn::AlgorithmDesc desc = ToAlgorithmDesc(config);
+    TF_ASSIGN_OR_RETURN(auto desc, ToAlgorithmDesc(config));
     se::dnn::ProfileResult profile_result;
     Status cudnn_launch_status =
         actually_do_autotune
@@ -291,11 +291,6 @@ StatusOr<AutotuneEntry<se::dnn::ConvSignature>> AutotuneUnfusedConv(
     profiler::ScopedAnnotation annotation("cudnn_autotuning");
 
 #if GOOGLE_CUDA
-    const auto get_algo_failed_error = errors::Unknown(
-        "Failed to get convolution algorithm. This is probably because cuDNN "
-        "failed to initialize, so try looking to see if a warning log "
-        "message was printed above.");
-
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                                 stream);
     se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
@@ -325,11 +320,9 @@ StatusOr<AutotuneEntry<se::dnn::ConvSignature>> AutotuneUnfusedConv(
     const auto element_type = se::dnn::ToDataType<T>::value;
     if (CudnnUseFrontend()) {
       std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
-      if (!stream->parent()->GetConvolveExecutionPlans(
-              kind, element_type, element_type, stream, input_desc, filter_desc,
-              output_desc, conv_desc, &runners)) {
-        return get_algo_failed_error;
-      }
+      TF_RETURN_IF_ERROR(stream->parent()->GetConvolveExecutionPlans(
+          kind, element_type, element_type, stream, input_desc, filter_desc,
+          output_desc, conv_desc, &runners));
       auto launch_func =
           [&](se::ScratchAllocator* allocator_used,
               const std::unique_ptr<const se::dnn::ConvRunner>& runner,
@@ -354,7 +347,10 @@ StatusOr<AutotuneEntry<se::dnn::ConvSignature>> AutotuneUnfusedConv(
     } else {
       std::vector<se::dnn::AlgorithmDesc> algorithms;
       if (!stream->parent()->GetConvolveAlgorithms(kind, &algorithms)) {
-        return get_algo_failed_error;
+        return errors::Unknown(
+            "Failed to get convolution algorithm. This is probably because "
+            "cuDNN failed to initialize, so try looking to see if a warning "
+            "log message was printed above.");
       }
       auto launch_func = [&](se::ScratchAllocator* allocator_used,
                              const se::dnn::AlgorithmDesc& algo,
