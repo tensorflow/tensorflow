@@ -1843,6 +1843,7 @@ tf_cuda_cc_test(
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",
+        "no_rocm",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
