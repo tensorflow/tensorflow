@@ -161,12 +161,12 @@ struct SpatialConvolution<Device, Eigen::half, OutputKernel> {
           padding_bottom);
     } else {
       output.device(d) =
-      Eigen::SpatialConvolution(input.cast<float>(), filter.cast<float>(),
-                                col_stride, row_stride,
-                                Eigen::PaddingType::PADDING_VALID, col_dilation,
-                                row_dilation, output_kernel, padding_left,
-                                padding_right, padding_top, padding_bottom)
-          .template cast<Eigen::half>();
+          Eigen::SpatialConvolution(
+              input.cast<float>(), filter.cast<float>(), col_stride, row_stride,
+              Eigen::PaddingType::PADDING_VALID, col_dilation, row_dilation,
+              output_kernel, padding_left, padding_right, padding_top,
+              padding_bottom)
+              .template cast<Eigen::half>();
     }
   }
 
