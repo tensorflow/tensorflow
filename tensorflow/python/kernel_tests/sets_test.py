@@ -14,10 +14,7 @@
 # ==============================================================================
 """Tests for set_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -68,7 +65,7 @@ def _dense_to_sparse(dense, dtype):
       constant_op.constant(shape, dtypes.int64))
 
 
-class SetOpsTest(test_util.TensorFlowTestCase):
+class SetOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def test_set_size_2d(self):
@@ -1252,18 +1249,59 @@ class SetOpsTest(test_util.TensorFlowTestCase):
       if dtype == dtypes.string:
         actual_value = actual_value.decode("utf-8")
       if last_indices and (last_indices[:-1] != indices[:-1]):
-        self.assertEqual(expected_set, actual_set,
-                         "Expected %s, got %s, at %s." % (expected_set,
-                                                          actual_set, indices))
+        self.assertEqual(
+            expected_set, actual_set,
+            "Expected %s, got %s, at %s." % (expected_set, actual_set, indices))
         expected_set.clear()
         actual_set.clear()
       expected_set.add(expected_value)
       actual_set.add(actual_value)
       last_indices = indices
-    self.assertEqual(expected_set, actual_set,
-                     "Expected %s, got %s, at %s." % (expected_set, actual_set,
-                                                      last_indices))
+    self.assertEqual(
+        expected_set, actual_set, "Expected %s, got %s, at %s." %
+        (expected_set, actual_set, last_indices))
     self.assertAllEqual(expected_shape, sparse_tensor_value.dense_shape)
+
+  @parameterized.parameters(*_DTYPES)
+  def test_set_union_output_is_sorted(self, dtype):
+    # We don't use any numbers >= 10 so that lexicographical order agrees with
+    # numeric order in this test, for the type dtype == tf.string.
+
+    # [3 7 5 3 1]
+    # [2 6 5 4]
+    # []
+    # [9 8]
+    sp_a = sparse_tensor_lib.SparseTensor(
+        indices=constant_op.constant(
+            [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [1, 0], [1, 1], [1, 2],
+             [1, 3], [3, 0], [3, 1]],
+            dtype=dtypes.int64),
+        values=_constant([3, 7, 5, 3, 1, 2, 6, 5, 4, 9, 8], dtype),
+        dense_shape=constant_op.constant([4, 5], dtype=dtypes.int64))
+
+    # [9 7]
+    # [5 2 0]
+    # [6]
+    # []
+    sp_b = sparse_tensor_lib.SparseTensor(
+        indices=constant_op.constant(
+            [[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [2, 0]],
+            dtype=dtypes.int64),
+        values=_constant([9, 7, 5, 2, 0, 6], dtype),
+        dense_shape=constant_op.constant([4, 3], dtype=dtypes.int64))
+    # The union should be
+    # [1 3 5 7 9]
+    # [0 2 4 5 6]
+    # [6]
+    # [8 9]
+    result = sets.set_union(sp_a, sp_b)
+    self.assertAllEqual(result.dense_shape, [4, 5])
+    self.assertAllEqual(result.indices,
+                        [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [1, 0], [1, 1],
+                         [1, 2], [1, 3], [1, 4], [2, 0], [3, 0], [3, 1]])
+    self.assertAllEqual(
+        result.values,
+        _constant([1, 3, 5, 7, 9, 0, 2, 4, 5, 6, 6, 8, 9], dtype))
 
 
 if __name__ == "__main__":

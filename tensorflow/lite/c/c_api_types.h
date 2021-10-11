@@ -43,6 +43,9 @@ extern "C" {
 #endif  // _WIN32
 #endif  // SWIG
 
+// Note that new error status values may be added in future in order to
+// indicate more fine-grained internal states, therefore, applications should
+// not rely on status values being members of the enum.
 typedef enum TfLiteStatus {
   kTfLiteOk = 0,
 
@@ -54,7 +57,7 @@ typedef enum TfLiteStatus {
 
   // Generally referring to an error in applying a delegate due to
   // incompatibility between runtime and delegate, e.g., this error is returned
-  // when trying to apply a TfLite delegate onto a model graph that's already
+  // when trying to apply a TF Lite delegate onto a model graph that's already
   // immutable.
   kTfLiteApplicationError = 3,
 
@@ -69,6 +72,11 @@ typedef enum TfLiteStatus {
   // Generally referring to data-reading issues in delegate serialization.
   // See tflite::delegates::Serialization.
   kTfLiteDelegateDataReadError = 6,
+
+  // Generally referring to issues when the TF Lite model has ops that cannot be
+  // resolved at runtime. This could happen when the specific op is not
+  // registered or built with the TF Lite framework.
+  kTfLiteUnresolvedOps = 7,
 } TfLiteStatus;
 
 // Types supported by tensor

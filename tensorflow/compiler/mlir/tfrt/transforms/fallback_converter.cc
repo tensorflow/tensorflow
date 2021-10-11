@@ -78,7 +78,14 @@ mlir::Value ConvertFallbackTensorToCoreRTTensorHandle(
   std::string device = kCpuDeviceName;
   if (auto *def = value.getDefiningOp()) {
     if (auto device_attr = def->getAttrOfType<mlir::StringAttr>("device")) {
-      device = device_attr.getValue().str();
+      // NOTE: The TPU_SYSTEM check is just a short term workaround. The long
+      // term solution should be checking the HostMemory annotation of the
+      // defining op (it should be defined in TF OpKernel). If HostMemory
+      // annotation is set for an output tensor, we should use CPU device here.
+      // TODO(b/200896904): Support HostMemory annotation.
+      if (!device_attr.getValue().endswith("TPU_SYSTEM:0")) {
+        device = device_attr.getValue().str();
+      }
     }
   }
 

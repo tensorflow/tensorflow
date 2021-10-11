@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Utils for make_zip tests."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import itertools
 import operator

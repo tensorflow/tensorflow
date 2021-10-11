@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
@@ -83,7 +84,36 @@ bool IsCollective(const HloInstruction* instruction) {
   }
 }
 
+// Prints sub-expression rooted at inst for a given depth.
+void PrintSubexpression(HloInstruction* inst, int depth) {
+  if (depth == 0) {
+    return;
+  }
+  for (auto* operand : inst->operands()) {
+    PrintSubexpression(operand, depth - 1);
+  }
+  VLOG(2) << inst->ToString();
+}
 }  // namespace
+
+int64_t GetLoopBound(const HloInstruction& while_hlo,
+                     const int64_t default_loop_count) {
+  HloInstruction* condition = while_hlo.while_condition()->root_instruction();
+  if (condition->opcode() == HloOpcode::kCompare &&
+      condition->comparison_direction() != Comparison::Direction::kEq) {
+    for (HloInstruction* operand : condition->operands()) {
+      if (operand->opcode() == HloOpcode::kConstant &&
+          operand->shape().rank() == 0 && operand->shape().IsInteger()) {
+        int64_t value = *operand->literal().GetFirstInteger();
+        if (value > 0) {
+          // Cap to 1000 to avoid long execution time.
+          return value < 1000 ? value : 1000;
+        }
+      }
+    }
+  }
+  return default_loop_count;
+}
 
 Status HloControlFlowFlattening::FlattenWhileLoop(
     HloInstruction* while_hlo) const {
@@ -112,9 +142,15 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
     HloComputation* condition = while_hlo->while_condition();
     TF_RETURN_IF_ERROR(change_op_shape(condition->parameter_instruction(0)));
 
-    HloInstruction* limit =
-        condition->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int>(while_execution_count_)));
+    if (VLOG_IS_ON(2)) {
+      VLOG(2) << "Loop condition:";
+      PrintSubexpression(condition->root_instruction(), /*depth=*/3);
+    }
+    const int64_t loop_bound = GetLoopBound(*while_hlo, while_execution_count_);
+    VLOG(1) << "loop_bound = " << loop_bound;
+
+    HloInstruction* limit = condition->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(loop_bound)));
     Shape shape = initialization->shape();
     HloInstruction* induction_variable =
         condition->AddInstruction(HloInstruction::CreateGetTupleElement(

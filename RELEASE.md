@@ -214,8 +214,11 @@
       functional control flow op lowering optimization. This is useful when
       executing within a portable runtime where control flow op kernels may not
       be loaded due to selective registration.
-    * Added a new experimental argument `experimental_is_anonymous` to
-      `tf.lookup.StaticHashTable.__init__` to create the table in anonymous
+    * Added a new experimental argument `experimental_is_anonymous` to the
+      `__init__` function of `tf.lookup.StaticHashTable`,
+      `tf.lookup.StaticVocabularyTable`,
+      `tf.lookup.experimental.MutableHashTable` and
+      `tf.lookup.experimental.DenseHashTable`, to create the table in anonymous
       mode. In this mode, the table resource can only be accessed via resource
       handles (not resource names) and will be deleted automatically when all
       resource handles pointing to it are gone.
@@ -226,7 +229,7 @@
         access includes: `tf.data.Dataset.from_tensor_slices`,
         `tf.data.Dataset.shuffle`, `tf.data.Dataset.batch`,
         `tf.data.Dataset.shard`, `tf.data.Dataset.map`,
-         and `tf.data.Dataset.range`.
+        `tf.data.Dataset.range`, `tf.data.Dataset.skip`.
     *   Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental
         endpoint.
@@ -246,6 +249,8 @@
         endpoint.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
+    *   The saved_model_cli's `--input_examples` inputs are now restricted to
+        python literals to avoid code injection.
 *   XLA:
     * Added a new API that allows custom call functions to signal errors. The
       old API will be deprecated in a future release. See

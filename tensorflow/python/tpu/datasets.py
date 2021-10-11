@@ -14,10 +14,6 @@
 # ======================================
 """Library of Cloud TPU helper functions for data loading."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from typing import Callable, Optional, Text, Union
 
 from tensorflow.python.data.experimental.ops import interleave_ops

@@ -347,6 +347,9 @@ class PartitionedHlo {
       absl::Span<const int64_t> left_padded_dims = {},
       absl::Span<const int64_t> skipped_dims = {}) const;
 
+  PartitionedHlo PadWithZero(absl::Span<const int64_t> left_padded_dims = {},
+                             absl::Span<const int64_t> skipped_dims = {}) const;
+
   // Returns the SPMD instruction.
   HloInstruction* hlo() const { return hlo_; }
 
@@ -579,6 +582,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   std::vector<HloSharding> visiting_hlo_operand_shardings_;
   absl::optional<HloSharding> visiting_hlo_sharding_;
   absl::optional<int64_t> visiting_num_partitions_;
+  absl::optional<SPMDCollectiveOpsCreator> visiting_collective_ops_creator_;
+  absl::optional<HloInstruction*> visiting_partition_id_;
   std::vector<PartitionedHlo::PartitioningState> visiting_state_;
   std::vector<std::vector<int64_t>> device_groups_;
 };

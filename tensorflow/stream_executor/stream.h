@@ -370,8 +370,8 @@ class Stream {
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<OutputType> output_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &plan_config,
+      DeviceMemoryBase scratch_memory,
+      const dnn::ConvolveExecutionPlan &execution_plan,
       dnn::ProfileResult *output_profile_result) {
 #if GOOGLE_CUDA
     dnn::DnnSupport *dnn = parent_->AsDnn();
@@ -381,7 +381,7 @@ class Stream {
           kind, dnn::ToDataType<InputType>::value,
           dnn::ToDataType<OutputType>::value, this, input_descriptor,
           input_data, filter_descriptor, filter_data, output_descriptor,
-          output_data, convolution_descriptor, plan_config, scratch_allocator,
+          output_data, convolution_descriptor, execution_plan, scratch_memory,
           output_profile_result);
     }
 #endif  // GOOGLE_CUDA
@@ -428,8 +428,8 @@ class Stream {
       const dnn::BatchDescriptor &bias_descriptor,
       const DeviceMemory<BiasT> &biases, dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<OutputT> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
+      DeviceMemory<OutputT> *output, DeviceMemoryBase scratch_memory,
+      const dnn::ConvolveExecutionPlan &execution_plan,
       dnn::ProfileResult *output_profile_result) {
 #if GOOGLE_CUDA
     dnn::DnnSupport *dnn = parent_->AsDnn();
@@ -440,7 +440,7 @@ class Stream {
           conv_input_data, conv_input_scale, filter_descriptor, filter_data,
           convolution_descriptor, side_input_data, side_input_scale,
           bias_descriptor, biases, activation_mode, output_descriptor, *output,
-          scratch_allocator, algorithm_config, output_profile_result);
+          scratch_memory, execution_plan, output_profile_result);
     }
 #endif  // GOOGLE_CUDA
     return port::UnimplementedError("DNN library is not found.");

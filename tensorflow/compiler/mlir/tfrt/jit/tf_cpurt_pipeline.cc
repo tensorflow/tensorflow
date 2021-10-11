@@ -88,12 +88,8 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // to resolve broadcasts that can be converted to linalg generic operations.
   pm.addNestedPass<mlir::FuncOp>(CreateSymbolicShapeOptimizationPass());
 
-  // Transform HLO operations to LinAlg and fuse them.
+  // Transform HLO operations to Linalg.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
-
-  // Lower index cast on tensors to tensor.generate.
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::kernel_gen::transforms::CreateLowerIndexCastPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
@@ -106,12 +102,16 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // Fuse Linalg on tensors operations.
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
+  // Lower index cast on tensors to tensor.generate.
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::kernel_gen::transforms::CreateLowerIndexCastPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
 
-  // Codegen strategy for reductions.
-  if (options.codegen_reductions) {
+  // Perform tiling-padding-vectorization if vectorization is enabled.
+  if (options.vectorize) {
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
+    pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
     pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
     pm.addNestedPass<mlir::FuncOp>(CreateVectorizeTiledOpsPass());
   }
@@ -152,7 +152,7 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // Tile and vectorize linalg operation using Linalg Codegen Strategy.
   pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForMatMulPass());
 
-  if (options.codegen_reductions) {
+  if (options.vectorize) {
     pm.addNestedPass<mlir::FuncOp>(
         mlir::createConvertLinalgTiledLoopsToSCFPass());
   }

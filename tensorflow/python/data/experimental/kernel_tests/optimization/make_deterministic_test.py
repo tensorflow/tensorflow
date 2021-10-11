@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the `MakeDeterministic` optimization."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import time
 
@@ -37,8 +33,10 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -232,9 +230,11 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(use_function=[False, True])))
-  def test_text_line_dataset(self, use_function):
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              use_function=[False, True], use_control_flow=[False, True])))
+  def test_text_line_dataset(self, use_function, use_control_flow):
     self._set_seed()
     with test_util.deterministic_ops():
 
@@ -248,8 +248,17 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       f2 = write_nums_to_file("f2", (4, 5, 6))
       f3 = write_nums_to_file("f3", (7, 8, 9))
 
-      def interleave_fn(filename):
-        return reader_ops.TextLineDataset(filename)
+      if use_control_flow:
+        def interleave_fn(filename):
+          # Test function that uses control flow. The True branch is never taken
+          concat = string_ops.string_join([filename, "abc"])
+          return control_flow_ops.cond(
+              math_ops.equal(filename, "abc"),
+              lambda: reader_ops.TextLineDataset(concat),
+              lambda: reader_ops.TextLineDataset(filename))
+      else:
+        def interleave_fn(filename):
+          return reader_ops.TextLineDataset(filename)
 
       if use_function:
         interleave_fn = def_function.function(interleave_fn)

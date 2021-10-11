@@ -121,6 +121,15 @@ StatusOr<se::dnn::AlgorithmConfig> AutotuneUnfusedConv(
     const se::dnn::BatchDescriptor& output_desc, se::DeviceMemory<T> output_ptr,
     int64_t scratch_size_limit);
 
+// Returns a pointer to the primary plan of 'algorithm_config' and allocated
+// scratch memory if allocatable; else a pointer to its fallback
+// no-scratch-space plan, and a null 'DeviceMemoryBase'.  The
+// 'ConvolveExecutionPlan' pointers are lifetime-bound to the 'AlgorithmConfig'.
+StatusOr<
+    std::tuple<const se::dnn::ConvolveExecutionPlan*, se::DeviceMemoryBase>>
+AllocateScratchOrFallback(se::ScratchAllocator* scratch_allocator,
+                          const se::dnn::AlgorithmConfig& algorithm_config);
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

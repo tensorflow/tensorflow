@@ -107,7 +107,7 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_double) {
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_int64) {
   MakeOp<int64_t>(TensorShape({2, 3, 4}),
-                  [](int x) -> int64 { return static_cast<int64>(x - 10); });
+                  [](int x) -> int64 { return static_cast<int64_t>(x - 10); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
   ParseSerializedOutput<int64_t>(GetOutput(0), &parse_output);

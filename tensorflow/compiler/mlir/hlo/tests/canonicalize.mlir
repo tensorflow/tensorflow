@@ -1168,7 +1168,7 @@ func @gather_to_slice_reshape(%arg0: tensor<5x6x7xf32>) -> tensor<3x6xf32> {
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [2],
       index_vector_dim = 0,
-      offset_dims = [0, 1, 2],
+      offset_dims = [0, 1],
       start_index_map = [0, 2],
     >,
     indices_are_sorted = false,
@@ -1490,7 +1490,7 @@ func @tensor_flow_scatter_v1_update() -> tensor<3x3xi32> {
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
         scatter_dimension_numbers = #mhlo.scatter<
-          update_window_dims = [1]
+          update_window_dims = [1],
           inserted_window_dims = [0],
           scatter_dims_to_operand_dims = [0],
           index_vector_dim = 1,
@@ -1884,3 +1884,21 @@ func @sort_drop_second_arg(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor
 // CHECK:           "mhlo.return"(%[[CMP]]) : (tensor<i1>) -> ()
 // CHECK:         {dimension = 0 : i64, is_stable = false} : (tensor<3xi32>) -> tensor<3xi32>
 // CHECK:         return %[[RES]] : tensor<3xi32>
+
+func @sort_no_dim_provided(%arg0: tensor<3x5xi32>) -> tensor<3x5xi32> {
+  %0 = "mhlo.sort"(%arg0) ( {
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):  // no predecessors
+    %1 = "mhlo.compare"(%arg1, %arg2) {
+      comparison_direction = "GT"
+    } : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  }) {dimension = -1 : i64,
+      is_stable = false
+  } : (tensor<3x5xi32>) -> tensor<3x5xi32>
+  return %0 : tensor<3x5xi32>
+}
+// CHECK-LABEL: @sort_no_dim_provided
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]+]]
+// CHECK:         %[[RES:.+]] = "mhlo.sort"(%[[ARG0]])
+// CHECK:           dimension = 1 : i64
+// CHECK:         return %[[RES]] : tensor<3x5xi32>

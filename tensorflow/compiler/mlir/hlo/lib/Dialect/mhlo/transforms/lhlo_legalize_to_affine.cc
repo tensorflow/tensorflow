@@ -60,15 +60,15 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
 
     // We don't currently support batching dimensions, or multiple contraction
     // dimensions.
-    mhlo::DotDimensionNumbers dot_dimension_numbers =
+    mhlo::DotDimensionNumbersAttr dot_dimension_numbers =
         op.dot_dimension_numbers();
-    if (dot_dimension_numbers.lhs_batching_dimensions().size() > 0 ||
-        dot_dimension_numbers.rhs_batching_dimensions().size() > 0)
+    if (!dot_dimension_numbers.getLhsBatchingDimensions().empty() ||
+        !dot_dimension_numbers.getRhsBatchingDimensions().empty())
       return failure();
-    if (dot_dimension_numbers.lhs_contracting_dimensions().size() != 1 ||
-        *dot_dimension_numbers.lhs_contracting_dimensions().begin() != 1 ||
-        dot_dimension_numbers.rhs_contracting_dimensions().size() != 1 ||
-        *dot_dimension_numbers.rhs_contracting_dimensions().begin() != 0) {
+    if (dot_dimension_numbers.getLhsContractingDimensions().size() != 1 ||
+        *dot_dimension_numbers.getLhsContractingDimensions().begin() != 1 ||
+        dot_dimension_numbers.getRhsContractingDimensions().size() != 1 ||
+        *dot_dimension_numbers.getRhsContractingDimensions().begin() != 0) {
       return failure();
     }
 

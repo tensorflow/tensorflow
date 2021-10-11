@@ -2632,6 +2632,33 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "all_reduce_contiguous",
+    srcs = ["all_reduce_contiguous.cc"],
+    hdrs = ["all_reduce_contiguous.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "all_reduce_contiguous_test",
+    srcs = ["all_reduce_contiguous_test.cc"],
+    deps = [
+        ":all_reduce_contiguous",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "reduce_scatter_combiner",
     srcs = ["reduce_scatter_combiner.cc"],
     hdrs = ["reduce_scatter_combiner.h"],
@@ -4211,6 +4238,18 @@ cc_library(
 )
 
 cc_library(
+    name = "memory_space_assignment_tuning_utils",
+    srcs = ["memory_space_assignment_tuning_utils.cc"],
+    hdrs = ["memory_space_assignment_tuning_utils.h"],
+    deps = [
+        ":heap_simulator",
+        ":hlo",
+        ":hlo_module_config",
+        ":memory_space_assignment_utils",
+    ],
+)
+
+cc_library(
     name = "memory_space_assignment_repacking",
     hdrs = ["memory_space_assignment_repacking.h"],
     deps = [
@@ -4247,6 +4286,7 @@ cc_library(
         ":heap_simulator",
         ":hlo_cost_analysis",
         ":memory_space_assignment_repacking",
+        ":memory_space_assignment_tuning_utils",
         ":memory_space_assignment_utils",
         ":tuple_util",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -6165,6 +6205,11 @@ py_test(
     name = "generate_test_hlo_checks_test",
     srcs = ["generate_test_hlo_checks_test.py"],
     python_version = "PY3",
+    # TODO(b/200806426): Test fails in OSS.
+    tags = [
+        "no_oss",
+        "nopip",
+    ],
     deps = [
         ":generate_test_hlo_checks",
         "@absl_py//absl/testing:absltest",

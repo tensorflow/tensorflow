@@ -131,6 +131,10 @@ class SavedModel {
     // the individual signatures will be loaded along with the saved model.
     bool enable_lazy_loading = false;
 
+    // If true, when creating an optimized subgraph, Placer and Grappler will
+    // also run on the functions.
+    bool run_placer_grappler_on_functions = false;
+
     // Runtime configuration. Refer to tensorflow::tfrt_stub::Runtime class for
     // more details. It must not be nullptr;
     const tensorflow::tfrt_stub::Runtime* runtime = nullptr;

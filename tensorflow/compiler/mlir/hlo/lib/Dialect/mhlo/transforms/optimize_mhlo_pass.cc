@@ -38,7 +38,8 @@ void OptimizeMhloPass::runOnFunction() {
   OwningRewritePatternList patterns(&getContext());
   PopulateOptimizeMHLOPatterns(&getContext(), &patterns);
 
-  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
+    return signalPassFailure();
 }
 }  // end anonymous namespace
 }  // namespace mhlo

@@ -18,10 +18,6 @@ This hook dispatches checkpoint writing operations in a separate thread to
 allow execution to continue on the main thread.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import threading
 import time

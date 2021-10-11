@@ -180,7 +180,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 
   if (compute_stats) {
     stats_ = std::make_unique<AllocatorStats>();
-    stats_->bytes_limit = static_cast<int64>(pool_size);
+    stats_->bytes_limit = static_cast<int64_t>(pool_size);
   }  // If not set, it means we do not compute stats.
 
   // If in TF_DETERMINISTIC_ALLOCATOR is set, then make the allocator behave

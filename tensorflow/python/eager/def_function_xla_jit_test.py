@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -1150,20 +1146,6 @@ class DefFunctionTest(xla_test.XLATestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   'Trying to access resource .*'):
         my_func_temp()
-
-  def testSinglePassArgmax(self):
-    with ops.device('device:{}:0'.format(self.device)):
-
-      @def_function.function(jit_compile=True)
-      def f(x):
-        return math_ops.argmax(x)
-
-      hlo = f.experimental_get_compiler_ir(
-          array_ops.ones([10], dtype=dtypes.float32))(
-              stage='hlo')
-
-      # Test that reduction occurs only once.
-      self.assertTrue(hlo.count('reduce'), 1)
 
 
 if __name__ == '__main__':

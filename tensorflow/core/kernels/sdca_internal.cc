@@ -431,9 +431,9 @@ Status Examples::CreateSparseFeatureRepresentation(
     // num_examples which is an int.
     for (int i = static_cast<int>(begin); i < end; ++i) {
       auto example_indices =
-          sparse_example_indices_inputs[i].template flat<int64>();
+          sparse_example_indices_inputs[i].template flat<int64_t>();
       auto feature_indices =
-          sparse_feature_indices_inputs[i].template flat<int64>();
+          sparse_feature_indices_inputs[i].template flat<int64_t>();
       if (example_indices.size() != feature_indices.size()) {
         mutex_lock l(mu);
         result = errors::InvalidArgument(
@@ -546,7 +546,7 @@ Status Examples::ComputeSquaredNormPerExample(
   auto compute_example_norm = [&](const int64_t begin, const int64_t end) {
     // The static_cast here is safe since begin and end can be at most
     // num_examples which is an int.
-    gtl::FlatSet<int64> previous_indices;
+    gtl::FlatSet<int64_t> previous_indices;
     for (int example_id = static_cast<int>(begin); example_id < end;
          ++example_id) {
       double squared_norm = 0;

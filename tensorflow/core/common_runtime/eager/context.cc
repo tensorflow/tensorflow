@@ -611,7 +611,12 @@ std::unique_ptr<RunMetadata> EagerContext::ExportRunMetadata() {
 bool EagerContext::UsesTFRT() { return false; }
 
 bool EagerContext::RunEagerOpAsFunction() const {
+  VLOG(3) << "RunEagerOpAsFunction: " << run_eager_op_as_function_;
   return run_eager_op_as_function_;
+}
+
+void EagerContext::SetRunEagerOpAsFunction(bool enable) {
+  run_eager_op_as_function_ = enable;
 }
 
 void EagerContext::ListDevices(

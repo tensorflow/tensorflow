@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for functions used to extract and analyze stacks."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import traceback
 
 from tensorflow.python.platform import test

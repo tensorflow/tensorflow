@@ -13,10 +13,6 @@
 # limitations under the License.
 # =============================================================================
 """Generates and prints out imports and constants for new TensorFlow python api."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import collections
 import importlib
@@ -47,12 +43,10 @@ _GENERATED_FILE_HEADER = """# This file is MACHINE GENERATED! Do not edit.
 \"\"\"%s
 \"\"\"
 
-from __future__ import print_function as _print_function
-
 import sys as _sys
 
 """
-_GENERATED_FILE_FOOTER = '\n\ndel _print_function\n'
+_GENERATED_FILE_FOOTER = ''
 _DEPRECATION_FOOTER = """
 from tensorflow.python.util import module_wrapper as _module_wrapper
 

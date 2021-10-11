@@ -323,6 +323,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // refactored not to hold mu_ while calling `GetNext` on the input.
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
+      interleave_depth_ = ctx->interleave_depth();
+
       // Note that if `ctx->thread_pool()` is non-null, then instead of creating
       // a dedicated thread pool of size `num_threads`, computation will be
       // scheduled into the shared threadpool. The threadpool is guaranteed to
@@ -535,6 +537,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           results_ready == -1 ? kTraceInfoUnavailable
                               : strings::Printf("%lld", static_cast<long long>(
                                                             active_elements))));
+      result.push_back(std::make_pair(
+          "interleave_depth",
+          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -1595,6 +1600,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // Identifies whether background threads should be cancelled.
     bool cancelled_ TF_GUARDED_BY(mu_) = false;
+
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree. We record the interleave depth so that it can be included in the
+    // trace metadata.
+    int64 interleave_depth_ = -1;
   };
 
   const DatasetBase* const input_;

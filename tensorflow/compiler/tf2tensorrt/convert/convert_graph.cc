@@ -533,7 +533,7 @@ Status CreateTRTNode(const ConversionParams& params,
 }
 
 int64 GetNextGraphSequenceNumber() {
-  static std::atomic<int64> graph_sequence_num;
+  static std::atomic<int64_t> graph_sequence_num;
   return graph_sequence_num++;
 }
 

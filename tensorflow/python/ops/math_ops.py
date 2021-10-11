@@ -66,10 +66,6 @@ tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
 ```
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numbers
 import numpy as np
 import six
@@ -1711,14 +1707,14 @@ floormod = gen_math_ops.floor_mod
 def _add_dispatch(x, y, name=None):
   """The operation invoked by the `Tensor.__add__` operator.
 
-    Purpose in the API:
+  Purpose in the API:
 
-      This method is exposed in TensorFlow's API so that library developers
-      can register dispatching for `Tensor.__add__` to allow it to handle
-      custom composite tensors & other custom objects.
+    This method is exposed in TensorFlow's API so that library developers
+    can register dispatching for `Tensor.__add__` to allow it to handle
+    custom composite tensors & other custom objects.
 
-      The API symbol is not intended to be called by users directly and does
-      appear in TensorFlow's generated documentation.
+    The API symbol is not intended to be called by users directly and does
+    appear in TensorFlow's generated documentation.
 
   Args:
     x: The left-hand side of the `+` operator.
@@ -4106,9 +4102,9 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   # tensor_dtype is for safety only; operator's output type computed in C++
   if tensor_dtype is not None and tensor_dtype != inputs[0].dtype:
     raise TypeError(
-        f"The `tensor_dtype` argument is {tensor_dtype}, but `input` is of type "
-        f"{inputs[0].dtype}. These must be equal. Try casting the input to the "
-        f"desired type.")
+        f"The `tensor_dtype` argument is {tensor_dtype}, but `input` is of "
+        f"type {inputs[0].dtype}. These must be equal. Try casting the input "
+        f"to the desired type.")
 
   if len(inputs) == 1 and name is None:
     return inputs[0]

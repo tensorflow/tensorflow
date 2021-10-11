@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test base for tf.data service tests."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tempfile
 
 from absl import flags

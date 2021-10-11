@@ -40,7 +40,7 @@ class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
   using OpConversionPattern<ConstantOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      ConstantOp op, ArrayRef<Value> operands,
+      ConstantOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const final {
     // We only need to bufferize tensor constants.
     Location loc = op.getLoc();
@@ -82,9 +82,8 @@ class BufferizeDimOp : public OpConversionPattern<tensor::DimOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      tensor::DimOp op, ArrayRef<Value> operands,
+      tensor::DimOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    tensor::DimOp::Adaptor adaptor(operands);
     rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.source(),
                                                adaptor.index());
     return success();
@@ -98,10 +97,8 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
       chlo::MinimumBroadcastShapesOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      chlo::MinimumBroadcastShapesOp broadcast_shapes_op,
-      ArrayRef<Value> operands,
+      chlo::MinimumBroadcastShapesOp broadcast_shapes_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    chlo::MinimumBroadcastShapesOp::Adaptor adaptor(operands);
     auto loc = broadcast_shapes_op.getLoc();
     ImplicitLocOpBuilder lb(loc, rewriter);
     Value zero = lb.create<ConstantIndexOp>(0);
@@ -405,7 +402,7 @@ struct BufferizeJITExecuteOp
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      tf_framework::JITExecuteOp op, ArrayRef<Value> operands,
+      tf_framework::JITExecuteOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     SmallVector<Type, 2> result_types;
     if (failed(getTypeConverter()->convertTypes(op.getResultTypes(),
@@ -413,7 +410,7 @@ struct BufferizeJITExecuteOp
       return failure();
     }
     rewriter.replaceOpWithNewOp<tf_framework::JITExecuteOp>(
-        op, result_types, operands, op->getAttrs());
+        op, result_types, adaptor.getOperands(), op->getAttrs());
     return success();
   }
 };
@@ -422,9 +419,8 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      RankOp op, ArrayRef<Value> operands,
+      RankOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    RankOp::Adaptor adaptor(operands);
     rewriter.replaceOpWithNewOp<RankOp>(op, adaptor.memrefOrTensor());
     return success();
   }

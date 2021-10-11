@@ -14,10 +14,6 @@
 # ==============================================================================
 """Iterator ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import ops

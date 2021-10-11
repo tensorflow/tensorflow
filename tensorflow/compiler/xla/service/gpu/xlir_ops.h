@@ -46,6 +46,12 @@ class XlirDialect : public mlir::Dialect {
 // up by xlir.module.load.
 struct GpuModuleData {
   llvm::StringRef blob;
+
+  struct ConstantInfo {
+    llvm::StringRef symbol_name;
+    llvm::ArrayRef<uint8_t> content;
+  };
+  std::vector<ConstantInfo> constants;
 };
 
 }  // namespace gpu

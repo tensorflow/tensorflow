@@ -910,47 +910,6 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
   return func_op;
 }
 
-}  // namespace
-
-// Convert an array of "handle_data" (a DType and a Shape) to an MLIR array
-// attribute. Each entry will be itself an ArrayAttribute containing a TypeAttr
-// and a ShapeAttr
-tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
-    Builder builder,
-    const RepeatedPtrField<ResourceHandleProto_DtypeAndShape>& handle_data) {
-  // Two entries: a type and a shape.
-  SmallVector<Attribute> dtype_and_shape;
-  for (const auto& handle : handle_data) {
-    Type dtype;
-    if (handle.dtype() != tensorflow::DT_INVALID)
-      TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
-    TF_ASSIGN_OR_RETURN(
-        Attribute shape,
-        ConvertTensorShapeProto(handle.shape(), builder.getContext()));
-
-    dtype_and_shape.push_back(
-        builder.getArrayAttr({TypeAttr::get(dtype), shape}));
-  }
-  return builder.getArrayAttr(dtype_and_shape);
-}
-
-tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
-    MLIRContext* context, const GraphDebugInfo& debug_info,
-    const GraphDef& graphdef) {
-  VLOG(4) << "ConvertGraphdefToMlir begin";
-  GraphConstructorOptions options;
-  options.allow_internal_ops = true;
-  options.add_default_attributes = true;
-  // TODO(aminim): remove dependency on the global registry and allow for
-  // injection.
-  Graph graph(OpRegistry::Global());
-  GraphDef preprocessed_graphdef(graphdef);
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
-      options, std::move(preprocessed_graphdef), &graph));
-  return ImportGraphAndFunctionsToMlir(context, graph, debug_info,
-                                       graph.flib_def());
-}
-
 bool IsGenericFunction(FunctionDef fdef) {
   for (const NodeDef& node : fdef.node_def())
     for (const auto& named_attr : node.attr()) {
@@ -992,14 +951,45 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
   return module;
 }
 
-tensorflow::StatusOr<GraphFuncOp> ImportFunctionToMlir(
-    ModuleOp module, const GraphDebugInfo& debug_info,
-    const FunctionLibraryDefinition& flib_def, absl::string_view func_name,
-    AttrSlice instantiation_attributes) {
-  const FunctionDef* func = flib_def.Find(std::string(func_name));
-  SymbolTable symbol_table(module);
-  return ImportFunctionDef(module, debug_info, flib_def, *func,
-                           instantiation_attributes);
+}  // namespace
+
+// Convert an array of "handle_data" (a DType and a Shape) to an MLIR array
+// attribute. Each entry will be itself an ArrayAttribute containing a TypeAttr
+// and a ShapeAttr
+tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
+    Builder builder,
+    const RepeatedPtrField<ResourceHandleProto_DtypeAndShape>& handle_data) {
+  // Two entries: a type and a shape.
+  SmallVector<Attribute> dtype_and_shape;
+  for (const auto& handle : handle_data) {
+    Type dtype;
+    if (handle.dtype() != tensorflow::DT_INVALID)
+      TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
+    TF_ASSIGN_OR_RETURN(
+        Attribute shape,
+        ConvertTensorShapeProto(handle.shape(), builder.getContext()));
+
+    dtype_and_shape.push_back(
+        builder.getArrayAttr({TypeAttr::get(dtype), shape}));
+  }
+  return builder.getArrayAttr(dtype_and_shape);
+}
+
+tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
+    MLIRContext* context, const GraphDebugInfo& debug_info,
+    const GraphDef& graphdef) {
+  VLOG(4) << "ConvertGraphdefToMlir begin";
+  GraphConstructorOptions options;
+  options.allow_internal_ops = true;
+  options.add_default_attributes = true;
+  // TODO(aminim): remove dependency on the global registry and allow for
+  // injection.
+  Graph graph(OpRegistry::Global());
+  GraphDef preprocessed_graphdef(graphdef);
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      options, std::move(preprocessed_graphdef), &graph));
+  return ImportGraphAndFunctionsToMlir(context, graph, debug_info,
+                                       graph.flib_def());
 }
 
 }  // namespace tfg

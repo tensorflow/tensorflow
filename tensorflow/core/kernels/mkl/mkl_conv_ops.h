@@ -416,10 +416,10 @@ class MklDnnConvUtil {
       Padding padding_type;
       if (pad_enabled) {
         padding_type = Padding::EXPLICIT;
-        pad_top = static_cast<int64>((*pad_l)[0]);
-        pad_left = static_cast<int64>((*pad_l)[1]);
-        pad_bottom = static_cast<int64>((*pad_r)[0]);
-        pad_right = static_cast<int64>((*pad_r)[1]);
+        pad_top = static_cast<int64_t>((*pad_l)[0]);
+        pad_left = static_cast<int64_t>((*pad_l)[1]);
+        pad_bottom = static_cast<int64_t>((*pad_r)[0]);
+        pad_right = static_cast<int64_t>((*pad_r)[1]);
       } else {
         padding_type = padding_;
       }

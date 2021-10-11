@@ -42,29 +42,29 @@ using mlir::linalg::TiledLoopOp;
 struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
   /// MatchAnyOpTag-based constructor with a mandatory `filter`.
   TileCWisePattern(LinalgTilingOptions options,
-                   LinalgTransformationFilter filter,
-                   mlir::MLIRContext *context, mlir::PatternBenefit benefit = 1)
+                   LinalgTransformationFilter filter, MLIRContext *context,
+                   mlir::PatternBenefit benefit = 1)
       : mlir::OpInterfaceRewritePattern<LinalgOp>(context, benefit),
         filter(filter),
         options(options) {}
 
-  LogicalResult matchAndRewrite(LinalgOp linalgOp,
+  LogicalResult matchAndRewrite(LinalgOp linalg_op,
                                 PatternRewriter &rewriter) const override {
     // Check if it is cwise on tensors.
-    if (failed(filter.checkAndNotify(rewriter, linalgOp))) return failure();
+    if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
 
-    auto tiledLinalgOp = tileLinalgOp(rewriter, linalgOp, options);
-    if (!tiledLinalgOp) return failure();
+    auto tiled_linalg_op = tileLinalgOp(rewriter, linalg_op, options);
+    if (!tiled_linalg_op) return failure();
 
-    TiledLoopOp tiledLoopOp =
-        mlir::dyn_cast<TiledLoopOp>(*tiledLinalgOp.getValue().loops.front());
-    if (!tiledLoopOp) return failure();
+    TiledLoopOp tiled_loop =
+        mlir::dyn_cast<TiledLoopOp>(*tiled_linalg_op.getValue().loops.front());
+    if (!tiled_loop) return failure();
 
-    tiledLoopOp->walk([&](LinalgOp tiledOp) {
+    tiled_loop->walk([&](LinalgOp tiledOp) {
       filter.replaceLinalgTransformationFilter(rewriter, tiledOp);
     });
 
-    rewriter.replaceOp(linalgOp, tiledLoopOp->getResults());
+    rewriter.replaceOp(linalg_op, tiled_loop->getResults());
     return success();
   }
 
@@ -75,10 +75,11 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
 
 // Return true if the generic has only parallel iterations. This disallows
 // windowed and reduction iteration.
-bool isaCwise(mlir::Operation *op) {
-  auto linalgOp = mlir::dyn_cast<mlir::linalg::GenericOp>(op);
-  if (!linalgOp || !linalgOp.hasTensorSemantics()) return false;
-  return llvm::all_of(linalgOp.iterator_types(),
+bool isNonTiledCwise(Operation *op) {
+  if (op->getParentOfType<TiledLoopOp>()) return false;
+  auto linalg_op = mlir::dyn_cast<GenericOp>(op);
+  if (!linalg_op || !linalg_op.hasTensorSemantics()) return false;
+  return llvm::all_of(linalg_op.iterator_types(),
                       [](auto type) { return mlir::isParallelIterator(type); });
 }
 
@@ -87,12 +88,12 @@ struct CodegenForCWisePass : public CodegenCWiseBase<CodegenForCWisePass> {
     constexpr llvm::StringRef kTiledId = "tiled";
     auto func = getFunction();
 
-    mlir::linalg::LinalgTilingOptions tiling_options;
+    LinalgTilingOptions tiling_options;
     // Tile the innermost dimension by 8 for vectorization and scalarize the
     // other dimensions.
     tiling_options.setTileSizeComputationFunction(
         [](OpBuilder b, Operation *op) {
-          auto num_loops = llvm::cast<mlir::linalg::LinalgOp>(op).getNumLoops();
+          auto num_loops = llvm::cast<LinalgOp>(op).getNumLoops();
           SmallVector<Value> tiles(num_loops,
                                    b.create<ConstantIndexOp>(op->getLoc(), 1));
           tiles.back() = b.create<ConstantIndexOp>(op->getLoc(), 8);
@@ -100,11 +101,11 @@ struct CodegenForCWisePass : public CodegenCWiseBase<CodegenForCWisePass> {
         });
     tiling_options.setLoopType(mlir::linalg::LinalgTilingLoopType::TiledLoops);
 
-    auto filter = mlir::linalg::LinalgTransformationFilter(
+    auto filter = LinalgTransformationFilter(
                       llvm::ArrayRef<mlir::Identifier>{},
                       {mlir::Identifier::get(kTiledId, func.getContext())})
-                      .addFilter([](mlir::Operation *op) {
-                        return mlir::success(isaCwise(op));
+                      .addFilter([](Operation *op) {
+                        return success(isNonTiledCwise(op));
                       });
 
     mlir::OwningRewritePatternList patterns(func.getContext());
@@ -113,7 +114,7 @@ struct CodegenForCWisePass : public CodegenCWiseBase<CodegenForCWisePass> {
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
 
     // Ensure we drop the marker in the end.
-    func.walk([](mlir::linalg::LinalgOp op) {
+    func.walk([](LinalgOp op) {
       op->removeAttr(mlir::linalg::LinalgTransforms::kLinalgTransformMarker);
     });
   }

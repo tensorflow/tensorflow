@@ -93,7 +93,7 @@ class TestCluster {
 //
 // TestCluster cluster(/*num_workers=*/2);
 // TF_ASSERT_OK(cluster.Initialize());
-// DatasetClient<int64> dataset_reader(cluster);
+// DatasetClient<int64_t> dataset_reader(cluster);
 //
 // EXPECT_THAT(
 //     dataset_reader.Read(RangeDataset(4), ProcessingModeDef::DATA,
@@ -117,18 +117,18 @@ class DatasetClient {
       ProcessingModeDef::ShardingPolicy sharding_policy,
       TargetWorkers target_workers);
   // Creates a job and returns the job client ID.
-  StatusOr<int64> CreateJob();
+  StatusOr<int64_t> CreateJob();
   // Gets the tasks for job `job_client_id`. The job has one task processed by
   // every worker.
   StatusOr<std::vector<TaskInfo>> GetTasks(int64 job_client_id);
 
  private:
   // Registers the dataset and returns the dataset ID.
-  StatusOr<int64> RegisterDataset(const DatasetDef& dataset);
+  StatusOr<int64_t> RegisterDataset(const DatasetDef& dataset);
   // Creates a job and returns the job client ID.
-  StatusOr<int64> CreateJob(int64 dataset_id,
-                            ProcessingModeDef::ShardingPolicy sharding_policy,
-                            TargetWorkers target_workers);
+  StatusOr<int64_t> CreateJob(int64 dataset_id,
+                              ProcessingModeDef::ShardingPolicy sharding_policy,
+                              TargetWorkers target_workers);
   // Reads values from `tasks`, one task at a time, until all tasks have
   // finished.
   StatusOr<WorkerResultMap> ReadFromTasks(const std::vector<TaskInfo>& tasks);
@@ -168,7 +168,7 @@ StatusOr<typename DatasetClient<T>::WorkerResultMap> DatasetClient<T>::Read(
 }
 
 template <class T>
-StatusOr<int64> DatasetClient<T>::RegisterDataset(const DatasetDef& dataset) {
+StatusOr<int64_t> DatasetClient<T>::RegisterDataset(const DatasetDef& dataset) {
   int64 dataset_id = 0;
   TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
       dataset, /*element_spec=*/absl::nullopt, dataset_id));
@@ -176,7 +176,7 @@ StatusOr<int64> DatasetClient<T>::RegisterDataset(const DatasetDef& dataset) {
 }
 
 template <class T>
-StatusOr<int64> DatasetClient<T>::CreateJob(
+StatusOr<int64_t> DatasetClient<T>::CreateJob(
     const int64 dataset_id, ProcessingModeDef::ShardingPolicy sharding_policy,
     TargetWorkers target_workers) {
   int64 job_client_id = 0;
@@ -189,7 +189,7 @@ StatusOr<int64> DatasetClient<T>::CreateJob(
 }
 
 template <class T>
-StatusOr<int64> DatasetClient<T>::CreateJob() {
+StatusOr<int64_t> DatasetClient<T>::CreateJob() {
   TF_ASSIGN_OR_RETURN(
       const int64 dataset_id,
       RegisterDataset(tensorflow::data::testing::RangeDataset(10)));

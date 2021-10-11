@@ -1798,9 +1798,7 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
 
 /*static*/ bool ShapeUtil::ElementCanUpcast(const Shape& from,
                                             const Shape& to) {
-  return ElementIsFloating(from) == ElementIsFloating(to) &&
-         ElementIsSigned(from) == ElementIsSigned(to) &&
-         HigherPrecisionElementType(from, to) == to.element_type();
+  return HigherPrecisionElementType(from, to) == to.element_type();
 }
 
 /*static*/

@@ -151,6 +151,10 @@ message NNAPISettings {
   // would significantly reduce overhead especially if the same delegate
   // instance is to be used for multiple inferences.
   optional bool use_burst_computation = 11;
+
+  // Optional handle to NNAPI Support Library which can be used to construct the
+  // NNAPI delegate.
+  optional int64 support_library_handle = 12;
 }
 
 // Which GPU backend to select. Default behaviour on Android is to try OpenCL

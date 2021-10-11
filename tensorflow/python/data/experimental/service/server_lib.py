@@ -14,10 +14,6 @@
 # ==============================================================================
 """A Python interface for creating dataset servers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 # pylint: disable=invalid-import-order,g-bad-import-order, unused-import

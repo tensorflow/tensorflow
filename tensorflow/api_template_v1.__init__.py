@@ -14,10 +14,6 @@
 # ==============================================================================
 """Bring in all of the public TensorFlow interface into this module."""
 
-from __future__ import absolute_import as _absolute_import
-from __future__ import division as _division
-from __future__ import print_function as _print_function
-
 import distutils as _distutils
 import inspect as _inspect
 import os as _os

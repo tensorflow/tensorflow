@@ -31,7 +31,7 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                             .Device(DEVICE_CPU)
                             .HostMemory("output")
                             .TypeConstraint<int64_t>("out_type"),
-                        ShapeOp<int64>);
+                        ShapeOp<int64_t>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_KERNEL(type)                                  \
@@ -46,7 +46,7 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                               .HostMemory("output")                \
                               .TypeConstraint<int64_t>("out_type") \
                               .TypeConstraint<type>("T"),          \
-                          ShapeOp<int64>);
+                          ShapeOp<int64_t>);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_bool(REGISTER_GPU_KERNEL);
@@ -69,7 +69,7 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64_t>("out_type"),
-                        ShapeOp<int64>);
+                        ShapeOp<int64_t>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -85,7 +85,7 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                               .HostMemory("output")                \
                               .TypeConstraint<int64_t>("out_type") \
                               .TypeConstraint<type>("T"),          \
-                          ShapeOp<int64>);
+                          ShapeOp<int64_t>);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
 TF_CALL_bool(REGISTER_DEFAULT_KERNEL);
@@ -108,7 +108,7 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64_t>("out_type"),
-                        ShapeOp<int64>);
+                        ShapeOp<int64_t>);
 
 // ShapeN ---------------------------------------
 REGISTER_KERNEL_BUILDER(Name("ShapeN")
@@ -120,7 +120,7 @@ REGISTER_KERNEL_BUILDER(Name("ShapeN")
                             .Device(DEVICE_CPU)
                             .HostMemory("output")
                             .TypeConstraint<int64_t>("out_type"),
-                        ShapeNOp<int64>);
+                        ShapeNOp<int64_t>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_KERNEL(type)                                  \
@@ -135,7 +135,7 @@ REGISTER_KERNEL_BUILDER(Name("ShapeN")
                               .HostMemory("output")                \
                               .TypeConstraint<int64_t>("out_type") \
                               .TypeConstraint<type>("T"),          \
-                          ShapeNOp<int64>)
+                          ShapeNOp<int64_t>)
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_bool(REGISTER_GPU_KERNEL);
@@ -157,7 +157,7 @@ REGISTER_KERNEL_BUILDER(Name("ShapeN")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64_t>("out_type"),
-                        ShapeNOp<int64>);
+                        ShapeNOp<int64_t>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_DEFAULT_KERNEL(type)                              \
@@ -172,7 +172,7 @@ REGISTER_KERNEL_BUILDER(Name("ShapeN")
                               .HostMemory("output")                \
                               .TypeConstraint<int64_t>("out_type") \
                               .TypeConstraint<type>("T"),          \
-                          ShapeNOp<int64>)
+                          ShapeNOp<int64_t>)
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
 TF_CALL_bool(REGISTER_DEFAULT_KERNEL);
@@ -194,7 +194,7 @@ REGISTER_KERNEL_BUILDER(Name("ShapeN")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64_t>("out_type"),
-                        ShapeNOp<int64>);
+                        ShapeNOp<int64_t>);
 
 // Rank ------------------------------------------
 REGISTER_KERNEL_BUILDER(Name("Rank").Device(DEVICE_CPU).HostMemory("output"),
@@ -267,7 +267,7 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                             .Device(DEVICE_CPU)
                             .HostMemory("output")
                             .TypeConstraint<int64_t>("out_type"),
-                        SizeOp<int64>);
+                        SizeOp<int64_t>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_KERNEL(type)                                  \
@@ -282,7 +282,7 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                               .TypeConstraint<type>("T")           \
                               .TypeConstraint<int64_t>("out_type") \
                               .HostMemory("output"),               \
-                          SizeOp<int64>);
+                          SizeOp<int64_t>);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_bool(REGISTER_GPU_KERNEL);
 TF_CALL_variant(REGISTER_GPU_KERNEL);
@@ -304,7 +304,7 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                             .TypeConstraint<int64_t>("out_type")
                             .HostMemory("input")
                             .HostMemory("output"),
-                        SizeOp<int64>);
+                        SizeOp<int64_t>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -320,7 +320,7 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                               .TypeConstraint<type>("T")           \
                               .TypeConstraint<int64_t>("out_type") \
                               .HostMemory("output"),               \
-                          SizeOp<int64>);
+                          SizeOp<int64_t>);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
 TF_CALL_bool(REGISTER_DEFAULT_KERNEL);
 TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
@@ -342,7 +342,7 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                             .TypeConstraint<int64_t>("out_type")
                             .HostMemory("input")
                             .HostMemory("output"),
-                        SizeOp<int64>);
+                        SizeOp<int64_t>);
 
 // ExpandDims ------------------------------------
 REGISTER_KERNEL_BUILDER(Name("ExpandDims")
@@ -354,7 +354,7 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .Device(DEVICE_CPU)
                             .HostMemory("dim")
                             .TypeConstraint<int64_t>("Tdim"),
-                        ExpandDimsOp<int64>);
+                        ExpandDimsOp<int64_t>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_KERNEL(type)                              \
@@ -369,7 +369,7 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                               .TypeConstraint<type>("T")       \
                               .TypeConstraint<int64_t>("Tdim") \
                               .HostMemory("dim"),              \
-                          ExpandDimsOp<int64>);
+                          ExpandDimsOp<int64_t>);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_bool(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
@@ -389,7 +389,7 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .HostMemory("input")
                             .HostMemory("dim")
                             .HostMemory("output"),
-                        ExpandDimsOp<int64>);
+                        ExpandDimsOp<int64_t>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_DEFAULT_KERNEL(type)                          \
@@ -404,7 +404,7 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                               .TypeConstraint<type>("T")       \
                               .TypeConstraint<int64_t>("Tdim") \
                               .HostMemory("dim"),              \
-                          ExpandDimsOp<int64>);
+                          ExpandDimsOp<int64_t>);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
 TF_CALL_bool(REGISTER_DEFAULT_KERNEL);
 #undef REGISTER_DEFAULT_KERNEL
@@ -424,7 +424,7 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .HostMemory("input")
                             .HostMemory("dim")
                             .HostMemory("output"),
-                        ExpandDimsOp<int64>);
+                        ExpandDimsOp<int64_t>);
 
 // Squeeze ---------------------------------------
 REGISTER_KERNEL_BUILDER(Name("Squeeze").Device(DEVICE_CPU), SqueezeOp);

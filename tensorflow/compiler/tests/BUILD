@@ -283,6 +283,7 @@ tf_xla_py_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
@@ -1767,6 +1768,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/jit:common",
+        "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -1786,12 +1788,63 @@ cc_library(
 tf_cuda_cc_test(
     name = "randomized_tests",
     size = "medium",
+    args = ["--tf_xla_test_use_mlir=false"],
     shard_count = 20,
     # This test is randomized, so only run it if explicitly requested.
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "manual",
         "notap",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+tf_cuda_cc_test(
+    name = "randomized_tests_mlir",
+    size = "medium",
+    args = ["--tf_xla_test_use_mlir=true"],
+    shard_count = 20,
+    # This test is randomized, so only run it if explicitly requested.
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "manual",
+        "notap",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+# Create a deterministic version of randomized_tests_mlir with fixed seed.
+# This can be used in presubmit checks as it is no longer randomized.
+tf_cuda_cc_test(
+    name = "randomized_tests_mlir_seeded",
+    size = "medium",
+    args = [
+        "--tf_xla_test_use_mlir=true",
+        "--tf_xla_random_seed=200839030",
+    ],
+    shard_count = 20,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+        "no_rocm",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+# Create a deterministic version of randomized_tests with fixed seed.
+# This can be used in presubmit checks as it is no longer randomized.
+tf_cuda_cc_test(
+    name = "randomized_tests_seeded",
+    size = "medium",
+    args = [
+        "--tf_xla_test_use_mlir=false",
+        "--tf_xla_random_seed=200839030",
+    ],
+    shard_count = 20,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+        "no_rocm",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )

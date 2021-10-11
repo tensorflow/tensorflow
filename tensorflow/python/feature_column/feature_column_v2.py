@@ -123,10 +123,6 @@ NOTE: Functions prefixed with "_" indicate experimental or private parts of
 the API subject to change, and should not be relied upon!
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import collections
 import math

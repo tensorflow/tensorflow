@@ -15,10 +15,6 @@
 
 """Class to hold a library of OpDefs and use it to create Brain operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import six
 
 from google.protobuf import text_format

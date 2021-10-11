@@ -318,8 +318,8 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::AlgorithmConfig& plan_config,
-      ScratchAllocator* scratch_allocator,
+      const dnn::ConvolveExecutionPlan& execution_plan,
+      DeviceMemoryBase scratch_memory,
       dnn::ProfileResult* output_profile_result);
 
   port::Status DoFusedConvolve(
@@ -349,8 +349,8 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
       dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data, ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
+      DeviceMemoryBase output_data, DeviceMemoryBase scratch_memory,
+      const dnn::ConvolveExecutionPlan& execution_plan,
       dnn::ProfileResult* output_profile_result);
 
   bool DoConvolveQuantized(

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Helpers for working with signatures in tf.saved_model.save."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import logging
 
 from tensorflow.python.eager import def_function

@@ -162,11 +162,11 @@ class CholeskyOpGpu : public AsyncOpKernel {
       }
       dev_info.push_back(
           solver->GetDeviceLapackInfo(batch_size, "potrfBatched"));
-      OP_REQUIRES_OK_ASYNC(context,
-                           solver->PotrfBatched(fill, n,
-                                                output_reshaped_ptrs_base, n,
-                                                &dev_info.back(), batch_size),
-                           done);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          solver->PotrfBatched(fill, n, output_reshaped_ptrs_base, n,
+                               &dev_info.back(), batch_size),
+          done);
       // TODO(rmlarsen): We have to clear the upper triangle of the output
       // due to a bug in potrfBatched. Remove this workaround once the bug
       // is fixed.
@@ -182,11 +182,11 @@ class CholeskyOpGpu : public AsyncOpKernel {
 
       dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "potrf"));
       for (int batch = 0; batch < batch_size; ++batch) {
-        OP_REQUIRES_OK_ASYNC(context,
-                             solver->Potrf(fill, n,
-                                           &output_reshaped(batch, 0, 0), n,
-                                           &dev_info.back()(batch)),
-                             done);
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            solver->Potrf(fill, n, &output_reshaped(batch, 0, 0), n,
+                          &dev_info.back()(batch)),
+            done);
       }
 
 #if CUDA_VERSION >= 9020

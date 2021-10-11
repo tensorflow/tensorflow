@@ -444,7 +444,8 @@ bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
 }
 
 ANeuralNetworksOperandType ConvertTensorTypeToNNType(
-    const TfLiteTensor* tensor, TfLiteType ann_type_equivalent) {
+    const TfLiteTensor* tensor, TfLiteType ann_type_equivalent,
+    bool use_int8_asymm_signed) {
   int32_t nn_type = 0;
   float scale = 0.0f;
   int32_t zero_point = 0;
@@ -465,15 +466,18 @@ ANeuralNetworksOperandType ConvertTensorTypeToNNType(
       }
       break;
     case kTfLiteInt8:
-      nn_type = ANEURALNETWORKS_TENSOR_QUANT8_SYMM;
       scale = tensor->params.scale;
       zero_point = tensor->params.zero_point;
-      if (ann_type_equivalent == kTfLiteUInt8) {
+      if (use_int8_asymm_signed) {
+        nn_type = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED;
+      } else if (ann_type_equivalent == kTfLiteUInt8) {
         nn_type = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM;
         zero_point += 128;
       } else if (ann_type_equivalent == kTfLiteInt32) {
         nn_type = ANEURALNETWORKS_TENSOR_INT32;
         zero_point += 128;
+      } else {
+        nn_type = ANEURALNETWORKS_TENSOR_QUANT8_SYMM;
       }
       if (scale == 0) {
         // TENSOR_QUANT8_ASYMM and ANEURALNETWORKS_TENSOR_QUANT8_ASYMM
@@ -2635,6 +2639,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinStridedSlice: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
+      ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
     } break;
@@ -4494,8 +4499,8 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
             absolute_input_index);
     if (delegate_options.allow_dynamic_dimensions &&
         HasUnspecifiedDimension(tensor)) {
-      input_nn_operand_type =
-          ConvertTensorTypeToNNType(tensor, ann_type_equivalent);
+      input_nn_operand_type = ConvertTensorTypeToNNType(
+          tensor, ann_type_equivalent, use_int8_asymm_signed);
       input_nn_operand_type_ptr = &input_nn_operand_type;
     }
     if (tensor->allocation_type != kTfLiteMmapRo) {
@@ -4619,8 +4624,8 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
         HasUnspecifiedDimension(tensor)) {
       TfLiteType ann_type_equivalent =
           operand_mapping_.lite_index_to_ann_type_conversion(output_index);
-      output_nn_operand_type =
-          ConvertTensorTypeToNNType(tensor, ann_type_equivalent);
+      output_nn_operand_type = ConvertTensorTypeToNNType(
+          tensor, ann_type_equivalent, use_int8_asymm_signed);
       output_nn_operand_type_ptr = &output_nn_operand_type;
     }
     if (tensor->buffer_handle != kTfLiteNullBufferHandle &&

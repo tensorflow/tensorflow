@@ -777,13 +777,15 @@ StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
   auto set_common_attributes = [&](auto op) -> Operation* {
+    auto arrayref = [](absl::Span<const int64_t> array) {
+      return llvm::ArrayRef<int64_t>{array.data(), array.size()};
+    };
     auto hlo_dims = config.dot_dimension_numbers();
-    auto mlir_dims = mhlo::DotDimensionNumbers::get(
-        GetI64DenseElementsAttr(hlo_dims.lhs_batch_dimensions()),
-        GetI64DenseElementsAttr(hlo_dims.rhs_batch_dimensions()),
-        GetI64DenseElementsAttr(hlo_dims.lhs_contracting_dimensions()),
-        GetI64DenseElementsAttr(hlo_dims.rhs_contracting_dimensions()),
-        builder_.getContext());
+    auto mlir_dims = mhlo::DotDimensionNumbersAttr::get(
+        builder_.getContext(), arrayref(hlo_dims.lhs_batch_dimensions()),
+        arrayref(hlo_dims.rhs_batch_dimensions()),
+        arrayref(hlo_dims.lhs_contracting_dimensions()),
+        arrayref(hlo_dims.rhs_contracting_dimensions()));
     op.dot_dimension_numbersAttr(mlir_dims);
     op.alpha_realAttr(builder_.getF64FloatAttr(config.alpha_real()));
     op.alpha_imagAttr(builder_.getF64FloatAttr(config.alpha_imag()));

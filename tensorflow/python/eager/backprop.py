@@ -17,10 +17,6 @@
 # TODO(b/159343581): Properly support CompositeTensor in all functions in this
 # file.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import operator
 import sys

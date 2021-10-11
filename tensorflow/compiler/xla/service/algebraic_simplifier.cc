@@ -931,6 +931,11 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
 
 Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
     HloInstruction* bitcast) {
+  TF_ASSIGN_OR_RETURN(bool replaced,
+                      TrySimplifyTautologicalBitcastConvert(bitcast));
+  if (replaced) {
+    return Status::OK();
+  }
   // Eliminate bitcast converts between same shape.
   ReplaceInstructionIfSameShape(bitcast, bitcast->mutable_operand(0));
   return Status::OK();
@@ -1146,6 +1151,35 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
                          broadcast_dims, concatenate->shape()));
   }
   return Status::OK();
+}
+
+StatusOr<bool>
+AlgebraicSimplifierVisitor::TrySimplifyTautologicalBitcastConvert(
+    HloInstruction* bitcast) {
+  CHECK_EQ(bitcast->opcode(), HloOpcode::kBitcastConvert);
+  PrimitiveType outer_to = bitcast->shape().element_type();
+  HloInstruction* concat = bitcast->mutable_operand(0);
+  if (concat->opcode() != HloOpcode::kConcatenate) {
+    return false;
+  }
+  std::vector<HloInstruction*> outer_inputs;
+  std::vector<HloInstruction*> to_remove_bitcasts;
+  for (int i = 0; i < concat->operand_count(); i++) {
+    HloInstruction* in = concat->mutable_operand(i);
+    if (in->opcode() != HloOpcode::kBitcastConvert ||
+        in->operand(0)->shape().element_type() != outer_to) {
+      return false;
+    }
+    outer_inputs.push_back(in->mutable_operand(0));
+    to_remove_bitcasts.push_back(in);
+  }
+
+  const int64_t concat_dim = concat->concatenate_dimension();
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_concat,
+                      MakeConcatHlo(outer_inputs, concat_dim));
+  TF_RETURN_IF_ERROR(ReplaceInstruction(bitcast, new_concat));
+
+  return true;
 }
 
 static HloInstruction* BuildTupleConstant(HloComputation* computation,

@@ -40,16 +40,18 @@ struct VectorizeTiledOpsPass
     mlir::VectorTransferToSCFOptions vector_transfer_opts;
 
     // Vectorize linalg.fill operations.
-    CodegenStrategy{}
-        .vectorize<mlir::linalg::FillOp>()
-        .setVectorTransferToSCFOptions(vector_transfer_opts)
-        .transform(funcOp);
+    if (failed(CodegenStrategy{}
+                   .vectorize(mlir::linalg::FillOp::getOperationName())
+                   .setVectorTransferToSCFOptions(vector_transfer_opts)
+                   .transform(funcOp)))
+      return signalPassFailure();
 
     // Vectorize linalg.generic operations.
-    CodegenStrategy{}
-        .vectorize<mlir::linalg::GenericOp>()
-        .setVectorTransferToSCFOptions(vector_transfer_opts)
-        .transform(funcOp);
+    if (failed(CodegenStrategy{}
+                   .vectorize(mlir::linalg::GenericOp::getOperationName())
+                   .setVectorTransferToSCFOptions(vector_transfer_opts)
+                   .transform(funcOp)))
+      return signalPassFailure();
 
     // Vectorize padding.
     mlir::OwningRewritePatternList patterns(funcOp.getContext());

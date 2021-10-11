@@ -473,7 +473,7 @@ build:rbe_linux_cuda_nvcc_py38 --config=rbe_linux_cuda11.2_nvcc_py3.8
 build:rbe_linux_cuda_nvcc_py39 --config=rbe_linux_cuda11.2_nvcc_py3.9
 
 # Deprecated configs that people might still use.
-build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_nvcc_py36
+build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_nvcc_py39
 build:rbe_gpu_linux       --config=rbe_linux_cuda_nvcc
 
 build:rbe_linux_cuda_clang_base --config=rbe_linux_cuda_base

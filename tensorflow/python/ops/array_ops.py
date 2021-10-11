@@ -15,10 +15,6 @@
 # Tests for this file live in python/kernel_tests/array_ops_test.py
 """Support for manipulating tensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numbers
 import numpy as np
 

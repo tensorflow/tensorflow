@@ -20,10 +20,6 @@ BUILD rule, then this function is overridden and will instead cause
 Tensorflow eager execution to run with TFRT.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 def is_tfrt_enabled():
   """Returns true to state TFRT should be enabled for Tensorflow tests."""

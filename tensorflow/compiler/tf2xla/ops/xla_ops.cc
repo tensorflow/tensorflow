@@ -607,11 +607,11 @@ REGISTER_OP("XlaReduce")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       if (c->RankKnown(c->input(0))) {
         int rank = c->Rank(c->input(0));
-        std::vector<int64> dimensions_to_reduce;
+        std::vector<int64_t> dimensions_to_reduce;
         TF_RETURN_IF_ERROR(
             c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
-        std::set<int64> dims_set(dimensions_to_reduce.begin(),
-                                 dimensions_to_reduce.end());
+        std::set<int64_t> dims_set(dimensions_to_reduce.begin(),
+                                   dimensions_to_reduce.end());
         auto dim_in_range = [rank](int64_t dim) {
           return dim >= 0 && dim < rank;
         };
@@ -657,11 +657,11 @@ REGISTER_OP("XlaVariadicReduce")
       }
       if (c->RankKnown(c->input(0))) {
         int rank = c->Rank(c->input(0));
-        std::vector<int64> dimensions_to_reduce;
+        std::vector<int64_t> dimensions_to_reduce;
         TF_RETURN_IF_ERROR(
             c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
-        std::set<int64> dims_set(dimensions_to_reduce.begin(),
-                                 dimensions_to_reduce.end());
+        std::set<int64_t> dims_set(dimensions_to_reduce.begin(),
+                                   dimensions_to_reduce.end());
         auto dim_in_range = [rank](int64_t dim) {
           return dim >= 0 && dim < rank;
         };
@@ -737,11 +737,11 @@ REGISTER_OP("XlaVariadicReduceV2")
       if (c->RankKnown(input_shape)) {
         int rank = c->Rank(input_shape);
 
-        std::vector<int64> dimensions_to_reduce;
+        std::vector<int64_t> dimensions_to_reduce;
         TF_RETURN_IF_ERROR(
             c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
-        std::set<int64> dims_set(dimensions_to_reduce.begin(),
-                                 dimensions_to_reduce.end());
+        std::set<int64_t> dims_set(dimensions_to_reduce.begin(),
+                                   dimensions_to_reduce.end());
 
         auto dim_in_range = [rank](int64_t dim) {
           return dim >= 0 && dim < rank;

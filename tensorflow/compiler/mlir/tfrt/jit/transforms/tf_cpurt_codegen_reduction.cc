@@ -201,9 +201,7 @@ bool is2DRowReduction(mlir::Operation *op) {
 
   if (reduction.getNumOutputs() != 1 || reduction.getNumLoops() != 2)
     return false;
-  auto iter_types = reduction.iterator_types();
-  return mlir::isParallelIterator(iter_types[0]) &&
-         mlir::isReductionIterator(iter_types[1]);
+  return reduction.getNumReductionLoops() == 1;
 }
 
 struct CodegenReductionPass

@@ -38,6 +38,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/convert_op_folder.h"
 #include "mlir-hlo/utils/hlo_utils.h"
@@ -250,18 +251,18 @@ void ConstOp::build(OpBuilder& builder, OperationState& result,
 
 static LogicalResult Verify(DotGeneralOp op) {
   auto dot_dimension_numbers = op.dot_dimension_numbers();
-  int64_t lhs_batching_dimensions_size = llvm::size(
-      dot_dimension_numbers.lhs_batching_dimensions().getValues<int64_t>());
-  int64_t rhs_batching_dimensions_size = llvm::size(
-      dot_dimension_numbers.rhs_batching_dimensions().getValues<int64_t>());
+  int64_t lhs_batching_dimensions_size =
+      dot_dimension_numbers.getLhsBatchingDimensions().size();
+  int64_t rhs_batching_dimensions_size =
+      dot_dimension_numbers.getRhsBatchingDimensions().size();
   if (lhs_batching_dimensions_size != rhs_batching_dimensions_size) {
     return op.emitError()
            << "lhs and rhs should have the same number of batching dimensions";
   }
-  int64_t lhs_contracting_dimensions_size = llvm::size(
-      dot_dimension_numbers.lhs_contracting_dimensions().getValues<int64_t>());
-  int64_t rhs_contracting_dimensions_size = llvm::size(
-      dot_dimension_numbers.rhs_contracting_dimensions().getValues<int64_t>());
+  int64_t lhs_contracting_dimensions_size =
+      dot_dimension_numbers.getLhsContractingDimensions().size();
+  int64_t rhs_contracting_dimensions_size =
+      dot_dimension_numbers.getRhsContractingDimensions().size();
   if (lhs_contracting_dimensions_size != rhs_contracting_dimensions_size) {
     return op.emitError() << "lhs and rhs should have the same number of "
                              "contracting dimensions";
@@ -296,7 +297,8 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
     auto slice_end =
         llvm::to_vector<8>(gather.slice_sizes().getValues<int64_t>());
     llvm::SmallVector<int64_t, 8> slice_start(slice_end.size(), 0);
-    for (auto it : llvm::zip(dnums.getStartIndexMap(), index.getValues<APInt>())) {
+    for (auto it :
+         llvm::zip(dnums.getStartIndexMap(), index.getValues<APInt>())) {
       int64_t map_index = std::get<0>(it);
       int64_t offset = std::get<1>(it).getSExtValue();
       slice_start[map_index] += offset;
@@ -357,7 +359,7 @@ namespace {
 // (i.e. we pick adjusted_slice_sizes[k] where adjusted_slice_sizes is
 // slice_sizes with the bounds at indices collapsed_slice_dims removed).
 
-void GetSliceSizeValues(GatherOp* gather, OpBuilder& builder, Location loc,
+void getSliceSizeValues(GatherOp* gather, OpBuilder& builder, Location loc,
                         ValueRange operands,
                         SmallVectorImpl<Value>& slice_sizes) {
   for (int64_t val : gather->slice_sizes().getValues<int64_t>()) {
@@ -365,7 +367,7 @@ void GetSliceSizeValues(GatherOp* gather, OpBuilder& builder, Location loc,
   }
 }
 
-void GetSliceSizeValues(DynamicGatherOp* d_gather, OpBuilder& builder,
+void getSliceSizeValues(DynamicGatherOp* d_gather, OpBuilder& builder,
                         Location loc, ValueRange operands,
                         SmallVectorImpl<Value>& slice_size_values) {
   DynamicGatherOp::Adaptor adaptor(operands);
@@ -378,83 +380,233 @@ void GetSliceSizeValues(DynamicGatherOp* d_gather, OpBuilder& builder,
   }
 }
 
-template <typename Op>
-LogicalResult GatherShapeInferImpl(
-    Op* op, OpBuilder& builder, ValueRange operands,
-    SmallVectorImpl<Value>& reifiedReturnShapes) {
-  // Not support unranked pad a.t.m.
-  auto result_ty =
-      op->getResult().getType().template dyn_cast<RankedTensorType>();
-  if (!result_ty) return failure();
+static LogicalResult verifyGather(
+    ShapeAdaptor operandShape, ShapeAdaptor startIndicesShape,
+    ShapeAdaptor sliceSizesShape, GatherDimensionNumbersAttr dimensionNumbers,
+    llvm::function_ref<InFlightDiagnostic()> errorEmitter) {
+  // This should be fully expressible with type constraints, but it isn't
+  // obvious how to do that with the current infrastructure.
+  if (sliceSizesShape.hasRank() && sliceSizesShape.getRank() != 1)
+    return errorEmitter() << "slice_sizes.rank != 1";
 
-  typename Op::Adaptor adaptor(operands);
-  Value start_indices = adaptor.start_indices();
+  int64_t indexVectorDim = dimensionNumbers.getIndexVectorDim();
+  if (startIndicesShape.hasRank()) {
+    // index_vector_dim == start_indices.rank implies a trailing 1 on the shape
+    // of start_indices.
+    if (indexVectorDim > startIndicesShape.getRank())
+      return errorEmitter() << "index_vector_dim " << indexVectorDim
+                            << " is out of bounds for start indices with rank "
+                            << startIndicesShape.getRank();
 
-  Location loc = op->getLoc();
-  int result_rank = result_ty.getRank();
-  Type shape_scalar_type =
-      start_indices.getType().cast<ShapedType>().getElementType();
-  auto to_shape_scalar_type = [&](Value v) {
-    return MaybeCastTo(builder, loc, v, shape_scalar_type);
+    bool impliedTrailingDim = indexVectorDim == startIndicesShape.getRank();
+    if (impliedTrailingDim || !startIndicesShape.isDynamicDim(indexVectorDim)) {
+      int64_t effectiveDimSize;
+      if (impliedTrailingDim)
+        effectiveDimSize = 1;
+      else
+        effectiveDimSize = startIndicesShape.getDimSize(indexVectorDim);
+      if (effectiveDimSize != dimensionNumbers.getStartIndexMap().size())
+        return errorEmitter() << "start_index_map size ("
+                              << dimensionNumbers.getStartIndexMap().size()
+                              << ") is not equal to size of index dimension ("
+                              << indexVectorDim << ") of start_indices ("
+                              << effectiveDimSize << ")";
+    }
+  }
+
+  int64_t impliedOperandRank = dimensionNumbers.getOffsetDims().size() +
+                               dimensionNumbers.getCollapsedSliceDims().size();
+  if (operandShape.hasRank() && operandShape.getRank() != impliedOperandRank)
+    return errorEmitter() << "offset_dims size ("
+                          << dimensionNumbers.getOffsetDims().size()
+                          << ") plus collapse_slice_dims size ("
+                          << dimensionNumbers.getCollapsedSliceDims().size()
+                          << ") is not equal to operand rank ("
+                          << operandShape.getRank() << ")";
+
+  if (sliceSizesShape.hasStaticShape()) {
+    int64_t sliceRank = sliceSizesShape.getNumElements();
+
+    if (sliceRank != impliedOperandRank)
+      return errorEmitter() << "slice_sizes size (" << sliceRank
+                            << ") not equal to (implied) operand rank ("
+                            << impliedOperandRank << ")";
+
+    for (auto dim : dimensionNumbers.getCollapsedSliceDims())
+      if (dim >= sliceRank)
+        return errorEmitter()
+               << "collapsed dimension " << dim
+               << " is greater than slice_sizes.size (" << sliceRank << ")";
+  }
+
+  return success();
+}
+
+static LogicalResult verifyStaticGather(
+    ShapeAdaptor operandShape, ShapeAdaptor startIndicesShape,
+    DenseIntElementsAttr sliceSizes,
+    GatherDimensionNumbersAttr dimensionNumbers,
+    llvm::function_ref<InFlightDiagnostic()> errorEmitter) {
+  // For some reason the getType call is necessary here
+  if (failed(verifyGather(
+          /*operandShape=*/operandShape,
+          /*startIndicesShape=*/startIndicesShape,
+          /*sliceSizesShape=*/sliceSizes.getType(), dimensionNumbers,
+          errorEmitter)))
+    return failure();
+
+  for (auto dim : dimensionNumbers.getCollapsedSliceDims()) {
+    int64_t sliceDimSize = sliceSizes.getValue<int64_t>(dim);
+    if (sliceDimSize != 1) {
+      return errorEmitter() << "slice_sizes collapsed dimension " << dim
+                            << " != 1 (" << sliceDimSize << ")";
+    }
+  }
+
+  if (operandShape.hasRank()) {
+    for (auto it : llvm::enumerate(sliceSizes.getValues<int64_t>())) {
+      if (operandShape.isDynamicDim(it.index())) continue;
+      auto operandDimSize = operandShape.getDimSize(it.index());
+      auto sliceDimSize = it.value();
+      if (sliceDimSize > operandDimSize)
+        return errorEmitter() << "slice size (" << sliceDimSize
+                              << ") is larger than operand dimension ("
+                              << operandDimSize << ") at index " << it.index();
+    }
+  }
+  return success();
+}
+
+template <typename dimTy>
+static void inferGatherShape(
+    int64_t resultRank, llvm::function_ref<dimTy(int64_t)> getStartIndicesDim,
+    llvm::function_ref<dimTy(int64_t)> getSliceDim,
+    GatherDimensionNumbersAttr dimensionNumbers,
+    SmallVectorImpl<dimTy>& shape) {
+  ArrayRef<int64_t> collapsedSliceDims =
+      dimensionNumbers.getCollapsedSliceDims();
+  int64_t indexVectorDim = dimensionNumbers.getIndexVectorDim();
+
+  // We don't necessarily know the rank of sliceSizes, but we do know that it
+  // can't be larger than the highest collapsed dimension. So go through those
+  // and populate the leading dimensions of adjustedSliceSizes. The trailing
+  // dimensions can just be adjusted by an offset.
+  auto maxCollapsedDimIt =
+      std::max_element(collapsedSliceDims.begin(), collapsedSliceDims.end());
+  int64_t maxCollapsedDim = -1;
+  if (maxCollapsedDimIt != collapsedSliceDims.end())
+    maxCollapsedDim = *maxCollapsedDimIt;
+
+  SmallVector<dimTy> adjustedSliceSizePrefix;
+  for (int dimIndex = 0; dimIndex <= maxCollapsedDim; ++dimIndex) {
+    if (llvm::is_contained(collapsedSliceDims, dimIndex)) continue;
+    adjustedSliceSizePrefix.push_back(getSliceDim(dimIndex));
+  }
+  auto getAdjustedSliceDim = [&](int64_t index) -> dimTy {
+    if (index < adjustedSliceSizePrefix.size())
+      return adjustedSliceSizePrefix[index];
+    return getSliceDim(index + collapsedSliceDims.size());
   };
 
-  auto dimension_numbers = op->dimension_numbers();
-  auto collapsed_slice_dims = dimension_numbers.getCollapsedSliceDims();
-  auto offset_dims = dimension_numbers.getOffsetDims();
-  int64_t index_vector_dim = dimension_numbers.getIndexVectorDim();
+  ArrayRef<int64_t> offsetDims = dimensionNumbers.getOffsetDims();
 
-  SmallVector<Value, 4> slice_sizes;
-  GetSliceSizeValues(op, builder, loc, operands, slice_sizes);
-  // Convert to `shape_scalar_type`
-  llvm::transform(slice_sizes, slice_sizes.begin(),
-                  [&](Value v) { return to_shape_scalar_type(v); });
+  // Dimensions in the output that aren't offset dimensions are called batch
+  // dimensions.
+  SmallVector<int64_t> batchDims;
+  for (int dim = 0; dim < resultRank; ++dim)
+    if (!llvm::is_contained(offsetDims, dim)) batchDims.push_back(dim);
 
-  // we label dimensions in the output array not in offset_dims as batch_dims
-  SmallVector<int64_t, 4> batch_dims;
-  for (int64_t i = 0; i < result_rank; ++i) {
-    if (std::find(offset_dims.begin(), offset_dims.end(), i) ==
-        offset_dims.end()) {
-      batch_dims.push_back(i);
+  for (int i = 0; i < resultRank; ++i) {
+    auto offsetDimsIt = std::find(offsetDims.begin(), offsetDims.end(), i);
+    if (offsetDimsIt != offsetDims.end()) {
+      auto index = std::distance(offsetDims.begin(), offsetDimsIt);
+      shape.push_back(getAdjustedSliceDim(index));
+      continue;
     }
+    auto batchDimsIt = std::find(batchDims.begin(), batchDims.end(), i);
+    assert(batchDimsIt != batchDims.end());
+    auto index = std::distance(batchDims.begin(), batchDimsIt);
+    // This can never run into the special case where start_indices gets
+    // implicitly expanded with a trailing 1 if
+    // index_vector_dim = start_indices.rank because then index would equal
+    // index_vector_dim, which means we'd be looking at index+1, which would be
+    // out of bounds anyway.
+    if (index >= indexVectorDim) ++index;
+    shape.push_back(getStartIndicesDim(index));
   }
-  // adjusted_slice_sizes is slice_sizes with the bounds at indices
-  // collapsed_slice_dims removed
-  SmallVector<Value, 4> adjusted_slice_sizes;
-  for (int64_t i = 0; i < slice_sizes.size(); ++i) {
-    if (std::find(collapsed_slice_dims.begin(), collapsed_slice_dims.end(),
-                  i) == collapsed_slice_dims.end()) {
-      adjusted_slice_sizes.push_back(slice_sizes[i]);
-    }
-  }
+}
 
-  SmallVector<Value, 4> shape_values;
-  shape_values.reserve(result_rank);
-  for (int64_t i = 0; i < result_rank; ++i) {
-    auto iter = std::find(batch_dims.begin(), batch_dims.end(), i);
-    if (iter != batch_dims.end()) {
-      // i is present in batch_dims
-      int64_t k = std::distance(batch_dims.begin(), iter);
-      if (k < index_vector_dim) {
-        shape_values.push_back(to_shape_scalar_type(
-            builder.create<tensor::DimOp>(loc, start_indices, k)));
-      } else {
-        shape_values.push_back(to_shape_scalar_type(
-            builder.create<tensor::DimOp>(loc, start_indices, k + 1)));
-      }
-    } else {
-      // i is present in offset_dims
-      auto offset_dims_iter =
-          std::find(offset_dims.begin(), offset_dims.end(), i);
-      assert(offset_dims_iter != offset_dims.end());
-      int64_t k = std::distance(offset_dims.begin(), offset_dims_iter);
-      assert(k < adjusted_slice_sizes.size());
-      shape_values.push_back(adjusted_slice_sizes[k]);
-    }
+static LogicalResult inferGatherReturnTypeComponents(
+    ShapeAdaptor operandShape, ShapeAdaptor startIndicesShape,
+    llvm::function_ref<int64_t(int64_t)> getSliceDim,
+    GatherDimensionNumbersAttr dimensionNumbers,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  Type elementType = operandShape.getElementType();
+
+  // We need this to determine the result rank. We could still place bounds on
+  // the result rank if that was something ShapedTypeComponents could express.
+  if (!startIndicesShape.hasRank()) {
+    inferredReturnShapes.push_back(elementType);
+    return success();
   }
 
-  Value output_shape = builder.create<tensor::FromElementsOp>(
-      loc, shape_scalar_type, shape_values);
-  reifiedReturnShapes.push_back(output_shape);
+  ArrayRef<int64_t> offsetDims = dimensionNumbers.getOffsetDims();
+  int64_t startIndicesRank = startIndicesShape.getRank();
+  // If index_vector_dim == start_indices.rank, then an implicit trailing 1 is
+  // appended to start_indices shape.
+  if (dimensionNumbers.getIndexVectorDim() == startIndicesRank)
+    ++startIndicesRank;
+  int64_t resultRank = offsetDims.size() + startIndicesRank - 1;
+
+  auto getStartIndicesDim = [&](int64_t index) {
+    return startIndicesShape.getDimSize(index);
+  };
+
+  SmallVector<int64_t> shape;
+  inferGatherShape<int64_t>(resultRank, getStartIndicesDim, getSliceDim,
+                            dimensionNumbers, shape);
+
+  inferredReturnShapes.emplace_back(shape, elementType);
+  return success();
+}
+
+template <typename Op>
+LogicalResult reifyGatherShape(Op* op, OpBuilder& builder, ValueRange operands,
+                               SmallVectorImpl<Value>& reifiedReturnShapes) {
+  // No support for unranked gather output shape a.t.m.
+  auto resultTy =
+      op->getResult().getType().template dyn_cast<RankedTensorType>();
+  if (!resultTy) return failure();
+
+  typename Op::Adaptor adaptor(operands);
+  Value startIndices = adaptor.start_indices();
+
+  Location loc = op->getLoc();
+  int resultRank = resultTy.getRank();
+  Type shapeElTy = startIndices.getType().cast<ShapedType>().getElementType();
+  auto toShapeElType = [&](Value v) {
+    return MaybeCastTo(builder, loc, v, shapeElTy);
+  };
+
+  SmallVector<Value, 4> sliceSizes;
+  getSliceSizeValues(op, builder, loc, operands, sliceSizes);
+  llvm::transform(sliceSizes, sliceSizes.begin(),
+                  [&](Value v) { return toShapeElType(v); });
+
+  auto getStartIndicesDim = [&](int64_t index) {
+    return toShapeElType(
+        builder.create<tensor::DimOp>(loc, startIndices, index));
+  };
+  SmallVector<Value, 4> shapeValues;
+  auto getSliceDim = [&sliceSizes](int64_t index) -> Value {
+    return sliceSizes[index];
+  };
+  inferGatherShape<Value>(resultRank, getStartIndicesDim, getSliceDim,
+                          op->dimension_numbers(), shapeValues);
+
+  Value outputShape =
+      builder.create<tensor::FromElementsOp>(loc, shapeElTy, shapeValues);
+  reifiedReturnShapes.push_back(outputShape);
 
   return success();
 }
@@ -464,18 +616,86 @@ LogicalResult GatherShapeInferImpl(
 LogicalResult GatherOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
-  return GatherShapeInferImpl(this, builder, operands, reifiedReturnShapes);
+  return reifyGatherShape(this, builder, operands, reifiedReturnShapes);
+}
+
+LogicalResult GatherOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  // This can get called before other op verify methods, so we have to do a
+  // bunch of verification up front. With a better story for ordering and/or
+  // multi-phase op verification, this should hopefully all go away.
+  Location loc = location.getValueOr(UnknownLoc::get(context));
+  auto errorEmitter = [&loc]() {
+    return mlir::emitError(loc)
+           << "'" << GatherOp::getOperationName() << "' op ";
+  };
+  GatherOp::Adaptor adaptor(operands, attributes, regions);
+  if (failed(adaptor.verify(loc))) return failure();
+
+  // We want the ShapeAdaptors, so can't route via the adaptor :-/
+  ShapeAdaptor operandShape = operands.getShape(0);
+  ShapeAdaptor startIndicesShape = operands.getShape(1);
+  GatherDimensionNumbersAttr dimensionNumbers = adaptor.dimension_numbers();
+  DenseIntElementsAttr sliceSizesAttr = adaptor.slice_sizes();
+
+  if (failed(verifyStaticGather(/*operandShape=*/operandShape,
+                                /*startIndicesShape=*/startIndicesShape,
+                                /*sliceSizes=*/sliceSizesAttr, dimensionNumbers,
+                                errorEmitter)))
+    return failure();
+
+  auto getSliceDim = [&sliceSizesAttr](int64_t index) -> int64_t {
+    return sliceSizesAttr.getValue<int64_t>(index);
+  };
+
+  return inferGatherReturnTypeComponents(operandShape, startIndicesShape,
+                                         getSliceDim, dimensionNumbers,
+                                         inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
 // DynamicGatherOp
 //===----------------------------------------------------------------------===//
-//
 
 LogicalResult DynamicGatherOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
-  return GatherShapeInferImpl(this, builder, operands, reifiedReturnShapes);
+  return reifyGatherShape(this, builder, operands, reifiedReturnShapes);
+}
+
+LogicalResult DynamicGatherOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  // This can get called before other op verify methods, so we have to do a
+  // bunch of verification up front. With a better story for ordering and/or
+  // multi-phase op verification, this should hopefully all go away.
+  Location loc = location.getValueOr(UnknownLoc::get(context));
+  auto errorEmitter = [&loc]() {
+    return mlir::emitError(loc)
+           << "'" << DynamicGatherOp::getOperationName() << "' op ";
+  };
+  DynamicGatherOp::Adaptor adaptor(operands, attributes, regions);
+  if (failed(adaptor.verify(loc))) return failure();
+
+  // We want the ShapeAdaptors, so can't route via the adaptor :-/
+  ShapeAdaptor operandShape = operands.getShape(0);
+  ShapeAdaptor startIndicesShape = operands.getShape(1);
+  ShapeAdaptor sliceSizesShape = operands.getShape(2);
+  GatherDimensionNumbersAttr dimensionNumbers = adaptor.dimension_numbers();
+
+  if (failed(verifyGather(/*operandShape=*/operandShape,
+                          /*startIndicesShape=*/startIndicesShape,
+                          /*sliceSizesShape=*/sliceSizesShape, dimensionNumbers,
+                          errorEmitter)))
+    return failure();
+
+  auto getSliceDim = [](int64_t index) { return ShapedType::kDynamicSize; };
+  return inferGatherReturnTypeComponents(operandShape, startIndicesShape,
+                                         getSliceDim, dimensionNumbers,
+                                         inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3702,9 +3922,32 @@ static LogicalResult SortDropEmptyUseArgs(SortOp op,
   return success();
 }
 
+/// Set the sorting dimension to the last dimension if it's not set and the rank
+/// is known.
+static LogicalResult SortOpInferDefaultDimension(SortOp op,
+                                                 PatternRewriter& rewriter) {
+  auto ty = op.getResultTypes()[0].dyn_cast<ShapedType>();
+  if (!ty) {
+    return failure();
+  }
+  if (op.dimension() != -1) {
+    return failure();
+  }
+
+  IntegerAttr dim = rewriter.getI64IntegerAttr(ty.getRank() - 1);
+  auto new_op = rewriter.create<SortOp>(op.getLoc(), op.getResultTypes(),
+                                        op.operands(), dim, op.is_stableAttr());
+  Region& region = new_op.comparator();
+  rewriter.inlineRegionBefore(op.comparator(), region, region.end());
+  rewriter.replaceOp(op, new_op.getResults());
+
+  return success();
+}
+
 void SortOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
                                          MLIRContext* /*context*/) {
   results.insert(SortDropEmptyUseArgs);
+  results.insert(SortOpInferDefaultDimension);
 }
 
 //===----------------------------------------------------------------------===//
@@ -4284,8 +4527,7 @@ Attribute MhloDialect::parseAttribute(DialectAsmParser& parser,
   if (failed(parser.parseKeyword(&attr_tag))) return Attribute();
   {
     Attribute attr;
-    auto parse_result =
-        generatedAttributeParser(getContext(), parser, attr_tag, type, attr);
+    auto parse_result = generatedAttributeParser(parser, attr_tag, type, attr);
     if (parse_result.hasValue()) return attr;
   }
   parser.emitError(parser.getNameLoc(), "unknown mhlo attribute");
@@ -4300,89 +4542,112 @@ void MhloDialect::printAttribute(Attribute attr, DialectAsmPrinter& os) const {
   assert(succeeded(result));
 }
 
+/// Helpers for attributes parsing.
+
+static ParseResult parseDims(DialectAsmParser& parser,
+                             SmallVector<int64_t>& dims) {
+  dims.clear();
+  if (parser.parseLSquare()) return failure();
+  while (failed(parser.parseOptionalRSquare())) {
+    dims.emplace_back();
+    if (parser.parseInteger(dims.back())) return failure();
+    parser.parseOptionalComma();
+  }
+  return success();
+}
+
+/// Parse a custom attribute that resembles a struct of the form
+/// <
+///   foo = something_parsed_by_custom_parser,
+///   bar = something_parsed_by_different_custom_parser
+/// >
+static ParseResult parseStruct(
+    DialectAsmParser& parser, ArrayRef<StringRef> keywords,
+    ArrayRef<llvm::function_ref<ParseResult()>> parseFuncs) {
+  assert(keywords.size() == parseFuncs.size());
+  SmallVector<bool> seen(keywords.size(), false);
+  while (failed(parser.parseOptionalGreater())) {
+    bool foundOne = false;
+    for (auto it : llvm::enumerate(keywords)) {
+      size_t index = it.index();
+      StringRef keyword = it.value();
+      if (succeeded(parser.parseOptionalKeyword(keyword))) {
+        if (seen[index]) {
+          return parser.emitError(parser.getCurrentLocation())
+                 << "duplicated `" << keyword << "` entry";
+        }
+        if (failed(parser.parseEqual()) || failed(parseFuncs[index]()))
+          return failure();
+        if (failed(parser.parseOptionalComma())) return parser.parseGreater();
+        seen[index] = true;
+        foundOne = true;
+      }
+    }
+    if (!foundOne) {
+      auto parseError = parser.emitError(parser.getCurrentLocation())
+                        << "expected one of: ";
+      llvm::interleaveComma(keywords, parseError, [&](StringRef kw) {
+        parseError << '`' << kw << '`';
+      });
+      return parseError;
+    }
+  }
+  return success();
+}
+
 // Custom printer and parser for ScatterDimensionNumbersAttr.
 void ScatterDimensionNumbersAttr::print(
     ::mlir::DialectAsmPrinter& printer) const {
   printer << "scatter<";
   auto update_window_dims = getUpdateWindowDims();
+  StringRef separator = "";
   if (!update_window_dims.empty()) {
     printer << "update_window_dims = [";
     llvm::interleaveComma(update_window_dims, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   auto inserted_window_dims = getInsertedWindowDims();
   if (!inserted_window_dims.empty()) {
-    printer << "inserted_window_dims = [";
+    printer << separator << "inserted_window_dims = [";
     llvm::interleaveComma(inserted_window_dims, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   auto scatter_dims_to_operand_dims = getScatterDimsToOperandDims();
   if (!scatter_dims_to_operand_dims.empty()) {
-    printer << "scatter_dims_to_operand_dims = [";
+    printer << separator << "scatter_dims_to_operand_dims = [";
     llvm::interleaveComma(scatter_dims_to_operand_dims, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   if (getIndexVectorDim())
-    printer << "index_vector_dim = " << getIndexVectorDim();
+    printer << separator << "index_vector_dim = " << getIndexVectorDim();
   printer << ">";
 }
-Attribute ScatterDimensionNumbersAttr::parse(MLIRContext* context,
-                                             DialectAsmParser& parser,
+Attribute ScatterDimensionNumbersAttr::parse(DialectAsmParser& parser,
                                              Type type) {
-  if (parser.parseLess()) return {};
-
-  auto parse_dims = [&](SmallVector<int64_t>& dims) -> ParseResult {
-    dims.clear();
-    if (parser.parseLSquare()) return failure();
-    while (failed(parser.parseOptionalRSquare())) {
-      dims.emplace_back();
-      if (parser.parseInteger(dims.back())) return failure();
-      parser.parseOptionalComma();
-    }
-    return success();
-  };
-  auto parse_keyword = [&](StringRef keyword, bool& seen,
-                           auto parse_values) -> ParseResult {
-    auto loc = parser.getCurrentLocation();
-    if (succeeded(parser.parseOptionalKeyword(keyword))) {
-      if (seen) {
-        parser.emitError(loc) << "duplicated `" << keyword << "` entry";
-        return failure();
-      }
-      seen = true;
-      if (parser.parseEqual() || parse_values()) return failure();
-      parser.parseOptionalComma();
-    }
-    return success();
-  };
-
-  bool seen_update_window_dims = false;
+  if (failed(parser.parseLess())) return {};
   SmallVector<int64_t> update_window_dims;
-  bool seen_inserted_window_dims = false;
   SmallVector<int64_t> inserted_window_dims;
-  bool seen_scatter_dims_to_operand_dims = false;
   SmallVector<int64_t> scatter_dims_to_operand_dims;
-  bool seen_index_vector_dim = false;
   int64_t index_vector_dim = 0;
-  // Parse the key-value pair in any order, duplicate are errors.
-  while (failed(parser.parseOptionalGreater())) {
-    if (failed(parse_keyword("update_window_dims", seen_update_window_dims,
-                             [&] { return parse_dims(update_window_dims); })))
-      return {};
-    if (failed(parse_keyword("inserted_window_dims", seen_inserted_window_dims,
-                             [&] { return parse_dims(inserted_window_dims); })))
-      return {};
-    if (failed(parse_keyword(
-            "scatter_dims_to_operand_dims", seen_scatter_dims_to_operand_dims,
-            [&]() { return parse_dims(scatter_dims_to_operand_dims); })))
-      return {};
-    if (failed(parse_keyword("index_vector_dim", seen_index_vector_dim, [&]() {
-          return parser.parseInteger(index_vector_dim);
-        })))
-      return {};
+
+  if (failed(parseStruct(
+          parser,
+          {"update_window_dims", "inserted_window_dims",
+           "scatter_dims_to_operand_dims", "index_vector_dim"},
+          {[&]() { return parseDims(parser, update_window_dims); },
+           [&]() { return parseDims(parser, inserted_window_dims); },
+           [&]() { return parseDims(parser, scatter_dims_to_operand_dims); },
+           [&]() { return parser.parseInteger(index_vector_dim); }}))) {
+    parser.emitError(parser.getCurrentLocation())
+        << "failed parsing scatter dimension numbers attribute";
+    return {};
   }
+
   return ScatterDimensionNumbersAttr::get(
-      context, update_window_dims, inserted_window_dims,
+      parser.getContext(), update_window_dims, inserted_window_dims,
       scatter_dims_to_operand_dims, index_vector_dim);
 }
 
@@ -4390,86 +4655,117 @@ Attribute ScatterDimensionNumbersAttr::parse(MLIRContext* context,
 void GatherDimensionNumbersAttr::print(
     ::mlir::DialectAsmPrinter& printer) const {
   printer << "gather<";
+  StringRef separator = "";
   auto offset_dims = getOffsetDims();
   if (!offset_dims.empty()) {
     printer << "offset_dims = [";
     llvm::interleaveComma(offset_dims, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   auto collapsed_slice_dims = getCollapsedSliceDims();
   if (!collapsed_slice_dims.empty()) {
-    printer << "collapsed_slice_dims = [";
+    printer << separator << "collapsed_slice_dims = [";
     llvm::interleaveComma(collapsed_slice_dims, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   auto start_index_map = getStartIndexMap();
   if (!start_index_map.empty()) {
-    printer << "start_index_map = [";
+    printer << separator << "start_index_map = [";
     llvm::interleaveComma(start_index_map, printer);
-    printer << "], ";
+    printer << "]";
+    separator = ", ";
   }
   if (getIndexVectorDim())
-    printer << "index_vector_dim = " << getIndexVectorDim();
+    printer << separator << "index_vector_dim = " << getIndexVectorDim();
   printer << ">";
 }
 
-Attribute GatherDimensionNumbersAttr::parse(MLIRContext* context,
-                                            DialectAsmParser& parser,
+Attribute GatherDimensionNumbersAttr::parse(DialectAsmParser& parser,
                                             Type type) {
-  if (parser.parseLess()) return {};
+  if (failed(parser.parseLess())) return {};
 
-  auto parse_dims = [&](SmallVector<int64_t>& dims) -> ParseResult {
-    dims.clear();
-    if (parser.parseLSquare()) return failure();
-    while (failed(parser.parseOptionalRSquare())) {
-      dims.emplace_back();
-      if (parser.parseInteger(dims.back())) return failure();
-      parser.parseOptionalComma();
-    }
-    return success();
-  };
-  auto parse_keyword = [&](StringRef keyword, bool& seen,
-                           auto parse_values) -> ParseResult {
-    auto loc = parser.getCurrentLocation();
-    if (succeeded(parser.parseOptionalKeyword(keyword))) {
-      if (seen) {
-        parser.emitError(loc) << "duplicated `" << keyword << "` entry";
-        return failure();
-      }
-      seen = true;
-      if (parser.parseEqual() || parse_values()) return failure();
-      parser.parseOptionalComma();
-    }
-    return success();
-  };
-
-  bool seen_offset_dims = false;
   SmallVector<int64_t> offset_dims;
-  bool seen_collapsed_slice_dims = false;
   SmallVector<int64_t> collapsed_slice_dims;
-  bool seen_start_index_map = false;
   SmallVector<int64_t> start_index_map;
-  bool seen_index_vector_dim = false;
   int64_t index_vector_dim = 0;
-  // Parse the key-value pair in any order, duplicate are errors.
-  while (failed(parser.parseOptionalGreater())) {
-    if (failed(parse_keyword("offset_dims", seen_offset_dims,
-                             [&] { return parse_dims(offset_dims); })))
-      return {};
-    if (failed(parse_keyword("collapsed_slice_dims", seen_collapsed_slice_dims,
-                             [&] { return parse_dims(collapsed_slice_dims); })))
-      return {};
-    if (failed(parse_keyword("start_index_map", seen_start_index_map,
-                             [&]() { return parse_dims(start_index_map); })))
-      return {};
-    if (failed(parse_keyword("index_vector_dim", seen_index_vector_dim, [&]() {
-          return parser.parseInteger(index_vector_dim);
-        })))
-      return {};
+
+  if (failed(parseStruct(
+          parser,
+          {"offset_dims", "collapsed_slice_dims", "start_index_map",
+           "index_vector_dim"},
+          {[&]() { return parseDims(parser, offset_dims); },
+           [&]() { return parseDims(parser, collapsed_slice_dims); },
+           [&]() { return parseDims(parser, start_index_map); },
+           [&]() { return parser.parseInteger(index_vector_dim); }}))) {
+    parser.emitError(parser.getCurrentLocation())
+        << "failed parsing gather dimension numbers attribute";
+    return {};
   }
-  return GatherDimensionNumbersAttr::get(context, offset_dims,
+
+  return GatherDimensionNumbersAttr::get(parser.getContext(), offset_dims,
                                          collapsed_slice_dims, start_index_map,
                                          index_vector_dim);
+}
+
+// Custom printer and parser for DotDimensionNumbersAttr.
+void DotDimensionNumbersAttr::print(::mlir::DialectAsmPrinter& printer) const {
+  printer << "dot<";
+  StringRef separator = "";
+  auto lhs_batching_dimensions = getLhsBatchingDimensions();
+  if (!lhs_batching_dimensions.empty()) {
+    printer << "lhs_batching_dimensions = [";
+    llvm::interleaveComma(lhs_batching_dimensions, printer);
+    printer << "]";
+    separator = ", ";
+  }
+  auto rhs_batching_dimensions = getRhsBatchingDimensions();
+  if (!rhs_batching_dimensions.empty()) {
+    printer << separator << "rhs_batching_dimensions = [";
+    llvm::interleaveComma(rhs_batching_dimensions, printer);
+    printer << "]";
+    separator = ", ";
+  }
+  auto lhs_contracting_dimensions = getLhsContractingDimensions();
+  if (!lhs_contracting_dimensions.empty()) {
+    printer << separator << "lhs_contracting_dimensions = [";
+    llvm::interleaveComma(lhs_contracting_dimensions, printer);
+    printer << "]";
+    separator = ", ";
+  }
+  auto rhs_contracting_dimensions = getRhsContractingDimensions();
+  if (!rhs_contracting_dimensions.empty()) {
+    printer << separator << "rhs_contracting_dimensions = [";
+    llvm::interleaveComma(rhs_contracting_dimensions, printer);
+    printer << "]";
+  }
+  printer << ">";
+}
+
+Attribute DotDimensionNumbersAttr::parse(DialectAsmParser& parser, Type type) {
+  if (failed(parser.parseLess())) return {};
+
+  SmallVector<int64_t> lhs_batching_dimensions;
+  SmallVector<int64_t> rhs_batching_dimensions;
+  SmallVector<int64_t> lhs_contracting_dimensions;
+  SmallVector<int64_t> rhs_contracting_dimensions;
+
+  if (failed(parseStruct(
+          parser,
+          {"lhs_batching_dimensions", "rhs_batching_dimensions",
+           "lhs_contracting_dimensions", "rhs_contracting_dimensions"},
+          {[&]() { return parseDims(parser, lhs_batching_dimensions); },
+           [&]() { return parseDims(parser, rhs_batching_dimensions); },
+           [&]() { return parseDims(parser, lhs_contracting_dimensions); },
+           [&]() { return parseDims(parser, rhs_contracting_dimensions); }}))) {
+    parser.emitError(parser.getCurrentLocation())
+        << "failed parsing dot dimension numbers attribute";
+    return {};
+  }
+  return DotDimensionNumbersAttr::get(
+      parser.getContext(), lhs_batching_dimensions, rhs_batching_dimensions,
+      lhs_contracting_dimensions, rhs_contracting_dimensions);
 }
 
 //===----------------------------------------------------------------------===//

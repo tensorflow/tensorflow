@@ -464,14 +464,14 @@ TEST_F(TestDelegate, DelegateCustomOpResolution) {
           model, ::tflite::ops::builtin::BuiltinOpResolver())(&interpreter),
       kTfLiteOk);
   // AllocateTensors should fail, since my_add hasn't been resolved.
-  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteError);
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteUnresolvedOps);
 
   // Applying static delegate won't work, since the interpreter will first try
   // to Prepare all original nodes.
   std::unique_ptr<SimpleDelegate> static_delegate(new SimpleDelegate({0}));
   ASSERT_EQ(interpreter->ModifyGraphWithDelegate(
                 static_delegate->get_tf_lite_delegate()),
-            kTfLiteError);
+            kTfLiteUnresolvedOps);
 
   // Applying delegate that supports dynamic tensors should work.
   std::unique_ptr<SimpleDelegate> dynamic_delegate(

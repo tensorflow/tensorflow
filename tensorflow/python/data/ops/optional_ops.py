@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """A type for representing values that may or may not exist."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 
 import six

@@ -131,6 +131,7 @@ tfrt_cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",
+        "@tf_runtime//backends/cpu:cpurt",
     ],
 )
 
@@ -480,7 +481,7 @@ cc_library(
         "//platforms/xla/tests/gpu:__pkg__",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:passes",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core/platform:errors",

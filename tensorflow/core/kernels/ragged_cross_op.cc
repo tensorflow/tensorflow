@@ -635,7 +635,7 @@ REGISTER_KERNEL_BUILDER(Name("RaggedCross")
 REGISTER_KERNEL_BUILDER(Name("RaggedCross")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64_t>("out_row_splits_type"),
-                        RaggedCrossOp<int64>);
+                        RaggedCrossOp<int64_t>);
 
 }  // namespace
 }  // namespace tensorflow
