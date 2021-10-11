@@ -666,30 +666,16 @@ class CudnnFilterDescriptor {
 //          "cudnn_version_end"   : -1
 //        }
 // ]})"
-// We skip eng0 in the static filter because they are too slow. Additionally,
-// users can specify an additional errata JSON file via
+// We skip a non-existing eng999 in the static filter as a placeholder.
+// Additionally, users can specify an additional errata JSON file via
 // CUDNN_ERRATA_JSON_FILE at runtime.
 const json* CudnnExecutionPlanEngineFilterStatic() {
   static absl::string_view filter_str = R"({
       "version" : 1,
         "rules"   : [
-          { "rule_id"             : "ConvFwd_eng0",
+          { "rule_id"             : "ConvFwd_eng999",
             "operation"           : "ConvFwd",
-            "engine"              : 0,
-            "knob"                : [],
-            "cudnn_version_start" : 8000,
-            "cudnn_version_end"   : -1
-          },
-          { "rule_id"             : "ConvBwdData_eng0",
-            "operation"           : "ConvBwdData",
-            "engine"              : 0,
-            "knob"                : [],
-            "cudnn_version_start" : 8000,
-            "cudnn_version_end"   : -1
-          },
-          { "rule_id"             : "ConvBwdFilter_eng0",
-            "operation"           : "ConvBwdFilter",
-            "engine"              : 0,
+            "engine"              : 999,
             "knob"                : [],
             "cudnn_version_start" : 8000,
             "cudnn_version_end"   : -1
