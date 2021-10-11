@@ -446,6 +446,11 @@ class MklPoolingOpBase : public OpKernel {
     OP_REQUIRES(context, this->ksize_.size() == 4 || this->ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 4 or 5 dimensions"));
+    for (int i = 0; i < this->ksize_.size(); ++i) {
+      OP_REQUIRES(context, this->ksize_[i] > 0,
+                  errors::InvalidArgument("Sliding window ksize for dimension ",
+                                          i, " was zero."));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &this->stride_));
     OP_REQUIRES(context, this->stride_.size() == 4 || this->stride_.size() == 5,
                 errors::InvalidArgument("Sliding window strides field must "
