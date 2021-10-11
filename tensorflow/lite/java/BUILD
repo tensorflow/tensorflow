@@ -17,9 +17,17 @@ exports_files([
     "src/testdata/add.bin",
     "src/testdata/add_unknown_dimensions.bin",
     "src/testdata/grace_hopper_224.jpg",
+    "src/testdata/int32.bin",
+    "src/testdata/int64.bin",
+    "src/testdata/invalid_model.bin",
     "src/testdata/mul_add_signature_def.bin",
     "src/testdata/multi_signature_def.bin",
+    "src/testdata/quantized.bin",
+    "src/testdata/string.bin",
+    "src/testdata/string_scalar.bin",
     "src/testdata/tile_with_bool_input.bin",
+    "src/testdata/uint8.bin",
+    "src/testdata/with_custom_op.lite",
     "AndroidManifest.xml",
     "AndroidManifestGpu.xml",
     "proguard.flags",
@@ -638,6 +646,20 @@ java_test(
 
 #-----------------------------------------------------------------------------
 # Test filegroup targets.
+
+# Java test source files that test the stable API implementation.
+filegroup(
+    name = "java_stable_test_srcs",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/DataTypeTest.java",
+        "src/test/java/org/tensorflow/lite/InterpreterApiTest.java",
+        "src/test/java/org/tensorflow/lite/NativeInterpreterWrapperTest.java",
+        "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
+        "src/test/java/org/tensorflow/lite/TensorTest.java",
+        "src/test/java/org/tensorflow/lite/TestInit.java",
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
+    ],
+)
 
 # portable_tests includes files for running TFLite interpreter tests.
 filegroup(
