@@ -144,66 +144,6 @@ class TensorReserver {
   absl::flat_hash_map<ValueId, TensorDescriptor> reservations_;
   ValueId next_;
 };
-}  // namespace
-
-absl::Status ReserveGraphTensors(
-    const InferenceContext::CreateInferenceInfo& create_info,
-    const GpuInfo& gpu_info, const GraphFloat32& graph,
-    const std::set<ValueId>& preallocated_ids, TensorReserver* tensor_reserver);
-
-absl::Status ConvertOperations(
-    const GpuInfo& gpu_info, const GraphFloat32& graph,
-    const std::vector<ValueId>& input_ids, CalculationsPrecision precision,
-    ModelHints hints, TensorReserver* tensor_reserver,
-    std::vector<MetalNode>* nodes,
-    absl::flat_hash_map<ValueId, TensorDescriptor>* const_tensors_descs);
-
-absl::Status Merge(const std::vector<ValueId>& input_ids,
-                   std::vector<MetalNode>* nodes);
-
-absl::Status InferenceContext::InitFromGraphWithTransforms(
-    const CreateInferenceInfo& create_info, GraphFloat32* graph,
-    id<MTLDevice> device_id) {
-  RETURN_IF_ERROR(RunGraphTransforms(graph));
-  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, device_id));
-  return absl::OkStatus();
-}
-
-absl::Status InferenceContext::InitFromGraph(
-    const CreateInferenceInfo& create_info, const GraphFloat32& graph,
-    id<MTLDevice> device_id) {
-  std::set<ValueId> preallocated_ids;
-  const auto inputs = graph.inputs();
-  for (const auto& input : inputs) {
-    input_ids_.push_back(input->id);
-    preallocated_ids.insert(input->id);
-  }
-
-  const auto outputs = graph.outputs();
-  for (const auto& output : outputs) {
-    output_ids_.push_back(output->id);
-    preallocated_ids.insert(output->id);
-  }
-
-  TensorReserver tensor_reserver;
-
-  MetalDevice metal_device(device_id);
-  RETURN_IF_ERROR(ReserveGraphTensors(create_info, metal_device.GetInfo(),
-                                      graph, preallocated_ids,
-                                      &tensor_reserver));
-  RETURN_IF_ERROR(ConvertOperations(
-      metal_device.GetInfo(), graph, input_ids_, create_info.precision,
-      create_info.hints, &tensor_reserver, &nodes_, &const_tensors_descs_));
-  RETURN_IF_ERROR(Merge(input_ids_, &nodes_));
-  tensors_descs_ = std::move(tensor_reserver.reservations_);
-
-  RETURN_IF_ERROR(CompileOperations(&metal_device));
-  RETURN_IF_ERROR(AllocateTensors(&metal_device, preallocated_ids));
-  BindTensorsToOperations();
-  RETURN_IF_ERROR(UpdateParams(metal_device.GetInfo()));
-  RETURN_IF_ERROR(Tune(TuningType::kFast, &metal_device));
-  return absl::OkStatus();
-}
 
 absl::Status ReserveGraphTensors(
     const InferenceContext::CreateInferenceInfo& create_info,
@@ -399,6 +339,51 @@ absl::Status Merge(const std::vector<ValueId>& input_ids,
     nodes->erase(nodes->begin() + next_nodes[0]);
     i -= 1;
   }
+  return absl::OkStatus();
+}
+}  // namespace
+
+absl::Status InferenceContext::InitFromGraphWithTransforms(
+    const CreateInferenceInfo& create_info, GraphFloat32* graph,
+    id<MTLDevice> device_id) {
+  RETURN_IF_ERROR(RunGraphTransforms(graph));
+  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, device_id));
+  return absl::OkStatus();
+}
+
+absl::Status InferenceContext::InitFromGraph(
+    const CreateInferenceInfo& create_info, const GraphFloat32& graph,
+    id<MTLDevice> device_id) {
+  std::set<ValueId> preallocated_ids;
+  const auto inputs = graph.inputs();
+  for (const auto& input : inputs) {
+    input_ids_.push_back(input->id);
+    preallocated_ids.insert(input->id);
+  }
+
+  const auto outputs = graph.outputs();
+  for (const auto& output : outputs) {
+    output_ids_.push_back(output->id);
+    preallocated_ids.insert(output->id);
+  }
+
+  TensorReserver tensor_reserver;
+
+  MetalDevice metal_device(device_id);
+  RETURN_IF_ERROR(ReserveGraphTensors(create_info, metal_device.GetInfo(),
+                                      graph, preallocated_ids,
+                                      &tensor_reserver));
+  RETURN_IF_ERROR(ConvertOperations(
+      metal_device.GetInfo(), graph, input_ids_, create_info.precision,
+      create_info.hints, &tensor_reserver, &nodes_, &const_tensors_descs_));
+  RETURN_IF_ERROR(Merge(input_ids_, &nodes_));
+  tensors_descs_ = std::move(tensor_reserver.reservations_);
+
+  RETURN_IF_ERROR(CompileOperations(&metal_device));
+  RETURN_IF_ERROR(AllocateTensors(&metal_device, preallocated_ids));
+  BindTensorsToOperations();
+  RETURN_IF_ERROR(UpdateParams(metal_device.GetInfo()));
+  RETURN_IF_ERROR(Tune(TuningType::kFast, &metal_device));
   return absl::OkStatus();
 }
 

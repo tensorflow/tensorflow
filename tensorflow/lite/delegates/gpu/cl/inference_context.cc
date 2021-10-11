@@ -187,173 +187,6 @@ class TensorReserver {
   ValueId next_;
 };
 
-}  // namespace
-
-absl::Status ReserveGraphTensors(
-    const InferenceContext::CreateInferenceInfo& create_info,
-    const GpuInfo& gpu_info, const GraphFloat32& graph,
-    TensorReserver* tensor_reserver);
-
-absl::Status ConvertOperations(
-    const GpuInfo& gpu_info, const GraphFloat32& graph,
-    const std::vector<ValueId>& input_ids, CalculationsPrecision precision,
-    ModelHints hints, TensorReserver* tensor_reserver,
-    std::vector<CLNode>* nodes,
-    absl::flat_hash_map<ValueId, TensorDescriptor>* const_tensors_descs);
-
-absl::Status Merge(const std::vector<ValueId>& input_ids,
-                   std::vector<CLNode>* nodes);
-
-void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
-  if (gpu_info.IsMali()) {
-    need_flush = true;
-    need_manual_release = gpu_info.mali_info.IsValhall() ? false : true;
-
-    flush_periodically = true;
-    flush_period = 24;
-  }
-  if (gpu_info.IsPowerVR()) {
-    need_flush = true;
-  }
-}
-
-absl::Status InferenceContext::InitFromGraph(
-    const CreateInferenceInfo& create_info, const GraphFloat32& graph,
-    Environment* env, std::vector<uint8_t>* serialized_model) {
-  CreationContext creation_context;
-  creation_context.device = env->GetDevicePtr();
-  creation_context.context = &env->context();
-  creation_context.queue = env->queue();
-  creation_context.cache = env->program_cache();
-
-  TensorReserver tensor_reserver;
-
-  RETURN_IF_ERROR(ReserveGraphTensors(
-      create_info, creation_context.GetGpuInfo(), graph, &tensor_reserver));
-  execution_hints_.Init(env->device().GetInfo());
-  CopyInAndOutIds(graph);
-  RETURN_IF_ERROR(ConvertOperations(
-      creation_context.GetGpuInfo(), graph, input_ids_, create_info.precision,
-      create_info.hints, &tensor_reserver, &nodes_, &const_tensors_descs_));
-  RETURN_IF_ERROR(Merge(input_ids_, &nodes_));
-  tensors_descs_ = std::move(tensor_reserver.reservations_);
-
-  RETURN_IF_ERROR(
-      AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
-  BindMemoryToOperations();
-  RETURN_IF_ERROR(Compile(creation_context));
-  RETURN_IF_ERROR(UpdateParams());
-
-  TuningType tuning_type = TuningType::kExhaustive;
-  if (create_info.hints.Check(ModelHints::kFastTuning)) {
-    tuning_type = TuningType::kFast;
-  }
-  if (env->device().GetInfo().IsMali()) {
-    const MaliInfo& info = env->device().GetInfo().mali_info;
-    if (info.IsMaliT6xx()) {
-      // Mali T628 hangs forever in clFinish when used profiling queue
-      // TuningType::FAST does not use profiling queue.
-      tuning_type = TuningType::kFast;
-    }
-  }
-  RETURN_IF_ERROR(
-      Tune(tuning_type, env->device().GetInfo(), env->profiling_queue()));
-  InitRecordableQueue(env);
-
-  if (serialized_model) {
-    for (auto& node : nodes_) {
-      node.cl_operation.MoveObjectRefsFromCLToGeneric();
-      node.cl_operation.SyncScalarValues();
-    }
-    const auto inputs = graph.inputs();
-    const auto outputs = graph.outputs();
-    std::vector<int64_t> in_refs(inputs.size());
-    std::vector<int64_t> out_refs(outputs.size());
-    for (int i = 0; i < inputs.size(); ++i) {
-      in_refs[i] = inputs[i]->tensor.ref;
-    }
-    for (int i = 0; i < outputs.size(); ++i) {
-      out_refs[i] = outputs[i]->tensor.ref;
-    }
-    flatbuffers::FlatBufferBuilder builder;
-    auto encoded_fb = Encode(*env->GetDevicePtr(), *this, *env->program_cache(),
-                             in_refs, out_refs, &builder);
-    data::FinishInferenceContextBuffer(builder, encoded_fb);
-    serialized_model->resize(builder.GetSize());
-    std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
-                builder.GetSize());
-    for (auto& node : nodes_) {
-      node.cl_operation.MoveObjectRefsFromGenericToCL();
-    }
-  }
-  ReleaseCPURepresentation();
-  return absl::OkStatus();
-}
-
-absl::Status InferenceContext::RestoreDeserialized(
-    const absl::Span<const uint8_t> serialized_model, Environment* env) {
-  flatbuffers::Verifier verifier(serialized_model.data(),
-                                 serialized_model.size());
-  if (!data::VerifyInferenceContextBuffer(verifier)) {
-    return absl::DataLossError("Deserialization failed.");
-  }
-  auto decoded_fb = data::GetInferenceContext(serialized_model.data());
-  RETURN_IF_ERROR(Decode(env->context(), *env->GetDevicePtr(),
-                         env->program_cache(), decoded_fb, this));
-
-  CreationContext creation_context;
-  creation_context.device = env->GetDevicePtr();
-  creation_context.context = &env->context();
-  creation_context.queue = env->queue();
-  creation_context.cache = env->program_cache();
-
-  execution_hints_.Init(env->device().GetInfo());
-
-  RETURN_IF_ERROR(
-      AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
-  BindMemoryToOperations();
-  for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.cl_operation.RestoreDeserialized(creation_context));
-  }
-  RETURN_IF_ERROR(UpdateParams());
-  InitRecordableQueue(env);
-  ReleaseCPURepresentation();
-  return absl::OkStatus();
-}
-
-void InferenceContext::InitRecordableQueue(Environment* env) {
-  std::vector<ClOperation*> ops(nodes_.size());
-  for (int i = 0; i < nodes_.size(); ++i) {
-    ops[i] = &nodes_[i].cl_operation;
-  }
-  recordable_queue_ = CreateRecordableQueue(ops, env->device(), env->context());
-}
-
-absl::Status InferenceContext::InitFromGraphWithTransforms(
-    const CreateInferenceInfo& create_info, GraphFloat32* graph,
-    Environment* env, std::vector<uint8_t>* serialized_model) {
-  RETURN_IF_ERROR(RunGraphTransforms(graph));
-  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, env, serialized_model));
-  return absl::OkStatus();
-}
-
-void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
-  const auto inputs = graph.inputs();
-  for (const auto& input : inputs) {
-    input_ids_.push_back(input->id);
-  }
-
-  const auto variable_inputs = graph.variable_inputs();
-  for (const auto& variable_input : variable_inputs) {
-    variable_ids_and_refs_[variable_input->id] = variable_input->tensor.ref;
-  }
-
-  const auto outputs = graph.outputs();
-  for (const auto& output : outputs) {
-    output_ids_.push_back(output->id);
-  }
-}
-
 absl::Status ReserveGraphTensors(
     const InferenceContext::CreateInferenceInfo& create_info,
     const GpuInfo& gpu_info, const GraphFloat32& graph,
@@ -545,6 +378,158 @@ absl::Status Merge(const std::vector<ValueId>& input_ids,
     i -= 1;
   }
   return absl::OkStatus();
+}
+
+}  // namespace
+
+void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
+  if (gpu_info.IsMali()) {
+    need_flush = true;
+    need_manual_release = gpu_info.mali_info.IsValhall() ? false : true;
+
+    flush_periodically = true;
+    flush_period = 24;
+  }
+  if (gpu_info.IsPowerVR()) {
+    need_flush = true;
+  }
+}
+
+absl::Status InferenceContext::InitFromGraph(
+    const CreateInferenceInfo& create_info, const GraphFloat32& graph,
+    Environment* env, std::vector<uint8_t>* serialized_model) {
+  CreationContext creation_context;
+  creation_context.device = env->GetDevicePtr();
+  creation_context.context = &env->context();
+  creation_context.queue = env->queue();
+  creation_context.cache = env->program_cache();
+
+  TensorReserver tensor_reserver;
+
+  RETURN_IF_ERROR(ReserveGraphTensors(
+      create_info, creation_context.GetGpuInfo(), graph, &tensor_reserver));
+  execution_hints_.Init(env->device().GetInfo());
+  CopyInAndOutIds(graph);
+  RETURN_IF_ERROR(ConvertOperations(
+      creation_context.GetGpuInfo(), graph, input_ids_, create_info.precision,
+      create_info.hints, &tensor_reserver, &nodes_, &const_tensors_descs_));
+  RETURN_IF_ERROR(Merge(input_ids_, &nodes_));
+  tensors_descs_ = std::move(tensor_reserver.reservations_);
+
+  RETURN_IF_ERROR(
+      AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
+  BindMemoryToOperations();
+  RETURN_IF_ERROR(Compile(creation_context));
+  RETURN_IF_ERROR(UpdateParams());
+
+  TuningType tuning_type = TuningType::kExhaustive;
+  if (create_info.hints.Check(ModelHints::kFastTuning)) {
+    tuning_type = TuningType::kFast;
+  }
+  if (env->device().GetInfo().IsMali()) {
+    const MaliInfo& info = env->device().GetInfo().mali_info;
+    if (info.IsMaliT6xx()) {
+      // Mali T628 hangs forever in clFinish when used profiling queue
+      // TuningType::FAST does not use profiling queue.
+      tuning_type = TuningType::kFast;
+    }
+  }
+  RETURN_IF_ERROR(
+      Tune(tuning_type, env->device().GetInfo(), env->profiling_queue()));
+  InitRecordableQueue(env);
+
+  if (serialized_model) {
+    for (auto& node : nodes_) {
+      node.cl_operation.MoveObjectRefsFromCLToGeneric();
+      node.cl_operation.SyncScalarValues();
+    }
+    const auto inputs = graph.inputs();
+    const auto outputs = graph.outputs();
+    std::vector<int64_t> in_refs(inputs.size());
+    std::vector<int64_t> out_refs(outputs.size());
+    for (int i = 0; i < inputs.size(); ++i) {
+      in_refs[i] = inputs[i]->tensor.ref;
+    }
+    for (int i = 0; i < outputs.size(); ++i) {
+      out_refs[i] = outputs[i]->tensor.ref;
+    }
+    flatbuffers::FlatBufferBuilder builder;
+    auto encoded_fb = Encode(*env->GetDevicePtr(), *this, *env->program_cache(),
+                             in_refs, out_refs, &builder);
+    data::FinishInferenceContextBuffer(builder, encoded_fb);
+    serialized_model->resize(builder.GetSize());
+    std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
+                builder.GetSize());
+    for (auto& node : nodes_) {
+      node.cl_operation.MoveObjectRefsFromGenericToCL();
+    }
+  }
+  ReleaseCPURepresentation();
+  return absl::OkStatus();
+}
+
+absl::Status InferenceContext::RestoreDeserialized(
+    const absl::Span<const uint8_t> serialized_model, Environment* env) {
+  flatbuffers::Verifier verifier(serialized_model.data(),
+                                 serialized_model.size());
+  if (!data::VerifyInferenceContextBuffer(verifier)) {
+    return absl::DataLossError("Deserialization failed.");
+  }
+  auto decoded_fb = data::GetInferenceContext(serialized_model.data());
+  RETURN_IF_ERROR(Decode(env->context(), *env->GetDevicePtr(),
+                         env->program_cache(), decoded_fb, this));
+
+  CreationContext creation_context;
+  creation_context.device = env->GetDevicePtr();
+  creation_context.context = &env->context();
+  creation_context.queue = env->queue();
+  creation_context.cache = env->program_cache();
+
+  execution_hints_.Init(env->device().GetInfo());
+
+  RETURN_IF_ERROR(
+      AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
+  BindMemoryToOperations();
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.cl_operation.RestoreDeserialized(creation_context));
+  }
+  RETURN_IF_ERROR(UpdateParams());
+  InitRecordableQueue(env);
+  ReleaseCPURepresentation();
+  return absl::OkStatus();
+}
+
+void InferenceContext::InitRecordableQueue(Environment* env) {
+  std::vector<ClOperation*> ops(nodes_.size());
+  for (int i = 0; i < nodes_.size(); ++i) {
+    ops[i] = &nodes_[i].cl_operation;
+  }
+  recordable_queue_ = CreateRecordableQueue(ops, env->device(), env->context());
+}
+
+absl::Status InferenceContext::InitFromGraphWithTransforms(
+    const CreateInferenceInfo& create_info, GraphFloat32* graph,
+    Environment* env, std::vector<uint8_t>* serialized_model) {
+  RETURN_IF_ERROR(RunGraphTransforms(graph));
+  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, env, serialized_model));
+  return absl::OkStatus();
+}
+
+void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
+  const auto inputs = graph.inputs();
+  for (const auto& input : inputs) {
+    input_ids_.push_back(input->id);
+  }
+
+  const auto variable_inputs = graph.variable_inputs();
+  for (const auto& variable_input : variable_inputs) {
+    variable_ids_and_refs_[variable_input->id] = variable_input->tensor.ref;
+  }
+
+  const auto outputs = graph.outputs();
+  for (const auto& output : outputs) {
+    output_ids_.push_back(output->id);
+  }
 }
 
 void InferenceContext::GetUsages(const std::function<bool(ValueId)>& functor,
