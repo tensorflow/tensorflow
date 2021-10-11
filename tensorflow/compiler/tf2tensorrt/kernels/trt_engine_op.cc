@@ -455,6 +455,9 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
             << ", thus setting _profile_generation_mode=false";
     profile_generation_mode_ = false;
   }
+  if (static_engine_) {
+    if (profile_generation_mode_) profile_generation_mode_ = false;
+  }
   if (use_implicit_batch_) {
     OP_REQUIRES(context, !profile_generation_mode_,
                 errors::InvalidArgument(
