@@ -41,6 +41,7 @@ cc_library(
     deps = [
         ":exact_uniform_int",
         ":philox_random",
+        ":random_distributions_utils",
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -48,6 +49,15 @@ cc_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "random_distributions_utils",
+    hdrs = ["random_distributions_utils.h"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+    deps = [":philox_random"],
 )
 
 cc_library(
@@ -112,6 +122,7 @@ filegroup(
         "philox_random.h",
         "random.h",
         "random_distributions.h",
+        "random_distributions_utils.h",
         "simple_philox.cc",
         "simple_philox.h",
         "weighted_picker.cc",
@@ -125,6 +136,7 @@ filegroup(
         "distribution_sampler.h",
         "philox_random.h",
         "random_distributions.h",
+        "random_distributions_utils.h",
         "simple_philox.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -135,6 +147,7 @@ filegroup(
     srcs = [
         "random.h",
         "random_distributions.h",
+        "random_distributions_utils.h",
         "weighted_picker.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -157,6 +170,7 @@ filegroup(
         "philox_random_test_utils.h",
         "random.h",
         "random_distributions.h",
+        "random_distributions_utils.h",
         "simple_philox.h",
         "weighted_picker.h",
     ],
