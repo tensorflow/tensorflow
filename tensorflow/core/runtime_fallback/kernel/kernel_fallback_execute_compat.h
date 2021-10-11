@@ -63,10 +63,6 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
     const tfrt::OpAttrsRef& attrs);
 
-// TODO(tfrt-devs): Consider moving following method to a separate file.
-llvm::Expected<Device*> GetTfDevice(const tfrt::ExecutionContext& exec_ctx,
-                                    const tfrt::Device& device);
-
 }  // namespace tfd
 }  // namespace tensorflow
 

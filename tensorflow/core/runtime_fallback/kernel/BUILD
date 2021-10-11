@@ -88,6 +88,32 @@ cc_library(
     }),
 )
 
+cc_library(
+    name = "tensor_util",
+    srcs = ["tensor_util.cc"],
+    hdrs = ["tensor_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
+        "@llvm-project//llvm:Support",
+        "//tensorflow/core/runtime_fallback/util:attr_util",
+        "@tf_runtime//:core_runtime",
+        "@tf_runtime//:hostcontext",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            "//tensorflow/core/framework:types_proto_cc",
+            "//tensorflow/core/platform:errors",
+            "//tensorflow/core/platform:status",
+            "//tensorflow/core/platform:str_util",
+            "//tensorflow/core/platform:stringpiece",
+            "//tensorflow/core/util:padding",
+        ],
+    }),
+)
+
 tf_cc_test(
     name = "attr_util_test",
     srcs = ["attr_util_test.cc"],
@@ -187,6 +213,7 @@ cc_library(
         "//tensorflow/core/tfrt:__subpackages__",
     ],
     deps = [
+        ":tensor_util",
         ":kernel_fallback_tensor",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/runtime_fallback/util:type_util",
@@ -234,6 +261,7 @@ tf_cuda_library(
     ] + if_oss(["manual"]),
     visibility = ["//visibility:public"],
     deps = [
+        ":tensor_util",
         ":kernel_fallback_execute_compat",
         ":kernel_fallback_tensor",
         "@com_google_absl//absl/strings",
@@ -409,7 +437,6 @@ cc_library(
         "//third_party/tf_runtime_google:__pkg__",
     ],
     deps = [
-        ":kernel_fallback_tensor_conversion_alwayslink",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:model_metadata",
         "@tf_runtime//:hostcontext",

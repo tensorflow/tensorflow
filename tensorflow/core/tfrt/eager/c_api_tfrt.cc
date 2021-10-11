@@ -535,7 +535,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
 
   // Convert the tensor to DenseHostTensor.
   auto req_ctx =
-      tfrt::RequestContextBuilder(host_ctx, /*resource_context=*/nullptr)
+      tfrt::RequestContextBuilder(host_ctx, context_.GetResourceContext())
           .build();
   if (!req_ctx) {
     *status = tensorflow::Status(

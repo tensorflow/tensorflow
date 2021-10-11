@@ -12,31 +12,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_TENSOR_UTIL_H_
+#define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_TENSOR_UTIL_H_
 
-// This file implements conversion function between KernelFallback and Host
-// Tensor.
+#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
-#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_CONVERSION_CONVERSION_H_
-#define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_CONVERSION_CONVERSION_H_
-
-#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 namespace tfrt {
-
-class TensorConversionFnRegistry;
-class DenseHostTensor;
-class CpuDevice;
 class Device;
-class ExecutionContext;
-}
+}  // namespace tfrt
 
 namespace tensorflow {
 class KernelFallbackTensor;
+class Device;
 namespace tfd {
 
-void RegisterKernelFallbackTensorConversionFn(
-    tfrt::TensorConversionFnRegistry* registry);
+tfrt::AsyncValueRef<KernelFallbackTensor> TransferTensorToDevice(
+    const tfrt::ExecutionContext& exec_ctx, const KernelFallbackTensor& tensor,
+    const tfrt::Device& src_device, const tfrt::Device& dst_device);
+
+llvm::Expected<Device*> GetTfDevice(const tfrt::ExecutionContext& exec_ctx,
+                                    const tfrt::Device& device);
 
 }  // namespace tfd
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_CONVERSION_CONVERSION_H_
+#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_TENSOR_UTIL_H_

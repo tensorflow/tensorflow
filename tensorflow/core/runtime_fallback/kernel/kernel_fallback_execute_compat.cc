@@ -474,24 +474,6 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
   return op_chain;
 }
 
-llvm::Expected<Device*> GetTfDevice(const tfrt::ExecutionContext& exec_ctx,
-                                    const tfrt::Device& device) {
-  auto* fallback_request_state =
-      exec_ctx.request_ctx()
-          ->GetDataIfExists<KernelFallbackCompatRequestState>();
-  if (!fallback_request_state) {
-    return tfrt::MakeStringError(
-        "KernelFallbackCompatRequestState not found in RequestContext.");
-  }
-  Device* tf_device;
-  Status s = fallback_request_state->device_manager().LookupDevice(
-      device.name().data(), &tf_device);
-  if (!s.ok()) {
-    return tfrt::MakeStringError(s.error_message());
-  }
-  return tf_device;
-}
-
 static absl::string_view StripTfPrefix(tfrt::string_view op_name) {
   return absl::StripPrefix(ToAbslStringView(op_name), "tf.");
 }
