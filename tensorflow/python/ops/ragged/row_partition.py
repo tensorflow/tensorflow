@@ -185,7 +185,9 @@ class RowPartition(composite_tensor.CompositeTensor):
                         value_rowids,
                         nrows=None,
                         validate=True,
-                        preferred_dtype=None):
+                        preferred_dtype=None,
+                        dtype=None,
+                        dtype_hint=None):
     """Creates a `RowPartition` with rows partitioned by `value_rowids`.
 
     This `RowPartition` divides a sequence `values` into rows by specifying
@@ -208,8 +210,14 @@ class RowPartition(composite_tensor.CompositeTensor):
         `value_rowids` is empty).
       validate: If true, then use assertions to check that the arguments form a
         valid `RowPartition`.
-      preferred_dtype: The dtype to encode value_rowids if it doesn't already
-        have one. The default is tf.int64.
+      preferred_dtype: Deprecated synonym of dtype_hint.
+      dtype: Optional dtype for the RowPartition. If missing, the type
+        is inferred from the type of `value_rowids`, dtype_hint, or tf.int64.
+      dtype_hint: Optional dtype for the RowPartition, used when dtype
+        is None. In some cases, a caller may not have a dtype in mind when
+        converting to a tensor, so dtype_hint can be used as a soft preference.
+        If the conversion to `dtype_hint` is not possible, this argument has no
+        effect.
 
     Returns:
       A `RowPartition`.
@@ -224,6 +232,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     ...     nrows=4))
     tf.RowPartition(row_splits=[0 4 4 7 8])
     """
+    dtype_hint = _get_dtype_hint(preferred_dtype, dtype_hint)
     # Local import bincount_ops to avoid import-cycle since bincount_ops
     # imports ragged_tensor.
     from tensorflow.python.ops import bincount_ops  # pylint: disable=g-import-not-at-top
@@ -231,8 +240,8 @@ class RowPartition(composite_tensor.CompositeTensor):
       raise TypeError("validate must have type bool")
     with ops.name_scope(None, "RowPartitionFromValueRowIds",
                         [value_rowids, nrows]):
-      value_rowids = cls._convert_row_partition(value_rowids, "value_rowids",
-                                                preferred_dtype)
+      value_rowids = cls._convert_row_partition(
+          value_rowids, "value_rowids", dtype_hint=dtype_hint, dtype=dtype)
       if nrows is None:
         const_rowids = tensor_util.constant_value(value_rowids)
         if const_rowids is None:
@@ -295,7 +304,12 @@ class RowPartition(composite_tensor.CompositeTensor):
           internal=_row_partition_factory_key)
 
   @classmethod
-  def from_row_splits(cls, row_splits, validate=True, preferred_dtype=None):
+  def from_row_splits(cls,
+                      row_splits,
+                      validate=True,
+                      preferred_dtype=None,
+                      dtype=None,
+                      dtype_hint=None):
     """Creates a `RowPartition` with rows partitioned by `row_splits`.
 
     This `RowPartition` divides a sequence `values` into rows by indicating
@@ -315,8 +329,14 @@ class RowPartition(composite_tensor.CompositeTensor):
         zero.
       validate: If true, then use assertions to check that the arguments form a
         valid `RowPartition`.
-      preferred_dtype: If row_splits has an unspecified type, use this one. If
-        preferred_dtype is None, defaults to dtypes.int64.
+      preferred_dtype: Deprecated synonym of dtype_hint.
+      dtype: Optional dtype for the RowPartition. If missing, the type
+        is inferred from the type of `row_splits`, dtype_hint, or tf.int64.
+      dtype_hint: Optional dtype for the RowPartition, used when dtype
+        is None. In some cases, a caller may not have a dtype in mind when
+        converting to a tensor, so dtype_hint can be used as a soft preference.
+        If the conversion to `dtype_hint` is not possible, this argument has no
+        effect.
 
     Returns:
       A `RowPartition`.
@@ -324,6 +344,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     Raises:
       ValueError: If `row_splits` is an empty list.
     """
+    dtype_hint = _get_dtype_hint(preferred_dtype, dtype_hint)
     if not isinstance(validate, bool):
       raise TypeError("validate must have type bool")
     if isinstance(row_splits, (list, tuple)) and not row_splits:
@@ -332,8 +353,8 @@ class RowPartition(composite_tensor.CompositeTensor):
       return cls(row_splits=row_splits, internal=_row_partition_factory_key)
 
     with ops.name_scope(None, "RowPartitionFromRowSplits", [row_splits]):
-      row_splits = cls._convert_row_partition(row_splits, "row_splits",
-                                              preferred_dtype)
+      row_splits = cls._convert_row_partition(
+          row_splits, "row_splits", dtype_hint=dtype_hint, dtype=dtype)
       row_splits.shape.assert_has_rank(1)
 
       if validate:
@@ -349,7 +370,12 @@ class RowPartition(composite_tensor.CompositeTensor):
       return cls(row_splits=row_splits, internal=_row_partition_factory_key)
 
   @classmethod
-  def from_row_lengths(cls, row_lengths, validate=True, preferred_dtype=None):
+  def from_row_lengths(cls,
+                       row_lengths,
+                       validate=True,
+                       preferred_dtype=None,
+                       dtype=None,
+                       dtype_hint=None):
     """Creates a `RowPartition` with rows partitioned by `row_lengths`.
 
     This `RowPartition` divides a sequence `values` into rows by indicating
@@ -365,17 +391,26 @@ class RowPartition(composite_tensor.CompositeTensor):
         nonnegative.
       validate: If true, then use assertions to check that the arguments form a
         valid `RowPartition`.
-      preferred_dtype: If row_lengths has an unspecified type, use this one. If
-        preferred_dtype is None, defaults to dtypes.int64.
+
+      preferred_dtype: Deprecated synonym of dtype_hint.
+      dtype: Optional dtype for the RowPartition. If missing, the type
+        is inferred from the type of `row_lengths`, dtype_hint, or tf.int64.
+      dtype_hint: Optional dtype for the RowPartition, used when dtype
+        is None. In some cases, a caller may not have a dtype in mind when
+        converting to a tensor, so dtype_hint can be used as a soft preference.
+        If the conversion to `dtype_hint` is not possible, this argument has no
+        effect.
 
     Returns:
       A `RowPartition`.
     """
+    dtype_hint = _get_dtype_hint(
+        preferred_dtype=preferred_dtype, dtype_hint=dtype_hint)
     if not isinstance(validate, bool):
       raise TypeError("validate must have type bool")
     with ops.name_scope(None, "RowPartitionFromRowLengths", [row_lengths]):
-      row_lengths = cls._convert_row_partition(row_lengths, "row_lengths",
-                                               preferred_dtype)
+      row_lengths = cls._convert_row_partition(
+          row_lengths, "row_lengths", dtype_hint=dtype_hint, dtype=dtype)
       row_lengths.shape.assert_has_rank(1)
 
       if validate:
@@ -398,7 +433,9 @@ class RowPartition(composite_tensor.CompositeTensor):
                       row_starts,
                       nvals,
                       validate=True,
-                      preferred_dtype=None):
+                      preferred_dtype=None,
+                      dtype=None,
+                      dtype_hint=None):
     """Creates a `RowPartition` with rows partitioned by `row_starts`.
 
     Equivalent to: `from_row_splits(concat([row_starts, nvals], axis=0))`.
@@ -410,17 +447,25 @@ class RowPartition(composite_tensor.CompositeTensor):
       nvals: A scalar tensor indicating the number of values.
       validate: If true, then use assertions to check that the arguments form a
         valid `RowPartition`.
-      preferred_dtype: If row_limits has an unspecified type, use this one. If
-        preferred_dtype is None, defaults to dtypes.int64.
+      preferred_dtype: Deprecated synonym of dtype_hint.
+      dtype: Optional dtype for the RowPartition. If missing, the type
+        is inferred from the type of `row_starts`, dtype_hint, or tf.int64.
+      dtype_hint: Optional dtype for the RowPartition, used when dtype
+        is None. In some cases, a caller may not have a dtype in mind when
+        converting to a tensor, so dtype_hint can be used as a soft preference.
+        If the conversion to `dtype_hint` is not possible, this argument has no
+        effect.
 
     Returns:
       A `RowPartition`.
     """
+    dtype_hint = _get_dtype_hint(
+        preferred_dtype=preferred_dtype, dtype_hint=dtype_hint)
     if not isinstance(validate, bool):
       raise TypeError("validate must have type bool")
     with ops.name_scope(None, "RowPartitionFromRowStarts", [row_starts]):
-      row_starts = cls._convert_row_partition(row_starts, "row_starts",
-                                              preferred_dtype)
+      row_starts = cls._convert_row_partition(
+          row_starts, "row_starts", dtype_hint=dtype_hint, dtype=dtype)
       row_starts.shape.assert_has_rank(1)
       nvals = math_ops.cast(nvals, row_starts.dtype)
       if validate:
@@ -437,7 +482,12 @@ class RowPartition(composite_tensor.CompositeTensor):
       return cls(row_splits=row_splits, internal=_row_partition_factory_key)
 
   @classmethod
-  def from_row_limits(cls, row_limits, validate=True, preferred_dtype=None):
+  def from_row_limits(cls,
+                      row_limits,
+                      validate=True,
+                      preferred_dtype=None,
+                      dtype=None,
+                      dtype_hint=None):
     """Creates a `RowPartition` with rows partitioned by `row_limits`.
 
     Equivalent to: `from_row_splits(values, concat([0, row_limits], axis=0))`.
@@ -447,17 +497,25 @@ class RowPartition(composite_tensor.CompositeTensor):
         ascending order.
       validate: If true, then use assertions to check that the arguments form a
         valid `RowPartition`.
-      preferred_dtype: If row_limits has an unspecified type, use this one. If
-        preferred_dtype is None, defaults to dtypes.int64.
+      preferred_dtype: Deprecated synonym of dtype_hint.
+      dtype: Optional dtype for the RowPartition. If missing, the type
+        is inferred from the type of `row_limits`, dtype_hint, or tf.int64.
+      dtype_hint: Optional dtype for the RowPartition, used when dtype
+        is None. In some cases, a caller may not have a dtype in mind when
+        converting to a tensor, so dtype_hint can be used as a soft preference.
+        If the conversion to `dtype_hint` is not possible, this argument has no
+        effect.
 
     Returns:
       A `RowPartition`.
     """
+    dtype_hint = _get_dtype_hint(
+        preferred_dtype=preferred_dtype, dtype_hint=dtype_hint)
     if not isinstance(validate, bool):
       raise TypeError("validate must have type bool")
     with ops.name_scope(None, "RowPartitionFromRowLimits", [row_limits]):
-      row_limits = cls._convert_row_partition(row_limits, "row_limits",
-                                              preferred_dtype)
+      row_limits = cls._convert_row_partition(
+          row_limits, "row_limits", dtype_hint=dtype_hint, dtype=dtype)
       row_limits.shape.assert_has_rank(1)
 
       if validate:
@@ -481,7 +539,9 @@ class RowPartition(composite_tensor.CompositeTensor):
                               nvals,
                               nrows=None,
                               validate=True,
-                              preferred_dtype=None):
+                              preferred_dtype=None,
+                              dtype=None,
+                              dtype_hint=None):
     """Creates a `RowPartition` with rows partitioned by `uniform_row_length`.
 
     This `RowPartition` divides a sequence `values` into rows that all have
@@ -504,18 +564,30 @@ class RowPartition(composite_tensor.CompositeTensor):
         `nvals`.
       validate: If true, then use assertions to check that the arguments form a
         valid `RowPartition`.
-      preferred_dtype: if uniform_row_length has no dtype, use this one.
+      preferred_dtype: Deprecated synonym of dtype_hint.
+      dtype: Optional dtype for the RowPartition. If missing, the type
+        is inferred from the type of `uniform_row_length`, dtype_hint,
+        or tf.int64.
+      dtype_hint: Optional dtype for the RowPartition, used when dtype
+        is None. In some cases, a caller may not have a dtype in mind when
+        converting to a tensor, so dtype_hint can be used as a soft preference.
+        If the conversion to `dtype_hint` is not possible, this argument has no
+        effect.
 
     Returns:
       A `RowPartition`.
     """
+    dtype_hint = _get_dtype_hint(
+        preferred_dtype=preferred_dtype, dtype_hint=dtype_hint)
     if not isinstance(validate, bool):
       raise TypeError("validate must have type bool")
     with ops.name_scope(None, "RowPartitionFromUniformRowLength",
                         [uniform_row_length, nrows]):
-      uniform_row_length = cls._convert_row_partition(uniform_row_length,
-                                                      "uniform_row_length",
-                                                      preferred_dtype)
+      uniform_row_length = cls._convert_row_partition(
+          uniform_row_length,
+          "uniform_row_length",
+          dtype_hint=dtype_hint,
+          dtype=dtype)
       uniform_row_length.shape.assert_has_rank(0)
 
       nvals = math_ops.cast(nvals, uniform_row_length.dtype)
@@ -587,7 +659,7 @@ class RowPartition(composite_tensor.CompositeTensor):
           internal=_row_partition_factory_key)
 
   @classmethod
-  def _convert_row_partition(cls, partition, name, preferred_dtype):
+  def _convert_row_partition(cls, partition, name, dtype=None, dtype_hint=None):
     """Converts `partition` to Tensors.
 
     Args:
@@ -595,8 +667,14 @@ class RowPartition(composite_tensor.CompositeTensor):
         constructed.  I.e., one of: row_splits, row_lengths, row_starts,
         row_limits, value_rowids, uniform_row_length.
       name: The name of the row-partitioning tensor.
-      preferred_dtype: If partition has no dtype, give it this one. If
-        no dtype is specified, use dtypes.int64.
+      dtype: Optional dtype for the RowPartition. If missing, the type
+        is inferred from the type of `uniform_row_length`, dtype_hint,
+        or tf.int64.
+      dtype_hint: Optional dtype for the RowPartition, used when dtype
+        is None. In some cases, a caller may not have a dtype in mind when
+        converting to a tensor, so dtype_hint can be used as a soft preference.
+        If the conversion to `dtype_hint` is not possible, this argument has no
+        effect.
 
     Returns:
       A tensor equivalent to partition.
@@ -604,13 +682,14 @@ class RowPartition(composite_tensor.CompositeTensor):
     Raises:
       ValueError: if dtype is not int32 or int64.
     """
-    if preferred_dtype is None:
-      preferred_dtype = dtypes.int64
-    if isinstance(partition, np.ndarray) and partition.dtype == np.int32:
+    if dtype_hint is None:
+      dtype_hint = dtypes.int64
+    if (isinstance(partition, np.ndarray) and
+        partition.dtype == np.int32 and dtype is None):
       partition = ops.convert_to_tensor(partition, name=name)
     else:
-      partition = ops.convert_to_tensor(
-          partition, preferred_dtype=preferred_dtype, name=name)
+      partition = ops.convert_to_tensor_v2(
+          partition, dtype_hint=dtype_hint, dtype=dtype, name=name)
     if partition.dtype not in (dtypes.int32, dtypes.int64):
       raise ValueError("%s must have dtype int32 or int64" % name)
 
@@ -1266,3 +1345,11 @@ def _merge_tensors(t1, t2, name, validate):
       return t1, False
 
 _row_partition_factory_key = object()  # unique private object
+
+
+def _get_dtype_hint(preferred_dtype=None, dtype_hint=None):
+  if dtype_hint is not None and preferred_dtype is not None:
+    raise ValueError("Use dtype_hint; preferred_dtype is deprecated")
+  if dtype_hint is None:
+    dtype_hint = preferred_dtype
+  return dtype_hint
