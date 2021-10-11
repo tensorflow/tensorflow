@@ -53,19 +53,26 @@ bool TryAcquireTpuLock() {
     }
     should_load_library = true;
 
-    // If TPU_CHIPS_PER_HOST_BOUND doesn't include all chips, we assume we're
-    // using different chips in different processes and thus multiple libtpu
-    // loads are ok.
+    // If TPU_CHIPS_PER_PROCESS_BOUNDS doesn't include all chips, we assume
+    // we're using different chips in different processes and thus multiple
+    // libtpu loads are ok.
     // TODO(skyewm): we could make per-chip lock files and look at
     // TPU_VISIBLE_DEVICES if we wanted to make this really precise.
-    std::string chips_per_host_bounds = GetEnvVar("TPU_CHIPS_PER_HOST_BOUNDS");
-    if (chips_per_host_bounds.empty() || chips_per_host_bounds == "2,2,1") {
+    std::string chips_per_process_bounds =
+        GetEnvVar("TPU_CHIPS_PER_PROCESS_BOUNDS");
+    // TODO(skyewm): remove this when TPU_CHIPS_PER_HOST_BOUNDS is fully
+    // deprecated
+    if (chips_per_process_bounds.empty()) {
+      chips_per_process_bounds = GetEnvVar("TPU_CHIPS_PER_HOST_BOUNDS");
+    }
+    if (chips_per_process_bounds.empty() ||
+        chips_per_process_bounds == "2,2,1") {
       int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR, 0644);
 
       // This lock is held until the process exits intentionally. The underlying
       // TPU device will be held on until it quits.
       if (lockf(fd, F_TLOCK, 0) != 0) {
-        LOG(INFO) << "libtpu.so already in used by another process. Not "
+        LOG(INFO) << "libtpu.so already in use by another process. Not "
                      "attempting to load libtpu.so in this process.";
         should_load_library = false;
       } else {
