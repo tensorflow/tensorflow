@@ -28,6 +28,7 @@ import tensorflow.compat.v2 as tf
 # Prevent Python exception from circular dependencies (b/117329403) looking very
 # similar to https://bugs.python.org/issue43546.
 from tensorflow.python.distribute import distribution_strategy_context  # pylint: disable=unused-import
+from tensorflow.python.ops import logging_ops
 
 from tensorflow.tools.docs import tf_doctest_lib
 
@@ -36,6 +37,9 @@ from tensorflow.tools.docs import tf_doctest_lib
 import doctest  # pylint: disable=g-bad-import-order
 
 tf.compat.v1.enable_v2_behavior()
+
+# `enable_interactive_logging` must come after `enable_v2_behavior`.
+logging_ops.enable_interactive_logging()
 
 FLAGS = flags.FLAGS
 
