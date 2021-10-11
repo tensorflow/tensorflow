@@ -230,12 +230,10 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
       const_tensors_descs_[outputs[0]->id].UploadData(attr.tensor);
       continue;
     }
-    std::string op_name = node.operation.type + " " + std::to_string(node.id);
     GPUOperationsSubgraph gpu_subgraph;
     if (hints.Check(ModelHints::kAllowSpecialKernels) &&
         GPUSubgraphFromGraph(gpu_info, precision, graph, node.id,
-                             tensor_descriptors, &consumed_nodes, &gpu_subgraph,
-                             &op_name)
+                             tensor_descriptors, &consumed_nodes, &gpu_subgraph)
             .ok()) {
       // Mapping of subgraph (set of nodes) to GPU operations. Should happen
       // before straigtforward mapping.
@@ -304,7 +302,7 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
           metal_node.outputs[j] = mapping_to_global_ids[-(id + 1)];
         }
       }
-      metal_node.name = op_name;
+      metal_node.name = gpu_op.name;
       nodes_.push_back(std::move(metal_node));
     }
   }

@@ -180,7 +180,7 @@ void AllocateAndParseFlags() {
   bool enable_mlir_bridge_is_explicit = false;
   bool mlir_bridge_safe_mode = false;
   bool enable_mlir_merge_control_flow_pass = false;
-
+  bool enable_mlir_convert_control_to_data_outputs_pass = false;
   auto setter_for_jitter_tensor_names = [](string sequence) {
     jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
     return true;
@@ -239,6 +239,10 @@ void AllocateAndParseFlags() {
             &enable_mlir_merge_control_flow_pass,
             "Enables MergeControlFlow pass for MLIR-Based TensorFlow Compiler "
             "Bridge."),
+       Flag("tf_mlir_enable_convert_control_to_data_outputs_pass",
+            &enable_mlir_convert_control_to_data_outputs_pass,
+            "Enables `tf-executor-convert-control-to-data-outputs` pass for "
+            "MLIR-Based TensorFlow Compiler Bridge."),
        Flag(
            "tf_mlir_bridge_safe_mode", &mlir_bridge_safe_mode,
            "When tf_mlir_enable_mlir_bridge is true, this field can enable "
@@ -267,6 +271,8 @@ void AllocateAndParseFlags() {
   }
   mlir_flags->tf_mlir_enable_merge_control_flow_pass =
       enable_mlir_merge_control_flow_pass;
+  mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
+      enable_mlir_convert_control_to_data_outputs_pass;
 }
 
 }  // namespace
