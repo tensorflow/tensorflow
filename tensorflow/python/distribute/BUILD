@@ -2204,6 +2204,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "nomac",  # TODO(b/201788023): Attempt MultiProcessCluster to fix this.
+        "notpu",
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
     deps = [
