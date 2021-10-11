@@ -246,17 +246,14 @@ func @with_replicate(
           {n = 2 : i32, devices = {CORE_0 = ["/CPU:0", "/GPU:1"]}} {
         %read0 = "tf.ReadVariableOp"(%r0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
         // expected-remark@above {{ID: 1}}
-        // expected-remark@above {{Successors: {4}}}
         "tf.AssignVariableOp"(%r1, %u) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
         // expected-remark@above {{ID: 2}}
         // expected-remark@above {{Successors: {3}}}
         %read1 = "tf.ReadVariableOp"(%r1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Predecessors: {2}}}
-        // expected-remark@above {{Successors: {4}}}
         tf_device.return
         // expected-remark@above {{ID: 4}}
-        // expected-remark@above {{Predecessors: {1,3}}}
       }
       "tf._UnknownSideEffectingOp_"() : () -> ()
       // expected-remark@above {{ID: 6}}

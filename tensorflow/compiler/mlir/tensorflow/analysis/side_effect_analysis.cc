@@ -126,14 +126,14 @@ void UpdateSideEffectsByResourceId(
 }
 
 bool MayHaveSideEffect(Operation* op) {
-  // For op's in the Tensorflow dialect, query the dialect.
   if (isa_and_nonnull<TF::TensorFlowDialect>(op->getDialect()))
     return TensorFlowDialect::CanHaveSideEffects(op);
 
-  // Otherwise, conservatively assume that there can be side effects.
-  // TODO(b/196885000) First call `MemoryEffectOpInterface::hasNoEffect` here to
-  // reduce conservatism. This requires several modifications in unit tests that
-  // rely on the current behavior and will be done in a subsequent CL.
+  // TODO(b/202424532) TFRT currently relies on `ReturnOp` being side-effecting,
+  // remove this special case once this is fixed.
+  if (isa<mlir::ReturnOp>(op)) return true;
+  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) return false;
+  // Conservatively assume that there can be side effects.
   return true;
 }
 
