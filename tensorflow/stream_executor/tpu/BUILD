@@ -71,6 +71,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],

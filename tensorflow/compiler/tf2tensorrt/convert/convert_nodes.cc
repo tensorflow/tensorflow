@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/ops/slice_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -759,174 +760,6 @@ Status VerifyShapesMatch(absl::Span<const TRT_TensorOrWeights> inputs,
   return Status::OK();
 }
 
-TRT_ShapedWeights::TRT_ShapedWeights(nvinfer1::DataType type) : type_(type) {
-  shape_.nbDims = 0;
-  shape_.d[0] = 0;
-}
-
-TRT_ShapedWeights::TRT_ShapedWeights(nvinfer1::DataType type,
-                                     nvinfer1::Dims dims, Tensor tensor)
-    : shape_(dims), type_(type), tensor_(tensor) {
-  if (dims.nbDims == 0) {
-    DCHECK(dims.d[0] == 0 || dims.d[0] == 1);
-  }
-}
-
-TRT_ShapedWeights::TRT_ShapedWeights(const TRT_ShapedWeights& rhs)
-    : shape_(rhs.shape_), type_(rhs.type_), tensor_(rhs.tensor_) {}
-
-int64_t TRT_ShapedWeights::count(nvinfer1::Dims dims) {
-  if (dims.nbDims == 0) {
-    assert(dims.d[0] == 0 || dims.d[0] == 1);
-    return dims.d[0];
-  }
-  return Prod(dims);
-}
-
-nvinfer1::Weights TRT_ShapedWeights::GetTrtWeights() const {
-  return nvinfer1::Weights{type_, GetPointer<int8>(), count()};
-}
-
-template <typename T>
-Status TRT_ShapedWeights::SetValues(T value) {
-  switch (type_) {
-    case nvinfer1::DataType::kFLOAT: {
-      float* ptr = tensor_.flat<float>().data();
-      std::fill(ptr, ptr + count(), value);
-      break;
-    }
-    case nvinfer1::DataType::kHALF: {
-      Eigen::half* ptr = tensor_.flat<Eigen::half>().data();
-      std::fill(ptr, ptr + count(), Eigen::half(value));
-      break;
-    }
-    case nvinfer1::DataType::kINT32: {
-      int32* ptr = tensor_.flat<int32>().data();
-      std::fill(ptr, ptr + count(), value);
-      break;
-    }
-    default:
-      return errors::InvalidArgument("Unsupported data type ",
-                                     tensorflow::tensorrt::DebugString(type_));
-  }
-  return Status::OK();
-}
-
-Status TRT_ShapedWeights::SetShape(nvinfer1::Dims dims) {
-  if (this->count() != TRT_ShapedWeights::count(dims)) {
-    VLOG(2) << "Changing shape from "
-            << tensorflow::tensorrt::DebugString(shape_) << ", to "
-            << tensorflow::tensorrt::DebugString(dims);
-    return errors::Internal("SetShape would change number of elements");
-  }
-  shape_ = dims;
-  return Status::OK();
-}
-
-size_t TRT_ShapedWeights::size_bytes() const {
-  size_t data_type_size = -1;
-  switch (type_) {
-    case nvinfer1::DataType::kFLOAT:
-    case nvinfer1::DataType::kINT32:
-      data_type_size = 4;
-      break;
-    case nvinfer1::DataType::kHALF:
-      data_type_size = 2;
-      break;
-    case nvinfer1::DataType::kINT8:
-    case nvinfer1::DataType::kBOOL:
-      data_type_size = 1;
-      break;
-  }
-  return this->count() * data_type_size;
-}
-
-string TRT_ShapedWeights::DebugString() const {
-  return StrCat(
-      "TRT_ShapedWeights(shape=", tensorflow::tensorrt::DebugString(shape_),
-      ", type=", tensorflow::tensorrt::DebugString(type_),
-      ", values=", reinterpret_cast<uintptr_t>(GetPointer<int8>()), ")");
-}
-
-TRT_TensorOrWeights::TRT_TensorOrWeights(ITensorProxyPtr tensor)
-    : tensor_proxy_ptr_(tensor), initialized_(true), is_tensor_(true) {}
-
-TRT_TensorOrWeights::TRT_TensorOrWeights(ITensorProxyPtr tensor, int batch_size)
-    : tensor_proxy_ptr_(tensor),
-      batch_size_(batch_size),
-      initialized_(true),
-      is_tensor_(true) {}
-
-TRT_TensorOrWeights::TRT_TensorOrWeights(nvinfer1::ITensor* tensor,
-                                         int batch_size)
-    : tensor_proxy_ptr_(tensor),
-      batch_size_(batch_size),
-      initialized_(true),
-      is_tensor_(true) {}
-
-TRT_TensorOrWeights::TRT_TensorOrWeights(nvinfer1::DataType trt_dtype,
-                                         const nvinfer1::Dims& trt_dims,
-                                         int batch_size)
-    : tensor_proxy_ptr_(new SimpleITensor(trt_dtype, trt_dims)),
-      batch_size_(batch_size),
-      initialized_(true),
-      is_tensor_(true) {}
-
-TRT_TensorOrWeights::TRT_TensorOrWeights(const TRT_ShapedWeights& weights)
-    : weights_(weights), initialized_(true), is_tensor_(false) {}
-
-TRT_TensorOrWeights::TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs)
-    : tensor_proxy_ptr_(rhs.tensor_proxy_ptr_),
-      batch_size_(rhs.batch_size_),
-      weights_(rhs.weights_),
-      initialized_(rhs.initialized_),
-      is_tensor_(rhs.is_tensor_) {}
-
-void TRT_TensorOrWeights::operator=(const TRT_TensorOrWeights& rhs) {
-  tensor_proxy_ptr_ = rhs.tensor_proxy_ptr_;
-  batch_size_ = rhs.batch_size_;
-  weights_ = rhs.weights_;
-  initialized_ = rhs.initialized_;
-  is_tensor_ = rhs.is_tensor_;
-}
-
-ITensorProxyPtr TRT_TensorOrWeights::tensor() const {
-  CHECK(is_tensor());
-  return tensor_proxy_ptr_;
-}
-
-nvinfer1::Dims TRT_TensorOrWeights::GetTrtDims() const {
-  if (is_tensor()) {
-    return tensor()->getDimensions();
-  } else {
-    return weights().shape_;
-  }
-}
-
-Status TRT_TensorOrWeights::GetTfType(DataType* tf_type) const {
-  if (is_tensor()) {
-    nvinfer1::DataType trt_type = tensor()->getType();
-    return TrtTypeToTfType(trt_type, tf_type);
-  }
-  if (is_weights()) {
-    *tf_type = weights().GetTensor().dtype();
-    return Status::OK();
-  }
-  return errors::Internal("The object is probably not initialized");
-}
-
-string TRT_TensorOrWeights::DebugString() const {
-  string output = "TRT_TensorOrWeights(type=";
-  if (is_tensor()) {
-    StrAppend(&output, "tensor=", tensorflow::tensorrt::DebugString(tensor()),
-              ", batch_size=", batch_size_);
-  } else {
-    StrAppend(&output, "weights=", weights_.DebugString());
-  }
-  StrAppend(&output, ")");
-  return output;
-}
-
 // Perform 5 dimensional reorder of data on CPU
 // This is done once at convert time and does not affect GPU inference perf
 // Example: reorder NDHWC (Tensorflow) -> NCDHW (TensorRT)
@@ -1108,20 +941,6 @@ void ReorderDRSCKToKCDRS(const TRT_ShapedWeights& iweights,
   }
 }
 
-TRT_ShapedWeights TrtWeightStore::GetTempWeights(nvinfer1::DataType trt_dtype,
-                                                 const nvinfer1::Dims& dims) {
-  TensorShape shape;
-  DataType tf_dtype;
-  // TODO(laigd): make it return a status.
-  TF_CHECK_OK(TensorShapeUtils::MakeShape(dims.d, dims.nbDims, &shape));
-  TF_CHECK_OK(TrtTypeToTfType(trt_dtype, &tf_dtype));
-  // TODO(jie): check weights size_bytes. 0 means type error
-  Tensor tensor(tf_dtype, shape);
-  TRT_ShapedWeights weights(trt_dtype, dims, tensor);
-  store_.emplace_back(std::move(tensor));
-  return weights;
-}
-
 OpConverterParams::OpConverterParams(
     const NodeDef& node_def, const std::vector<TRT_TensorOrWeights>& inputs,
     std::vector<TRT_TensorOrWeights>* outputs, TrtWeightStore* weight_store,
@@ -1150,15 +969,10 @@ OpConverterParams::OpConverterParams(
       use_calibration(converter->use_calibration()),
       use_implicit_batch(converter->use_implicit_batch()) {}
 
-const std::set<string>* TrtNodeValidator::quantize_ops = new std::set<string>{
-    "QuantizeAndDequantizeV2",
-    "QuantizeAndDequantizeV3",
-    "FakeQuantWithMinMaxVars",
-    "FakeQuantWithMinMaxArgs",
-};
-
 bool IsQuantizeAndDequantizeOp(const Node* node) {
-  return TrtNodeValidator::quantize_ops->count(node->def().op()) != 0;
+  // return TrtNodeValidator::quantize_ops->count(node->def().op()) != 0;
+  return absl::c_find(kQuantizationOpNames, node->def().op()) !=
+         kQuantizationOpNames.end();
 }
 
 TrtNodeValidator::TrtNodeValidator(
@@ -1168,8 +982,10 @@ TrtNodeValidator::TrtNodeValidator(
     : graph_properties_(graph_properties),
       precision_mode_(precision_mode),
       use_calibration_(use_calibration),
-      use_implicit_batch_(use_implicit_batch) {
-  RegisterOpValidators();
+      use_implicit_batch_(use_implicit_batch) {}
+
+StatusOr<OpConverter> TrtNodeValidator::GetValidator(const std::string& op) {
+  return GetOpConverterRegistry()->LookUp(op);
 }
 
 Status TrtNodeValidator::ConvertToTensorOrWeights(
@@ -1219,11 +1035,12 @@ Status TrtNodeValidator::IsTensorRTCandidate(const Node* node) {
   // these ops to the relevant tensors. This happens regardless of the value of
   // use_calibration.
   bool is_supported_op = false;
-  if (quantize_ops->count(op)) {
+  if (absl::c_find(kQuantizationOpNames, op) != kQuantizationOpNames.end()) {
     is_supported_op = (precision_mode_ == TrtPrecisionMode::INT8);
   } else {
-    is_supported_op = op_validators_.count(op);
+    is_supported_op = GetValidator(op).ok();
   }
+
   if (!is_supported_op) {
     return errors::Unimplemented("Op type ", op, " is not supported.");
   }
@@ -1246,11 +1063,12 @@ Status TrtNodeValidator::IsTensorRTCandidate(const Node* node) {
     inputs.push_back(tensor_or_weights);
   }
 
-  OpConverter validator = op_validators_[op];
+  auto validator = GetValidator(op);
+  TF_RETURN_IF_ERROR(validator.status());
   OpConverterParams params(node->def(), inputs, /*arg_outputs=*/nullptr,
                            &weight_store_, precision_mode_, use_calibration_,
                            use_implicit_batch_);
-  return validator(&params);
+  return (*validator)(&params);
 }
 
 Status TrtNodeValidator::ConvertConstToWeights(
@@ -1261,7 +1079,9 @@ Status TrtNodeValidator::ConvertConstToWeights(
   OpConverterParams params(const_node_def, inputs, &outputs, &weight_store_,
                            precision_mode_, use_calibration_,
                            use_implicit_batch_);
-  Status status = op_validators_["Const"](&params);
+  auto const_val = GetValidator("Const");
+  TF_RETURN_IF_ERROR(const_val.status());
+  Status status = (*const_val)(&params);
   if (status.ok() && output) *output = outputs[0];
   return status;
 }
@@ -1287,7 +1107,6 @@ Converter::Converter(TrtPrecisionMode precision_mode, bool use_calibration,
       use_implicit_batch_(use_implicit_batch),
       engine_name_(engine_name) {
   MaybeInitializeTrtPlugins(trt_logger);
-  this->RegisterOpConverters();
 }
 
 Status Converter::Init(nvinfer1::ILogger* trt_logger) {
@@ -1313,12 +1132,9 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
 
   OpConverterParams params(this, node_def, inputs, &outputs, &weight_store_);
   const string& op = node_def.op();
-  auto itr = op_registry_.find(op);
-  if (itr == op_registry_.end()) {
-    return errors::Unimplemented("No converter registered for op: ", op);
-  }
-  OpConverter op_converter = itr->second;
-  TF_RETURN_IF_ERROR(op_converter(&params));
+  auto op_converter = GetOpConverterRegistry()->LookUp(op);
+  TF_RETURN_IF_ERROR(op_converter.status());
+  TF_RETURN_IF_ERROR((*op_converter)(&params));
 
   for (size_t i = 0; i < outputs.size(); ++i) {
     TRT_TensorOrWeights& output = outputs[i];
@@ -1567,7 +1383,14 @@ Status Converter::BuildCudaEngine(
     int nbBindings = (*engine)->getNbBindings();
     VLOG(2) << "Number of engine bindings: " << nbBindings;
     for (int i = 0; i < nbBindings; i++) {
-      VLOG(2) << "Binding " << i << " name: " << (*engine)->getBindingName(i);
+      auto get_location_string = [&engine](int i) {
+        if ((*engine)->getLocation(i) == nvinfer1::TensorLocation::kDEVICE)
+          return " on device";
+        else
+          return " on host";
+      };
+      VLOG(2) << "Binding " << i << " name: " << (*engine)->getBindingName(i)
+              << get_location_string(i);
     }
   }
   return Status::OK();
@@ -4079,24 +3902,6 @@ Status ConvertIdentity(OpConverterParams* params) {
   return Status::OK();
 }
 
-const std::unordered_map<string, nvinfer1::ElementWiseOperation>*
-BinaryOperationMap() {
-  static auto* const m =
-      new std::unordered_map<string, nvinfer1::ElementWiseOperation>{
-          {"Add", nvinfer1::ElementWiseOperation::kSUM},
-          {"AddV2", nvinfer1::ElementWiseOperation::kSUM},
-          {"Mul", nvinfer1::ElementWiseOperation::kPROD},
-          {"Sub", nvinfer1::ElementWiseOperation::kSUB},
-          {"Div", nvinfer1::ElementWiseOperation::kDIV},
-          {"FloorDiv", nvinfer1::ElementWiseOperation::kFLOOR_DIV},
-          {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
-          {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
-          {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
-          {"Pow", nvinfer1::ElementWiseOperation::kPOW},
-      };
-  return m;
-}
-
 Status ConvertBinary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -4119,8 +3924,13 @@ Status ConvertBinary(OpConverterParams* params) {
   const TRT_TensorOrWeights& operand_l = inputs.at(0);
   const TRT_TensorOrWeights& operand_r = inputs.at(1);
 
-  auto op_pair = BinaryOperationMap()->find(node_def.op());
-  if (op_pair == BinaryOperationMap()->end()) {
+  auto op_pair = absl::c_find_if(
+      kBinaryOperations,
+      [&node_def](
+          const std::pair<std::string, nvinfer1::ElementWiseOperation>& x) {
+        return x.first == node_def.op();
+      });
+  if (op_pair == kBinaryOperations.end()) {
     return errors::Unimplemented("Binary op ", node_def.op(),
                                  " not supported at: ", node_def.name());
   }
@@ -6781,98 +6591,82 @@ Status ConvertAddN(OpConverterParams* params) {
   return Status::OK();
 }
 
-static void RegisterValidatableOpConverters(
-    std::unordered_map<string, OpConverter>* registration) {
-  (*registration)["BiasAdd"] = ConvertBiasAdd;
-  (*registration)["ClipByValue"] = ConvertClipByValue;
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBiasAdd, "BiasAdd");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertClipByValue, "ClipByValue");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertCombinedNMS,
+                                  "CombinedNonMaxSuppression");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertAddN, "AddN");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertCast, "Cast");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertConcat, "ConcatV2");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertConst, "Const");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertConv2D, "Conv2D");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertConv2DBackpropInput,
+                                  "Conv2DBackpropInput");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertDepthSpaceShuffle, "DepthToSpace");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertConv2DDepthwise,
+                                  "DepthwiseConv2dNative");
 #if IS_TRT_VERSION_GE(7, 1, 3, 0)
-  (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertEinsum, "Einsum");
 #endif
-  (*registration)["AddN"] = ConvertAddN;
-  (*registration)["Cast"] = ConvertCast;
-  (*registration)["ConcatV2"] = ConvertConcat;
-  (*registration)["Const"] = ConvertConst;
-  (*registration)["Conv2D"] = ConvertConv2D;
-  (*registration)["Conv2DBackpropInput"] = ConvertConv2DBackpropInput;
-  (*registration)["DepthToSpace"] = ConvertDepthSpaceShuffle;
-  (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
-#if IS_TRT_VERSION_GE(7, 1, 3, 0)
-  (*registration)["Einsum"] = ConvertEinsum;
-#endif
-  (*registration)["ExpandDims"] = ConvertExpandDims;
-  (*registration)["FusedConv2DBiasActivation"] =
-      ConvertFusedConv2DBiasActivation;
-  (*registration)["GatherV2"] = ConvertGather;
-  (*registration)["LeakyRelu"] = ConvertLeakyRelu;
-  (*registration)["MatMul"] = ConvertMatMul;
-  (*registration)["Pack"] = ConvertPack;
-  (*registration)["Pad"] = ConvertPad;
-  (*registration)["Relu6"] = ConvertRelu6;
-  (*registration)["Reshape"] = ConvertReshape;
-  (*registration)["Conv3D"] = ConvertConv3D;
-  (*registration)["Conv3DBackpropInputV2"] = ConvertConv3DBackpropInputV2;
-  for (auto resize_mode : {"ResizeBilinear", "ResizeNearestNeighbor"}) {
-    (*registration)[resize_mode] = ConvertResize;
-  }
-  for (auto pool_op_type : {"AvgPool3D", "MaxPool3D"}) {
-    (*registration)[pool_op_type] = ConvertPool3D;
-  }
-  (*registration)["Shape"] = ConvertShape;
-  (*registration)["Rsqrt"] = ConvertRsqrt;
-  (*registration)["Slice"] = ConvertSlice;
-  (*registration)["Softmax"] = ConvertSoftmax;
-  (*registration)["SpaceToDepth"] = ConvertDepthSpaceShuffle;
-  (*registration)["Split"] = ConvertSplit;
-  (*registration)["Square"] = ConvertSquare;
-  (*registration)["SquaredDifference"] = ConvertSquaredDifference;
-  (*registration)["Squeeze"] = ConvertSqueeze;
-  (*registration)["StridedSlice"] = ConvertStridedSlice;
-  (*registration)["TopKV2"] = ConvertTopK;
-  (*registration)["Transpose"] = ConvertTranspose;
-  (*registration)["Unpack"] = ConvertUnpack;
-  (*registration)["_CopyFromHostToGpu"] = ConvertIdentity;
-  for (auto quantization_op_type : *TrtNodeValidator::quantize_ops) {
-    (*registration)[quantization_op_type] = ConvertQuantize;
-  }
-  for (const auto& binary_op_pair : *BinaryOperationMap()) {
-    (*registration)[binary_op_pair.first] = ConvertBinary;
-  }
-  for (const auto& activation_op_pair : *ActivationTypeMap()) {
-    (*registration)[activation_op_pair.first] = ConvertActivation;
-  }
-  for (auto pool_op_type : {"AvgPool", "MaxPool"}) {
-    (*registration)[pool_op_type] = ConvertPool;
-  }
-  for (auto normalization_op_type :
-       {"FusedBatchNorm", "FusedBatchNormV2", "FusedBatchNormV3"}) {
-    (*registration)[normalization_op_type] = ConvertFusedBatchNorm;
-  }
-  for (const auto& unary_op_pair : *UnaryOperationMap()) {
-    (*registration)[unary_op_pair.first] = ConvertUnary;
-  }
-  for (auto reduce_op_type : {"Sum", "Prod", "Max", "Min", "Mean"}) {
-    (*registration)[reduce_op_type] = ConvertReduce;
-  }
-  for (auto arg_minmax_type : {"ArgMin", "ArgMax"}) {
-    (*registration)[arg_minmax_type] = ConvertArgMinMax;
-  }
-  // The following are no-ops during inference and will not be mapped to any TRT
-  // layer.
-  for (auto identity_op_type : {"Identity", "Snapshot", "StopGradient"}) {
-    (*registration)[identity_op_type] = ConvertIdentity;
-  }
-  for (auto batch_matmul_type : {"BatchMatMul", "BatchMatMulV2"}) {
-    (*registration)[batch_matmul_type] = ConvertBatchMatMul;
-  }
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertExpandDims, "ExpandDims");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertFusedConv2DBiasActivation,
+                                  "FusedConv2DBiasActivation");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertGather, "GatherV2");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertLeakyRelu, "LeakyRelu");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertMatMul, "MatMul");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPack, "Pack");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPad, "Pad");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertRelu6, "Relu6");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertReshape, "Reshape");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertConv3D, "Conv3D");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertConv3DBackpropInputV2,
+                                  "Conv3DBackpropInputV2");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertResize, "ResizeBilinear");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertResize, "ResizeNearestNeighbor");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool3D, "AvgPool3D");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool3D, "MaxPool3D");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertShape, "Shape");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertRsqrt, "Rsqrt");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSlice, "Slice");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSoftmax, "Softmax");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertDepthSpaceShuffle, "SpaceToDepth");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSplit, "Split");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSquare, "Square");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSquaredDifference,
+                                  "SquaredDifference");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSqueeze, "Squeeze");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertStridedSlice, "StridedSlice");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTopK, "TopKV2");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTranspose, "Transpose");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertUnpack, "Unpack");
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertQuantize, kQuantizationOpNames);
+template <typename T>
+absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {
+  absl::InlinedVector<std::string, 10> result;
+  absl::c_transform(set, std::back_inserter(result),
+                    [](const auto x) { return x.first; });
+  return result;
 }
-
-void TrtNodeValidator::RegisterOpValidators() {
-  RegisterValidatableOpConverters(&op_validators_);
-}
-
-void Converter::RegisterOpConverters() {
-  RegisterValidatableOpConverters(&op_registry_);
-}
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBinary,
+                                  GetOperationNames(kBinaryOperations));
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertActivation,
+                                  GetOperationNames(*ActivationTypeMap()));
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool, {"MaxPool", "AvgPool"});
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertFusedBatchNorm,
+                                  {"FusedBatchNorm", "FusedBatchNormV2",
+                                   "FusedBatchNormV3"});
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertUnary,
+                                  GetOperationNames(*UnaryOperationMap()));
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertReduce,
+                                  {"Sum", "Prod", "Max", "Min", "Mean"});
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertArgMinMax, {"ArgMin", "ArgMax"});
+// The following are no-ops during inference and will not be mapped to any
+// TRT layer.
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertIdentity,
+                                  {"Identity", "Snapshot", "StopGradient",
+                                   "_CopyFromHostToGpu"});
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBatchMatMul,
+                                  {"BatchMatMul", "BatchMatMulV2"});
 
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, TrtPrecisionMode precision_mode, int max_batch_size,

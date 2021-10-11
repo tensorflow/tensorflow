@@ -162,7 +162,7 @@ class DirectSessionFactory : public SessionFactory {
   DirectSessionFactory() {}
 
   bool AcceptsOptions(const SessionOptions& options) override {
-    return options.target.empty();
+    return options.target.empty() && !options.config.experimental().use_tfrt();
   }
 
   Status NewSession(const SessionOptions& options,

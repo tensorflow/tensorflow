@@ -908,6 +908,7 @@ tf_xla_py_test(
     srcs = ["matrix_diag_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 8,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -1819,14 +1820,18 @@ tf_cuda_cc_test(
     name = "randomized_tests_mlir_seeded",
     size = "medium",
     args = [
-        "--tf_xla_test_use_mlir=true",
         "--tf_xla_random_seed=200839030",
+        "--tf_xla_test_use_mlir=true",
+        "--tf_xla_test_device=GPU:0",
     ],
     shard_count = 20,
     tags = [
+        "config-cuda-only",
+        "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",
         "no_rocm",
+        "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
@@ -1837,14 +1842,21 @@ tf_cuda_cc_test(
     name = "randomized_tests_seeded",
     size = "medium",
     args = [
-        "--tf_xla_test_use_mlir=false",
         "--tf_xla_random_seed=200839030",
+        "--tf_xla_test_use_mlir=false",
+        "--tf_xla_test_device=GPU:0",
     ],
     shard_count = 20,
     tags = [
+        "config-cuda-only",
+        "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+<<<<<<< HEAD
         "notap",
         "no_rocm",
+=======
+        "requires-gpu-nvidia",
+>>>>>>> upstream/master
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )

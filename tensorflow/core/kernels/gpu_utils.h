@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/stream_executor/dnn.h"
 
 namespace stream_executor {
 class RedzoneAllocator;
@@ -257,14 +259,107 @@ void LogFusedConvForwardAutotuneResults(
     double side_value_scale, se::dnn::ActivationMode activation_mode,
     se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results);
 
+// Autotuning map entry for cuDNN-frontend-capable APIs.
+template <typename F>
+class AutotuneEntry {
+ public:
+  AutotuneEntry() : is_algorithm_config_(true) {}
+
+  AutotuneEntry(se::dnn::AlgorithmConfig config)
+      : is_algorithm_config_(true), algorithm_config_(std::move(config)) {}
+
+  AutotuneEntry(std::shared_ptr<const se::dnn::OpRunner<F>> runner,
+                std::shared_ptr<const se::dnn::OpRunner<F>> runner_no_scratch)
+      : is_algorithm_config_(false),
+        op_runners_{std::move(runner), std::move(runner_no_scratch)} {}
+
+  struct OpRunners {
+    OpRunners() = default;
+
+    OpRunners(std::shared_ptr<const se::dnn::OpRunner<F>> primary_,
+              std::shared_ptr<const se::dnn::OpRunner<F>> no_scratch_fallback_)
+        : primary(std::move(primary_)),
+          no_scratch_fallback(std::move(no_scratch_fallback_)) {}
+
+    // Null iff this 'OpRunners' is default-constructed as part of the
+    // fake-variant in AutotuneEntry; users outside gpu_utils.h itself should
+    // never see primary = nullptr.
+    std::shared_ptr<const se::dnn::OpRunner<F>> primary;
+    std::shared_ptr<const se::dnn::OpRunner<F>>
+        no_scratch_fallback;  // Nullable
+
+    bool operator==(const OpRunners& other) const {
+      return primary->ToString() == other.primary->ToString() &&
+             ((!no_scratch_fallback && !other.no_scratch_fallback) ||
+              (no_scratch_fallback && other.no_scratch_fallback &&
+               no_scratch_fallback->ToString() ==
+                   other.no_scratch_fallback->ToString()));
+    }
+  };
+
+  bool is_algorithm_config() const { return is_algorithm_config_; }
+
+  const se::dnn::AlgorithmConfig& GetAlgorithmConfig() const {
+    DCHECK(is_algorithm_config_);
+    return algorithm_config_;
+  }
+
+  const OpRunners& GetOpRunners() const {
+    DCHECK(!is_algorithm_config_);
+    return op_runners_;
+  }
+
+  // AutotuneMap needs to test equality to keep track of the number of times an
+  // algorithm has won autotuning; for this purpose, we can use ToString to
+  // determine whether runners are equal.
+  bool operator==(const AutotuneEntry<F>& other) const {
+    if (is_algorithm_config_) {
+      return other.is_algorithm_config_ &&
+             algorithm_config_ == other.algorithm_config_;
+    }
+
+    return !other.is_algorithm_config_ && op_runners_ == other.op_runners_;
+  }
+
+  bool operator!=(const AutotuneEntry<F>& other) const {
+    return !(*this == other);
+  }
+
+  std::string ToString() const {
+    if (is_algorithm_config_) {
+      return algorithm_config_.ToString();
+    }
+    return absl::StrCat("{", op_runners_.primary->ToString(), ", ",
+                        op_runners_.no_scratch_fallback->ToString(), "}");
+  }
+
+ private:
+  // NVCC is broken, so we can't use absl::variant here.  Just fake it with a
+  // bool and both fields.
+  bool is_algorithm_config_;
+  se::dnn::AlgorithmConfig algorithm_config_;
+  OpRunners op_runners_;
+};
+
+namespace internal {
+StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
+    absl::Span<const AutotuneResult> results);
+}  // namespace internal
+
 // Returns the best algorithms for the config, one is the fastest, the other is
 // other is fastest with 0 scratch space. Unsuccessful autotuning results are
-// allowed and ignored. The "plans" can be null or empty when Cudnn frontend
-// APIs are not used.
-Status BestCudnnConvAlgorithm(
+// allowed and ignored.
+StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
+    absl::Span<const AutotuneResult> results);
+
+// Explicitly-instantiated with ConvSignature and FusedConvSignature.
+//
+// The definition can't be in the header because including .pb.h files in
+// headers is forbidden.
+template <typename Sig>
+StatusOr<AutotuneEntry<Sig>> BestCudnnConvAlgorithm(
     absl::Span<const AutotuneResult> results,
-    std::vector<std::shared_ptr<const se::dnn::ConvolveExecutionPlan>>* plans,
-    se::dnn::AlgorithmConfig* algo);
+    std::vector<std::unique_ptr<const se::dnn::OpRunner<Sig>>> runners);
 
 }  // namespace tensorflow
 

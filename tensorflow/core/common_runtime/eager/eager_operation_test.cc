@@ -47,5 +47,23 @@ TEST(EagerOperationTest, DeviceName) {
   ctx->Unref();
 }
 
+TEST(EagerOperationTest, StepId) {
+  StaticDeviceMgr device_mgr(DeviceFactory::NewDevice(
+      "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
+  auto ctx = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
+      &device_mgr, false, nullptr, nullptr);
+
+  auto op = new EagerOperation(ctx);
+  EXPECT_FALSE(op->eager_func_params().has_value());
+
+  op->SetStepId(255);
+  EXPECT_EQ(op->eager_func_params()->step_id.value(), 255);
+
+  delete op;
+  ctx->Unref();
+}
+
 }  // namespace
 }  // namespace tensorflow

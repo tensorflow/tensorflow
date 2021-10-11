@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
@@ -803,6 +804,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
+    case BuiltinOperator_WHERE:
+      if (op_sig.inputs.at(0).type == kTfLiteBool) return 1;
+      return 2;
     default:
       return 1;
   }

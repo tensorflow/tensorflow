@@ -166,6 +166,19 @@ bool CanUseSubBuffer(const GpuInfo& gpu_info) {
 
 }  // namespace
 
+void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
+  if (gpu_info.IsMali()) {
+    need_flush = true;
+    need_manual_release = gpu_info.mali_info.IsValhall() ? false : true;
+
+    flush_periodically = true;
+    flush_period = 24;
+  }
+  if (gpu_info.IsPowerVR()) {
+    need_flush = true;
+  }
+}
+
 absl::Status InferenceContext::InitFromGraph(
     const CreateInferenceInfo& create_info, const GraphFloat32& graph,
     Environment* env, std::vector<uint8_t>* serialized_model) {
@@ -177,22 +190,10 @@ absl::Status InferenceContext::InitFromGraph(
 
   RETURN_IF_ERROR(
       ReserveGraphTensors(create_info, creation_context.GetGpuInfo(), graph));
-  precision_ = create_info.precision;
-  storage_type_ = create_info.storage_type;
-  if (env->device().GetInfo().IsMali()) {
-    need_flush_ = true;
-    need_manual_release_ =
-        env->device().GetInfo().mali_info.IsValhall() ? false : true;
-
-    flush_periodically_ = true;
-    flush_period_ = 24;
-  }
-  if (env->device().GetInfo().IsPowerVR()) {
-    need_flush_ = true;
-  }
+  execution_hints_.Init(env->device().GetInfo());
   CopyInAndOutIds(graph);
   RETURN_IF_ERROR(ConvertOperations(creation_context.GetGpuInfo(), graph,
-                                    create_info.hints));
+                                    create_info.precision, create_info.hints));
   RETURN_IF_ERROR(Merge());
   RETURN_IF_ERROR(
       AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
@@ -263,6 +264,8 @@ absl::Status InferenceContext::RestoreDeserialized(
   creation_context.queue = env->queue();
   creation_context.cache = env->program_cache();
 
+  execution_hints_.Init(env->device().GetInfo());
+
   RETURN_IF_ERROR(
       AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
   BindMemoryToOperations();
@@ -330,21 +333,22 @@ absl::Status InferenceContext::ReserveGraphTensors(
     }
     RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
                                           data_type, layout, &storage_type));
-    tensor_reserver_.Add(
-        t->id, {shape, TensorDescriptor{data_type, storage_type, layout}});
+    TensorDescriptor tensor_desc{data_type, storage_type, layout};
+    tensor_desc.shape = BHWDC(shape.b, shape.h, shape.w, 1, shape.c);
+    tensor_reserver_.Add(t->id, tensor_desc);
     max_id = std::max(max_id, t->id);
   }
   tensor_reserver_.SetNext(max_id + 1);
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
-                                                 const GraphFloat32& graph,
-                                                 ModelHints hints) {
+absl::Status InferenceContext::ConvertOperations(
+    const GpuInfo& gpu_info, const GraphFloat32& graph,
+    CalculationsPrecision precision, ModelHints hints) {
   std::map<ValueId, TensorDescriptor> tensor_descriptors;
   const auto values = graph.values();
   for (auto value : values) {
-    tensor_descriptors[value->id] = tensor_reserver_.Get(value->id).descriptor;
+    tensor_descriptors[value->id] = tensor_reserver_.Get(value->id);
   }
   std::set<NodeId> consumed_nodes;
   std::vector<Node*> graph_nodes = graph.nodes();
@@ -365,16 +369,14 @@ absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
           absl::any_cast<ConstTensorAttributes>(node.operation.attributes);
       auto outputs = graph.FindOutputs(node.id);
       const_tensors_descs_[outputs[0]->id] =
-          tensor_reserver_.Get(outputs[0]->id).descriptor;
+          tensor_reserver_.Get(outputs[0]->id);
       const_tensors_descs_[outputs[0]->id].UploadData(attr.tensor);
       continue;
     }
-    std::string op_name = node.operation.type + " " + std::to_string(node.id);
     GPUOperationsSubgraph gpu_subgraph;
     if (hints.Check(ModelHints::kAllowSpecialKernels) &&
-        GPUSubgraphFromGraph(gpu_info, precision_, graph, node.id,
-                             tensor_descriptors, &consumed_nodes, &gpu_subgraph,
-                             &op_name)
+        GPUSubgraphFromGraph(gpu_info, precision, graph, node.id,
+                             tensor_descriptors, &consumed_nodes, &gpu_subgraph)
             .ok()) {
       // Mapping of subgraph (set of nodes) to GPU operations. Should happen
       // before straigtforward mapping.
@@ -403,14 +405,12 @@ absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
       }
       consumed_nodes.insert(node.id);
       OperationDef op_def;
-      op_def.precision = precision_;
+      op_def.precision = precision;
       for (int j = 0; j < inputs.size(); ++j) {
-        op_def.src_tensors.push_back(
-            tensor_reserver_.Get(inputs[j]->id).descriptor);
+        op_def.src_tensors.push_back(tensor_reserver_.Get(inputs[j]->id));
       }
       for (int j = 0; j < outputs.size(); ++j) {
-        op_def.dst_tensors.push_back(
-            tensor_reserver_.Get(outputs[j]->id).descriptor);
+        op_def.dst_tensors.push_back(tensor_reserver_.Get(outputs[j]->id));
       }
       RETURN_IF_ERROR(GPUOperationFromNode(gpu_info, op_def, hints, inputs,
                                            outputs, node, &gpu_subgraph));
@@ -418,7 +418,9 @@ absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
     absl::flat_hash_map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
       const auto& t = gpu_subgraph.new_tensors[j];
-      auto global_id = tensor_reserver_.Add({t.first, t.second});
+      TensorDescriptor td = t.second;
+      td.shape = BHWDC(t.first.b, t.first.h, t.first.w, 1, t.first.c);
+      auto global_id = tensor_reserver_.Add(td);
       mapping_to_global_ids[j] = global_id;
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
@@ -443,7 +445,7 @@ absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
           cl_node.outputs[j] = mapping_to_global_ids[-(id + 1)];
         }
       }
-      cl_node.name = op_name;
+      cl_node.name = gpu_op.name;
       nodes_.push_back(std::move(cl_node));
     }
   }
@@ -525,8 +527,7 @@ InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
     return TensorMemoryType::kConst;
   } else if (variable_ids_and_refs_.find(id) != variable_ids_and_refs_.end()) {
     return TensorMemoryType::kVariable;
-  } else if (IsBufferBased(gpu_info,
-                           tensor_reserver_.Get(id).descriptor.storage_type)) {
+  } else if (IsBufferBased(gpu_info, tensor_reserver_.Get(id).storage_type)) {
     return TensorMemoryType::kBuffer;
   } else {
     return TensorMemoryType::kStrongShape;
@@ -560,7 +561,7 @@ absl::Status InferenceContext::AllocateMemoryForVariableTensors(
         ref_value_to_tensor_index.end()) {
       const auto& t = tensor_reserver_.Get(value_and_ref_value.first);
       const auto& shape = t.shape;
-      const auto& descriptor = t.descriptor;
+      const auto& descriptor = t;
 
       RETURN_IF_ERROR(
           CreateTensor(*context, shape, descriptor,
@@ -583,7 +584,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
   for (auto& usage : buffer_usages) {
     const auto& t = tensor_reserver_.Get(usage.first);
     const auto& shape = t.shape;
-    const auto& descriptor = t.descriptor;
+    const auto& descriptor = t;
     const size_t element_size =
         descriptor.data_type == DataType::FLOAT32 ? 4 : 2;
     size_t buffer_size;
@@ -664,7 +665,8 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
         continue;
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[t.first];
       if (created_tensors[tensor_index]) continue;
-      const auto& shape = tensor_reserver_.Get(t.first).shape;
+      const auto& shape_5d = tensor_reserver_.Get(t.first).shape;
+      const auto shape = BHWC(shape_5d.b, shape_5d.h, shape_5d.w, shape_5d.c);
       const int buffer_index = use_offset_assignment
                                    ? tensor_index
                                    : buffer_assignment.object_ids[tensor_index];
@@ -698,16 +700,27 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
       },
       &usages);
 
-  std::vector<TensorUsageRecord<DummyTensor>> usage_records;
+  struct TensorDescComparator {
+    TensorDescriptor tensor_desc;
+
+    bool operator==(const TensorDescComparator& t) const {
+      return tensor_desc.data_type == t.tensor_desc.data_type &&
+             tensor_desc.storage_type == t.tensor_desc.storage_type &&
+             tensor_desc.layout == t.tensor_desc.layout &&
+             tensor_desc.shape == t.tensor_desc.shape;
+    }
+  };
+
+  std::vector<TensorUsageRecord<TensorDescComparator>> usage_records;
   std::map<ValueId, ValueId> remap_from_graph_ids;
   for (auto& usage : usages) {
     remap_from_graph_ids[usage.first] = usage_records.size();
-    usage_records.push_back({tensor_reserver_.Get(usage.first),
+    usage_records.push_back({{tensor_reserver_.Get(usage.first)},
                              static_cast<TaskId>(usage.second.x),
                              static_cast<TaskId>(usage.second.y)});
   }
 
-  ObjectsAssignment<DummyTensor> assignment;
+  ObjectsAssignment<TensorDescComparator> assignment;
   RETURN_IF_ERROR(AssignObjectsToTensors(
       usage_records, MemoryStrategy::EQUALITY, &assignment));
 
@@ -771,21 +784,23 @@ absl::Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
   if (recordable_queue_->IsSupported()) {
     return recordable_queue_->Execute(queue);
   }
-  if (need_manual_release_) {
-    if (prev_enqueue_start_point_.is_valid()) {
-      prev_enqueue_start_point_.Wait();
+  if (execution_hints_.need_manual_release) {
+    if (execution_hints_.prev_enqueue_start_point.is_valid()) {
+      execution_hints_.prev_enqueue_start_point.Wait();
     }
-    RETURN_IF_ERROR(queue->EnqueueEvent(&prev_enqueue_start_point_));
+    RETURN_IF_ERROR(
+        queue->EnqueueEvent(&execution_hints_.prev_enqueue_start_point));
   }
   int counter = 0;
   for (auto& node : nodes_) {
     RETURN_IF_ERROR(node.cl_operation.AddToQueue(queue));
     counter++;
-    if (flush_periodically_ && counter % flush_period_ == 0) {
+    if (execution_hints_.flush_periodically &&
+        counter % execution_hints_.flush_period == 0) {
       clFlush(queue->queue());
     }
   }
-  if (need_flush_) {
+  if (execution_hints_.need_flush) {
     clFlush(queue->queue());
   }
   return absl::OkStatus();

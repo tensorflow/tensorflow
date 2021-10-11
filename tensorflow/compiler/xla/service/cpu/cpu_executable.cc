@@ -187,11 +187,12 @@ Status CpuExecutable::ExecuteComputeFunction(
                              profile_counters_size);
   VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
 
+  XlaCustomCallStatus status;
   // For the entry computation (like all global computations), all inputs and
   // outputs are in the buffer table, and both the result pointer and args array
   // pointers are unused (so we set them to 'nullptr').
   compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
-                    profile_counters);
+                    &status, profile_counters);
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -205,6 +206,12 @@ Status CpuExecutable::ExecuteComputeFunction(
           hlo_execution_profile->total_cycles_executed(
               *module().entry_computation()));
     }
+  }
+
+  absl::optional<absl::string_view> error_message =
+      CustomCallStatusGetMessage(&status);
+  if (error_message) {
+    return InternalError("CustomCall failed: %s", *error_message);
   }
 
   return Status::OK();

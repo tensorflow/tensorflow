@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -114,11 +115,15 @@ class ParallelDevice {
   // live until `Join` finishes. If `is_async=true` it must live until `Join` is
   // followed by `TFE_ContextAsyncWait` to clear pending operations. It will be
   // used to cancel all other operations if any fails.
+  //
+  // Set step_id to configure the step id used for rendezvous creation. step id
+  // of value -1 is reserved for global rendezvous and should not be set here.
   void StartExecute(TFE_Context* context,
                     const std::vector<ParallelTensor*>& inputs,
                     const char* operation_name, const TFE_OpAttrs* attributes,
                     int expected_max_outputs,
-                    CancellationManager& cancellation_manager) const;
+                    CancellationManager& cancellation_manager,
+                    absl::optional<int64_t> step_id = absl::nullopt) const;
 
   // Blocks until the previous `StartExecute` has run `TFE_Execute` on each
   // device. If is_async=false (constructor argument) this means the ops have

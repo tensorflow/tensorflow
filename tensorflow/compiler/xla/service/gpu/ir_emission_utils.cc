@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -83,22 +84,17 @@ std::array<int64_t, 3> PartitionShapeByMiddleDimensions(
 }
 
 Shape GetShapeFromTensorType(mlir::Value value) {
-  constexpr char kDefaultLayoutAttrName[] = "minor_to_major";
+  constexpr char kDefaultLayoutAttrName[] = "xla_shape";
 
   mlir::Operation* op = value.getDefiningOp();
   CHECK(op);
   CHECK(value.getType().isa<mlir::TensorType>());
-  Shape shape = TypeToShape(value.getType());
-  if (auto attr = op->getAttrOfType<mlir::DenseIntElementsAttr>(
-          kDefaultLayoutAttrName)) {
-    std::vector<int64_t> minor_to_major;
-    absl::c_transform(
-        attr, std::back_inserter(minor_to_major),
-        std::function<int64_t(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
-    *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
+  Shape shape;
+  if (auto attr = op->getAttrOfType<mlir::StringAttr>(kDefaultLayoutAttrName)) {
+    shape = *xla::ParseShape(
+        absl::string_view(attr.getValue().data(), attr.getValue().size()));
   } else {
-    *shape.mutable_layout() = LayoutUtil::MakeDescendingLayout(
-        value.getType().cast<mlir::ShapedType>().getShape().size());
+    shape = TypeToShape(value.getType());
   }
   return shape;
 }

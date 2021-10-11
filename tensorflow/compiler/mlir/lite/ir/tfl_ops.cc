@@ -3302,6 +3302,37 @@ void IfOp::getSuccessorRegions(Optional<unsigned> index,
 }
 
 //===----------------------------------------------------------------------===//
+// PolyCallOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+// Canonicalize converted TF ops into PolymorphicCall op so different
+// representations are preserved.
+struct PolyCallResultOperandsMatchAndImplicitCapture
+    : public OpRewritePattern<PolyCallOp> {
+  using OpRewritePattern<PolyCallOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PolyCallOp while_op,
+                                PatternRewriter &rewriter) const override {
+    // Finish this.
+    return success();
+  }
+};
+
+}  // namespace
+
+void PolyCallOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<PolyCallResultOperandsMatchAndImplicitCapture>(context);
+}
+
+void PolyCallOp::getSuccessorRegions(
+    Optional<unsigned> index, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor> &regions) {
+  // Defaults to first region for TFLite execution.
+}
+
+//===----------------------------------------------------------------------===//
 // WhileOp
 //===----------------------------------------------------------------------===//
 

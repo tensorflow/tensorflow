@@ -54,6 +54,7 @@ using mhlo::TokenType;
 
 LmhloGpuDialect::LmhloGpuDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context, TypeID::get<LmhloGpuDialect>()) {
+  context->loadDialect<mhlo::MhloDialect>();
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.cc.inc"

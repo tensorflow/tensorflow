@@ -54,6 +54,12 @@ def nnapi_sl_headers_visibility_allowlist():
     This is a no-op outside of Google."""
     return []
 
+def nnapi_native_srcs_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/delegates/nnapi/java/src/main/native:native_srcs
+
+    This is a no-op outside of Google."""
+    return []
+
 def verifier_internal_visibility_allowlist():
     """Returns a list of packages that can depend on tensorflow/lite/tools:verifier_internal.
 

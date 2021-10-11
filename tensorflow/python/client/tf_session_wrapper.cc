@@ -13,14 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Python.h"
-#include "absl/types/optional.h"
-#include "third_party/eigen3/Eigen/Core"
+// Must be at top (before any system includes and Python.h).
+// clang-format off
 #include "pybind11/chrono.h"
 #include "pybind11/complex.h"
 #include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
+// clang-format on
+
+#include "Python.h"
+#include "absl/types/optional.h"
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -1109,9 +1113,11 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
               tensorflow::make_safe(TF_NewStatus());
           unsigned char value;
           // Release GIL for threading.
-          py::gil_scoped_release release;
-          TF_OperationGetAttrBool(oper, attr_name, &value, status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
+          {
+            py::gil_scoped_release release;
+            TF_OperationGetAttrBool(oper, attr_name, &value, status.get());
+            tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
+          }
           return tensorflow::Pyo(PyBool_FromLong(value));
         });
 

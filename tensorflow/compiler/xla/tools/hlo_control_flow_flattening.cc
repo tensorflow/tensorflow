@@ -94,22 +94,35 @@ void PrintSubexpression(HloInstruction* inst, int depth) {
   }
   VLOG(2) << inst->ToString();
 }
+
+bool IsConstantScalarInt(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kConstant &&
+         ShapeUtil::IsEffectiveScalar(inst->shape()) &&
+         inst->shape().IsInteger();
+}
+
 }  // namespace
 
 int64_t GetLoopBound(const HloInstruction& while_hlo,
                      const int64_t default_loop_count) {
   HloInstruction* condition = while_hlo.while_condition()->root_instruction();
-  if (condition->opcode() == HloOpcode::kCompare &&
-      condition->comparison_direction() != Comparison::Direction::kEq) {
-    for (HloInstruction* operand : condition->operands()) {
-      if (operand->opcode() == HloOpcode::kConstant &&
-          operand->shape().rank() == 0 && operand->shape().IsInteger()) {
-        int64_t value = *operand->literal().GetFirstInteger();
-        if (value > 0) {
-          // Cap to 1000 to avoid long execution time.
-          return value < 1000 ? value : 1000;
-        }
-      }
+  if (condition->opcode() == HloOpcode::kCompare) {
+    int64_t value = 0;
+    Comparison::Direction cmp = condition->comparison_direction();
+    if ((cmp == Comparison::Direction::kLt ||
+         cmp == Comparison::Direction::kLe ||
+         cmp == Comparison::Direction::kNe) &&
+        IsConstantScalarInt(condition->operand(1))) {
+      value = *condition->operand(1)->literal().GetFirstInteger();
+    } else if ((cmp == Comparison::Direction::kGt ||
+                cmp == Comparison::Direction::kGe ||
+                cmp == Comparison::Direction::kNe) &&
+               IsConstantScalarInt(condition->operand(0))) {
+      value = *condition->operand(0)->literal().GetFirstInteger();
+    }
+    if (value > 0) {
+      // Cap to 1000 to avoid long execution time.
+      return value < 1000 ? value : 1000;
     }
   }
   return default_loop_count;
@@ -143,7 +156,7 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
     TF_RETURN_IF_ERROR(change_op_shape(condition->parameter_instruction(0)));
 
     if (VLOG_IS_ON(2)) {
-      VLOG(2) << "Loop condition:";
+      VLOG(2) << "Loop condition in " << while_hlo->parent()->name();
       PrintSubexpression(condition->root_instruction(), /*depth=*/3);
     }
     const int64_t loop_bound = GetLoopBound(*while_hlo, while_execution_count_);
@@ -362,7 +375,7 @@ StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
   if (changed && module->has_schedule()) {
     TF_RETURN_IF_ERROR(module->schedule().Update());
   }
-  XLA_VLOG_LINES(1, module->ToString());
+  XLA_VLOG_LINES(3, module->ToString());
   return changed;
 }
 

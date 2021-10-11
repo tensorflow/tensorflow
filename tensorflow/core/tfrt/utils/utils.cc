@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/utils.h"
 
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/tfrt/eager/virtual_device.h"
 #include "tensorflow/core/tpu/virtual_device.h"
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
+#include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
@@ -99,6 +101,19 @@ void AddDummyTfrtDevices(const std::vector<std::string>& device_names,
     host_ctx->GetDeviceManager()->MaybeAddDevice(
         TakeRef(new tfrt::VirtualDevice(name)));
   }
+}
+
+StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
+    const tensorflow::tfrt_stub::Runtime& runtime, const tfrt::BefBuffer& bef) {
+  auto* core_runtime = runtime.core_runtime();
+  DCHECK(core_runtime);
+  auto* host_context = core_runtime->GetHostContext();
+  DCHECK(host_context);
+  auto bef_file =
+      BEFFile::Open(bef, host_context->GetKernelRegistry(),
+                    host_context->diag_handler(), host_context->allocator());
+  TF_RET_CHECK(bef_file) << "failed to open BEF";
+  return bef_file;
 }
 
 }  // namespace tfrt

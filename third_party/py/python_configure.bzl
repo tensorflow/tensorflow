@@ -124,8 +124,8 @@ def _get_python_lib(repository_ctx, python_bin):
     for line in print_lib:
         cmd += "f.write(\"%s\" + linesep);" % line
     cmd += "f.close();"
-    cmd += "from os import system;"
-    cmd += "system(\"%s script.py\");" % python_bin
+    cmd += "from subprocess import call;"
+    cmd += "call([\"%s\", \"script.py\"]);" % python_bin
 
     result = execute(repository_ctx, [python_bin, "-c", cmd])
     return result.stdout.strip()

@@ -313,9 +313,9 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
         return func_op.getArgAttr(arg.getArgNumber(), kResourceArgUniqueIdAttr);
       });
   if (has_arg_unique_id_attrs) {
-    // Resource arguments have ID's attached (via `kResourceArgUniqueIdAttr`)
-    // that represent different resources. Map those ID's to the internal
-    // instance ID's used by this pass.
+    // Resource arguments have IDs attached (via `kResourceArgUniqueIdAttr`)
+    // that represent different resources. Map those IDs to the internal
+    // instance IDs used by this pass.
     llvm::SmallDenseMap<int64_t, int64_t> attr_id_to_internal_id;
     for (auto arg : filter_resources(func_op.getArguments())) {
       auto id_attr = func_op.getArgAttrOfType<IntegerAttr>(
@@ -332,7 +332,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
   } else {
     // No `kResourceArgUniqueIdAttr` attribute is present, so all resource
     // arguments must correspond to different resources and we can assign unique
-    // ID's.
+    // IDs.
     assign_unique_id_to_all(func_op.getArguments());
   }
 
@@ -435,7 +435,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
   });
 }
 
-// Propagates the resource ID's from an input operand to a result. Returns true
+// Propagates the resource IDs from an input operand to a result. Returns true
 // if the mapping changed.
 bool ResourceAliasAnalysisInfo::PropagateInputToOutput(const Value& operand,
                                                        const OpResult& result) {
@@ -473,7 +473,7 @@ bool ResourceAliasAnalysisInfo::PropagateInputToOutput(const Value& operand,
 //
 void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
     Operation* while_op, const BacktrackAnalysisInfo& body_info) {
-  // Seed the resource ID's for the results using either the resource ID of the
+  // Seed the resource IDs for the results using either the resource ID of the
   // passthrough arg, or unknown. We need to perform further analysis if we
   // find a passthrough arg which is not the same as corresponding the result #.
   llvm::SmallVector<Optional<int>, 4> passthrough_args(
@@ -497,13 +497,13 @@ void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
   // We found a result that is not unknown and whose passthrough operand index
   // is not the same as the result index, which means there is "crosstalk"
   // between 2 or more operands. In that case, we do an iterative propagation
-  // of resource ID's till the results converge.
+  // of resource IDs till the results converge.
   bool change = true;
   while (change) {
     change = false;
     for (auto result : filter_resources(while_op->getResults())) {
       if (IsUnknownResource(result)) continue;
-      // If this result has a valid passthrough arg, propagate resource ID's
+      // If this result has a valid passthrough arg, propagate resource IDs
       // from the result of the passthrough arg
       int result_index = result.getResultNumber();
       int passthru_index = passthrough_args[result_index].getValue();

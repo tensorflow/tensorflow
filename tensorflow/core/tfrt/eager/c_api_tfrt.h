@@ -566,6 +566,9 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
     return stack_trace_;
   }
 
+  // Currently not supported.
+  void SetStepId(int64_t step_id) override {}
+
   // For LLVM style RTTI.
   static bool classof(const AbstractOperation* ptr) {
     return ptr->getKind() == kTfrt;

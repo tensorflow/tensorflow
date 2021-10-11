@@ -742,17 +742,17 @@ def OptimizePow2ToRsqrt : Pat<
 
 def CanOptimizeIdentityGatherNdOrScatterNdOp : Constraint<CPred<
   "TFL::CanOptimizeIdentityGatherNdOrScatterNdOp("
-  "$0, $1.cast<DenseIntElementsAttr>())">>;
+  "$0, $1.cast<DenseIntElementsAttr>(), $2.getType())">>;
 
 def OptimizeIdentityGatherNdOp : Pat<
-  (TFL_GatherNdOp $params, (ConstantOp I32ElementsAttr: $indices)),
+  (TFL_GatherNdOp:$output $params, (ConstantOp I32ElementsAttr: $indices)),
   (replaceWithValue $params),
-  [(CanOptimizeIdentityGatherNdOrScatterNdOp $params, $indices)]>;
+  [(CanOptimizeIdentityGatherNdOrScatterNdOp $params, $indices, $output)]>;
 
 def OptimizeIdentityScatterNdOp : Pat<
-  (TFL_ScatterNdOp (ConstantOp I32ElementsAttr: $indices), $params, $ignored),
+  (TFL_ScatterNdOp:$output (ConstantOp I32ElementsAttr: $indices), $params, $ignored),
   (replaceWithValue $params),
-  [(CanOptimizeIdentityGatherNdOrScatterNdOp $params, $indices)]>;
+  [(CanOptimizeIdentityGatherNdOrScatterNdOp $params, $indices, $output)]>;
 
 def ShapeMatchesReduceWithKeepAxes : Constraint<CPred<
   "ShapeMatchesReduceWithKeepAxes($0, $1, $2)">>;
@@ -849,6 +849,37 @@ foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
     (replaceWithValue $input2),
     [(HaveSameType $input2, $result),
      (AllElementsAreBool<"false"> $constant)]>;
+}
+
+def EliminateLogicalAndTrue : Pat<
+  (TFL_LogicalAndOp:$result $lhs, (ConstantOp:$rhs $constant)),
+  (replaceWithValue $lhs),
+  [(AllElementsAreBool<"true"> $constant), (HaveSameType $lhs, $result)]>;
+
+def EliminateLogicalAndFalse : Pat<
+  (TFL_LogicalAndOp:$result $lhs, (ConstantOp:$rhs $constant)),
+  (replaceWithValue $rhs),
+  [(AllElementsAreBool<"false"> $constant), (HaveSameType $rhs, $result)]>;
+
+def EliminateLogicalOrTrue : Pat<
+  (TFL_LogicalOrOp:$result $lhs, (ConstantOp:$rhs $constant)),
+  (replaceWithValue $rhs),
+  [(AllElementsAreBool<"true"> $constant), (HaveSameType $rhs, $result)]>;
+
+def EliminateLogicalOrFalse : Pat<
+  (TFL_LogicalOrOp:$result $lhs, (ConstantOp:$rhs $constant)),
+  (replaceWithValue $lhs),
+  [(AllElementsAreBool<"false"> $constant), (HaveSameType $lhs, $result)]>;
+
+// Remove reductions that do nothing: input and output have the same size.
+foreach ReduceOp = [TFL_ReduceAnyOp, TFL_ReduceAllOp,
+                    TFL_ReduceMinOp, TFL_ReduceMaxOp,
+                    TFL_MeanOp, TFL_SumOp, TFL_ReduceProdOp] in {
+  def EliminateNoOpReductionOp#ReduceOp : Pat<
+    (ReduceOp:$output $input, $index, $keep_dims),
+    (replaceWithValue $input),
+    [(IsTailOfShape $input, $output),
+     (IsTailOfShape $output, $input)]>;
 }
 
 // Remove (log-)softmax before arg-minmax as (log-)softmax is monotonic.
@@ -971,3 +1002,16 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
   [(I32ElementsVal $indices),     // lookup is not implemented for i64
    (HasRank<1> $indices),  // lookup isn't implemented for any other rank
    (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later
+
+def AreInputDimensionsOneInAxes : Constraint<CPred<
+  "AreInputDimensionsOneInAxes($0, $1)">>;
+
+// Eliminate cumulative summations if the input's dimension in axis is 1.
+def EliminateCumSumInclusive : Pat<
+  (TFL_CumsumOp
+     $input,
+     (ConstantOp I32ElementsAttr:$axis),
+     ConstBoolAttrFalse,
+     $reverse),
+  (replaceWithValue $input),
+  [(AreInputDimensionsOneInAxes $input, $axis)]>;

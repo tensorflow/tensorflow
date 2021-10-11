@@ -14,8 +14,7 @@
 # ==============================================================================
 """Tests for TPUStrategy."""
 
-import os
-
+from absl import logging
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
@@ -41,7 +40,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
-from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
@@ -55,9 +53,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import server_lib
-from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 
 
@@ -1279,108 +1275,6 @@ class TPUStrategyDistributionTest(
   def test_trainable_variables(self):
     strategy = get_tpu_strategy()
     self._test_trainable_variable(strategy)
-
-  def test_model_parallelism(self):
-    resolver = get_tpu_cluster_resolver()
-    remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
-    device_assignment = device_assignment_lib.DeviceAssignment(
-        topology, core_assignment=[[[0, 0, 0, 0], [0, 0, 0, 1]]])
-    strategy = tpu_lib.TPUStrategyV2(
-        resolver,
-        experimental_device_assignment=device_assignment)
-
-    with strategy.scope():
-      v = variables.Variable(2.)
-      with strategy.extended.experimental_logical_device(1):
-        w = variables.Variable(3.)
-
-    self.assertLen(strategy.experimental_local_results(v), 1)
-    self.assertLen(strategy.experimental_local_results(w), 1)
-    self.assertEqual("/job:localhost/replica:0/task:0/device:TPU:0",
-                     strategy.experimental_local_results(v)[0].device)
-    self.assertEqual("/job:localhost/replica:0/task:0/device:TPU:1",
-                     strategy.experimental_local_results(w)[0].device)
-
-    logical_devices = []
-    @def_function.function
-    def f(x):
-      replica_ctx = distribution_strategy_context.get_replica_context()
-      with replica_ctx.experimental_logical_device(0):
-        y = v * x
-      with replica_ctx.experimental_logical_device(1):
-        z = w * y
-      logical_devices.append((y.device, z.device))
-      return z
-
-    result = strategy.run(f, args=(5.,))
-
-    self.assertEqual(
-        [("/device:TPU_REPLICATED_CORE:0", "/device:TPU_REPLICATED_CORE:1")],
-        logical_devices)
-
-    with self.cached_session():
-      self.evaluate(variables.global_variables_initializer())
-      self.assertEqual(30., self.evaluate(result))
-
-  def test_model_parallelism_checkpointing(self):
-
-    class PartitionedModel(module.Module):
-
-      def __init__(self, v, w):
-        super(PartitionedModel, self).__init__()
-
-        assert distribution_strategy_context.has_strategy()
-        strategy = distribution_strategy_context.get_strategy()
-
-        with strategy.extended.experimental_logical_device(0):
-          self.v = variables.Variable(v)
-        with strategy.extended.experimental_logical_device(1):
-          self.w = variables.Variable(w)
-
-      def __call__(self, x):
-        replica_ctx = distribution_strategy_context.get_replica_context()
-        with replica_ctx.experimental_logical_device(0):
-          y = self.v * x
-        with replica_ctx.experimental_logical_device(1):
-          z = self.w * y
-        return z
-
-      def change_weights_op(self, v_new, w_new):
-        return control_flow_ops.group([self.v.assign(v_new),
-                                       self.w.assign(w_new)])
-
-    resolver = get_tpu_cluster_resolver()
-    remote.connect_to_cluster(resolver)
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
-    device_assignment = device_assignment_lib.DeviceAssignment(
-        topology, core_assignment=[[[0, 0, 0, 0], [0, 0, 0, 1]]])
-    strategy = tpu_lib.TPUStrategyV2(
-        resolver,
-        experimental_device_assignment=device_assignment)
-
-    with strategy.scope():
-      model = PartitionedModel(2., 3.)
-
-    checkpoint_dir = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
-    checkpoint = util.Checkpoint(model=model)
-
-    with self.cached_session() as sess:
-      self.evaluate(variables.global_variables_initializer())
-      checkpoint.save(file_prefix=checkpoint_prefix)
-
-      self.evaluate(model.change_weights_op(1., 4.))
-      result = strategy.run(def_function.function(model), args=(5.0,))
-      self.assertEqual(20., self.evaluate(result))
-
-      status = checkpoint.restore(
-          checkpoint_management.latest_checkpoint(checkpoint_dir))
-      status.run_restore_ops(sess)  # must run restore op in non-eager mode.
-      status.assert_consumed()
-      status.assert_existing_objects_matched()
-      result = strategy.run(def_function.function(model), args=(5.0,))
-      self.assertEqual(30., self.evaluate(result))
 
 
 class DeviceAssignmentTest(test.TestCase):

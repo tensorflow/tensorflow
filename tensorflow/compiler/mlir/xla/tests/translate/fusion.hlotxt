@@ -8,7 +8,7 @@ HloModule main.17
 // CHECK:   }) {fusion_kind = "kLoop"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
 // CHECK:   %1 = "mhlo.fusion"(%[[ARG0:.*]], %[[ARG1:.*]]) ( {
 // CHECK:   ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
-// CHECK:   }) {fusion_kind = "kLoop"} : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
+// CHECK:   }) {fusion_kind = "kLoop", xla_shape = {{.*}}} : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
 // CHECK: }
 
 %region_0.3 (Arg_0.4: f32[], Arg_1.5: f32[]) -> f32[] {

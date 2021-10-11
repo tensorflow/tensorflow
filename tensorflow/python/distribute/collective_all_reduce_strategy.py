@@ -42,8 +42,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.platform import remote_utils
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -463,11 +463,6 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           scoped_allocator_enabled_ops=("CollectiveReduce",),
           device_filters=("/job:%s/task:%d" % (task_type, task_id),))
       self._collective_ops_configured = True
-      if context.context().coordination_service is None:
-        coordination_service = remote_utils.coordination_service_type(
-            cluster_resolver.rpc_layer)
-        if coordination_service:
-          context.context().configure_coordination_service(coordination_service)
 
     # Starting a std server in eager mode and in independent worker mode.
     if (context.executing_eagerly() and
@@ -510,6 +505,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # some cases.
     local_devices, local_device_type = self._initialize_local_devices(
         cluster_resolver, self._worker_device)
+    if local_device_type == "TPU":
+      tpu_strategy_util.initialize_tpu_system()
 
     self._collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=1 + self._collective_key_base)

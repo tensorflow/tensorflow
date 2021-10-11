@@ -54,4 +54,21 @@ def DotDimensionNumbers : AttrDef<HLO_Dialect, "DotDimensionNumbers"> {
   );
 }
 
+def ConvDimensionNumbers : AttrDef<HLO_Dialect, "ConvDimensionNumbers"> {
+  let cppNamespace = "::mlir::mhlo";
+  let mnemonic = "conv";
+  let summary = "Structure of dimension information for conv op";
+  let parameters = (ins
+    "int64_t":$inputBatchDimension,
+    "int64_t":$inputFeatureDimension,
+    HLODim:$inputSpatialDimensions,
+    "int64_t":$kernelInputFeatureDimension,
+    "int64_t":$kernelOutputFeatureDimension,
+    HLODim:$kernelSpatialDimensions,
+    "int64_t":$outputBatchDimension,
+    "int64_t":$outputFeatureDimension,
+    HLODim:$outputSpatialDimensions
+  );
+}
+
 #endif // HLO_OPS_BASE_ATTRS

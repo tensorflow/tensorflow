@@ -630,6 +630,7 @@ py_library(
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/types",
         "//third_party/py/numpy",
     ],
 )

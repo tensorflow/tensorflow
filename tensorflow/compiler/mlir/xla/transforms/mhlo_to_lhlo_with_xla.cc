@@ -280,7 +280,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
     TF_RET_CHECK(shape.IsArray());
     if (shape.layout() !=
         xla::LayoutUtil::MakeDescendingLayout(shape.dimensions().size())) {
-      load->setAttr("minor_to_major", GetLayoutAttribute(shape.layout(), &b));
+      load->setAttr("xla_shape",
+                    b.getStringAttr(shape.ToString(/*print_layout=*/true)));
     }
     loads.push_back(load);
   }
@@ -502,7 +503,8 @@ StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
     llvm::SmallVector<int64_t, 4> minor_to_major(
         shape.layout().minor_to_major().begin(),
         shape.layout().minor_to_major().end());
-    load->setAttr("minor_to_major", GetLayoutAttribute(shape.layout(), b));
+    load->setAttr("xla_shape",
+                  b->getStringAttr(shape.ToString(/*print_layout=*/true)));
   }
   return load.getResult();
 }
@@ -1031,7 +1033,7 @@ StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
     builder_.clearInsertionPoint();
     auto global_var = builder_.create<memref::GlobalOp>(
         loc, constant_name, builder_.getStringAttr("private"), memref_type,
-        initial_value, true);
+        initial_value, true, /*alignment=*/IntegerAttr());
     SymbolTable(module_).insert(global_var);
     global_var.getOperation()->moveBefore(&module_.front());
 
@@ -1135,8 +1137,7 @@ StatusOr<lmhlo_gpu::AllReduceStartOp> LhloDialectEmitter::EmitAllReduceStartOp(
   for (const HloInstruction* operand : instr->operands()) {
     TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
   }
-  // Only include result index {1}. {0} always aliases the inputs.
-  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{1}));
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{}));
 
   Location loc = getLocation(instr);
   mlir::Type token_type = mlir::mhlo::TokenType::get(builder_.getContext());

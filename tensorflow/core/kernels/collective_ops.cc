@@ -494,15 +494,17 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
                               const Tensor& group_size, const Tensor& group_key,
                               const Tensor& instance_key) {
     if (group_size.dims() > 0) {
-      return errors::Internal("Unexpected dimensions on input group_size, got ",
-                              group_size.shape().DebugString());
+      return errors::InvalidArgument(
+          "Unexpected dimensions on input group_size, got ",
+          group_size.shape().DebugString());
     }
     if (group_key.dims() > 0) {
-      return errors::Internal("Unexpected dimensions on input group_key, got ",
-                              group_key.shape().DebugString());
+      return errors::InvalidArgument(
+          "Unexpected dimensions on input group_key, got ",
+          group_key.shape().DebugString());
     }
     if (instance_key.dims() > 0) {
-      return errors::Internal(
+      return errors::InvalidArgument(
           "Unexpected dimensions on input instance_key, got ",
           instance_key.shape().DebugString());
     }
@@ -625,7 +627,7 @@ class CollectiveReduceV2OpKernel : public CollectiveOpV2Kernel {
                                               /*group_size*/ c->input(1),
                                               /*group_key*/ c->input(2),
                                               /*instance_key*/ c->input(3)),
-                         done);
+                         done_with_cleanup);
     col_params->instance.shape = c->input(0).shape();
     col_params->merge_op = merge_op_.get();
     col_params->final_op = final_op_.get();
@@ -855,14 +857,15 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
 
   Status CheckInputs(Tensor group_size_t, Tensor group_key_t) {
     if (group_size_t.dims() > 0) {
-      return errors::Internal(
+      return errors::InvalidArgument(
           "Unexpected dimensions on input group_size. "
           "It shoulbe a scalar, got tensor with shape ",
           group_size_t.shape().DebugString());
     }
     if (group_key_t.dims() > 0) {
-      return errors::Internal("Unexpected dimensions on input group_key, got ",
-                              group_key_t.shape().DebugString());
+      return errors::InvalidArgument(
+          "Unexpected dimensions on input group_key, got ",
+          group_key_t.shape().DebugString());
     }
 
     auto group_size = group_size_t.unaligned_flat<int32>()(0);
@@ -904,6 +907,7 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
     group_params->device_type = device_type_;
     group_params->group_size = resource->group_size();
     group_params->group_key = resource->group_key();
+    group_params->user_specified_rank = resource->rank();
 
     auto* col_exec = c->collective_executor();
 
@@ -982,6 +986,7 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
     col_params->group.device_type = device_type_;
     col_params->group.group_size = group_size;
     col_params->group.group_key = resource->group_key();
+    col_params->group.user_specified_rank = resource->rank();
     col_params->instance.type = collective_type;
     col_params->instance.instance_key = instance_key;
     col_params->instance.data_type = data_type_;
@@ -1084,7 +1089,7 @@ class CollectiveReduceV3OpKernel : public CollectiveOpV3Kernel {
     };
     core::RefCountPtr<CollectiveGroupResource> resource;
     OP_REQUIRES_OK_ASYNC(c, LookupResource(c, HandleFromInput(c, 1), &resource),
-                         done);
+                         done_with_cleanup);
 
     Tensor group_assignment = c->input(2);
 
@@ -1092,7 +1097,7 @@ class CollectiveReduceV3OpKernel : public CollectiveOpV3Kernel {
         c,
         FillCollectiveParams(col_params, group_assignment, REDUCTION_COLLECTIVE,
                              resource.get()),
-        done);
+        done_with_cleanup);
     col_params->instance.shape = c->input(0).shape();
     col_params->merge_op = merge_op_.get();
     col_params->final_op = final_op_.get();
@@ -1134,7 +1139,7 @@ class CollectiveAllToAllV3OpKernel : public CollectiveOpV3Kernel {
     };
     core::RefCountPtr<CollectiveGroupResource> resource;
     OP_REQUIRES_OK_ASYNC(c, LookupResource(c, HandleFromInput(c, 1), &resource),
-                         done);
+                         done_with_cleanup);
 
     Tensor group_assignment = c->input(2);
 
@@ -1142,7 +1147,7 @@ class CollectiveAllToAllV3OpKernel : public CollectiveOpV3Kernel {
         c,
         FillCollectiveParams(col_params, group_assignment,
                              ALL_TO_ALL_COLLECTIVE, resource.get()),
-        done);
+        done_with_cleanup);
     col_params->instance.shape = c->input(0).shape();
     VLOG(1) << "CollectiveAllToAll group_size " << col_params->group.group_size
             << " group_key " << col_params->group.group_key << " instance_key "

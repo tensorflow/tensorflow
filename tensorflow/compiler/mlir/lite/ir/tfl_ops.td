@@ -2542,6 +2542,34 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   let hasFolder = 1;
 }
 
+def TFL_PolyCallOp : Op<TFL_Dialect, "poly_call", [
+    DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+    SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = [{Poly call}];
+
+  let description = [{
+    Have multiple function bodies for the same computation. This allows a
+    program compiler/interpreter to choose one of the available options to
+    execute the program based on which one is most suitable for the target
+    backend.
+
+    input:  A list of input tensors whose types are T.
+    output: A list of output tensors whose types are T.
+
+    call:  Multiple regions, each of which encapsulates the same semantic
+           computation but in different forms.
+  }];
+
+  let arguments = (ins Variadic<AnyTensor>:$input);
+
+  let results = (outs Variadic<AnyTensor>:$output);
+
+  let regions = (region VariadicRegion<SizedRegion<1>>:$calls);
+
+  let hasCanonicalizer = 1;
+}
+
+
 def TFL_PowOp : TFL_Op<"pow", [
     ResultsBroadcastableShape,
     NoSideEffect,
@@ -2941,7 +2969,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
     NoSideEffect,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    TFL_OperandHasRankRange<0, 1, 4>,
+    TFL_OperandHasRankAtLeast<0, 1>,
     SameOperandsAndResultShape,
     FixedOutputRangeInterface,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
@@ -4409,7 +4437,7 @@ the output tensor can vary depending on how many true values there are in
   }];
 
   let arguments = (ins
-    TFL_BoolTensor:$condition
+    TFL_TensorOf<[I1, F32, TFL_Int32Or64, I8, UI8, UI32]>:$condition
   );
 
   let results = (outs

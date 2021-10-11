@@ -202,7 +202,14 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
   result.functionalization_duration =
       grappler_start_time - functionalization_start_time;
 
-  TF_RETURN_IF_ERROR(OptimizeGraph(result.graph, build_graph_options));
+  auto status_or_optimized_graph =
+      OptimizeGraph(*result.graph, build_graph_options);
+  if (status_or_optimized_graph.ok()) {
+    result.graph = std::move(status_or_optimized_graph.ValueOrDie());
+  } else {
+    LOG(WARNING) << "TFRT failed to optimize graph: "
+                 << status_or_optimized_graph.status();
+  }
 
   if (VLOG_IS_ON(1)) {
     DumpGraphToFile("after_grappler", *result.graph);
@@ -536,21 +543,17 @@ Status OptimizeFunctions(FunctionDefLibrary& flib_proto,
 
 }  // namespace
 
-Status TfrtGraphExecutionState::OptimizeGraph(
-    std::unique_ptr<tensorflow::Graph>& graph,
+StatusOr<std::unique_ptr<tensorflow::Graph>>
+TfrtGraphExecutionState::OptimizeGraph(
+    const tensorflow::Graph& graph,
     const tensorflow::BuildGraphOptions& build_graph_options) {
   std::unique_ptr<tensorflow::Graph> optimized_graph;
   std::unique_ptr<tensorflow::FunctionLibraryDefinition> optimized_flib;
 
   // Invoke Grappler to optimize the graph.
-  auto status = graph_execution_state_->OptimizeGraph(
-      build_graph_options, *graph, &graph->flib_def(), &optimized_graph,
-      &optimized_flib);
-
-  if (!status.ok()) {
-    LOG(WARNING) << "TFRT failed to optimize graph: " << status;
-    return tensorflow::Status::OK();
-  }
+  TF_RETURN_IF_ERROR(graph_execution_state_->OptimizeGraph(
+      build_graph_options, graph, &graph.flib_def(), &optimized_graph,
+      &optimized_flib));
 
   FunctionDefLibrary optimized_flib_proto = optimized_flib->ToProto();
   if (run_placer_grappler_on_functions_) {
@@ -564,8 +567,7 @@ Status TfrtGraphExecutionState::OptimizeGraph(
 
   TF_RETURN_IF_ERROR(optimized_graph->AddFunctionLibrary(optimized_flib_proto));
 
-  graph = std::move(optimized_graph);
-  return tensorflow::Status::OK();
+  return optimized_graph;
 }
 
 }  // namespace tfrt_stub

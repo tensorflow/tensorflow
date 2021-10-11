@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -60,51 +60,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-namespace {
-
-static std::vector<std::string> CandidateCudaRoots(
-    const HloModuleConfig& config) {
-  return tensorflow::CandidateCudaRoots(
-      config.debug_options().xla_gpu_cuda_data_dir());
-}
-
-void PrintCantFindCudaMessage(absl::string_view msg,
-                              const HloModuleConfig& hlo_module_config) {
-  LOG(WARNING) << msg;
-  LOG(WARNING) << "Searched for CUDA in the following directories:";
-
-  for (const auto& dir : CandidateCudaRoots(hlo_module_config)) {
-    LOG(WARNING) << "  " << dir;
-  }
-  LOG(WARNING)
-      << "You can choose the search directory by setting xla_gpu_cuda_data_dir "
-         "in HloModule's DebugOptions.  For most apps, setting the environment "
-         "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
-}
-
-}  // namespace
-
-string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
-  for (const string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
-    string libdevice_dir =
-        tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
-    VLOG(2) << "Looking for libdevice at " << libdevice_dir;
-    if (tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok()) {
-      VLOG(2) << "Found libdevice dir " << libdevice_dir;
-      return libdevice_dir;
-    }
-  }
-  PrintCantFindCudaMessage(
-      "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice. This may "
-      "result in compilation or runtime failures, if the program we try to run "
-      "uses routines from libdevice.",
-      hlo_module_config);
-
-  // GetCudaRootCandidates always includes ".", but if everything fails, we
-  // return it anyway.  Better than returning the empty string.
-  return ".";
-}
 
 Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,

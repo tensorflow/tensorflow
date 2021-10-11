@@ -97,6 +97,8 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
                          instruction_to_profile_idx,
                      std::unordered_map<const HloComputation*, int64_t>
                          computation_to_profile_idx,
+                     absl::flat_hash_map<const HloComputation*, bool>
+                         computation_transitively_contains_custom_call,
                      const TargetMachineFeatures* target_machine_features,
                      bool emit_code_for_msan)
     : assignment_(assignment),
@@ -106,6 +108,8 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
       mlir_context_(mlir_context),
       instruction_to_profile_idx_(std::move(instruction_to_profile_idx)),
       computation_to_profile_idx_(std::move(computation_to_profile_idx)),
+      computation_transitively_contains_custom_call_(
+          std::move(computation_transitively_contains_custom_call)),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
       is_top_level_computation_(false),
@@ -205,7 +209,7 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
     EmitThreadLocalFunctionEpilogue(computation);
   }
 
-  // Destructor for compute_function_ emits the "ret void" instruction.
+  // Destructor for compute_function_ terminates the LLVM function definition.
   compute_function_.reset();
   computation_root_allocation_ = BufferAllocation::Slice();
   computation_parameter_allocations_.clear();
@@ -2149,6 +2153,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
         /*return_value_buffer=*/emitted_value_[call],
         /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
         /*buffer_table_arg=*/GetBufferTableArgument(),
+        /*status_arg=*/GetStatusArgument(),
         /*profile_counters_arg=*/GetProfileCountersArgument());
 
     // The parallel fork/join runtime will call the generated function once for
@@ -2158,6 +2163,10 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
     TF_RETURN_IF_ERROR(EmitCallToParallelForkJoin(
         call_args, root->shape(), root->outer_dimension_partitions(), &b_,
         call_ir_function, computation->name()));
+
+    if (ComputationTransitivelyContainsCustomCall(computation)) {
+      EmitEarlyReturnIfErrorStatus();
+    }
   } else {
     EmitGlobalCall(*computation, computation->name());
   }
@@ -2327,22 +2336,6 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
     return HandleTopK(custom_call);
   }
 
-  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
-  switch (typed_custom_call->api_version()) {
-    case CustomCallApiVersion::API_VERSION_ORIGINAL:
-      break;
-    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
-      // TODO(b/194529780): Support status-returning custom calls on CPU.
-      return Unimplemented(
-          "XLA CPU does not support custom calls that return a success/failure "
-          "status");
-    default:
-      return InternalError(
-          "Unknown custom-call API version enum value: %d (%s)",
-          typed_custom_call->api_version(),
-          CustomCallApiVersion_Name(typed_custom_call->api_version()));
-  }
-
   absl::Span<HloInstruction* const> operands(custom_call->operands());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
@@ -2389,8 +2382,24 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   auto* output_address_arg =
       PointerCast(GetEmittedValueFor(custom_call), i8_ptr_type);
 
-  EmitCallToFunc(custom_call->custom_call_target(),
-                 {output_address_arg, operands_alloca}, b_.getVoidTy());
+  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
+  switch (typed_custom_call->api_version()) {
+    case CustomCallApiVersion::API_VERSION_ORIGINAL:
+      EmitCallToFunc(custom_call->custom_call_target(),
+                     {output_address_arg, operands_alloca}, b_.getVoidTy());
+      break;
+    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+      EmitCallToFunc(custom_call->custom_call_target(),
+                     {output_address_arg, operands_alloca, GetStatusArgument()},
+                     b_.getVoidTy());
+      EmitEarlyReturnIfErrorStatus();
+      break;
+    default:
+      return InternalError(
+          "Unknown custom-call API version enum value: %d (%s)",
+          typed_custom_call->api_version(),
+          CustomCallApiVersion_Name(typed_custom_call->api_version()));
+  }
 
   return Status::OK();
 }
@@ -3071,12 +3080,47 @@ llvm::Value* IrEmitter::GetProfileCountersArgument() {
   return compute_function_->profile_counters_arg();
 }
 
+llvm::Value* IrEmitter::GetStatusArgument() {
+  return compute_function_->status_arg();
+}
+
 llvm::Value* IrEmitter::GetBufferTableArgument() {
   return compute_function_->buffer_table_arg();
 }
 
 llvm::Value* IrEmitter::GetExecutableRunOptionsArgument() {
   return compute_function_->exec_run_options_arg();
+}
+
+llvm::BasicBlock* IrEmitter::GetReturnBlock() {
+  return compute_function_->return_block();
+}
+
+void IrEmitter::EmitEarlyReturnIfErrorStatus() {
+  // Use the runtime helper to get the success/failure state as a boolean.
+  auto succeeded =
+      EmitCallToFunc(runtime::kStatusIsSuccessSymbolName, {GetStatusArgument()},
+                     b_.getInt1Ty(), /*does_not_throw=*/true,
+                     /*only_accesses_arg_memory=*/true);
+  llvm::BasicBlock* continued;
+  if (b_.GetInsertBlock()->getTerminator() == nullptr) {
+    // If we are generating code into an incomplete basic block we can just
+    // create a new basic block to jump to after our conditional branch.
+    continued = llvm_ir::CreateBasicBlock(/*insert_before=*/nullptr,
+                                          /*name=*/"", &b_);
+  } else {
+    // If we are generating code into a basic block that already has code, we
+    // need to split that block so as to not disturb the existing code.
+    auto original = b_.GetInsertBlock();
+    continued = original->splitBasicBlock(b_.GetInsertPoint());
+    // Remove the auto-generated unconditional branch to replace with our
+    // conditional branch.
+    original->getTerminator()->eraseFromParent();
+    b_.SetInsertPoint(original);
+  }
+  CondBr(succeeded, continued, GetReturnBlock());
+
+  b_.SetInsertPoint(continued, continued->getFirstInsertionPt());
 }
 
 llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(
@@ -3340,7 +3384,12 @@ std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(
            /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
            /*buffer_table_arg=*/
            llvm::Constant::getNullValue(b_.getInt8PtrTy()->getPointerTo()),
+           /*status_arg=*/GetStatusArgument(),
            /*profile_counters_arg=*/GetProfileCountersArgument()));
+
+  if (ComputationTransitivelyContainsCustomCall(&callee)) {
+    EmitEarlyReturnIfErrorStatus();
+  }
 
   std::vector<llvm::Value*> returned_scalars;
   returned_scalars.reserve(allocas_for_returned_scalars.size());
@@ -3361,7 +3410,12 @@ void IrEmitter::EmitGlobalCall(const HloComputation& callee,
            llvm::Constant::getNullValue(b_.getInt8PtrTy()),
            /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
            /*buffer_table_arg=*/GetBufferTableArgument(),
+           /*status_arg=*/GetStatusArgument(),
            /*profile_counters_arg=*/GetProfileCountersArgument()));
+
+  if (ComputationTransitivelyContainsCustomCall(&callee)) {
+    EmitEarlyReturnIfErrorStatus();
+  }
 }
 
 llvm::Value* IrEmitter::GetBufferForGlobalCallReturnValue(

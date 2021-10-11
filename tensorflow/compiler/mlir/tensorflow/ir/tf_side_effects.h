@@ -68,6 +68,10 @@ struct GeneratorOp : public SideEffects::Resource::Base<GeneratorOp> {
   StringRef getName() final { return "<Default Generator>"; }
 };
 
+struct SendRecv : public SideEffects::Resource::Base<SendRecv> {
+  StringRef getName() final { return "<SendRecv>"; }
+};
+
 }  // namespace ResourceEffects
 }  // namespace TF
 }  // namespace mlir

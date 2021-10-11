@@ -55,11 +55,10 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
     for (HloInstruction* instruction : supported_collectives) {
       if (HloAllReduceInstruction* ar =
               DynCast<HloAllReduceInstruction>(instruction)) {
-        Shape shape = ShapeUtil::MakeTupleShape({ar->shape(), ar->shape()});
         HloInstruction* start =
             computation->AddInstruction(HloInstruction::CreateAllReduceStart(
-                shape, ar->operands(), ar->to_apply(), ar->replica_groups(),
-                ar->constrain_layout(), ar->channel_id(),
+                ar->shape(), ar->operands(), ar->to_apply(),
+                ar->replica_groups(), ar->constrain_layout(), ar->channel_id(),
                 ar->use_global_device_ids()));
         std::unique_ptr<HloInstruction> done = HloInstruction::CreateUnary(
             ar->shape(), HloOpcode::kAllReduceDone, start);

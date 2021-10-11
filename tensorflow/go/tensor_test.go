@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -77,14 +78,6 @@ func TestNewTensor(t *testing.T) {
 		// native ints not supported
 		int(5),
 		[]int{5},
-		// Mismatched dimensions
-		[][]float32{{1, 2, 3}, {4}},
-		// Mismatched dimensions. Should return "mismatched slice lengths" error instead of "BUG"
-		[][][]float32{{{1, 2}, {3, 4}}, {{1}, {3}}},
-		// Mismatched dimensions. Should return error instead of valid tensor
-		[][][]float32{{{1, 2}, {3, 4}}, {{1}, {3}}, {{1, 2, 3}, {2, 3, 4}}},
-		// Mismatched dimensions for strings
-		[][]string{{"abc"}, {"abcd", "abcd"}},
 	}
 
 	for _, test := range tests {
@@ -100,9 +93,8 @@ func TestNewTensor(t *testing.T) {
 		// Test that encode and decode gives the same value. We skip arrays because
 		// they're returned as slices.
 		if reflect.TypeOf(test.value).Kind() != reflect.Array {
-			got := tensor.Value()
-			if !reflect.DeepEqual(test.value, got) {
-				t.Errorf("encode/decode: got %v, want %v", got, test.value)
+			if !reflect.DeepEqual(test.value, tensor.Value()) {
+				t.Errorf("encode/decode: got %v, want %v", tensor.Value(), test.value)
 			}
 		}
 	}
@@ -116,6 +108,43 @@ func TestNewTensor(t *testing.T) {
 			t.Errorf("NewTensor(%v) = %v, want nil", test, tensor)
 		}
 	}
+}
+
+func TestNewTensorValidateDimensions(t *testing.T) {
+	var errorTests = []interface{}{
+		// Mismatched dimensions
+		[][]float32{{1, 2, 3}, {4}},
+		// Mismatched dimensions. Should return "mismatched slice lengths" error instead of "BUG"
+		[][][]float32{{{1, 2}, {3, 4}}, {{1}, {3}}},
+		// Mismatched dimensions. Should return error instead of valid tensor
+		[][][]float32{{{1, 2}, {3, 4}}, {{1}, {3}}, {{1, 2, 3}, {2, 3, 4}}},
+		// Mismatched dimensions for strings
+		[][]string{{"abc"}, {"abcd", "abcd"}},
+	}
+
+	// Test that an error is returned in response to mismatched dimensions
+	// and that no tensor is returned.  Dimensions should be checked and a
+	// mismatch caught in NewTensor prior to actually allocating a new
+	// tensor in cgo. Given how string tensors are encoded and how tensors
+	// are freed, a mismatch caught partway through encoding a string
+	// tensor may result in a segfault, once the finalizer is called. A
+	// single run of this test is not reliable at producing a segfault,
+	// hence iteration. See github.com/tensorflow/tensorflow/pull/52257
+	// for some detail on the issue.
+	for i := 0; i < 1e5; i++ {
+		for _, test := range errorTests {
+			tensor, err := NewTensor(test)
+			if err == nil {
+				t.Errorf("NewTensor(%v): %v", test, err)
+			}
+			if tensor != nil {
+				t.Errorf("NewTensor(%v) = %v, want nil", test, tensor)
+			}
+		}
+	}
+
+	// Execute any finalizers (blocking).
+	runtime.GC()
 }
 
 func TestTensorSerialization(t *testing.T) {

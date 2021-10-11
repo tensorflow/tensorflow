@@ -31,10 +31,10 @@ func @f(%arg0 : tensor<42x?x42x?xf32>, %arg1 : tensor<42x?x?xf32>) -> !shape.sha
 func @f(%arg0 : tensor<?x?x42x42xf32>, %arg1 : tensor<42x42xf32>) -> tensor<?xindex> {
   // CHECK: %[[SHAPE0:.*]] = shape.shape_of %arg0 : tensor<?x?x42x42xf32> -> tensor<?xindex>
   // CHECK: return %[[SHAPE0]]
-  %0 = shape.const_shape [42, 1] : tensor<?xindex>
+  %0 = shape.const_shape [42, 1] : tensor<2xindex>
   %1 = shape.shape_of %arg0 : tensor<?x?x42x42xf32> -> tensor<?xindex>
-  %2 = shape.shape_of %arg1 : tensor<42x42xf32> -> tensor<?xindex>
-  %3 = shape.broadcast %0, %1, %2 : tensor<?xindex>, tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
+  %2 = shape.shape_of %arg1 : tensor<42x42xf32> -> tensor<2xindex>
+  %3 = shape.broadcast %0, %1, %2 : tensor<2xindex>, tensor<?xindex>, tensor<2xindex> -> tensor<?xindex>
   return %3 : tensor<?xindex>
 }
 

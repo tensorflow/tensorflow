@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/collective_test_util.h"
 
+#include <vector>
+
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
@@ -181,7 +183,8 @@ std::unique_ptr<CollectiveTestEnv> CreateCollectiveTestEnv(
 
 core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
     const CollectiveTestEnv& test_env, int rank, const string& collective_name,
-    CollectiveType collective_type, DataType dtype, const TensorShape& shape) {
+    CollectiveType collective_type, DataType dtype, const TensorShape& shape,
+    const std::vector<std::vector<int>> user_specified_rank) {
   static constexpr int kGroupKey = 5;
   static constexpr int kInstanceKey = 17;
   core::RefCountPtr<CollectiveParams> col_params(new CollectiveParams());
@@ -223,6 +226,13 @@ core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
       // Normally each device would set is_local to its own perspective but
       // this test runs in a single process so is_local is always true.
       member.is_local = true;
+      if (user_specified_rank.size() == test_env.num_workers &&
+          user_specified_rank[wi].size() == test_env.num_devices_per_worker) {
+        member.rank = user_specified_rank[wi][di];
+      } else {
+        member.rank = wi * test_env.num_workers + di;
+      }
+
       col_params->group.members.push_back(member);
     }
   }

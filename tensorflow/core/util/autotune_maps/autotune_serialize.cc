@@ -38,8 +38,9 @@ using stream_executor::dnn::AlgorithmConfigProto;
 using stream_executor::dnn::AlgorithmDesc;
 using stream_executor::dnn::AlgorithmProto;
 
+template <typename Sig>
 ConvMapProto ConvMapToProto(
-    const AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig> &autotune_map) {
+    const AutotuneMap<ConvParameters, AutotuneEntry<Sig>> &autotune_map) {
   ConvMapProto proto;
 
   // Deterministically sort the entries in autotune maps
@@ -52,12 +53,11 @@ ConvMapProto ConvMapToProto(
   std::map<string, ConvMapProto::Entry> sorted_map;
 
   for (auto const &p : autotune_map.GetMap()) {
-    const AlgorithmConfig &config = p.second;
     // Skip entries that use cuDNN Frontend API because currently they cannot be
     // serialized.
-    if (config.algorithm().value().IsExecutionPlan()) {
-      continue;
-    }
+    if (!p.second.is_algorithm_config()) continue;
+
+    const AlgorithmConfig &config = p.second.GetAlgorithmConfig();
     const ConvParameters &params = p.first;
     const ConvParametersProto &params_proto = params.proto();
 
@@ -76,9 +76,10 @@ ConvMapProto ConvMapToProto(
   return proto;
 }
 
+template <typename Sig>
 Status PopulateConvMap(
     const ConvMapProto &m,
-    AutotuneMap<ConvParameters, se::dnn::AlgorithmConfig> *autotune_map) {
+    AutotuneMap<ConvParameters, AutotuneEntry<Sig>> *autotune_map) {
   // Map device_id's to corresponding device_identifiers.
   std::vector<string> device_ids_map =
       autotune_maps_utils::GetDeviceIdToIdentifierMap();
@@ -116,8 +117,9 @@ Status PopulateConvMap(
       device_ids = iter->second;
     }
     for (int device_id : device_ids) {
-      autotune_map->Insert(ConvParameters(device_id, params_proto),
-                           AlgorithmConfig(algorithm_config_proto));
+      autotune_map->Insert(
+          ConvParameters(device_id, params_proto),
+          AutotuneEntry<Sig>(AlgorithmConfig(algorithm_config_proto)));
     }
   }
   return Status::OK();
