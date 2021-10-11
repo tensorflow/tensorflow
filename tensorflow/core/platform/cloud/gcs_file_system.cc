@@ -2066,6 +2066,27 @@ void GcsFileSystem::FlushCaches(TransactionToken* token) {
   bucket_location_cache_->Clear();
 }
 
+// TODO: Implement SetOption for gcs file system
+Status GcsFileSystem::SetOption(const string& name,
+                                const std::vector<string>& values) {
+  return errors::Unimplemented(
+      "GcsFilesystem does not support SetOption() for string type.");
+}
+
+// TODO: Implement SetOption for gcs file system
+Status GcsFileSystem::SetOption(const string& name,
+                                const std::vector<int64_t>& values) {
+  return errors::Unimplemented(
+      "GcsFilesystem does not support SetOption() for int64_t type");
+}
+
+// TODO: Implement SetOption for gcs file system
+Status GcsFileSystem::SetOption(const string& name,
+                                const std::vector<double>& values) {
+  return errors::Unimplemented(
+      "GcsFilesystem does not support SetOption() for double type");
+}
+
 void GcsFileSystem::SetStats(GcsStatsInterface* stats) {
   CHECK(stats_ == nullptr) << "SetStats() has already been called.";
   CHECK(stats != nullptr);

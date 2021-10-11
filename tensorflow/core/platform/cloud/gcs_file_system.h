@@ -189,6 +189,15 @@ class GcsFileSystem : public FileSystem {
 
   void FlushCaches(TransactionToken* token) override;
 
+  Status SetOption(const string& name,
+                   const std::vector<string>& values) override;
+
+  Status SetOption(const string& name,
+                   const std::vector<int64_t>& values) override;
+
+  Status SetOption(const string& name,
+                   const std::vector<double>& values) override;
+
   /// Set an object to collect runtime statistics from the GcsFilesystem.
   void SetStats(GcsStatsInterface* stats);
 
