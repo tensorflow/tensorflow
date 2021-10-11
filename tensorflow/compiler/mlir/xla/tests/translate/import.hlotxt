@@ -32,6 +32,13 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT after-all = token[] after-all(token0, token1)
 }
 
+// CHECK-LABEL:  func private @test_after_all_no_inputs
+// CHECK-SAME:  () -> !mhlo.token
+%test_after_all_no_inputs () -> token[] {
+  // CHECK-NEXT:  "mhlo.create_token"() {xla_shape = {{.*}}} : () -> !mhlo.token
+  ROOT after-all = token[] after-all()
+}
+
 // CHECK-LABEL:  func private @test_all_gather
 // CHECK-SAME:  ([[INPUT:%.*]]: tensor<128x32xf32>)
 %test_all_gather {
