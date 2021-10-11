@@ -476,7 +476,9 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
     return base_ptr_;
   }
   CHECK_EQ(index.size(), shape_.rank());
-  CHECK(index.ShapeIsCompatible(shape_));
+  CHECK(index.ShapeIsCompatible(shape_))
+      << "Shape " << index.AsShapeWithType(shape_.element_type()).ToString(true)
+      << " is not compatible with " << shape_.ToString(true);
 
   if (use_linear_index && index.LinearValidOnShape(shape_)) {
     llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
