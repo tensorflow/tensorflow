@@ -121,6 +121,7 @@ def cc_test_with_tflite(
 def java_library_with_tflite(
         name,
         deps = [],
+        runtime_deps = [],
         tflite_deps = [],
         tflite_jni_binaries = [],
         exports = [],
@@ -133,12 +134,14 @@ def java_library_with_tflite(
 
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
-    direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    direct or indirect 'tflite_deps' or 'tflite_jni_binaries' dependency
+    on one of the "shim" library targets from
+    //third_party/tensorflow/lite/core/shims:*.
 
     Args:
       name: as for java_library.
       deps: as for java_library.
+      runtime_deps: as for java_library.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite' / 'java_library_with_tflite'.
       tflite_jni_binaries: dependencies on shared libraries that are defined
@@ -158,6 +161,7 @@ def java_library_with_tflite(
 def java_test_with_tflite(
         name,
         deps = [],
+        runtime_deps = [],
         tflite_deps = [],
         tflite_jni_binaries = [],
         **kwargs):
@@ -168,12 +172,14 @@ def java_test_with_tflite(
 
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
-    direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    direct or indirect 'tflite_deps' or 'tflite_jni_binaries' dependency
+    on one of the "shim" library targets from
+    //third_party/tensorflow/lite/core/shims:*.
 
     Args:
       name: as for java_library.
       deps: as for java_library.
+      runtime_deps: as for java_library.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite' / 'java_library_with_tflite'.
       tflite_jni_binaries: dependencies on shared libraries that are defined
@@ -182,7 +188,8 @@ def java_test_with_tflite(
     """
     native.java_test(
         name = name,
-        deps = deps + tflite_deps + tflite_jni_binaries,
+        deps = deps + tflite_deps,
+        runtime_deps = deps + tflite_jni_binaries,
         **kwargs
     )
 
