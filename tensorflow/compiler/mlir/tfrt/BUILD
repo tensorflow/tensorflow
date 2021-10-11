@@ -437,6 +437,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/tests/saved_model:__pkg__",
         "//tensorflow/core/tfrt/eager:__pkg__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
+        "@tf_runtime//:__subpackages__",
     ],
     deps = [
         ":function",
