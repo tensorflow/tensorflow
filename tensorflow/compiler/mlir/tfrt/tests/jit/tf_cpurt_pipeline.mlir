@@ -394,6 +394,7 @@ func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
 // -----
 
 // CHECK: memref.global "private" constant @__constant_2xi32 : memref<2xi32> = dense<[0, 1]>
+// CHECK-SAME: {alignment = 64 : i64}
 // CHECK-LABEL: @constant_folding
 func @constant_folding() -> tensor<2xi32> {
   %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
