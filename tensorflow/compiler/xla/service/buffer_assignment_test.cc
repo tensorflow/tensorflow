@@ -98,6 +98,17 @@ class BufferAssignmentTest : public HloTestBase {
         .ConsumeValueOrDie();
   }
 
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentWithSequentialOrdering(
+      HloModule* module, int64_t alignment = 1) {
+    return BufferAssigner::Run(
+               module,
+               absl::make_unique<SequentialHloOrdering>(module->schedule()),
+               backend().compiler()->BufferSizeBytesFunction(),
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allocate_buffers_for_constants=*/true)
+        .ConsumeValueOrDie();
+  }
+
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersForConstants(
       HloModule* module, int64_t alignment = 1) {
     return BufferAssigner::Run(
@@ -1963,6 +1974,49 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
     peak_instructions.push_back(logical_buffer->instruction());
   }
   EXPECT_THAT(peak_instructions, UnorderedElementsAre(rev, neg, concat));
+}
+
+TEST_F(BufferAssignmentTest, AliasedBuffersShouldntCoexistInPeakBuffers) {
+  std::string hlo_text = R"(
+HloModule test_module, is_scheduled=true
+
+cond {
+  param = (s32[], s32[]) parameter(0)
+  ROOT constant = pred[] constant(true)
+}
+
+body {
+  param.0 = (s32[], s32[]) parameter(0)
+  gte = s32[] get-tuple-element(param.0), index=0
+  add = s32[] add(gte, gte)
+  ROOT tuple = (s32[], s32[]) tuple(add, add)
+}
+
+ENTRY test_module {
+  param.3 = s32[] parameter(0)
+  copy = s32[] copy(param.3)
+  tuple = (s32[], s32[]) tuple(copy, copy)
+  while = (s32[], s32[]) while(tuple), condition=cond, body=body
+  gte = s32[] get-tuple-element(while), index=0
+  ROOT negate = s32[] negate(gte)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto assignment = RunBufferAssignmentWithSequentialOrdering(module.get());
+  const BufferAllocation& buffer =
+      GetTopLevelAllocation(*assignment, FindInstruction(module.get(), "copy"));
+  const std::vector<const HloValue*>& peak_buffers =
+      buffer.PeakMemoryLogicalBuffers();
+
+  // Since the same aliased buffer (copy) is passed into while, we expect the
+  // number of peak array buffers to be one.
+  int num_peak_buffers = 0;
+  for (const HloValue* peak_buffer : peak_buffers) {
+    if (peak_buffer->shape().IsArray()) {
+      ++num_peak_buffers;
+    }
+  }
+  EXPECT_EQ(num_peak_buffers, 1);
 }
 
 TEST_F(BufferAssignmentTest, InPlaceBuffer) {
