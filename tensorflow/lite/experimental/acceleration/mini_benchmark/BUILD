@@ -49,6 +49,7 @@ cc_test(
         ":call",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:subgraph_test_util",
