@@ -2770,9 +2770,13 @@ static LogicalResult Verify(SelectOp op) {
   // be of the same shape.
   auto predTy = op.pred().getType().dyn_cast<RankedTensorType>();
   bool predMayBeScalar = !predTy || predTy.getRank() == 0;
-  if (!predMayBeScalar) return failure();
-  return verifyCompatibleShapes(
-      {op.on_true().getType(), op.on_false().getType()});
+  if (!predMayBeScalar ||
+      failed(verifyCompatibleShapes(
+          {op.on_true().getType(), op.on_false().getType()}))) {
+    return op.emitOpError()
+           << "requires the same type for all operands and results";
+  }
+  return success();
 }
 
 OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
@@ -2804,36 +2808,39 @@ LogicalResult SelectOp::inferReturnTypes(
     MLIRContext*, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  auto x_type = operands[1].getType();
-  auto y_type = operands[2].getType();
-  auto x_tensor = x_type.cast<TensorType>();
-  auto y_tensor = y_type.cast<TensorType>();
+  SelectOp::Adaptor op(operands);
+  auto true_type = op.on_true().getType().cast<TensorType>();
+  auto false_type = op.on_true().getType().cast<TensorType>();
 
   // Check for type compatibility in the select op. This requires that the two
   // non-predicate operands:
   //   (a) have the same element type
   //   (b) have compatible shapes (i.e. the same shape and/or at least one
   //       dynamic shape)
-  if (x_tensor.getElementType() != y_tensor.getElementType() ||
-      failed(mlir::verifyCompatibleShape(x_type, y_type))) {
-    return emitOptionalError(location, "incompatible operand types: ", x_type,
-                             " and ", y_type);
+  if (true_type.getElementType() != false_type.getElementType() ||
+      failed(mlir::verifyCompatibleShape(true_type, false_type))) {
+    return emitOptionalError(location,
+                             "incompatible operand types: ", true_type, " and ",
+                             false_type);
   }
 
-  // TODO(lucyfox): Support output shape inference when operands have compatible
-  // shapes. (The output shape should be the most general of the operand shapes
-  // at each dimension.) For now, handle the straightforward cases and fail
-  // otherwise. When this is fully implemented, this logic should move into
-  // reusable functionality in MLIR Core.
+  // The output shape should be the most general of the operand shapes at each
+  // dimension.
   Type output_type;
-  if (x_type == y_type || !x_tensor.hasRank()) {
-    output_type = x_type;
-  } else if (!y_tensor.hasRank()) {
-    output_type = y_type;
+  if (true_type == false_type || !true_type.hasRank()) {
+    output_type = true_type;
+  } else if (!false_type.hasRank()) {
+    output_type = false_type;
   } else {
-    return emitOptionalError(location,
-                             "currently unsupported operand types: ", x_type,
-                             " and ", y_type);
+    assert(true_type.getRank() == false_type.getRank());
+    llvm::SmallVector<int64_t, 4> dims;
+    dims.reserve(true_type.getRank());
+    for (auto dim : llvm::zip(true_type.getShape(), false_type.getShape())) {
+      dims.push_back(std::get<0>(dim) == std::get<1>(dim)
+                         ? std::get<0>(dim)
+                         : ShapedType::kDynamicSize);
+    }
+    output_type = RankedTensorType::get(dims, true_type.getElementType());
   }
   inferredReturnTypes.assign({output_type});
   return success();
