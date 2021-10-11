@@ -16915,7 +16915,7 @@ Computes the gradient function for function f via backpropagation.
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", []> {
+def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [TF_TPUCompileExecuteSideEffect]> {
   let summary = "Returns the result of a TPU compilation.";
 
   let description = [{
@@ -16931,7 +16931,7 @@ occurred during compilation.
   );
 }
 
-def TF_TPUCompileSucceededAssertOp : TF_Op<"TPUCompileSucceededAssert", []> {
+def TF_TPUCompileSucceededAssertOp : TF_Op<"TPUCompileSucceededAssert", [TF_TPUCompileExecuteSideEffect]> {
   let summary = "Asserts that compilation succeeded.";
 
   let description = [{
@@ -20118,7 +20118,7 @@ weights (DT_FLOAT) to apply to the output of the embedding lookup operation.}]>:
   TF_DerivedOperandSizeAttr NumTables = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF__TPUCompileMlirOp : TF_Op<"_TPUCompileMlir", []> {
+def TF__TPUCompileMlirOp : TF_Op<"_TPUCompileMlir", [TF_TPUCompileExecuteSideEffect]> {
   let summary = [{
 Compiles a computations for execution on one or more TPU devices.
   }];
@@ -20153,7 +20153,7 @@ look up the program in the compilation cache.
   TF_DerivedResultSizeAttr num_computations = TF_DerivedResultSizeAttr<1>;
 }
 
-def TF__TPUCompileMlirPlaceholderProgramKeyOp : TF_Op<"_TPUCompileMlirPlaceholderProgramKey", []> {
+def TF__TPUCompileMlirPlaceholderProgramKeyOp : TF_Op<"_TPUCompileMlirPlaceholderProgramKey", [TF_TPUCompileExecuteSideEffect]> {
   let summary = [{
 Placeholder program key (compilation cache key) of a _TPUCompileMlir `program`.
   }];
