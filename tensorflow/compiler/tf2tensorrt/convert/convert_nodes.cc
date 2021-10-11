@@ -4767,7 +4767,7 @@ Status ConvertGather(OpConverterParams* params) {
   // option for an input to be either tensor or weight.
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"params", TrtInputArg::kBoth},
-                                   {"indices", TrtInputArg::kTensor},
+                                   {"indices", TrtInputArg::kBoth},
                                    {"axis", TrtInputArg::kWeight}}));
 
   const auto& params_input = inputs.at(0);
@@ -4794,20 +4794,24 @@ Status ConvertGather(OpConverterParams* params) {
     return errors::Unimplemented(
         "The input axis must be zero when params is a weight.");
   }
-  if (params->use_implicit_batch && params_input.is_tensor() &&
-      indices_input.batch_size() != 1) {
+  if (params->use_implicit_batch &&
+      (params_input.is_tensor() == indices_input.is_tensor()) &&
+      (indices_input.batch_size() != 1 || params_input.batch_size() != 1)) {
     return errors::Unimplemented(
-        "Indices must have a batch size of 1 when params is a tensor.");
+        "Params and indices must have a batch size of 1 when params and indices"
+        " are both tensors or both constants.");
   }
+
+  auto get_rank = [params](const auto& input) {
+    return input.GetTrtDims().nbDims +
+           (params->use_implicit_batch && input.is_tensor() ? 1 : 0);
+  };
   // Both input are tensors, and the TF gather result will have rank:
   // (params.nbDims + 1) + (indices.nbDims + 1) - 1,
   // where "+ 1" adds the batch dim. If params is a weight, the TRT rank matches
   // the TF rank so we don't have to add + 1.
-  const int params_tf_rank =
-      params_input.GetTrtDims().nbDims +
-      (params->use_implicit_batch && params_input.is_tensor() ? 1 : 0);
-  const int indices_tf_rank =
-      indices_input.GetTrtDims().nbDims + (params->use_implicit_batch ? 1 : 0);
+  const int params_tf_rank = get_rank(params_input);
+  const int indices_tf_rank = get_rank(indices_input);
   const int tf_gather_output_rank = params_tf_rank + indices_tf_rank - 1;
   if (tf_gather_output_rank >
       nvinfer1::Dims::MAX_DIMS + (params->use_implicit_batch ? 1 : 0)) {
@@ -4817,14 +4821,22 @@ Status ConvertGather(OpConverterParams* params) {
   }
   if (params->validation_only) return Status::OK();
 
-  // Convert params to tensor is it is a weight.
-  ITensorProxyPtr params_tensor = nullptr;
-  if (params_input.is_weights()) {
-    params_tensor = params->converter->CreateConstantLayer(
-        params_input.weights(), params_input.GetTrtDims());
-  } else {
-    params_tensor = params_input.tensor();
-  }
+  // Convert input or indices to tensor if it is a constant.
+  auto populate_tensor = [params](const auto& input) -> ITensorProxyPtr {
+    ITensorProxyPtr result_tensor = nullptr;
+
+    if (input.is_weights()) {
+      result_tensor = params->converter->CreateConstantLayer(
+          input.weights(), input.GetTrtDims());
+    } else {
+      result_tensor = input.tensor();
+    }
+
+    return result_tensor;
+  };
+
+  ITensorProxyPtr params_tensor = populate_tensor(params_input);
+  ITensorProxyPtr indices_tensor = populate_tensor(indices_input);
 
   // Note on how IGatherLayer works: if both the data and indices tensors have
   // a batch size dimension of size N, it performs:
@@ -4832,33 +4844,57 @@ Status ConvertGather(OpConverterParams* params) {
   //   output[batchid, a0, ..., an, i, ..., j, b0, ..., bn] = (
   //       data[batchid, a0, ..., an, indices[batchid, i, ..., j] b0, ..., bn])
   nvinfer1::IGatherLayer* layer = params->converter->network()->addGather(
-      *params_tensor->trt_tensor(), *indices_input.tensor()->trt_tensor(),
-      trt_axis);
+      *params_tensor->trt_tensor(), *indices_tensor->trt_tensor(), trt_axis);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   params->converter->SetLayerName(layer, node_def);
 
   ITensorProxyPtr output_tensor = layer->getOutput(0);
   nvinfer1::Dims trt_gather_output_dims = output_tensor->getDimensions();
-  // Note for the "- 2": one is for the output batch dim encapsulated by TF-TRT,
-  // and the other is for the output dimension that is squeezed by IGatherLayer
-  // because of the implicit batch dim in the indices (see the above note).
-  const int expected_trt_output_rank =
-      tf_gather_output_rank - (params_input.is_tensor() ? 2 : 1);
-  if (params->use_implicit_batch &&
-      trt_gather_output_dims.nbDims != expected_trt_output_rank) {
-    return errors::Internal(
-        "Get unexpected output dimensions of IGatherLayer. Expect nbDims: ",
-        expected_trt_output_rank,
-        ", actual nbDims: ", trt_gather_output_dims.nbDims);
+
+  if (params->use_implicit_batch) {
+    // Note for the "- 2": one is for the output batch dim encapsulated by
+    // TF-TRT, and the other is for the output dimension that is squeezed by
+    // IGatherLayer because of the implicit batch dim in the indices (see the
+    // above note).
+    const int expected_trt_output_rank = tf_gather_output_rank -
+                                         (params_input.is_tensor() ? 1 : 0) -
+                                         (indices_input.is_tensor() ? 1 : 0);
+
+    if (trt_gather_output_dims.nbDims != expected_trt_output_rank) {
+      return errors::Internal(
+          "Get unexpected output dimensions of IGatherLayer. Expect nbDims: ",
+          expected_trt_output_rank,
+          ", actual nbDims: ", trt_gather_output_dims.nbDims);
+    }
   }
   // Reshape the output so after adding the implicit batch dim it'll match the
   // output shape of TF GatherV2.
-  if (params->use_implicit_batch && params_input.is_tensor()) {
+  if (params->use_implicit_batch && params_input.is_tensor() &&
+      indices_input.is_tensor()) {
     for (int i = trt_gather_output_dims.nbDims; i > trt_axis; --i) {
       trt_gather_output_dims.d[i] = trt_gather_output_dims.d[i - 1];
     }
     trt_gather_output_dims.d[trt_axis] = 1;
     ++trt_gather_output_dims.nbDims;
+
+    TF_RETURN_IF_ERROR(PrepareTensorForShape(
+        params->converter, TRT_TensorOrWeights(output_tensor),
+        trt_gather_output_dims,
+        /*validation_only=*/false, &output_tensor, node_def));
+  }
+
+  // When input and indices are both constants, for the supported cases, reshape
+  // output so that after removing the implicit batch dim it will match the
+  // output shape of TF GatherV2 op.
+  if (params->use_implicit_batch && params_input.is_weights() &&
+      indices_input.is_weights()) {
+    for (int i = trt_axis; i < trt_gather_output_dims.nbDims - 1; ++i) {
+      trt_gather_output_dims.d[i] = trt_gather_output_dims.d[i + 1];
+    }
+
+    // Squeeze the implicit batch dimension out. Note: this works only
+    // when batch size for both inputs and indices are 1.
+    --trt_gather_output_dims.nbDims;
 
     TF_RETURN_IF_ERROR(PrepareTensorForShape(
         params->converter, TRT_TensorOrWeights(output_tensor),
