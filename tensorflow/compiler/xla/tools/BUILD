@@ -382,6 +382,7 @@ cc_library(
     hdrs = ["hlo_control_flow_flattening.h"],
     deps = [
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/service:call_graph",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:tuple_util",

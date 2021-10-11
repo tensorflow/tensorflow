@@ -16,10 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TOOLS_HLO_CONTROL_FLOW_FLATTENING_H_
 #define TENSORFLOW_COMPILER_XLA_TOOLS_HLO_CONTROL_FLOW_FLATTENING_H_
 
+#include <limits>
+
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
+
+// TODO(b/196924174): Potentially change to max<int> (no limit) since
+// a separate outer loop truncation is now supported. See #23.
+static constexpr int kDefaultMaxGetLoopBound = 1000;
 
 // An HLO pass that replaces while loop conditionals to execute a known constant
 // number of iterations and remove operations that are difficult to run in
@@ -28,11 +35,15 @@ class HloControlFlowFlattening : public HloModulePass {
  public:
   // While execution count specifies how many times the while loops in the
   // transformed graph will execute.
-  explicit HloControlFlowFlattening(int while_execution_count,
-                                    bool remove_infeed_outfeed = true,
-                                    bool flatten_while_loop = true,
-                                    bool remove_comm = true)
+  explicit HloControlFlowFlattening(
+      int while_execution_count,
+      int max_outer_loop_count = std::numeric_limits<int>::max(),
+      int max_loop_count = kDefaultMaxGetLoopBound,
+      bool remove_infeed_outfeed = true, bool flatten_while_loop = true,
+      bool remove_comm = true)
       : while_execution_count_(while_execution_count),
+        max_outer_loop_count_(max_outer_loop_count),
+        max_loop_count_(max_loop_count),
         remove_infeed_outfeed_(remove_infeed_outfeed),
         flatten_while_loop_(flatten_while_loop),
         remove_comm_(remove_comm) {}
@@ -48,7 +59,8 @@ class HloControlFlowFlattening : public HloModulePass {
   // but lowers to a no-op.
   Status RemoveOutfeed(HloInstruction* outfeed_hlo) const;
   // Flattens the while loop. Precondition: while_hlo is a while instruction.
-  Status FlattenWhileLoop(HloInstruction* while_hlo) const;
+  Status FlattenWhileLoop(HloInstruction* while_hlo,
+                          const CallGraph& call_graph) const;
   // Replaces a collective op with a custom call.
   Status RemoveCollective(HloInstruction* hlo) const;
   // Replaces a partition-id or replica-id with a zero constant.
@@ -63,17 +75,19 @@ class HloControlFlowFlattening : public HloModulePass {
       absl::flat_hash_set<HloInstruction*>* additional_removed) const;
 
   int while_execution_count_;
+  int max_outer_loop_count_;
+  int max_loop_count_;
   bool remove_infeed_outfeed_;
   bool flatten_while_loop_;
   bool remove_comm_;
 };
 
-// Retrieves the original loop bound. If fail, return a default value.
-// This function is more opportunistic than ComputeWhileLoopTripCount in
-// the while loop analysis as it may return a constant found in a compare
-// expression when if it is not an actual bound.
-int64_t GetLoopBound(const HloInstruction& while_hlo,
-                     const int64_t default_loop_count);
+// Retrieves the original loop bound. If fail, return a default value. If bounds
+// exceed a given max, returns the max. This function is more opportunistic than
+// ComputeWhileLoopTripCount in the while loop analysis as it may return a
+// constant found in a compare expression when it is not an actual bound.
+int GetLoopBound(const HloInstruction& while_hlo, const int default_loop_count,
+                 const int max_loop_count = kDefaultMaxGetLoopBound);
 
 }  // namespace xla
 
