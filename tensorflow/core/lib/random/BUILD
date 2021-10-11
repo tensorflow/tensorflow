@@ -54,6 +54,7 @@ cc_library(
 cc_library(
     name = "random_distributions_utils",
     hdrs = ["random_distributions_utils.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
