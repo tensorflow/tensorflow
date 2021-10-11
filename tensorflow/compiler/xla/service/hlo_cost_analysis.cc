@@ -1131,17 +1131,19 @@ int64_t HloCostAnalysis::GetBytesRead(
   int64_t bytes_read = 0;
   for (int operand_number = 0; operand_number < hlo.operand_count();
        ++operand_number) {
-    for (const ShapeUtil::IndexedShape& indexed_shape :
-         ShapeUtil::GetLeafShapes(hlo.operand(operand_number)->shape())) {
-      absl::optional<int64_t> index_memory_space;
-      if (indexed_shape.shape.has_layout()) {
-        index_memory_space = indexed_shape.shape.layout().memory_space();
-      }
-      if (!memory_space || memory_space == index_memory_space) {
-        bytes_read +=
-            operand_bytes_accessed(hlo, operand_number, indexed_shape.index);
-      }
-    }
+    const Shape& shape = hlo.operand(operand_number)->shape();
+    ShapeUtil::ForEachSubshape(
+        shape, [&](const Shape& sub_shape, const ShapeIndex& index) {
+          if (ShapeUtil::IsLeafIndex(shape, index)) {
+            absl::optional<int64_t> index_memory_space;
+            if (sub_shape.has_layout()) {
+              index_memory_space = sub_shape.layout().memory_space();
+            }
+            if (!memory_space || memory_space == index_memory_space) {
+              bytes_read += operand_bytes_accessed(hlo, operand_number, index);
+            }
+          }
+        });
   }
   return bytes_read;
 }
