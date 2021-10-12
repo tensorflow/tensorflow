@@ -78,15 +78,6 @@ bool NeedsAsyncCommsStream(Thunk& thunk) {
   }
 }
 
-static std::string ModuleUniqueName(absl::string_view module_name,
-                                    const HloModule* module) {
-  std::string unique_id;
-  if (module != nullptr) {
-    unique_id = absl::StrCat("module.", module->unique_id(), ".");
-  }
-  return absl::StrCat(unique_id, module_name);
-}
-
 }  // namespace
 
 void GpuExecutable::BefBufferDeleter::operator()(uint8_t* ptr) const {
@@ -116,15 +107,13 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       entry_computation_profile_index_(params.entry_computation_profile_index),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
-  XlaDebugInfoManager::Get()->RegisterModule(
-      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
-      debug_buffer_assignment_);
+  XlaDebugInfoManager::Get()->RegisterModule(module_name_, shared_module(),
+                                             debug_buffer_assignment_);
 }
 
 GpuExecutable::~GpuExecutable() {
-  XlaDebugInfoManager::Get()->UnregisterModule(
-      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
-      debug_buffer_assignment_);
+  XlaDebugInfoManager::Get()->UnregisterModule(module_name_, shared_module(),
+                                               debug_buffer_assignment_);
 
   {
     // We could have issued host->device mem copies in ResolveConstantGlobals.
