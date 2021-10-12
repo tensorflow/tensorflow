@@ -77,8 +77,21 @@ struct MlirEmitterContext {
 //
 class IrEmitterUnnested : public IrEmitter {
  public:
+  // Contains threading information. Note that for performance we might apply
+  // thread id "scaling" where the physical thread id (to achieve good SM
+  // occupancy) will differ from logical thread id. This struct contains
+  // logical thread ids, along with meta-information about the scaling applied.
   struct ThreadIdInfo {
-    // Raw thread id.
+    ThreadIdInfo(llvm::Value* thread_id, llvm::Value* thread_id_x,
+                 llvm::Value* thread_id_y, llvm::Value* lane_id,
+                 llvm::Value* block_id, llvm::Value* scaling)
+        : thread_id(thread_id),
+          thread_id_x(thread_id_x),
+          thread_id_y(thread_id_y),
+          lane_id(lane_id),
+          block_id(block_id),
+          scaling(scaling) {}
+
     llvm::Value* thread_id;
 
     // X-coordinate calculated from thread id: `thread_id % num_threads_x`
@@ -89,6 +102,22 @@ class IrEmitterUnnested : public IrEmitter {
 
     // Lane id: `thread_id % kWarpSize`
     llvm::Value* lane_id;
+
+    // Block id.
+    llvm::Value* block_id;
+
+    // Emits GEP into a shared memory, taking virtual thread scaling into
+    // account. Automatically inserts the first zero required by LLVM GEP.
+    // Defined on ThreadIdInfo to keep `scaling` private.
+    //
+    // Same semantics as CreateInBoundsGEP.
+    llvm::Value* GEPIntoSharedMemory(
+        llvm::IRBuilder<>* b, llvm::Value* shared,
+        absl::Span<llvm::Value* const> idx_major_to_minor,
+        const llvm::Twine& name = "") const;
+
+   private:
+    llvm::Value* scaling;
   };
 
   absl::string_view platform_name() const {
@@ -103,8 +132,8 @@ class IrEmitterUnnested : public IrEmitter {
   // x_iter_num: When a thread process N elements in the X dimension, x_iter_num
   //             has a value of 0..N-1 to identify the element being process.
   using EmitElementFunction = std::function<void(
-      const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-      llvm::Value* x_loc, llvm::Value* x_iter_num)>;
+      const ThreadIdInfo& thread_id_info, const llvm_ir::IrArray::Index& index,
+      llvm::Value* y_loc, llvm::Value* x_loc, llvm::Value* x_iter_num)>;
 
   using ConstantGenerator = std::function<llvm::Value*(int64_t)>;
 
@@ -447,6 +476,9 @@ class IrEmitterUnnested : public IrEmitter {
 
     // Starting tile, as calculated from block id only.
     llvm_ir::IrArray::Index tile_origin;
+
+    // Thread meta-info.
+    ThreadIdInfo thread_id_info;
   };
 
   // Emits a kernel for the hlo instruction using the given kernel mapping
@@ -492,7 +524,7 @@ class IrEmitterUnnested : public IrEmitter {
   // y_loc: The y coordinate within a tile.
   // x_loc: The x coordinate within a tile.
   void EmitTileElementForFusion(
-      mlir::lmhlo::FusionOp fusion,
+      const ThreadIdInfo& thread_id_info, mlir::lmhlo::FusionOp fusion,
       absl::Span<const llvm_ir::IrArray> operand_arrays,
       absl::Span<const llvm_ir::IrArray> output_arrays,
       const llvm_ir::IrArray::Index& index, const TilingScheme& tiling_scheme,
@@ -562,6 +594,13 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<llvm::Value* const> partial_result_addresses,
       int threads_per_block);
 
+  // Allocates a shared tile of given dimensions, applying scaling specified in
+  // tilng_scheme as a major-most dimension to avoid collisions.
+  llvm::GlobalVariable* AllocateShared(
+      const TilingScheme& tiling_scheme, llvm::Type* element_type,
+      absl::Span<int64_t const> dimensions_major_to_minor,
+      absl::string_view buffer_name = "");
+
   StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkImpl(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
       absl::Span<const BufferSlice> slices,
@@ -611,23 +650,26 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::unique_ptr<Thunk>> BuildConditionalThunk(
       const HloInstruction* conditional);
 
+  // Emits the LLVM values for thread_id, thread_id.x, thread_id.y and lane
+  // id.
+  //
+  // Returns a struct containting these values.
+  //
+  // In the presence of thread scaling in tiling scheme may return early if the
+  // combination of thread_id/block_id does not correspond to a real block.
+  // Assumes the current function returns void.
+  ThreadIdInfo EmitThreadIdInfo(const TilingScheme& tiling_scheme,
+                                llvm::Type* index_ty);
+  // Emit __syncthreads(), synchronization barrier for all threads in a block.
+  llvm::CallInst* EmitSyncThreads();
+
   // Emits current thread id with the given type.
   //
   // Sets the return value range to [0, threads_per_block).
   llvm::Value* EmitThreadId(int64_t threads_per_block, llvm::Type* index_ty);
 
-  // Emits the LLVM values for thread_id, thread_id.x, thread_id.y and lane
-  // id.
-  //
-  // Returns a struct containting these values.
-  ThreadIdInfo EmitThreadIdInfo(int64_t threads_per_block, llvm::Type* index_ty,
-                                int64_t num_threads_x);
-
-  // Emit __syncthreads(), synchronization barrier for all threads in a block.
-  llvm::CallInst* EmitSyncThreads();
-
   // Emits current block id.
-  llvm::Value* EmitBlockId();
+  llvm::Value* EmitBlockId(int64_t num_blocks, llvm::Type* index_ty);
 
   // Prints a given format string with the given arguments, prefixed with
   // thread id and block id, and postfixed with a newline.
@@ -638,10 +680,6 @@ class IrEmitterUnnested : public IrEmitter {
       absl::string_view fmt, absl::Span<llvm::Value* const> arguments,
       absl::optional<int64_t> thread_id_filter = absl::nullopt,
       absl::optional<int64_t> block_id_filter = absl::nullopt);
-
-  // __shared__ memory uses a different address space, so we cast it to
-  // global address space before writing or reading.
-  llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Twine name = "");
 
   StatusOr<HloComputation*> GetOrCreateSubComputationFromRegion(
       mlir::Region* region, bool is_fusion);

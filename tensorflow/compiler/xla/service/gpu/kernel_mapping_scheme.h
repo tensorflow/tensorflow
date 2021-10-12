@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -33,6 +34,9 @@ using Vector3 = std::array<int64_t, 3>;
 // Used by reductions and 021 transpose algorithm. Both algorithms operate over
 // "logical" 3D views over input arrays, hence tiling and number of threads
 // information has only 3 dimensions.
+//
+// In the presence of virtual threadIdx/blockIdx scaling, all accessors are
+// "logical", unless otherwise specified.
 class TilingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
@@ -50,12 +54,14 @@ class TilingScheme {
   TilingScheme(absl::Span<const int64_t> dims_in_elems,
                absl::Span<const int64_t> tile_sizes,
                absl::Span<const int64_t> num_threads,
-               IndexingOrder indexing_order, int vector_size)
+               IndexingOrder indexing_order, int vector_size,
+               int scaling_factor)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
         tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
         num_threads_{num_threads[0], num_threads[1], num_threads[2]},
         indexing_order_(indexing_order),
-        vector_size_(vector_size) {
+        vector_size_(vector_size),
+        thread_id_virtual_scaling_(scaling_factor) {
     CHECK_EQ(tile_sizes[2] % vector_size_, 0);
   }
 
@@ -86,10 +92,6 @@ class TilingScheme {
   // Number of elements in each dimension (Z/Y/X respectively).
   absl::Span<const int64_t> GetDimsInElems() const { return dims_in_elems_; }
 
-  int64_t GetNumberOfBlocks() const {
-    return GetDimInBlock(0) * GetDimInBlock(1) * GetDimInBlock(2);
-  }
-
   Vector3 GetDimsInBlocks() const {
     return {GetDimInBlock(0), GetDimInBlock(1), GetDimInBlock(2)};
   }
@@ -110,12 +112,31 @@ class TilingScheme {
   // Number of threads in given dimension.
   int64_t GetNumThreadsFor(int d) const { return num_threads_.at(d); }
 
+  // Number of logical threads per block.
   int64_t GetNumThreadsPerBlock() const {
     return GetNumThreadsFor(0) * GetNumThreadsFor(1) * GetNumThreadsFor(2);
   }
 
+  // Number of logical blocks.
+  int64_t GetNumberOfBlocks() const {
+    return GetDimInBlock(0) * GetDimInBlock(1) * GetDimInBlock(2);
+  }
+
+  // Number of physical blocks launched (with scaling applied).
+  int64_t GetNumberOfBlocksPhysical() const {
+    return CeilOfRatio(GetNumberOfBlocks(), thread_id_virtual_scaling_);
+  }
+
+  // Number of physical threads per block launched (with scaling applied).
+  int64_t GetNumThreadsPerBlockPhysical() const {
+    return GetNumThreadsPerBlock() * thread_id_virtual_scaling_;
+  }
+
   IndexingOrder GetIndexingOrder() const { return indexing_order_; }
   int GetVectorSize() const { return vector_size_; }
+
+  // Scaling factor for transforming physical threadId to logical.
+  int GetThreadIdScalingFactor() const { return thread_id_virtual_scaling_; }
 
  private:
   // The number of elements in each dimension.
@@ -131,6 +152,9 @@ class TilingScheme {
 
   // Vector size for dimension X.
   const int vector_size_;
+
+  // Scaling apply to transform physical threadIdx into logical.
+  const int64_t thread_id_virtual_scaling_ = 1;
 };
 
 class ReductionCodegenInfo {
