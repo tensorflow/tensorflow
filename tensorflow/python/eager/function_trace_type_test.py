@@ -23,15 +23,34 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.types import trace
 
 
 class CacheKeyGenerationTest(test.TestCase):
 
+  def testVariableAliasing(self):
+    v1 = resource_variable_ops.ResourceVariable([1])
+    v2 = resource_variable_ops.ResourceVariable([1])
+    v3 = resource_variable_ops.ResourceVariable([1])
+    all_unique = function_trace_type.get_arg_spec((v1, v2, v3), False, True,
+                                                  True)
+    all_same = function_trace_type.get_arg_spec((v1, v1, v1), False, True, True)
+    self.assertNotEqual(all_unique, all_same)
+
+    v3 = resource_variable_ops.ResourceVariable([2])
+    v4 = resource_variable_ops.ResourceVariable([2])
+    v5 = resource_variable_ops.ResourceVariable([2])
+    all_unique_again = function_trace_type.get_arg_spec((v3, v4, v5), False,
+                                                        True, True)
+    all_same_again = function_trace_type.get_arg_spec((v4, v4, v4), False, True,
+                                                      True)
+    self.assertEqual(all_unique, all_unique_again)
+    self.assertEqual(all_same, all_same_again)
+
   def testTensorEquality(self):
-    context = trace.SignatureContext()
+    context = function_trace_type.SignatureContext()
     tensor_a = array_ops.zeros([11, 3, 5],
                                dtype=dtypes.int32)._tf_tracing_type(context)
     tensor_b = array_ops.zeros([11, 4, 5],
@@ -47,7 +66,7 @@ class CacheKeyGenerationTest(test.TestCase):
     self.assertEqual(tensor_a, tensor_d)
 
   def testTensorAndSpecEquality(self):
-    context = trace.SignatureContext()
+    context = function_trace_type.SignatureContext()
     tensor = array_ops.zeros([11, 3, 5],
                              dtype=dtypes.int32)._tf_tracing_type(context)
     spec = tensor_spec.TensorSpec([11, 3, 5],

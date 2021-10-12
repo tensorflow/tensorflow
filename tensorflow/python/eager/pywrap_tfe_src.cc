@@ -4038,6 +4038,7 @@ class LocalResourceIdMap {
 };
 
 // Contains encoding configuration, intermediary data and result.
+// TODO(b/201533914): Move EncodingContext fields to signature_context.
 struct EncodingContext {
   bool include_tensor_ranks_only;
   bool encode_variable_by_resource_id;
@@ -4302,8 +4303,8 @@ tensorflow::Status TryEncodingProtocol(PyObject* arg,
     }
   }
 
-  tensorflow::Safe_PyObjectPtr tracetype(
-      PyObject_CallObject(protocol.get(), context.signature_context));
+  tensorflow::Safe_PyObjectPtr tracetype(PyObject_CallObject(
+      protocol.get(), Py_BuildValue("(O)", context.signature_context)));
 
   if (tracetype.get() == nullptr) {
     PyErr_Clear();
