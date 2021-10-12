@@ -436,6 +436,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(w, compute_f32(np.arccosh), math_ops.acosh)
     self._compareBoth(k, compute_f32(np.arctanh), math_ops.atanh,
                       grad_tol=1e-2)
+    self._compareBoth(x, compute_f32(np.vectorize(math.erf)), math_ops.erf)
 
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
