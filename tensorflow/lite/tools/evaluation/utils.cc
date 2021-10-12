@@ -134,7 +134,7 @@ TfLiteDelegatePtr CreateGPUDelegate() {
   return CreateNullDelegate();
 #endif  // TFLITE_SUPPORTS_GPU_DELEGATE
 }
-
+#if defined(TFLITE_ENABLE_HEXAGON)
 TfLiteDelegatePtr CreateHexagonDelegate(
     const std::string& library_directory_path, bool profiling) {
 #if !defined(__APPLE__) && (defined(__arm__) || defined(__aarch64__))
@@ -167,9 +167,14 @@ TfLiteDelegatePtr CreateHexagonDelegate(
   });
 }
 #endif
+#else
+TfLiteDelegatePtr CreateXNNPACKDelegate() {
+  return CreateNullDelegate();
+}
+#endif
 
 #if defined(TFLITE_WITHOUT_XNNPACK)
-TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
+TfLiteDelegatePtr CreateHexagonDelegate(int num_threads) {
   return CreateNullDelegate();
 }
 #else
