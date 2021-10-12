@@ -1374,6 +1374,8 @@ TEST(ArrayOpsTest, QuantizeAndDequantizeV2_ShapeFn) {
   INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op,
               "[1,2,?,4,5];[];[1]");
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[1];[1]");
+  (*op.node_def.mutable_attr())["axis"].set_i(-2);
+  INFER_ERROR("axis should be at least -1, got -2", op, "?;?;?");
 }
 
 TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
