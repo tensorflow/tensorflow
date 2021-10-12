@@ -1009,9 +1009,12 @@ class Trackable(object):
       restore_ops.extend(new_restore_ops)
       tensor_saveables.update(new_tensor_saveables)
       python_saveables.extend(new_python_saveables)
-    restore_ops.extend(
-        current_position.checkpoint.restore_saveables(
-            tensor_saveables, python_saveables))
+
+    # Restore slot variables first.
+    #
+    # Order matters because tensor_saveables from above may contain "saveables"
+    # with side effects that expect the restored slot variable values.
+    #
     # It is faster to restore slot variables separately because the file reader
     # (BundleReader) assumes that variables are stored on disk in alphabetical
     # order. However, slot variables are stored in their own groups after other
@@ -1026,6 +1029,10 @@ class Trackable(object):
         current_position.checkpoint.restore_saveables(
             current_position.checkpoint.slot_restoration_tensor_saveables, []))
     current_position.checkpoint.slot_restoration_tensor_saveables.clear()
+
+    restore_ops.extend(
+        current_position.checkpoint.restore_saveables(tensor_saveables,
+                                                      python_saveables))
     return restore_ops
 
   def _single_restoration_from_checkpoint_position(self, checkpoint_position,
