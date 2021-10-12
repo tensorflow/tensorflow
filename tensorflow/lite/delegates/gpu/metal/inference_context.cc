@@ -131,8 +131,7 @@ class TensorReserver {
   TensorReserver() : next_(0) {}
   ValueId Add(const TensorDescriptor& dummy) {
     reservations_[next_] = dummy;
-    ++next_;
-    return next_;
+    return next_++;
   }
   void Add(ValueId id, const TensorDescriptor& dummy) {
     reservations_[id] = dummy;
