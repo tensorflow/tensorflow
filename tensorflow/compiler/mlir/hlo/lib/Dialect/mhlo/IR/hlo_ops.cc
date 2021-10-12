@@ -2359,8 +2359,9 @@ OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
 }
 
 OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
+  // Fold x^x to 0. Attributes only support static shapes.
   auto rType = getType().cast<ShapedType>();
-  if (lhs() == rhs()) {
+  if (lhs() == rhs() && rType.hasStaticShape()) {
     Builder builder(getContext());
     return builder.getZeroAttr(rType);
   }
