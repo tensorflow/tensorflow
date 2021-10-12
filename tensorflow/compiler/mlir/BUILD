@@ -237,6 +237,7 @@ tf_cc_binary(
 
 tf_cc_binary(
     name = "tf-mlir-translate",
+    testonly = True,
     srcs = ["tf_mlir_translate_main.cc"],
     deps = [
         ":init_mlir",

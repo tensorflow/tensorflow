@@ -1991,6 +1991,7 @@ cc_library(
 
 cc_library(
     name = "tf_xla_mlir_translate",
+    testonly = True,  # Ensure alwayslink does not leak in the codebase.
     srcs = ["utils/tf_xla_mlir_translate.cc"],
     deps = [
         ":compile_mlir_util",
@@ -2018,7 +2019,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Translation",
     ],
-    # TODO(aminim):  static registration should be split out.
     alwayslink = 1,
 )
 
