@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/util.h"
 
 
@@ -73,6 +74,15 @@ class ScatterUpdateOp : public OpKernel {
   //   in the graph?
   explicit ScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("use_locking", &use_exclusive_lock_));
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(
+          c, !OpDeterminismRequired(),
+          errors::Unimplemented(
+              "Determinism is not yet supported in GPU implementation of "
+              "Scatter ops with ref inputs. Consider using resource variables "
+              "instead if you want to run Scatter when op determinism is "
+              "enabled."));
+    }
   }
 
   void Compute(OpKernelContext* c) override {
