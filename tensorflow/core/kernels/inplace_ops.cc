@@ -71,6 +71,15 @@ class ParallelConcatUpdate : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     auto value = ctx->input(0);
+    // Value should be at least rank 1. Also the 0th dimension should be
+    // at least loc_.
+    OP_REQUIRES(ctx, value.dims() >= 1,
+                errors::InvalidArgument("value should be at least rank 1."));
+    OP_REQUIRES(
+        ctx, value.dim_size(0) > loc_,
+        errors::InvalidArgument("0th dimension of value = ", value.dim_size(0),
+                                " is less than loc_=", loc_));
+
     auto update = ctx->input(1);
 
     OP_REQUIRES(
