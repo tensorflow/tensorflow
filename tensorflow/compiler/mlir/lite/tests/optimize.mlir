@@ -1811,6 +1811,17 @@ func @DontConvertConstSelectMixed(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) ->
   // CHECK: return %0, %1
 }
 
+// CHECK-LABEL: CheckSelectNegated
+func @CheckSelectNegated(%arg0: tensor<1x2x3x4xi1>, %arg1: tensor<1x2x3x4xf32>, %arg2: tensor<1x2x3x4xf32>) -> (tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) {
+  %not = "tfl.logical_not"(%arg0) : (tensor<1x2x3x4xi1>) -> tensor<1x2x3x4xi1>
+  %sel_v1 = "tfl.select"(%not, %arg1, %arg2) : (tensor<1x2x3x4xi1>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
+  %sel_v2 = "tfl.select_v2"(%not, %arg1, %arg2) : (tensor<1x2x3x4xi1>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
+  return %sel_v1, %sel_v2 : tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>
+  // CHECK: %[[SEL_V1:.*]] = "tfl.select"(%arg0, %arg2, %arg1) : (tensor<1x2x3x4xi1>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
+  // CHECK: %[[SEL_V2:.*]] = "tfl.select_v2"(%arg0, %arg2, %arg1) : (tensor<1x2x3x4xi1>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
+  // CHECK: return %[[SEL_V1]], %[[SEL_V2]]
+}
+
 // CHECK-LABEL: EliminateRedundantLogicalAnd
 func @EliminateRedundantLogicalAnd(%arg0: tensor<1xi1>, %arg1: tensor<2x3xi1>) -> (tensor<1xi1>, tensor<2x3xi1>, tensor<2x3xi1>, tensor<2x3xi1>, tensor<2x3xi1>, tensor<2x3xi1>, tensor<1xi1>, tensor<2x3xi1>, tensor<2x3xi1>, tensor<2x3xi1>, tensor<2x3xi1>, tensor<2x3xi1>, tensor<2x3xi1>, tensor<2x3xi1>) {
   %cst_false0 = constant dense<false> : tensor<1xi1>

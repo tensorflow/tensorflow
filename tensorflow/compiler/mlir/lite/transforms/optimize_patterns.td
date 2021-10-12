@@ -849,6 +849,10 @@ foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
     (replaceWithValue $input2),
     [(HaveSameType $input2, $result),
      (AllElementsAreBool<"false"> $constant)]>;
+  // select(logical_not(C), A, B) -> select(C, B, A)
+  def Optimize#SelectOp#Not : Pat<
+    (SelectOp (TFL_LogicalNotOp $condition), $input1, $input2),
+    (SelectOp $condition, $input2, $input1)>;
 }
 
 def EliminateLogicalAndTrue : Pat<
