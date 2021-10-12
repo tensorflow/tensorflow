@@ -104,10 +104,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       CollectiveExecutorMgrInterface* collective_executor_mgr = nullptr,
       bool run_eager_op_as_function = false);
 
-  void Release() override {
-    local_rendezvous_table_->CleanUpAll();
-    Unref();
-  }
+  void Release() override { Unref(); }
 
   AbstractTensorInterface* CreateInt64Scalar(int64_t value) override;
   AbstractTensorInterface* CreateUint64Scalar(uint64 value) override;
@@ -543,7 +540,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   class LocalRendezvousTable {
    public:
     LocalRendezvousTable() = default;
-    ~LocalRendezvousTable() = default;
+    ~LocalRendezvousTable();
 
     Rendezvous* FindOrCreate(int64_t step_id, DeviceMgr* device_mgr);
     void Remove(int64_t step_id);
