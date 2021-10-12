@@ -2274,6 +2274,7 @@ distribute_py_test(
 tpu_py_test(
     name = "tpu_strategy_model_parallelism_test",
     srcs = ["tpu_strategy_model_parallelism_test.py"],
+    disable_experimental = True,  # b/202779350
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
