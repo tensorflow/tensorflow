@@ -44,6 +44,16 @@ def make_batch_to_space_nd_tests(options):
           "constant_crops": [True],
           "dynamic_range_quantize": [True, False],
       },
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 3, 3, 1]],
+          "block_shape": [[1, 1]],
+          "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
+          "constant_block_shape": [True],
+          "constant_crops": [True],
+          "fully_quantize": [True],
+          "quant_16x8": [False, True],
+      },
       # 3D use case.
       {
           "dtype": [tf.float32],
@@ -53,6 +63,16 @@ def make_batch_to_space_nd_tests(options):
           "constant_block_shape": [True],
           "constant_crops": [True],
           "dynamic_range_quantize": [True, False],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 3, 3]],
+          "block_shape": [[1]],
+          "crops": [[[0, 0]], [[1, 1]]],
+          "constant_block_shape": [True],
+          "constant_crops": [True],
+          "fully_quantize": [True],
+          "quant_16x8": [False, True],
       },
   ]
 
