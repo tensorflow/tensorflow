@@ -539,6 +539,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
           tensorflow::TfrtTpuInfraTarget::kTpurt;
     }
   }
+  LOG(INFO) << "TFRT Savedmodel use TPU target "
+            << options.compile_options.tpu_target;
 
   auto statusor_saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {
