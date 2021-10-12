@@ -463,6 +463,7 @@ cc_library(
 
 cc_library(
     name = "tfrt_compile_options",
+    srcs = ["translate/tfrt_compile_options.cc"],
     hdrs = ["translate/tfrt_compile_options.h"],
 )
 
