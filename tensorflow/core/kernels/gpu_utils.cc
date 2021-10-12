@@ -284,11 +284,10 @@ StatusOr<AutotuneEntry<Sig>> BestCudnnConvAlgorithm(
   int idx_no_scratch;
   TF_ASSIGN_OR_RETURN(std::tie(idx, idx_no_scratch),
                       BestCudnnConvAlgorithmIndices(results));
-  TF_ASSIGN_OR_RETURN(auto workspace_size, runners[idx]->GetWorkspaceSize());
   VLOG(2) << "fastest algorithm: "
           << proto_utils::FromDurationProto(results[idx].run_time())
           << " with algo " << runners[idx]->ToString() << ", workspace bytes "
-          << workspace_size;
+          << results[idx].scratch_bytes();
   return AutotuneEntry<Sig>(std::move(runners[idx]),
                             idx_no_scratch == -1 || idx_no_scratch == idx
                                 ? nullptr

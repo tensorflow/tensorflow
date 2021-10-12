@@ -4479,14 +4479,74 @@ class ScalingParam {
   float as_float_;
 };
 
-port::Status CudnnSupport::GetConvolveExecutionPlans(
-    dnn::ConvolutionKind kind, dnn::DataType input_type,
-    dnn::DataType output_type, Stream* stream,
+port::Status CudnnSupport::GetConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
+  if (!use_cudnn_frontend) {
+    auto cuda_compute_capability = stream->GetCudaComputeCapability();
+    std::vector<dnn::AlgorithmDesc> algorithms;
+    bool got_algos = false;
+    switch (kind) {
+      default:
+        return port::InternalError(absl::StrFormat(
+            "Unknown ConvolutionKind for unfused conv: %d", kind));
+      case dnn::ConvolutionKind::FORWARD:
+        got_algos = GetConvolveAlgorithms(cuda_compute_capability, &algorithms);
+        break;
+      case dnn::ConvolutionKind::BACKWARD_FILTER:
+        got_algos = GetConvolveBackwardFilterAlgorithms(cuda_compute_capability,
+                                                        &algorithms);
+        break;
+      case dnn::ConvolutionKind::BACKWARD_DATA:
+        got_algos = GetConvolveBackwardDataAlgorithms(cuda_compute_capability,
+                                                      &algorithms);
+        break;
+    }
+    if (!got_algos) {
+      return port::Status(
+          port::error::UNKNOWN,
+          absl::StrFormat("Listing algorithms failed for kind %d", kind));
+    }
+
+    for (const auto& algo : algorithms) {
+      SE_ASSIGN_OR_RETURN(
+          auto runner,
+          ConvolveRunnerFromDesc(algo, kind, input_type, output_type,
+                                 input_descriptor, filter_descriptor,
+                                 output_descriptor, convolution_descriptor));
+
+      CudnnConvolutionDescriptor conv(
+          convolution_descriptor,
+          ToCudnnDataType(GetConvAccumulatorType(input_type)));
+      SE_ASSIGN_OR_RETURN(bool use_tensor_ops,
+                          UseTensorOps(stream, input_type, algo));
+      conv.set_use_tensor_op_math(use_tensor_ops);
+
+      out_exec_plans->push_back(std::make_unique<CudnnLegacyConvRunner>(
+          parent_, cudnn_.get(), algo, input_type, output_type, kind,
+          /* input_nd = */
+          CudnnTensorDescriptor(
+              input_descriptor,
+              ToCudnnDataType(input_type, input_descriptor.layout())),
+          /* output_nd = */
+          CudnnTensorDescriptor(
+              output_descriptor,
+              ToCudnnDataType(input_type, output_descriptor.layout())),
+          /* filter = */
+          CudnnFilterDescriptor(
+              filter_descriptor,
+              ToCudnnDataType(input_type, filter_descriptor.layout())),
+          std::move(conv)));
+    }
+
+    return port::Status::OK();
+  }
+
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   SE_ASSIGN_OR_RETURN(
@@ -4579,7 +4639,7 @@ port::Status CudnnSupport::GetConvolveExecutionPlans(
 port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
 CudnnSupport::ConvolveRunnerFromDesc(
     const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-    dnn::DataType element_type, dnn::DataType output_type,
+    dnn::DataType input_type, dnn::DataType output_type,
     const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
@@ -4587,23 +4647,23 @@ CudnnSupport::ConvolveRunnerFromDesc(
   if (!algorithm_desc.is_cudnn_frontend()) {
     CudnnConvolutionDescriptor conv(
         convolution_descriptor,
-        ToCudnnDataType(GetConvAccumulatorType(element_type)));
+        ToCudnnDataType(GetConvAccumulatorType(input_type)));
     conv.set_use_tensor_op_math(algorithm_desc.tensor_ops_enabled());
 
     return {std::make_unique<CudnnLegacyConvRunner>(
-        parent_, cudnn_.get(), algorithm_desc, element_type, output_type, kind,
+        parent_, cudnn_.get(), algorithm_desc, input_type, output_type, kind,
         /* input_nd = */
         CudnnTensorDescriptor(
             input_descriptor,
-            ToCudnnDataType(element_type, input_descriptor.layout())),
+            ToCudnnDataType(input_type, input_descriptor.layout())),
         /* output_nd = */
         CudnnTensorDescriptor(
             output_descriptor,
-            ToCudnnDataType(element_type, output_descriptor.layout())),
+            ToCudnnDataType(input_type, output_descriptor.layout())),
         /* filter = */
         CudnnFilterDescriptor(
             filter_descriptor,
-            ToCudnnDataType(element_type, filter_descriptor.layout())),
+            ToCudnnDataType(input_type, filter_descriptor.layout())),
         std::move(conv))};
   }
 
@@ -4612,7 +4672,7 @@ CudnnSupport::ConvolveRunnerFromDesc(
 
   SE_ASSIGN_OR_RETURN(
       auto op_graph,
-      GetCudnnOperationGraph(kind, element_type, output_type, input_descriptor,
+      GetCudnnOperationGraph(kind, input_type, output_type, input_descriptor,
                              filter_descriptor, output_descriptor,
                              convolution_descriptor, cudnn));
 
@@ -4861,7 +4921,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
 port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
 CudnnSupport::FusedConvolveRunnerFromDesc(
     const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-    dnn::DataType element_type, dnn::DataType bias_type,
+    dnn::DataType input_type, dnn::DataType bias_type,
     dnn::DataType output_type, double conv_scale, double side_input_scale,
     const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
@@ -4872,18 +4932,18 @@ CudnnSupport::FusedConvolveRunnerFromDesc(
   if (!algorithm_desc.is_cudnn_frontend()) {
     CudnnTensorDescriptor conv_input_nd(
         input_descriptor,
-        ToCudnnDataType(element_type, input_descriptor.layout()));
+        ToCudnnDataType(input_type, input_descriptor.layout()));
     CudnnTensorDescriptor output_nd(
         output_descriptor,
         ToCudnnDataType(output_type, input_descriptor.layout()));
     CudnnFilterDescriptor filter(
         filter_descriptor,
-        ToCudnnDataType(element_type, filter_descriptor.layout()));
+        ToCudnnDataType(input_type, filter_descriptor.layout()));
     CudnnTensorDescriptor bias_nd(bias_descriptor, ToCudnnDataType(bias_type));
 
     CudnnConvolutionDescriptor conv(
         convolution_descriptor,
-        ToCudnnDataType(GetConvAccumulatorType(element_type)));
+        ToCudnnDataType(GetConvAccumulatorType(input_type)));
     conv.set_use_tensor_op_math(algorithm_desc.tensor_ops_enabled());
 
     // CUDNN v6 only supports CUDNN_NOT_PROPAGATE_NAN as the reluNanOpt for
@@ -4897,7 +4957,7 @@ CudnnSupport::FusedConvolveRunnerFromDesc(
                                               output_descriptor.value_max());
 
     return {std::make_unique<CudnnLegacyFusedConvRunner>(
-        parent_, cudnn_.get(), algorithm_desc, element_type, conv_scale,
+        parent_, cudnn_.get(), algorithm_desc, input_type, conv_scale,
         side_input_scale, std::move(conv_input_nd), std::move(output_nd),
         std::move(filter), std::move(bias_nd), std::move(conv),
         std::move(activation_desc))};
@@ -4906,12 +4966,12 @@ CudnnSupport::FusedConvolveRunnerFromDesc(
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, nullptr);
 
-  SE_ASSIGN_OR_RETURN(
-      auto op_graph, GetCudnnFusedOperationGraph(
-                         kind, element_type, bias_type, output_type, conv_scale,
-                         side_input_scale, input_descriptor, filter_descriptor,
-                         bias_descriptor, output_descriptor,
-                         convolution_descriptor, activation_mode, cudnn));
+  SE_ASSIGN_OR_RETURN(auto op_graph,
+                      GetCudnnFusedOperationGraph(
+                          kind, input_type, bias_type, output_type, conv_scale,
+                          side_input_scale, input_descriptor, filter_descriptor,
+                          bias_descriptor, output_descriptor,
+                          convolution_descriptor, activation_mode, cudnn));
 
   SE_ASSIGN_OR_RETURN(auto execution_plan,
                       RebuildExecutionPlan(cudnn, algorithm_desc, *op_graph));
@@ -4924,23 +4984,74 @@ CudnnSupport::FusedConvolveRunnerFromDesc(
 #endif
 }
 
-port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
-    dnn::ConvolutionKind kind, dnn::DataType input_type,
-    dnn::DataType bias_type, dnn::DataType output_type, double conv_input_scale,
-    double side_input_scale, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor,
+port::Status CudnnSupport::GetFusedConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType input_type, dnn::DataType bias_type,
+    dnn::DataType output_type, double conv_scale, double side_input_scale,
+    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::ActivationMode activation_mode,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
+  if (input_type == dnn::DataType::kInt8 &&
+      !stream->GetCudaComputeCapability().IsAtLeast(6, 1)) {
+    return port::UnimplementedError(
+        "cudnnConvolutionBiasActivationForward() for int8 is only supported "
+        "on GPUs with compute capability 6.1 or later.");
+  }
+
+  if (input_type == dnn::DataType::kInt8 &&
+      output_type == dnn::DataType::kFloat &&
+      (CUDNN_VERSION >= 8000 && CUDNN_VERSION <= 8200)) {
+    return port::UnimplementedError(
+        "int8 -> float fused conv is disabled for this cuDNN version. See "
+        "go/nvbugs/3326122");
+  }
+
+  if (activation_mode != dnn::ActivationMode::kRelu &&
+      activation_mode != dnn::ActivationMode::kNone) {
+    return port::Status(port::error::INVALID_ARGUMENT,
+                        "cudnnConvolutionBiasActivationForward() only supports "
+                        "Relu or None activation.");
+  }
+
+  if (!use_cudnn_frontend) {
+    std::vector<dnn::AlgorithmDesc> algorithms;
+
+    auto cuda_compute_capability = stream->GetCudaComputeCapability();
+    if (!GetConvolveAlgorithms(cuda_compute_capability, &algorithms)) {
+      return port::Status(port::error::UNKNOWN,
+                          "Listing fused convolve algorithms failed.");
+    }
+
+    for (const auto& algo : algorithms) {
+      // Only CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM is supported
+      // for identity activation, other algs seem to quietly do Relu. See
+      // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#cudnnConvolutionBiasActivationForward
+      if (activation_mode == dnn::ActivationMode::kNone &&
+          algo.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
+        continue;
+      }
+      SE_ASSIGN_OR_RETURN(
+          auto runner,
+          FusedConvolveRunnerFromDesc(algo, kind, input_type, bias_type,
+                                      output_type, conv_scale, side_input_scale,
+                                      input_descriptor, filter_descriptor,
+                                      bias_descriptor, output_descriptor,
+                                      convolution_descriptor, activation_mode));
+      out_exec_plans->push_back(std::move(runner));
+    }
+    return port::Status::OK();
+  }
+
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   auto op_graph_status = GetCudnnFusedOperationGraph(
-      kind, input_type, bias_type, output_type, conv_input_scale,
-      side_input_scale, input_descriptor, filter_descriptor, bias_descriptor,
-      output_descriptor, convolution_descriptor, activation_mode, cudnn);
+      kind, input_type, bias_type, output_type, conv_scale, side_input_scale,
+      input_descriptor, filter_descriptor, bias_descriptor, output_descriptor,
+      convolution_descriptor, activation_mode, cudnn);
   if (!op_graph_status.status().ok()) {
     return port::Status(port::error::INTERNAL,
                         absl::StrCat("Cudnn graph failed to build: ",
@@ -5531,7 +5642,7 @@ port::Status CudnnSupport::DoFusedConvolve(
     Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
     dnn::DataType bias_type, dnn::DataType output_type,
     const dnn::BatchDescriptor& conv_input_descriptor,
-    DeviceMemoryBase conv_input_data, double conv_input_scale,
+    DeviceMemoryBase conv_input_data, double conv_scale,
     const dnn::FilterDescriptor& filter_descriptor,
     DeviceMemoryBase filter_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
@@ -5599,7 +5710,7 @@ port::Status CudnnSupport::DoFusedConvolve(
       activation_mode, CUDNN_NOT_PROPAGATE_NAN, output_descriptor.value_max());
 
   CudnnLegacyFusedConvRunner runner(
-      parent_, cudnn_.get(), algo_desc, input_type, conv_input_scale,
+      parent_, cudnn_.get(), algo_desc, input_type, conv_scale,
       side_input_scale, std::move(conv_input_nd), std::move(output_nd),
       std::move(filter), std::move(bias_nd), std::move(conv),
       std::move(activation_desc));

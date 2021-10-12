@@ -61,6 +61,7 @@ tf_proto_library(
     srcs = ["autotuning.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/stream_executor:dnn_proto"],
 )
 
 tf_proto_library(

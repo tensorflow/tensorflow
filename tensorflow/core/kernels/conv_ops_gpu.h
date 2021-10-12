@@ -134,6 +134,7 @@ AllocateScratchOrFallback(
     const typename AutotuneEntry<Sig>::OpRunners& runners) {
   std::shared_ptr<const se::dnn::OpRunner<Sig>> selected_runner =
       runners.primary;
+
   TF_ASSIGN_OR_RETURN(auto workspace_size, selected_runner->GetWorkspaceSize());
 
   se::DeviceMemoryBase scratch_memory;

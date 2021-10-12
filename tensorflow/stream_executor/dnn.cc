@@ -106,15 +106,15 @@ bool DnnSupport::GetConvolveAlgorithms(
   return false;
 }
 
-port::Status DnnSupport::GetConvolveExecutionPlans(
-    dnn::ConvolutionKind /*kind*/, dnn::DataType /*input_type*/,
-    dnn::DataType /*output_type*/, Stream* /*stream*/,
-    const dnn::BatchDescriptor& /*input_descriptor*/,
+port::Status DnnSupport::GetConvolveRunners(
+    bool /* use_cudnn_frontend */, dnn::ConvolutionKind /*kind*/,
+    dnn::DataType /*input_type*/, dnn::DataType /*output_type*/,
+    Stream* /*stream*/, const dnn::BatchDescriptor& /*input_descriptor*/,
     const dnn::FilterDescriptor& /*filter_descriptor*/,
     const dnn::BatchDescriptor& /*output_descriptor*/,
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* /*exec_plans*/) {
-  return port::UnimplementedError("GetConvolveExecutionPlans not implemented.");
+  return port::UnimplementedError("GetConvolveRunners not implemented.");
 }
 
 port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
@@ -128,19 +128,18 @@ DnnSupport::ConvolveRunnerFromDesc(
   return port::UnimplementedError("ConvolveRunnerFromDesc not implemented.");
 }
 
-port::Status DnnSupport::GetFusedConvolveExecutionPlans(
-    dnn::ConvolutionKind kind, dnn::DataType element_type,
-    dnn::DataType bias_type, dnn::DataType output_type, double conv_input_scale,
-    double side_input_scale, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor,
+port::Status DnnSupport::GetFusedConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType element_type, dnn::DataType bias_type,
+    dnn::DataType output_type, double conv_input_scale, double side_input_scale,
+    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::ActivationMode activation_mode,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
-  return port::UnimplementedError(
-      "GetFusedConvolveExecutionPlans not implemented.");
+  return port::UnimplementedError("GetFusedConvolveRunners not implemented.");
 }
 
 port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>

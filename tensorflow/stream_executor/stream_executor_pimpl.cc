@@ -284,9 +284,9 @@ bool StreamExecutor::GetConvolveAlgorithms(
   }
 }
 
-port::Status StreamExecutor::GetConvolveExecutionPlans(
-    dnn::ConvolutionKind kind, dnn::DataType input_type,
-    dnn::DataType output_type, Stream *stream,
+port::Status StreamExecutor::GetConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType input_type, dnn::DataType output_type, Stream *stream,
     const dnn::BatchDescriptor &input_descriptor,
     const dnn::FilterDescriptor &filter_descriptor,
     const dnn::BatchDescriptor &output_descriptor,
@@ -296,10 +296,10 @@ port::Status StreamExecutor::GetConvolveExecutionPlans(
   if (!dnn_support) {
     return port::UnimplementedError("DNN library is not found.");
   }
-  return dnn_support->GetConvolveExecutionPlans(
-      kind, input_type, output_type, stream, input_descriptor,
-      filter_descriptor, output_descriptor, convolution_descriptor,
-      out_exec_plans);
+  return dnn_support->GetConvolveRunners(
+      use_cudnn_frontend, kind, input_type, output_type, stream,
+      input_descriptor, filter_descriptor, output_descriptor,
+      convolution_descriptor, out_exec_plans);
 }
 
 port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
@@ -319,11 +319,11 @@ StreamExecutor::ConvolveRunnerFromDesc(
       filter_descriptor, output_descriptor, convolution_descriptor);
 }
 
-port::Status StreamExecutor::GetFusedConvolveExecutionPlans(
-    dnn::ConvolutionKind kind, dnn::DataType input_type,
-    dnn::DataType bias_type, dnn::DataType output_type, double conv_input_scale,
-    double side_input_scale, Stream *stream,
-    const dnn::BatchDescriptor &input_descriptor,
+port::Status StreamExecutor::GetFusedConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType input_type, dnn::DataType bias_type,
+    dnn::DataType output_type, double conv_input_scale, double side_input_scale,
+    Stream *stream, const dnn::BatchDescriptor &input_descriptor,
     const dnn::FilterDescriptor &filter_descriptor,
     const dnn::BatchDescriptor &bias_descriptor,
     const dnn::BatchDescriptor &output_descriptor,
@@ -334,11 +334,11 @@ port::Status StreamExecutor::GetFusedConvolveExecutionPlans(
   if (!dnn_support) {
     return port::UnimplementedError("DNN library is not found.");
   }
-  return dnn_support->GetFusedConvolveExecutionPlans(
-      kind, input_type, bias_type, output_type, conv_input_scale,
-      side_input_scale, stream, input_descriptor, filter_descriptor,
-      bias_descriptor, output_descriptor, convolution_descriptor,
-      activation_mode, out_exec_plans);
+  return dnn_support->GetFusedConvolveRunners(
+      use_cudnn_frontend, kind, input_type, bias_type, output_type,
+      conv_input_scale, side_input_scale, stream, input_descriptor,
+      filter_descriptor, bias_descriptor, output_descriptor,
+      convolution_descriptor, activation_mode, out_exec_plans);
 }
 
 port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
