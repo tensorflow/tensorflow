@@ -5599,9 +5599,18 @@ Status IrEmitterUnnested::EmitLmhloRegion(mlir::Region* region) {
 Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(mlir::Operation* op) {
   auto module = op->getParentOfType<mlir::ModuleOp>();
   Thunk::ThunkInfo thunk_info;
-  thunk_info.profile_annotation = absl::StrFormat(
-      "Thunk:#hlo_op=%s,hlo_module=%s#", mlir::GetNameFromLoc(op->getLoc()),
-      mlir::GetNameFromLoc(module->getLoc()));
+
+  // Include the HloModule's unique_id in the thunk's module name so that xprof
+  // shows different modules differently, addressing b/202415436#comment24.
+  std::string module_name = mlir::GetNameFromLoc(module->getLoc());
+  if (auto unique_id_attr =
+          module->getAttrOfType<mlir::IntegerAttr>("mhlo.unique_id")) {
+    module_name = absl::StrFormat("%s (%d)", module_name,
+                                  unique_id_attr.getValue().getZExtValue());
+  }
+  thunk_info.profile_annotation =
+      absl::StrFormat("Thunk:#hlo_op=%s,hlo_module=%s#",
+                      mlir::GetNameFromLoc(op->getLoc()), module_name);
   return thunk_info;
 }
 

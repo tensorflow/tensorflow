@@ -1661,6 +1661,11 @@ Status HloToLhloModule(const BufferAssignment& assignment,
   module->setLoc(mlir::NameLoc::get(
       mlir::Identifier::get(hlo_module.name(), module.getContext())));
 
+  // Store the HloModule's unique_id in the MLIR module.
+  Builder builder(module.getContext());
+  module->setAttr("mhlo.unique_id",
+                  builder.getI64IntegerAttr(hlo_module.unique_id()));
+
   const HloComputation* computation = hlo_module.entry_computation();
 
   LhloDialectEmitter emitter(assignment, *computation, module);
