@@ -862,8 +862,9 @@ Status TRTEngineOp::ExecuteTrtEngine(
   // for it.
   mutex_lock lock(engine_context->mu);
   nvinfer1::IExecutionContext* execution_context;
-  TF_RETURN_IF_ERROR(
-      engine_context->GetExecutionContext(trt_context_idx, &execution_context));
+  bool has_device_memory;
+  TF_RETURN_IF_ERROR(engine_context->GetExecutionContext(
+      trt_context_idx, &execution_context, &has_device_memory));
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "Selected execution context: " << trt_context_idx;
@@ -888,11 +889,12 @@ Status TRTEngineOp::ExecuteTrtEngine(
                                                 ->GpuStreamMemberHack()));
 
   ContextDeviceMemory context_device_memory;
-  // Allocate device memory for the TensorRT engine execution. The device
-  // memory will be released when context_device_memory goes out of scope.
-  TF_RETURN_IF_ERROR(
-      context_device_memory.AllocateDeviceMemory(execution_context, allocator));
-
+  if (!has_device_memory) {
+    // Allocate device memory for the TensorRT engine execution. The device
+    // memory will be released when context_device_memory goes out of scope.
+    TF_RETURN_IF_ERROR(context_device_memory.AllocateDeviceMemory(
+        execution_context, allocator));
+  }
   // Enqueue the TensorRT engine for execution.
   return TrtEnqueue(execution_context, buffers, *stream, use_implicit_batch_,
                     num_batch);
