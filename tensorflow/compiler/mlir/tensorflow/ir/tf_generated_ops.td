@@ -18989,7 +18989,7 @@ def TF_XdivyOp : TF_Op<"Xdivy", [NoSideEffect, ResultsBroadcastableShape, TF_Sam
   let hasCanonicalizer = 1;
 }
 
-def TF_XlaAllReduceOp : TF_Op<"XlaAllReduce", [NoSideEffect]> {
+def TF_XlaAllReduceOp : TF_Op<"XlaAllReduce", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA AllReduce operator";
 
   let description = [{
@@ -19010,7 +19010,7 @@ documented at https://www.tensorflow.org/xla/operation_semantics#allreduce.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaBroadcastHelperOp : TF_Op<"XlaBroadcastHelper", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
+def TF_XlaBroadcastHelperOp : TF_Op<"XlaBroadcastHelper", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_NoConstantFold]> {
   let summary = "Helper operator for performing XLA-style broadcasts";
 
   let description = [{
@@ -19041,7 +19041,7 @@ for binary operators.
   }];
 }
 
-def TF_XlaClusterOutputOp : TF_Op<"XlaClusterOutput", [NoSideEffect]> {
+def TF_XlaClusterOutputOp : TF_Op<"XlaClusterOutput", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 Operator that connects the output of an XLA computation to other consumer graph nodes.
   }];
@@ -19057,7 +19057,7 @@ Operator that connects the output of an XLA computation to other consumer graph 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaConvOp : TF_Op<"XlaConv", [NoSideEffect]> {
+def TF_XlaConvOp : TF_Op<"XlaConv", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA ConvGeneralDilated operator, documented at";
 
   let description = [{
@@ -19086,7 +19086,7 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF_XlaConvV2Op : TF_Op<"XlaConvV2", [NoSideEffect]> {
+def TF_XlaConvV2Op : TF_Op<"XlaConvV2", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA ConvGeneralDilated operator, documented at";
 
   let description = [{
@@ -19117,7 +19117,7 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
   TF_DerivedResultTypeAttr preferred_element_type = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_XlaDotOp : TF_Op<"XlaDot", [NoSideEffect]> {
+def TF_XlaDotOp : TF_Op<"XlaDot", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA DotGeneral operator, documented at";
 
   let description = [{
@@ -19140,7 +19140,7 @@ https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaDotV2Op : TF_Op<"XlaDotV2", [NoSideEffect]> {
+def TF_XlaDotV2Op : TF_Op<"XlaDotV2", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA DotGeneral operator, documented at";
 
   let description = [{
@@ -19165,7 +19165,7 @@ https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
   TF_DerivedResultTypeAttr preferred_element_type = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_XlaDynamicSliceOp : TF_Op<"XlaDynamicSlice", [NoSideEffect]> {
+def TF_XlaDynamicSliceOp : TF_Op<"XlaDynamicSlice", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA DynamicSlice operator, documented at";
 
   let description = [{
@@ -19196,7 +19196,7 @@ implementation defined behavior.}]>:$start_indices,
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_XlaDynamicUpdateSliceOp : TF_Op<"XlaDynamicUpdateSlice", [NoSideEffect]> {
+def TF_XlaDynamicUpdateSliceOp : TF_Op<"XlaDynamicUpdateSlice", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA DynamicUpdateSlice operator, documented at";
 
   let description = [{
@@ -19226,7 +19226,7 @@ Handling of out-of-bounds slice indices is implementation-defined.
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF_XlaEinsumOp : TF_Op<"XlaEinsum", [NoSideEffect]> {
+def TF_XlaEinsumOp : TF_Op<"XlaEinsum", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 An op which supports basic einsum op with 2 inputs and 1 output.
   }];
@@ -19250,7 +19250,7 @@ transpose operations as tf.einsum does.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaGatherOp : TF_Op<"XlaGather", [NoSideEffect]> {
+def TF_XlaGatherOp : TF_Op<"XlaGather", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA Gather operator documented at";
 
   let description = [{
@@ -19274,7 +19274,7 @@ https://www.tensorflow.org/xla/operation_semantics#gather
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_XlaKeyValueSortOp : TF_Op<"XlaKeyValueSort", [NoSideEffect]> {
+def TF_XlaKeyValueSortOp : TF_Op<"XlaKeyValueSort", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA Sort operator, documented at";
 
   let description = [{
@@ -19298,7 +19298,7 @@ Sorts a tensor. Currently only sorts in ascending order are supported.
   TF_DerivedOperandTypeAttr V = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_XlaPadOp : TF_Op<"XlaPad", [NoSideEffect]> {
+def TF_XlaPadOp : TF_Op<"XlaPad", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA Pad operator, documented at";
 
   let description = [{
