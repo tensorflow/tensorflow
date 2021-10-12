@@ -6,6 +6,7 @@ import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/protobuf/cluster.proto";
+import "tensorflow/core/protobuf/coordination_service.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
 
@@ -668,9 +669,8 @@ message ConfigProto {
     // Whether runtime execution uses TFRT.
     bool use_tfrt = 18;
 
-    // Distributed coordination service to be enabled if set.
-    // Currently only effective in multi-client setup.
-    string coordination_service = 19;
+    // Distributed coordination service configurations if set.
+    CoordinationServiceConfigs coordination_service = 19;
 
     // We removed the flag fetch_remote_devices_in_multi_client. Marking the tag
     // number as reserved.

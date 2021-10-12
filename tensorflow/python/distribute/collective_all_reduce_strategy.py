@@ -475,7 +475,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
       # If coordination service is enabled, use its internal heartbeat to detect
       # peer failures instead of the Python-level health check.
-      if config_proto.experimental.coordination_service:
+      if config_proto.experimental.coordination_service.service_type:
         self._enable_check_health = False
 
       if hasattr(cluster_resolver, "port"):

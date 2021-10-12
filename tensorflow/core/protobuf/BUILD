@@ -25,6 +25,7 @@ COMMON_PROTO_SRCS = [
     "bfc_memory_map.proto",
     "config.proto",
     "cluster.proto",
+    "coordination_service.proto",
     "debug.proto",
     "device_filters.proto",
     "device_properties.proto",

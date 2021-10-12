@@ -29,7 +29,7 @@ from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 
-COORDINATION_SERVICE = None
+COORDINATION_SERVICE = ""
 RPC_PROTOCOL = "grpc"
 
 # Put it in top level so it executes in the child processes as well.
