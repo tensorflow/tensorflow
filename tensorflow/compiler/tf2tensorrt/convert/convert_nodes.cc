@@ -1308,34 +1308,8 @@ class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
       -959009792490796596
     };
 #endif  // !IS_TRT_VERSION_GE(8, 0, 0, 0)
-
-    // Check whether allowed and disallowed tactics are disjointed.
-    if (allowed_algorithm_ids.size() > 0 && disallowed_tactics.size() > 0) {
-      std::vector<int64_t> intersection;
-      for (int64_t allowed : allowed_algorithm_ids) {
-        if (disallowed_tactics.count(allowed) > 0) {
-          intersection.emplace_back(allowed);
-        }
-      }
-      if (intersection.size() > 0) {
-        VLOG(1) << "Intersection of allowed and disallowed tactics found "
-                   "non-empty.";
-
-        VLOG(1) << "List of allowed tactics:";
-        VLOG(1) << absl::StrJoin(allowed_algorithm_ids, ", ");
-
-        VLOG(1) << "List of disallowed tactics:";
-        VLOG(1) << absl::StrJoin(disallowed_tactics, ", ");
-
-        VLOG(1) << "List of tactics common to both allowed and disallowed "
-                   "tactics:";
-        VLOG(1) << absl::StrJoin(intersection, ", ");
-
-        VLOG(1) << "Aborting.";
-        assert(0);
-      }
-    }
   }
+
   // Returns value in [0, nbChoices] for a valid algorithm.
   int32_t selectAlgorithms(const nvinfer1::IAlgorithmContext& algoContext,
                            const nvinfer1::IAlgorithm* const* algoChoices,
