@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -35,20 +36,7 @@ namespace TF {
 namespace {
 
 struct FunctionalControlFlowToCFG
-    : public PassWrapper<FunctionalControlFlowToCFG, FunctionPass> {
-  void getDependentDialects(mlir::DialectRegistry& registry) const override {
-    registry.insert<tensor::TensorDialect>();
-  }
-
-  StringRef getArgument() const final {
-    return "tf-functional-control-flow-to-cfg";
-  }
-
-  StringRef getDescription() const final {
-    return "Transform functional control flow Ops to MLIR Control Form Graph "
-           "(CFG) form";
-  }
-
+    : public FunctionalControlFlowToCFGPassBase<FunctionalControlFlowToCFG> {
   void runOnFunction() override;
 };
 

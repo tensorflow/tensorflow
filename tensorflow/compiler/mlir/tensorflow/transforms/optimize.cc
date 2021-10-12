@@ -182,12 +182,15 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass() {
   return std::make_unique<TensorFlowOptimizePass>();
 }
 
-// Registers a pipeline builder function for the default canonicalize/optimizer.
-static mlir::PassPipelineRegistration<StandardPipelineOptions> pipeline(
-    "tf-standard-pipeline",
-    "Run all the passes involved in transforming/optimizing the graph after "
-    "importing into MLIR, without any target specialization.",
-    CreateTFStandardPipeline);
+void RegisterTFOptimizePassPipeline() {
+  // Registers a pipeline builder function for the default
+  // canonicalize/optimizer.
+  static mlir::PassPipelineRegistration<StandardPipelineOptions> pipeline(
+      "tf-standard-pipeline",
+      "Run all the passes involved in transforming/optimizing the graph after "
+      "importing into MLIR, without any target specialization.",
+      CreateTFStandardPipeline);
+}
 
 }  // namespace TF
 }  // namespace mlir

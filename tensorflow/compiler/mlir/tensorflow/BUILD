@@ -382,10 +382,13 @@ cc_library(
     srcs = [
         "transforms/generated_legalize_hlo.inc",
         "transforms/legalize_hlo.cc",
+        "transforms/passes.h",
     ],
     deps = [
         ":lower_tf_lib",
         ":tensorflow",
+        ":tf_device_pass_inc_gen",
+        ":tf_pass_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:hlo_ops_base_structs",
         "//tensorflow/core:framework",
@@ -399,7 +402,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -683,8 +685,6 @@ cc_library(
         "ir/tf_saved_model.h",
         "ir/tf_structs.h",
         "transforms/bridge.h",
-        "transforms/einsum.h",
-        "transforms/passes.h",
         "transforms/unroll_batch_matmul.h",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.h",
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
@@ -729,8 +729,6 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
-    # TODO(jpienaar): Merge in the dialect registration.
-    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -869,7 +867,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -891,7 +888,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -969,7 +965,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1095,7 +1090,6 @@ cc_library(
         "transforms/annotate_parameter_replication.cc",
         "transforms/batchmatmul_to_einsum.cc",
         "transforms/bridge.cc",
-        "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
         "transforms/cluster_ops_by_policy.cc",
         "transforms/cluster_outlining.cc",
@@ -1265,7 +1259,19 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
-    # TODO(jpienaar): Merge in the dialect registration.
+)
+
+cc_library(
+    name = "bridge_pass_registration",
+    srcs = [
+        "transforms/bridge_pass.cc",
+    ],
+    deps = [
+        ":error_util",
+        ":tensorflow_passes",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
     alwayslink = 1,
 )
 
@@ -1331,7 +1337,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1342,7 +1347,6 @@ cc_library(
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1388,6 +1392,7 @@ cc_library(
         ":mlir_roundtrip_flags",
         ":tensorflow",
         ":tensorflow_attributes",
+        ":tensorflow_passes",
         ":tensorflow_types",
         ":tf_saved_model_passes",
         ":translate_utils",
@@ -1555,7 +1560,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1772,7 +1776,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1959,14 +1962,6 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
 ]
 
-# Prefer to link 'compile_mlir_util' library that also links necessary
-# TensorFlow passes to the pipeline. This library without tf passes is useful
-# if the constant folding is not required on the TensorFlow dialect. For
-# example, this is used in XLA ondemand compilation which compiles a single op
-# at a time and doesn't require constant folding. Doing so helps avoid a
-# circular dependency between c_api and tf passes.
-# TODO(hinsu): Split out the constant folding hook and only exclude that in
-# this target.
 cc_library(
     name = "compile_mlir_util_no_tf_dialect_passes",
     srcs = ["utils/compile_mlir_util.cc"],
@@ -1974,23 +1969,9 @@ cc_library(
     deps = COMPILE_MLIR_UTIL_DEPS,
 )
 
-cc_library(
+alias(
     name = "compile_mlir_util",
-    hdrs = ["utils/compile_mlir_util.h"],
-    deps = COMPILE_MLIR_UTIL_DEPS + [
-        "compile_mlir_util_no_tf_dialect_passes",
-        ":tf_dialect_passes",
-    ],
-)
-
-cc_library(
-    name = "compile_mlir_util_pass",
-    srcs = ["utils/compile_mlir_util_pass.cc"],
-    deps = [
-        ":compile_mlir_util",
-        "@llvm-project//mlir:Pass",
-    ],
-    alwayslink = 1,
+    actual = ":compile_mlir_util_no_tf_dialect_passes",
 )
 
 cc_library(
@@ -2037,6 +2018,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Translation",
     ],
+    # TODO(aminim):  static registration should be split out.
     alwayslink = 1,
 )
 
@@ -2111,7 +2093,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
-    alwayslink = 1,
 )
 
 cc_library(

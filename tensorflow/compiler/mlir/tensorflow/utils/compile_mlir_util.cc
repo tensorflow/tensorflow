@@ -737,4 +737,15 @@ Status CompileGraphToXlaHlo(
       custom_legalization_passes);
 }
 
+void RegisterConvertMlirToXlaHloPipelineWithDefaults() {
+  static mlir::PassPipelineRegistration<> pipeline(
+      "tf-to-hlo-pipeline",
+      "Convert TF dialect to HLO dialect (used for compilation in bridge).",
+      [](mlir::OpPassManager& pm) {
+        tensorflow::CreateConvertMlirToXlaHloPipeline(
+            pm, /*device_type=*/"XLA_CPU_JIT", /*prefer_tf2xla=*/false,
+            /*custom_legalization_passes=*/{});
+      });
+}
+
 }  // namespace tensorflow

@@ -57,3 +57,37 @@ def FreezeGlobalTensorsPass : Pass<"tf-saved-model-freeze-global-tensors", "Modu
            "Allows mutable tensors to be in the graph.">
   ];
 }
+
+def OptimizeGlobalTensorsPass : Pass<"tf-saved-model-optimize-global-tensors", "ModuleOp"> {
+  let summary = "Optimize tf_saved_model.global_tensor's.";
+
+  let constructor = "mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass()";
+}
+
+def RemoveVariablesInSessionInitializerPass : Pass<"tf-saved-model-remove-vars-in-session-initializer", "ModuleOp"> {
+  let summary = "Remove variables in tf saved model's session initializer.";
+
+  let constructor = "mlir::tf_saved_model::CreateRemoveVariablesInSessionInitializerPass()";
+}
+
+def InitializeVariablesInSessionInitializerPass : Pass<"tf-saved-model-initialize-variables-in-session-init", "ModuleOp"> {
+  let summary = "Initialize variables in session initializer function.";
+
+  let constructor = "mlir::tf_saved_model::CreateInitializeVariablesInSessionInitializerTestPass()";
+}
+
+def LiftVariablesTestPass : Pass<"tf-saved-model-lift-variables-test", "ModuleOp"> {
+  let summary = "Lift variables and save them as global tensors";
+  let constructor = "mlir::tf_saved_model::CreateLiftVariablesTestPass()";
+}
+
+def LiftVariablesInvalidSessionTestPass : Pass<"tf-saved-model-lift-variables-invalid-session-test", "ModuleOp"> {
+  let summary = "Lift variables and save them as global tensors with an invalid "
+           "session";
+  let constructor = "mlir::tf_saved_model::CreateLiftVariablesInvalidSessionTestPass()";
+}
+
+def FreezeAssetsPass : Pass<"tf-saved-model-freeze-assets", "ModuleOp"> {
+  let summary = "Freeze tf_saved_model.asset's in func bodies.";
+  let constructor = "mlir::tf_saved_model::CreateFreezeAssetsPass()";
+}

@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/lib/io/path.h"
 
 namespace mlir {
@@ -38,7 +39,7 @@ static constexpr int kTextFileIndex_LineNumber = -1;
 // InitTextFileToImportPass converts InitializeTableFromTextFileV2Op to the
 // corresponding LookupTableImportV2Op if possible.
 class InitTextFileToImportPass
-    : public mlir::PassWrapper<InitTextFileToImportPass, FunctionPass> {
+    : public InitTextFileToImportPassBase<InitTextFileToImportPass> {
  public:
   InitTextFileToImportPass() {}
   InitTextFileToImportPass(const InitTextFileToImportPass&) {}
@@ -46,22 +47,8 @@ class InitTextFileToImportPass
     saved_model_dir_ = saved_model_dir;
   }
 
-  StringRef getArgument() const final { return "tf-init-text-file-to-import"; }
-
-  StringRef getDescription() const final {
-    return "convert InitializeTableFromTextFileV2 ops to LookupTableImportV2Op "
-           "to remove the dependency on asset files";
-  }
-
  private:
   void runOnFunction() override;
-
-  Option<std::string> saved_model_dir_{
-      *this, "tf-saved-model-dir",
-      llvm::cl::desc("Directory containing the model exported as a TensorFlow "
-                     "SavedModel. If your model is not based on the TensorFlow "
-                     "SavedModel, use an empty value."),
-      llvm::cl::init("")};
 };
 
 class ConvertInitializeTableFromTextFileV2
@@ -168,7 +155,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass(
   return std::make_unique<InitTextFileToImportPass>(saved_model_dir);
 }
 
-static PassRegistration<InitTextFileToImportPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

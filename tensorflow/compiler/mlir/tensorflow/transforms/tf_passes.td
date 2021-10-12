@@ -27,6 +27,18 @@ def TensorflowGPUFusion : FunctionPass<"tf-gpu-op-fusion"> {
   let constructor = "TF::CreateGpuOpFusionPass()";
 }
 
+def BatchMatMulToEinsumPass : FunctionPass<"tf-batch-matmul-to-tf-einsum"> {
+  let summary = "Replace TF BatchMatMul op by TF Einsum op.";
+  let constructor = "TF::CreateBatchMatMulToEinsumPass()";
+}
+
+def ClusterTFOpsByHostPass : Pass<"cluster-tf-ops-by-host", "ModuleOp"> {
+  let summary = "Cluster the TensorFlow ops by host so that each function only "
+           "contains ops placed on the same host";
+
+  let constructor = "TF::CreateClusterTFOpsByHostPass()";
+}
+
 def MaterializePassthroughOp : FunctionPass<"tf-materialize-passthrough-op"> {
   let summary = "Materialize the MlirPassthroughOp by replacing it with the "
     "MLIR module attached as an attribute";
@@ -1423,4 +1435,119 @@ func @main(%arg0: tensor<8x4xf32>) {
   }];
 
   let constructor = "TF::CreateTensorListOpsDecompositionPass()";
+}
+
+def TPUParallelExecuteSinkResourceWritePass : FunctionPass<"tf-tpu-parallel-execute-sink-resource-write"> {
+  let summary = "Moves tf.AssignVariableOp consumers of tf_device.parallel_execute "
+           "into tf_device.parallel_execute regions";
+
+  let constructor = "TFTPU::CreateTPUParallelExecuteSinkResourceWritePass()";
+}
+
+def RewriteTPUEmbeddingOpsPass : FunctionPass<"tf-rewrite-tpu-embedding-ops"> {
+  let summary = "Rewrites TPU embedding send/recv ops by adding TPU embedding "
+           "deduplication data";
+
+  let constructor = "TF::CreateRewriteTPUEmbeddingOpsPass()";
+}
+
+def InitTextFileToImportPass : FunctionPass<"tf-init-text-file-to-import"> {
+  let summary = "convert InitializeTableFromTextFileV2 ops to LookupTableImportV2Op "
+           "to remove the dependency on asset files";
+
+  let constructor = "TF::CreateInitTextFileToImportPass()";
+  let options = [
+    Option<"saved_model_dir_", "tf-saved-model-dir", "std::string", /*default=*/"",
+           "Directory containing the model exported as a TensorFlow "
+           "SavedModel. If your model is not based on the TensorFlow "
+           "SavedModel, use an empty value.">
+  ];
+}
+
+def FusedKernelMatcherPass : FunctionPass<"tf-fused-kernel-matcher"> {
+  let summary = "Matches computations corresponding to optimized fused kernels";
+  let constructor = "TF::CreateFusedKernelMatcherPass()";
+}
+
+def TFDataOptimizationPass : FunctionPass<"tf-data-optimization"> {
+  let summary = "Performs tf.data optimizations";
+  let constructor = "TF::CreateTFDataOptimizationPass()";
+}
+
+def FunctionalControlFlowToCFGPass : FunctionPass<"tf-functional-control-flow-to-cfg"> {
+  let summary = "Transform functional control flow Ops to MLIR Control Form Graph "
+           "(CFG) form";
+  let constructor = "TF::CreateTFFunctionalControlFlowToCFG()";
+  let dependentDialects = ["tensor::TensorDialect"];
+}
+
+def BreakUpIslandsPass : FunctionPass<"tf-functional-control-flow-to-cfg"> {
+  let summary = "Transform from TF control dialect to TF executor dialect.";
+  let constructor = "CreateBreakUpIslandsPass()";
+  let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
+}
+
+def FunctionalToExecutorDialectConversionPass : FunctionPass<"tf-functional-to-executor-conversion"> {
+  let summary = "Transform from func op to TF executor dialect.";
+  let constructor = "CreateFunctionalToExecutorDialectConversionPass()";
+  let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
+}
+
+def SimpleTFDeviceAssignmentPass : FunctionPass<"tf-simple-device-assignment"> {
+  let summary = "Simple device assignment in TF dialect.";
+  let constructor = "TF::CreateSimpleTFDeviceAssignmentPass()";
+  let options = [
+    Option<"default_device_", "default-device", "std::string", /*default=*/"\"cpu\"",
+           "The default device to assign.">
+  ];
+}
+
+def LayoutAssignmentPass : FunctionPass<"tf-layout-assignment"> {
+  let summary = "Layout assignment pass.";
+  let constructor = "TF::CreateLayoutAssignmentPass()";
+  let options = [
+    Option<"force_data_format_", "force-data-format", "std::string", /*default=*/"",
+           "Force data format for all layout sensitive ops.">
+  ];
+}
+
+def MoveTransposesPass : FunctionPass<"tf-move-transposes"> {
+  let summary = "Move transposes pass.";
+  let constructor = "TF::CreateMoveTransposesPass()";
+  let options = [
+    Option<"fold_transpose_in_ops_", "fold-transpose-in-ops", "bool", /*default=*/"true",
+           "Whether to fold transposes in ops which can support folding.">,
+    Option<"direction_", "direction", "enum MoveTransposeDirection",
+           /*default=*/"MoveTransposeDirection::kBegin", "Move transposes to the beginning or"
+           " the end of the block where they are defined.",
+           "llvm::cl::values(clEnumValN(MoveTransposeDirection::kBegin, \"begin\", \"beginning of the block\"),"
+           "clEnumValN(MoveTransposeDirection::kEnd, \"end\", \"end of the block\"))">
+  ];
+}
+
+def BroadcastFoldPass : FunctionPass<"tf-broadcast-fold"> {
+  let summary = "Fold explicit broadcasts into the following operations if they "
+           "support implicit broadcasting on their operand.";
+  let constructor = "TF::CreateBroadcastFoldPass()";
+}
+
+def ConstantOpDeviceAssignmentPass : Pass<"constant-op-device-assignment", "ModuleOp"> {
+  let summary = "Assign device for tf.Const ops";
+  let constructor = "TF::CreateConstantOpDeviceAssignmentPass()";
+}
+
+def TPUIdentityPruningPass : Pass<"tf-tpu-identity-pruning", "ModuleOp"> {
+  let summary = "Removes Identity/IdentityN ops from the TPU computation";
+  let constructor = "TFTPU::CreateTPUIdentityPruningPass()";
+}
+
+def TPUDynamicLayoutPass : Pass<"tf-tpu-dynamic-layout-pass", "ModuleOp"> {
+  let summary = "Adds ops that allow TPU program inputs to have layouts determined "
+           "at JIT compile time.";
+  let constructor = "TFTPU::CreateTPUDynamicLayoutPass()";
+}
+
+def DeviceIndexSelectorPass : Pass<"tf-device-index-selector", "FuncOp"> {
+  let summary = "Fold tf.DeviceIndex to constant.";
+  let constructor = "TF::CreateDeviceIndexSelectorPass()";
 }
