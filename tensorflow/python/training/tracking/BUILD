@@ -43,6 +43,21 @@ tf_py_test(
 )
 
 py_library(
+    name = "trackable_utils",
+    srcs = ["trackable_utils.py"],
+    srcs_version = "PY3",
+)
+
+tf_py_test(
+    name = "trackable_utils_test",
+    srcs = ["trackable_utils_test.py"],
+    deps = [
+        ":trackable_utils",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
     name = "base_delegate",
     srcs = ["base_delegate.py"],
     srcs_version = "PY3",
