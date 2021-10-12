@@ -3236,7 +3236,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
     // FusedConv2D has one additional input, args
     std::vector<NodeBuilder::NodeOut> args;
     int num_args = 1;
-    GetNodeAttr(succ->def(), "num_args", &num_args);
+    TF_CHECK_OK(GetNodeAttr(succ->def(), "num_args", &num_args));
     for (int i = 0; i < num_args; i++) {
       args.emplace_back(succ_in[2 + i].first, succ_in[2 + i].second);
     }
