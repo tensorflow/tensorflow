@@ -102,9 +102,9 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
 // convolution on the stream) and parameters, by running all possible
 // algorithms and measuring execution time.
 template <typename T>
-StatusOr<AutotuneEntry<se::dnn::FusedConvSignature>> AutotuneFusedConv(
+StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvSignature>>*
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
         autotune_map,
     const ConvParameters& params, OpKernelContext* ctx,
     const se::dnn::BatchDescriptor& input_desc,
@@ -118,7 +118,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvSignature>> AutotuneFusedConv(
     se::DeviceMemory<T> bias_ptr, se::DeviceMemory<T> side_input_ptr,
     int64_t scratch_size_limit) {
 #if GOOGLE_CUDA
-  AutotuneEntry<se::dnn::FusedConvSignature> autotune_entry;
+  AutotuneEntry<se::dnn::FusedConvOp> autotune_entry;
   auto* stream = ctx->op_device_context()->stream();
 
   if (!autotune_map->Find(params, &autotune_entry)) {
@@ -168,7 +168,8 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvSignature>> AutotuneFusedConv(
         conv_desc, conv_scale, side_input_scale, activation_mode,
         stream->parent(), results);
     TF_ASSIGN_OR_RETURN(autotune_entry,
-                        BestCudnnConvAlgorithm(results, std::move(runners)));
+                        BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
+                            results, std::move(runners)));
 
     autotune_map->Insert(params, autotune_entry);
   }
@@ -179,10 +180,10 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvSignature>> AutotuneFusedConv(
 #endif
 }
 
-template StatusOr<AutotuneEntry<se::dnn::FusedConvSignature>>
+template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
 AutotuneFusedConv<double>(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvSignature>>*
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
         autotune_map,
     const ConvParameters& params, OpKernelContext* ctx,
     const se::dnn::BatchDescriptor& input_desc,
@@ -196,10 +197,9 @@ AutotuneFusedConv<double>(
     se::DeviceMemory<double> bias_ptr, se::DeviceMemory<double> side_input_ptr,
     int64_t scratch_size_limit);
 
-template StatusOr<AutotuneEntry<se::dnn::FusedConvSignature>>
-AutotuneFusedConv<float>(
+template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv<float>(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvSignature>>*
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
         autotune_map,
     const ConvParameters& params, OpKernelContext* ctx,
     const se::dnn::BatchDescriptor& input_desc,
@@ -214,10 +214,9 @@ AutotuneFusedConv<float>(
     int64_t scratch_size_limit);
 
 template <typename T>
-StatusOr<AutotuneEntry<se::dnn::ConvSignature>> AutotuneUnfusedConv(
+StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvSignature>>*
-        autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
     se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
     se::DeviceMemory<T> input_ptr, const se::dnn::FilterDescriptor& filter_desc,
@@ -225,7 +224,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvSignature>> AutotuneUnfusedConv(
     const se::dnn::ConvolutionDescriptor& conv_desc,
     const se::dnn::BatchDescriptor& output_desc, se::DeviceMemory<T> output_ptr,
     int64_t scratch_size_limit) {
-  AutotuneEntry<se::dnn::ConvSignature> autotune_entry;
+  AutotuneEntry<se::dnn::ConvOp> autotune_entry;
 
   auto* stream = ctx->op_device_context()->stream();
 
@@ -283,8 +282,8 @@ StatusOr<AutotuneEntry<se::dnn::ConvSignature>> AutotuneUnfusedConv(
                            filter_ptr, output_ptr, input_desc, filter_desc,
                            output_desc, conv_desc, stream->parent(), results);
 
-    SE_ASSIGN_OR_RETURN(autotune_entry,
-                        BestCudnnConvAlgorithm(results, std::move(runners)));
+    SE_ASSIGN_OR_RETURN(autotune_entry, BestCudnnConvAlgorithm<se::dnn::ConvOp>(
+                                            results, std::move(runners)));
 
 #elif TENSORFLOW_USE_ROCM
     DnnScratchAllocator scratch_allocator(scratch_size_limit, ctx);
@@ -340,7 +339,8 @@ StatusOr<AutotuneEntry<se::dnn::ConvSignature>> AutotuneUnfusedConv(
                            filter_ptr, output_ptr, input_desc, filter_desc,
                            output_desc, conv_desc, stream->parent(), results);
 
-    SE_ASSIGN_OR_RETURN(autotune_entry, BestCudnnConvAlgorithm(results));
+    SE_ASSIGN_OR_RETURN(auto algo_desc, BestCudnnConvAlgorithm(results));
+    autotune_entry = AutotuneEntry<se::dnn::ConvOp>(algo_desc);
 #endif
 
     autotune_map->Insert(conv_parameters, autotune_entry);
@@ -349,11 +349,9 @@ StatusOr<AutotuneEntry<se::dnn::ConvSignature>> AutotuneUnfusedConv(
   return autotune_entry;
 }
 
-template StatusOr<AutotuneEntry<se::dnn::ConvSignature>>
-AutotuneUnfusedConv<double>(
+template StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv<double>(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvSignature>>*
-        autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
     se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
     se::DeviceMemory<double> input_ptr,
@@ -363,11 +361,9 @@ AutotuneUnfusedConv<double>(
     const se::dnn::BatchDescriptor& output_desc,
     se::DeviceMemory<double> output_ptr, int64_t scratch_size_limit);
 
-template StatusOr<AutotuneEntry<se::dnn::ConvSignature>>
-AutotuneUnfusedConv<float>(
+template StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv<float>(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvSignature>>*
-        autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
     se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
     se::DeviceMemory<float> input_ptr,
@@ -377,11 +373,10 @@ AutotuneUnfusedConv<float>(
     const se::dnn::BatchDescriptor& output_desc,
     se::DeviceMemory<float> output_ptr, int64_t scratch_size_limit);
 
-template StatusOr<AutotuneEntry<se::dnn::ConvSignature>>
+template StatusOr<AutotuneEntry<se::dnn::ConvOp>>
 AutotuneUnfusedConv<Eigen::half>(
     bool cudnn_use_autotune,
-    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvSignature>>*
-        autotune_map,
+    AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
     se::dnn::ConvolutionKind kind, const se::dnn::BatchDescriptor& input_desc,
     se::DeviceMemory<Eigen::half> input_ptr,

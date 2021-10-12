@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/lib/status.h"
+#include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -781,6 +782,7 @@ class AlgorithmDesc {
  public:
   typedef int64_t Index;
   AlgorithmDesc() : AlgorithmDesc(0, false) {}
+  explicit AlgorithmDesc(AlgorithmProto proto) : proto_(std::move(proto)) {}
   AlgorithmDesc(Index a, bool use_tensor_ops) {
     proto_.set_is_cudnn_frontend(false);
     proto_.set_algo_id(a);

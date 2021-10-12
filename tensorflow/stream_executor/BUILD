@@ -452,6 +452,25 @@ cc_library(
 )
 
 cc_library(
+    name = "lazy_op_runner",
+    hdrs = ["lazy_op_runner.h"],
+    deps = [
+        ":device_memory",
+        ":dnn",
+        ":stream_executor_pimpl",
+    ],
+)
+
+# This is terrible, but we need to defeat the dependency check to depend on the
+# header-only lazy_op_runner template in fused_conv2d_bias_activation (being
+# header-only means it can't cause linkage issues), so export the actual header
+# file itself and add a target for it in core/kernels.  Unsophisticated checks
+# beget dumb circumventions :(
+#
+# TODO(b/202546057) get rid of this once fused_conv is moved out of contrib.
+exports_files(["lazy_op_runner.h"])
+
+cc_library(
     name = "stream_executor_internal",
     srcs = [
         "stream_executor_internal.cc",
