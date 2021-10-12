@@ -40,25 +40,20 @@ using Vector3 = std::array<int64_t, 3>;
 class TilingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
+
   enum IndexingOrder {
     // Thread reads consecutive elements.
     LinearIndexingX,
     // Thread reads strided elements while keeping memory coalescing.
     StridedIndexingX,
-    // Thread reads a few consecutive elements then take a strided
-    // step. This can trigger vectorized reads and keep memory
-    // coalescing.
-    StridedLinearIndexingX
   };
 
-  TilingScheme(absl::Span<const int64_t> dims_in_elems,
-               absl::Span<const int64_t> tile_sizes,
-               absl::Span<const int64_t> num_threads,
+  TilingScheme(Vector3 dims_in_elems, Vector3 tile_sizes, Vector3 num_threads,
                IndexingOrder indexing_order, int vector_size,
                int scaling_factor)
-      : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
-        tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
-        num_threads_{num_threads[0], num_threads[1], num_threads[2]},
+      : dims_in_elems_(dims_in_elems),
+        tile_sizes_(tile_sizes),
+        num_threads_(num_threads),
         indexing_order_(indexing_order),
         vector_size_(vector_size),
         thread_id_virtual_scaling_(scaling_factor) {
@@ -71,8 +66,6 @@ class TilingScheme {
         return "linear";
       case StridedIndexingX:
         return "strided";
-      case StridedLinearIndexingX:
-        return "strided-linear";
     }
   }
 
@@ -102,6 +95,8 @@ class TilingScheme {
   }
 
   // Tile size for a given dimensions per thread.
+  //
+  // Equals to the number of iterations in the loop each tile will make.
   int64_t GetTileSizeFor(int d) const { return tile_sizes_.at(d); }
 
   // Tile size for a given dimension per entire thread block.

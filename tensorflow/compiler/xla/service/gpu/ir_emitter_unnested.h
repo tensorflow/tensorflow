@@ -140,8 +140,7 @@ class IrEmitterUnnested : public IrEmitter {
   // A function to generate the code to emit the entire tile.
   using TileElementGenerator = std::function<void(
       const ThreadIdInfo& thread_id_info, const llvm_ir::IrArray::Index& index,
-      const string& loop_name, llvm::Value* tile_height,
-      llvm::Value* tile_width, KernelSupportLibrary* ksl)>;
+      std::array<llvm::Value*, 3> tile_dimensions)>;
 
   // Fusion root -> array of indexes, one per reduction output.
   using ReductionOutputMap =
@@ -487,36 +486,35 @@ class IrEmitterUnnested : public IrEmitter {
       const TilingScheme& tiling_scheme, llvm::Type* index_ty,
       const TileElementGenerator& tile_element_generator);
 
-  // Emits code to process up to
-  // (tile_size_x/num_threads_x * tile_size_y/num_threads_y) elements in a tile,
-  // given `emit_elem_function` is the function to emit code to process one
-  // element, `thread_id_y` and `thread_id_x` are the intra-tile coordinates for
+  // Emits code to iterate through a 2-dimensional tile with a given tile
+  // dimensions and given strides, and call the callback at each iteration.,
+  //
+  // thread_id_y` and `thread_id_x` are the intra-tile coordinates for
   // the first element to process, and `index` is the index for the origin of
-  // the tile. Information about tile_size_x/y and num_threads_x/y are stored in
-  // `tiling_scheme`. Emits bounds check to ensure that each processed element
-  // is within the boundary defined by `tile_width` and `tile_height`.
+  // the tile. Emits bounds check to ensure that each processed element
+  // is within the boundary defined by `tile_dimensions`.
   //
-  // Pseudocode:
+  // Rough pseudocode:
   //
-  // for (y_loc = 0; y_loc < tile_height; y_loc += num_threads_y) {
-  //   for (j = 0; j < tile_size_x / num_threads_x; j++) { // unrolled
-  //     if (dilated) {
-  //       x_loc = x + j * num_threads_x;
-  //     } else {
-  //       x_loc = x * (tile_size_x / num_threads_x) + j;
-  //     }
+  // Given: tile_dimensions, x_offset, y_offset
+  //
+  // for (y = 0; y < tile_dimensions[Y]; y += num_threads_y) {
+  //   for (x = 0; x < tile_dimensions[X]; x++) {
+  //
+  //     y_pos = y_offset + y
+  //     x_pos = x_offset + x * stride
   //
   //     if (x_loc < tile_width) {
-  //       emit_elem_function(y + y_loc, x_loc);
+  //       emit_elem_function(y_offset + y, x_loc);
   //     }
   //   }
   // }
   //
   void EmitTile(
       const TilingScheme& tiling_scheme,
-      const llvm_ir::IrArray::Index& tile_origin_index, const string& loop_name,
-      KernelSupportLibrary* ksl, const ThreadIdInfo& thread_id_info,
-      llvm::Value* tile_height, llvm::Value* tile_width,
+      const llvm_ir::IrArray::Index& tile_origin_index,
+      const ThreadIdInfo& thread_id_info,
+      std::array<llvm::Value*, 3> tile_dimensions,
       const IrEmitterUnnested::EmitElementFunction& emit_elem_function);
 
   // Emits code to process a tensor element in a tile for the given kLoop
