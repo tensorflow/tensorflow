@@ -28,8 +28,8 @@ struct Texture2DDescriptor : public GPUObjectDescriptor {
   DataType element_type;
   bool normalized = false;   // used with INT data types, if normalized, we read
                              // in kernel float data.
-  DataType normalized_type;  // can be FLOAT32 or FLOAT16, using with normalized
-                             // = true
+  DataType normalized_type = DataType::UNKNOWN;  // can be FLOAT32 or FLOAT16,
+                                                 // using with normalized = true
 
   // optional
   int2 size = int2(0, 0);
