@@ -252,7 +252,7 @@ def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
 }
 def HLO_ImagOp: HLO_UnaryElementwiseOp<"imag",
     [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>],
-    HLO_ComplexTensor> {
+    HLO_FpOrComplexTensor> {
   let summary = "Imag operator";
   let description = [{
     Returns `Imag(operand)` element-wise.
@@ -343,7 +343,7 @@ def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
 }
 def HLO_RealOp: HLO_UnaryElementwiseOp<"real",
     [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>],
-    HLO_ComplexTensor> {
+    HLO_FpOrComplexTensor> {
   let summary = "Real operator";
   let description = [{
     Returns `Real(operand)` element-wise.

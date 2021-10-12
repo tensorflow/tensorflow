@@ -673,6 +673,14 @@ func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -
 
 // -----
 
+// CHECK-LABEL: func @imag_fp_input
+func @imag_fp_input(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "mhlo.imag"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
 func @infeed_invalid_number_of_results(%token: !mhlo.token) -> tuple<tuple<tensor<i32>>, !mhlo.token, tensor<i32>> {
   // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
   %0 = "mhlo.infeed"(%token) {infeed_config = "foobar", layout = [[[0]], unit, [0]]} : (!mhlo.token) -> tuple<tuple<tensor<i32>>, !mhlo.token, tensor<i32>>
@@ -808,6 +816,14 @@ func @map_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> 
     %1 = mhlo.add %arg2, %arg3 {name = "add"} : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @real_fp_input
+func @real_fp_input(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "mhlo.real"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
