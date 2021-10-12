@@ -170,6 +170,7 @@ py_test(
     name = "tf_upgrade_v2_test",
     srcs = ["tf_upgrade_v2_test.py"],
     python_version = "PY3",
+    shard_count = 5,
     srcs_version = "PY3",
     tags = [
         "no_windows",
