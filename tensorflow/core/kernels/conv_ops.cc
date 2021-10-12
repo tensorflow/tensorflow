@@ -1111,36 +1111,14 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   OP_REQUIRES_OK(ctx, entry_or.status());
   auto autotune_entry = entry_or.ConsumeValueOrDie();
 
-  Status cudnn_launch_status;
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-  if (!autotune_entry.is_algorithm_config()) {
-    auto& runners = autotune_entry.GetOpRunners();
-    VLOG(4) << "Conv2D Execution Plan: " << runners.primary->ToString();
-    auto runner_and_scratch_or =
-        AllocateScratchOrFallback<se::dnn::ConvSignature>(&scratch_allocator,
-                                                          runners);
-    OP_REQUIRES_OK(ctx, runner_and_scratch_or.status());
-    auto runner_and_scratch = runner_and_scratch_or.ConsumeValueOrDie();
-    auto& runner = *std::get<std::shared_ptr<const se::dnn::ConvRunner>>(
-        runner_and_scratch);
-    cudnn_launch_status =
-        runner(stream, input_ptr, filter_ptr, output_ptr,
-               std::get<se::DeviceMemoryBase>(runner_and_scratch), nullptr);
-  } else {
-    const auto& algorithm_config = autotune_entry.GetAlgorithmConfig();
-    VLOG(4) << "Convolution Algorithm: "
-            << algorithm_config.algorithm()->algo_id();
-    VLOG(4) << "tensor_ops_enabled: "
-            << algorithm_config.algorithm()->tensor_ops_enabled();
-
-    cudnn_launch_status = stream->ConvolveWithAlgorithm(
-        se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
-        filter_ptr, output_desc, output_ptr, conv_desc, &scratch_allocator,
-        algorithm_config, nullptr);
-  }
-
+  Status cudnn_launch_status = LaunchAutotunedConv(
+      autotune_entry, &scratch_allocator, se::dnn::ConvolutionKind::FORWARD,
+      stream, input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+      output_desc, output_ptr);
   if (!cudnn_launch_status.ok()) {
     ctx->SetStatus(cudnn_launch_status);
+    return;
   }
 
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {

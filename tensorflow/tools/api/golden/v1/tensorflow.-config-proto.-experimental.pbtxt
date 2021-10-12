@@ -110,7 +110,8 @@ tf_proto {
       name: "coordination_service"
       number: 19
       label: LABEL_OPTIONAL
-      type: TYPE_STRING
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.CoordinationServiceConfigs"
     }
     field {
       name: "disable_functional_ops_lowering"

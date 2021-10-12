@@ -660,7 +660,7 @@ struct ConvBackwardFilterAutotuneGroup {
 };
 
 typedef AutotuneSingleton<ConvBackwardFilterAutotuneGroup, ConvParameters,
-                          AutotuneEntry<se::dnn::ConvSignature>>
+                          AutotuneEntry<se::dnn::ConvOp>>
     AutotuneConvBwdFilter;
 
 template <typename T>
@@ -989,30 +989,12 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   OP_REQUIRES_OK(ctx, entry_or.status());
   auto autotune_entry = entry_or.ConsumeValueOrDie();
 
-  Status cudnn_launch_status;
   DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize, ctx);
-  if (!autotune_entry.is_algorithm_config()) {
-    auto& runners = autotune_entry.GetOpRunners();
-    VLOG(4) << "Conv2DBackpropFilter Execution Plan: "
-            << runners.primary->ToString();
-    auto runner_and_scratch_or =
-        AllocateScratchOrFallback<se::dnn::ConvSignature>(&scratch_allocator,
-                                                          runners);
-    OP_REQUIRES_OK(ctx, runner_and_scratch_or.status());
-    auto runner_and_scratch = runner_and_scratch_or.ConsumeValueOrDie();
-    auto& runner = *std::get<std::shared_ptr<const se::dnn::ConvRunner>>(
-        runner_and_scratch);
-    cudnn_launch_status =
-        runner(stream, input_ptr, filter_backprop_ptr, out_backprop_ptr,
-               std::get<se::DeviceMemoryBase>(runner_and_scratch), nullptr);
-  } else {
-    cudnn_launch_status = stream->ConvolveWithAlgorithm(
-        se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
-        filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
-        conv_desc, &scratch_allocator, autotune_entry.GetAlgorithmConfig(),
-        nullptr);
-  }
-
+  Status cudnn_launch_status = LaunchAutotunedConv(
+      autotune_entry, &scratch_allocator,
+      se::dnn::ConvolutionKind::BACKWARD_FILTER, stream, input_desc, input_ptr,
+      filter_desc, filter_backprop_ptr, conv_desc, output_desc,
+      out_backprop_ptr);
   if (!cudnn_launch_status.ok()) {
     ctx->SetStatus(cudnn_launch_status);
     return;

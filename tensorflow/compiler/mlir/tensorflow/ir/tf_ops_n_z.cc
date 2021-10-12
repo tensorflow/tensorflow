@@ -2135,12 +2135,14 @@ SummaryWriterOp::GetResourceHandleValueAndIdList(
 void TPUExecuteOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.reserve(args().size() + 1);
+  effects.reserve(args().size() + 2);
 
   // There may be some TPU Embedding ops in the computation, so this effect is
   // added conservatively.
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUEmbedding::get());
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::TPUCompileExecute::get());
 
   for (Value value : args()) {
     if (value.getType()
@@ -2201,12 +2203,14 @@ static LogicalResult Verify(TPUExecuteAndUpdateVariablesOp op) {
 void TPUExecuteAndUpdateVariablesOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.reserve(device_var_reads_indices().size() + 1);
+  effects.reserve(device_var_reads_indices().size() + 2);
 
   // There may be some TPU Embedding ops in the computation, so this effect is
   // added conservatively.
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUEmbedding::get());
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::TPUCompileExecute::get());
   auto resource_handles = llvm::make_filter_range(args(), [](Value value) {
     return value.getType()
         .cast<TensorType>()

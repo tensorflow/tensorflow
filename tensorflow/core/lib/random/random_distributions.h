@@ -16,14 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 #define TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 
-#include <string.h>
-
 #include <algorithm>
 #include <cmath>
 #include <type_traits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/lib/random/random_distributions_utils.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -33,8 +32,6 @@ namespace random {
 PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x);
 // Helper function to convert a 16-bit integer to a bfloat16 between [0..1).
 PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x);
-// Helper function to convert a 32-bit integer to a float between [0..1).
-PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32 x);
 // Helper function to convert two 32-bit integers to a double between [0..1).
 PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1);
 
@@ -671,7 +668,7 @@ class TruncatedNormalDistribution<SingleSampleGenerator, double> {
   ResultType operator()(SingleSampleGenerator* gen) {
     ResultType results;
     int index = 0;
-    while (1) {
+    while (true) {
       const uint32 x0 = (*gen)();
       const uint32 x1 = (*gen)();
       const uint32 x2 = (*gen)();
@@ -781,24 +778,6 @@ PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x) {
   // in [1, 2). The minus will not cause a rounding that makes the result 1.
   // Instead it will just be close to 1.
   return result - bfloat16(1.0);
-}
-
-// Helper function to convert an 32-bit integer to a float between [0..1).
-PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32 x) {
-  // IEEE754 floats are formatted as follows (MSB first):
-  //    sign(1) exponent(8) mantissa(23)
-  // Conceptually construct the following:
-  //    sign == 0
-  //    exponent == 127  -- an excess 127 representation of a zero exponent
-  //    mantissa == 23 random bits
-  const uint32 man = x & 0x7fffffu;  // 23 bit mantissa
-  const uint32 exp = static_cast<uint32>(127);
-  const uint32 val = (exp << 23) | man;
-
-  // Assumes that endian-ness is same for float and uint32.
-  float result;
-  memcpy(&result, &val, sizeof(val));
-  return result - 1.0f;
 }
 
 // Helper function to convert two 32-bit integers to a double between [0..1).

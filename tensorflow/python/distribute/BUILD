@@ -2203,6 +2203,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "nomac",  # TODO(b/201788023): Attempt MultiProcessCluster to fix this.
+        "notpu",
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
     deps = [
@@ -2272,6 +2273,7 @@ distribute_py_test(
 tpu_py_test(
     name = "tpu_strategy_model_parallelism_test",
     srcs = ["tpu_strategy_model_parallelism_test.py"],
+    disable_experimental = True,  # b/202779350
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [

@@ -131,7 +131,7 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
       mlir::kernel_gen::transforms::CreateTiledLoopBufferizePass());
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
-  pm.addPass(mlir::createTensorConstantBufferizePass());
+  pm.addPass(mlir::createTensorConstantBufferizePass(/*alignment=*/64));
   // Always run canonicalizer (which does dead code removal) before bufferizing
   // anything.
   pm.addPass(mlir::createCanonicalizerPass());

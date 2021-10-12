@@ -1285,6 +1285,13 @@ func @fold_xor_same(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
   return %0 : tensor<4xi32>
 }
 
+// CHECK-LABEL: func @fold_xor_same_dynamic
+func @fold_xor_same_dynamic(%arg0 : tensor<?xi32>) -> tensor<?xi32> {
+  %0 = "mhlo.xor"(%arg0, %arg0) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+  // CHECK: mhlo.xor
+  return %0 : tensor<?xi32>
+}
+
 // CHECK-LABEL: func @fold_xor_ones_left
 func @fold_xor_ones_left(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
   %0 = mhlo.constant dense<-1> : tensor<4xi32>

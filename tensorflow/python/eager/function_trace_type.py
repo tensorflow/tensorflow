@@ -183,6 +183,7 @@ class ListType(CollectionType):
   pass
 
 
+# TODO(b/201533914): Update to Mapping to be on par with current code.
 class DictType(CollectionType):
   """Represents a dictionary of TraceType objects."""
 
@@ -196,7 +197,7 @@ class DictType(CollectionType):
 
 
 def get_arg_spec(inputs, include_tensor_ranks_only,
-                 encode_variables_by_resource_id, enable_full_trace_type):
+                 encode_variables_by_resource_id, use_full_trace_type):
   """Returns the trace type specification of a function's arguments.
 
   Args:
@@ -204,32 +205,16 @@ def get_arg_spec(inputs, include_tensor_ranks_only,
     include_tensor_ranks_only: If Tensors should be considered by rank
     encode_variables_by_resource_id: If Variables should be considered by
       resource id
-    enable_full_trace_type: If full usage of trace type protocol should be
-      enabled. Otherwise, only a GenericType wrapper is added over the final
-      results.
+    use_full_trace_type: Uses the TraceType protocol wherever possible.
 
   Returns:
-    A hashable object representing the function arguments.
+    A TraceType object representing the function arguments.
   """
-  if enable_full_trace_type:
 
-    def parametrized_get_arg_spec(arg):
-      return get_arg_spec(arg, include_tensor_ranks_only,
-                          encode_variables_by_resource_id, True)
-
-    if isinstance(inputs, tuple):
-      return TupleType(*map(parametrized_get_arg_spec, inputs))
-
-    if isinstance(inputs, list):
-      return ListType(*map(parametrized_get_arg_spec, inputs))
-
-    if isinstance(inputs, dict):
-      traced = {
-          parametrized_get_arg_spec(k): parametrized_get_arg_spec(v)
-          for k, v in inputs.items()
-      }
-      return DictType(traced)
-
+  # TODO(b/201533914): Drop GenericType once TFE_Py_EncodeArg returns TraceType.
+  signature_context = trace.SignatureContext()
   return GenericType(
-      pywrap_tfe.TFE_Py_EncodeArg(inputs, include_tensor_ranks_only,
-                                  encode_variables_by_resource_id))
+      pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
+                                  include_tensor_ranks_only,
+                                  encode_variables_by_resource_id,
+                                  use_full_trace_type))

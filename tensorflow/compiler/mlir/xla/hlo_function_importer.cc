@@ -839,6 +839,21 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             .getOperation();
       }
     }
+    case HloOpcode::kAfterAll: {
+      // HLO AfterAll ops without any token input are used to just create a
+      // token. MHLO has a special op CreateToken for this case.
+      if (instruction->operands().empty()) {
+        return func_builder
+            ->create<mlir::mhlo::CreateTokenOp>(loc, result_type, operands,
+                                                attributes)
+            .getOperation();
+      } else {
+        return func_builder
+            ->create<mlir::mhlo::AfterAllOp>(loc, result_type, operands,
+                                             attributes)
+            .getOperation();
+      }
+    }
 
 #define NO_ATTRIBUTE_CASE(hlo_op_code, mlir_op)                               \
   case HloOpcode::hlo_op_code: {                                              \
@@ -851,7 +866,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // part of the HLO instruction. They are only a convenience in the XLA
       // builder API.
       NO_ATTRIBUTE_CASE(kAbs, AbsOp);
-      NO_ATTRIBUTE_CASE(kAfterAll, AfterAllOp);
       NO_ATTRIBUTE_CASE(kAnd, AndOp);
       NO_ATTRIBUTE_CASE(kAtan2, Atan2Op);
       NO_ATTRIBUTE_CASE(kBitcastConvert, BitcastConvertOp);

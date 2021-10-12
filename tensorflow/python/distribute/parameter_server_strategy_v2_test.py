@@ -26,6 +26,7 @@ from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import ps_values
@@ -38,6 +39,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
@@ -52,40 +54,20 @@ from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as tracking_util
 
-# We create one cluster to share between tests. The cluster should be large
-# enough to accommodate all the tests. Adjust the following constants as needed
-# but be aware of resource limitations in OSS tests.
-MAX_NUM_WORKER = 2
-MAX_NUM_PS = 3
-
-_cluster = None
-
-
-def get_cluster_def(num_workers, num_ps):
-  if num_workers > MAX_NUM_WORKER or num_ps > MAX_NUM_PS:
-    raise ValueError("Requesting more servers than the maximum, adjust"
-                     "MAX_NUM_PS and MAX_NUM_WORKER")
-  global _cluster
-  if _cluster is None:
-    _cluster = multi_worker_test_base.create_in_process_cluster(
-        num_workers=MAX_NUM_WORKER, num_ps=MAX_NUM_PS)
-  return {
-      "worker": _cluster["worker"][:num_workers],
-      "ps": _cluster["ps"][:num_ps],
-  }
-
 
 class ParameterServerStrategyV2Test(test.TestCase):
 
-  def setUp(self):
-    super().setUp()
-    cluster_def = get_cluster_def(num_workers=2, num_ps=3)
-    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+  @classmethod
+  def setUpClass(cls):
+    super(ParameterServerStrategyV2Test, cls).setUpClass()
+    cls.cluster = multi_worker_test_base.create_multi_process_cluster(
+        num_workers=2, num_ps=3, rpc_layer="grpc")
+    cls.cluster_resolver = cls.cluster.cluster_resolver
 
-  def tearDown(self):
-    super().tearDown()
-    # reset context to disconnect from the cluster.
-    context._reset_context()
+  @classmethod
+  def tearDownClass(cls):
+    super(ParameterServerStrategyV2Test, cls).tearDownClass()
+    cls.cluster.stop()
 
   def testVariablePlacement(self):
 
@@ -315,15 +297,17 @@ class PartitionAwareIdentity(object):
 
 class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
-  def setUp(self):
-    super().setUp()
-    cluster_def = get_cluster_def(num_workers=2, num_ps=2)
-    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+  @classmethod
+  def setUpClass(cls):
+    super(VariablePartitioningTest, cls).setUpClass()
+    cls.cluster = multi_worker_test_base.create_multi_process_cluster(
+        num_workers=2, num_ps=2, rpc_layer="grpc")
+    cls.cluster_resolver = cls.cluster.cluster_resolver
 
-  def tearDown(self):
-    super().tearDown()
-    # reset context to disconnect from the cluster.
-    context._reset_context()
+  @classmethod
+  def tearDownClass(cls):
+    super(VariablePartitioningTest, cls).tearDownClass()
+    cls.cluster.stop()
 
   def testDefaultNoPartition(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
@@ -570,6 +554,10 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
         variables.Variable([[[0, 1], [2, 3]], [[0, 1], [2, 3]]])
 
   def testCreateInsideTFFunction(self):
+    if test_util.is_xla_enabled():
+      self.skipTest("TODO(b/202760274): Would raise an error that is to be "
+                    "investigated.")
+
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
 
@@ -604,6 +592,10 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
       ("DelayedRestoreDiffShards", True, 4),
   )
   def testCheckpoint(self, delayed, restore_shards):
+
+    if test_util.is_xla_enabled() and not delayed and restore_shards == 4:
+      self.skipTest("TODO(b/202760274): Would raise an error that is to be "
+                    "investigated.")
 
     def make_variable(name, shape, dtype, initializer):
       initial_value = functools.partial(initializer, shape, dtype=dtype)
@@ -716,4 +708,4 @@ class ClusterTypeNameTest(test.TestCase):
 
 if __name__ == "__main__":
   v2_compat.enable_v2_behavior()
-  test.main()
+  multi_process_runner.test_main()

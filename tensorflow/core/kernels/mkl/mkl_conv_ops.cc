@@ -1195,8 +1195,11 @@ class MklConvOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_temp(DT_UINT8, cached_filter_md_shape,
                                           &cached_filter_md_));
-    *reinterpret_cast<memory::desc*>(cached_filter_md_.flat<uint8>().data()) =
-        weights_desc;
+    {
+      tf_shared_lock lock(mu_);
+      *reinterpret_cast<memory::desc*>(cached_filter_md_.flat<uint8>().data()) =
+          weights_desc;
+    }
   }
 
   void AllocateTensor(OpKernelContext* context, const ConvFwdPd& conv_prim_desc,

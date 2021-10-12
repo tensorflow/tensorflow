@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_gather_combiner.h"
 #include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
+#include "tensorflow/compiler/xla/service/all_reduce_contiguous.h"
 #include "tensorflow/compiler/xla/service/all_reduce_folder.h"
 #include "tensorflow/compiler/xla/service/all_reduce_reassociate.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
@@ -545,6 +546,10 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<ReduceScatterCombiner>(
         /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
         /*combine_threshold_count=*/256);
+
+    if (debug_options.xla_gpu_all_reduce_contiguous()) {
+      pipeline.AddPass<AllReduceContiguous>();
+    }
 
     if (debug_options.xla_gpu_enable_async_all_reduce()) {
       pipeline.AddPass<AsyncCollectiveCreator>(

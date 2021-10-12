@@ -437,6 +437,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/tests/saved_model:__pkg__",
         "//tensorflow/core/tfrt/eager:__pkg__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
+        "@tf_runtime//:__subpackages__",
     ],
     deps = [
         ":function",
@@ -462,6 +463,7 @@ cc_library(
 
 cc_library(
     name = "tfrt_compile_options",
+    srcs = ["translate/tfrt_compile_options.cc"],
     hdrs = ["translate/tfrt_compile_options.h"],
 )
 

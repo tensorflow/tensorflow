@@ -979,8 +979,7 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   auto binary_programs_fb_vec = builder->CreateVector(binary_programs_fb);
 
   std::vector<flatbuffers::Offset<data::TensorDescWithId>> tensors_fb;
-  auto tensors = inference.tensor_reserver_.GetTensorDescs();
-  for (const auto& tensor : tensors) {
+  for (const auto& tensor : inference.tensors_descs_) {
     auto tensor_fb = Encode(tensor.second, tensor.first, builder);
     tensors_fb.push_back(tensor_fb);
   }
@@ -1046,13 +1045,11 @@ absl::Status Decode(const CLContext& context, const CLDevice& device,
     counter++;
   }
 
-  std::vector<std::pair<ValueId, TensorDescriptor>> tensors;
   for (const auto& tensor_fb : *fb_inference->tensors()) {
     TensorDescriptor desc;
     Decode(tensor_fb->desc(), &desc);
-    tensors.push_back({tensor_fb->id(), std::move(desc)});
+    inference->tensors_descs_[tensor_fb->id()] = std::move(desc);
   }
-  inference->tensor_reserver_.Add(tensors);
   for (const auto& tensor_fb : *fb_inference->const_tensors()) {
     TensorDescriptor desc;
     Decode(tensor_fb->desc(), &desc);

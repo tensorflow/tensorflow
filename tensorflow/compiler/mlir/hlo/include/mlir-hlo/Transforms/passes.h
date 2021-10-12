@@ -38,6 +38,10 @@ std::unique_ptr<FunctionPass> createTestUserangePass();
 /// Creates a pass that prints the analysis results of ShapeComponentsAnalysis.
 std::unique_ptr<FunctionPass> createTestShapeComponentAnalysisPass();
 
+/// Creates a pass that removes redundant operations that implement a
+/// CopyOpInterface.
+std::unique_ptr<FunctionPass> createCopyRemovalPass();
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_LIB_TRANSFORMS_PASSES_H_

@@ -544,7 +544,15 @@ cc_library(
 # dependency to tensorflow/core:lib, which gpu_utils certainly depends on.
 cc_library(
     name = "gpu_util_hdrs",
-    hdrs = ["gpu_utils.h"],
+    hdrs = [
+        "gpu_utils.h",
+        # See the exports_files declaration for a description of why this
+        # silliness is here.
+        #
+        # TODO(b/202546057) get rid of this once fused_conv is moved out of
+        # contrib.
+        "//tensorflow/stream_executor:lazy_op_runner.h",
+    ],
 )
 
 tf_cuda_library(
@@ -559,6 +567,7 @@ tf_cuda_library(
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util/proto:proto_utils",
+        "//tensorflow/stream_executor:lazy_op_runner",
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
         "@com_google_absl//absl/algorithm:container",
@@ -2266,6 +2275,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//third_party/eigen3",
     ],
 )
@@ -2894,6 +2904,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util:determinism_for_kernels",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -5141,7 +5152,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scatter_op",
     prefix = "scatter_op",
-    deps = STATE_DEPS,
+    deps = STATE_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
 )
 
 tf_kernel_library(

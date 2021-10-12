@@ -328,12 +328,6 @@ TEST_F(EagerContextTest, LocalRendezvousCreation) {
   // Caller releases rendezvous-2.
   rendezvous_2->Unref();
   EXPECT_EQ(rendezvous_2->RefCount(), 1);
-
-  // Final clean up for the unit test.
-  // In normal cases, EagerContext::Release() is called to clean up the
-  // remaining rendezvous instances. Unit tests have different cleanup mechanism
-  // so explicitly calling Release() here would mess up the cleanup.
-  rendezvous_1->Unref();
 }
 
 void TestGlobalRendezvous(EagerContext* context, bool reuse_global_rendezvous) {
@@ -352,12 +346,7 @@ void TestGlobalRendezvous(EagerContext* context, bool reuse_global_rendezvous) {
   Rendezvous* rendezvous_3 = rendezvous_creator(-1);
   EXPECT_EQ(rendezvous_3->RefCount(), 2);
 
-  // Final clean up for the unit test.
-  // In normal cases, EagerContext::Release() is called by TFE_DeleteContext()
-  // in order to clean up the remaining rendezvous instances. The unit tests in
-  // this file do not go through TFE_DeleteContext() so we need to explicitly
-  // unref for the remaining rendezvous instance to prevent the tests from
-  // memory leak.
+  // Callers release rendezvous.
   rendezvous_1->Unref();
   rendezvous_2->Unref();
   rendezvous_3->Unref();

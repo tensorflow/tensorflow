@@ -583,6 +583,22 @@ func @main(%arg: tensor<16x16xi32>) -> tensor<16x32xbf16> {
 
 // -----
 
+// Test dot i8xi8 -> i64
+
+func @main(%arg0: tensor<3xi8>, %arg1: tensor<3xi8>) -> tensor<i64> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<3xi8>, tensor<3xi8>) -> tensor<i64>
+  return %0 : tensor<i64>
+}
+
+// CHECK: ENTRY
+// CHECK-SAME: ([[ARG0:.*]]: s8[3], [[ARG1:.*]]: s8[3]) -> s64[] {
+// CHECK: %[[ARG0]] = s8[3] parameter(0)
+// CHECK: %[[ARG1]] = s8[3] parameter(1)
+// CHECK: ROOT
+// CHECK-SAME: s64[] dot(s8[3] %[[ARG0]], s8[3] %[[ARG1]]),
+
+// -----
+
 // Test dot i8xi8 -> i32.
 // CHECK:  HloModule
 func @main(%arg0: tensor<2x2x2xi8>, %arg1: tensor<2x2x3xi8>) -> tensor<2x2x3xi32> {

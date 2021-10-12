@@ -12,10 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Function Tracing Type."""
+"""tf.function tracing types.
+
+See `core.GenericFunction` and `core.ConcreteFunction`.
+
+`GenericFunction` assigns types to call arguments, forming a signature.
+Function signatures are used to match arguments to `ConcreteFunction`s.
+For example, when a new `ConcreteFunction` is traced, it is assigned a
+the signature of the arguments it was traced with. Subsequent call arguments
+which match its signature will be dispatched to the same `ConcreteFunction`.
+If no `ConcreteFunction` with a matching signature is found, a new one may be
+traced (a process known as retracing).
+"""
 
 import abc
 from typing import Optional, Sequence
+from typing_extensions import Protocol
 
 
 class TraceType(abc.ABC):
@@ -42,4 +54,29 @@ class TraceType(abc.ABC):
 
   @abc.abstractmethod
   def __eq__(self, other) -> bool:
+    pass
+
+
+class SignatureContext():
+  """Contains information scoped to the entirety of signature tracing.
+
+  `SignatureContext` is a container class for flags and variables that have
+  any kind of influence on the tracing behaviour of the class implementing
+  the __tf_trace_protocol__. This context will be shared across all
+  __tf_trace_protocol__ calls while constructing the TraceType for a particular
+  set of arguments.
+  """
+  pass
+
+
+class SupportsTracingType(Protocol):
+  """The Trace Control Protocol for functions.
+
+  Classes that implement this protocol can expect the TensorFlow function
+  caching and function retracing mechanisms to treat instances of those
+  classes according to the behaviour specified by their TraceType.
+  """
+
+  @abc.abstractmethod
+  def __tf_tracing_type__(self, context: SignatureContext) -> TraceType:
     pass

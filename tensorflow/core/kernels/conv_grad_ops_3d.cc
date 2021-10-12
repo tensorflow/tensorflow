@@ -1197,7 +1197,7 @@ struct Conv3dBackwardDataAutotuneGroup {
 };
 
 typedef AutotuneSingleton<Conv3dBackwardDataAutotuneGroup, ConvParameters,
-                          AutotuneEntry<se::dnn::ConvSignature>>
+                          AutotuneEntry<se::dnn::ConvOp>>
 
     AutotuneConv3dBwdData;
 
@@ -1514,32 +1514,16 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES_OK(context, entry_or.status());
     auto autotune_entry = entry_or.ConsumeValueOrDie();
 
-    Status cudnn_launch_status;
     DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                           context);
-    if (!autotune_entry.is_algorithm_config()) {
-      auto& runners = autotune_entry.GetOpRunners();
-      VLOG(4) << "Conv3DBackpropInput Execution Plan: "
-              << runners.primary->ToString();
-      auto runner_and_scratch_or =
-          AllocateScratchOrFallback<se::dnn::ConvSignature>(&scratch_allocator,
-                                                            runners);
-      OP_REQUIRES_OK(context, runner_and_scratch_or.status());
-      auto runner_and_scratch = runner_and_scratch_or.ConsumeValueOrDie();
-      auto& runner = *std::get<std::shared_ptr<const se::dnn::ConvRunner>>(
-          runner_and_scratch);
-      cudnn_launch_status =
-          runner(stream, in_backprop_ptr, filter_ptr, out_backprop_ptr,
-                 std::get<se::DeviceMemoryBase>(runner_and_scratch), nullptr);
-    } else {
-      cudnn_launch_status = stream->ConvolveWithAlgorithm(
-          se::dnn::ConvolutionKind::BACKWARD_DATA, input_desc, in_backprop_ptr,
-          filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
-          &scratch_allocator, autotune_entry.GetAlgorithmConfig(), nullptr);
-    }
-
+    Status cudnn_launch_status = LaunchAutotunedConv(
+        autotune_entry, &scratch_allocator,
+        se::dnn::ConvolutionKind::BACKWARD_DATA, stream, input_desc,
+        in_backprop_ptr, filter_desc, filter_ptr, conv_desc, output_desc,
+        out_backprop_ptr);
     if (!cudnn_launch_status.ok()) {
       context->SetStatus(cudnn_launch_status);
+      return;
     }
 
     if (rows_odd || cols_odd || planes_odd) {
@@ -1591,7 +1575,7 @@ struct Conv3dBackwardFilterAutotuneGroup {
 };
 
 typedef AutotuneSingleton<Conv3dBackwardFilterAutotuneGroup, ConvParameters,
-                          AutotuneEntry<se::dnn::ConvSignature>>
+                          AutotuneEntry<se::dnn::ConvOp>>
     AutotuneConv3dBwdFilter;
 
 template <typename T>
@@ -1923,33 +1907,16 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES_OK(context, entry_or.status());
     auto autotune_entry = entry_or.ConsumeValueOrDie();
 
-    Status cudnn_launch_status;
     DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                           context);
-    if (!autotune_entry.is_algorithm_config()) {
-      auto& runners = autotune_entry.GetOpRunners();
-      VLOG(4) << "Conv3DBackpropFilter Execution Plan: "
-              << runners.primary->ToString();
-      auto runner_and_scratch_or =
-          AllocateScratchOrFallback<se::dnn::ConvSignature>(&scratch_allocator,
-                                                            runners);
-      OP_REQUIRES_OK(context, runner_and_scratch_or.status());
-      auto runner_and_scratch = runner_and_scratch_or.ConsumeValueOrDie();
-      auto& runner = *std::get<std::shared_ptr<const se::dnn::ConvRunner>>(
-          runner_and_scratch);
-      cudnn_launch_status =
-          runner(stream, input_ptr, filter_backprop_ptr, out_backprop_ptr,
-                 std::get<se::DeviceMemoryBase>(runner_and_scratch), nullptr);
-    } else {
-      cudnn_launch_status = stream->ConvolveWithAlgorithm(
-          se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
-          filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
-          conv_desc, &scratch_allocator, autotune_entry.GetAlgorithmConfig(),
-          nullptr);
-    }
-
+    Status cudnn_launch_status = LaunchAutotunedConv(
+        autotune_entry, &scratch_allocator,
+        se::dnn::ConvolutionKind::BACKWARD_FILTER, stream, input_desc,
+        input_ptr, filter_desc, filter_backprop_ptr, conv_desc, output_desc,
+        out_backprop_ptr);
     if (!cudnn_launch_status.ok()) {
       context->SetStatus(cudnn_launch_status);
+      return;
     }
 
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };

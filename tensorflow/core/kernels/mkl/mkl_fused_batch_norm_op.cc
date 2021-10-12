@@ -237,7 +237,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     // BatchNorm forward primitive.
     // TODO(intel-tf): Merge all the #ifdefs and simplify code
     if (!fwdParams.training && !(IS_SET(use_global_stats))) {
-      if ((IS_SET(use_scale_shift)) && mkldnn_use_scaleshift) {
+      if (IS_SET(use_scale_shift)) {
         context_.net_args.push_back(
             {{MKLDNN_ARG_SRC, *context_.src_mem},
              {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
@@ -248,7 +248,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
       }
       context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
     } else if (IS_SET(use_global_stats)) {
-      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
+      if (IS_SET(use_scale_shift)) {
         if (IS_SET(fuse_norm_relu)) {
           context_.net_args.push_back(
               {{MKLDNN_ARG_SRC, *context_.src_mem},
@@ -283,7 +283,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
       }
       context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
     } else {
-      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
+      if (IS_SET(use_scale_shift)) {
         if (IS_SET(fuse_norm_relu)) {
           context_.net_args.push_back(
               {{MKLDNN_ARG_SRC, *context_.src_mem},

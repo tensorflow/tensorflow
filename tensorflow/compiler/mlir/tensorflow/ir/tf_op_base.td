@@ -164,6 +164,7 @@ def TF_DatasetIteratorResource : TF_ResourceBase<"DatasetIterator">;
 def TF_TPUEmbeddingResource : TF_ResourceBase<"TPUEmbedding">;
 def TF_GeneratorOpResource : TF_ResourceBase<"GeneratorOp">;
 def TF_SendRecvResource : TF_ResourceBase<"SendRecv">;
+def TF_TPUCompileExecuteResource : TF_ResourceBase<"TPUCompileExecute">;
 
 // Value-based side effects
 //
@@ -222,6 +223,7 @@ def TF_GeneratorOpSideEffect : MemoryEffects<[MemWrite<TF_GeneratorOpResource>]>
 // hack can be removed.
 def TF_TPUEmbeddingSideEffect : MemoryEffects<[MemWrite<TF_TPUEmbeddingResource>]>;
 def TF_SendRecvSideEffect : MemoryEffects<[MemWrite<TF_SendRecvResource>]>;
+def TF_TPUCompileExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUCompileExecuteResource>]>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions

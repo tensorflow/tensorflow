@@ -703,6 +703,19 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(DotOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
+  if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  xla::PrimitiveType preferred_element_type =
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+  value_map[op] = xla::Dot(
+      lhs, rhs, Unwrap(Convert_precision_config(op.precision_config())),
+      preferred_element_type);
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;

@@ -1521,6 +1521,9 @@ def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]> {
     HLO_PrecisionConfigAttr:$precision_config
   );
   let results = (outs HLO_Tensor);
+  // Dot op required custom exporter to pass the preferred element type
+  // to Xla builder.
+  let hasCustomHLOConverter = 1;
 }
 
 def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]> {
@@ -1739,10 +1742,8 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
   let hasFolder = 1;
 }
 
-// TODO(jpienaar): Add broadcastable trait.
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>,
+    InferTensorTypeWithReify,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Select operator";
   let description = [{
@@ -1762,6 +1763,12 @@ def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
 def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
