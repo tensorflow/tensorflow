@@ -4754,10 +4754,15 @@ bool AreUsersElementwise(
     const absl::flat_hash_set<mlir::Operation*>& use_chain_endings) {
   return absl::c_all_of(value.getUsers(), [&](mlir::OpOperand use) {
     mlir::Operation* user = use.getOwner();
-    CHECK_EQ(1, user->getNumResults());
     return use_chain_endings.count(user) ||
            (HloInstruction::IsOpElementwise(*MhloToHloOpcode(user)) &&
-            AreUsersElementwise(user->getResult(0), use_chain_endings));
+            absl::c_all_of(user->getResults(),
+                           [&](const mlir::OpResult result) {
+                             return AreUsersElementwise(result,
+                                                        use_chain_endings);
+                           })
+
+           );
   });
 }
 

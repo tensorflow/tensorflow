@@ -1163,6 +1163,49 @@ XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_argmax) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
+XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_argmax_column) {
+  absl::string_view hlo_string = R"(
+    HloModule Reduce_R1x2_to_R0x2_argmax
+
+    add {
+      acc = f32[] parameter(1)
+      op = f32[] parameter(0)
+      ROOT out = f32[] add(acc, op)
+    }
+
+    argmax {
+      running_max = f32[] parameter(0)
+      running_max_idx = u32[] parameter(1)
+      current_value = f32[] parameter(2)
+      current_value_idx = u32[] parameter(3)
+
+      current = (f32[], u32[]) tuple(running_max, running_max_idx)
+      potential = (f32[], u32[]) tuple(current_value, current_value_idx)
+
+      cmp_code = pred[] compare(current_value, running_max), direction=GT
+
+      new_max = f32[] select(cmp_code, current_value, running_max)
+      new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
+
+      ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
+    }
+
+    ENTRY main {
+      input = f32[32,128] parameter(0)
+      idxs = u32[32,128] iota(), iota_dimension=0
+      zero = f32[] constant(0)
+      zero_idx = u32[] constant(0)
+
+      ROOT argmax_result = (f32[128], u32[128]) reduce(
+        input, idxs, zero, zero_idx),
+        dimensions={0},
+        to_apply=%argmax
+    }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
 XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicAnd) {
   absl::string_view hlo_string = R"(
     HloModule VariadicReduceMultiOutput

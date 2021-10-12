@@ -90,6 +90,16 @@ std::vector<int64_t> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
 
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
                                          const HloInstruction& reduce) {
+  if (producer.opcode() == HloOpcode::kFusion) {
+    for (const HloInstruction* instr : producer.fused_instructions()) {
+      if (instr->opcode() == HloOpcode::kCopy) {
+        // Elementwise copies are only inserted in input fusion for
+        // transposition, and those are never friendly to the reduction.
+        return false;
+      }
+    }
+  }
+
   std::vector<HloInstruction*> params;
   AppendParams(producer, &params);
   AppendParams(reduce, &params);
