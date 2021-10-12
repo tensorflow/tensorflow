@@ -135,6 +135,7 @@ TfLiteDelegatePtr CreateGPUDelegate() {
 #endif  // TFLITE_SUPPORTS_GPU_DELEGATE
 }
 
+#if defined(TFLITE_ENABLE_HEXAGON)
 TfLiteDelegatePtr CreateHexagonDelegate(
     const std::string& library_directory_path, bool profiling) {
 #if !defined(__APPLE__) && (defined(__arm__) || defined(__aarch64__))
@@ -166,6 +167,7 @@ TfLiteDelegatePtr CreateHexagonDelegate(
     TfLiteHexagonTearDown();
   });
 }
+#endif
 #endif
 
 #if defined(__s390x__) || defined(TFLITE_WITHOUT_XNNPACK)
