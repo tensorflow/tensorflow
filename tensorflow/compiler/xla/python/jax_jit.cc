@@ -1087,20 +1087,6 @@ PyObject* JaxCompiledFunction_tp_call(PyObject* self, PyObject* args,
   }
 }
 
-PyObject* JaxCompiledFunction_tp_repr(PyObject* self) {
-  try {
-    PyObject* wrapped =
-        PyObject_GetAttr(self, PyUnicode_FromString("__wrapped__"));
-    PyObject* repr =
-        PyObject_GetAttr(wrapped, PyUnicode_FromString("__repr__"));
-    return PyObject_CallObject(repr, nullptr);
-  } catch (py::error_already_set& e) {
-    // Ignore all errors when accessing a repr.
-    e.restore();
-    return PyUnicode_FromString("<CompiledFunction>");
-  }
-}
-
 void InitializeCompiledFunction(JaxCompiledFunctionObject* cfun,
                                 py::function fun, py::function cache_miss,
                                 py::function get_device,
@@ -1213,7 +1199,6 @@ void BuildJaxjitSubmodule(py::module& m) {
     type->tp_getset = JaxCompiledFunction_tp_getset;
     type->tp_descr_get = JaxCompiledFunction_tp_descr_get;
     type->tp_call = JaxCompiledFunction_tp_call;
-    type->tp_repr = JaxCompiledFunction_tp_repr;
     CHECK_EQ(PyType_Ready(type), 0);
     JaxCompiledFunction_Type = reinterpret_cast<PyObject*>(type);
     cfun = py::reinterpret_borrow<py::object>(JaxCompiledFunction_Type);
