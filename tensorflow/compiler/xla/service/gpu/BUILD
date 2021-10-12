@@ -1695,6 +1695,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:all_gather_combiner",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_reduce_combiner",
+        "//tensorflow/compiler/xla/service:all_reduce_contiguous",
         "//tensorflow/compiler/xla/service:all_reduce_folder",
         "//tensorflow/compiler/xla/service:all_reduce_reassociate",
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
