@@ -80,6 +80,13 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
   Status CheckExternalState() const override { return Status::OK(); }
 
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    *out_tensors = tensors_;
+    return Status::OK();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
