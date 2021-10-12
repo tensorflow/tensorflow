@@ -27,6 +27,7 @@ import warnings
 import numpy as np
 import six
 
+import tensorflow as tf
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -1153,7 +1154,21 @@ def _AddTests(test_class):
   _AddTestsFor(test_class, is_v2=False)
   _AddTestsFor(test_class, is_v2=True)
 
+def _LimitGPUMemory():
+  """Helper function to limit GPU memory for testing."""
+  gpus = tf.config.list_physical_devices('GPU')
+  if gpus:
+    try:
+      # Currently, memory growth needs to be the same across GPUs.
+      for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+      # Memory growth must be set before GPUs have been initialized.
+      print(e)
+    return True
+  return False
 
 if is_tensorrt_enabled():
   os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "False"
+  _LimitGPUMemory()
   _AddTests(TfTrtIntegrationTestBase)
