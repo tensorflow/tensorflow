@@ -3882,10 +3882,18 @@ static port::StatusOr<cudnn_frontend::ExecutionPlan> RebuildExecutionPlan(
         "Got legacy cuDNN algorithm enum in RebuildExecutionPlan.");
   }
 
-  auto engine = cudnn_frontend::EngineBuilder()
-                    .setOperationGraph(op_graph)
-                    .setGlobalEngineIdx(desc.algo_id())
-                    .build();
+  // Errors encountered when building a cuDNN operation graph are surfaced in an
+  // unprecedented and innovative way: they're written into a field of the
+  // contained engine object, but then clobbered by the object's move
+  // constructor which makes more cuDNN API calls and encounters further errors.
+  // The only way to get the actual errors is to peek at them via the returned
+  // rvalue reference before actually moving the object to finish its
+  // initialization.
+  cudnn_frontend::EngineBuilder engine_builder;
+  engine_builder.setOperationGraph(op_graph).setGlobalEngineIdx(desc.algo_id());
+  auto&& unmoved = engine_builder.build();
+  RETURN_MSG_IF_CUDNN_ERROR(unmoved);
+  cudnn_frontend::Engine engine = std::move(unmoved);
   RETURN_MSG_IF_CUDNN_ERROR(engine);
 
   for (auto& knob : engine.getSupportedKnobs()) {
