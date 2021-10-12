@@ -25,10 +25,20 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
 class CacheKeyGenerationTest(test.TestCase):
+
+  def testCompositeAndSpec(self):
+    composite_tensor = ragged_tensor.RaggedTensor.from_row_splits(
+        values=[1, 2, 3], row_splits=[0, 2, 3])
+    spec = ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32)
+
+    self.assertEqual(
+        function_trace_type.get_arg_spec(composite_tensor, False, False, True),
+        function_trace_type.get_arg_spec(spec, False, False, True))
 
   def testVariableAliasing(self):
     v1 = resource_variable_ops.ResourceVariable([1])
