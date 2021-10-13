@@ -234,7 +234,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateVerifySuitableForExportPass();
 
 // Returns pass that prepares TPU computation to be legal for export to
 // TensorFlow.
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreatePrepareTpuComputationForTfExportPass();
 
 // Rewrites ops that require quantized inputs or outputs to ops that allow
