@@ -785,6 +785,22 @@ func @test_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 
 // -----
 
+// CHECK-LABEL: test_l2normalization
+func @test_l2normalization(%arg0: tensor<16x16xf32>) -> (tensor<16x16xf32>) {
+  // CHECK-DAG: %[[MIN:.+]] = "tosa.const"() {value = dense<1.08420217E-19> : tensor<f32>}
+  // CHECK-DAG: %[[SQR:.+]] = "tosa.mul"(%arg0, %arg0) {shift = 0 : i32}
+  // CHECK-DAG: %[[SUM:.+]] = "tosa.reduce_sum"(%[[SQR]]) {axis = 1 : i64}
+  // CHECK-DAG: %[[RESHAPE:.+]] = "tosa.reshape"(%[[MIN]]) {new_shape = [1, 1]}
+  // CHECK-DAG: %[[MAX:.+]] = "tosa.maximum"(%[[SUM]], %[[RESHAPE]])
+  // CHECK-DAG: %[[RSQRT:.+]] = "tosa.rsqrt"(%[[MAX]])
+  // CHECK-DAG: %[[MUL:.+]] = "tosa.mul"(%[[RSQRT]], %arg0)
+  // CHECK: %[[CLAMP:.+]] = "tosa.clamp"(%[[MUL]]) {max_fp = 3.40282347E+38 : f32, max_int = 2147483647 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64}
+  %0 = "tfl.l2_normalization"(%arg0) {fused_activation_function = "RELU"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
+  return %0 : tensor<16x16xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_log_softmax
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.exp"(%arg0)
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reduce_sum"(%[[VAR0]]) {axis = 2 : i64}
@@ -857,6 +873,27 @@ func @test_fullyconnected_extra_dim(%arg0: tensor<1x14x19xf32>, %arg1: tensor<28
   // CHECK-SAME: tensor<1x14x28xf32>
   %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x14x19xf32>, tensor<28x19xf32>, tensor<28xf32>) -> tensor<1x14x28xf32>
   return %0 : tensor<1x14x28xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_batch_matmul
+func @test_batch_matmul(%arg0: tensor<1x16x128xf32>, %arg1: tensor<1x128x32xf32>) -> (tensor<1x16x32xf32> ) {
+  // CHECK: "tosa.matmul"(%arg0, %arg1)
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<1x16x128xf32>, tensor<1x128x32xf32>) -> tensor<1x16x32xf32>
+  return %0 : tensor<1x16x32xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_batch_matmul_transpose
+func @test_batch_matmul_transpose(%arg0: tensor<1x16x128xf32>, %arg1: tensor<1x128x32xf32>) -> (tensor<1x32x16xf32> ) {
+  // CHECK-DAG: %[[PERM:.+]] = "tosa.const"() {value = dense<[0, 2, 1]> : tensor<3xi32>}
+  // CHECK-DAG: %[[TP0:.+]] = "tosa.transpose"(%arg0, %[[PERM]])
+  // CHECK-DAG: %[[TP1:.+]] = "tosa.transpose"(%arg1, %[[PERM]])
+  // CHECK: "tosa.matmul"(%[[TP1]], %[[TP0]])
+  %0 = "tfl.batch_matmul"(%arg1, %arg0) {adj_x = true, adj_y = true} : (tensor<1x128x32xf32>, tensor<1x16x128xf32>) -> tensor<1x32x16xf32>
+  return %0 : tensor<1x32x16xf32>
 }
 
 // -----
