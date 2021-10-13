@@ -2053,7 +2053,8 @@ LogicalResult ConvertTFLPadV2Op::matchAndRewrite(
   if (!input_ty.hasRank()) return failure();
 
   ElementsAttr constant_values_attr;
-  if (!matchPattern(tfl_pad_op.constant_values(), m_Constant(&constant_values_attr)))
+  if (!matchPattern(tfl_pad_op.constant_values(),
+                    m_Constant(&constant_values_attr)))
     return failure();
 
   ElementsAttr padding_values_attr;
@@ -2062,7 +2063,8 @@ LogicalResult ConvertTFLPadV2Op::matchAndRewrite(
 
   Attribute constant_attr = constant_values_attr.getValue<Attribute>(0);
   llvm::SmallVector<int32_t> padding;
-  for (auto pad : padding_values_attr.getValues<int32_t>()) padding.push_back(pad);
+  for (auto pad : padding_values_attr.getValues<int32_t>())
+    padding.push_back(pad);
 
   for (int i = 0, s = padding.size(); i < s; i += 2) {
     int64_t axis = i / 2;
@@ -2074,35 +2076,45 @@ LogicalResult ConvertTFLPadV2Op::matchAndRewrite(
 
     llvm::SmallVector<Value> concat_inputs;
     if (pad_up != 0) {
-      llvm::SmallVector<int64_t> pad_shape(input_ty.getShape().begin(), input_ty.getShape().end());
+      llvm::SmallVector<int64_t> pad_shape(input_ty.getShape().begin(),
+                                           input_ty.getShape().end());
       pad_shape[axis] = pad_up;
-      auto pad_type = RankedTensorType::get(pad_shape, input_ty.getElementType());
+      auto pad_type =
+          RankedTensorType::get(pad_shape, input_ty.getElementType());
       // Change this for dynamic shapes.
       if (!pad_type.hasStaticShape()) return failure();
 
       auto pad_attr = DenseElementsAttr::get(pad_type, constant_attr);
-      concat_inputs.push_back(rewriter.create<tosa::ConstOp>(op->getLoc(), pad_type, pad_attr).getResult());
+      concat_inputs.push_back(
+          rewriter.create<tosa::ConstOp>(op->getLoc(), pad_type, pad_attr)
+              .getResult());
     }
 
     concat_inputs.push_back(input);
 
     if (pad_down != 0) {
-      llvm::SmallVector<int64_t> pad_shape(input_ty.getShape().begin(), input_ty.getShape().end());
+      llvm::SmallVector<int64_t> pad_shape(input_ty.getShape().begin(),
+                                           input_ty.getShape().end());
       pad_shape[axis] = pad_down;
-      auto pad_type = RankedTensorType::get(pad_shape, input_ty.getElementType());
+      auto pad_type =
+          RankedTensorType::get(pad_shape, input_ty.getElementType());
       // Change this for dynamic shapes.
       if (!pad_type.hasStaticShape()) return failure();
 
       auto pad_attr = DenseElementsAttr::get(pad_type, constant_attr);
-      concat_inputs.push_back(rewriter.create<tosa::ConstOp>(op->getLoc(), pad_type, pad_attr).getResult());
+      concat_inputs.push_back(
+          rewriter.create<tosa::ConstOp>(op->getLoc(), pad_type, pad_attr)
+              .getResult());
     }
 
     auto concat_ty = UnrankedTensorType::get(input_ty.getElementType());
-    input = CreateOpAndInfer<tosa::ConcatOp>(rewriter, op->getLoc(), concat_ty, concat_inputs, rewriter.getI64IntegerAttr(axis)).getResult();
- }
+    input = CreateOpAndInfer<tosa::ConcatOp>(rewriter, op->getLoc(), concat_ty,
+                                             concat_inputs,
+                                             rewriter.getI64IntegerAttr(axis))
+                .getResult();
+  }
 
   rewriter.replaceOp(op, input);
-
 
   return success();
 }
