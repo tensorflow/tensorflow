@@ -1242,7 +1242,7 @@ def _is_ps_failure(error):
   if isinstance(error, InputError):
     error = error.original_exception
 
-  return (isinstance(error, errors.UnavailableError) and
+  return (isinstance(error, (errors.UnavailableError, errors.AbortedError)) and
           _RPC_ERROR_FROM_PS in str(error))
 
 
