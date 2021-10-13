@@ -207,6 +207,21 @@ class HloConstantMatcher : public HloMatcher {
   Literal literal_;
 };
 
+class HloReplicaGroupsMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloReplicaGroupsMatcher(
+      std::vector<std::vector<int64_t>> replica_groups)
+      : replica_groups_(std::move(replica_groups)) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  std::vector<std::vector<int64_t>> replica_groups_;
+};
+
 // HloInstruction* matchers for opcode and operands. Example:
 //   namespace op = xla::opcode_matchers;
 //   EXPECT_THAT(instruction,
@@ -500,6 +515,12 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Constant(
     Literal value) {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloConstantMatcher(std::move(value)));
+}
+
+inline ::testing::Matcher<const ::xla::HloInstruction*> ReplicaGroups(
+    std::vector<std::vector<int64_t>> replica_groups) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloReplicaGroupsMatcher(std::move(replica_groups)));
 }
 
 #undef HLO_MATCHER

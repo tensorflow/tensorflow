@@ -15,8 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_RUNTIME_WORK_QUEUE_INTERFACE_H_
 #define TENSORFLOW_CORE_TFRT_RUNTIME_WORK_QUEUE_INTERFACE_H_
 
+#include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 
@@ -57,6 +60,27 @@ inline WorkQueueInterface::~WorkQueueInterface() = default;
 // ConcurrentWorkQueue.
 std::unique_ptr<WorkQueueInterface> WrapDefaultWorkQueue(
     std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue);
+
+// A helper function that wraps tasks with traceme events.
+template <typename Callable>
+tfrt::TaskFunction WrapWork(int64_t id, absl::string_view name,
+                            Callable&& work) {
+  tensorflow::Context context(tensorflow::ContextKind::kThread);
+  return tfrt::TaskFunction([id, name = std::string(name),
+                             context = std::move(context),
+                             work = std::forward<Callable>(work)]() mutable {
+    // From TraceMeProducer in the function that launches graph execution, eg.
+    // SavedModelImpl::Run().
+    tensorflow::profiler::TraceMeConsumer activity(
+        [&]() {
+          return tensorflow::profiler::TraceMeEncode(name, {{"id", id}});
+        },
+        tensorflow::profiler::ContextType::kTfrtExecutor, id,
+        tensorflow::profiler::TraceMeLevel::kInfo);
+    tensorflow::WithContext wc(context);
+    std::forward<Callable>(work)();
+  });
+}
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

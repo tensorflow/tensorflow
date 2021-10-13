@@ -34,6 +34,7 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import tpu_replicated_variable
 from tensorflow.python.distribute import tpu_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
@@ -314,11 +315,20 @@ class TPUStrategyV2(distribute_lib.Strategy):
   ...     dataset_fn)
   >>> iterator = iter(dist_dataset)
   >>> strategy.run(step_fn, args=(next(iterator),))
+
+  `experimental_spmd_xla_partitioning` enables the experimental XLA SPMD feature
+  for model parallelism. This flag can reduce the compilation time and HBM
+  requirements. When running in this mode, every input tensor must either be
+  partitioned (via `strategy.experimental_split_to_logical_devices`) or fully
+  replicated (via `strategy.experimental_replicate_to_logical_devices`) to all
+  logical devices. And calling `strategy.experimental_assign_to_logical_device`
+  will result in a ValueError in this mode.
   """
 
   def __init__(self,
                tpu_cluster_resolver=None,
-               experimental_device_assignment=None):
+               experimental_device_assignment=None,
+               experimental_spmd_xla_partitioning=False):
     """Synchronous training in TPU donuts or Pods.
 
     Args:
@@ -329,10 +339,19 @@ class TPUStrategyV2(distribute_lib.Strategy):
       experimental_device_assignment: Optional
         `tf.tpu.experimental.DeviceAssignment` to specify the placement of
         replicas on the TPU cluster.
+      experimental_spmd_xla_partitioning: If True, enable the SPMD (Single
+        Program Multiple Data) mode in XLA compiler. This flag only affects the
+        performance of XLA compilation and the HBM requirement of the compiled
+        TPU program. Ceveat: if this flag is True, calling
+        `tf.distribute.TPUStrategy.experimental_assign_to_logical_device` will
+        result in a ValueError.
     """
-    super(TPUStrategyV2, self).__init__(TPUExtended(
-        self, tpu_cluster_resolver,
-        device_assignment=experimental_device_assignment))
+    super(TPUStrategyV2, self).__init__(
+        TPUExtended(
+            self,
+            tpu_cluster_resolver,
+            device_assignment=experimental_device_assignment,
+            use_spmd_for_xla_partitioning=experimental_spmd_xla_partitioning))
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set("TPUStrategy")
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "num_workers").set(self.extended.num_hosts)
@@ -341,7 +360,10 @@ class TPUStrategyV2(distribute_lib.Strategy):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    self._enable_packed_variable_in_eager_mode = True
+    # Packed variable is currently not supported when SPMD is enabled.
+    # TODO(b/202047549): enable Packed variable in SPMD mode.
+    self._enable_packed_variable_in_eager_mode = (
+        not experimental_spmd_xla_partitioning)
 
   def run(self, fn, args=(), kwargs=None, options=None):
     """Run the computation defined by `fn` on each TPU replica.
@@ -441,11 +463,18 @@ class TPUStrategyV2(distribute_lib.Strategy):
 
     Raises:
       ValueError: The logical device id presented is not consistent with total
-      number of partitions specified by the device assignment.
+      number of partitions specified by the device assignment or the TPUStrategy
+      is constructed with `experimental_spmd_xla_partitioning=True`.
 
     Returns:
       Annotated tensor with identical value as `tensor`.
     """
+    if self.extended._use_spmd_for_xla_partitioning:  # pylint: disable=protected-access
+      raise ValueError(
+          "Cannot assign a tensor to a logical device in SPMD mode. To disable "
+          "SPMD, Please construct the TPUStrategy with "
+          "`experimental_spmd_xla_partitioning=False`")
+
     num_logical_devices_per_replica = self.extended._tpu_devices.shape[1]  # pylint: disable=protected-access
     if (logical_device_id < 0 or
         logical_device_id >= num_logical_devices_per_replica):
@@ -481,8 +510,16 @@ class TPUStrategyV2(distribute_lib.Strategy):
         topology,
         computation_shape=[1, 2, 2, 2],
         num_replicas=1)
+    # Construct the TPUStrategy. Since we are going to split the image across
+    # logical devices, here we set `experimental_spmd_xla_partitioning=True`
+    # so that the partitioning can be compiled in SPMD mode, which usually
+    # results in faster compilation and smaller HBM requirement if the size of
+    # input and activation tensors are much bigger than that of the model
+    # parameters. Note that this flag is suggested but not a hard requirement
+    # for `experimental_split_to_logical_devices`.
     strategy = tf.distribute.TPUStrategy(
-        resolver, experimental_device_assignment=device_assignment)
+        resolver, experimental_device_assignment=device_assignment,
+        experimental_spmd_xla_partitioning=True)
 
     iterator = iter(inputs)
 
@@ -640,8 +677,9 @@ class TPUStrategy(distribute_lib.Strategy):
         "`tf.distribute.experimental.TPUStrategy` is deprecated, please use "
         " the non experimental symbol `tf.distribute.TPUStrategy` instead.")
 
-    super(TPUStrategy, self).__init__(TPUExtended(
-        self, tpu_cluster_resolver, device_assignment=device_assignment))
+    super(TPUStrategy, self).__init__(
+        TPUExtended(
+            self, tpu_cluster_resolver, device_assignment=device_assignment))
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set("TPUStrategy")
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "num_workers").set(self.extended.num_hosts)
@@ -790,7 +828,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
                container_strategy,
                tpu_cluster_resolver=None,
                steps_per_run=None,
-               device_assignment=None):
+               device_assignment=None,
+               use_spmd_for_xla_partitioning=False):
     super(TPUExtended, self).__init__(container_strategy)
 
     if tpu_cluster_resolver is None:
@@ -865,12 +904,14 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       # program.
       atexit.register(context.async_wait)
 
-    # Flag to turn on VariablePolicy.
-    self._use_var_policy = True
+    # Flag to turn on VariablePolicy. Var policy is deprecated because there is
+    # another effort unifying DistributedVariables (see values_v2.py). SPMD XLA
+    # partitioning is not implemented for var policies.
+    # TODO(b/202048882): remove var policy from TPUStrategy.
+    self._use_var_policy = not use_spmd_for_xla_partitioning
 
     # Flag to enable XLA SPMD partitioning.
-    # TODO(b/170873313): Enable XLA SPMD partitioning in TPUStrategy.
-    self._use_spmd_for_xla_partitioning = False
+    self._use_spmd_for_xla_partitioning = use_spmd_for_xla_partitioning
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils. validate_colocate(colocate_with_variable, self)
@@ -1134,7 +1175,17 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     else:
       devices = colocate_with._devices  # pylint: disable=protected-access
 
-    def _real_mirrored_creator(**kwargs):  # pylint: disable=g-missing-docstring
+    num_replicas, num_cores_per_replica = self._tpu_devices.shape
+
+    def _create_mirrored_tpu_variables(**kwargs):
+      """Returns a list of `tf.Variable`s.
+
+      The list contains `number_replicas` `tf.Variable`s and can be used to
+      initialize a `TPUMirroredVariable`.
+
+      Args:
+        **kwargs: the keyword arguments for creating a variable
+      """
       initial_value = None
       value_list = []
       for i, d in enumerate(devices):
@@ -1163,8 +1214,47 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           value_list.append(v)
       return value_list
 
+    def _create_mirrored_tpu_replicated_variables(**kwargs):
+      """Returns a list of `TPUReplicatedVariable`s.
+
+      The list consists of `num_replicas` `TPUReplicatedVariable`s and can be
+      used to initialize a `TPUMirroredVariable`. Each `TPUReplicatedVariable`
+      contains a list of `tf.Variable`s which are replicated to
+      `num_cores_per_replica` logical cores to enable XLA SPMD compilation.
+
+      Args:
+        **kwargs: the keyword arguments for creating a variable
+      """
+      initial_value = kwargs["initial_value"]
+      # Note: some v1 code expects variable initializer creation to happen
+      # inside a init_scope.
+      with maybe_init_scope():
+        initial_value = initial_value() if callable(
+            initial_value) else initial_value
+
+      mirrored_replicated_var_list = []
+
+      for replica_id in range(num_replicas):
+        replicated_var_list = []
+        for logic_core_id in range(num_cores_per_replica):
+          with ops.device(self._tpu_devices[replica_id][logic_core_id]):
+            kwargs["initial_value"] = initial_value
+            v = next_creator(**kwargs)
+          replicated_var_list.append(v)
+        replica_name = "{}/r:{}".format(kwargs["name"], replica_id)
+        tpu_replicated_var = tpu_replicated_variable.TPUReplicatedVariable(
+            variables=replicated_var_list, name=replica_name)
+
+        mirrored_replicated_var_list.append(tpu_replicated_var)
+      return mirrored_replicated_var_list
+
+    if self._use_spmd_for_xla_partitioning and num_cores_per_replica > 1:
+      real_creator = _create_mirrored_tpu_replicated_variables
+    else:
+      real_creator = _create_mirrored_tpu_variables
+
     return distribute_utils.create_mirrored_variable(
-        self._container_strategy(), _real_mirrored_creator,
+        self._container_strategy(), real_creator,
         distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
         distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
 

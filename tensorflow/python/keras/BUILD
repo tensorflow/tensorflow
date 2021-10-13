@@ -34,7 +34,6 @@ py_library(
         ":engine",
         ":testing_utils",  # TODO(scottzhu): Stop exporting the test_utils after removing all the callers.
         "//tensorflow/python:training",
-        "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/datasets",
         "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/estimator",

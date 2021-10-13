@@ -195,7 +195,7 @@ class _CheckpointRestoreCoordinatorDeleter(object):
 class _CheckpointRestoreCoordinator(object):
   """Holds the status of an object-based checkpoint load."""
 
-  def __init__(self, object_graph_proto, save_path, save_path_tensor,
+  def __init__(self, object_graph_proto, save_path, save_path_tensor, reader,
                restore_op_cache, graph_view, options):
     """Specify the checkpoint being loaded.
 
@@ -206,6 +206,8 @@ class _CheckpointRestoreCoordinator(object):
         `tf.train.latest_checkpoint`.
       save_path_tensor: A string `Tensor` which contains or will be fed the save
         path.
+      reader: A `CheckpointReader` for `save_path`. If None,
+        `_CheckpointRestoreCoordinator` will initialize one itself.
       restore_op_cache: A dictionary shared between
         `_CheckpointRestoreCoordinator`s for the same Python objects, used to
         look up restore ops by name to avoid re-creating them across multiple
@@ -235,7 +237,9 @@ class _CheckpointRestoreCoordinator(object):
     self.all_python_objects = object_identity.ObjectIdentityWeakSet()
     self.save_path_tensor = save_path_tensor
     self.save_path_string = save_path
-    reader = py_checkpoint_reader.NewCheckpointReader(save_path)
+    self.reader = reader
+    if self.reader is None:
+      self.reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     self.dtype_map = reader.get_variable_to_dtype_map()
     self.shape_map = reader.get_variable_to_shape_map()
     # A NewCheckpointReader for the most recent checkpoint, for streaming Python
@@ -312,14 +316,10 @@ class _CheckpointRestoreCoordinator(object):
     """
     restore_ops = []
     # Eagerly run restorations for Python state.
-    reader = None
     for saveable in python_saveables:
-      if reader is None:
-        # Lazily create the NewCheckpointReader, since this requires file access
-        # and we may not have any Python saveables.
-        reader = py_checkpoint_reader.NewCheckpointReader(self.save_path_string)
       spec_names = [spec.name for spec in saveable.specs]
-      saveable.python_restore([reader.get_tensor(name) for name in spec_names])
+      saveable.python_restore(
+          [self.reader.get_tensor(name) for name in spec_names])
 
     # If we have new SaveableObjects, extract and cache restore ops.
     if tensor_saveables:
@@ -1362,6 +1362,7 @@ class TrackableSaver(object):
         object_graph_proto=object_graph_proto,
         save_path=save_path,
         save_path_tensor=file_prefix_tensor,
+        reader=reader,
         restore_op_cache=self._restore_op_cache,
         graph_view=self._graph_view,
         options=options)

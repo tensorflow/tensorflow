@@ -80,7 +80,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
-        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/user_ops:ops",
         "@wrapt",
     ],

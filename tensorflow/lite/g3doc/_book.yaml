@@ -96,6 +96,12 @@ upper_tabs:
         path: /lite/guide/hosted_models
       - title: "API updates"
         path: /lite/convert/api_updates
+      - title: "Model Analyzer"
+        path: /lite/guide/model_analyzer
+        status: nightly
+      - title: "Authoring tool"
+        path: /lite/guide/authoring
+        status: nightly
 
       - heading: "Create a model"
       - title: "TensorFlow Lite Model Maker"

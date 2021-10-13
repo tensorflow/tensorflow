@@ -109,13 +109,13 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err =
-          b.executable->InitializeCallFrame(operands, &call_frame, nullptr))
+  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
   // Execute once.
   b.executable->Execute(call_frame, b.exec_ctx);
-  if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
+  if (auto err =
+          b.executable->ReturnResults(b.converter, b.exec_ctx, &call_frame))
     LOG(FATAL) << "Failed to return compiled kernel results";
 }
 
@@ -136,13 +136,13 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err =
-          b.executable->InitializeCallFrame(operands, &call_frame, nullptr))
+  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
     b.executable->Execute(call_frame, b.exec_ctx);
-    if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
+    if (auto err =
+            b.executable->ReturnResults(b.converter, b.exec_ctx, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 

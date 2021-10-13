@@ -587,6 +587,16 @@ func @test_expand_dims(%arg0: tensor<13x21x3xf32>) -> tensor<1x13x21x3xf32> {
 
 // -----
 
+// CHECK-LABEL: test_expand_dims_negative_index
+// CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [13, 1, 21, 3]}
+func @test_expand_dims_negative_index(%arg0: tensor<13x21x3xf32>) -> tensor<13x1x21x3xf32> {
+  %2 = "tf.Const"()  {value = dense<-2> : tensor<1xi32>}  : () -> tensor<1xi32>
+  %3 = "tf.ExpandDims"(%arg0, %2)   : (tensor<13x21x3xf32>, tensor<1xi32>) -> tensor<13x1x21x3xf32>
+  return %3 : tensor<13x1x21x3xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_shape
 // CHECK: %[[VAR0:.*]] = "tosa.const"() {value = dense<[13, 21, 3]> : tensor<3xi32>}
 func @test_shape() -> tensor<3xi32> {

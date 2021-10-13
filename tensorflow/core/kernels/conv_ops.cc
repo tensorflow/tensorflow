@@ -1104,46 +1104,21 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                     device_id,                // device_id
                                     conv_desc.group_count()};
 
-  auto config_or = AutotuneUnfusedConv(
+  auto entry_or = AutotuneUnfusedConv(
       cudnn_use_autotune, ConvAutotuneMap::GetInstance(), conv_parameters, ctx,
       se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
       filter_ptr, conv_desc, output_desc, output_ptr, ConvolveScratchSize);
-  OP_REQUIRES_OK(ctx, config_or.status());
-  AlgorithmConfig algorithm_config = config_or.ConsumeValueOrDie();
+  OP_REQUIRES_OK(ctx, entry_or.status());
+  auto autotune_entry = entry_or.ConsumeValueOrDie();
 
-  Status cudnn_launch_status;
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-  if (CudnnUseFrontend()) {
-    if (algorithm_config.algorithm().has_value()) {
-      VLOG(4) << "Conv2D Execution Plan: "
-              << algorithm_config.algorithm()->exec_plan_id();
-    } else {
-      VLOG(4) << "Convolution Autotune has been turned off";
-    }
-    auto plan_and_scratch_or =
-        AllocateScratchOrFallback(&scratch_allocator, algorithm_config);
-    OP_REQUIRES_OK(ctx, plan_and_scratch_or.status());
-    auto plan_and_scratch = plan_and_scratch_or.ConsumeValueOrDie();
-    cudnn_launch_status = stream->ConvolveWithExecutionPlan(
-        se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
-        filter_ptr, output_desc, output_ptr, conv_desc,
-        std::get<se::DeviceMemoryBase>(plan_and_scratch),
-        *std::get<const se::dnn::ConvolveExecutionPlan*>(plan_and_scratch),
-        nullptr);
-  } else {
-    VLOG(4) << "Convolution Algorithm: "
-            << algorithm_config.algorithm()->algo_id();
-    VLOG(4) << "tensor_ops_enabled: "
-            << algorithm_config.algorithm()->tensor_ops_enabled();
-
-    cudnn_launch_status = stream->ConvolveWithAlgorithm(
-        se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
-        filter_ptr, output_desc, output_ptr, conv_desc, &scratch_allocator,
-        algorithm_config, nullptr);
-  }
-
+  Status cudnn_launch_status = LaunchAutotunedConv(
+      autotune_entry, &scratch_allocator, se::dnn::ConvolutionKind::FORWARD,
+      stream, input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+      output_desc, output_ptr);
   if (!cudnn_launch_status.ok()) {
     ctx->SetStatus(cudnn_launch_status);
+    return;
   }
 
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {

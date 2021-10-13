@@ -370,8 +370,8 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
     return Status::OK();
   }
 
-  if (op->remote_func_params().has_value() &&
-      op->remote_func_params().value().step_id.has_value()) {
+  if (op->eager_func_params().has_value() &&
+      op->eager_func_params().value().step_id.has_value()) {
     // If the op is a component of a multi-device function, don't compile it
     // with XLA.
     *compile_with_xla = false;
@@ -727,6 +727,16 @@ Status PopulateRetMap(FunctionDef* fdef, const AbstractOpAttrs* op_attrs,
   return Status::OK();
 }
 
+#ifdef INTEL_MKL
+inline void GetMKLNodeDef(NodeDef* ndef) {
+  // All MKL eager ops have `_kernel` private attribute that needs to be set
+  // to a fixed label.
+  AttrValue attr_kernel;
+  attr_kernel.set_s(mkl_op_registry::kMklNameChangeOpLabel);
+  (*ndef->mutable_attr()).insert({"_kernel", attr_kernel});
+}
+#endif  // INTEL_MKL
+
 Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
   DCHECK(!op->is_function());
   const OpDef& opdef = OpRegistry::Global()->LookUp(op->Name())->op_def;
@@ -776,11 +786,7 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
 #ifdef INTEL_MKL
     if (IsMKLEnabled() &&
         absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
-      // All MKL eager ops have `_kernel` private attribute that needs to be set
-      // to a fixed label.
-      AttrValue attr_kernel;
-      attr_kernel.set_s(mkl_op_registry::kMklNameChangeOpLabel);
-      (*ndef->mutable_attr()).insert({"_kernel", attr_kernel});
+      GetMKLNodeDef(ndef);
     }
 #endif  // INTEL_MKL
 
@@ -933,7 +939,14 @@ Status GetOrCreateKernelAndDevice(
       // place the wrapped op on a GPU (if one is available) which leads to
       // errors because placer pins the function output nodes to GPU thereby
       // forcing a H2D copy of the dataset variant which is not supported.
-      const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
+      auto ndef = op->MutableAttrs()->BuildNodeDef();
+#ifdef INTEL_MKL
+      if (IsMKLEnabled() &&
+          absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
+        GetMKLNodeDef(&ndef);
+      }
+#endif  // INTEL_MKL
+
       TF_RETURN_IF_ERROR(ctx.SelectDevice(preferred_device, ndef, &device));
 
       VLOG(1) << "PreferredDevice " << op->Name() << ": " << preferred_device;
@@ -1049,15 +1062,15 @@ Status GetOrCreateKernelAndDevice(
 Status CreateUnshapedOutput(
     const KernelAndDevice& kernel, const int output_num, Device* output_device,
     const DataType& output_dtype,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const absl::optional<EagerFunctionParams>& eager_func_params,
     EagerContext* ctx, TensorHandle** output) {
 #if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
       "Remote outputs are not available on mobile devices.");
 #else  // !IS_MOBILE_PLATFORM
   int64_t op_id;
-  if (remote_func_params.has_value()) {
-    op_id = remote_func_params.value().op_id;
+  if (eager_func_params.has_value()) {
+    op_id = eager_func_params.value().op_id;
   } else {
     return errors::InvalidArgument(
         "Unable to find a remote op id for a remote output of ", kernel.name());
@@ -1090,17 +1103,16 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
     graph_collector = ctx.GetGraphCollector();
   }
   const int num_outputs = kernel->num_outputs();
-  absl::optional<EagerRemoteFunctionParams> remote_func_params =
-      op->remote_func_params();
-  if (kernel->IsCrossProcess() && !remote_func_params.has_value()) {
+  absl::optional<EagerFunctionParams> eager_func_params =
+      op->eager_func_params();
+  if (kernel->IsCrossProcess() && !eager_func_params.has_value()) {
     // Create an eager op id for a cross-process function if not exist.
 #if defined(IS_MOBILE_PLATFORM)
     return errors::Unimplemented(
         "Cross-process functions are not supported on mobile devices.");
 #else  // !IS_MOBILE_PLATFORM
     const int64_t op_id = ctx.RemoteMgr()->NextOpId();
-    remote_func_params =
-        EagerRemoteFunctionParams{op_id, /*step_id=*/absl::nullopt};
+    eager_func_params = EagerFunctionParams{op_id, /*step_id=*/absl::nullopt};
 #endif  // !IS_MOBILE_PLATFORM
   }
   if (executor.Async()) {
@@ -1115,13 +1127,13 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
       } else {
         TF_RETURN_IF_ERROR(
             CreateUnshapedOutput(*kernel, i, output_device, output_dtypes[i],
-                                 remote_func_params, &ctx, &retvals[i]));
+                                 eager_func_params, &ctx, &retvals[i]));
       }
     }
     const absl::InlinedVector<TensorHandle*, 4>* inputs;
     TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
     auto node = absl::make_unique<AsyncExecuteNode>(
-        &ctx, *inputs, remote_func_params, std::move(kernel), graph_collector,
+        &ctx, *inputs, eager_func_params, std::move(kernel), graph_collector,
         op->GetCancellationManager(),
         absl::Span<TensorHandle*>(retvals, num_outputs), op->GetStackTrace());
     // Release the inputs from the eager operation since the AsyncExecuteNode
@@ -1139,7 +1151,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
     }
     const absl::InlinedVector<TensorHandle*, 4>* inputs;
     TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
-    ExecuteNode node(&ctx, *inputs, remote_func_params, kernel, graph_collector,
+    ExecuteNode node(&ctx, *inputs, eager_func_params, kernel, graph_collector,
                      op->GetCancellationManager(),
                      {retvals, static_cast<size_t>(num_outputs)},
                      op->GetStackTrace());
@@ -1169,8 +1181,8 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
 Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                          int* num_retvals) {
   profiler::ScopedMemoryDebugAnnotation op_annotation(
-      op->op_name(), op->remote_func_params().has_value()
-                         ? op->remote_func_params().value().step_id.value_or(0)
+      op->op_name(), op->eager_func_params().has_value()
+                         ? op->eager_func_params().value().step_id.value_or(0)
                          : 0);
   profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
@@ -1471,7 +1483,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 Status GetKernelOutputs(
     std::vector<EagerKernelRet>* outputs, int num_outputs,
     TensorHandle** retvals, EagerContext* ctx, KernelAndDevice* kernel,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+    const absl::optional<EagerFunctionParams>& eager_func_params) {
   for (int i = 0, end = num_outputs; i < end; ++i) {
     if (retvals[i] == nullptr) {
       EagerKernelRet& ret = (*outputs)[i];
@@ -1486,7 +1498,7 @@ Status GetKernelOutputs(
         const DataTypeVector& output_dtypes = kernel->output_dtypes();
         TF_RETURN_IF_ERROR(
             CreateUnshapedOutput(*kernel, i, output_device, output_dtypes[i],
-                                 remote_func_params, ctx, &retvals[i]));
+                                 eager_func_params, ctx, &retvals[i]));
 #if !defined(IS_MOBILE_PLATFORM)
         TF_RETURN_IF_ERROR(
             retvals[i]->SetRemoteShape(absl::get<TensorShape>(ret),
@@ -1590,7 +1602,7 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
 // TODO(gjn): Consider moving into ExecuteNode class
 Status EagerKernelExecute(
     EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4>& op_inputs,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const absl::optional<EagerFunctionParams>& eager_func_params,
     const core::RefCountPtr<KernelAndDevice>& kernel,
     GraphCollector* graph_collector, CancellationManager* cancellation_manager,
     absl::Span<TensorHandle*> retvals,
@@ -1614,7 +1626,7 @@ Status EagerKernelExecute(
     coord_agent = ctx->GetDistributedManager()->GetCoordinationServiceAgent();
 #endif  // !IS_MOBILE_PLATFORM
   TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
-                                 cancellation_manager, remote_func_params,
+                                 cancellation_manager, eager_func_params,
                                  stack_trace, coord_agent));
   if (graph_collector != nullptr) {
     CollectGraphs(ctx);
@@ -1628,7 +1640,7 @@ Status EagerKernelExecute(
         "happen. Please file a bug with the TensorFlow team.");
   }
   return GetKernelOutputs(&outputs, retvals.size(), retvals.data(), ctx,
-                          kernel.get(), remote_func_params);
+                          kernel.get(), eager_func_params);
 }
 
 namespace {
@@ -1804,7 +1816,7 @@ namespace {
 // `StatusCallback` will be triggered after function execution with its status.
 void EagerKernelExecuteAsync(
     EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4>& op_inputs,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+    const absl::optional<EagerFunctionParams>& eager_func_params,
     const core::RefCountPtr<KernelAndDevice> kernel,
     GraphCollector* graph_collector, CancellationManager* cancellation_manager,
     TensorHandle** retvals, int num_outputs, StatusCallback done) {
@@ -1825,9 +1837,9 @@ void EagerKernelExecuteAsync(
   kernel->Ref();  // Ownership of reference is transferred to the callback
   kernel->RunAsync(
       ctx->StepContainer(), *inputs, outputs.get(), cancellation_manager,
-      remote_func_params, coord_agent,
+      eager_func_params, coord_agent,
       [retvals, inputs, outputs, num_outputs, ctx, graph_collector,
-       remote_func_params, kernel_raw = kernel.get(),
+       eager_func_params, kernel_raw = kernel.get(),
        done = std::move(done)](const Status& s) {
         auto wrapped_done = [&](const Status& s) {
           kernel_raw->Unref();
@@ -1842,7 +1854,7 @@ void EagerKernelExecuteAsync(
         }
         DCHECK_EQ(num_outputs, outputs->size());
         wrapped_done(GetKernelOutputs(outputs.get(), num_outputs, retvals, ctx,
-                                      kernel_raw, remote_func_params));
+                                      kernel_raw, eager_func_params));
       });
 }
 }  // namespace
@@ -1861,8 +1873,8 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
   }
 
   profiler::ScopedMemoryDebugAnnotation op_annotation(
-      op->op_name(), op->remote_func_params().has_value()
-                         ? op->remote_func_params().value().step_id.value_or(0)
+      op->op_name(), op->eager_func_params().has_value()
+                         ? op->eager_func_params().value().step_id.value_or(0)
                          : 0);
   profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerLocalExecuteAsync: ", op->Name()); },
@@ -1912,7 +1924,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
     return;
   }
   EagerKernelExecuteAsync(
-      &ctx, *inputs, op->remote_func_params(), std::move(kernel),
+      &ctx, *inputs, op->eager_func_params(), std::move(kernel),
       graph_collector, op->GetCancellationManager(), retvals, num_outputs,
       [op, num_outputs, retvals, done = std::move(done)](const Status& s) {
         op->Clear();

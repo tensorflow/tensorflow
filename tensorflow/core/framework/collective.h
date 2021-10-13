@@ -63,15 +63,20 @@ struct CollGroupMember {
   DeviceAttributes device;
   string task;
   bool is_local;
+  // User provided rank
+  int32 rank = -1;
 };
 
 // Data common to all members of a device group.
 // All members share the same device set but its order is
 // particular to an instance so it is stored there.
 struct CollGroupParams {
+  // Inputs from Collective ops:
   int32 group_key;
   int32 group_size;
   DeviceType device_type;
+  int user_specified_rank = -1;  // rank provided by the user.
+  // Generated from Collective Group Resolver:
   // Members in this group, in default rank order.
   std::vector<CollGroupMember> members;
   // True if every task has the same number of devices.

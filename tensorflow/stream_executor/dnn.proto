@@ -107,8 +107,14 @@ message AlgorithmProto {
   }
   int64 algo_id = 1;
   MathType math_type = 2;
-  // cuDNN v8 uses a string to uniquely represent the backend plan.
-  string exec_plan_id = 3;
+  reserved 3;
+
+  map<int64, int64> tuning_knobs = 4;
+  // Legacy algorithm enums and cuDNN Frontend engine numbers need to coexist in
+  // the same proto medium-term, until we can be confident of no longer needing
+  // the legacy cuDNN convolution API.  Once the migration is complete, we can
+  // stop producing legacy algorithm enums and remove this field.
+  bool is_cudnn_frontend = 5;
 }
 
 // Proto definition of AlgorithmConfig in "dnn.h".

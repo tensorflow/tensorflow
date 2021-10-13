@@ -104,7 +104,7 @@ class IrEmitterUnnested : public IrEmitter {
   //             has a value of 0..N-1 to identify the element being process.
   using EmitElementFunction = std::function<void(
       const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-      llvm::Value* x_loc, int64_t x_iter_num)>;
+      llvm::Value* x_loc, llvm::Value* x_iter_num)>;
 
   using ConstantGenerator = std::function<llvm::Value*(int64_t)>;
 
@@ -116,7 +116,9 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Fusion root -> array of indexes, one per reduction output.
   using ReductionOutputMap =
-      absl::flat_hash_map<int, absl::Span<llvm_ir::IrArray const>>;
+      ConstHloInstructionMap<absl::Span<llvm_ir::IrArray const>>;
+
+  using ExtraOutputGensMap = ConstHloInstructionMap<llvm_ir::ElementGenerator>;
 
   IrEmitterUnnested(const IrEmitterUnnested&) = delete;
   IrEmitterUnnested& operator=(const IrEmitterUnnested&) = delete;
@@ -292,11 +294,10 @@ class IrEmitterUnnested : public IrEmitter {
       absl::string_view name, absl::Span<const BufferAllocation* const> args);
 
   // Helper for writing extra outputs from inside a reduce kernel.
-  Status EmitExtraOutputsForReduce(
-      const ReductionOutputMap& result_ir_arrays,
-      const llvm_ir::IrArray::Index& index, bool use_linear_index,
-      absl::Span<const std::pair<llvm_ir::ElementGenerator, int>>
-          extra_output_gens);
+  Status EmitExtraOutputsForReduce(const ReductionOutputMap& result_ir_arrays,
+                                   const llvm_ir::IrArray::Index& index,
+                                   const ReductionCodegenInfo& reduction_info,
+                                   const ExtraOutputGensMap& extra_output_gens);
 
   // Generates code for reduction to contiguous dimensions.
   //
@@ -502,41 +503,39 @@ class IrEmitterUnnested : public IrEmitter {
   // __shared__ caches and returns the populated object.
   ReductionCodegenState GenerateReductionCodegenState(
       mlir::lmhlo::FusionOp fusion, const ReductionCodegenInfo& reduction_info,
-      absl::Span<const int> reduce_instr_index_group,
+      absl::Span<const HloReduceInstruction* const> reduce_instr_index_group,
       HloComputation* fused_computation, FusedIrEmitter* fused_emitter);
 
   // Wraps up the code generation for a tile block of a reduction kernel:
   // write the calculated output into the output tensor.
   void EmitReductionOutput(
       llvm::Type* index_ty, mlir::lmhlo::FusionOp fusion,
-      absl::Span<const int> reduce_instr_index_group,
+      absl::Span<const HloReduceInstruction* const> reduce_instr_index_group,
       const ReductionOutputMap& result_ir_arrays,
-      const absl::flat_hash_map<int, HloComputation*> reducers,
       const ReductionCodegenState& reduction_codegen_state,
       const TilingKernelInfo& tiling_kernel_info);
 
   // `current_output`: the value the tile has calculated.
   // `output_address`: address where the output value has to be written.
   void EmitReductionOutputForRowReduction(
-      const HloComputation* reducer,
       const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
       const ReductionCodegenState& reduction_codegen_state,
       llvm::Type* index_ty, const ReductionOutputMap& output_arrays,
-      const llvm_ir::IrArray::Index& element_index, int reduction_idx,
-      int partial_result_idx);
+      const llvm_ir::IrArray::Index& element_index,
+      const HloReduceInstruction* reduction, int partial_result_idx);
 
   // Same arguments as EmitReductionOutputForRowReduction.
   void EmitReductionOutputForColumnReduction(
-      const HloComputation* reducer,
       const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
       const ReductionCodegenState& reduction_codegen_state,
       llvm::Type* index_ty, const ReductionOutputMap& output_arrays,
-      const llvm_ir::IrArray::Index& element_index, int reduction_idx,
-      int partial_result_idx, const TilingKernelInfo& tiling_kernel_info);
+      const llvm_ir::IrArray::Index& element_index,
+      const HloReduceInstruction* reduction, int partial_result_idx,
+      const TilingKernelInfo& tiling_kernel_info);
 
   // Emits code for reductions in the output_instructions.
   void EmitIRForReduction(mlir::lmhlo::FusionOp fusion,
-                          absl::Span<const int> instr_index_group,
+                          absl::Span<HloInstruction* const> instr_index_group,
                           HloComputation* fused_computation,
                           FusedIrEmitter* fused_emitter,
                           const ReductionOutputMap& result_ir_arrays,
@@ -546,7 +545,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Generate a single element of the tile (update the accumulator state) for a
   // given reducer of index `i`.
   void GenerateElementForReducer(
-      int i, int partial_result_index, const HloComputation* reducer,
+      const HloReduceInstruction* reduction, llvm::Value* partial_result_index,
       const ReductionCodegenState& codegen_state,
       const llvm_ir::IrArray::Index& index_without_linear,
       const llvm_ir::IrArray::Index& input_index, int num_partial_results,

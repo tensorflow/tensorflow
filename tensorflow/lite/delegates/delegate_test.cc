@@ -484,7 +484,7 @@ TEST_F(TestDelegate, DelegateCustomOpResolution) {
 }
 
 TEST_F(TestDelegate, AllSubgraphsAreDelegatedByDefault) {
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
   SetUpSubgraph(interpreter_->subgraph(1));
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
   ASSERT_EQ(
@@ -502,7 +502,7 @@ TEST_F(TestDelegate, AllSubgraphsAreDelegatedByDefault) {
 }
 
 TEST_F(TestDelegate, ValidationSubgraphsAreNotDelegated) {
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
   SetUpSubgraph(interpreter_->subgraph(1));
   interpreter_->subgraph(1)->SetName("VALIDATION:foo");
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));

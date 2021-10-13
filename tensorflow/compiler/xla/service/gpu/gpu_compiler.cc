@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_gather_combiner.h"
 #include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
+#include "tensorflow/compiler/xla/service/all_reduce_contiguous.h"
 #include "tensorflow/compiler/xla/service/all_reduce_folder.h"
 #include "tensorflow/compiler/xla/service/all_reduce_reassociate.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
@@ -164,7 +165,8 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 #if BEF_EXECUTABLE
-#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
@@ -545,6 +547,10 @@ Status GpuCompiler::OptimizeHloModule(
         /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
         /*combine_threshold_count=*/256);
 
+    if (debug_options.xla_gpu_all_reduce_contiguous()) {
+      pipeline.AddPass<AllReduceContiguous>();
+    }
+
     if (debug_options.xla_gpu_enable_async_all_reduce()) {
       pipeline.AddPass<AsyncCollectiveCreator>(
           AsyncCollectiveCreator::CollectiveCreatorConfig{
@@ -750,6 +756,7 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
   // LHLO -> TFRT Dialect (gpu kernels)
   mlir::PassManager pm(mlir_module.getContext(),
                        mlir::PassManager::Nesting::Implicit);
+  pm.addPass(tensorflow::createConvertLmhloToGpuBinaryPass());
   pm.addPass(tensorflow::createConvertLmhloToGpuPass());
   pm.addPass(mlir::createGpuAsyncRegionPass());
   tfrt::gpu::populateGpuToTfrtGpuPasses(pm);
@@ -1196,9 +1203,15 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }
 
   // Dump computation proto state and buffer assignment for debug and test, if
-  // dump is enabled.
-  if (DumpingEnabledForHloModule(gpu_executable->module())) {
-    auto hlo_proto = absl::make_unique<HloProto>(*hlo_proto_);
+  // dump or embed_ir_in_executable is enabled.
+  if (embed_ir_in_executable ||
+      DumpingEnabledForHloModule(gpu_executable->module())) {
+    auto hlo_proto = absl::make_unique<HloProto>();
+    if (hlo_proto_) {
+      *hlo_proto = *hlo_proto_;
+    } else {
+      *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
+    }
     *hlo_proto->mutable_buffer_assignment() = buffer_assignment->ToProto();
     gpu_executable->set_hlo_proto(std::move(hlo_proto));
   }

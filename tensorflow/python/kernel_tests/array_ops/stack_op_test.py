@@ -16,12 +16,16 @@
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.platform import test
 
@@ -68,6 +72,19 @@ class StackOpTest(test.TestCase):
             xs = list(map(constant_op.constant, data))
             c = array_ops.parallel_stack(xs)
             self.assertAllEqual(c, data)
+
+  def testParallelConcatShapeZero(self):
+    if not tf2.enabled():
+      self.skipTest("only fails in TF2")
+
+    @def_function.function
+    def f():
+      y = gen_array_ops.parallel_concat(values=[["tf"]], shape=0)
+      return y
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r"0th dimension of value .* is less than"):
+      f()
 
   def testSimpleParallelGPU(self):
     # tf.parallel_stack is only supported in graph mode.

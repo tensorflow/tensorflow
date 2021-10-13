@@ -18,8 +18,8 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.platform import googletest
-
 
 default_v2_alignment = "LEFT_LEFT"
 alignment_list = ["RIGHT_LEFT", "LEFT_RIGHT"]
@@ -331,6 +331,7 @@ class MatrixDiagTest(xla_test.XLATestCase):
   def _assertOpOutputMatchesExpected(self,
                                      params,
                                      solution,
+                                     high_level=True,
                                      rtol=1e-3,
                                      atol=1e-5):
     """Verifies that matrix_diag produces `solution` when fed `params`.
@@ -338,6 +339,7 @@ class MatrixDiagTest(xla_test.XLATestCase):
     Args:
       params: dictionary containing input parameters to matrix_diag.
       solution: numpy array representing the expected output of matrix_diag.
+      high_level: call high_level matrix_diag
       rtol: relative tolerance for equality test.
       atol: absolute tolerance for equality test.
     """
@@ -348,7 +350,12 @@ class MatrixDiagTest(xla_test.XLATestCase):
         with self.test_scope():
           params["diagonal"] = array_ops.placeholder(
               dtype, diagonal.shape, name="diagonal")
-          output = array_ops.matrix_diag(**params)
+          if high_level:
+            # wraps gen_array_ops.matrix_diag_v3
+            output = array_ops.matrix_diag(**params)
+          else:
+            # TODO(b/201086188): Remove this case once MatrixDiag V1 is removed.
+            output = gen_array_ops.matrix_diag(**params)
         result = session.run(output,
                              {params["diagonal"]: diagonal.astype(dtype)})
         self.assertEqual(output.dtype, expected.dtype)
@@ -357,7 +364,7 @@ class MatrixDiagTest(xla_test.XLATestCase):
 
   # Generic tests applicable to both v1 and v2 ops.
   # Originally from unary_ops_tests.py.
-  def testV1(self):
+  def _testV1Level(self, high_level):
     # pyformat: disable
     vecs1 = np.array([[1, 2],
                       [3, 4]])
@@ -385,9 +392,18 @@ class MatrixDiagTest(xla_test.XLATestCase):
                             [0, 11, 0],
                             [0, 0, 12]]]])
     # pyformat: enable
-    self._assertOpOutputMatchesExpected({"diagonal": vecs1}, solution1)
-    self._assertOpOutputMatchesExpected({"diagonal": vecs2}, solution2)
-    self._assertOpOutputMatchesExpected({"diagonal": vecs3}, solution3)
+    self._assertOpOutputMatchesExpected({"diagonal": vecs1}, solution1,
+                                        high_level)
+    self._assertOpOutputMatchesExpected({"diagonal": vecs2}, solution2,
+                                        high_level)
+    self._assertOpOutputMatchesExpected({"diagonal": vecs3}, solution3,
+                                        high_level)
+
+  def testV1(self):
+    self._testV1Level(True)
+
+  def testV1LowLevel(self):
+    self._testV1Level(False)
 
   # From here onwards are v2-only tests.
   def testSquare(self):
@@ -517,6 +533,7 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
   def _assertOpOutputMatchesExpected(self,
                                      params,
                                      solution,
+                                     high_level=True,
                                      rtol=1e-3,
                                      atol=1e-5):
     """Verifies that matrix_set_diag produces `solution` when fed `params`.
@@ -524,6 +541,7 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
     Args:
       params: dictionary containing input parameters to matrix_set_diag.
       solution: numpy array representing the expected output of matrix_set_diag.
+      high_level: call high_level matrix_set_diag
       rtol: relative tolerance for equality test.
       atol: absolute tolerance for equality test.
     """
@@ -537,7 +555,12 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
               dtype, input.shape, name="input")
           params["diagonal"] = array_ops.placeholder(
               dtype, diagonal.shape, name="diagonal")
-          output = array_ops.matrix_set_diag(**params)
+          if high_level:
+            # wraps gen_array_ops.matrix_set_diag_v3
+            output = array_ops.matrix_set_diag(**params)
+          else:
+            # TODO(b/201086188): Remove this case once MatrixDiag V1 is removed.
+            output = gen_array_ops.matrix_set_diag(**params)
         result = session.run(
             output, {
                 params["input"]: input.astype(dtype),
@@ -549,7 +572,7 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
 
   # Generic tests applicable to both v1 and v2 ops.
   # Originally from binary_ops_tests.py.
-  def testV1(self):
+  def _testV1Level(self, high_level):
     test_cases = list()
 
     # pyformat: disable
@@ -611,7 +634,13 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
     # pyformat: enable
 
     for test in test_cases:
-      self._assertOpOutputMatchesExpected(test[0], test[1])
+      self._assertOpOutputMatchesExpected(test[0], test[1], high_level)
+
+  def testV1(self):
+    self._testV1Level(True)
+
+  def testV1LowLevel(self):
+    self._testV1Level(False)
 
   # From here onwards are v2-only tests.
   def testSingleMatrix(self):
@@ -650,6 +679,7 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
   def _assertOpOutputMatchesExpected(self,
                                      params,
                                      solution,
+                                     high_level=True,
                                      rtol=1e-3,
                                      atol=1e-5):
     """Verifies that matrix_diag_part produces `solution` when fed `params`.
@@ -657,6 +687,7 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
     Args:
       params: dictionary containing input parameters to matrix_diag_part.
       solution: numpy array representing the expected output.
+      high_level: call high_level matrix_set_diag
       rtol: relative tolerance for equality test.
       atol: absolute tolerance for equality test.
     """
@@ -667,6 +698,12 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
         with self.test_scope():
           params["input"] = array_ops.placeholder(
               dtype, input.shape, name="input")
+          if high_level:
+            # wraps gen_array_ops.matrix_diag_part_v3
+            output = array_ops.matrix_diag_part(**params)
+          else:
+            # TODO(b/201086188): Remove this case once MatrixDiag V1 is removed.
+            output = gen_array_ops.matrix_diag_part(**params)
           output = array_ops.matrix_diag_part(**params)
         result = session.run(output, {
             params["input"]: input.astype(dtype),
@@ -677,10 +714,17 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
 
   # Generic tests applicable to both v1 and v2 ops.
   # Originally from unary_ops_tests.py.
-  def testV1(self):
+  def _testV1Level(self, high_level):
     matrices = np.arange(3 * 2 * 4).reshape([3, 2, 4])
     solution = np.array([[0, 5], [8, 13], [16, 21]])
-    self._assertOpOutputMatchesExpected({"input": matrices}, solution)
+    self._assertOpOutputMatchesExpected({"input": matrices}, solution,
+                                        high_level)
+
+  def testV1(self):
+    self._testV1Level(True)
+
+  def testV1LowLevel(self):
+    self._testV1Level(False)
 
   # From here onwards are v2-only tests.
   def testSingleMatrix(self):

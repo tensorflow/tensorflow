@@ -454,6 +454,18 @@ TransposeConvOpTest/TransposeConvOpTest/.+/0,29
 # unidirectional_sequence_rnn_test
 UnidirectionalRNNOpTest/BlackBoxTest,29
 UnidirectionalRNNOpTest.TimeMajorBlackBoxTest,29
+
+# unpack_test
+# Unpacking along the last axis is not supported
+-UnpackOpTest/.+/ThreeOutputsAxisOne
+-UnpackOpTest/.+/ThreeOutputsNegativeAxisOne
+-UnpackOpTest/.+/ThreeDimensionsOutputs
+# Unpacking 5D tensor is not supported
+-UnpackOpTest/.+/FiveDimensionsOutputs
+# Unpacking a vector to scalar is not supported
+-UnpackOpTest/.+/VectorToScalar
+# float, int8, uint8 only
+UnpackOpTest/(0|2|3)/.+,30
 )";
 
 }  // namespace tflite

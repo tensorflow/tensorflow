@@ -111,7 +111,12 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
     tmp.bytes = sizeof(T) * num_elements;
     T* raw = new T[num_elements];
     std::generate_n(raw, num_elements, [&]() {
-      return static_cast<T>(distribution(random_engine_));
+      if (std::is_same<T, std::complex<float>>::value) {
+        return static_cast<T>(distribution(random_engine_),
+                              distribution(random_engine_));
+      } else {
+        return static_cast<T>(distribution(random_engine_));
+      }
     });
     tmp.data = VoidUniquePtr(static_cast<void*>(raw),
                              [](void* ptr) { delete[] static_cast<T*>(ptr); });

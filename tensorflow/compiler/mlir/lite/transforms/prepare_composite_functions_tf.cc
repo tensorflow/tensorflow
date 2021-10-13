@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
@@ -64,8 +65,68 @@ constexpr char kCustomSSDPostprocessing[] = "TFLite_Detection_PostProcess";
 constexpr char kTfNMSPadded[] = "non_max_suppression_padded_v2";
 constexpr char kCustomMaxUnpooling[] = "addons:MaxUnpooling2D";
 constexpr char kCustomDenseImageWarp[] = "addons:DenseImageWarp";
+constexpr char kTFLFusableOp[] = "tfl_fusable_op";
 
 using mlir::TF::FuncAttr;
+
+inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
+                                       const std::string& content) {
+  ShapedType type = RankedTensorType::get(
+      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
+  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
+                                 type,
+                                 StringRef(content.data(), content.size()));
+}
+
+LogicalResult CreateTflFusableOpCustomOptions(
+    ArrayRef<std::pair<StringRef, Attribute>> attrs, OpBuilder* builder,
+    std::string& custom_option_buffer) {
+  // There is something worth noting in the ordering of the custom op option:
+  // At the MLIR level, all the option is ordered alphabetcially, so there is
+  // no way for us to retrieve the original order, so please make sure you are
+  // reading custom option from dictionary rather than depending on the order.
+  flexbuffers::Builder fbb;
+  size_t start_map = fbb.StartMap();
+
+  for (auto attr : attrs) {
+    if (auto float_attr = attr.second.dyn_cast_or_null<FloatAttr>()) {
+      fbb.Float(attr.first.data(), float_attr.getValue().convertToFloat());
+    } else if (auto int_attr = attr.second.dyn_cast_or_null<IntegerAttr>()) {
+      fbb.Int(attr.first.data(), int_attr.getInt());
+    } else if (auto bool_attr = attr.second.dyn_cast_or_null<BoolAttr>()) {
+      fbb.Bool(attr.first.data(), bool_attr.getValue());
+    } else {
+      // TODO(b/201482289): support other data types.
+      return failure();
+    }
+  }
+
+  fbb.EndMap(start_map);
+  fbb.Finish();
+  custom_option_buffer.assign(fbb.GetBuffer().begin(), fbb.GetBuffer().end());
+  return success();
+}
+
+// Convert func annotated with `tfl_fusable_op` attribute to tfl custom op.
+LogicalResult ConvertTflFusableOp(
+    FuncOp func, StringRef custom_op_name,
+    ArrayRef<std::pair<StringRef, Attribute>> attrs) {
+  func.eraseBody();
+  func.addEntryBlock();
+
+  OpBuilder builder(func.getBody());
+  std::string custom_option_buffer;
+  if (failed(CreateTflFusableOpCustomOptions(attrs, &builder,
+                                             custom_option_buffer))) {
+    return failure();
+  }
+
+  auto tfl_fusable_op = builder.create<TFL::CustomOp>(
+      func->getLoc(), func.getType().getResults(), func.getArguments(),
+      custom_op_name, CustomOption(&builder, custom_option_buffer));
+  builder.create<ReturnOp>(func->getLoc(), tfl_fusable_op.getResults());
+  return success();
+}
 
 // Abstracts the conversion of the embedded lookup composite function.
 class ConvertEmbeddedLookupFunc {
@@ -315,6 +376,28 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     ConvertMaxUnpoolingFunc max_unpooling(func, attr);
     if (failed(max_unpooling.VerifySignature())) return;
     if (failed(max_unpooling.RewriteFunc())) {
+      return signalPassFailure();
+    }
+  } else {
+    // We will look for the `tfl_fusable_op` attribute and fuse as a custom op.
+    DictionaryAttr dict_attr = attr.getAttrs();
+
+    SmallVector<std::pair<StringRef, Attribute>, 4> attributes;
+    bool tfl_fusable_op = false;
+    for (auto attr_item : dict_attr) {
+      // Push other attributes except the TFLFusableOp.
+      if (attr_item.first == kTFLFusableOp &&
+          attr_item.second.dyn_cast<BoolAttr>().getValue()) {
+        tfl_fusable_op = true;
+      } else {
+        attributes.push_back(attr_item);
+      }
+    }
+
+    if (!tfl_fusable_op) return;
+
+    if (failed(ConvertTflFusableOp(func, api_name, attributes))) {
+      func->emitError(absl::StrCat("failed to fuse for op: ", api_name.str()));
       return signalPassFailure();
     }
   }

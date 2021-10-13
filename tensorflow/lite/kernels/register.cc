@@ -287,7 +287,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_GATHER_ND, Register_GATHER_ND(),
              /* min_version = */ 1,
              /* max_version = */ 3);
-  AddBuiltin(BuiltinOperator_WHERE, Register_WHERE());
+  AddBuiltin(BuiltinOperator_WHERE, Register_WHERE(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_ELU, Register_ELU());
   AddBuiltin(BuiltinOperator_REVERSE_SEQUENCE, Register_REVERSE_SEQUENCE());
   AddBuiltin(BuiltinOperator_MATRIX_DIAG, Register_MATRIX_DIAG());
@@ -343,15 +345,12 @@ BuiltinOpResolver::BuiltinOpResolver() {
   // By definition, all of the ops added above are not user-defined ops,
   // since they are supported by BuiltinOpResolver.
   may_directly_contain_user_defined_ops_ = false;
-}
 
-OpResolver::TfLiteDelegateCreators BuiltinOpResolver::GetDelegateCreators()
-    const {
-  OpResolver::TfLiteDelegateCreators delegate_creators;
-  delegate_creators.push_back([](int num_threads) {
+  // Populate the list of TF Lite delegate creators. The created delegates could
+  // be applied to the model graph by default at runtime.
+  delegate_creators_.push_back([](int num_threads) {
     return tflite::MaybeCreateXNNPACKDelegate(num_threads);
   });
-  return delegate_creators;
 }
 
 }  // namespace builtin

@@ -232,6 +232,15 @@ absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, absl::string_view b);
 
 // Optimization profile generation strategies.
+// - `kRange`: create one profile that works for inputs with dimension values
+//   in the range of [min_dims, max_dims] where min_dims and max_dims are
+//   derived from the provided inputs.
+// - `kOptimal`: create one profile for each input. The profile only works for
+//   inputs with the same dimensions as the input it is created for. The GPU
+//   engine will be run with optimal performance with such inputs.
+// - `kRangeOptimal`: create the profiles for both `Range` and `Optimal`.
+// - `kImplicitBatchModeCompatible`: create the profiles that will produce the
+//   same GPU engines as the implicit_batch_mode would produce.
 enum class ProfileStrategy {
   kRange,
   kOptimal,

@@ -56,6 +56,8 @@ struct VectorizeTiledOpsPass
     // Vectorize padding.
     mlir::OwningRewritePatternList patterns(funcOp.getContext());
     mlir::linalg::populatePadTensorOpVectorizationPatterns(patterns);
+    mlir::vector::populateVectorTransferPermutationMapLoweringPatterns(
+        patterns);
     (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
   }
 };

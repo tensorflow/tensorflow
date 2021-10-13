@@ -158,6 +158,12 @@ absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
                                              int row_bytes_alignment,
                                              Tensor* result);
 
+absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
+                                             cl_mem memory, const BHWDC& shape,
+                                             const TensorDescriptor& descriptor,
+                                             int row_bytes_alignment,
+                                             Tensor* result);
+
 template <DataType T>
 absl::Status Tensor::WriteData(CLCommandQueue* queue,
                                const tflite::gpu::Tensor<BHWC, T>& src) {

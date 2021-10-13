@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -710,6 +711,131 @@ bool InstructionFusion::MultiOutputFusionCreatesCycle(
   return false;
 }
 
+namespace {
+
+// Extracts instruction from the fusion that satisfies filter. If no or multiple
+// instructions in the fusion satisfy filter, returns nullptr.
+const HloInstruction* ExtractInstruction(
+    const HloInstruction* hlo,
+    const std::function<bool(const HloInstruction*)>& filter) {
+  if (filter(hlo)) {
+    return hlo;
+  }
+  if (hlo->opcode() != HloOpcode::kFusion) {
+    return nullptr;
+  }
+  const HloInstruction* match = nullptr;
+  for (HloInstruction* inst :
+       hlo->fused_instructions_computation()->instructions()) {
+    if (filter(inst)) {
+      if (match == nullptr) {
+        match = inst;
+      } else {
+        return nullptr;
+      }
+    }
+  }
+  return match;
+}
+
+const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
+                                         HloOpcode opcode) {
+  return ExtractInstruction(hlo, [opcode](const HloInstruction* inst) {
+    return inst->opcode() == opcode;
+  });
+}
+
+}  // namespace
+
+/*static*/ bool InstructionFusion::ShouldFuseInPlaceOp(
+    const HloInstruction* producer, const HloInstruction* consumer) {
+  // Don't fuse if the producer is a non-elementwise op that has the same
+  // operand as an in-place operand of the consumer. The consumer will modify
+  // the buffer in-place, which will cause producer's operand to change if we
+  // allow them to fuse.
+  if (producer->IsElementwise()) {
+    return true;
+  }
+  std::vector<std::pair<HloUse, ShapeIndex>> in_place_input_output_pairs =
+      HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+          const_cast<HloInstruction*>(consumer));
+  for (auto& pair : in_place_input_output_pairs) {
+    VLOG(4) << "in/out pair: " << pair.first.ToString() << " "
+            << pair.second.ToString();
+    if (absl::c_find(producer->operands(),
+                     consumer->operand(pair.first.operand_number)) !=
+        producer->operands().end()) {
+      VLOG(4) << "Found non-elementwise operand that uses the same operand of "
+                 "an in-place consumer";
+      auto get_real_operand = [](const HloInstruction* op,
+                                 const HloInstruction* operand) {
+        if (op->opcode() == HloOpcode::kFusion &&
+            operand->opcode() == HloOpcode::kParameter) {
+          return op->operand(operand->parameter_number());
+        }
+        return operand;
+      };
+
+      auto get_constant_operand =
+          [](const HloInstruction* operand) -> absl::optional<int> {
+        if (operand->IsConstant()) {
+          return operand->literal().GetFirstInteger();
+        }
+        return absl::nullopt;
+      };
+      // A common special case is a slice or dynamic-slice and a
+      // dynamic-update-slice that use the same indices. This pattern is safe.
+      const HloInstruction* dus =
+          ExtractInstruction(consumer, HloOpcode::kDynamicUpdateSlice);
+      const HloInstruction* producer_nonelementwise =
+          ExtractInstruction(producer, [](const HloInstruction* inst) {
+            return inst->opcode() != HloOpcode::kFusion &&
+                   !inst->IsElementwise();
+          });
+      if (dus == nullptr || producer_nonelementwise == nullptr ||
+          producer_nonelementwise->shape() != dus->operand(1)->shape()) {
+        VLOG(4) << "Comsumer is not a dus or the producer fusion has multiple "
+                   "non-elementwise ops, bailing.";
+        return false;
+      }
+      if (producer_nonelementwise->opcode() == HloOpcode::kSlice) {
+        for (int i = 0; i < dus->shape().rank(); ++i) {
+          const HloInstruction* dus_operand =
+              get_real_operand(consumer, dus->operand(2 + i));
+          auto constant_operand = get_constant_operand(dus_operand);
+          if (!constant_operand ||
+              *constant_operand != producer_nonelementwise->slice_starts(i) ||
+              producer_nonelementwise->slice_strides(i) != 1) {
+            VLOG(4) << "DUS and slice index mismatch";
+            return false;
+          }
+        }
+        VLOG(4) << "DUS and slice index match";
+        return true;
+      }
+      if (producer_nonelementwise->opcode() == HloOpcode::kDynamicSlice) {
+        for (int i = 0; i < dus->shape().rank(); ++i) {
+          const HloInstruction* ds_operand = get_real_operand(
+              producer, producer_nonelementwise->operand(1 + i));
+          const HloInstruction* dus_operand =
+              get_real_operand(consumer, dus->operand(2 + i));
+          auto constant_ds_operand = get_constant_operand(ds_operand);
+          auto constant_dus_operand = get_constant_operand(dus_operand);
+          if (constant_ds_operand != constant_dus_operand ||
+              (!constant_ds_operand && ds_operand != dus_operand)) {
+            VLOG(4) << "DUS and DS index mismatch";
+            return false;
+          }
+        }
+        VLOG(4) << "DUS and DS index match";
+        return true;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
 bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
                                    int64_t operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
@@ -720,6 +846,10 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
       !IsAlwaysDuplicable(*producer)) {
     VLOG(4) << "Stopping: fusion may duplicate operand ("
             << producer->ToString() << ") , and this is expensive";
+    return false;
+  }
+
+  if (!ShouldFuseInPlaceOp(producer, consumer)) {
     return false;
   }
 

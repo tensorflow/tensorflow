@@ -665,7 +665,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
   *optimized_graph = std::move(item.graph);
 
   GraphOptimizationResult optimization_result(item.id);
+#ifndef ENABLE_MKL
   GraphOptimizer* sa_optimizer = nullptr;
+#endif
 
   // Constants in the graph are normally compressed after model_pruner.
   // Do it here if model pruner is disabled.

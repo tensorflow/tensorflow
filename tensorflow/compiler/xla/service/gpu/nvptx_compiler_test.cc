@@ -51,10 +51,8 @@ ENTRY entry {
                           compiler.AssignBuffers(module.get()));
 
   HloInstruction* all_reduce = module->entry_computation()->root_instruction();
-
-  EXPECT_EQ(
-      buffer_assignment->GetInstructionAllocation(all_reduce, {}),
-      buffer_assignment->GetInstructionAllocation(all_reduce->operand(0), {}));
+  EXPECT_TRUE(buffer_assignment->SharesTopLevelSlice(all_reduce,
+                                                     all_reduce->operand(0)));
 }
 
 TEST_F(NVPTXCompilerTest, AllReducePerformedInplaceTwoOperands) {
@@ -83,13 +81,10 @@ ENTRY entry {
                           compiler.AssignBuffers(module.get()));
 
   HloInstruction* all_reduce = module->entry_computation()->root_instruction();
-
-  EXPECT_EQ(
-      buffer_assignment->GetInstructionAllocation(all_reduce, {0}),
-      buffer_assignment->GetInstructionAllocation(all_reduce->operand(0), {}));
-  EXPECT_EQ(
-      buffer_assignment->GetInstructionAllocation(all_reduce, {1}),
-      buffer_assignment->GetInstructionAllocation(all_reduce->operand(1), {}));
+  EXPECT_TRUE(buffer_assignment->SharesSliceAtIndex(
+      all_reduce, {0}, all_reduce->operand(0), {}));
+  EXPECT_TRUE(buffer_assignment->SharesSliceAtIndex(
+      all_reduce, {1}, all_reduce->operand(1), {}));
 }
 
 }  // namespace gpu

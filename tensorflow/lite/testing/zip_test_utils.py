@@ -189,7 +189,8 @@ def write_examples(fp, examples):
   for example in examples:
     fp.write("inputs,%d\n" % len(example["inputs"]))
     for i in example["inputs"]:
-      write_tensor(fp, i)
+      if i is not None:
+        write_tensor(fp, i)
     fp.write("outputs,%d\n" % len(example["outputs"]))
     for i in example["outputs"]:
       write_tensor(fp, i)
@@ -211,12 +212,14 @@ def write_test_cases(fp, model_name, examples):
   for example in examples:
     fp.write("reshape {\n")
     for t in example["inputs"]:
-      fp.write("  input: \"" + ",".join(map(str, t.shape)) + "\"\n")
+      if t is not None:
+        fp.write("  input: \"" + ",".join(map(str, t.shape)) + "\"\n")
     fp.write("}\n")
     fp.write("invoke {\n")
 
     for t in example["inputs"]:
-      fp.write("  input: \"" + format_result(t) + "\"\n")
+      if t is not None:
+        fp.write("  input: \"" + format_result(t) + "\"\n")
     for t in example["outputs"]:
       fp.write("  output: \"" + format_result(t) + "\"\n")
       fp.write("  output_shape: \"" + ",".join([str(dim) for dim in t.shape]) +
@@ -463,8 +466,11 @@ def make_zip_of_tests(options,
           report["converter"] = report_lib.FAILED
           report["tf"] = report_lib.SUCCESS
           # Convert graph to toco
-          input_tensors = [(input_tensor.name.split(":")[0], input_tensor.shape,
-                            input_tensor.dtype) for input_tensor in inputs]
+          input_tensors = []
+          for input_tensor in inputs:
+            if input_tensor is not None:
+              input_tensors.append((input_tensor.name.split(":")[0],
+                                    input_tensor.shape, input_tensor.dtype))
           output_tensors = [_normalize_output_name(out.name) for out in outputs]
           # pylint: disable=g-long-ternary
           graph_def = freeze_graph(

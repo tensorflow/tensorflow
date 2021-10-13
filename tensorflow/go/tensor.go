@@ -98,9 +98,7 @@ func NewTensor(value interface{}) (*Tensor, error) {
 
 	raw := tensorData(t.c)
 
-	defer runtime.SetFinalizer(t, func(t *Tensor) {
-		t.finalize()
-	})
+	runtime.SetFinalizer(t, (*Tensor).finalize)
 
 	buf := bytes.NewBuffer(raw[:0:len(raw)])
 
@@ -115,10 +113,7 @@ func NewTensor(value interface{}) (*Tensor, error) {
 		// not be contiguous with the others or in the order we might
 		// expect, so we need to work our way down to each slice of
 		// primitives and copy them individually
-		if n, err := encodeTensorWithSlices(buf, val, shape); err != nil {
-			// Set nbytes to count of bytes written for deferred call to
-			// runtime.SetFinalizer
-			nbytes = uintptr(n)
+		if _, err := encodeTensorWithSlices(buf, val, shape); err != nil {
 			return nil, err
 		}
 	}
@@ -422,11 +417,17 @@ func shapeAndDataTypeOf(val reflect.Value) (shape []int64, dt DataType, err erro
 	typ := val.Type()
 	for typ.Kind() == reflect.Array || typ.Kind() == reflect.Slice {
 		shape = append(shape, int64(val.Len()))
+		// If slice elements are slices, verify that all of them have the same size.
+		// Go's type system makes that guarantee for arrays.
 		if val.Len() > 0 {
-			// In order to check tensor structure properly in general case we need to iterate over all slices of the tensor to check sizes match
-			// Since we already going to iterate over all elements in encodeTensor() let's
-			// 1) do the actual check in encodeTensor() to save some cpu cycles here
-			// 2) assume the shape is represented by lengths of elements with zero index in each dimension
+			if val.Type().Elem().Kind() == reflect.Slice {
+				expected := val.Index(0).Len()
+				for i := 1; i < val.Len(); i++ {
+					if val.Index(i).Len() != expected {
+						return shape, dt, fmt.Errorf("mismatched slice lengths: %d and %d", val.Index(i).Len(), expected)
+					}
+				}
+			}
 			val = val.Index(0)
 		}
 		typ = typ.Elem()

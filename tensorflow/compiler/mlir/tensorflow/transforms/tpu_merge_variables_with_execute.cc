@@ -99,7 +99,7 @@ struct VariableAccessesForTPUExecute {
 // Returns true iff the read or assign op associated with `resource` can be
 // safely merged.
 //
-// `resource_ids` contains ID's of all previously accessed resources
+// `resource_ids` contains IDs of all previously accessed resources
 // `previous_unknown_resource_access` is true if we had any previous unknown
 // resource access.
 bool IsResourceSafeForMerge(
@@ -122,7 +122,7 @@ bool IsResourceSafeForMerge(
   return true;
 }
 
-// Adds ID's of resources which `op` accesses to `resource_ids`.
+// Adds IDs of resources which `op` accesses to `resource_ids`.
 // Returns true iff op accesses a resource unknown to `resource_analysis_info`
 // in which case we have to conservatively assume that any resource might be
 // accessed.

@@ -459,6 +459,14 @@ func @dynamic_broadcast_in_dim_op_not_actually_dynamic(%arg0: tensor<4xf32>, %ar
   return %0 : tensor<5x4xf32>
 }
 
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_op_almost_not_actually_dynamic
+func @dynamic_broadcast_in_dim_op_almost_not_actually_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<2xi64>) -> tensor<5x4xf32> {
+  // CHECK: %[[RESULT:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<2xi64>) -> tensor<5x4xf32>
+  %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) { broadcast_dimensions = dense<1> : tensor<1xi64> } : (tensor<?xf32>, tensor<2xi64>) -> tensor<5x4xf32>
+  // CHECK: return %[[RESULT]] : tensor<5x4xf32>
+  return %0 : tensor<5x4xf32>
+}
+
 // CHECK-LABEL: func @dynamic_broadcast_in_dim_to_same_shape_1
 func @dynamic_broadcast_in_dim_to_same_shape_1(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK-SAME: %[[ARG:.*]]: tensor<?xf32>
@@ -1275,6 +1283,13 @@ func @fold_xor_same(%arg0 : tensor<4xi32>) -> tensor<4xi32> {
   // CHECK: %0 = mhlo.constant dense<0> : tensor<4xi32>
   // CHECK: return %0
   return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: func @fold_xor_same_dynamic
+func @fold_xor_same_dynamic(%arg0 : tensor<?xi32>) -> tensor<?xi32> {
+  %0 = "mhlo.xor"(%arg0, %arg0) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+  // CHECK: mhlo.xor
+  return %0 : tensor<?xi32>
 }
 
 // CHECK-LABEL: func @fold_xor_ones_left

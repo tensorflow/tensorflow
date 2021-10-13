@@ -1175,7 +1175,8 @@ def with_eager_op_as_function(cls=None, only_as_function=False):
 
     for name, value in cls.__dict__.copy().items():
       if (callable(value) and
-          name.startswith(unittest.TestLoader.testMethodPrefix) and
+          (name.startswith(unittest.TestLoader.testMethodPrefix) or
+           name.startswith("benchmark")) and
           not getattr(value, "_disable_eager_op_as_function", False)):
         setattr(cls, name + "WithEagerOpAsFunctionEnabled",
                 enable_eager_op_as_function(value))

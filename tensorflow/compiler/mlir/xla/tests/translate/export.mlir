@@ -424,17 +424,17 @@ func @main() {
 func @main(%arg0 : tensor<100x26x26x32xf32>, %arg1 : tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
   %result = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
-    dimension_numbers = {
-      input_batch_dimension = 0 : i64,
-      input_feature_dimension = 3 : i64,
-      input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
-      kernel_input_feature_dimension = 3 : i64,
-      kernel_output_feature_dimension = 2 : i64,
-      kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
-      output_batch_dimension = 0 : i64,
-      output_feature_dimension = 3 : i64,
-      output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
-    },
+    dimension_numbers = #mhlo.conv<raw
+      input_batch_dimension = 0,
+      input_feature_dimension = 3,
+      input_spatial_dimensions = [1, 2],
+      kernel_input_feature_dimension = 3,
+      kernel_output_feature_dimension = 2,
+      kernel_spatial_dimensions = [0, 1],
+      output_batch_dimension = 0,
+      output_feature_dimension = 3,
+      output_spatial_dimensions = [1, 2]
+    >,
     feature_group_count = 1 : i64,
     lhs_dilation = dense<1> : tensor<2xi64>,
     padding = dense<2> : tensor<2x2xi64>,
@@ -458,17 +458,17 @@ func @main(%arg0 : tensor<100x26x26x32xf32>, %arg1 : tensor<3x3x1x32xf32>) -> te
 func @main(%arg0 : tensor<100x26x26x32xi8>, %arg1 : tensor<3x3x1x32xi8>) -> tensor<100x28x28x1xi32> {
   %result = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
-    dimension_numbers = {
-      input_batch_dimension = 0 : i64,
-      input_feature_dimension = 3 : i64,
-      input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
-      kernel_input_feature_dimension = 3 : i64,
-      kernel_output_feature_dimension = 2 : i64,
-      kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
-      output_batch_dimension = 0 : i64,
-      output_feature_dimension = 3 : i64,
-      output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
-    },
+    dimension_numbers = #mhlo.conv<raw
+      input_batch_dimension = 0,
+      input_feature_dimension = 3,
+      input_spatial_dimensions = [1, 2],
+      kernel_input_feature_dimension = 3,
+      kernel_output_feature_dimension = 2,
+      kernel_spatial_dimensions = [0, 1],
+      output_batch_dimension = 0,
+      output_feature_dimension = 3,
+      output_spatial_dimensions = [1, 2]
+    >,
     feature_group_count = 1 : i64,
     lhs_dilation = dense<1> : tensor<2xi64>,
     padding = dense<2> : tensor<2x2xi64>,
@@ -580,6 +580,22 @@ func @main(%arg: tensor<16x16xi32>) -> tensor<16x32xbf16> {
 // CHECK:   bf16[2,16,16] convert(u32[2,16,16] %{{.*}})
 // CHECK:   bf16[2,16,16] multiply(bf16[2,16,16] %{{.*}}, bf16[2,16,16] %{{.*}})
 // CHECK:   ROOT
+
+// -----
+
+// Test dot i8xi8 -> i64
+
+func @main(%arg0: tensor<3xi8>, %arg1: tensor<3xi8>) -> tensor<i64> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<3xi8>, tensor<3xi8>) -> tensor<i64>
+  return %0 : tensor<i64>
+}
+
+// CHECK: ENTRY
+// CHECK-SAME: ([[ARG0:.*]]: s8[3], [[ARG1:.*]]: s8[3]) -> s64[] {
+// CHECK: %[[ARG0]] = s8[3] parameter(0)
+// CHECK: %[[ARG1]] = s8[3] parameter(1)
+// CHECK: ROOT
+// CHECK-SAME: s64[] dot(s8[3] %[[ARG0]], s8[3] %[[ARG1]]),
 
 // -----
 

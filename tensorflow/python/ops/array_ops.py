@@ -5291,73 +5291,149 @@ def _batch_gather(params, indices, batch_dims, axis=None):
 def gather_nd(params, indices, name=None, batch_dims=0):
   r"""Gather slices from `params` into a Tensor with shape specified by `indices`.
 
-  `indices` is an K-dimensional integer tensor, best thought of as a
-  (K-1)-dimensional tensor of indices into `params`, where each element defines
-  a slice of `params`:
+  `indices` is a `Tensor` of indices into `params`. The index vectors are
+  arranged along the last axis of `indices`.
 
-      output[\\(i_0, ..., i_{K-2}\\)] = params[indices[\\(i_0, ..., i_{K-2}\\)]]
-
-  Whereas in `tf.gather` `indices` defines slices into the first
-  dimension of `params`, in `tf.gather_nd`, `indices` defines slices into the
+  This is similar to `tf.gather`, in which `indices` defines slices into the
+  first dimension of `params`. In `tf.gather_nd`, `indices` defines slices into the
   first `N` dimensions of `params`, where `N = indices.shape[-1]`.
 
-  The last dimension of `indices` can be at most the rank of
-  `params`:
-
-      indices.shape[-1] <= params.rank
-
-  The last dimension of `indices` corresponds to elements
-  (if `indices.shape[-1] == params.rank`) or slices
-  (if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`
-  of `params`.  The output tensor has shape
-
-      indices.shape[:-1] + params.shape[indices.shape[-1]:]
-
-  Additionally both 'params' and 'indices' can have M leading batch
-  dimensions that exactly match. In this case 'batch_dims' must be M.
-
-  Note that on CPU, if an out of bound index is found, an error is returned.
+  Caution: On CPU, if an out of bound index is found, an error is returned.
   On GPU, if an out of bound index is found, a 0 is stored in the
   corresponding output value.
 
-  Some examples below.
+  ## Gathering scalars
 
-  Simple indexing into a matrix:
+  In the simplest case the vectors in `indices` index the full rank of `params`:
 
-  ```python
-      indices = [[0, 0], [1, 1]]
-      params = [['a', 'b'], ['c', 'd']]
-      output = ['a', 'd']
+  >>> tf.gather_nd(
+  ...     indices=[[0, 0],
+  ...              [1, 1]],
+  ...     params = [['a', 'b'],
+  ...               ['c', 'd']]).numpy()
+  array([b'a', b'd'], dtype=object)
+
+  In this case the result has 1-axis fewer than `indices`, and each index vector
+  is replaced by the scalar indexed from `params`.
+
+  In this case the shape relationship is:
+
+  ```
+  index_depth = indices.shape[-1]
+  assert index_depth == params.shape.rank
+  result_shape = indices.shape[:-1]
   ```
 
-  Slice indexing into a matrix:
+  If `indices` has a rank of `K`, it is helpful to think `indices` as a
+  (K-1)-dimensional tensor of indices into `params`.
 
-  ```python
-      indices = [[1], [0]]
-      params = [['a', 'b'], ['c', 'd']]
-      output = [['c', 'd'], ['a', 'b']]
+  ## Gathering slices
+
+  If the index vectors do not index the full rank of `params` then each location
+  in the result contains a slice of params. This example collects rows from a
+  matrix:
+
+  >>> tf.gather_nd(
+  ...     indices = [[1],
+  ...                [0]],
+  ...     params = [['a', 'b', 'c'],
+  ...               ['d', 'e', 'f']]).numpy()
+  array([[b'd', b'e', b'f'],
+         [b'a', b'b', b'c']], dtype=object)
+
+  Here `indices` contains `[2]` index vectors, each with a length of `1`.
+  The index vectors each refer to rows of the `params` matrix. Each
+  row has a shape of `[3]` so the output shape is `[2, 3]`.
+
+  In this case, the relationship between the shapes is:
+
   ```
+  index_depth = indices.shape[-1]
+  outer_shape = indices.shape[:-1]
+  assert index_depth <= params.shape.rank
+  inner_shape = params.shape[index_depth:]
+  output_shape = outer_shape + inner_shape
+  ```
+
+  It is helpful to think of the results in this case as tensors-of-tensors.
+  The shape of the outer tensor is set by the leading dimensions of `indices`.
+  While the shape of the inner tensors is the shape of a single slice.
+
+  ## Batches
+
+  Additionally both `params` and `indices` can have `M` leading batch
+  dimensions that exactly match. In this case `batch_dims` must be set to `M`.
+
+  For example, to collect one row from each of a batch of matrices you could
+  set the leading elements of the index vectors to be their location in the
+  batch:
+
+  >>> tf.gather_nd(
+  ...     indices = [[0, 1],
+  ...                [1, 0],
+  ...                [2, 4],
+  ...                [3, 2],
+  ...                [4, 1]],
+  ...     params=tf.zeros([5, 7, 3])).shape.as_list()
+  [5, 3]
+
+  The `batch_dims` argument lets you omit those leading location dimensions
+  from the index:
+
+  >>> tf.gather_nd(
+  ...     batch_dims=1,
+  ...     indices = [[1],
+  ...                [0],
+  ...                [4],
+  ...                [2],
+  ...                [1]],
+  ...     params=tf.zeros([5, 7, 3])).shape.as_list()
+  [5, 3]
+
+  This is equivalent to caling a separate `gather_nd` for each location in the
+  batch dimensions.
+
+
+  >>> params=tf.zeros([5, 7, 3])
+  >>> indices=tf.zeros([5, 1])
+  >>> batch_dims = 1
+  >>>
+  >>> index_depth = indices.shape[-1]
+  >>> batch_shape = indices.shape[:batch_dims]
+  >>> assert params.shape[:batch_dims] == batch_shape
+  >>> outer_shape = indices.shape[batch_dims:-1]
+  >>> assert index_depth <= params.shape.rank
+  >>> inner_shape = params.shape[batch_dims + index_depth:]
+  >>> output_shape = batch_shape + outer_shape + inner_shape
+  >>> output_shape.as_list()
+  [5, 3]
+
+  ### More examples
 
   Indexing into a 3-tensor:
 
-  ```python
-      indices = [[1]]
-      params = [[['a0', 'b0'], ['c0', 'd0']],
-                [['a1', 'b1'], ['c1', 'd1']]]
-      output = [[['a1', 'b1'], ['c1', 'd1']]]
+  >>> tf.gather_nd(
+  ...     indices = [[1]],
+  ...     params = [[['a0', 'b0'], ['c0', 'd0']],
+  ...               [['a1', 'b1'], ['c1', 'd1']]]).numpy()
+  array([[[b'a1', b'b1'],
+          [b'c1', b'd1']]], dtype=object)
 
 
-      indices = [[0, 1], [1, 0]]
-      params = [[['a0', 'b0'], ['c0', 'd0']],
-                [['a1', 'b1'], ['c1', 'd1']]]
-      output = [['c0', 'd0'], ['a1', 'b1']]
+
+  >>> tf.gather_nd(
+  ...     indices = [[0, 1], [1, 0]],
+  ...     params = [[['a0', 'b0'], ['c0', 'd0']],
+  ...               [['a1', 'b1'], ['c1', 'd1']]]).numpy()
+  array([[b'c0', b'd0'],
+         [b'a1', b'b1']], dtype=object)
 
 
-      indices = [[0, 0, 1], [1, 0, 1]]
-      params = [[['a0', 'b0'], ['c0', 'd0']],
-                [['a1', 'b1'], ['c1', 'd1']]]
-      output = ['b0', 'b1']
-  ```
+  >>> tf.gather_nd(
+  ...     indices = [[0, 0, 1], [1, 0, 1]],
+  ...     params = [[['a0', 'b0'], ['c0', 'd0']],
+  ...               [['a1', 'b1'], ['c1', 'd1']]]).numpy()
+  array([b'b0', b'b1'], dtype=object)
 
   The examples below are for the case when only indices have leading extra
   dimensions. If both 'params' and 'indices' have leading batch dimensions, use
@@ -5365,63 +5441,82 @@ def gather_nd(params, indices, name=None, batch_dims=0):
 
   Batched indexing into a matrix:
 
-  ```python
-      indices = [[[0, 0]], [[0, 1]]]
-      params = [['a', 'b'], ['c', 'd']]
-      output = [['a'], ['b']]
-  ```
+  >>> tf.gather_nd(
+  ...     indices = [[[0, 0]], [[0, 1]]],
+  ...     params = [['a', 'b'], ['c', 'd']]).numpy()
+  array([[b'a'],
+         [b'b']], dtype=object)
+
+
 
   Batched slice indexing into a matrix:
 
-  ```python
-      indices = [[[1]], [[0]]]
-      params = [['a', 'b'], ['c', 'd']]
-      output = [[['c', 'd']], [['a', 'b']]]
-  ```
+  >>> tf.gather_nd(
+  ...     indices = [[[1]], [[0]]],
+  ...     params = [['a', 'b'], ['c', 'd']]).numpy()
+  array([[[b'c', b'd']],
+         [[b'a', b'b']]], dtype=object)
+
 
   Batched indexing into a 3-tensor:
 
-  ```python
-      indices = [[[1]], [[0]]]
-      params = [[['a0', 'b0'], ['c0', 'd0']],
-                [['a1', 'b1'], ['c1', 'd1']]]
-      output = [[[['a1', 'b1'], ['c1', 'd1']]],
-                [[['a0', 'b0'], ['c0', 'd0']]]]
-
-      indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]
-      params = [[['a0', 'b0'], ['c0', 'd0']],
-                [['a1', 'b1'], ['c1', 'd1']]]
-      output = [[['c0', 'd0'], ['a1', 'b1']],
-                [['a0', 'b0'], ['c1', 'd1']]]
+  >>> tf.gather_nd(
+  ...     indices = [[[1]], [[0]]],
+  ...     params = [[['a0', 'b0'], ['c0', 'd0']],
+  ...               [['a1', 'b1'], ['c1', 'd1']]]).numpy()
+  array([[[[b'a1', b'b1'],
+           [b'c1', b'd1']]],
+         [[[b'a0', b'b0'],
+           [b'c0', b'd0']]]], dtype=object)
 
 
-      indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]
-      params = [[['a0', 'b0'], ['c0', 'd0']],
-                [['a1', 'b1'], ['c1', 'd1']]]
-      output = [['b0', 'b1'], ['d0', 'c1']]
-  ```
+  >>> tf.gather_nd(
+  ...     indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+  ...     params = [[['a0', 'b0'], ['c0', 'd0']],
+  ...               [['a1', 'b1'], ['c1', 'd1']]]).numpy()
+  array([[[b'c0', b'd0'],
+          [b'a1', b'b1']],
+         [[b'a0', b'b0'],
+          [b'c1', b'd1']]], dtype=object)
+
+  >>> tf.gather_nd(
+  ...     indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]],
+  ...     params = [[['a0', 'b0'], ['c0', 'd0']],
+  ...               [['a1', 'b1'], ['c1', 'd1']]]).numpy()
+  array([[b'b0', b'b1'],
+         [b'd0', b'c1']], dtype=object)
+
 
   Examples with batched 'params' and 'indices':
 
-  ```python
-      batch_dims = 1
-      indices = [[1], [0]]
-      params = [[['a0', 'b0'], ['c0', 'd0']],
-                [['a1', 'b1'], ['c1', 'd1']]]
-      output = [['c0', 'd0'], ['a1', 'b1']]
+  >>> tf.gather_nd(
+  ...     batch_dims = 1,
+  ...     indices = [[1],
+  ...                [0]],
+  ...     params = [[['a0', 'b0'],
+  ...                ['c0', 'd0']],
+  ...               [['a1', 'b1'],
+  ...                ['c1', 'd1']]]).numpy()
+  array([[b'c0', b'd0'],
+         [b'a1', b'b1']], dtype=object)
 
-      batch_dims = 1
-      indices = [[[1]], [[0]]]
-      params = [[['a0', 'b0'], ['c0', 'd0']],
-                [['a1', 'b1'], ['c1', 'd1']]]
-      output = [[['c0', 'd0']], [['a1', 'b1']]]
 
-      batch_dims = 1
-      indices = [[[1, 0]], [[0, 1]]]
-      params = [[['a0', 'b0'], ['c0', 'd0']],
-                [['a1', 'b1'], ['c1', 'd1']]]
-      output = [['c0'], ['b1']]
-  ```
+  >>> tf.gather_nd(
+  ...     batch_dims = 1,
+  ...     indices = [[[1]], [[0]]],
+  ...     params = [[['a0', 'b0'], ['c0', 'd0']],
+  ...               [['a1', 'b1'], ['c1', 'd1']]]).numpy()
+  array([[[b'c0', b'd0']],
+         [[b'a1', b'b1']]], dtype=object)
+
+  >>> tf.gather_nd(
+  ...     batch_dims = 1,
+  ...     indices = [[[1, 0]], [[0, 1]]],
+  ...     params = [[['a0', 'b0'], ['c0', 'd0']],
+  ...               [['a1', 'b1'], ['c1', 'd1']]]).numpy()
+  array([[b'c0'],
+         [b'b1']], dtype=object)
+
 
   See also `tf.gather`.
 

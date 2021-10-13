@@ -43,7 +43,8 @@ namespace tensorflow {
 static StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildExecutable(
     xla::LocalClient* local_client,
     const XlaCompiler::CompilationResult& result,
-    const XlaCompiler::Options& options, const bool xla_dump_hlo = false) {
+    const XlaCompiler::Options& options,
+    const bool xla_embed_ir_in_executable = false) {
   std::vector<const xla::Shape*> argument_layouts(
       result.xla_input_shapes.size());
   for (int i = 0, end = result.xla_input_shapes.size(); i < end; ++i) {
@@ -61,9 +62,10 @@ static StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildExecutable(
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
   build_options.mutable_debug_options()->set_xla_detailed_logging_and_dumping(
       options.detailed_logging);
-  // If any of the xla_dump_hlo_* flags is set, hlo_proto will be dumped in
+  // If the embed_ir_in_executable is set, hlo_proto will be dumped in
   // executable. The hlo_proto contains HLO modules and buffer assignment.
-  build_options.mutable_debug_options()->set_xla_dump_hlo_as_text(xla_dump_hlo);
+  build_options.mutable_debug_options()->set_xla_embed_ir_in_executable(
+      xla_embed_ir_in_executable);
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::LocalExecutable>> executables,
       local_client->Compile(*result.computation, argument_layouts,
@@ -183,7 +185,7 @@ StatusOr<std::string> GetCompilerIr(
     case IrExportStage::OPTIMIZED_HLO_PROTO_SERIALIZED: {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,
                           BuildExecutable(local_client, result, options,
-                                          /*xla_dump_hlo=*/true));
+                                          /*xla_embed_ir_in_executable=*/true));
       return executable->executable()->hlo_proto()->SerializeAsString();
     }
     case IrExportStage::OPTIMIZED_HLO_DOT: {

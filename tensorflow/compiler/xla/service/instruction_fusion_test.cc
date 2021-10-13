@@ -472,4 +472,99 @@ TEST_F(InstructionFusionTest,
   EXPECT_THAT(root, op::Fusion(op::Parameter()));
 }
 
+TEST_F(InstructionFusionTest,
+       InPlaceOpShouldNotFuseWithNonElementwiseSharedOperand) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY Test {
+    parameter.1 = f32[8] parameter(0)
+    slice.19 = f32[7] slice(parameter.1), slice={[0:7]}
+    constant.7 = f32[] constant(1)
+    broadcast.8 = f32[7] broadcast(constant.7), dimensions={}
+    add.9 = f32[7] add(slice.19, broadcast.8)
+    constant.10 = s32[] constant(1)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(parameter.1, add.9, constant.10)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  // Verify that we don't fuse dynamic-update-slice and slice together since
+  // dynamic-update-slice modifies the input buffer in-place, which is also used
+  // as slice's input.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Slice()));
+}
+
+TEST_F(InstructionFusionTest, InPlaceOpShouldFuseWithSliceSameIndex) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY Test {
+    parameter.1 = f32[8] parameter(0)
+    slice.19 = f32[7] slice(parameter.1), slice={[1:8]}
+    constant.7 = f32[] constant(1)
+    broadcast.8 = f32[7] broadcast(constant.7), dimensions={}
+    add.9 = f32[7] add(slice.19, broadcast.8)
+    constant.10 = s32[] constant(1)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(parameter.1, add.9, constant.10)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  // Verify that we fuse dynamic-update-slice and slice together because they
+  // have the same index.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter()));
+}
+
+TEST_F(InstructionFusionTest, InPlaceOpShouldNotFuseWithUnknownDynamicSlice) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY Test {
+    parameter.0 = f32[8] parameter(0)
+    parameter.1 = s32[] parameter(1)
+    dynamic-slice = f32[7] dynamic-slice(parameter.0, parameter.1), dynamic_slice_sizes={7}
+    constant.7 = f32[] constant(1)
+    broadcast.8 = f32[7] broadcast(constant.7), dimensions={}
+    add.9 = f32[7] add(dynamic-slice, broadcast.8)
+    constant.10 = s32[] constant(1)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(parameter.0, add.9, constant.10)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::DynamicSlice()));
+}
+
+TEST_F(InstructionFusionTest, InPlaceOpShouldFuseWithSameDynamicSlice) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY Test {
+    parameter.0 = f32[8] parameter(0)
+    parameter.1 = s32[] parameter(1)
+    dynamic-slice = f32[7] dynamic-slice(parameter.0, parameter.1), dynamic_slice_sizes={7}
+    constant.7 = f32[] constant(1)
+    broadcast.8 = f32[7] broadcast(constant.7), dimensions={}
+    add.9 = f32[7] add(dynamic-slice, broadcast.8)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(parameter.0, add.9, parameter.1)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
+}
+
 }  // namespace xla

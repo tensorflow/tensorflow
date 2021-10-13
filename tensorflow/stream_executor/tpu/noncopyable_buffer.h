@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/base/casts.h"
+#include "absl/functional/function_ref.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/platform/logging.h"
@@ -29,7 +30,7 @@ namespace tpu {
 
 using BufferDeallocator = std::function<void(void*)>;
 using OwnedDataPtr = std::unique_ptr<uint8_t[], BufferDeallocator>;
-using BufferAllocator = std::function<OwnedDataPtr(size_t)>;
+using BufferAllocator = absl::FunctionRef<OwnedDataPtr(size_t)>;
 
 inline OwnedDataPtr DefaultAllocator(size_t size) {
   return {static_cast<uint8_t*>(malloc(size)), free};
@@ -132,9 +133,9 @@ class NoncopyableBuffer {
         port::AlignedFree);
   }
   // If data_ != nullptr then buf_ == data_.get()
-  OwnedDataPtr data_{nullptr, free};     // Owning data pointer.
-  const void* buf_;                      // Non-owning data pointer.
-  size_t size_;                          // Size in number of bytes.
+  OwnedDataPtr data_{nullptr, free};  // Owning data pointer.
+  const void* buf_;                   // Non-owning data pointer.
+  size_t size_;                       // Size in number of bytes.
 };
 
 }  // namespace tpu

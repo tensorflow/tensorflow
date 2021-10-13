@@ -1006,6 +1006,7 @@ cc_library(
         ":node_def_proto_cc",
         ":node_def_util",
         ":op",
+        ":op_def_builder",
         ":op_def_proto_cc",
         ":tensor",
         "//tensorflow/core/lib/core:status",

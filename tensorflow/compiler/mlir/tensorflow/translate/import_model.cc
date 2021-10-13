@@ -2759,7 +2759,7 @@ class ObjectNames {
   // we track its path in the object graph by pushing and popping from here
   // during traversal.
   llvm::SmallVector<std::string, 8> path_segments_;
-  // The set of node_id's that are on the current DFS stack.
+  // The set of node IDs that are on the current DFS stack.
   // For cyclic object graphs, this prevents infinite recursion.
   std::unordered_set<int> on_stack_nodes_;
 

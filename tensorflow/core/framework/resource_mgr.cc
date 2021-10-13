@@ -141,7 +141,7 @@ ResourceMgr::~ResourceMgr() { Clear(); }
 void ResourceMgr::Clear() {
   // We do the deallocation outside of the lock to avoid a potential deadlock
   // in case any of the destructors access the resource manager.
-  std::unordered_map<string, Container*> tmp_containers;
+  absl::flat_hash_map<string, Container*> tmp_containers;
   {
     mutex_lock l(mu_);
     tmp_containers = std::move(containers_);

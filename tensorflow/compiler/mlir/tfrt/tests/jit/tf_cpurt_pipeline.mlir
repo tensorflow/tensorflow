@@ -394,6 +394,7 @@ func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
 // -----
 
 // CHECK: memref.global "private" constant @__constant_2xi32 : memref<2xi32> = dense<[0, 1]>
+// CHECK-SAME: {alignment = 64 : i64}
 // CHECK-LABEL: @constant_folding
 func @constant_folding() -> tensor<2xi32> {
   %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -408,7 +409,9 @@ func @constant_folding() -> tensor<2xi32> {
 // -----
 
 // CHECK-LABEL: @add_floormod_add
-builtin.func @add_floormod_add(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func @add_floormod_add(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  // CHECK:     linalg.generic
+  // CHECK-NOT: linalg.generic
   %0 = "tf.AddV2"(%arg0, %arg0)
       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   %1 = "tf.FloorMod"(%0, %arg0)
@@ -426,4 +429,16 @@ builtin.func @min_clip_by_value(%V__0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
   %0 = "tf.Min"(%V__0, %dims0) {keep_dims = true} : (tensor<?x?x?xf32>, tensor<2xi32>) -> tensor<?x?x?xf32>
   %1 = "tf.ClipByValue"(%V__0, %0, %V__0) : (tensor<?x?x?xf32>, tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   return %1 : tensor<?x?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @rint_sq_sub
+func @rint_sq_sub(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  // CHECK:     linalg.generic
+  // CHECK-NOT: linalg.generic
+  %0 = "tf.Rint"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  %1 = "tf.Square"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  %2 = "tf.Sub"(%0, %1) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  return %2 : tensor<?x?xf32>
 }

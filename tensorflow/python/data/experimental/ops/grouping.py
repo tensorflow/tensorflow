@@ -14,6 +14,7 @@
 # ==============================================================================
 """Grouping dataset transformations."""
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
@@ -281,7 +282,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping defun for key_func."""
-    self._key_func = dataset_ops.StructuredFunctionWrapper(
+    self._key_func = structured_function.StructuredFunctionWrapper(
         key_func, self._transformation_name(), dataset=input_dataset)
     if not self._key_func.output_structure.is_compatible_with(
         tensor_spec.TensorSpec([], dtypes.int64)):
@@ -294,7 +295,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
   def _make_init_func(self, init_func):
     """Make wrapping defun for init_func."""
-    self._init_func = dataset_ops.StructuredFunctionWrapper(
+    self._init_func = structured_function.StructuredFunctionWrapper(
         init_func,
         self._transformation_name(),
         input_structure=tensor_spec.TensorSpec([], dtypes.int64))
@@ -311,7 +312,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
     need_to_rerun = True
     while need_to_rerun:
 
-      wrapped_func = dataset_ops.StructuredFunctionWrapper(
+      wrapped_func = structured_function.StructuredFunctionWrapper(
           reduce_func,
           self._transformation_name(),
           input_structure=(self._state_structure, input_dataset.element_spec),
@@ -366,8 +367,9 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
   def _make_finalize_func(self, finalize_func):
     """Make wrapping defun for finalize_func."""
-    self._finalize_func = dataset_ops.StructuredFunctionWrapper(
-        finalize_func, self._transformation_name(),
+    self._finalize_func = structured_function.StructuredFunctionWrapper(
+        finalize_func,
+        self._transformation_name(),
         input_structure=self._state_structure)
 
   @property

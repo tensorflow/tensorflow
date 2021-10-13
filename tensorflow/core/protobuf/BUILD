@@ -25,6 +25,7 @@ COMMON_PROTO_SRCS = [
     "bfc_memory_map.proto",
     "config.proto",
     "cluster.proto",
+    "coordination_service.proto",
     "debug.proto",
     "device_filters.proto",
     "device_properties.proto",
@@ -61,6 +62,7 @@ tf_proto_library(
     srcs = ["autotuning.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/stream_executor:dnn_proto"],
 )
 
 tf_proto_library(

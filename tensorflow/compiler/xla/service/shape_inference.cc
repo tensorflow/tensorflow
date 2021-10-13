@@ -786,7 +786,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     // Reject "magic" inference for binops on different shapes, requiring
     // the user to provide an explicit broadcast dimension in this case.
     // See b/25177275 for more details.
-    return InvalidArgument("Automatic shape inference not supported: %s and %s",
+    return InvalidArgument("Shapes must be equal rank, but are %s and %s",
                            ShapeUtil::HumanString(smaller_shape),
                            ShapeUtil::HumanString(larger_shape));
   } else if (broadcast_dimensions.size() != smaller_shape.rank()) {
@@ -2139,18 +2139,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceStartShape(
     absl::Span<const Shape* const> operand_shapes) {
-  TF_ASSIGN_OR_RETURN(Shape shape, InferAllReduceShape(operand_shapes));
-
-  return ShapeUtil::MakeTupleShape({shape, shape});
+  return InferAllReduceShape(operand_shapes);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceDoneShape(
     const Shape& operand_shape) {
-  // The returned value from AllReduceDone is determined from
-  // HloDataflowAnalysis::UpdateAllReduceStartValueSet(). The operand to
-  // AllReduceDone is a tuple of two elements and this function selects
-  // ShapeIndex {1} as the value forwarded.
-  return ShapeUtil::GetTupleElementShape(operand_shape, 1);
+  // The returned value from AllReduceDone is the operand forwarded.
+  return operand_shape;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllToAllShape(

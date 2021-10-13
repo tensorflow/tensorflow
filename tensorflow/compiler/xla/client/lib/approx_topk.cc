@@ -210,12 +210,13 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   }
   auto approx_output_shape = ShapeUtil::MakeTupleShape(approx_output_shapes);
   // PartialReduce option in JSON form
-  std::string partial_reduce_option =
-      absl::StrFormat("{\"log2_reduction\": %d, \"reduction_dim\": %d}",
-                      log2_reduction, reduction_dim);
+  std::string partial_reduce_option = absl::StrFormat(
+      "{\"log2_reduction\": %d, \"reduction_dim\": %d, \"to_apply_type\": "
+      "\"comparator\"}",
+      log2_reduction, reduction_dim);
 
   auto approx_topk = CustomCallWithComputation(
-      builder, "PartialReduce", partial_reduce_args, reduction_computation,
+      builder, "PartialReduce", partial_reduce_args, comparator,
       approx_output_shape, partial_reduce_option);
 
   if (aggregate_to_topk) {

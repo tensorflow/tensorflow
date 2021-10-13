@@ -41,3 +41,16 @@ func @skip_launch_device(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f3
 
   return %1 : tensor<f32>
 }
+
+// CHECK-LABEL: func @remove_class_attribute
+func @remove_class_attribute(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) ->  tensor<f32> {
+  // CHECK: "tf_device.cluster"
+  // CHECK: "tf.Add"
+  // CHECK-NOT: _class
+  %1 = "tf_device.cluster"() ( {
+    %2 = "tf.Add"(%arg1, %arg2) {_class = ["loc:@while/BiasAdd_21/handle"]} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    tf_device.return %2 : tensor<f32>
+  }) {cluster_attr = "cluster_attr", _tpu_replicate = "x", device = "y"} : () -> tensor<f32>
+
+  return %1 : tensor<f32>
+}

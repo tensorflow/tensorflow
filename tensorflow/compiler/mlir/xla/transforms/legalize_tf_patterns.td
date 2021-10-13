@@ -39,6 +39,10 @@ def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 def CastValueToI64: NativeCodeCall<
   "CastValueToI64($0.getLoc(), $1, &$_builder)">;
 
+def CastValueToElementType: NativeCodeCall<
+  "$_builder.create<ConvertOp>($0.getLoc(), $1, "
+  "getElementTypeOrSelf($2.getType()))">;
+
 // Here, $0 is an ElementsAttr with exactly one element of type integer. $1 is
 // the corresponding value of ranked tensor type whose axis is referred in $0.
 def GetHLOAxisFromTFAxis : NativeCodeCall<
@@ -55,6 +59,19 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
 def CastElementsToI64Elements : NativeCodeCall<
   "hlo::ConvertElementsAttr("
     "$0.cast<ElementsAttr>(), $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
+
+//===----------------------------------------------------------------------===//
+// ApproximateEqual op pattern.
+//===----------------------------------------------------------------------===//
+
+// TODO(kramerb): Assert that $x and $y have the same shape.
+def : Pat<(TF_ApproximateEqualOp:$result $x, $y, $tolerance),
+          (HLOClient_BroadcastCompareOp
+           (HLO_AbsOp:$abs (HLO_SubOp $x, $y)),
+           (CastValueToElementType $result, (HLO_ConstOp $tolerance), $abs),
+           (NullDenseIntElementsAttr),
+           HLO_COMPARISON_DIRECTION_LT,
+           (HLO_DEFAULT_COMPARISON_TYPE))>;
 
 //===----------------------------------------------------------------------===//
 // Assert op pattern.
@@ -811,3 +828,10 @@ def : Pat<(TF_XlaDotV2Op $lhs, $rhs, $dimension_numbers, $precision_config),
                             (ToDotDimNumsAttr $dimension_numbers),
                             (ToPrecisionConfigsAttr $precision_config)),
           [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
+
+//===----------------------------------------------------------------------===//
+// XlaEisumOp op.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_XlaEinsumOp $lhs, $rhs, $equation),
+          (HLO_EinsumOp $lhs, $rhs, $equation)>;

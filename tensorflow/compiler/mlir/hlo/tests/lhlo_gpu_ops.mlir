@@ -39,15 +39,17 @@ func @conv_forward_generic(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2
   // This defined a 2D convolution over a 8x8 single channel input using a 2x2
   // filter and with an output of 7x7xf16. The 1x1x8x8 is (N, C, H, W)
   "lmhlo_gpu.conv_forward"(%input, %filter, %output, %scratch)
-    { dimension_numbers = {input_batch_dimension = 0 : i64,
-                           input_feature_dimension = 1 : i64,
-                           input_spatial_dimensions = dense<[2,3]> : tensor<2xi64>,
-                           kernel_input_feature_dimension = 0 : i64,
-                           kernel_output_feature_dimension = 1 : i64,
-                           kernel_spatial_dimensions = dense<[2,3]> : tensor<2xi64>,
-                           output_batch_dimension = 0 : i64,
-                           output_feature_dimension = 1 : i64,
-                           output_spatial_dimensions = dense<[2,3]> : tensor<2xi64>},
+    { dimension_numbers = #mhlo.conv<raw
+        input_batch_dimension = 0,
+        input_feature_dimension = 1,
+        input_spatial_dimensions = [2, 3],
+        kernel_input_feature_dimension = 0,
+        kernel_output_feature_dimension = 1,
+        kernel_spatial_dimensions = [2, 3],
+        output_batch_dimension = 0,
+        output_feature_dimension = 1,
+        output_spatial_dimensions = [2, 3]
+      >,
       window_strides = dense<[1, 1]> : tensor<2xi64>,
       padding = dense<[[0, 0], [1, 0]]> : tensor<2x2xi64>,
       lhs_dilation = dense<[1,1]> : tensor<2xi64>,

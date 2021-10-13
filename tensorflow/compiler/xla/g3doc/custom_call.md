@@ -119,11 +119,19 @@ custom-call. Note however that although `xla::ShapeProto` does not change
 frequently, it *does* change. Check the git log to see how it has changed in the
 past.
 
-### Signalling an error.
+## Signalling an error.
 
 If your custom call encounters an error, you can signal the error to the XLA
 runtime (instead of e.g. crashing or returning nonsense in the output buffers)
-by using the following signature for your function:
+by using the following signature for your function on CPU:
+
+```c++
+#include "tensorflow/compiler/xla/service/custom_call_status.h"
+
+void do_custom_call(void* out, const void** in, XlaCustomCallStatus* status);
+```
+
+... and on GPU:
 
 ```c++
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
@@ -135,8 +143,7 @@ void do_custom_call(CUstream stream, void** buffers, const char* opaque,
 You can signal failure by using `XlaCustomCallStatusSetFailure`, e.g.:
 
 ```c++
-void do_custom_call(CUstream stream, void** buffers, const char* opaque,
-                    size_t opaque_len, XlaCustomCallStatus* status) {
+void do_custom_call(void* out, const void** in, XlaCustomCallStatus* status) {
   // ... do some work.
 
   if (bad_condition) {
@@ -173,9 +180,6 @@ parameter and then ignore it.
 On failure, none of the custom call outputs will be used; the XLA runtime will
 terminate the computation. It is not possible for an HLO computation to recover
 from the error (e.g. by catching and handling it).
-
-This feature is only available for GPU custom calls; it is not possible to
-signal failure for a CPU custom call.
 
 ## Passing tuples to custom-calls
 

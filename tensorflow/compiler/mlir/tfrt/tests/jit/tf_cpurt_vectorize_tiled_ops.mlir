@@ -108,4 +108,6 @@ func @tiled_reduction(%in: tensor<80x60xf32>) -> tensor<80xf32> {
 // CHECK-SAME: ins (%{{arg[0-9]}} = %{{arg[0-9]}}: tensor<80x60xf32>,
 // CHECK-SAME:      %[[CST:arg[0-9]]] = %{{.*}}: f32
 
-// CHECK: vector.broadcast %[[CST]] : f32 to vector<4xf32>
+// CHECK: %[[BCAST:.*]] = vector.broadcast %[[CST]] : f32 to vector<4xf32>
+// CHECK-NOT: vector.transfer_write %[[BCAST]]
+// CHECK: vector.broadcast %[[BCAST]] : vector<4xf32> to vector<4x4xf32>

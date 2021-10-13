@@ -24,13 +24,6 @@ limitations under the License.
 
 namespace xla {
 
-static mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements,
-                                          mlir::Builder* builder) {
-  return mlir::DenseIntElementsAttr::get(
-      mlir::RankedTensorType::get(elements.size(), builder->getIntegerType(64)),
-      elements);
-}
-
 mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
                                        mlir::Builder* builder) {
   if (!config) return {};
@@ -86,8 +79,11 @@ mlir::mhlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
       arrayref(dnums.rhs_contracting_dimensions()));
 }
 
-mlir::mhlo::ConvDimensionNumbers ConvertConvDimensionNumbers(
+mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(
     const xla::ConvolutionDimensionNumbers& dnums, mlir::Builder* builder) {
+  auto arrayref = [](absl::Span<const int64_t> array) {
+    return llvm::ArrayRef<int64_t>{array.data(), array.size()};
+  };
   llvm::SmallVector<int64_t, 4> input_spatial_dims(
       dnums.input_spatial_dimensions().begin(),
       dnums.input_spatial_dimensions().end());
@@ -97,16 +93,15 @@ mlir::mhlo::ConvDimensionNumbers ConvertConvDimensionNumbers(
   llvm::SmallVector<int64_t, 4> output_spatial_dims(
       dnums.output_spatial_dimensions().begin(),
       dnums.output_spatial_dimensions().end());
-  return mlir::mhlo::ConvDimensionNumbers::get(
-      builder->getI64IntegerAttr(dnums.input_batch_dimension()),
-      builder->getI64IntegerAttr(dnums.input_feature_dimension()),
-      Convert(input_spatial_dims, builder),
-      builder->getI64IntegerAttr(dnums.kernel_input_feature_dimension()),
-      builder->getI64IntegerAttr(dnums.kernel_output_feature_dimension()),
-      Convert(kernel_spatial_dims, builder),
-      builder->getI64IntegerAttr(dnums.output_batch_dimension()),
-      builder->getI64IntegerAttr(dnums.output_feature_dimension()),
-      Convert(output_spatial_dims, builder), builder->getContext());
+  return mlir::mhlo::ConvDimensionNumbersAttr::get(
+      builder->getContext(), dnums.input_batch_dimension(),
+      dnums.input_feature_dimension(),
+      arrayref(dnums.input_spatial_dimensions()),
+      dnums.kernel_input_feature_dimension(),
+      dnums.kernel_output_feature_dimension(),
+      arrayref(dnums.kernel_spatial_dimensions()),
+      dnums.output_batch_dimension(), dnums.output_feature_dimension(),
+      arrayref(dnums.output_spatial_dimensions()));
 }
 
 StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type) {

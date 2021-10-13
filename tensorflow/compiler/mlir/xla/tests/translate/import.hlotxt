@@ -28,8 +28,15 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 %test_after_all (token0: token[], token1: token[] ) -> token[] {
   token0 = token[] parameter(0)
   token1 = token[] parameter(1)
-  // CHECK-NEXT:  "mhlo.after_all"([[VAL_0]], [[VAL_1]]) : (!mhlo.token, !mhlo.token) -> !mhlo.token
+  // CHECK-NEXT:  "mhlo.after_all"([[VAL_0]], [[VAL_1]]) {xla_shape = {{.*}}} : (!mhlo.token, !mhlo.token) -> !mhlo.token
   ROOT after-all = token[] after-all(token0, token1)
+}
+
+// CHECK-LABEL:  func private @test_after_all_no_inputs
+// CHECK-SAME:  () -> !mhlo.token
+%test_after_all_no_inputs () -> token[] {
+  // CHECK-NEXT:  "mhlo.create_token"() {xla_shape = {{.*}}} : () -> !mhlo.token
+  ROOT after-all = token[] after-all()
 }
 
 // CHECK-LABEL:  func private @test_all_gather
@@ -220,10 +227,10 @@ add {
 %test_conv {
   %arg0.1 = f32[256,32,32,6]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
-  // CHECK-NEXT: %[[VAL_1:.*]] = "mhlo.copy"(%[[VAL_0]]) {minor_to_major = dense<[2, 1, 3, 0]> : tensor<4xindex>} : (tensor<256x32x32x6xf32>) -> tensor<256x32x32x6xf32>
+  // CHECK-NEXT: %[[VAL_1:.*]] = "mhlo.copy"(%[[VAL_0]]) {xla_shape = "f32[256,32,32,6]{2,1,3,0}"} : (tensor<256x32x32x6xf32>) -> tensor<256x32x32x6xf32>
   %copy.1 = f32[256,32,32,6]{2,1,3,0} copy(%arg0.1), metadata={op_name="HLO_Args"}
 
-  // CHECK-NEXT: %[[VAL_2:.*]] = "mhlo.reshape"(%[[VAL_1]]) {minor_to_major = dense<[2, 1, 3, 0]> : tensor<4xindex>} : (tensor<256x32x32x6xf32>) -> tensor<256x32x32x6xf32>
+  // CHECK-NEXT: %[[VAL_2:.*]] = "mhlo.reshape"(%[[VAL_1]]) {xla_shape = "f32[256,32,32,6]{2,1,3,0}"} : (tensor<256x32x32x6xf32>) -> tensor<256x32x32x6xf32>
   %reshape.2 = f32[256,32,32,6]{2,1,3,0} reshape(%copy.1)
 
   // Note that double brackets "[[" have to be escaped as they denote variables
@@ -243,7 +250,7 @@ add {
   // CHECK-NEXT: %[[VAL_5:.*]] = "mhlo.reshape"(%[[VAL_4]]) : (tensor<16x30x30x256xf32>) -> tensor<256x30x30x16xf32>
   %reshape.5 = f32[256,30,30,16]{3,2,1,0} reshape(%convolution.4), metadata={op_name="HLO_Retvals"}
 
-  // CHECK-NEXT: %[[VAL_6:.*]] = "mhlo.tuple"(%[[VAL_5]]) : (tensor<256x30x30x16xf32>) -> tuple<tensor<256x30x30x16xf32>>
+  // CHECK-NEXT: %[[VAL_6:.*]] = "mhlo.tuple"(%[[VAL_5]]) {xla_shape = {{.*}}} : (tensor<256x30x30x16xf32>) -> tuple<tensor<256x30x30x16xf32>>
   ROOT %tuple.6 = (f32[256,30,30,16]{3,2,1,0}) tuple(%reshape.5), metadata={op_name="HLO_Retvals"}
 }
 
@@ -285,7 +292,7 @@ add {
 %test_custom_call (arg1: f32[2,3], arg2: f32[5,5]) -> f32[1,2,3] {
   %arg1 = f32[2,3] parameter(0)
   %arg2 = f32[5,5] parameter(1)
-// CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {api_version = 1 : i32, backend_config = "bar", call_target_name = "foo", has_side_effect = true, minor_to_major = {{.*}}} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+// CHECK:  "mhlo.custom_call"([[ARG_0]], [[ARG_1]]) {api_version = 1 : i32, backend_config = "bar", call_target_name = "foo", has_side_effect = true, xla_shape = {{.*}}} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
   ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[2,3] %arg1, f32[5,5] %arg2), custom_call_target="foo", backend_config="bar", custom_call_has_side_effect=true
 }
 
@@ -686,7 +693,7 @@ add {
   // CHECK:  mhlo.add{{.*}} : tensor<f32>
   // CHECK:  mhlo.add{{.*}} : tensor<f32>
   // CHECK:  {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x4xf32>, tensor<4x4xf32>, tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
-  // CHECK: "mhlo.tuple"(%0#0, %0#1) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
+  // CHECK: "mhlo.tuple"(%0#0, %0#1) {xla_shape = {{.*}}} : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
   %reduce.1 = (f32[], f32[]) reduce(%Arg_0.1, %Arg_0.1, %Arg_2.3, %Arg_2.3), dimensions={0, 1}, to_apply=%reduce_helper.1
 
   // CHECK:  [[VAL2:%.*]] = "mhlo.reduce"([[ARG0]], [[ARG2]])
@@ -925,10 +932,10 @@ add {
   %Arg_0.1 = s32[1] parameter(0)
   %Arg_1.2 = f32[1, 2] parameter(1)
 
-  // CHECK-NEXT:  %0 = "mhlo.tuple"(%arg0) : (tensor<1xi32>) -> tuple<tensor<1xi32>>
+  // CHECK-NEXT:  %0 = "mhlo.tuple"(%arg0) {xla_shape = {{.*}}} : (tensor<1xi32>) -> tuple<tensor<1xi32>>
   %tuple.3 = (s32[1]) tuple(%Arg_0.1)
 
-  // CHECK:  "mhlo.tuple"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>>
+  // CHECK:  "mhlo.tuple"(%arg0, %arg1) {xla_shape = {{.*}}} : (tensor<1xi32>, tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>>
   ROOT %tuple.4 = (s32[1], f32[1,2]) tuple(%Arg_0.1, %Arg_1.2)
 }
 
@@ -1026,7 +1033,7 @@ add {
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3xui64>)
 %rngbitgen (Arg_0.1: u64[3]) -> (u64[3], u32[2,2]) {
   %Arg_0.1 = u64[3] parameter(0)
-  // CHECK: "mhlo.rng_bit_generator"(%[[ARG0]]) {rng_algorithm = 2 : i32} : (tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
+  // CHECK: "mhlo.rng_bit_generator"(%[[ARG0]]) {rng_algorithm = 2 : i32, xla_shape = {{.*}}} : (tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
   ROOT %rng-bit-generator.2 = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %Arg_0.1), algorithm=rng_philox
 }
 
@@ -1042,7 +1049,7 @@ add {
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>) -> tensor<3x4x1xf32>
 %bitcast (Arg_0.1: f32[3,4]) -> f32[3,4,1]{2,0,1} {
   %Arg_0.1 = f32[3,4] parameter(0)
-  // CHECK: "mhlo.bitcast"(%[[ARG0]]) {minor_to_major = dense<[2, 0, 1]> : tensor<3xindex>, result_layout = dense<[2, 0, 1]> : tensor<3xindex>, source_layout = dense<[1, 0]> : tensor<2xindex>} : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
+  // CHECK: "mhlo.bitcast"(%[[ARG0]]) {result_layout = dense<[2, 0, 1]> : tensor<3xindex>, source_layout = dense<[1, 0]> : tensor<2xindex>, xla_shape = "f32[3,4,1]{2,0,1}"} : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
   ROOT %bitcast = f32[3,4,1]{2,0,1} bitcast(f32[3,4] %Arg_0.1)
 }
 
