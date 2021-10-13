@@ -1681,6 +1681,7 @@ cc_library(
     ],
     visibility = [
         ":friends",
+        "//tensorflow/compiler/mlir/python:__pkg__",
     ],
     deps = [
         ":DiscRalPassIncGen",
