@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -113,9 +114,10 @@ class TFRInlinerInterface : public DialectInlinerInterface {
     auto result_itype = result_type.cast<IntegerType>();
     if (input_itype.getWidth() == result_itype.getWidth()) return nullptr;
     if (input_itype.getWidth() > result_itype.getWidth()) {
-      return builder.create<TruncateIOp>(conversion_loc, result_type, input);
+      return builder.create<arith::TruncIOp>(conversion_loc, result_type,
+                                             input);
     } else {
-      return builder.create<SignExtendIOp>(conversion_loc, result_type, input);
+      return builder.create<arith::ExtSIOp>(conversion_loc, result_type, input);
     }
   }
 };
@@ -141,6 +143,8 @@ TFRDialect::TFRDialect(MLIRContext *context)
 
 Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
                                            Type type, Location loc) {
+  if (arith::ConstantOp::isBuildableWith(value, type))
+    return builder.create<arith::ConstantOp>(loc, type, value);
   if (ConstantOp::isBuildableWith(value, type))
     return builder.create<ConstantOp>(loc, type, value);
   return nullptr;
@@ -521,8 +525,8 @@ class RemoveRedundantGetLength : public OpRewritePattern<GetLengthOp> {
       return failure();
     }
     int64_t num_tensors = preceding_build_list.getNumOperands();
-    rewriter.replaceOpWithNewOp<ConstantOp>(gl_op,
-                                            rewriter.getIndexAttr(num_tensors));
+    rewriter.replaceOpWithNewOp<arith::ConstantOp>(
+        gl_op, rewriter.getIndexAttr(num_tensors));
     return success();
   }
 };
@@ -681,7 +685,8 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
  public:
   // Replace quant_scale_factor with constant tensor equivalent to
   // TFR_ConstantTensorOp (
-  //   ConstantOp (ConstAttr<F32Attr (in_scale[0] * in_scale[1] / out_scale))
+  //   ConstantOp (ConstAttr<F32Attr (in_scale[0] * in_scale[1] /
+  //   out_scale))
   // )
   // Currently, all decompositions using this pattern (Conv2D, FC) have the
   // following preconditions:
@@ -691,7 +696,8 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
   //     (per-tensor vs per-channel) quantization, given by tf.Const -> tfr.cast
   LogicalResult matchAndRewrite(TFRQuantScaleFactorOp scale_factor_op,
                                 PatternRewriter &rewriter) const override {
-    auto out_scale_op = scale_factor_op.out_scale().getDefiningOp<ConstantOp>();
+    auto out_scale_op =
+        scale_factor_op.out_scale().getDefiningOp<arith::ConstantOp>();
     if (!out_scale_op) {
       return failure();
     }
@@ -765,7 +771,7 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
     const Location loc = rescale_op->getLoc();
     const auto result_types = rescale_op->getResultTypes();
     auto c_false =
-        rewriter.create<ConstantOp>(loc, rewriter.getBoolAttr(false));
+        rewriter.create<arith::ConstantOp>(loc, rewriter.getBoolAttr(false));
     TypeAttr f32_attr = TypeAttr::get(rewriter.getF32Type());
     TFRAttrType output_type = TFRAttrType::get(rewriter.getContext());
     auto constant_f32_op = rewriter.create<ConstOp>(loc, output_type, f32_attr);

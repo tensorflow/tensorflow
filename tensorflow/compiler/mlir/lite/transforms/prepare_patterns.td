@@ -29,7 +29,7 @@ def CreateTFCastOpI32 : NativeCodeCall<
     "CreateTFCastOpI32(&$_builder, $_loc, $0, $1)">;
 
 // Convert to std constant for statically shaped, non-opaque constants.
-def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (ConstantOp $value),
+def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (Arith_ConstantOp $value),
           [(AnyStaticShapeTensor $res)]>;
 
 // Convert the legacy BatchNormWithGlobalNormalization to other ops.
@@ -143,13 +143,13 @@ def : Pat<(TF_RankOp (TFL_DequantizeOp (TFL_QuantizeOp $input, $qtype))),
 
 // `k` is expected to be 0, other values are not supported currently.
 def : Pat<(TF_MatrixSetDiagV2Op $input, $diagonal,
-            (ConstantOp ConstantAttr<I32ElementsAttr, "{0}">)),
+            (Arith_ConstantOp ConstantAttr<I32ElementsAttr, "{0}">)),
           (TF_MatrixSetDiagOp $input, $diagonal)>;
 
 // `align` attribute can be ignored because we only support converting
 // `MatrixSetDiagV3` to `MatrixSetDiag` with default `k` inputs.
 def : Pat<(TF_MatrixSetDiagV3Op $input, $diagonal,
-            (ConstantOp ConstantAttr<I32ElementsAttr, "{0}">),
+            (Arith_ConstantOp ConstantAttr<I32ElementsAttr, "{0}">),
             $align),
           (TF_MatrixSetDiagOp $input, $diagonal)>;
 

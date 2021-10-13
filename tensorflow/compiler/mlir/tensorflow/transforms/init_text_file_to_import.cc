@@ -115,14 +115,14 @@ class ConvertInitializeTableFromTextFileV2
     std::iota(line_nums.begin(), line_nums.end(), 0);
 
     // Create constant ops for keys an values.
-    Value key_constant_tensor = rewriter.create<ConstantOp>(
+    Value key_constant_tensor = rewriter.create<arith::ConstantOp>(
         op.getLoc(),
         DenseStringElementsAttr::get(
             RankedTensorType::get(static_cast<int64_t>(lines.size()),
                                   StringType::get(rewriter.getContext())),
             lines));
 
-    Value value_constant_tensor = rewriter.create<ConstantOp>(
+    Value value_constant_tensor = rewriter.create<arith::ConstantOp>(
         op.getLoc(), rewriter.getI64TensorAttr(line_nums));
 
     // Replace the given op with LookupTableImportV2Op.

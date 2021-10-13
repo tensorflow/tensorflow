@@ -160,7 +160,7 @@ DECL_CONVERT_OP(FakeQuant);
 
 struct ConvertConstantOp : public RewritePattern {
   explicit ConvertConstantOp(MLIRContext* context)
-      : RewritePattern(ConstantOp::getOperationName(), 1, context) {}
+      : RewritePattern(arith::ConstantOp::getOperationName(), 1, context) {}
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override;
 };
@@ -2770,7 +2770,7 @@ LogicalResult ConvertTFLQConstOp::matchAndRewrite(
 
 LogicalResult ConvertConstantOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
-  auto tfl_const_op = cast<ConstantOp>(op);
+  auto tfl_const_op = cast<arith::ConstantOp>(op);
 
   ShapedType output_type =
       tfl_const_op.getResult().getType().dyn_cast<ShapedType>();
@@ -2786,7 +2786,7 @@ LogicalResult ConvertConstantOp::matchAndRewrite(
   if (e_type.isInteger(64)) {
     e_type = rewriter.getIntegerType(48);
     attr = attr.cast<DenseIntOrFPElementsAttr>().mapValues(
-        e_type, [](const APInt& x) -> APInt { return x.trunc(48); });
+        e_type, [](const APInt &x) -> APInt { return x.trunc(48); });
   }
 
   if (!output_type.hasRank()) {
@@ -2901,7 +2901,7 @@ void LegalizeTFL::runOnFunction() {
   target.addIllegalOp<quant::StatisticsOp>();
   // Operations are legal if they don't contain any illegal type.
   target.markUnknownOpDynamicallyLegal([](Operation* op) {
-    if (auto constantOp = dyn_cast<ConstantOp>(op)) {
+    if (auto constantOp = dyn_cast<arith::ConstantOp>(op)) {
       return constantOp.getType().isa<NoneType>();
     }
     return true;

@@ -47,12 +47,9 @@ using llvm::SmallVector;
 
 using mlir::AffineExpr;
 using mlir::AffineMap;
-using mlir::ConstantIndexOp;
-using mlir::ConstantOp;
 using mlir::failure;
 using mlir::FuncOp;
 using mlir::FunctionPass;
-using mlir::IndexCastOp;
 using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
@@ -63,6 +60,9 @@ using mlir::success;
 using mlir::TypeRange;
 using mlir::Value;
 using mlir::ValueRange;
+using mlir::arith::ConstantIndexOp;
+using mlir::arith::ConstantOp;
+using mlir::arith::IndexCastOp;
 
 namespace linalg = mlir::linalg;
 namespace mhlo = mlir::mhlo;

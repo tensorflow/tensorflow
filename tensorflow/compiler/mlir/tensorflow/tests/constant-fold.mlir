@@ -22,8 +22,8 @@ func @testShape(tensor<f32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0
 // CHECK-SAME:(%[[ARG_0:.*]]: tensor<4xf32>, %[[ARG_1:.*]]: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>)
 func @testPow(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) {
 
-  %cst_zero = constant dense<0.0> : tensor<f32>
-  %cst_one = constant dense<1.0> : tensor<f32>
+  %cst_zero = arith.constant dense<0.0> : tensor<f32>
+  %cst_one = arith.constant dense<1.0> : tensor<f32>
 
   // CHECK-DAG: %[[RES_NO_FOLD:.*]] = "tf.Pow"(%arg0, %arg1)
   %0 = "tf.Pow"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
@@ -132,8 +132,8 @@ func @testShapeNToShape(%arg0: tensor<*xf32>) -> tensor<?xi64> {
 
 // CHECK-LABEL: func @testLeakyRelu
 func @testLeakyRelu(%arg0 : tensor<16xf32>) -> (tensor<16xf32>, tensor<f32>, tensor<f32>, tensor<16xf32>) {
-  %pos = constant dense<5.0> : tensor<f32>
-  %neg = constant dense<-5.0> : tensor<f32>
+  %pos = arith.constant dense<5.0> : tensor<f32>
+  %neg = arith.constant dense<-5.0> : tensor<f32>
   %no = "tf.LeakyRelu"(%arg0) {alpha = 0.2 : f32} : (tensor<16xf32>) -> tensor<16xf32>
   %0 = "tf.LeakyRelu"(%pos) {alpha = 0.3 : f32} : (tensor<f32>) -> tensor<f32>
   %1 = "tf.LeakyRelu"(%neg) {alpha = 0.2 : f32} : (tensor<f32>) -> tensor<f32>
@@ -158,8 +158,8 @@ func @tfConst() -> (tensor<4xf32>, tensor<1x1x6x2xf32>) {
 // CHECK-LABEL: func @testAdd() -> tensor<2x2xi32>
 func @testAdd() -> tensor<2x2xi32> {
 ^bb0:
-  %0 = constant dense<[[0, 1], [2, 3]]> : tensor<2x2xi32>
-  %1 = constant dense<1> : tensor<2xi32>
+  %0 = arith.constant dense<[[0, 1], [2, 3]]> : tensor<2x2xi32>
+  %1 = arith.constant dense<1> : tensor<2xi32>
   %2 = "tf.Add"(%0, %1) {device = "", name = "add"} : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
   // CHECK:         [[cst:%.*]] = "tf.Const{{.*}} dense<{{\[\[}}1, 2], {{\[}}3, 4]]> : tensor<2x2xi32>
   // CHECK-NEXT:    return [[cst]] : tensor<2x2xi32>
@@ -168,10 +168,10 @@ func @testAdd() -> tensor<2x2xi32> {
 
 // CHECK-LABEL: testSimpleConcatOffset
 func @testSimpleConcatOffset() -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) {
-  %concat_dim = constant dense<1> : tensor<i32>
-  %shape0 = constant dense<[2, 2, 7]> : tensor<3xi32>
-  %shape1 = constant dense<[2, 3, 7]> : tensor<3xi32>
-  %shape2 = constant dense<[2, 5, 7]> : tensor<3xi32>
+  %concat_dim = arith.constant dense<1> : tensor<i32>
+  %shape0 = arith.constant dense<[2, 2, 7]> : tensor<3xi32>
+  %shape1 = arith.constant dense<[2, 3, 7]> : tensor<3xi32>
+  %shape2 = arith.constant dense<[2, 5, 7]> : tensor<3xi32>
 
   // CHECK-DAG: [[OFFSET_0:%.*]] = "tf.Const{{.*}} dense<0> : tensor<3xi32>
   // CHECK-DAG: [[OFFSET_1:%.*]] = "tf.Const{{.*}} dense<[0, 2, 0]> : tensor<3xi32>
@@ -185,11 +185,11 @@ func @testSimpleConcatOffset() -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) 
 
 // CHECK-LABEL: testConcatOffsetWithZeros
 func @testConcatOffsetWithZeros() -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) {
-  %concat_dim = constant dense<1> : tensor<i32>
-  %shape0 = constant dense<0> : tensor<3xi32>
-  %shape1 = constant dense<[0, 3, 0]> : tensor<3xi32>
-  %shape2 = constant dense<[0, 5, 0]> : tensor<3xi32>
-  %shape3 = constant dense<0> : tensor<3xi32>
+  %concat_dim = arith.constant dense<1> : tensor<i32>
+  %shape0 = arith.constant dense<0> : tensor<3xi32>
+  %shape1 = arith.constant dense<[0, 3, 0]> : tensor<3xi32>
+  %shape2 = arith.constant dense<[0, 5, 0]> : tensor<3xi32>
+  %shape3 = arith.constant dense<0> : tensor<3xi32>
 
   // CHECK-DAG: [[OFFSET_0:%.*]] = "tf.Const{{.*}} dense<0> : tensor<3xi32>
   // CHECK-DAG: [[OFFSET_2:%.*]] = "tf.Const{{.*}} dense<[0, 3, 0]> : tensor<3xi32>
@@ -203,10 +203,10 @@ func @testConcatOffsetWithZeros() -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32
 
 // CHECK-LABEL: testConcatOffsetNegativeConcatDim
 func @testConcatOffsetNegativeConcatDim() -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) {
-  %concat_dim = constant dense<-1> : tensor<i32>
-  %shape0 = constant dense<[2, 8, 3]> : tensor<3xi32>
-  %shape1 = constant dense<[2, 8, 5]> : tensor<3xi32>
-  %shape2 = constant dense<[2, 8, 7]> : tensor<3xi32>
+  %concat_dim = arith.constant dense<-1> : tensor<i32>
+  %shape0 = arith.constant dense<[2, 8, 3]> : tensor<3xi32>
+  %shape1 = arith.constant dense<[2, 8, 5]> : tensor<3xi32>
+  %shape2 = arith.constant dense<[2, 8, 7]> : tensor<3xi32>
 
   // CHECK-DAG: [[OFFSET_0:%.*]] = "tf.Const{{.*}} dense<0> : tensor<3xi32>
   // CHECK-DAG: [[OFFSET_1:%.*]] = "tf.Const{{.*}} dense<[0, 0, 3]> : tensor<3xi32>
@@ -220,8 +220,8 @@ func @testConcatOffsetNegativeConcatDim() -> (tensor<3xi32>, tensor<3xi32>, tens
 
 // CHECK-LABEL: testConcatOffsetNonConstConcatDim
 func @testConcatOffsetNonConstConcatDim(%concat_dim: tensor<i32>) -> (tensor<3xi32>, tensor<3xi32>) {
-  %shape0 = constant dense<[2, 2, 7]> : tensor<3xi32>
-  %shape1 = constant dense<[2, 3, 7]> : tensor<3xi32>
+  %shape0 = arith.constant dense<[2, 2, 7]> : tensor<3xi32>
+  %shape1 = arith.constant dense<[2, 3, 7]> : tensor<3xi32>
 
   // CHECK: tf.ConcatOffset
   %offset:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
@@ -231,8 +231,8 @@ func @testConcatOffsetNonConstConcatDim(%concat_dim: tensor<i32>) -> (tensor<3xi
 
 // CHECK-LABEL: testConcatOffsetNonConstShape
 func @testConcatOffsetNonConstShape(%shape1: tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>) {
-  %concat_dim = constant dense<1> : tensor<i32>
-  %shape0 = constant dense<[2, 2, 7]> : tensor<3xi32>
+  %concat_dim = arith.constant dense<1> : tensor<i32>
+  %shape0 = arith.constant dense<[2, 2, 7]> : tensor<3xi32>
 
   // CHECK: tf.ConcatOffset
   %offset:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
@@ -242,9 +242,9 @@ func @testConcatOffsetNonConstShape(%shape1: tensor<3xi32>) -> (tensor<3xi32>, t
 
 // CHECK-LABEL: testConcatOffsetBadNegativeConcatDim
 func @testConcatOffsetBadNegativeConcatDim() -> (tensor<3xi32>, tensor<3xi32>) {
-  %concat_dim = constant dense<-4> : tensor<i32>
-  %shape0 = constant dense<[2, 2, 7]> : tensor<3xi32>
-  %shape1 = constant dense<[2, 3, 7]> : tensor<3xi32>
+  %concat_dim = arith.constant dense<-4> : tensor<i32>
+  %shape0 = arith.constant dense<[2, 2, 7]> : tensor<3xi32>
+  %shape1 = arith.constant dense<[2, 3, 7]> : tensor<3xi32>
 
   // CHECK: tf.ConcatOffset
   %offset:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
@@ -254,9 +254,9 @@ func @testConcatOffsetBadNegativeConcatDim() -> (tensor<3xi32>, tensor<3xi32>) {
 
 // CHECK-LABEL: testConcatOffsetBadPositiveConcatDim
 func @testConcatOffsetBadPositiveConcatDim() -> (tensor<3xi32>, tensor<3xi32>) {
-  %concat_dim = constant dense<3> : tensor<i32>
-  %shape0 = constant dense<[2, 2, 7]> : tensor<3xi32>
-  %shape1 = constant dense<[2, 3, 7]> : tensor<3xi32>
+  %concat_dim = arith.constant dense<3> : tensor<i32>
+  %shape0 = arith.constant dense<[2, 2, 7]> : tensor<3xi32>
+  %shape1 = arith.constant dense<[2, 3, 7]> : tensor<3xi32>
 
   // CHECK: tf.ConcatOffset
   %offset:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
@@ -266,9 +266,9 @@ func @testConcatOffsetBadPositiveConcatDim() -> (tensor<3xi32>, tensor<3xi32>) {
 
 // CHECK-LABEL: testConcatOffsetDifferentNonConcatDimElements
 func @testConcatOffsetDifferentNonConcatDimElements() -> (tensor<3xi32>, tensor<3xi32>) {
-  %concat_dim = constant dense<1> : tensor<i32>
-  %shape0 = constant dense<[2, 2, 7]> : tensor<3xi32>
-  %shape1 = constant dense<[2, 3, 8]> : tensor<3xi32>
+  %concat_dim = arith.constant dense<1> : tensor<i32>
+  %shape0 = arith.constant dense<[2, 2, 7]> : tensor<3xi32>
+  %shape1 = arith.constant dense<[2, 3, 8]> : tensor<3xi32>
 
   // CHECK: tf.ConcatOffset
   %offset:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
@@ -279,7 +279,7 @@ func @testConcatOffsetDifferentNonConcatDimElements() -> (tensor<3xi32>, tensor<
 // Ops with side effects should not get constant folded.
 // CHECK-LABEL: func @testSideEffectOp() -> tensor<3xf32>
 func @testSideEffectOp() -> tensor<3xf32> {
-  %0 = constant dense<[3]> : tensor<1xi32>
+  %0 = arith.constant dense<[3]> : tensor<1xi32>
   %1 = "tf.RandomUniform"(%0) {device = "", seed = 3 : i64, seed2 = 5 : i64} : (tensor<1xi32>) -> tensor<3xf32>
   // CHECK: %[[random:.*]] = "tf.RandomUniform"
   // CHECK: return %[[random]]
@@ -289,8 +289,8 @@ func @testSideEffectOp() -> tensor<3xf32> {
 // Ops with unimplemented attributes which couldn't be added to the TFE_Op.
 // CHECK-LABEL: func @testUnimplementedOp() -> (tensor<i32>, tensor<i32>)
 func @testUnimplementedOp() -> (tensor<i32>, tensor<i32>) {
-  %0 = constant dense<1> : tensor<i32>
-  %1 = constant dense<2> : tensor<i32>
+  %0 = arith.constant dense<1> : tensor<i32>
+  %1 = arith.constant dense<2> : tensor<i32>
   %2 = "tf.Maximum"(%0, %1) {_output_shapes = ["tfshape$"]} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   %3 = "tf.Minimum"(%0, %1) {random_attr = "hello"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   return %2, %3: tensor<i32>, tensor<i32>
@@ -319,7 +319,7 @@ func @testTensorListElementShape(%arg0: tensor<!tf_type.variant<tensor<2x4xf32>>
 }
 
 func @RemoveTrivialAdd(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %cst = constant dense<0.0> : tensor<2x2xf32>
+  %cst = arith.constant dense<0.0> : tensor<2x2xf32>
   %0 = "tf.Add"(%arg0, %cst) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 
@@ -328,7 +328,7 @@ func @RemoveTrivialAdd(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 }
 
 func @RemoveTrivialAddBf16RHS(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
-  %cst = constant dense<0.0> : tensor<2x2xbf16>
+  %cst = arith.constant dense<0.0> : tensor<2x2xbf16>
   %0 = "tf.Add"(%arg0, %cst) : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xbf16>
   return %0 : tensor<2x2xbf16>
 
@@ -337,7 +337,7 @@ func @RemoveTrivialAddBf16RHS(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
 }
 
 func @RemoveTrivialAddBf16LHS(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
-  %cst = constant dense<0.0> : tensor<2x2xbf16>
+  %cst = arith.constant dense<0.0> : tensor<2x2xbf16>
   %0 = "tf.Add"(%cst, %arg0) : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xbf16>
   return %0 : tensor<2x2xbf16>
 
@@ -346,7 +346,7 @@ func @RemoveTrivialAddBf16LHS(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
 }
 
 func @RemoveTrivialAddV2(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %cst = constant dense<0.0> : tensor<2x2xf32>
+  %cst = arith.constant dense<0.0> : tensor<2x2xf32>
   %0 = "tf.AddV2"(%arg0, %cst) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 
@@ -355,7 +355,7 @@ func @RemoveTrivialAddV2(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 }
 
 func @RemoveTrivialSub(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %cst = constant dense<0.0> : tensor<2x2xf32>
+  %cst = arith.constant dense<0.0> : tensor<2x2xf32>
   %0 = "tf.Sub"(%arg0, %cst) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 
@@ -364,7 +364,7 @@ func @RemoveTrivialSub(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 }
 
 func @RemoveTrivialSubInt8(%arg0: tensor<2x2xi8>) -> tensor<2x2xi8> {
-  %cst = constant dense<0> : tensor<2x2xi8>
+  %cst = arith.constant dense<0> : tensor<2x2xi8>
   %0 = "tf.Sub"(%arg0, %cst) : (tensor<2x2xi8>, tensor<2x2xi8>) -> tensor<2x2xi8>
   return %0 : tensor<2x2xi8>
 
@@ -373,7 +373,7 @@ func @RemoveTrivialSubInt8(%arg0: tensor<2x2xi8>) -> tensor<2x2xi8> {
 }
 
 func @RemoveTrivialMul(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %cst = constant dense<1.0> : tensor<2x2xf32>
+  %cst = arith.constant dense<1.0> : tensor<2x2xf32>
   %0 = "tf.Mul"(%arg0, %cst) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 
@@ -382,7 +382,7 @@ func @RemoveTrivialMul(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 }
 
 func @RemoveTrivialDiv(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %cst = constant dense<1.0> : tensor<2x2xf32>
+  %cst = arith.constant dense<1.0> : tensor<2x2xf32>
   %0 = "tf.Div"(%arg0, %cst) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 
@@ -391,7 +391,7 @@ func @RemoveTrivialDiv(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 }
 
 func @RemoveTrivialRealDiv(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %cst = constant dense<1.0> : tensor<2x2xf32>
+  %cst = arith.constant dense<1.0> : tensor<2x2xf32>
   %0 = "tf.RealDiv"(%arg0, %cst) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 
@@ -400,7 +400,7 @@ func @RemoveTrivialRealDiv(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> te
 }
 
 func @RemoveTrivialDivBf16RHS(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
-  %cst = constant dense<1.0> : tensor<2x2xbf16>
+  %cst = arith.constant dense<1.0> : tensor<2x2xbf16>
   %0 = "tf.Div"(%arg0, %cst) : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xbf16>
   return %0 : tensor<2x2xbf16>
 
@@ -409,7 +409,7 @@ func @RemoveTrivialDivBf16RHS(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
 }
 
 func @RemoveTrivialMulInt8(%arg0: tensor<2x2xi8>) -> tensor<2x2xi8> {
-  %cst = constant dense<1> : tensor<2x2xi8>
+  %cst = arith.constant dense<1> : tensor<2x2xi8>
   %0 = "tf.Mul"(%cst, %arg0) : (tensor<2x2xi8>, tensor<2x2xi8>) -> tensor<2x2xi8>
   return %0 : tensor<2x2xi8>
 
@@ -418,7 +418,7 @@ func @RemoveTrivialMulInt8(%arg0: tensor<2x2xi8>) -> tensor<2x2xi8> {
 }
 
 func @DivBf16LHS(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
-  %cst = constant dense<1.0> : tensor<2x2xbf16>
+  %cst = arith.constant dense<1.0> : tensor<2x2xbf16>
   %0 = "tf.Div"(%cst, %arg0) : (tensor<2x2xbf16>, tensor<2x2xbf16>) -> tensor<2x2xbf16>
   return %0 : tensor<2x2xbf16>
 
@@ -427,23 +427,23 @@ func @DivBf16LHS(%arg0: tensor<2x2xbf16>) -> tensor<2x2xbf16> {
 }
 
 func @DontRemoveTrivialAdd(%arg0: tensor<1x2xf32>) -> tensor<2x2xf32> {
-  %cst = constant dense<0.0> : tensor<2x2xf32>
+  %cst = arith.constant dense<0.0> : tensor<2x2xf32>
   %0 = "tf.AddV2"(%arg0, %cst) : (tensor<1x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 
   // CHECK-LABEL: DontRemoveTrivialAdd
-  // CHECK: %[[CONST:.*]] = constant dense<0.000000e+00> : tensor<2x2xf32>
+  // CHECK: %[[CONST:.*]] = arith.constant dense<0.000000e+00> : tensor<2x2xf32>
   // CHECK: %[[RESULT:.*]] = "tf.AddV2"(%arg0, %[[CONST]]) : (tensor<1x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: return %[[RESULT]] : tensor<2x2xf32>
 }
 
 func @DontRemoveTrivialAdd2(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  %cst = constant dense<0.0> : tensor<2x2xf32>
+  %cst = arith.constant dense<0.0> : tensor<2x2xf32>
   %0 = "tf.AddV2"(%arg0, %cst) : (tensor<?x?xf32> , tensor<2x2xf32>) -> tensor<?x?xf32>
   return %0 :tensor<?x?xf32>
 
   // CHECK-LABEL: DontRemoveTrivialAdd2
-  // CHECK: %[[CONST:.*]] = constant dense<0.000000e+00> : tensor<2x2xf32>
+  // CHECK: %[[CONST:.*]] = arith.constant dense<0.000000e+00> : tensor<2x2xf32>
   // CHECK: %[[RESULT:.*]] = "tf.AddV2"(%arg0, %[[CONST]]) : (tensor<?x?xf32>, tensor<2x2xf32>) -> tensor<?x?xf32>
   // CHECK: return %[[RESULT]] : tensor<?x?xf32>
 }
@@ -664,9 +664,9 @@ func @yieldOp(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (ten
 
 // CHECK-LABEL: @range_int
 func @range_int() -> tensor<?xi32> {
-  %cst = constant dense<0> : tensor<i32>
-  %cst_1 = constant dense<4> : tensor<i32>
-  %cst_2 = constant dense<1> : tensor<i32>
+  %cst = arith.constant dense<0> : tensor<i32>
+  %cst_1 = arith.constant dense<4> : tensor<i32>
+  %cst_2 = arith.constant dense<1> : tensor<i32>
 
   // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 3]> : tensor<4xi32>} : () -> tensor<?xi32>
   // CHECK: return %[[CST]]
@@ -676,9 +676,9 @@ func @range_int() -> tensor<?xi32> {
 
 // CHECK-LABEL: @range_uint
 func @range_uint() -> tensor<?xui32> {
-  %cst = constant dense<0> : tensor<ui32>
-  %cst_1 = constant dense<4> : tensor<ui32>
-  %cst_2 = constant dense<1> : tensor<ui32>
+  %cst = arith.constant dense<0> : tensor<ui32>
+  %cst_1 = arith.constant dense<4> : tensor<ui32>
+  %cst_2 = arith.constant dense<1> : tensor<ui32>
 
   // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 3]> : tensor<4xui32>} : () -> tensor<?xui32>
   // CHECK: return %[[CST]]
@@ -688,9 +688,9 @@ func @range_uint() -> tensor<?xui32> {
 
 // CHECK-LABEL: @range_float
 func @range_float() -> tensor<?xf32> {
-  %cst = constant dense<0.0> : tensor<f32>
-  %cst_1 = constant dense<4.0> : tensor<f32>
-  %cst_2 = constant dense<1.0> : tensor<f32>
+  %cst = arith.constant dense<0.0> : tensor<f32>
+  %cst_1 = arith.constant dense<4.0> : tensor<f32>
+  %cst_2 = arith.constant dense<1.0> : tensor<f32>
 
   // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf32>} : () -> tensor<?xf32>
   // CHECK: return %[[CST]]

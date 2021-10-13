@@ -179,6 +179,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",

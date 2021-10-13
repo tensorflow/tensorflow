@@ -20,6 +20,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
@@ -52,19 +54,19 @@ class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
 
     auto comparison_direction = op.comparison_direction();
     auto compare_predicate =
-        llvm::StringSwitch<Optional<CmpIPredicate>>(comparison_direction)
-            .Case("EQ", CmpIPredicate::eq)
-            .Case("NE", CmpIPredicate::ne)
-            .Case("LT", CmpIPredicate::slt)
-            .Case("LE", CmpIPredicate::sle)
-            .Case("GT", CmpIPredicate::sgt)
-            .Case("GE", CmpIPredicate::sge)
+        llvm::StringSwitch<Optional<arith::CmpIPredicate>>(comparison_direction)
+            .Case("EQ", arith::CmpIPredicate::eq)
+            .Case("NE", arith::CmpIPredicate::ne)
+            .Case("LT", arith::CmpIPredicate::slt)
+            .Case("LE", arith::CmpIPredicate::sle)
+            .Case("GT", arith::CmpIPredicate::sgt)
+            .Case("GE", arith::CmpIPredicate::sge)
             .Default(llvm::None);
 
     if (!compare_predicate.hasValue()) return failure();
 
-    rewriter.replaceOpWithNewOp<CmpIOp>(op, compare_predicate.getValue(), lhs,
-                                        rhs);
+    rewriter.replaceOpWithNewOp<arith::CmpIOp>(op, compare_predicate.getValue(),
+                                               lhs, rhs);
     return success();
   }
 };
@@ -89,19 +91,19 @@ class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
 
     auto comparison_direction = op.comparison_direction();
     auto compare_predicate =
-        llvm::StringSwitch<Optional<CmpFPredicate>>(comparison_direction)
-            .Case("EQ", CmpFPredicate::OEQ)
-            .Case("NE", CmpFPredicate::UNE)
-            .Case("LT", CmpFPredicate::OLT)
-            .Case("LE", CmpFPredicate::OLE)
-            .Case("GT", CmpFPredicate::OGT)
-            .Case("GE", CmpFPredicate::OGE)
+        llvm::StringSwitch<Optional<arith::CmpFPredicate>>(comparison_direction)
+            .Case("EQ", arith::CmpFPredicate::OEQ)
+            .Case("NE", arith::CmpFPredicate::UNE)
+            .Case("LT", arith::CmpFPredicate::OLT)
+            .Case("LE", arith::CmpFPredicate::OLE)
+            .Case("GT", arith::CmpFPredicate::OGT)
+            .Case("GE", arith::CmpFPredicate::OGE)
             .Default(llvm::None);
 
     if (!compare_predicate.hasValue()) return failure();
 
-    rewriter.replaceOpWithNewOp<CmpFOp>(op, compare_predicate.getValue(), lhs,
-                                        rhs);
+    rewriter.replaceOpWithNewOp<arith::CmpFOp>(op, compare_predicate.getValue(),
+                                               lhs, rhs);
     return success();
   }
 };
@@ -148,7 +150,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
         output_type.getShape(),
         IntegerType::get(rewriter.getContext(), bitwidth));
     auto loc = op.getLoc();
-    auto integer_const = rewriter.create<mlir::ConstantOp>(
+    auto integer_const = rewriter.create<mlir::arith::ConstantOp>(
         loc, DenseIntElementsAttr::get(int_shape_type, values));
 
     auto int_or_float_shape_ty =
@@ -165,7 +167,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 
     // For complex types, generate a constant tensor of zeroes for the imaginary
     // part and use iota_const for real part.
-    auto zeroes = rewriter.create<mlir::ConstantOp>(
+    auto zeroes = rewriter.create<mlir::arith::ConstantOp>(
         loc, DenseIntElementsAttr::get(int_shape_type, APInt(bitwidth, 0)));
     auto imag_zeroes =
         rewriter.create<ConvertOp>(loc, int_or_float_shape_ty, zeroes);
@@ -180,7 +182,8 @@ namespace {
 struct LegalizeToStandardPass
     : public LegalizeToStandardPassBase<LegalizeToStandardPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<StandardOpsDialect>();
+    registry.insert<arith::ArithmeticDialect, math::MathDialect,
+                    StandardOpsDialect>();
   }
 
   /// Perform the lowering to Standard dialect.

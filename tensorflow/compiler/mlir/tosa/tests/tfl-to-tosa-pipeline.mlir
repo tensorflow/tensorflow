@@ -13,7 +13,7 @@
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<16xf32>}
 // CHECK: %[[VAR1:.*]] = "tosa.conv2d"(%arg0, %arg1, %[[VAR0]]) {dilation = [1, 1], pad = [0, 0, 0, 0], stride = [1, 1]}
 func @test_conv2d(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<16x1x1x8xf32>) -> tensor<*xf32> {
-  %cst = constant dense<0.000000e+00> : tensor<16xf32>
+  %cst = arith.constant dense<0.000000e+00> : tensor<16xf32>
   %0 = "tfl.conv_2d"(%arg0, %arg1, %cst)  {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<1x32x32x8xf32>, tensor<16x1x1x8xf32>, tensor<16xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -24,7 +24,7 @@ func @test_conv2d(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<16x1x1x8xf32>) -> 
 // CHECK: "tosa.conv2d"
 // CHECK-SAME: tensor<?x32x32x16xf32>
 func @test_conv2d_dynamic(%arg0: tensor<?x32x32x8xf32>, %arg1: tensor<16x1x1x8xf32>) -> tensor<*xf32> {
-  %cst = constant dense<0.000000e+00> : tensor<16xf32>
+  %cst = arith.constant dense<0.000000e+00> : tensor<16xf32>
   %0 = "tfl.conv_2d"(%arg0, %arg1, %cst)  {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<?x32x32x8xf32>, tensor<16x1x1x8xf32>, tensor<16xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -45,7 +45,7 @@ func @test_conv2d_bias(%arg0: tensor<1x32x32x8xf32>, %cst: tensor<16x1x1x8xf32>,
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<16xf32>}
 // CHECK: %[[VAR1:.*]] = "tosa.transpose_conv2d"(%arg0, %arg1, %[[VAR0]]) {dilation = [1, 1], out_pad = [0, 0], out_shape = [1, 32, 32, 16], stride = [1, 1]}
 func @test_transpose_conv2d(%arg0: tensor<1x32x32x8xf32>, %cst_0: tensor<16x1x1x8xf32>) -> tensor<1x32x32x16xf32> {
-  %cst = constant dense<[1, 32, 32, 16]> : tensor<4xi32>
+  %cst = arith.constant dense<[1, 32, 32, 16]> : tensor<4xi32>
   %cst_1 = constant unit
   %0 = "tfl.transpose_conv"(%cst, %cst_0, %arg0, %cst_1)  {padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<4xi32>, tensor<16x1x1x8xf32>, tensor<1x32x32x8xf32>, none) -> tensor<1x32x32x16xf32>
   return %0 : tensor<1x32x32x16xf32>
@@ -165,7 +165,7 @@ func @test_exp(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
 // CHECK: %[[VAR3:.*]] = "tosa.mul"(%[[VAR1]], %[[VAR2]]) {shift = 0 : i32}
 func @test_rcp(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<1.000000e+00> : tensor<f32>
+  %cst = arith.constant dense<1.000000e+00> : tensor<f32>
   %0 = "tfl.div"(%cst, %arg0)  {fused_activation_function = "NONE"}  : (tensor<f32>, tensor<13x21x3xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -257,7 +257,7 @@ func @test_logical_not(%arg0: tensor<1x21x3xi1>) -> tensor<*xi1> {
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.reduce_any"(%arg0) {axis = 0 : i64}
 // CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [21, 3]}
 func @test_reduce_any(%arg0: tensor<13x21x3xi1>) -> tensor<21x3xi1> {
-  %cst = constant dense<0> : tensor<1xi32>
+  %cst = arith.constant dense<0> : tensor<1xi32>
   %0 = "tfl.reduce_any"(%arg0, %cst)  {keep_dims = false}  : (tensor<13x21x3xi1>, tensor<1xi32>) -> tensor<21x3xi1>
   return %0 : tensor<21x3xi1>
 }
@@ -268,7 +268,7 @@ func @test_reduce_any(%arg0: tensor<13x21x3xi1>) -> tensor<21x3xi1> {
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.reduce_min"(%arg0) {axis = 0 : i64}
 // CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [21, 3]}
 func @test_reduce_min(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
-  %cst = constant dense<0> : tensor<1xi32>
+  %cst = arith.constant dense<0> : tensor<1xi32>
   %0 = "tfl.reduce_min"(%arg0, %cst)  {keep_dims = false}  : (tensor<13x21x3xf32>, tensor<1xi32>) -> tensor<21x3xf32>
   return %0 : tensor<21x3xf32>
 }
@@ -279,7 +279,7 @@ func @test_reduce_min(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.reduce_max"(%arg0) {axis = 0 : i64}
 // CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [21, 3]}
 func @test_reduce_max(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
-  %cst = constant dense<0> : tensor<1xi32>
+  %cst = arith.constant dense<0> : tensor<1xi32>
   %0 = "tfl.reduce_max"(%arg0, %cst)  {keep_dims = false}  : (tensor<13x21x3xf32>, tensor<1xi32>) -> tensor<21x3xf32>
   return %0 : tensor<21x3xf32>
 }
@@ -290,7 +290,7 @@ func @test_reduce_max(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.reduce_sum"(%arg0) {axis = 0 : i64}
 // CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [21, 3]}
 func @test_reduce_sum(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
-  %cst = constant dense<0> : tensor<1xi32>
+  %cst = arith.constant dense<0> : tensor<1xi32>
   %0 = "tfl.sum"(%arg0, %cst)  {keep_dims = false}  : (tensor<13x21x3xf32>, tensor<1xi32>) -> tensor<21x3xf32>
   return %0 : tensor<21x3xf32>
 }
@@ -304,7 +304,7 @@ func @test_reduce_sum(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
 // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1]}
 // CHECK: %[[VAR4:.*]] = "tosa.mul"(%[[VAR2]], %[[VAR3]]) {shift = 0 : i32}
 func @test_reduce_mean(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
-  %cst = constant dense<0> : tensor<1xi32>
+  %cst = arith.constant dense<0> : tensor<1xi32>
   %0 = "tfl.mean"(%arg0, %cst)  {keep_dims = false}  : (tensor<13x21x3xf32>, tensor<1xi32>) -> tensor<21x3xf32>
   return %0 : tensor<21x3xf32>
 }
@@ -315,7 +315,7 @@ func @test_reduce_mean(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.reduce_prod"(%arg0) {axis = 0 : i64}
 // CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [21, 3]}
 func @test_reduce_product(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
-  %cst = constant dense<0> : tensor<1xi32>
+  %cst = arith.constant dense<0> : tensor<1xi32>
   %0 = "tfl.reduce_prod"(%arg0, %cst)  {keep_dims = false}  : (tensor<13x21x3xf32>, tensor<1xi32>) -> tensor<21x3xf32>
   return %0 : tensor<21x3xf32>
 }
@@ -545,7 +545,7 @@ func @test_max_pool2d_dynamic(%arg0: tensor<?x32x32x8xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: test_reshape
 // CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 819]}
 func @test_reshape(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[1, 819]> : tensor<2xi32>
+  %cst = arith.constant dense<[1, 819]> : tensor<2xi32>
   %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -555,7 +555,7 @@ func @test_reshape(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: test_reshape_dynamic
 // CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, -1]}
 func @test_reshape_dynamic(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[1, -1]> : tensor<2xi32>
+  %cst = arith.constant dense<[1, -1]> : tensor<2xi32>
   %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -566,7 +566,7 @@ func @test_reshape_dynamic(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[2, 0, 1]> : tensor<3xi32>}
 // CHECK: %[[VAR1:.*]] = "tosa.transpose"(%arg0, %[[VAR0]])
 func @test_transpose(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[2, 0, 1]> : tensor<3xi32>
+  %cst = arith.constant dense<[2, 0, 1]> : tensor<3xi32>
   %0 = "tfl.transpose"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -577,7 +577,7 @@ func @test_transpose(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[2, 0, 1]> : tensor<3xi32>}
 // CHECK: %[[VAR1:.*]] = "tosa.transpose"(%arg0, %[[VAR0]])
 func @test_transpose(%arg0: tensor<13x?x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[2, 0, 1]> : tensor<3xi32>
+  %cst = arith.constant dense<[2, 0, 1]> : tensor<3xi32>
   %0 = "tfl.transpose"(%arg0, %cst) : (tensor<13x?x3xf32>, tensor<3xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -587,8 +587,8 @@ func @test_transpose(%arg0: tensor<13x?x3xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: test_slice
 // CHECK: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [4, 11, 1], start = [6, 8, 0]}
 func @test_slice(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[6, 8, 0]> : tensor<3xi32>
-  %cst_0 = constant dense<[4, 11, 1]> : tensor<3xi32>
+  %cst = arith.constant dense<[6, 8, 0]> : tensor<3xi32>
+  %cst_0 = arith.constant dense<[4, 11, 1]> : tensor<3xi32>
   %0 = "tfl.slice"(%arg0, %cst, %cst_0) : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -601,9 +601,9 @@ func @test_slice(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.slice"(%[[VAR1]]) {size = [9, 1, 7, 1, 2, 1], start = [0, 0, 0, 0, 0, 0]}
 // CHECK: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [9, 7, 2]}
 func @test_strided_slice_simple(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[4, 0, 1]> : tensor<3xi32>
-  %cst_0 = constant dense<[13, 21, 3]> : tensor<3xi32>
-  %cst_1 = constant dense<[1, 3, 1]> : tensor<3xi32>
+  %cst = arith.constant dense<[4, 0, 1]> : tensor<3xi32>
+  %cst_0 = arith.constant dense<[13, 21, 3]> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[1, 3, 1]> : tensor<3xi32>
   %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -615,9 +615,9 @@ func @test_strided_slice_simple(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // CHECK: %[[VAR1:.*]] = tensor.cast %0 : tensor<9x21x2xf32> to tensor<*xf32>
 // CHECK: return %[[VAR1]]
 func @test_strided_slice_unstrided(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[4, 0, 1]> : tensor<3xi32>
-  %cst_0 = constant dense<[13, 21, 3]> : tensor<3xi32>
-  %cst_1 = constant dense<[1, 1, 1]> : tensor<3xi32>
+  %cst = arith.constant dense<[4, 0, 1]> : tensor<3xi32>
+  %cst_0 = arith.constant dense<[13, 21, 3]> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[1, 1, 1]> : tensor<3xi32>
   %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -629,9 +629,9 @@ func @test_strided_slice_unstrided(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> 
 // CHECK: %[[VAR1:.*]] = tensor.cast %0 : tensor<9x21x3xf32> to tensor<*xf32>
 // CHECK: return %[[VAR1]]
 func @test_strided_slice_unstrided_shorter(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[4, 0]> : tensor<2xi32>
-  %cst_0 = constant dense<[13, 21]> : tensor<2xi32>
-  %cst_1 = constant dense<[1, 1]> : tensor<2xi32>
+  %cst = arith.constant dense<[4, 0]> : tensor<2xi32>
+  %cst_0 = arith.constant dense<[13, 21]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<[1, 1]> : tensor<2xi32>
   %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -642,8 +642,8 @@ func @test_strided_slice_unstrided_shorter(%arg0: tensor<13x21x3xf32>) -> tensor
 // CHECK: %[[VAR0:.*]] = tensor.cast %arg0 : tensor<10x?x?xf32> to tensor<*xf32>
 // CHECK: return %[[VAR0]]
 func @test_strided_slice_dynamic_masked(%arg0: tensor<10x?x?xf32>, %arg1: tensor<3xi32>) -> tensor<*xf32> {
-  %cst_0 = constant dense<[13, -1, 3]> : tensor<3xi32>
-  %cst_1 = constant dense<[1, 1, 1]> : tensor<3xi32>
+  %cst_0 = arith.constant dense<[13, -1, 3]> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[1, 1, 1]> : tensor<3xi32>
   %0 = "tfl.strided_slice"(%arg0, %arg1, %cst_0, %cst_1)  {begin_mask = 7 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -656,9 +656,9 @@ func @test_strided_slice_dynamic_masked(%arg0: tensor<10x?x?xf32>, %arg1: tensor
 // the result type. These casts can be removed during shape inference.
 // CHECK-LABEL: test_strided_slice_dynamic_begin
 func @test_strided_slice_dynamic_begin(%arg0: tensor<10x?x?xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[0, 2, 0]> : tensor<3xi32>
-  %cst_0 = constant dense<[13, -1, 3]> : tensor<3xi32>
-  %cst_1 = constant dense<[1, 1, 1]> : tensor<3xi32>
+  %cst = arith.constant dense<[0, 2, 0]> : tensor<3xi32>
+  %cst_0 = arith.constant dense<[13, -1, 3]> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[1, 1, 1]> : tensor<3xi32>
   // CHECK: %[[VAR0:.*]] = tensor.cast %arg0 : tensor<10x?x?xf32> to tensor<*xf32>
   // CHECK: return %[[VAR0]]
   %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
@@ -672,7 +672,7 @@ func @test_strided_slice_dynamic_begin(%arg0: tensor<10x?x?xf32>) -> tensor<*xf3
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
 // CHECK: %[[VAR2:.*]] = "tosa.select"(%[[VAR1]], %arg0, %arg1)
 func @test_select(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
-  %cst = constant dense<false> : tensor<1xi1>
+  %cst = arith.constant dense<false> : tensor<1xi1>
   %0 = "tfl.select_v2"(%cst, %arg0, %arg1) : (tensor<1xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
 }
@@ -722,7 +722,7 @@ func @test_unstack(%arg0: tensor<1x32x32x8xf32>) -> tensor<*xf32> {
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{\[\[}}1, 1], {{\[}}2, 2]]> : tensor<2x2xi32>}
 // CHECK: %[[VAR1:.*]] = "tosa.pad"(%arg0, %[[VAR0]])
 func @test_pad(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[[1, 1], [2, 2]]> : tensor<2x2xi32>
+  %cst = arith.constant dense<[[1, 1], [2, 2]]> : tensor<2x2xi32>
   %0 = "tfl.pad"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2x2xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -732,7 +732,7 @@ func @test_pad(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: test_expand_dims
 // CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 13, 21, 3]}
 func @test_expand_dims(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[1, 13, 21, 3]> : tensor<4xi32>
+  %cst = arith.constant dense<[1, 13, 21, 3]> : tensor<4xi32>
   %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<4xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -742,7 +742,7 @@ func @test_expand_dims(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: test_shape
 // CHECK: %[[VAR0:.*]] = "tosa.const"() {value = dense<[13, 21, 3]> : tensor<3xi32>}
 func @test_shape() -> tensor<3xi32> {
-  %cst = constant dense<[13, 21, 3]> : tensor<3xi32>
+  %cst = arith.constant dense<[13, 21, 3]> : tensor<3xi32>
   return %cst : tensor<3xi32>
 }
 
@@ -751,7 +751,7 @@ func @test_shape() -> tensor<3xi32> {
 // CHECK-LABEL: test_rank
 // CHECK: %[[VAR0:.*]] = "tosa.const"() {value = dense<3> : tensor<i32>}
 func @test_rank() -> tensor<i32> {
-  %cst = constant dense<3> : tensor<i32>
+  %cst = arith.constant dense<3> : tensor<i32>
   return %cst : tensor<i32>
 }
 
@@ -804,7 +804,7 @@ func @test_log_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // CHECK: %[[VAR2:.*]] = "tosa.transpose"(%arg1, %[[VAR0]])
 // CHECK: %[[VAR3:.*]] = "tosa.fully_connected"(%arg0, %[[VAR2]], %[[VAR1]])
 func @test_matmul(%arg0: tensor<14x19xf32>, %arg1: tensor<19x28xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[1, 0]> : tensor<2xi32>
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
   %cst_0 = constant unit
   %0 = "tfl.transpose"(%arg1, %cst) : (tensor<19x28xf32>, tensor<2xi32>) -> tensor<*xf32>
   %1 = "tfl.fully_connected"(%arg0, %0, %cst_0)  {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}  : (tensor<14x19xf32>, tensor<*xf32>, none) -> tensor<*xf32>
@@ -866,7 +866,7 @@ func @test_fullyconnected_extra_dim(%arg0: tensor<1x14x19xf32>, %arg1: tensor<28
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
 // CHECK: %[[VAR2:.*]] = "tosa.add"(%arg0, %[[VAR1]])
 func @test_add_scalar(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<1.000000e+00> : tensor<f32>
+  %cst = arith.constant dense<1.000000e+00> : tensor<f32>
   %0 = "tfl.add"(%arg0, %cst)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xf32>, tensor<f32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -878,7 +878,7 @@ func @test_add_scalar(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reduce_sum"(%[[VAR0]]) {axis = 1 : i64}
 // CHECK: %[[VAR2:.*]] = "tosa.add"(%arg0, %[[VAR1]])
 func @test_add_1d(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[0, 1]> : tensor<2xi32>
+  %cst = arith.constant dense<[0, 1]> : tensor<2xi32>
   %0 = "tfl.sum"(%arg1, %cst)  {keep_dims = false}  : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<3xf32>
   %1 = "tfl.add"(%arg0, %0)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xf32>, tensor<3xf32>) -> tensor<*xf32>
   return %1 : tensor<*xf32>
@@ -891,7 +891,7 @@ func @test_add_1d(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> ten
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 7, 0]}
 // CHECK: %[[VAR2:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 14, 0]}
 func @test_split(%arg0: tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>) {
-  %cst_0 = constant dense<1> : tensor<i32>
+  %cst_0 = arith.constant dense<1> : tensor<i32>
   %0:3 = "tfl.split"(%cst_0, %arg0)  {num_splits = 3 : i32}  : (tensor<i32>, tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>)
   return %0#0, %0#1, %0#2 : tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>
 }
@@ -903,7 +903,7 @@ func @test_split(%arg0: tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 7, 0]}
 // CHECK: %[[VAR2:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 14, 0]}
 func @test_split_neg(%arg0: tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>) {
-  %cst_0 = constant dense<-2> : tensor<i32>
+  %cst_0 = arith.constant dense<-2> : tensor<i32>
   %0:3 = "tfl.split"(%cst_0, %arg0)  {num_splits = 3 : i32}  : (tensor<i32>, tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>)
   return %0#0, %0#1, %0#2 : tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>
 }
@@ -915,7 +915,7 @@ func @test_split_neg(%arg0: tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.slice"(%arg0) {size = [7, 13, 3], start = [7, 0, 0]}
 // CHECK: %[[VAR2:.*]] = "tosa.slice"(%arg0) {size = [7, 13, 3], start = [14, 0, 0]}
 func @test_split_axis_0(%arg0: tensor<21x13x3xf32>) -> (tensor<7x13x3xf32>, tensor<7x13x3xf32>, tensor<7x13x3xf32>) {
-  %cst_0 = constant dense<0> : tensor<i32>
+  %cst_0 = arith.constant dense<0> : tensor<i32>
   %0:3 = "tfl.split"(%cst_0, %arg0)  {num_splits = 3 : i32}  : (tensor<i32>, tensor<21x13x3xf32>) -> (tensor<7x13x3xf32>, tensor<7x13x3xf32>, tensor<7x13x3xf32>)
   return %0#0, %0#1, %0#2 : tensor<7x13x3xf32>, tensor<7x13x3xf32>, tensor<7x13x3xf32>
 }
@@ -925,7 +925,7 @@ func @test_split_axis_0(%arg0: tensor<21x13x3xf32>) -> (tensor<7x13x3xf32>, tens
 // CHECK-LABEL: test_tile
 // CHECK: tosa.tile
 func @test_tile(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = constant dense<[3, 1, 2]> : tensor<3xi32>
+  %cst = arith.constant dense<[3, 1, 2]> : tensor<3xi32>
   %0 = "tfl.tile"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -940,8 +940,8 @@ func @test_tile(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.transpose"(%[[VAR3]], %[[VAR1]])
 // CHECK: %[[VAR5:.*]] = "tosa.reshape"(%[[VAR4]]) {new_shape = [26, 11, 3]}
 func @test_space_to_batch(%arg0: tensor<13x21x3xf32>) -> tensor<26x11x3xf32> {
-  %cst = constant dense<2> : tensor<1xi32>
-  %cst_0 = constant dense<[[0, 1]]> : tensor<1x2xi32>
+  %cst = arith.constant dense<2> : tensor<1xi32>
+  %cst_0 = arith.constant dense<[[0, 1]]> : tensor<1x2xi32>
   %0 = "tfl.space_to_batch_nd"(%arg0, %cst, %cst_0) : (tensor<13x21x3xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<26x11x3xf32>
   return %0 : tensor<26x11x3xf32>
 }
@@ -957,9 +957,9 @@ func @test_space_to_batch(%arg0: tensor<13x21x3xf32>) -> tensor<26x11x3xf32> {
 // CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%[[VAR4]]) {new_shape = [2, 64, 64, 1]}
 // CHECK: return %[[VAR5:.*]]
 func @test_batch_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<2x64x64x1xf32> {
-  %cst = constant dense<2> : tensor<2xi32>
-  %cst_0 = constant dense<0> : tensor<2x2xi32>
-  %cst_1 = constant dense<[3, 1, 2, 0]> : tensor<4xi32>
+  %cst = arith.constant dense<2> : tensor<2xi32>
+  %cst_0 = arith.constant dense<0> : tensor<2x2xi32>
+  %cst_1 = arith.constant dense<[3, 1, 2, 0]> : tensor<4xi32>
   %0 = "tfl.transpose"(%arg0, %cst_1) : (tensor<1x32x32x8xf32>, tensor<4xi32>) -> tensor<8x32x32x1xf32>
   %1 = "tfl.batch_to_space_nd"(%0, %cst, %cst_0) : (tensor<8x32x32x1xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<2x64x64x1xf32>
   return %1 : tensor<2x64x64x1xf32>
@@ -1003,7 +1003,7 @@ func @test_depth_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x64x64x2xf32>
 // CHECK-DAG: %[[VAR8:.*]] = "tosa.transpose"(%[[VAR7]], %[[VAR0]])
 // CHECK: %[[VAR9:.*]] = "tosa.reshape"(%[[VAR8]]) {new_shape = [4, 4, 2]}
 func @test_one_hot(%arg0: tensor<4x4xi32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<4x4x2xf32> {
-  %0 = constant dense<2> : tensor<i32>
+  %0 = arith.constant dense<2> : tensor<i32>
   %1 = "tfl.one_hot"(%arg0, %0, %arg1, %arg2) {axis = -1 : i32} : (tensor<4x4xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<4x4x2xf32>
   return %1 : tensor<4x4x2xf32>
 }
@@ -1371,7 +1371,7 @@ func @test_fullyconnected_hybrid(%arg0: tensor<14x19xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: @test_conv2d_infer
 // CHECK: -> tensor<*xf32>
 func @test_conv2d_infer(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<16x1x1x8xf32>) -> tensor<*xf32> {
-  %cst = constant dense<0.000000e+00> : tensor<16xf32>
+  %cst = arith.constant dense<0.000000e+00> : tensor<16xf32>
   // CHECK: tosa.add
   // CHECK: tosa.conv2d
   // CHECK: tensor.cast

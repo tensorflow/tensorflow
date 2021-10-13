@@ -131,6 +131,9 @@ cc_library(
         ":tf_framework_legalize_to_llvm",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:ArithmeticToLLVM",
         "@llvm-project//mlir:MathToLibm",
         "@llvm-project//mlir:MathToLLVM",
         "@llvm-project//mlir:MemRefDialect",
@@ -185,6 +188,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core/platform:cuda_libdevice_path",
+        "//tensorflow/core/platform:rocm_rocdl_path",
         "//tensorflow/core:lib",
     ] + if_cuda_is_configured([
         "//tensorflow/stream_executor/gpu:asm_compiler",

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
@@ -167,9 +168,9 @@ namespace {
 class XlaHloToLhloPass
     : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry
-        .insert<StandardOpsDialect, memref::MemRefDialect, mhlo::MhloDialect,
-                lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
+    registry.insert<arith::ArithmeticDialect, StandardOpsDialect,
+                    memref::MemRefDialect, mhlo::MhloDialect,
+                    lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
   }
 
  public:
@@ -1403,7 +1404,7 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
   Location loc = builder_.getUnknownLoc();
 
   Value byte_shift =
-      builder_.create<ConstantIndexOp>(alloc.getLoc(), slice.offset());
+      builder_.create<arith::ConstantIndexOp>(alloc.getLoc(), slice.offset());
 
   xla::Shape physical_shape =
       xla::ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
@@ -1654,9 +1655,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
 Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
   module.getContext()
-      ->loadDialect<StandardOpsDialect, memref::MemRefDialect,
-                    mhlo::MhloDialect, lmhlo::LmhloDialect,
-                    lmhlo_gpu::LmhloGpuDialect>();
+      ->loadDialect<arith::ArithmeticDialect, StandardOpsDialect,
+                    memref::MemRefDialect, mhlo::MhloDialect,
+                    lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
 
   module->setLoc(mlir::NameLoc::get(
       mlir::Identifier::get(hlo_module.name(), module.getContext())));

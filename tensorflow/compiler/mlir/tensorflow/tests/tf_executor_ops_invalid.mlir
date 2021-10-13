@@ -38,8 +38,8 @@ func @empty_graph() {
 // Check that only tf_executor operations can be present in a tf_executor.graph.
 func @graph_with_invalid_op(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %result = "tf_executor.graph" () ({
-    %val = addf %arg0, %arg0 : tensor<*xf32>
-// expected-error@-1 {{'std.addf' op unallowed inside a tf_executor.graph region}}
+    %val = arith.addf %arg0, %arg0 : tensor<*xf32>
+// expected-error@-1 {{'arith.addf' op unallowed inside a tf_executor.graph region}}
     tf_executor.fetch %val : tensor<*xf32>
   }) : () -> tensor<*xf32>
   return %result : tensor<*xf32>

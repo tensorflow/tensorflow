@@ -713,6 +713,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:CallOpInterfacesIncGen",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ControlFlowInterfaces",
@@ -1911,6 +1912,7 @@ gentbl_cc_library(
     td_file = "transforms/optimize.td",
     deps = [
         ":tensorflow_ops_td_files",
+        "@llvm-project//mlir:ArithmeticOpsTdFiles",
         "@llvm-project//mlir:StdOpsTdFiles",
     ],
 )
@@ -2013,6 +2015,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:StandardOps",

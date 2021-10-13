@@ -82,8 +82,8 @@ struct PadOfExtractOfLinalg : public OpRewritePattern<PadTensorOp> {
 
 Value getNeutralOfLinalgOp(OpBuilder &b, mlir::OpOperand &op) {
   auto t = getElementTypeOrSelf(op.get().getType());
-  return b.create<mlir::ConstantOp>(op.getOwner()->getLoc(), t,
-                                    b.getZeroAttr(t));
+  return b.create<mlir::arith::ConstantOp>(op.getOwner()->getLoc(), t,
+                                           b.getZeroAttr(t));
 }
 
 struct PaddingPattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {

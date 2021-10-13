@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
@@ -840,9 +841,10 @@ static Status CompileModuleToLlvmIrImpl(
                                       "_gpu_after_optimizations"));
 
   mlir::MLIRContext mlir_context;
-  mlir_context.loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-                           mlir::StandardOpsDialect,
-                           mlir::lmhlo_gpu::LmhloGpuDialect>();
+  mlir_context
+      .loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
+                   mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+                   mlir::lmhlo_gpu::LmhloGpuDialect>();
   mlir::OwningModuleRef mlir_module =
       mlir::ModuleOp::create(mlir::Builder(&mlir_context).getUnknownLoc());
 

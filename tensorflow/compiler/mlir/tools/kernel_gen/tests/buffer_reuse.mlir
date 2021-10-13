@@ -4,7 +4,7 @@
 func @unique_reuse_output() -> (index, memref<2x3xi64>) attributes {tf_entry} {
   // CHECK: alloc
   // CHECK-SAME: reuse_output = 1 : i32
-  %result_0 = constant 1 : index
+  %result_0 = arith.constant 1 : index
   %result_1 = memref.alloc() : memref<2x3xi64>
   return %result_0, %result_1 : index, memref<2x3xi64>
 }
@@ -68,7 +68,7 @@ func @local_reuse_with_broadcasting_memref_maps(
   } ins(%arg0, %arg1 : memref<i64>, memref<?xi64>)
     outs(%result : memref<?xi64>) {
   ^bb0(%a : i64, %b : i64, %c : i64):
-    %add = addi %a, %b : i64
+    %add = arith.addi %a, %b : i64
     linalg.yield %add : i64
   }
   return %result : memref<?xi64>
@@ -87,7 +87,7 @@ func @local_reuse_with_broadcasting_memref_maps2(
   } ins(%arg0, %arg1 : memref<?xi64>, memref<?xi64>)
     outs(%result : memref<i64>) {
   ^bb0(%a : i64, %b : i64, %c : i64):
-    %add = addi %a, %b : i64
+    %add = arith.addi %a, %b : i64
     linalg.yield %add : i64
   }
   return %result : memref<i64>
@@ -106,7 +106,7 @@ func @local_reuse_with_broadcasting_memref_maps3(
   } ins(%arg0, %arg1 : memref<i64>, memref<?xi64>)
     outs(%result : memref<i64>) {
   ^bb0(%a : i64, %b : i64, %c : i64):
-    %add = addi %a, %b : i64
+    %add = arith.addi %a, %b : i64
     linalg.yield %add : i64
   }
   return %result : memref<i64>
@@ -125,7 +125,7 @@ func @nolocal_reuse_with_broadcasting_memref_maps(
   } ins(%arg0, %arg1 : memref<?xi64>, memref<?x?xi64>)
     outs(%result : memref<?xi64>) {
   ^bb0(%a : i64, %b : i64, %c : i64):
-    %add = addi %a, %b : i64
+    %add = arith.addi %a, %b : i64
     linalg.yield %add : i64
   }
   return %result : memref<?xi64>
@@ -144,7 +144,7 @@ func @nolocal_reuse_with_broadcasting_memref_maps2(
   } ins(%arg0, %arg1 : memref<?x?x?xi64>, memref<?x?x?xi64>)
     outs(%result : memref<?x?xi64>) {
   ^bb0(%a : i64, %b : i64, %c : i64):
-    %add = addi %a, %b : i64
+    %add = arith.addi %a, %b : i64
     linalg.yield %add : i64
   }
   return %result : memref<?x?xi64>
@@ -153,7 +153,7 @@ func @nolocal_reuse_with_broadcasting_memref_maps2(
 // CHECK-LABEL: @memref.reinterpret_cast_alias
 func @memref.reinterpret_cast_alias(%arg : memref<f32>, %n : index)
     -> memref<?xf32> attributes {tf_entry} {
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   %reinterpreted = memref.reinterpret_cast %arg to
       offset: [0],
       sizes: [%n],
@@ -234,7 +234,7 @@ func @livetimes_incompatible(%arg0 : memref<3xi64>)
   %result = memref.alloc() : memref<3xi64>
 
   // Use newly allocated buffer.
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   %0 = memref.load %result[%c0] : memref<3xi64>
 
   // Use argument buffer again.
@@ -248,7 +248,7 @@ func @never_used(%arg0 : memref<3xi64>) -> memref<3xi64> attributes {tf_entry} {
   // CHECK: alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %result = memref.alloc() : memref<3xi64>
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   %0 = memref.load %arg0[%c0] : memref<3xi64>
   return %result : memref<3xi64>
 }
@@ -264,7 +264,7 @@ func @branching_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
 
   // Keep buffer argument live in this branch. Reuse is still possible because
   // the newly allocated buffer was not used yet.
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   memref.load %arg[%c0] : memref<6xi64>
 
   br ^bb2(%mem0 : memref<6xi64>)
@@ -287,7 +287,7 @@ func @branching_no_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
   %mem0 = memref.alloc() : memref<6xi64>
 
   // Use newly allocated memory immediately.
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   memref.load %mem0[%c0] : memref<6xi64>
 
   // Keep buffer argument live in this branch and prevent reuse.
@@ -313,7 +313,7 @@ func @branching_reuse_if(%pred : i1, %arg : memref<6xi64>)
 
     // Keep buffer argument live in this branch. Reuse is still possible because
     // the newly allocated buffer was not used yet.
-    %c0 = constant 0 : index
+    %c0 = arith.constant 0 : index
     memref.load %arg[%c0] : memref<6xi64>
 
     scf.yield %mem0 : memref<6xi64>
@@ -335,7 +335,7 @@ func @branching_no_reuse_if(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
     %mem0 = memref.alloc() : memref<6xi64>
 
     // Use newly allocated memory immediately.
-    %c0 = constant 0 : index
+    %c0 = arith.constant 0 : index
     memref.load %mem0[%c0] : memref<6xi64>
 
     // Keep buffer argument live in this branch and prevent reuse.
@@ -361,7 +361,7 @@ func @alloc_before_branching(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
   // CHECK: alloc
   // CHECK-SAME: reuse_input_candidates = []
   %mem = memref.alloc() : memref<6xi64>
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   cond_br %pred, ^bb0, ^bb1
 ^bb0:
   // Last use of `arg` before first use of `mem` (can reuse).
@@ -381,7 +381,7 @@ func @alloc_before_branching_2(%pred : i1, %arg : memref<6xi64>)
   // CHECK: alloc()
   // CHECK-SAME: reuse_input_candidates = []
   %mem = memref.alloc() : memref<6xi64>
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   cond_br %pred, ^bb0, ^bb1
 ^bb0:
   // Last use of `arg` after first use of `mem` (cannot reuse).
@@ -407,13 +407,13 @@ func @alloc_before_branching_if(%pred : i1, %arg : memref<6xi64>) -> memref<6xi6
   %mem = memref.alloc() : memref<6xi64>
   %result = scf.if %pred -> (memref<6xi64>) {
     // Last use of `arg` before first use of `mem` (can reuse).
-    %c0 = constant 0 : index
+    %c0 = arith.constant 0 : index
     memref.load %arg[%c0] : memref<6xi64>
     memref.load %mem[%c0] : memref<6xi64>
     scf.yield %mem : memref<6xi64>
   } else {
     // Last use of `arg` before first use of `mem` (can reuse).
-    %c0 = constant 0 : index
+    %c0 = arith.constant 0 : index
     memref.load %arg[%c0] : memref<6xi64>
     memref.load %mem[%c0] : memref<6xi64>
     scf.yield %mem : memref<6xi64>
@@ -429,13 +429,13 @@ func @alloc_before_branching_2_if(%pred : i1, %arg : memref<6xi64>)
   %mem = memref.alloc() : memref<6xi64>
   %result = scf.if %pred -> (memref<6xi64>) {
     // Last use of `arg` after first use of `mem` (cannot reuse).
-    %c0 = constant 0 : index
+    %c0 = arith.constant 0 : index
     memref.load %mem[%c0] : memref<6xi64>
     memref.load %arg[%c0] : memref<6xi64>
     scf.yield %mem : memref<6xi64>
   } else {
     // Last use of `arg` before first use of `mem` (can reuse).
-    %c0 = constant 0 : index
+    %c0 = arith.constant 0 : index
     memref.load %arg[%c0] : memref<6xi64>
     memref.load %mem[%c0] : memref<6xi64>
     scf.yield %mem : memref<6xi64>
@@ -459,9 +459,9 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
     iterator_types = ["parallel"]
   } ins(%flat_arg : memref<?xi64>) outs(%flat_result : memref<?xi64>) {
   ^bb0(%a : i64, %b : i64):
-    %c0 = constant 0 : i64
-    %a_pos = cmpi sge, %a, %c0 : i64
-    %a_neg = subi %c0, %a : i64
+    %c0 = arith.constant 0 : i64
+    %a_pos = arith.cmpi sge, %a, %c0 : i64
+    %a_neg = arith.subi %c0, %a : i64
     %a_abs = select %a_pos, %a, %a_neg : i64
     linalg.yield %a_abs : i64
   }
@@ -473,9 +473,9 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
 // CHECK-LABEL: @old_buffer_alias_outside_block
 func @old_buffer_alias_outside_block(%arg: memref<3xf32>)
     attributes {llvm.emit_c_interface, tf_entry} {
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
-  %true = constant true
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %true = arith.constant true
 
   // Alias outside of the block with the new buffer allocation.
   %alias = memref.cast %arg : memref<3xf32> to memref<3xf32>
@@ -506,7 +506,7 @@ func @index_element_type(%arg : memref<2x3xindex>) -> memref<2x3xindex>
 // CHECK-LABEL: @abs_f32
 func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
     attributes {llvm.emit_c_interface, tf_entry} {
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   %0 = shape.shape_of %arg0 : memref<*xf32> -> tensor<?xindex>
   %1 = shape.num_elements %0 : tensor<?xindex> -> index
   // CHECK-LABEL: alloc
@@ -516,13 +516,13 @@ func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
   %3 = memref.reshape %arg0(%2)
       : (memref<*xf32>, memref<1xindex>) -> memref<?xf32>
   %4 = memref.dim %3, %c0 : memref<?xf32>
-  %5 = index_cast %4 : index to i64
+  %5 = arith.index_cast %4 : index to i64
   // CHECK-LABEL: alloc
   // CHECK-SAME: reuse_input_candidates = []
   %6 = memref.alloc() : memref<1xi64>
   memref.store %5, %6[%c0] : memref<1xi64>
   %7 = memref.load %6[%c0] : memref<1xi64>
-  %8 = index_cast %7 : i64 to index
+  %8 = arith.index_cast %7 : i64 to index
   // CHECK-LABEL: alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %9 = memref.alloc(%8) : memref<?xf32>
@@ -531,7 +531,7 @@ func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
     iterator_types = ["parallel"]
   } ins(%3 : memref<?xf32>) outs(%9 : memref<?xf32>) {
   ^bb0(%arg1: f32, %arg2: f32):  // no predecessors
-    %12 = absf %arg1 : f32
+    %12 = math.abs %arg1 : f32
     linalg.yield %12 : f32
   }
   %10 = memref.buffer_cast %0 : memref<?xindex>

@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -355,7 +356,8 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
 }
 
 static void RegisterMlirInputDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::StandardOpsDialect, mlir::TF::TensorFlowDialect>();
+  registry.insert<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+                  mlir::TF::TensorFlowDialect>();
 }
 
 static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {

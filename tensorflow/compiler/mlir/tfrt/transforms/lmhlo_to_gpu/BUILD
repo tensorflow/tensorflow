@@ -121,6 +121,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:thunk",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",

@@ -577,7 +577,7 @@ void BiasAddV1Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
-// BitcastOp
+// arith::BitcastOp
 //===----------------------------------------------------------------------===//
 
 void BitcastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,

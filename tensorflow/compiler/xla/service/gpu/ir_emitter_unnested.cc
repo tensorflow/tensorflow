@@ -5531,7 +5531,7 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
 }
 
 Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
-  if (mlir::isa<mlir::ConstantOp, mlir::memref::ViewOp,
+  if (mlir::isa<mlir::ConstantOp, mlir::arith::ConstantOp, mlir::memref::ViewOp,
                 mlir::memref::ReinterpretCastOp, mlir::ReturnOp,
                 mlir::lmhlo::TerminatorOp>(op)) {
     return Status::OK();

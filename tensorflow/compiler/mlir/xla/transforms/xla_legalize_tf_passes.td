@@ -48,9 +48,9 @@ def LegalizeTF : FunctionPass<"xla-legalize-tf"> {
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFPass()";
-  let dependentDialects = ["chlo::HloClientDialect", "memref::MemRefDialect",
-                           "mhlo::MhloDialect", "shape::ShapeDialect",
-                           "StandardOpsDialect"];
+  let dependentDialects = ["arith::ArithmeticDialect, chlo::HloClientDialect",
+                           "memref::MemRefDialect", "mhlo::MhloDialect",
+                           "shape::ShapeDialect", "StandardOpsDialect"];
 }
 
 def LegalizeTFNoFallback : FunctionPass<"xla-legalize-tf-no-fallback"> {
@@ -67,9 +67,9 @@ def LegalizeTFNoFallback : FunctionPass<"xla-legalize-tf-no-fallback"> {
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFNoFallbackPass()";
-  let dependentDialects = ["chlo::HloClientDialect", "memref::MemRefDialect",
-                           "mhlo::MhloDialect", "shape::ShapeDialect",
-                           "StandardOpsDialect"];
+  let dependentDialects = ["arith::ArithmeticDialect", "chlo::HloClientDialect",
+                           "memref::MemRefDialect", "mhlo::MhloDialect",
+                           "shape::ShapeDialect", "StandardOpsDialect"];
 }
 
 def LegalizeTFControlFlow : Pass<"xla-legalize-tf-control-flow", "ModuleOp"> {

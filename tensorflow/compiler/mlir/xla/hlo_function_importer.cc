@@ -654,7 +654,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kRng: {
-      auto shape = func_builder->create<mlir::ConstantOp>(
+      auto shape = func_builder->create<mlir::arith::ConstantOp>(
           loc, Convert(result_type.cast<RankedTensorType>().getShape()));
       switch (instruction->random_distribution()) {
         case xla::RNG_UNIFORM:
@@ -827,8 +827,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kAdd: {
       // HLO add ops on PRED elements are actually boolean or, but MHLO dialect
       // AddOps on i1 are just addition with overflow; so, we have to implement
-      // the special behavior of HLO add ops on PRED here by creating an OrOp
-      // instead.
+      // the special behavior of HLO add ops on PRED here by creating an
+      // arith::OrIOp instead.
       if (instruction->shape().element_type() == PRED) {
         return func_builder
             ->create<mlir::mhlo::OrOp>(loc, result_type, operands, attributes)

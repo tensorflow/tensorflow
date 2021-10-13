@@ -63,7 +63,7 @@ void InitializeVariablesInSessionInitializerPass::InitializeVariable(
   builder.setInsertionPointToStart(&session_init_func.getBlocks().front());
   auto var_handle_op_in_init = var_handle_op->clone();
   builder.insert(var_handle_op_in_init);
-  auto const_op = builder.create<mlir::ConstantOp>(
+  auto const_op = builder.create<mlir::arith::ConstantOp>(
       session_init_func.getLoc(), tensor_attr.getType(), tensor_attr);
 
   builder.create<TF::AssignVariableOp>(

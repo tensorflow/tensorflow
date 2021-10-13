@@ -88,6 +88,7 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
     ],
