@@ -2496,6 +2496,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_pass",
+        ":op_expander_pass",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",

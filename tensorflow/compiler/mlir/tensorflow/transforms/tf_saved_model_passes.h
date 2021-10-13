@@ -33,7 +33,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass(
 
 // Creates a pass that freezes tf_saved_model.asset ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeAssetsPass(
-    std::string saved_model_dir);
+    std::string saved_model_dir = "");
 
 // Creates as pass that removes variables in the session initializer.
 // This job is required with lifting variable passes. Originally, the session
@@ -63,9 +63,18 @@ std::unique_ptr<OperationPass<FuncOp>> CreateMarkInitializedVariablesPass(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateInitializeVariablesInSessionInitializerPass(tensorflow::Session* session);
 
+// Create a test pass for the above with a "fake" session, for lit testing.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateInitializeVariablesInSessionInitializerTestPass();
+
 // Creates a pass that freezes readonly variables in the graph.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeVariablesPass(
     tensorflow::Session* session);
+
+// Variable Lifting test passes: only useful for lit testing.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesTestPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateLiftVariablesInvalidSessionTestPass();
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"

@@ -74,6 +74,15 @@ def AllReduce(
     replica_groups: Sequence[_ReplicaGroup] = ...,
     channel_id: Optional[ChannelHandle] = ...,
     shape_with_layout: Optional[_Layout] = ...) -> XlaOp: ...
+def ApproxTopK(
+    builder: XlaBuilder,
+    operands: Sequence[XlaOp],
+    init_values: Sequence[XlaOp],
+    top_k: int,
+    reduction_dim: int,
+    comparator: XlaComputation,
+    recall_target: Optional[float],
+    aggregate_to_topk: Optional[bool]) -> XlaOp: ...
 def ReduceScatter(
     operand: XlaOp,
     computation: XlaComputation,

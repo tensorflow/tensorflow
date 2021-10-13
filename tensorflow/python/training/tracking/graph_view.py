@@ -200,7 +200,7 @@ class ObjectGraphView(object):
       setattr(copied, key, copy.deepcopy(value, memo))
     return copied
 
-  def list_dependencies(self, obj):
+  def list_children(self, obj):
     # pylint: disable=protected-access
     obj._maybe_initialize_trackable()
     dependencies = obj._checkpoint_dependencies
@@ -254,7 +254,7 @@ class ObjectGraphView(object):
     while to_visit:
       current_trackable = to_visit.popleft()
       bfs_sorted.append(current_trackable)
-      for name, dependency in self.list_dependencies(current_trackable):
+      for name, dependency in self.list_children(current_trackable):
         if dependency not in path_to_root:
           path_to_root[dependency] = (
               path_to_root[current_trackable] + (
@@ -386,7 +386,7 @@ class ObjectGraphView(object):
       assert node_ids[trackable] == checkpoint_id
       object_proto = object_graph_proto.nodes.add()
       object_proto.slot_variables.extend(slot_variables.get(trackable, ()))
-      for child in self.list_dependencies(trackable):
+      for child in self.list_children(trackable):
         child_proto = object_proto.children.add()
         child_proto.node_id = node_ids[child.ref]
         child_proto.local_name = child.name

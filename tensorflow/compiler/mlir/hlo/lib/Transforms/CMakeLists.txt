@@ -16,6 +16,7 @@
 
 add_mlir_library(MLIRBufferTransforms
   buffer_reuse.cc
+  copy_removal.cc
   reshape_simplifier.cc
 
   DEPENDS

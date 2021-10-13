@@ -37,7 +37,7 @@ namespace tensorflow {
 class EagerOperation : public ImmediateExecutionOperation {
  public:
   explicit EagerOperation(tensorflow::EagerContext* ctx)
-      : ImmediateExecutionOperation(kEager), ctx_(*ctx) {}
+      : ImmediateExecutionOperation(kEager), ctx_(*ctx), is_function_(false) {}
   ~EagerOperation() override {
     for (ImmediateExecutionTensorHandle* h : inputs_) {
       h->Unref();

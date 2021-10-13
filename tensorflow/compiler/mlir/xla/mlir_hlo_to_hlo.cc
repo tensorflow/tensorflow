@@ -703,6 +703,19 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(DotOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
+  if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  xla::PrimitiveType preferred_element_type =
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+  value_map[op] = xla::Dot(
+      lhs, rhs, Unwrap(Convert_precision_config(op.precision_config())),
+      preferred_element_type);
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
@@ -846,9 +859,8 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
-  // XLA client builder API does not support generating custom call instructions
-  // with side effect.
-  if (op.has_side_effect() || op.getNumResults() != 1) return failure();
+  if (op.getNumResults() != 1)
+    return op.emitOpError() << "with multiple results cannot be exported";
   Value result = op.getResult(0);
   llvm::SmallVector<xla::XlaOp> args;
   if (failed(GetTuple(op, op.args(), ctx, args))) return failure();
@@ -858,7 +870,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   value_map[result] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), args,
       xla::TypeToShape(result.getType()), std::string(op.backend_config()),
-      /*has_side_effect=*/false, /*output_operand_aliasing=*/{},
+      op.has_side_effect(), /*output_operand_aliasing=*/{},
       /*literal=*/nullptr, /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/*xla_api_version);
   return success();

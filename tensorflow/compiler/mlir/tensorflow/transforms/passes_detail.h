@@ -19,12 +19,18 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/Pass/Pass.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
 namespace mlir {
 namespace tf_device {
 class TensorFlowDeviceDialect;
 }
+namespace tf_executor {
+class TensorFlowExecutorDialect;
+}
 namespace TF {
+// Direction in which to move transposes in MoveTransposePass.
+enum MoveTransposeDirection { kBegin, kEnd };
 
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"

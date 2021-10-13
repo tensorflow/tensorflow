@@ -40,6 +40,12 @@ def TestTensorFlowLowerTFPass : Pass<"test-tf-lower-tf", "FuncOp"> {
   ];
 }
 
+def TestResourceAliasAnalysis : Pass<"tf-test-resource-alias-analysis", "FuncOp"> {
+  let summary = "Add remarks based on resource alias analysis result, for "
+    "testing purpose.";
+  let constructor = "::mlir::tf_test::CreateTestResourceAliasAnalysisPass()";
+}
+
 def TestTensorFlowVisitorUtil : FunctionPass<"tf-test-visitor-util"> {
   let summary = "Test pass for TF visitor utils";
   let description = [{

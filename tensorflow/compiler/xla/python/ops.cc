@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "pybind11/attr.h"
 #include "pybind11/pybind11.h"
+#include "tensorflow/compiler/xla/client/lib/approx_topk.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/lu_decomposition.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
@@ -92,6 +93,18 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("concat_dimension"), py::arg("split_count"),
           py::arg("replica_groups") = py::list(),
           py::arg("layout") = absl::nullopt);
+  ops.def(
+      "ApproxTopK",
+      [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
+         absl::Span<const XlaOp> init_values, int64_t top_k,
+         int64_t reduction_dim, const XlaComputation& comparator,
+         float recall_target, bool aggregate_to_topk) {
+        return ApproxTopK(builder, operands, init_values, top_k, reduction_dim,
+                          comparator, recall_target, aggregate_to_topk);
+      },
+      py::arg("builder"), py::arg("operands"), py::arg("init_values"),
+      py::arg("top_k"), py::arg("reduction_dim"), py::arg("comparator"),
+      py::arg("recall_target") = 0.9, py::arg("aggregate_to_topk") = true);
   ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));

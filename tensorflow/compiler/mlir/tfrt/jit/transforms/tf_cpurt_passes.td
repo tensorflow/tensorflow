@@ -117,6 +117,18 @@ def Fission : FunctionPass<"tf-cpurt-fission"> {
   ];
 }
 
+def Fusion : FunctionPass<"tf-cpurt-fusion"> {
+  let summary = "Fuse Linalg generic operations on Tensors";
+  let constructor = "tensorflow::CreateFusionPass()";
+  let description = [{
+    Fuse Linalg generic operations on Tensors using custom heuristics for
+    producer fusion profitability.
+  }];
+  let dependentDialects = [
+    "mlir::TF::TensorFlowDialect"
+  ];
+}
+
 def SymbolicShapeOptimization
     : FunctionPass<"tf-cpurt-symbolic-shape-optimization"> {
   let summary = "Optimizes broadcasts based on the symbolic shapes";

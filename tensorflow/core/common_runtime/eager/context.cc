@@ -116,6 +116,8 @@ void EagerContext::LocalRendezvousTable::CleanUpAll() {
   }
 }
 
+EagerContext::LocalRendezvousTable::~LocalRendezvousTable() { CleanUpAll(); }
+
 EagerContext::EagerContext(
     const SessionOptions& opts,
     ContextDevicePlacementPolicy default_device_placement_policy, bool async,

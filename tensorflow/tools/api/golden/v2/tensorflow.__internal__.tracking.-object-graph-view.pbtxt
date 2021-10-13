@@ -23,7 +23,7 @@ tf_class {
     argspec: "args=[\'self\', \'object_map\', \'to_graph\', \'call_with_mapped_captures\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
-    name: "list_dependencies"
+    name: "list_children"
     argspec: "args=[\'self\', \'obj\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

@@ -531,7 +531,7 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK:  HloModule
 func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> {
-  %0 = "mhlo.custom_call"(%arg0, %arg1) {backend_config = "bar", call_target_name = "foo"} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+  %0 = "mhlo.custom_call"(%arg0, %arg1) {backend_config = "bar", call_target_name = "foo", has_side_effect = true} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
   return %0 : tensor<1x2x3xf32>
 }
 
@@ -541,6 +541,7 @@ func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> 
 // CHECK:  ROOT
 // CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]])
 // CHECK-SAME:  custom_call_target="foo"
+// CHECK-SAME:  custom_call_has_side_effect=true
 // CHECK-SAME:  backend_config="bar"
 
 // -----
@@ -580,6 +581,22 @@ func @main(%arg: tensor<16x16xi32>) -> tensor<16x32xbf16> {
 // CHECK:   bf16[2,16,16] convert(u32[2,16,16] %{{.*}})
 // CHECK:   bf16[2,16,16] multiply(bf16[2,16,16] %{{.*}}, bf16[2,16,16] %{{.*}})
 // CHECK:   ROOT
+
+// -----
+
+// Test dot i8xi8 -> i64
+
+func @main(%arg0: tensor<3xi8>, %arg1: tensor<3xi8>) -> tensor<i64> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<3xi8>, tensor<3xi8>) -> tensor<i64>
+  return %0 : tensor<i64>
+}
+
+// CHECK: ENTRY
+// CHECK-SAME: ([[ARG0:.*]]: s8[3], [[ARG1:.*]]: s8[3]) -> s64[] {
+// CHECK: %[[ARG0]] = s8[3] parameter(0)
+// CHECK: %[[ARG1]] = s8[3] parameter(1)
+// CHECK: ROOT
+// CHECK-SAME: s64[] dot(s8[3] %[[ARG0]], s8[3] %[[ARG1]]),
 
 // -----
 

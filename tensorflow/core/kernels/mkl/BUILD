@@ -267,6 +267,8 @@ tf_mkl_kernel_library(
     deps = [
         "@gemmlowp",
         "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core:nn_ops_op_lib",

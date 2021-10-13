@@ -40,10 +40,14 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
+
+def enable_interactive_logging():
+  pywrap_tfe.TFE_Py_EnableInteractivePythonLogging()
+
 # Register printing to the cell output if we are in a Colab or Jupyter Notebook.
 try:
   get_ipython()  # Exists in an ipython env like Jupyter or Colab
-  pywrap_tfe.TFE_Py_EnableInteractivePythonLogging()
+  enable_interactive_logging()
 except NameError:
   pass
 

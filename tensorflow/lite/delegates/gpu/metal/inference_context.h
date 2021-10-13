@@ -125,17 +125,9 @@ class InferenceContext {
     kConst,
     kPreallocated
   };
-  absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
-                       CalculationsPrecision precision, ModelHints hints);
-
-  absl::Status ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                                   const GpuInfo& gpu_info,
-                                   const GraphFloat32& graph,
-                                   const std::set<ValueId>& preallocated_ids);
 
   absl::Status CompileOperations(MetalDevice* device);
 
-  absl::Status Merge();
   absl::Status AllocateTensors(MetalDevice* device,
                                const std::set<ValueId>& preallocated_ids);
   absl::Status AllocateMemoryForConstTensors(MetalDevice* device);
@@ -149,35 +141,7 @@ class InferenceContext {
   TensorMemoryType GetTensorMemoryType(ValueId id);
   absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
-  class TensorReserver {
-   public:
-    TensorReserver() : next_(0) {}
-    ValueId Add(const TensorDescriptor& dummy) {
-      reservations_[next_] = dummy;
-      return next_++;
-    }
-    void Add(ValueId id, const TensorDescriptor& dummy) {
-      reservations_[id] = dummy;
-    }
-    void SetNext(ValueId id) { next_ = id; }
-    TensorDescriptor Get(ValueId id) { return reservations_[id]; }
-
-    std::vector<std::pair<ValueId, TensorDescriptor>> GetTensorDescs() const {
-      return std::vector<std::pair<ValueId, TensorDescriptor>>(
-          reservations_.begin(), reservations_.end());
-    }
-
-    void Add(const std::vector<std::pair<ValueId, TensorDescriptor>>& tensors) {
-      for (auto& v : tensors) {
-        Add(v.first, v.second);
-      }
-    }
-
-   private:
-    absl::flat_hash_map<ValueId, TensorDescriptor> reservations_;
-    ValueId next_;
-  };
-  TensorReserver tensor_reserver_;
+  absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
 
   std::vector<MetalNode> nodes_;
   // contains indexes of compute_tasks_
@@ -186,7 +150,7 @@ class InferenceContext {
   std::vector<ValueId> output_ids_;
   std::map<ValueId, MetalSpatialTensor> preallocated_tensors_;
 
-  std::map<ValueId, TensorDescriptor> const_tensors_descs_;
+  absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors_descs_;
   std::map<ValueId, MetalSpatialTensor> const_tensors_;
 
   std::map<ValueId, int> graph_ids_to_shared_buffer_tensors_;

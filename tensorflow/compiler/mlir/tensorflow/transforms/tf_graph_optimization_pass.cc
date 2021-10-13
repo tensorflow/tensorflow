@@ -36,7 +36,7 @@ limitations under the License.
 #define DEBUG_TYPE "run-tf-graph-optimization"
 
 namespace tensorflow {
-
+namespace {
 // Creates a pass to convert MLIR to Graph, run user-specified Graph
 // Optimization Passes and convert back to MLIR.
 // Constraints: This pass expects that all operations in the MLIR module either
@@ -58,6 +58,7 @@ class GraphOptPass
   // The passes to run on the module.
   std::vector<GraphOptimizationPass*> passes_;
 };
+}  // anonymous namespace
 
 void GraphOptPass::runOnOperation() {
   mlir::ModuleOp module_in = getOperation();
@@ -193,4 +194,8 @@ tensorflow::CreateTensorFlowGraphOptimizationPass(
   return std::make_unique<GraphOptByNamePass>(pass_names);
 }
 
-static mlir::PassRegistration<tensorflow::GraphOptByNamePass> pass;
+void tensorflow::RegisterGraphOptimizationPasses() {
+  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+    return std::make_unique<GraphOptByNamePass>();
+  });
+}

@@ -26,5 +26,12 @@ static PassRegistration<InitializeVariablesInSessionInitializerPass>
       return CreateInitializeVariablesInSessionInitializerPass(session);
     });
 }  // namespace
+
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateInitializeVariablesInSessionInitializerTestPass() {
+  static tensorflow::Session* session = new TF::test_util::FakeSession();
+  return CreateInitializeVariablesInSessionInitializerPass(session);
+}
+
 }  // namespace tf_saved_model
 }  // namespace mlir

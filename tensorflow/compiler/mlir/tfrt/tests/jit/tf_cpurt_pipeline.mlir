@@ -394,6 +394,7 @@ func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
 // -----
 
 // CHECK: memref.global "private" constant @__constant_2xi32 : memref<2xi32> = dense<[0, 1]>
+// CHECK-SAME: {alignment = 64 : i64}
 // CHECK-LABEL: @constant_folding
 func @constant_folding() -> tensor<2xi32> {
   %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -440,4 +441,23 @@ func @rint_sq_sub(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %1 = "tf.Square"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   %2 = "tf.Sub"(%0, %1) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   return %2 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @do_not_fuse_if_multiple_uses
+func @do_not_fuse_if_multiple_uses(%arg0: tensor<?x?xf32>)
+    -> (tensor<?x?xf32>, tensor<?x?xf32>) {
+  // CHECK:     linalg.generic
+  // CHECK:       math.rsqrt
+  // CHECK-NEXT:  math.rsqrt
+  // CHECK-NEXT:  linalg.yield
+  %0 = "tf.Rsqrt"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  %1 = "tf.Rsqrt"(%0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK:     linalg.generic
+  // CHECK:       math.rsqrt
+  // CHECK-NEXT:  linalg.yield
+  %2 = "tf.Rsqrt"(%1) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK-NOT: linalg.generic
+  return %1, %2 : tensor<?x?xf32>, tensor<?x?xf32>
 }

@@ -6152,6 +6152,46 @@ func @angle_c64(%arg0: tensor<complex<f32>>) -> tensor<f32> {
 }
 
 //===----------------------------------------------------------------------===//
+// tf.ApproximateEqual legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @approximateequal_f64
+func @approximateequal_f64(%arg0: tensor<?xf64>, %arg1: tensor<?xf64>) -> tensor<?xi1> {
+  // CHECK: %[[SUB:.*]] = mhlo.subtract %arg0, %arg1 : tensor<?xf64>
+  // CHECK: %[[ABS:.*]] = "mhlo.abs"(%[[SUB]]) : (tensor<?xf64>) -> tensor<?xf64>
+  // CHECK: %[[CST:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
+  // CHECK: %[[CONVERT:.*]] = "mhlo.convert"(%[[CST]]) : (tensor<f32>) -> tensor<f64>
+  // CHECK: %[[LE:.*]] = chlo.broadcast_compare %[[ABS]], %[[CONVERT]] {comparison_direction = "LT"} : (tensor<?xf64>, tensor<f64>) -> tensor<?xi1>
+  // CHECK: return %[[LE]] : tensor<?xi1>
+  %equal = "tf.ApproximateEqual"(%arg0, %arg1) { tolerance = 2. : f32 } : (tensor<?xf64>, tensor<?xf64>) -> tensor<?xi1>
+  return %equal : tensor<?xi1>
+}
+
+// CHECK-LABEL: func @approximateequal_i32
+func @approximateequal_i32(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi1> {
+  // CHECK: %[[SUB:.*]] = mhlo.subtract %arg0, %arg1 : tensor<?xi32>
+  // CHECK: %[[ABS:.*]] = "mhlo.abs"(%[[SUB]]) : (tensor<?xi32>) -> tensor<?xi32>
+  // CHECK: %[[CST:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
+  // CHECK: %[[CONVERT:.*]] = "mhlo.convert"(%[[CST]]) : (tensor<f32>) -> tensor<i32>
+  // CHECK: %[[LE:.*]] = chlo.broadcast_compare %[[ABS]], %[[CONVERT]] {comparison_direction = "LT"} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi1>
+  // CHECK: return %[[LE]] : tensor<?xi1>
+  %equal = "tf.ApproximateEqual"(%arg0, %arg1) { tolerance = 2. : f32 } : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi1>
+  return %equal : tensor<?xi1>
+}
+
+// CHECK-LABEL: func @approximateequal_complex64
+func @approximateequal_complex64(%arg0: tensor<?xcomplex<f32>>, %arg1: tensor<?xcomplex<f32>>) -> tensor<?xi1> {
+  // CHECK: %[[SUB:.*]] = mhlo.subtract %arg0, %arg1 : tensor<?xcomplex<f32>>
+  // CHECK: %[[ABS:.*]] = "mhlo.abs"(%[[SUB]]) : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  // CHECK: %[[CST:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
+  // CHECK: %[[CONVERT:.*]] = "mhlo.convert"(%[[CST]]) : (tensor<f32>) -> tensor<f32>
+  // CHECK: %[[LE:.*]] = chlo.broadcast_compare %[[ABS]], %[[CONVERT]] {comparison_direction = "LT"} : (tensor<?xf32>, tensor<f32>) -> tensor<?xi1>
+  // CHECK: return %[[LE]] : tensor<?xi1>
+  %equal = "tf.ApproximateEqual"(%arg0, %arg1) { tolerance = 2. : f32 } : (tensor<?xcomplex<f32>>, tensor<?xcomplex<f32>>) -> tensor<?xi1>
+  return %equal : tensor<?xi1>
+}
+
+//===----------------------------------------------------------------------===//
 // tf.XlaDot legalization
 //===----------------------------------------------------------------------===//
 

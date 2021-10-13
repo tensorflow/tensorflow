@@ -39,6 +39,8 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTestClusteringPolicyPass();
 // Test pass for analyzing side-effect analysis result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTestSideEffectAnalysisPass();
 
+std::unique_ptr<OperationPass<ModuleOp>> CreateTestResourceAliasAnalysisPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
 

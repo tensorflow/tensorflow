@@ -31,6 +31,7 @@ from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.distribute.coordinator import metric_utils
 from tensorflow.python.distribute.coordinator import values as values_lib
+from tensorflow.python.distribute.coordinator import watchdog
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -319,10 +320,17 @@ class _CoordinatedClosureQueue(object):
     # of the code.
     self._put_wait_lock = threading.Lock()
 
+    self._watchdog = watchdog.WatchDog(on_triggered=self._on_watchdog_timeout)
+
+  def _on_watchdog_timeout(self):
+    logging.info("inflight_closure_count is %d", self._inflight_closure_count)
+    logging.info("current error is %s:%r", self._error, self._error)
+
   def stop(self):
     with self._queue_lock:
       self._should_process_closures = False
       self._closures_queued_condition.notifyAll()
+    self._watchdog.stop()
 
   def _cancel_all_closures(self):
     """Clears the queue and sets remaining closures cancelled error.
@@ -403,6 +411,7 @@ class _CoordinatedClosureQueue(object):
         self._no_inflight_closure_condition.notifyAll()
       if self._queue.empty() and self._inflight_closure_count == 0:
         self._stop_waiting_condition.notifyAll()
+      self._watchdog.report_closure_done()
 
   def put_back(self, closure):
     """Put the closure back into the queue as it was not properly executed."""
@@ -1233,7 +1242,7 @@ def _is_ps_failure(error):
   if isinstance(error, InputError):
     error = error.original_exception
 
-  return (isinstance(error, errors.UnavailableError) and
+  return (isinstance(error, (errors.UnavailableError, errors.AbortedError)) and
           _RPC_ERROR_FROM_PS in str(error))
 
 

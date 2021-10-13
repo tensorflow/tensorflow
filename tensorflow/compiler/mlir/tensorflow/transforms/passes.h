@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {
 
@@ -75,6 +76,12 @@ std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass();
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass();
 
+// Performs TF.data optimizations.
+std::unique_ptr<FunctionPass> CreateTFDataOptimizationPass();
+
+std::unique_ptr<FunctionPass> CreateMoveTransposesPass();
+std::unique_ptr<FunctionPass> CreateLayoutAssignmentPass();
+
 // Guarantee that all FuncOp's have a single use.
 std::unique_ptr<OperationPass<ModuleOp>> CreateGuaranteeAllFuncsOneUsePass();
 
@@ -86,6 +93,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass();
 
 // Optimizes Tensorflow graph.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass();
+void RegisterTFOptimizePassPipeline();
 
 // Creates pass to rewrite RecvTPUEmbeddingActivationsOp and
 // SendTPUEmbeddingGradients ops to internal variants.
@@ -157,7 +165,7 @@ CreateConvertReadonlyReferenceVariablesToResourceVariablesPass();
 
 // Creates a simple device assignment pass on TF dialect for CoreRT use case.
 std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
-    llvm::StringRef default_device);
+    llvm::StringRef default_device = "cpu");
 
 // Performs resource lifting on the function body to hoist resource variable
 // accesses outside all control flow statements.
@@ -465,8 +473,18 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUSpaceToDepthPass();
 
 }  // namespace TFTPU
 
+// Define the registrations in a detail namespace, just so that we can overload
+// the main entry point `registerTensorFlowPasses` to inject
+// RegisterTFOptimizePassPipeline.
+namespace detail {
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+}  // namespace detail
+using namespace detail;  // NOLINT
+inline void registerTensorFlowPasses() {
+  detail::registerTensorFlowPasses();
+  TF::RegisterTFOptimizePassPipeline();
+}
 
 namespace TFDevice {
 #define GEN_PASS_REGISTRATION

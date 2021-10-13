@@ -47,4 +47,15 @@ public final class TensorFlowLiteNoNativeLibTest {
       assertThat(e).hasMessageThat().contains("no tensorflowlite_jni in java.library.path");
     }
   }
+
+  @Test
+  public void testInterpreterFactory() {
+    try {
+      new InterpreterFactory().create(new File("path/does/not/matter.tflite"), null);
+      fail();
+    } catch (UnsatisfiedLinkError e) {
+      assertThat(e).hasMessageThat().contains("Failed to load native TensorFlow Lite methods");
+      assertThat(e).hasMessageThat().contains("no tensorflowlite_jni in java.library.path");
+    }
+  }
 }

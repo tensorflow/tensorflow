@@ -58,12 +58,19 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+static bool RegisterPasses() {
+  mlir::registerAllPasses();
+  mlir::registerTensorFlowPasses();
+  return true;
+}
 
 // Runs pass pipeline `pass_pipeline` on `module` if `pass_pipeline` is not
 // empty.
 std::string RunPassPipelineOnModule(mlir::ModuleOp module,
                                     const std::string &pass_pipeline,
                                     bool show_debug_info, TF_Status *status) {
+  bool registration = RegisterPasses();
+  (void)registration;
   if (!pass_pipeline.empty()) {
     mlir::PassManager pm(module.getContext());
     std::string error;
@@ -351,6 +358,8 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
                                         const std::string &pass_pipeline,
                                         bool show_debug_info,
                                         TF_Status *status) {
+  bool registration = RegisterPasses();
+  (void)registration;
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::MLIRContext context(registry);
@@ -368,7 +377,6 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
   mlir::PassManager pm(&context);
   std::string error;
   llvm::raw_string_ostream error_stream(error);
-  mlir::registerAllPasses();
   if (failed(mlir::parsePassPipeline(pass_pipeline, pm, error_stream))) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  ("Invalid pass_pipeline: " + error_stream.str()).c_str());

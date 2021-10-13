@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/stream_executor/lazy_op_runner.h"
 
 namespace stream_executor {
 class RedzoneAllocator;
@@ -260,40 +261,73 @@ void LogFusedConvForwardAutotuneResults(
     se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results);
 
 // Autotuning map entry for cuDNN-frontend-capable APIs.
-template <typename F>
+//
+// The longer-term intent is to remove the AlgorithmConfig variant and make this
+// contain only the two LazyOpRunners, but for the time being ROCm is stuck on
+// the legacy API and requires an AlgorithmConfig.
+template <typename Op>
 class AutotuneEntry {
  public:
   AutotuneEntry() : is_algorithm_config_(true) {}
 
-  AutotuneEntry(se::dnn::AlgorithmConfig config)
+  // Initialize with legacy-API AlgorithmConfig; used for the ROCm backend only.
+  explicit AutotuneEntry(se::dnn::AlgorithmConfig config)
       : is_algorithm_config_(true), algorithm_config_(std::move(config)) {}
 
-  AutotuneEntry(std::shared_ptr<const se::dnn::OpRunner<F>> runner,
-                std::shared_ptr<const se::dnn::OpRunner<F>> runner_no_scratch)
+  AutotuneEntry(std::shared_ptr<se::dnn::LazyOpRunner<Op>> primary,
+                std::shared_ptr<se::dnn::LazyOpRunner<Op>> no_scratch_fallback)
       : is_algorithm_config_(false),
-        op_runners_{std::move(runner), std::move(runner_no_scratch)} {}
+        op_runners_{std::move(primary), std::move(no_scratch_fallback)} {}
+
+  // Initialize from config data, without pre-cached runners, such as when
+  // loading AoT autotuning maps.
+  AutotuneEntry(se::dnn::AlgorithmDesc primary,
+                absl::optional<se::dnn::AlgorithmDesc> no_scratch_fallback)
+      : AutotuneEntry(std::make_shared<se::dnn::LazyOpRunner<Op>>(primary),
+                      no_scratch_fallback
+                          ? std::make_shared<se::dnn::LazyOpRunner<Op>>(
+                                *no_scratch_fallback)
+                          : nullptr) {}
+
+  // Initialize with pre-cached OpRunners, such as during autotuning.
+  static StatusOr<AutotuneEntry> FromOpRunners(
+      std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>> primary,
+      std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>
+          no_cache_fallback) {
+    TF_ASSIGN_OR_RETURN(
+        auto primary_cache,
+        se::dnn::LazyOpRunner<Op>::FromOpRunner(std::move(primary)));
+
+    if (no_cache_fallback) {
+      TF_ASSIGN_OR_RETURN(auto fallback_cache,
+                          se::dnn::LazyOpRunner<Op>::FromOpRunner(
+                              std::move(no_cache_fallback)));
+      return AutotuneEntry(std::move(primary_cache), std::move(fallback_cache));
+
+    } else {
+      return AutotuneEntry(std::move(primary_cache), nullptr);
+    }
+  }
 
   struct OpRunners {
     OpRunners() = default;
 
-    OpRunners(std::shared_ptr<const se::dnn::OpRunner<F>> primary_,
-              std::shared_ptr<const se::dnn::OpRunner<F>> no_scratch_fallback_)
+    OpRunners(std::shared_ptr<se::dnn::LazyOpRunner<Op>> primary_,
+              std::shared_ptr<se::dnn::LazyOpRunner<Op>> no_scratch_fallback_)
         : primary(std::move(primary_)),
           no_scratch_fallback(std::move(no_scratch_fallback_)) {}
 
     // Null iff this 'OpRunners' is default-constructed as part of the
     // fake-variant in AutotuneEntry; users outside gpu_utils.h itself should
     // never see primary = nullptr.
-    std::shared_ptr<const se::dnn::OpRunner<F>> primary;
-    std::shared_ptr<const se::dnn::OpRunner<F>>
-        no_scratch_fallback;  // Nullable
+    std::shared_ptr<se::dnn::LazyOpRunner<Op>> primary;
+    std::shared_ptr<se::dnn::LazyOpRunner<Op>> no_scratch_fallback;  // Nullable
 
     bool operator==(const OpRunners& other) const {
-      return primary->ToString() == other.primary->ToString() &&
+      return *primary == *other.primary &&
              ((!no_scratch_fallback && !other.no_scratch_fallback) ||
               (no_scratch_fallback && other.no_scratch_fallback &&
-               no_scratch_fallback->ToString() ==
-                   other.no_scratch_fallback->ToString()));
+               *no_scratch_fallback == *other.no_scratch_fallback));
     }
   };
 
@@ -312,7 +346,7 @@ class AutotuneEntry {
   // AutotuneMap needs to test equality to keep track of the number of times an
   // algorithm has won autotuning; for this purpose, we can use ToString to
   // determine whether runners are equal.
-  bool operator==(const AutotuneEntry<F>& other) const {
+  bool operator==(const AutotuneEntry<Op>& other) const {
     if (is_algorithm_config_) {
       return other.is_algorithm_config_ &&
              algorithm_config_ == other.algorithm_config_;
@@ -321,7 +355,7 @@ class AutotuneEntry {
     return !other.is_algorithm_config_ && op_runners_ == other.op_runners_;
   }
 
-  bool operator!=(const AutotuneEntry<F>& other) const {
+  bool operator!=(const AutotuneEntry<Op>& other) const {
     return !(*this == other);
   }
 
@@ -352,14 +386,16 @@ StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
 StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
     absl::Span<const AutotuneResult> results);
 
-// Explicitly-instantiated with ConvSignature and FusedConvSignature.
+// Explicitly-instantiated with ConvOp and FusedConvOp.
 //
 // The definition can't be in the header because including .pb.h files in
 // headers is forbidden.
-template <typename Sig>
-StatusOr<AutotuneEntry<Sig>> BestCudnnConvAlgorithm(
+template <typename Op>
+StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
     absl::Span<const AutotuneResult> results,
-    std::vector<std::unique_ptr<const se::dnn::OpRunner<Sig>>> runners);
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>>
+        runners);
 
 }  // namespace tensorflow
 

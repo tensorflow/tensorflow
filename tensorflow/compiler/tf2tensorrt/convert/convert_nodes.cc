@@ -3556,114 +3556,7 @@ Status ConvertRelu6(OpConverterParams* params) {
   return Status::OK();
 }
 
-Status ConvertBiasAddInt8WithoutCalibration(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(
-      CheckInputsWeights(*params, {{"value", false}, {"bias", true}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  if (params->validation_only) return Status::OK();
-
-  ITensorProxyPtr tensor = inputs.at(0).tensor();
-  const nvinfer1::Dims original_dims = tensor->getDimensions();
-  TFAttrs attrs(node_def);
-  const string data_format = attrs.get<string>("data_format");
-  const int channel_index =
-      (data_format == "NHWC" ? original_dims.nbDims - 1 : 0);
-
-  nvinfer1::Permutation permutation;
-  if (channel_index != 0) {
-    // Permute the dimensions so that the channel dimension is the first
-    // dimension.
-    for (int i = 0; i < original_dims.nbDims; ++i) {
-      permutation.order[i] = i;
-    }
-    permutation.order[0] = channel_index;
-    permutation.order[channel_index] = 0;
-    VLOG(1) << "ConvertBiasAdd permutation: "
-            << DebugString(permutation, original_dims.nbDims);
-  }
-
-  // TensorRT addScale requires input to be of rank 3, we need to apply
-  // transpose as well as reshape.
-  // TODO(laigd): this doesn't match what the TRT doc says, fix the doc?
-  if (channel_index != 0 || original_dims.nbDims != 3) {
-    nvinfer1::IShuffleLayer* shuffle_layer =
-        params->converter->network()->addShuffle(*tensor->trt_tensor());
-    TFTRT_RETURN_ERROR_IF_NULLPTR(shuffle_layer, node_def.name());
-    params->converter->SetLayerName(shuffle_layer, node_def, "shuffle",
-                                    /*op_instance=*/0);
-
-    // NOTE(laigd): for some reason we need to apply the reshape
-    // unconditionally. The default shape has nbDims==-1 and it seems the
-    // behavior is undefined in some cases.
-    nvinfer1::Dims reshape_dims;
-    reshape_dims.nbDims = 3;
-    // 0 means copying from input; -1 means inferring from the rest.
-    reshape_dims.d[0] = 0;
-    reshape_dims.d[1] = original_dims.nbDims >= 2 ? 0 : 1;
-    reshape_dims.d[2] = original_dims.nbDims >= 3 ? -1 : 1;
-    shuffle_layer->setReshapeDimensions(reshape_dims);
-
-    if (channel_index != 0) {
-      shuffle_layer->setFirstTranspose(permutation);
-    }
-    tensor = shuffle_layer->getOutput(0);
-  }
-
-  TRT_ShapedWeights weights = inputs.at(1).weights();
-  nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
-  if (weights.shape_.d[0] == 1) {
-    mode = nvinfer1::ScaleMode::kUNIFORM;
-  }
-
-  TRT_ShapedWeights empty_weights(weights.TrtDType());
-  nvinfer1::IScaleLayer* layer = params->converter->network()->addScale(
-      *tensor->trt_tensor(), mode, weights.GetTrtWeights(),
-      empty_weights.GetTrtWeights(), empty_weights.GetTrtWeights());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  params->converter->SetLayerName(layer, node_def, "scale");
-
-  ITensorProxyPtr output_tensor = layer->getOutput(0);
-
-  // Restore transpose & reshape.
-  if (channel_index != 0 || original_dims.nbDims != 3) {
-    nvinfer1::IShuffleLayer* shuffle_layer =
-        params->converter->network()->addShuffle(*output_tensor->trt_tensor());
-    TFTRT_RETURN_ERROR_IF_NULLPTR(shuffle_layer, node_def.name());
-    params->converter->SetLayerName(shuffle_layer, node_def, "shuffle",
-                                    /*op_instance=*/1);
-    // NOTE: for same reason as mentioned above we need to apply the reshape
-    // unconditionally.
-    nvinfer1::Dims reshape_dims = original_dims;
-    if (channel_index != 0) {
-      // NOTE: according to NVIDIA dimension types are deprecated, so we don't
-      // need to copy them back.
-      reshape_dims.d[channel_index] = original_dims.d[0];
-      reshape_dims.d[0] = original_dims.d[channel_index];
-    }
-    shuffle_layer->setReshapeDimensions(reshape_dims);
-
-    if (channel_index != 0) {
-      shuffle_layer->setSecondTranspose(permutation);
-    }
-    output_tensor = shuffle_layer->getOutput(0);
-  }
-
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return Status::OK();
-}
-
 Status ConvertBiasAdd(OpConverterParams* params) {
-  if (params->precision_mode == TrtPrecisionMode::INT8 &&
-      !params->use_calibration) {
-    // NOTE(laigd): based on some observation, it seems TensorRT cannot fuse
-    // IConvolutionLayer and IElementwiseLayer and will require range
-    // information for the output of Conv2D. Using IScaleLayer will fix the
-    // problem.
-    return ConvertBiasAddInt8WithoutCalibration(params);
-  }
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
 
@@ -4767,7 +4660,7 @@ Status ConvertGather(OpConverterParams* params) {
   // option for an input to be either tensor or weight.
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"params", TrtInputArg::kBoth},
-                                   {"indices", TrtInputArg::kTensor},
+                                   {"indices", TrtInputArg::kBoth},
                                    {"axis", TrtInputArg::kWeight}}));
 
   const auto& params_input = inputs.at(0);
@@ -4794,20 +4687,24 @@ Status ConvertGather(OpConverterParams* params) {
     return errors::Unimplemented(
         "The input axis must be zero when params is a weight.");
   }
-  if (params->use_implicit_batch && params_input.is_tensor() &&
-      indices_input.batch_size() != 1) {
+  if (params->use_implicit_batch &&
+      (params_input.is_tensor() == indices_input.is_tensor()) &&
+      (indices_input.batch_size() != 1 || params_input.batch_size() != 1)) {
     return errors::Unimplemented(
-        "Indices must have a batch size of 1 when params is a tensor.");
+        "Params and indices must have a batch size of 1 when params and indices"
+        " are both tensors or both constants.");
   }
+
+  auto get_rank = [params](const auto& input) {
+    return input.GetTrtDims().nbDims +
+           (params->use_implicit_batch && input.is_tensor() ? 1 : 0);
+  };
   // Both input are tensors, and the TF gather result will have rank:
   // (params.nbDims + 1) + (indices.nbDims + 1) - 1,
   // where "+ 1" adds the batch dim. If params is a weight, the TRT rank matches
   // the TF rank so we don't have to add + 1.
-  const int params_tf_rank =
-      params_input.GetTrtDims().nbDims +
-      (params->use_implicit_batch && params_input.is_tensor() ? 1 : 0);
-  const int indices_tf_rank =
-      indices_input.GetTrtDims().nbDims + (params->use_implicit_batch ? 1 : 0);
+  const int params_tf_rank = get_rank(params_input);
+  const int indices_tf_rank = get_rank(indices_input);
   const int tf_gather_output_rank = params_tf_rank + indices_tf_rank - 1;
   if (tf_gather_output_rank >
       nvinfer1::Dims::MAX_DIMS + (params->use_implicit_batch ? 1 : 0)) {
@@ -4817,14 +4714,22 @@ Status ConvertGather(OpConverterParams* params) {
   }
   if (params->validation_only) return Status::OK();
 
-  // Convert params to tensor is it is a weight.
-  ITensorProxyPtr params_tensor = nullptr;
-  if (params_input.is_weights()) {
-    params_tensor = params->converter->CreateConstantLayer(
-        params_input.weights(), params_input.GetTrtDims());
-  } else {
-    params_tensor = params_input.tensor();
-  }
+  // Convert input or indices to tensor if it is a constant.
+  auto populate_tensor = [params](const auto& input) -> ITensorProxyPtr {
+    ITensorProxyPtr result_tensor = nullptr;
+
+    if (input.is_weights()) {
+      result_tensor = params->converter->CreateConstantLayer(
+          input.weights(), input.GetTrtDims());
+    } else {
+      result_tensor = input.tensor();
+    }
+
+    return result_tensor;
+  };
+
+  ITensorProxyPtr params_tensor = populate_tensor(params_input);
+  ITensorProxyPtr indices_tensor = populate_tensor(indices_input);
 
   // Note on how IGatherLayer works: if both the data and indices tensors have
   // a batch size dimension of size N, it performs:
@@ -4832,33 +4737,57 @@ Status ConvertGather(OpConverterParams* params) {
   //   output[batchid, a0, ..., an, i, ..., j, b0, ..., bn] = (
   //       data[batchid, a0, ..., an, indices[batchid, i, ..., j] b0, ..., bn])
   nvinfer1::IGatherLayer* layer = params->converter->network()->addGather(
-      *params_tensor->trt_tensor(), *indices_input.tensor()->trt_tensor(),
-      trt_axis);
+      *params_tensor->trt_tensor(), *indices_tensor->trt_tensor(), trt_axis);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   params->converter->SetLayerName(layer, node_def);
 
   ITensorProxyPtr output_tensor = layer->getOutput(0);
   nvinfer1::Dims trt_gather_output_dims = output_tensor->getDimensions();
-  // Note for the "- 2": one is for the output batch dim encapsulated by TF-TRT,
-  // and the other is for the output dimension that is squeezed by IGatherLayer
-  // because of the implicit batch dim in the indices (see the above note).
-  const int expected_trt_output_rank =
-      tf_gather_output_rank - (params_input.is_tensor() ? 2 : 1);
-  if (params->use_implicit_batch &&
-      trt_gather_output_dims.nbDims != expected_trt_output_rank) {
-    return errors::Internal(
-        "Get unexpected output dimensions of IGatherLayer. Expect nbDims: ",
-        expected_trt_output_rank,
-        ", actual nbDims: ", trt_gather_output_dims.nbDims);
+
+  if (params->use_implicit_batch) {
+    // Note for the "- 2": one is for the output batch dim encapsulated by
+    // TF-TRT, and the other is for the output dimension that is squeezed by
+    // IGatherLayer because of the implicit batch dim in the indices (see the
+    // above note).
+    const int expected_trt_output_rank = tf_gather_output_rank -
+                                         (params_input.is_tensor() ? 1 : 0) -
+                                         (indices_input.is_tensor() ? 1 : 0);
+
+    if (trt_gather_output_dims.nbDims != expected_trt_output_rank) {
+      return errors::Internal(
+          "Get unexpected output dimensions of IGatherLayer. Expect nbDims: ",
+          expected_trt_output_rank,
+          ", actual nbDims: ", trt_gather_output_dims.nbDims);
+    }
   }
   // Reshape the output so after adding the implicit batch dim it'll match the
   // output shape of TF GatherV2.
-  if (params->use_implicit_batch && params_input.is_tensor()) {
+  if (params->use_implicit_batch && params_input.is_tensor() &&
+      indices_input.is_tensor()) {
     for (int i = trt_gather_output_dims.nbDims; i > trt_axis; --i) {
       trt_gather_output_dims.d[i] = trt_gather_output_dims.d[i - 1];
     }
     trt_gather_output_dims.d[trt_axis] = 1;
     ++trt_gather_output_dims.nbDims;
+
+    TF_RETURN_IF_ERROR(PrepareTensorForShape(
+        params->converter, TRT_TensorOrWeights(output_tensor),
+        trt_gather_output_dims,
+        /*validation_only=*/false, &output_tensor, node_def));
+  }
+
+  // When input and indices are both constants, for the supported cases, reshape
+  // output so that after removing the implicit batch dim it will match the
+  // output shape of TF GatherV2 op.
+  if (params->use_implicit_batch && params_input.is_weights() &&
+      indices_input.is_weights()) {
+    for (int i = trt_axis; i < trt_gather_output_dims.nbDims - 1; ++i) {
+      trt_gather_output_dims.d[i] = trt_gather_output_dims.d[i + 1];
+    }
+
+    // Squeeze the implicit batch dimension out. Note: this works only
+    // when batch size for both inputs and indices are 1.
+    --trt_gather_output_dims.nbDims;
 
     TF_RETURN_IF_ERROR(PrepareTensorForShape(
         params->converter, TRT_TensorOrWeights(output_tensor),
