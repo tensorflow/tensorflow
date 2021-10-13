@@ -16,11 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_2D_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_2D_H_
 
+#include "absl/strings/string_view.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/eigen_backward_spatial_convolutions.h"
 #include "tensorflow/core/kernels/eigen_spatial_convolutions.h"
 #include "tensorflow/core/util/tensor_format.h"
+
+// Returns true if TF_CONV2D_USE_FP16_ACCUMULATE == 1, false otherwise.
+static bool Conv2dUseFp16Accumulate() {
+  static bool use_fp16_accumulate = []() {
+    const char* env = std::getenv("TF_CONV2D_USE_FP16_ACCUMULATE");
+    return (env != nullptr) && (absl::string_view(env) == "1");
+  }();
+  return use_fp16_accumulate;
+}
 
 namespace tensorflow {
 namespace functor {
@@ -103,11 +113,17 @@ struct SpatialConvolution<Device, Eigen::half, OutputKernel> {
                   int row_stride, int col_stride, int row_dilation,
                   int col_dilation, const Eigen::PaddingType& padding,
                   const OutputKernel& output_kernel = OutputKernel()) {
-    output.device(d) =
-        Eigen::SpatialConvolution(input.cast<float>(), filter.cast<float>(),
-                                  col_stride, row_stride, padding, col_dilation,
-                                  row_dilation, output_kernel)
-            .template cast<Eigen::half>();
+    if (Conv2dUseFp16Accumulate()) {
+      output.device(d) = Eigen::SpatialConvolution(
+          input, filter, col_stride, row_stride, padding, col_dilation,
+          row_dilation, output_kernel);
+    } else {
+      output.device(d) =
+          Eigen::SpatialConvolution(input.cast<float>(), filter.cast<float>(),
+                                    col_stride, row_stride, padding,
+                                    col_dilation, row_dilation, output_kernel)
+              .template cast<Eigen::half>();
+    }
   }
 
   template <typename Input, typename Filter, typename Output>
@@ -115,12 +131,18 @@ struct SpatialConvolution<Device, Eigen::half, OutputKernel> {
                   int row_stride, int col_stride, int row_dilation,
                   int col_dilation, const Eigen::PaddingType& padding,
                   const OutputKernel& output_kernel = OutputKernel()) {
-    output.device(d) =
-        Eigen::SpatialConvolution(input.template cast<float>(),
-                                  filter.template cast<float>(), col_stride,
-                                  row_stride, padding, col_dilation,
-                                  row_dilation, output_kernel)
-            .template cast<Eigen::half>();
+    if (Conv2dUseFp16Accumulate()) {
+      output.device(d) = Eigen::SpatialConvolution(
+          input, filter, col_stride, row_stride, padding, col_dilation,
+          row_dilation, output_kernel);
+    } else {
+      output.device(d) =
+          Eigen::SpatialConvolution(input.template cast<float>(),
+                                    filter.template cast<float>(), col_stride,
+                                    row_stride, padding, col_dilation,
+                                    row_dilation, output_kernel)
+              .template cast<Eigen::half>();
+    }
   }
 
   void operator()(const Device& d,
@@ -131,13 +153,21 @@ struct SpatialConvolution<Device, Eigen::half, OutputKernel> {
                   int col_dilation, int padding_top, int padding_bottom,
                   int padding_left, int padding_right,
                   const OutputKernel& output_kernel = OutputKernel()) {
-    output.device(d) =
-        Eigen::SpatialConvolution(
-            input.cast<float>(), filter.cast<float>(), col_stride, row_stride,
-            Eigen::PaddingType::PADDING_VALID, col_dilation, row_dilation,
-            output_kernel, padding_left, padding_right, padding_top,
-            padding_bottom)
-            .template cast<Eigen::half>();
+    if (Conv2dUseFp16Accumulate()) {
+      output.device(d) = Eigen::SpatialConvolution(
+          input, filter, col_stride, row_stride,
+          Eigen::PaddingType::PADDING_VALID, col_dilation, row_dilation,
+          output_kernel, padding_left, padding_right, padding_top,
+          padding_bottom);
+    } else {
+      output.device(d) =
+          Eigen::SpatialConvolution(
+              input.cast<float>(), filter.cast<float>(), col_stride, row_stride,
+              Eigen::PaddingType::PADDING_VALID, col_dilation, row_dilation,
+              output_kernel, padding_left, padding_right, padding_top,
+              padding_bottom)
+              .template cast<Eigen::half>();
+    }
   }
 
   template <typename Input, typename Filter, typename Output>
@@ -146,13 +176,21 @@ struct SpatialConvolution<Device, Eigen::half, OutputKernel> {
                   int col_dilation, int padding_top, int padding_bottom,
                   int padding_left, int padding_right,
                   const OutputKernel& output_kernel = OutputKernel()) {
-    output.device(d) =
-        Eigen::SpatialConvolution(
-            input.template cast<float>(), filter.template cast<float>(),
-            col_stride, row_stride, Eigen::PaddingType::PADDING_VALID,
-            col_dilation, row_dilation, output_kernel, padding_left,
-            padding_right, padding_top, padding_bottom)
-            .template cast<Eigen::half>();
+    if (Conv2dUseFp16Accumulate()) {
+      output.device(d) = Eigen::SpatialConvolution(
+          input, filter, col_stride, row_stride,
+          Eigen::PaddingType::PADDING_VALID, col_dilation, row_dilation,
+          output_kernel, padding_left, padding_right, padding_top,
+          padding_bottom);
+    } else {
+      output.device(d) =
+          Eigen::SpatialConvolution(
+              input.template cast<float>(), filter.template cast<float>(),
+              col_stride, row_stride, Eigen::PaddingType::PADDING_VALID,
+              col_dilation, row_dilation, output_kernel, padding_left,
+              padding_right, padding_top, padding_bottom)
+              .template cast<Eigen::half>();
+    }
   }
 };
 
