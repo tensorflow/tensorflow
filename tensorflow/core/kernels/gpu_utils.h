@@ -331,7 +331,7 @@ class AutotuneEntry {
     }
     return absl::StrCat("{", op_runners_.primary->ToString(), ", ",
         (op_runners_.no_scratch_fallback ?
-         op_runners_.no_scratch_fallback->ToString() : ""), "}");
+         op_runners_.no_scratch_fallback->ToString() : "(op_runners have no fallback)"), "}");
   }
 
  private:
