@@ -199,6 +199,7 @@ enum StatType {
   kTfOp,
   kHloOp,
   kHloModule,
+  kProgramId,
   kEquation,
   kIsEager,
   kTfFunctionCall,

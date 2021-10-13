@@ -205,22 +205,35 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     int64_t duration_ps = event.DurationPs();
     absl::string_view tf_op_full_name;
     absl::string_view hlo_module_name;
+    absl::optional<uint64_t> program_id;
     std::vector<absl::string_view> hlo_op_names;
     absl::optional<int64_t> group_id;
     bool is_kernel = false;
     event.ForEachStat([&](const XStatVisitor& stat) {
-      if (stat.Type() == StatType::kGroupId) {
-        group_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kLevel0 ||  // old way to carry tf_op
-                 stat.Type() == StatType::kTfOp) {
-        tf_op_full_name = stat.StrOrRefValue();
-      } else if (stat.Type() == StatType::kHloOp) {
-        hlo_op_names =
-            absl::StrSplit(stat.StrOrRefValue(), kAnnotationDelimiter);
-      } else if (stat.Type() == StatType::kHloModule) {
-        hlo_module_name = stat.StrOrRefValue();
-      } else if (stat.Type() == StatType::kKernelDetails) {
-        is_kernel = true;
+      if (!stat.Type().has_value()) return;
+      switch (stat.Type().value()) {
+        case StatType::kGroupId:
+          group_id = stat.IntValue();
+          break;
+        case StatType::kLevel0:  // old way to carry tf_op
+        case StatType::kTfOp:
+          tf_op_full_name = stat.StrOrRefValue();
+          break;
+        case StatType::kHloOp:
+          hlo_op_names =
+              absl::StrSplit(stat.StrOrRefValue(), kAnnotationDelimiter);
+          break;
+        case StatType::kHloModule:
+          hlo_module_name = stat.StrOrRefValue();
+          break;
+        case StatType::kProgramId:
+          program_id = stat.IntOrUintValue();
+          break;
+        case StatType::kKernelDetails:
+          is_kernel = true;
+          break;
+        default:
+          break;
       }
     });
     int64_t group_id_or_invalid = GroupIdOrInvalid(group_id);
@@ -244,9 +257,13 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     if (!is_kernel) continue;
 
     if (!hlo_module_name.empty()) {
-      hlo_modules.ExpandOrAddEvent(CreateXEvent(
-          *plane.GetOrCreateEventMetadata(hlo_module_name), offset_ps,
-          duration_ps, group_id_stat_metadata_id, group_id));
+      std::string name(hlo_module_name);
+      if (program_id.has_value()) {
+        absl::StrAppend(&name, " (", program_id.value(), ")");
+      }
+      hlo_modules.ExpandOrAddEvent(
+          CreateXEvent(*plane.GetOrCreateEventMetadata(name), offset_ps,
+                       duration_ps, group_id_stat_metadata_id, group_id));
     }
 
     if (!hlo_op_names.empty()) {  // GPU kernel compiled by XLA
@@ -259,7 +276,8 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
             duration_ps, group_id_stat_metadata_id, group_id));
       }
       hlo_ops.ExpandOrAddEvents(hlo_op_event_per_level, group_id_or_invalid);
-      auto symbol = symbol_resolver(hlo_module_name, hlo_op_names.back());
+      auto symbol =
+          symbol_resolver(program_id, hlo_module_name, hlo_op_names.back());
       if (!symbol.tf_op_name.empty()) {
         ProcessTfOpEvent(symbol.tf_op_name,
                          /*low_level_event_name=*/event.Name(), offset_ps,
@@ -376,10 +394,9 @@ void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               XSpace* space, bool step_info_only) {
   // TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
   // to look up tensorflow op name from hlo_module/hlo_op.
-  auto dummy_symbol_resolver = [](absl::string_view hlo_module,
-                                  absl::string_view hlo_op) {
-    return tensorflow::profiler::Symbol();
-  };
+  auto dummy_symbol_resolver =
+      [](absl::optional<uint64_t> program_id, absl::string_view hlo_module,
+         absl::string_view hlo_op) { return tensorflow::profiler::Symbol(); };
   std::vector<XPlane*> device_traces =
       FindMutablePlanesWithPrefix(space, kGpuPlanePrefix);
   for (XPlane* plane : device_traces) {

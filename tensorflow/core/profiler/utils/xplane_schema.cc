@@ -206,6 +206,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"tf_op", kTfOp},
       {"hlo_op", kHloOp},
       {"hlo_module", kHloModule},
+      {"program_id", kProgramId},
       {"equation", kEquation},
       {"is_eager", kIsEager},
       {"tf_function_call", kTfFunctionCall},
