@@ -1179,6 +1179,32 @@ static LogicalResult Verify(AllGatherOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// BitcastConvertOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BitcastConvertOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  auto operand_type = operands[0].getType().dyn_cast<RankedTensorType>();
+  auto result_type = getType().dyn_cast<RankedTensorType>();
+
+  // Only ranked tensors are supported.
+  if (!operand_type || !result_type) return failure();
+
+  // Shape-changing bitcast convert is not implemented.
+  // TODO(kramerb): This could be done by adjusting the last dimension.
+  DataLayout data_layout = DataLayout::closest(*this);
+  unsigned operand_element_size =
+      data_layout.getTypeSizeInBits(operand_type.getElementType());
+  unsigned result_element_size =
+      data_layout.getTypeSizeInBits(result_type.getElementType());
+  if (operand_element_size != result_element_size) return failure();
+
+  return ::mlir::mhlo::deriveShapeFromOperand(
+      &builder, getOperation(), operands.front(), &reifiedReturnShapes);
+}
+
+//===----------------------------------------------------------------------===//
 // BroadcastOp
 //===----------------------------------------------------------------------===//
 
@@ -1219,6 +1245,37 @@ static LogicalResult Verify(BroadcastOp op) {
         llvm::make_range(resultShape.begin(), resultShape.end()),
         llvm::make_range(expectedShape.begin(), expectedShape.end())));
   }
+
+  return success();
+}
+
+LogicalResult BroadcastOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  BroadcastOp::Adaptor adaptor(operands);
+  Value operand = adaptor.operand();
+
+  auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
+  // Unranked tensors are not supported.
+  if (!operand_type) return failure();
+
+  Location loc = getLoc();
+  SmallVector<Value, 4> shape_values;
+
+  // Collect the broadcast sizes.
+  for (const auto& size : broadcast_sizes()) {
+    shape_values.push_back(
+        builder.create<arith::ConstantIndexOp>(loc, size.getZExtValue()));
+  }
+
+  // Collect the operand sizes.
+  for (auto index : llvm::seq<int64_t>(0, operand_type.getRank())) {
+    shape_values.push_back(
+        builder.createOrFold<tensor::DimOp>(loc, operand, index));
+  }
+
+  reifiedReturnShapes.push_back(builder.create<tensor::FromElementsOp>(
+      loc, builder.getIndexType(), shape_values));
 
   return success();
 }
@@ -1484,6 +1541,14 @@ static LogicalResult Verify(ClampOp op) {
   }
 
   return success();
+}
+
+LogicalResult ClampOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  // For `mhlo.clamp`, the first operand may be a scalar.
+  return deriveShapeFromOperand(&builder, getOperation(), operands[1],
+                                &reifiedReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -4056,7 +4121,7 @@ LogicalResult TransposeOp::reifyReturnTypeShapes(
     int64_t idx = element.index();
     auto it = std::find(permutation.begin(), permutation.end(), idx);
     Value value_dim = to_shape_scalar_type(
-        builder.create<tensor::DimOp>(loc, operand, element.index()));
+        builder.createOrFold<tensor::DimOp>(loc, operand, element.index()));
     shape_values[std::distance(permutation.begin(), it)] = value_dim;
   }
 

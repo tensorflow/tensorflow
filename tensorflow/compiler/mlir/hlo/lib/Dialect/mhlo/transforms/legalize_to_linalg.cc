@@ -113,30 +113,25 @@ Value GetInitTensor(OpBuilder& b, Location loc, ShapedType type,
                                         type.getElementType());
 }
 
-SmallVector<Value, 2> ExtractDynamicSizes(OpBuilder& b, Location loc,
-                                          Value tensor,
-                                          Value shape_tensor = nullptr,
-                                          AffineMap permutation = {}) {
-  auto tensor_type = tensor.getType().dyn_cast<RankedTensorType>();
-  if (!tensor_type) return {};
-  SmallVector<Value, 2> dyn_sizes(tensor_type.getRank());
-  for (auto& en : llvm::enumerate(tensor_type.getShape())) {
-    if (en.value() != ShapedType::kDynamicSize) continue;
-    // If a shape tensor is present extract from there.
-    if (shape_tensor) {
-      Value extract = b.create<tensor::ExtractOp>(
-          loc, shape_tensor,
-          ValueRange{b.create<arith::ConstantIndexOp>(loc, en.index())});
-      dyn_sizes[en.index()] =
-          b.create<arith::IndexCastOp>(loc, b.getIndexType(), extract);
-    } else {
-      dyn_sizes[en.index()] = b.create<tensor::DimOp>(loc, tensor, en.index());
+Value GetInitTensorFor(OpBuilder& b, Location loc, ShapedType result_type,
+                       Operation* op) {
+  SmallVector<Value> dyn_sizes;
+  if (result_type.hasRank() && !result_type.hasStaticShape()) {
+    // Ask the op for its output shape.
+    auto shape_source = cast<InferShapedTypeOpInterface>(op);
+    SmallVector<Value, 1> reified_shapes;
+    (void)shape_source.reifyReturnTypeShapes(b, op->getOperands(),
+                                             reified_shapes);
+    assert(reified_shapes.size() == 1 && "Expected one reified result");
+
+    for (auto& en : llvm::enumerate(result_type.getShape())) {
+      if (en.value() != ShapedType::kDynamicSize) continue;
+      dyn_sizes.push_back(b.create<tensor::ExtractOp>(
+          loc, reified_shapes[0],
+          ValueRange{b.create<arith::ConstantIndexOp>(loc, en.index())}));
     }
   }
-  if (permutation)
-    dyn_sizes = applyPermutationMap(permutation, makeArrayRef(dyn_sizes));
-  llvm::erase_value(dyn_sizes, nullptr);  // Strip out placeholders.
-  return dyn_sizes;
+  return GetInitTensor(b, loc, result_type, dyn_sizes);
 }
 
 SmallVector<int64_t, 4> Extract1DVector(DenseIntElementsAttr elements) {
@@ -677,13 +672,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     // Find input/output values and types.
     auto loc = op.getLoc();
     ValueRange inputs = isLHLO ? args.drop_back() : args;
-    Value output;
-    if (isLHLO) {
-      output = args.back();
-    } else {
-      auto dyn_sizes = ExtractDynamicSizes(rewriter, loc, max_rank_arg);
-      output = GetInitTensor(rewriter, loc, *result_ty, dyn_sizes);
-    }
+    Value output =
+        isLHLO ? args.back() : GetInitTensorFor(rewriter, loc, *result_ty, op);
 
     // Create indexing maps.
     AffineMap scalar_map = AffineMap::get(nloops, 0, rewriter.getContext());
@@ -770,21 +760,13 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
 
     auto nloops = result_type.getRank();
     auto loc = op.getLoc();
-    AffineMap shape_permutation =
-        indexing_maps[0].isPermutation() ? indexing_maps[0] : AffineMap();
-    // TODO(pifon): technically, the op itself could have size operands (e.g.
-    // broadcast into a dynamic dimension).Handle this case.
-    auto dyn_sizes = isLHLO ? SmallVector<Value, 2>()
-                            : ExtractDynamicSizes(rewriter, loc, args[0],
-                                                  nullptr, shape_permutation);
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc,
         /*resultTensorTypes=*/isLHLO ? ArrayRef<Type>{} : result_type,
         /*inputs=*/args.front(),
         /*outputBuffers=*/
-        isLHLO
-            ? ValueRange{args.back()}
-            : ValueRange{GetInitTensor(rewriter, loc, result_type, dyn_sizes)},
+        isLHLO ? ValueRange{args.back()}
+               : ValueRange{GetInitTensorFor(rewriter, loc, result_type, op)},
         indexing_maps, GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
           nested_builder.create<linalg::YieldOp>(loc, *args.begin());
@@ -1298,13 +1280,6 @@ class IotaConverter : public OpConversionPattern<OpTy> {
     unsigned nloops = result_shaped_type.getRank();
 
     Location loc = iota_op.getLoc();
-    // If this is a dynamic iota, the first argument will be a shape tensor.
-    Value shape_tensor = args.size() > (isLHLO ? 1 : 0) ? args[0] : nullptr;
-    auto dyn_sizes =
-        isLHLO
-            ? SmallVector<Value, 2>()
-            : ExtractDynamicSizes(
-                  rewriter, loc, GetResultValue<isLHLO>(iota_op), shape_tensor);
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc,
         /*resultTensorTypes=*/
@@ -1312,8 +1287,8 @@ class IotaConverter : public OpConversionPattern<OpTy> {
         /*inputs=*/ValueRange{},
         /*outputBuffers=*/
         isLHLO ? ValueRange{args.back()}
-               : ValueRange{GetInitTensor(rewriter, loc, result_shaped_type,
-                                          dyn_sizes)},
+               : ValueRange{GetInitTensorFor(rewriter, loc, result_shaped_type,
+                                             iota_op)},
         llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
         GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
