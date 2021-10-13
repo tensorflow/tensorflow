@@ -341,27 +341,39 @@ LogicalResult PromoteResourcesToArguments(
 class PromoteResourcesToArgsPass
     : public PromoteResourcesToArgsPassBase<PromoteResourcesToArgsPass> {
  public:
+  PromoteResourcesToArgsPass() = default;
+  explicit PromoteResourcesToArgsPass(llvm::ArrayRef<std::string> functions);
   void runOnOperation() override;
 };
 
-void PromoteResourcesToArgsPass::runOnOperation() {
-  ModuleOp module = getOperation();
-  FuncOp main_func = module.lookupSymbol<FuncOp>("main");
-  if (!main_func) return;
-
-  // This routine should only be called when control flow operations are still
-  // represented with TF IfOp and WhileOp operations. In this case, there should
-  // be only one basic blocks in the MLIR representation.
-  if (failed(CheckSingleBlockFunction(main_func))) return signalPassFailure();
-
-  llvm::SmallVector<std::string, 4> var_handle_shared_names;
-  if (failed(ResourceLiftingForFunctionalControlFlow(main_func)) ||
-      failed(PromoteVarHandlesToArguments(main_func, /*add_validation=*/true,
-                                          &var_handle_shared_names)) ||
-      failed(PromoteResourcesToArguments(main_func, var_handle_shared_names)))
-    return signalPassFailure();
+  PromoteResourcesToArgsPass::PromoteResourcesToArgsPass(
+  llvm::ArrayRef<std::string> functions) {
+  functions_ = functions;
 }
 
+void PromoteResourcesToArgsPass::runOnOperation() {
+  ModuleOp module = getOperation();
+  if (llvm::size(functions_) == 0) {
+    functions_ = {"main"};
+  }
+  for (std::string f : functions_) {
+    FuncOp main_func = module.lookupSymbol<FuncOp>(f);
+    if (!main_func) return;
+
+    // This routine should only be called when control flow operations are still
+    // represented with TF IfOp and WhileOp operations. In this case, there should
+    // be only one basic blocks in the MLIR representation.
+    if (failed(CheckSingleBlockFunction(main_func))) return signalPassFailure();
+
+    llvm::SmallVector<std::string, 4> var_handle_shared_names;
+    if (failed(ResourceLiftingForFunctionalControlFlow(main_func)) ||
+	failed(PromoteVarHandlesToArguments(main_func, /*add_validation=*/true,
+					    &var_handle_shared_names)) ||
+	failed(PromoteResourcesToArguments(main_func, var_handle_shared_names)))
+      return signalPassFailure();
+  }
+}
+  
 class PromoteVarHandlesToArgsPass
     : public PromoteVarHandlesToArgsPassBase<PromoteVarHandlesToArgsPass> {
  public:
