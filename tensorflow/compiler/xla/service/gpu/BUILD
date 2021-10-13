@@ -1923,6 +1923,38 @@ cc_library(
 )
 
 cc_library(
+    name = "all_reduce_blueconnect",
+    srcs = ["all_reduce_blueconnect.cc"],
+    hdrs = ["all_reduce_blueconnect.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_query",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "all_reduce_blueconnect_test",
+    srcs = ["all_reduce_blueconnect_test.cc"],
+    deps = [
+        ":all_reduce_blueconnect",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+    ],
+)
+
+cc_library(
     name = "cudnn_batchnorm_rewriter",
     srcs = ["cudnn_batchnorm_rewriter.cc"],
     hdrs = ["cudnn_batchnorm_rewriter.h"],
