@@ -70,6 +70,7 @@ Status RootDataset::FromOptions(DatasetBase* input, DatasetBase** output) {
                          kRamBudgetShare * port::AvailableRam());
   }
   *output = new RootDataset(input, params);
+  (*output)->Initialize(/*metadata=*/{});
   return Status::OK();
 }
 
@@ -159,6 +160,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       params.runner =
           RunnerWithMaxParallelism(params.runner, max_intra_op_parallelism_);
     }
+    params.options = &dataset()->options();
     return params;
   }
 
