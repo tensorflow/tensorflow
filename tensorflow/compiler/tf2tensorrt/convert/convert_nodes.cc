@@ -4460,11 +4460,11 @@ Status ConvertConcat(OpConverterParams* params) {
         "Number of inputs for ConcatV2 is inconsistent with N attribute, at ",
         node_def.name());
   }
-  // Validate inputs. Values must be tensors for now, although it would be
-  // possible to accept weights in explicit batch mode. See CheckInputsWeights
-  // for details. TODO(tfeher): Allow weight input in explicit batch mode.
+  // Validate inputs.
   std::vector<std::pair<string, TrtInputArg>> inputs_kinds;
-  TrtInputArg expected_input = TrtInputArg::kTensor;
+  TrtInputArg expected_input =
+      params->use_implicit_batch ? TrtInputArg::kTensor : TrtInputArg::kBoth;
+
   inputs_kinds.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     inputs_kinds.push_back({StrCat("values_", i), expected_input});
@@ -4494,8 +4494,14 @@ Status ConvertConcat(OpConverterParams* params) {
   // Gather inputs as tensors
   std::vector<ITensorProxyPtr> input_tensors;
   input_tensors.reserve(num_inputs);
+
   for (int i = 0; i < num_inputs; i++) {
-    input_tensors.push_back(inputs.at(i).tensor());
+    if (inputs.at(i).is_tensor()) {
+      input_tensors.push_back(inputs.at(i).tensor());
+    } else {
+      input_tensors.push_back(params->converter->CreateConstantLayer(
+          inputs.at(i).weights(), inputs.at(i).GetTrtDims()));
+    }
   }
   std::vector<nvinfer1::ITensor*> trt_input_tensors;
   for (const auto& t : input_tensors) {
