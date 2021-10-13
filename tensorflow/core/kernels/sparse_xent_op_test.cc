@@ -73,26 +73,16 @@ BM_SparseXentDev(64, 100000, gpu, float, DT_FLOAT);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // CPU
-BM_SparseXentDev(8, 1000000, cpu, float, DT_FLOAT);
+#define BM_SparseXentDev_CPU(C_TYPE, TF_TYPE)   \
+  BM_SparseXentDev(8, 1000000, cpu, C_TYPE, TF_TYPE); \
+  BM_SparseXentDev(16, 10000, cpu, C_TYPE, TF_TYPE); \
+  BM_SparseXentDev(16, 100000, cpu, C_TYPE, TF_TYPE); \
+  BM_SparseXentDev(32, 10000, cpu, C_TYPE, TF_TYPE); \
+  BM_SparseXentDev(32, 100000, cpu, C_TYPE, TF_TYPE); \
+  BM_SparseXentDev(64, 10000, cpu, C_TYPE, TF_TYPE); \
+  BM_SparseXentDev(64, 100000, cpu, C_TYPE, TF_TYPE);
 
-BM_SparseXentDev(16, 10000, cpu, float, DT_FLOAT);
-BM_SparseXentDev(16, 100000, cpu, float, DT_FLOAT);
-
-BM_SparseXentDev(32, 10000, cpu, float, DT_FLOAT);
-BM_SparseXentDev(32, 100000, cpu, float, DT_FLOAT);
-
-BM_SparseXentDev(64, 10000, cpu, float, DT_FLOAT);
-BM_SparseXentDev(64, 100000, cpu, float, DT_FLOAT);
-
-BM_SparseXentDev(8, 1000000, cpu, bfloat16, DT_BFLOAT16);
-
-BM_SparseXentDev(16, 10000, cpu, bfloat16, DT_BFLOAT16);
-BM_SparseXentDev(16, 100000, cpu, bfloat16, DT_BFLOAT16);
-
-BM_SparseXentDev(32, 10000, cpu, bfloat16, DT_BFLOAT16);
-BM_SparseXentDev(32, 100000, cpu, bfloat16, DT_BFLOAT16);
-
-BM_SparseXentDev(64, 10000, cpu, bfloat16, DT_BFLOAT16);
-BM_SparseXentDev(64, 100000, cpu, bfloat16, DT_BFLOAT16);
+BM_SparseXentDev_CPU(float, DT_FLOAT);
+BM_SparseXentDev_CPU(bfloat16, DT_BFLOAT16);
 
 }  // end namespace tensorflow
