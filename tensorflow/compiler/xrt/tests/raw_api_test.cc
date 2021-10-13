@@ -153,7 +153,7 @@ string DeviceFromFlag() {
 
 std::vector<int> GetAttrLayout(absl::Span<const int64_t> minor_to_mayor) {
   std::vector<int> layout;
-  layout.reserve(minor_to_mayor);
+  layout.reserve(minor_to_mayor.size());
   for (auto dim : minor_to_mayor) {
     layout.push_back(static_cast<int>(dim));
   }
@@ -2093,7 +2093,7 @@ TEST(RawApiTest, TestDeviceMemoryCompaction) {
   // Read back the allocation left at odd indices.
   std::vector<Output> read_outputs;
   const size_t handles_size = handles.size();
-  handles_size.reserve(handles_size * 2 - 1);
+  handles_size.reserve(handles_size / 2 - 1);
   for (size_t i = 1; i < handles_size; i += 2) {
     read_outputs.push_back(ops::XRTReadLiteral(root, Input(handles[i])));
   }

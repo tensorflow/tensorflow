@@ -691,13 +691,13 @@ class PodTpuDriver : public TpuDriver {
           std::vector<BufferHandle*> underlying_inputs;
           std::vector<BufferHandle*> underlying_outputs;
 
-          underlying_inputs.reserve(input_op_ids.size());
+          underlying_inputs.reserve(inputs_size);
           for (auto input_op_id : input_op_ids) {
             CHECK_EXISTS_OR_RETURN(underlying_buffers_, input_op_id,
                                    operation_id);
             underlying_inputs.push_back(underlying_buffers_[input_op_id].get());
           }
-          underlying_outputs.reserve(output_op_ids.size());
+          underlying_outputs.reserve(inputs_size);
           for (auto output_op_id : output_op_ids) {
             CHECK_EXISTS_OR_RETURN(underlying_buffers_, output_op_id,
                                    operation_id);
