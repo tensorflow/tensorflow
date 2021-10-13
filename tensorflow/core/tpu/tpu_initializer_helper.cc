@@ -33,6 +33,22 @@ static std::string GetEnvVar(const char* name) {
   return absl::StrCat(getenv(name));
 }
 
+bool GetEnvBool(const char* name, bool defval) {
+  const char* env = getenv(name);
+  if (env == nullptr) {
+    return defval;
+  }
+  if (std::strcmp(env, "true") == 0) {
+    return true;
+  }
+  if (std::strcmp(env, "false") == 0) {
+    return false;
+  }
+  int int_env;
+  bool has_int = absl::SimpleAtoi(env, &int_env);
+  return has_int && int_env != 0;
+}
+
 }  // namespace
 
 bool TryAcquireTpuLock() {
@@ -60,13 +76,16 @@ bool TryAcquireTpuLock() {
     // TPU_VISIBLE_DEVICES if we wanted to make this really precise.
     std::string chips_per_process_bounds =
         GetEnvVar("TPU_CHIPS_PER_PROCESS_BOUNDS");
+    bool allow_multiple_libtpu_load =
+        GetEnvBool("ALLOW_MULTIPLE_LIBTPU_LOAD", false);
     // TODO(skyewm): remove this when TPU_CHIPS_PER_HOST_BOUNDS is fully
     // deprecated
     if (chips_per_process_bounds.empty()) {
       chips_per_process_bounds = GetEnvVar("TPU_CHIPS_PER_HOST_BOUNDS");
     }
-    if (chips_per_process_bounds.empty() ||
-        chips_per_process_bounds == "2,2,1") {
+    if ((chips_per_process_bounds.empty() ||
+         chips_per_process_bounds == "2,2,1") &&
+        !allow_multiple_libtpu_load) {
       int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR, 0644);
 
       // This lock is held until the process exits intentionally. The underlying
@@ -79,7 +98,8 @@ bool TryAcquireTpuLock() {
         should_load_library = true;
       }
     } else {
-      VLOG(1) << "TPU_HOST_BOUNDS or TPU_VISIBLE_DEVICES is not empty, "
+      VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is not empty or "
+                 "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
                  "therefore allowing multiple libtpu.so loads.";
       should_load_library = true;
     }
