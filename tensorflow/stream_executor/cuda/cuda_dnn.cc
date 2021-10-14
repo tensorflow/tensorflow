@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -3896,10 +3897,19 @@ static port::StatusOr<cudnn_frontend::ExecutionPlan> RebuildExecutionPlan(
   cudnn_frontend::Engine engine = std::move(unmoved);
   RETURN_MSG_IF_CUDNN_ERROR(engine);
 
+  // Miscellaneous compiler bugs and linker issues conspired to make it
+  // impossible for AlgorithmDesc to just give us a map initially.  Get the
+  // vector of tuning knobs and build the map locally.
+  auto tuning_knobs_vec = desc.TuningKnobs();
+  absl::flat_hash_map<int64_t, int64_t> tuning_knobs;
+  tuning_knobs.reserve(tuning_knobs_vec.size());
+  for (const auto& pair : tuning_knobs_vec) {
+    tuning_knobs[pair.first] = pair.second;
+  }
+
   for (auto& knob : engine.getSupportedKnobs()) {
-    const auto it =
-        desc.TuningKnobs().find(static_cast<int64_t>(knob.getKnobType()));
-    if (it != desc.TuningKnobs().end()) {
+    const auto it = tuning_knobs.find(static_cast<int64_t>(knob.getKnobType()));
+    if (it != tuning_knobs.end()) {
       knob.setChoice(it->second);
     }
   }
@@ -4355,7 +4365,11 @@ port::StatusOr<dnn::AlgorithmDesc> ExecutionPlanToAlgorithmDesc(
     }
   }
 
-  return dnn::AlgorithmDesc(engine_id, tuning_knobs);
+  std::vector<std::pair<int64_t, int64_t>> tuning_knobs_vec;
+  tuning_knobs_vec.reserve(tuning_knobs.size());
+  absl::c_copy(tuning_knobs, std::back_inserter(tuning_knobs_vec));
+
+  return dnn::AlgorithmDesc(engine_id, tuning_knobs_vec);
 }
 
 // An OpRunner implemented by an ExecutionPlan.

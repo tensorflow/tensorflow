@@ -50,7 +50,7 @@ constexpr DataType ToDataType<int32>::value;
 
 AlgorithmDesc::AlgorithmDesc(
     int64_t engine_id,
-    const absl::flat_hash_map<int64_t, int64_t>& tuning_knobs) {
+    const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs) {
   proto_.set_is_cudnn_frontend(true);
   proto_.set_algo_id(engine_id);
   for (const auto& pair : tuning_knobs) {
@@ -91,11 +91,11 @@ std::string AlgorithmDesc::ToString() const {
   }
 }
 
-absl::flat_hash_map<int64_t, int64_t> AlgorithmDesc::TuningKnobs() const {
-  absl::flat_hash_map<int64_t, int64_t> result;
+std::vector<std::pair<int64_t, int64_t>> AlgorithmDesc::TuningKnobs() const {
+  std::vector<std::pair<int64_t, int64_t>> result;
   result.reserve(proto_.tuning_knobs().size());
   for (const auto& pair : proto_.tuning_knobs()) {
-    result.emplace(pair.first, pair.second);
+    result.emplace_back(pair.first, pair.second);
   }
   return result;
 }
