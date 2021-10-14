@@ -258,6 +258,7 @@ cc_library(
 
 cc_library(
     name = "tac-opt_lib",
+    testonly = True,
     deps = [
         ":target_aware_conversion",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",
@@ -270,6 +271,7 @@ cc_library(
 # Binary with no hardwares linked.
 tf_cc_binary(
     name = "tac-opt",
+    testonly = True,
     deps = [
         ":tac-opt_lib",
     ],
@@ -278,6 +280,7 @@ tf_cc_binary(
 # Binary with all backends linked.
 tf_cc_binary(
     name = "tac-opt-all-backends",
+    testonly = True,
     deps = [
         ":tac-opt_lib",
         "//tensorflow/compiler/mlir/lite/experimental/tac/hardwares:all-target-hardwares",

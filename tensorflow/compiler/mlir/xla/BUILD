@@ -662,6 +662,7 @@ cc_library(
 
 tf_cc_binary(
     name = "xla-opt",
+    testonly = True,
     deps = [
         ":all_xla_passes_for_testing",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",

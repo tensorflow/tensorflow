@@ -1263,7 +1263,8 @@ cc_library(
 )
 
 cc_library(
-    name = "bridge_pass_registration",
+    name = "bridge_pass_test_pipeline_registration",
+    testonly = True,  # Ensure alwayslink does not leak in the codebase.
     srcs = [
         "transforms/bridge_pass.cc",
     ],
@@ -1278,6 +1279,7 @@ cc_library(
 
 cc_library(
     name = "tensorflow_test_passes",
+    testonly = True,  # Ensure alwayslink does not leak in the codebase.
     srcs = [
         "transforms/init_text_file_to_import_test_pass.cc",
         "transforms/initialize_variables_in_session_init_test_pass.cc",
