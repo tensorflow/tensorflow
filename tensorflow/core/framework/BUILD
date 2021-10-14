@@ -1750,6 +1750,9 @@ tf_proto_library(
     srcs = ["dataset_options.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = [
+        ":model_proto",
+    ],
 )
 
 tf_proto_library(
