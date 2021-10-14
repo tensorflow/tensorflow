@@ -2215,7 +2215,6 @@ llvm::Optional<Value> convertStridedSliceOp(
 
     if (end[i] < 0) end[i] += input_shape[i];
 
-    // TODO(suderman): support reverse stride
     a1_begin[i] = begin[i];
     a1_size[i] = end[i] - begin[i];
 
