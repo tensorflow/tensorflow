@@ -52,6 +52,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfd {
+const char kOpKernelRunnerCacheResourceName[] =
+    "OpKernelRunnerCacheResourceName";
+
 namespace {
 
 using ::tfrt::AsyncValue;
@@ -64,9 +67,6 @@ using ::tfrt::string_view;
 
 constexpr char kOpKernelRunnerTableResourceName[] =
     "OpKernelRunnerTableResourceName";
-
-constexpr char kOpKernelRunnerCacheResourceName[] =
-    "OpKernelRunnerCacheResourceName";
 
 constexpr char kFallbackResourceArray[] = "FallbackResourceArray";
 
@@ -383,44 +383,10 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
     const tfrt::ExecutionContext& exec_ctx, tfrt::string_view op_name,
     tfrt::string_view device_name, llvm::ArrayRef<tfrt::Tensor*> arguments,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
-    const tfrt::OpAttrsRef& attrs) {
+    const KernelFallbackCompatRequestState& fallback_request_state,
+    const OpKernelRunner& op_kernel_runner) {
   auto op_chain = tfrt::GetReadyChain(exec_ctx.host());
   tensorflow::Status status;
-
-  const auto* fallback_request_state =
-      exec_ctx.request_ctx()
-          ->GetDataIfExists<KernelFallbackCompatRequestState>();
-  if (!fallback_request_state) {
-    status = tensorflow::errors::NotFound(
-        "KernelFallbackCompatRequestState not found in RequestContext.");
-    KernelFallbackEmitError(exec_ctx, op_name, &op_chain, results, status);
-    return op_chain;
-  }
-
-  DCHECK(exec_ctx.location());
-
-  DCHECK(exec_ctx.request_ctx()->resource_context());
-  auto* runner_cache = exec_ctx.request_ctx()
-                           ->resource_context()
-                           ->GetOrCreateResource<OpKernelRunnerCache>(
-                               kOpKernelRunnerCacheResourceName);
-
-  auto kernel_runner_or_status = runner_cache->GetOrCreate(
-      exec_ctx.location(), ToAbslStringView(op_name),
-      ToAbslStringView(device_name), arguments.size(),
-      [&attrs, host = exec_ctx.host()](
-          tensorflow::AttrValueMap* attr_value_map) -> llvm::Error {
-        VLOG(1) << "KernelFallbackExecuteCompat creating op from OpAttrs: "
-                << PrintTfrtOpAttrsToString(attrs);
-        return FillAttrValueMap(attrs, host, attr_value_map);
-      },
-      *fallback_request_state);
-
-  if (!kernel_runner_or_status.ok()) {
-    KernelFallbackEmitError(exec_ctx, op_name, &op_chain, results,
-                            kernel_runner_or_status.status());
-    return op_chain;
-  }
 
   auto expected_input_tf_tensors = ConvertInputTensors(arguments, exec_ctx);
   if (!expected_input_tf_tensors) {
@@ -429,8 +395,6 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
     KernelFallbackEmitError(exec_ctx, op_name, &op_chain, results, status);
     return op_chain;
   }
-
-  auto& kernel_runner = kernel_runner_or_status.ValueOrDie();
 
   auto& run_state = GetThreadLocalOpKernelRunState();
   auto clean_up_inputs =
@@ -441,7 +405,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
 
   // Check if input tensor dtypes are valid.
   status = ValidateInputTypes(op_name, input_tf_tensors,
-                              kernel_runner->op_kernel()->input_types());
+                              op_kernel_runner.op_kernel()->input_types());
 
   // TODO(b/176997538): Skip checking dtypes for tf._BatchFunctionFallback op
   // due to b/176997538. Remove the skipping once the SavedModel lowering
@@ -458,17 +422,16 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
   }
 
   auto* device =
-      GetDeviceFromFallbackState(*fallback_request_state, *kernel_runner);
+      GetDeviceFromFallbackState(fallback_request_state, op_kernel_runner);
 
-  run_state.SetUpParams(*kernel_runner, *fallback_request_state, device);
+  run_state.SetUpParams(op_kernel_runner, fallback_request_state, device);
 
-  // TODO(b/166705169): Figure out how to properly fallback GPU kernels.
-  if (kernel_runner->IsAsync()) {
+  if (op_kernel_runner.IsAsync()) {
     KernelFallbackExecuteCompatAsyncInternal<KernelFallbackTensor>(
-        exec_ctx, &run_state, *kernel_runner, &op_chain, results);
+        exec_ctx, &run_state, op_kernel_runner, &op_chain, results);
   } else {
     KernelFallbackExecuteCompatSyncInternal<KernelFallbackTensor>(
-        exec_ctx, &run_state, *kernel_runner, &op_chain, results);
+        exec_ctx, &run_state, op_kernel_runner, &op_chain, results);
   }
 
   return op_chain;
