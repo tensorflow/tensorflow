@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
@@ -75,6 +76,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
+#include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_bitcast_lift.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
@@ -551,6 +553,12 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<AllReduceContiguous>();
     }
 
+    int32_t blueconnect_num_devices_per_host =
+        debug_options.xla_gpu_all_reduce_blueconnect_num_devices_per_host();
+    if (blueconnect_num_devices_per_host > 0) {
+      pipeline.AddPass<AllReduceBlueConnect>(blueconnect_num_devices_per_host);
+    }
+
     if (debug_options.xla_gpu_enable_async_all_reduce()) {
       pipeline.AddPass<AsyncCollectiveCreator>(
           AsyncCollectiveCreator::CollectiveCreatorConfig{
@@ -840,9 +848,10 @@ static Status CompileModuleToLlvmIrImpl(
                                       "_gpu_after_optimizations"));
 
   mlir::MLIRContext mlir_context;
-  mlir_context.loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-                           mlir::StandardOpsDialect,
-                           mlir::lmhlo_gpu::LmhloGpuDialect>();
+  mlir_context
+      .loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
+                   mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+                   mlir::lmhlo_gpu::LmhloGpuDialect>();
   mlir::OwningModuleRef mlir_module =
       mlir::ModuleOp::create(mlir::Builder(&mlir_context).getUnknownLoc());
 

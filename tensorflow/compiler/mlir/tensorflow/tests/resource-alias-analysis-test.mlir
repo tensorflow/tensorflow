@@ -190,7 +190,7 @@ func @while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) -> (!tf_res, !t
 // expected-remark@below {{Region #0, Arg #1, ID 1 : 1}}
 // expected-remark@below {{Region #0, Arg #2, ID 2 : 2}}
 func @while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) -> tensor<i1> {
-  %0 = constant dense<false> : tensor<i1>
+  %0 = arith.constant dense<false> : tensor<i1>
   return %0 : tensor<i1>
 }
 
@@ -298,7 +298,7 @@ func @while_region_aliasing(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) {
   // expected-remark@below {{Region #1, Arg #2, ID 7 : 1, 7, 8}}
   %w:3 = "tf.WhileRegion"(%arg0, %arg1, %arg2) ({
           ^bb0(%carg0: !tf_res, %carg1: !tf_res, %carg2: !tf_res):
-          %0 = constant dense<false> : tensor<i1>
+          %0 = arith.constant dense<false> : tensor<i1>
           "tf.Yield"(%0) : (tensor<i1>) -> ()
          },{
           ^bb0(%barg0: !tf_res, %barg1: !tf_res, %barg2: !tf_res):

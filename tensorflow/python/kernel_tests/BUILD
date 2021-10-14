@@ -3400,7 +3400,6 @@ cuda_py_test(
         "no_gpu",  # b/171837334
         "no_oss",  # Test times out on oss-nightly cpu builds
         "no_pip",
-        "nogpu",  # b/171837334
         "nomac",  # b/139946976
         "notap",  # b/31080670
     ],

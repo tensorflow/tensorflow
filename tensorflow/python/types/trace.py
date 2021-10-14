@@ -62,8 +62,8 @@ class TracingContext():
 
   `TracingContext` is a container class for flags and variables that have
   any kind of influence on the tracing behaviour of the class implementing
-  the __tf_trace_protocol__. This context will be shared across all
-  __tf_trace_protocol__ calls while constructing the TraceType for a particular
+  the __tf_tracing_type__. This context will be shared across all
+  __tf_tracing_type__ calls while constructing the TraceType for a particular
   set of objects.
   """
   pass

@@ -27,8 +27,8 @@ func @while(%arg0: tensor<i64>) -> tensor<i64> {
 
 // CHECK-LABEL: func @conditional
 func @conditional(%arg0: tensor<f32>) -> tensor<f32> {
-  // CHECK:   [[C0:%.+]] = constant dense<1.000000e+01> : tensor<f32>
-  %cst = constant dense<1.000000e+01> : tensor<f32>
+  // CHECK:   [[C0:%.+]] = arith.constant dense<1.000000e+01> : tensor<f32>
+  %cst = arith.constant dense<1.000000e+01> : tensor<f32>
 
   // CHECK:   [[VAL0:%.+]] = "mhlo.compare"(%arg0, [[C0]]) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>

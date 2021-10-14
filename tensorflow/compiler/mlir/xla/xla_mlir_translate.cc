@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -256,8 +257,8 @@ static mlir::OwningModuleRef HloTextToMlirHloTranslate(
 }
 
 static void RegisterInputDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect,
-                  mlir::tensor::TensorDialect>();
+  registry.insert<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+                  mlir::mhlo::MhloDialect, mlir::tensor::TensorDialect>();
 }
 
 static mlir::TranslateFromMLIRRegistration MlirHloToHloTranslate(

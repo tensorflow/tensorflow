@@ -28,8 +28,8 @@ limitations under the License.
 // After conversion:
 //  ```
 //   func @main(%ctx: !disc_ral.context) {
-//     %c0 = constant 0 : index
-//     %c1 = constant 1 : index
+//     %c0 = arith.constant 0 : index
+//     %c1 = arith.constant 1 : index
 //     "disc_ral.recv_input"(%ctx, %c0) : (!disc_ral.context, index) ->
 //     memref<?x?xf32> "disc_ral.recv_input"(%ctx, %c1) : (!disc_ral.context,
 //     index) -> memref<?x?xf32> %0 = memref.alloc(...) "lmhlo.add"(%arg0,
@@ -97,7 +97,7 @@ struct RalInjectExecutionContextPass
     for (auto&& en : llvm::enumerate(
              llvm::zip(funcType.getInputs(),
                        entry_block->getArguments().drop_front(1)))) {
-      Value idx = b.create<ConstantIndexOp>(loc, en.index());
+      Value idx = b.create<arith::ConstantIndexOp>(loc, en.index());
       Type argType = std::get<0>(en.value());
       Value oldArgument = std::get<1>(en.value());
       Value newInput = b.create<RecvInputOp>(loc, argType, ctx, idx);
@@ -111,7 +111,7 @@ struct RalInjectExecutionContextPass
       if (!operation.hasTrait<OpTrait::ReturnLike>()) continue;
       b.setInsertionPoint(&operation);
       for (auto& en : llvm::enumerate(operation.getOperands())) {
-        Value idx = b.create<ConstantIndexOp>(loc, en.index());
+        Value idx = b.create<arith::ConstantIndexOp>(loc, en.index());
         b.create<SendOutputOp>(loc, ctx, idx, en.value());
       }
       operation.eraseOperands(0, operation.getNumOperands());

@@ -77,12 +77,12 @@ func @testIfCondition(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> 
 // CHECK: func private @tf.IfRegion_then() -> tensor<2xf32>
 // CHECK-NEXT: constant dense<0.0
 func @testIfConstant(%arg0: tensor<i1>) -> tensor<2xf32> {
-  %cst_zero = constant dense<0.0> : tensor<2xf32>
+  %cst_zero = arith.constant dense<0.0> : tensor<2xf32>
   // CHECK: "tf.If"(%arg0) {{.*}} else_branch = @tf.IfRegion_else{{.+}}then_branch = @tf.IfRegion_then
   %0 = "tf.IfRegion"(%arg0) ({
      "tf.Yield"(%cst_zero) : (tensor<2xf32>) -> ()
     }, {
-     %cst_one = constant dense<1.0> : tensor<2xf32>
+     %cst_one = arith.constant dense<1.0> : tensor<2xf32>
      "tf.Yield"(%cst_one) : (tensor<2xf32>) -> ()
     }) { is_stateless = true} : (tensor<i1>) -> tensor<2xf32>
    return %0 : tensor<2xf32>
@@ -246,11 +246,11 @@ func @testIfIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: tensor<2x
 func @testSimple(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK: "tf.If"{{.+}}else_branch = @tf.IfRegion_else{{.+}}then_branch = @tf.IfRegion_then
   %0 = "tf.IfRegion"(%arg0) ({
-    %cst_zero = constant dense<0.0> : tensor<2xf32>
+    %cst_zero = arith.constant dense<0.0> : tensor<2xf32>
     %1 = "tf.Abs"(%cst_zero) : (tensor<2xf32>) -> tensor<2xf32>
     "tf.Yield"(%1) : (tensor<2xf32>) -> ()
     }, {
-    %cst_one = constant dense<1.0> : tensor<2xf32>
+    %cst_one = arith.constant dense<1.0> : tensor<2xf32>
     %2 = "tf.Neg"(%cst_one) : (tensor<2xf32>) -> tensor<2xf32>
     "tf.Yield"(%2) : (tensor<2xf32>) -> ()
     }) { is_stateless = true } :  (tensor<i1>) -> tensor<2xf32>
@@ -324,7 +324,7 @@ func @testValidWhileRegion(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor
     {
       // condition, check if count has reached 0
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
-      %zero = constant dense<0> : tensor<i32>
+      %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "tf.Yield"(%ne) : (tensor<i1>) -> ()
     },
@@ -332,7 +332,7 @@ func @testValidWhileRegion(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor
       // loop body
       ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
       %add = "tf.Add"(%barg0, %barg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-      %one = constant dense<1> : tensor<i32>
+      %one = arith.constant dense<1> : tensor<i32>
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%add, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
     }
@@ -358,7 +358,7 @@ func @testWhileRegionTypeMismatch(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) ->
     {
       // condition, check if count has reached 0
       ^bb0(%carg0: tensor<4xf32>, %carg1: tensor<i32>):
-      %zero = constant dense<0> : tensor<i32>
+      %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "tf.Yield"(%ne) : (tensor<i1>) -> ()
     },
@@ -366,7 +366,7 @@ func @testWhileRegionTypeMismatch(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) ->
       // loop body
       ^bb0(%barg0: tensor<4xf32>, %barg1: tensor<i32>):
       %add = "tf.Add"(%barg0, %barg0) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-      %one = constant dense<1> : tensor<i32>
+      %one = arith.constant dense<1> : tensor<i32>
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%add, %sub) : (tensor<4xf32>, tensor<i32>) -> ()
     }
@@ -387,8 +387,8 @@ func @testWhileRegionTypeMismatch(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) ->
 // CHECK: "tf.NotEqual"
 // CHECK-LABEL: testWhileRegionConstantSink
 func @testWhileRegionConstantSink(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
-  %zero = constant dense<0> : tensor<i32>
-  %one = constant dense<1> : tensor<i32>
+  %zero = arith.constant dense<0> : tensor<i32>
+  %one = arith.constant dense<1> : tensor<i32>
   // CHECK: [[Result:%.*]]:2 = "tf.While"(%arg0, %arg1) {{.*}} body = @tf.WhileRegion_body, cond = @tf.WhileRegion_cond
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
     {
@@ -420,7 +420,7 @@ func @testWhileRegionConstantSink(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) ->
 // CHECK: "tf.NotEqual"(%arg1, %arg2)
 // CHECK-LABEL: testWhileRegionExternInCond
 func @testWhileRegionExternInCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %arg2 : tensor<i32>) -> tensor<*xf32> {
-  %cst = constant dense<4> : tensor<i32>
+  %cst = arith.constant dense<4> : tensor<i32>
   %limit = "tf.Add"(%arg2, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK: [[Result:%.*]]:3 = "tf.While"(%arg0, %arg1, %{{.+}} body = @tf.WhileRegion_body, cond = @tf.WhileRegion_cond
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
@@ -433,7 +433,7 @@ func @testWhileRegionExternInCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %a
       // loop body
       ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
       %add = "tf.Add"(%barg0, %barg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-      %one = constant dense<1> : tensor<i32>
+      %one = arith.constant dense<1> : tensor<i32>
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%add, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
     }
@@ -456,8 +456,8 @@ func @testWhileRegionExternInCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %a
 
 // CHECK-LABEL: testWhileRegionExternInBody
 func @testWhileRegionExternInBody(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %arg2 : tensor<i32>) -> tensor<*xf32> {
-  %zero = constant dense<0> : tensor<i32>
-  %cst = constant dense<4> : tensor<i32>
+  %zero = arith.constant dense<0> : tensor<i32>
+  %cst = arith.constant dense<4> : tensor<i32>
   %stride = "tf.Add"(%arg2, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK: [[Result:%.*]]:3 = "tf.While"(%arg0, %arg1, %{{.+}} body = @tf.WhileRegion_body, cond = @tf.WhileRegion_cond
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
@@ -486,9 +486,9 @@ func @testWhileRegionExternInBody(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %a
 // CHECK: func private @tf.WhileRegion_cond(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>)
 // CHECK-LABEL: testWhileRegionExternInBodyAndCond
 func @testWhileRegionExternInBodyAndCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %arg2 : tensor<i32>) -> tensor<*xf32> {
-  %cst = constant dense<4> : tensor<i32>
+  %cst = arith.constant dense<4> : tensor<i32>
   %stride = "tf.Add"(%arg2, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  %cst1 = constant dense<44> : tensor<i32>
+  %cst1 = arith.constant dense<44> : tensor<i32>
   %limit = "tf.Add"(%arg2, %cst1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK: [[Result:%.*]]:4 = "tf.While"(%arg0, %arg1, %{{.+}}, %{{.+}} body = @tf.WhileRegion_body, cond = @tf.WhileRegion_cond
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
@@ -517,7 +517,7 @@ func @testWhileRegionExternInBodyAndCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i
 // CHECK: func private @tf.WhileRegion_cond(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
 // CHECK-LABEL: testWhileRegionSameExternInBodyAndCond
 func @testWhileRegionSameExternInBodyAndCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %arg2 : tensor<i32>) -> tensor<*xf32> {
-  %cst = constant dense<4> : tensor<i32>
+  %cst = arith.constant dense<4> : tensor<i32>
   %stride = "tf.Add"(%arg2, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK: [[Result:%.*]]:3 = "tf.While"(%arg0, %arg1, %{{.+}} body = @tf.WhileRegion_body, cond = @tf.WhileRegion_cond
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (

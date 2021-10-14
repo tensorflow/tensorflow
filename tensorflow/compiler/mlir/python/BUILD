@@ -41,6 +41,11 @@ cc_library(
         # as part of the libtensorflow_framework.so, as it is the central
         # place for core related components.
         "//tensorflow/compiler/mlir/tensorflow:graph_optimization_pass_registration",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/compiler/mlir/xla:xla_passes",
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

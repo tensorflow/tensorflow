@@ -713,6 +713,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:CallOpInterfacesIncGen",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ControlFlowInterfaces",
@@ -1262,7 +1263,8 @@ cc_library(
 )
 
 cc_library(
-    name = "bridge_pass_registration",
+    name = "bridge_pass_test_pipeline_registration",
+    testonly = True,  # Ensure alwayslink does not leak in the codebase.
     srcs = [
         "transforms/bridge_pass.cc",
     ],
@@ -1277,6 +1279,7 @@ cc_library(
 
 cc_library(
     name = "tensorflow_test_passes",
+    testonly = True,  # Ensure alwayslink does not leak in the codebase.
     srcs = [
         "transforms/init_text_file_to_import_test_pass.cc",
         "transforms/initialize_variables_in_session_init_test_pass.cc",
@@ -1911,6 +1914,7 @@ gentbl_cc_library(
     td_file = "transforms/optimize.td",
     deps = [
         ":tensorflow_ops_td_files",
+        "@llvm-project//mlir:ArithmeticOpsTdFiles",
         "@llvm-project//mlir:StdOpsTdFiles",
     ],
 )
@@ -2013,6 +2017,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:StandardOps",

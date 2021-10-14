@@ -370,6 +370,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
     ],
@@ -1633,6 +1634,7 @@ cc_library(
     }),
     deps = [
         ":alias_passthrough_params",
+        ":all_reduce_blueconnect",
         ":cudnn_batchnorm_rewriter",
         ":fusion_bitcast_lift",
         ":fusion_merger",
@@ -1675,6 +1677,7 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

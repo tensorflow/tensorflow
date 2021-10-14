@@ -97,24 +97,27 @@ mlir::LogicalResult LinalgMatmulSpecializationPattern::matchAndRewrite(
   int64_t k_static = lhs.getType().cast<mlir::MemRefType>().getDimSize(1);
   int64_t n_static = rhs.getType().cast<mlir::MemRefType>().getDimSize(1);
 
-  auto one = rewriter.create<mlir::ConstantOp>(loc, rewriter.getIndexType(),
-                                               rewriter.getIndexAttr(1));
-  auto m_is_one =
-      rewriter.create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::eq, m, one);
-  auto n_is_one =
-      rewriter.create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::eq, n, one);
+  auto one = rewriter.create<mlir::arith::ConstantOp>(
+      loc, rewriter.getIndexType(), rewriter.getIndexAttr(1));
+  auto m_is_one = rewriter.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::eq, m, one);
+  auto n_is_one = rewriter.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::eq, n, one);
 
-  auto m_not_one =
-      rewriter.create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::ne, m, one);
-  auto n_not_one =
-      rewriter.create<mlir::CmpIOp>(loc, mlir::CmpIPredicate::ne, n, one);
+  auto m_not_one = rewriter.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::ne, m, one);
+  auto n_not_one = rewriter.create<mlir::arith::CmpIOp>(
+      loc, mlir::arith::CmpIPredicate::ne, n, one);
 
   // linalg.dot: n == 1 && m == 1
-  auto is_dot_product = rewriter.create<mlir::AndOp>(loc, m_is_one, n_is_one);
+  auto is_dot_product =
+      rewriter.create<mlir::arith::AndIOp>(loc, m_is_one, n_is_one);
   // linalg.vecmat m == 1 && n != 1
-  auto is_vecmat = rewriter.create<mlir::AndOp>(loc, m_is_one, n_not_one);
+  auto is_vecmat =
+      rewriter.create<mlir::arith::AndIOp>(loc, m_is_one, n_not_one);
   // linalg.matvec n == 1 && m != 1
-  auto is_matvec = rewriter.create<mlir::AndOp>(loc, n_is_one, m_not_one);
+  auto is_matvec =
+      rewriter.create<mlir::arith::AndIOp>(loc, n_is_one, m_not_one);
 
   // Build a linalg.dot operation casting inputs to vectors.
   auto dot = [&](mlir::OpBuilder& builder, mlir::Location nestedLoc) {

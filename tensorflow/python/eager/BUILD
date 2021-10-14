@@ -986,9 +986,9 @@ tf_py_test(
     # --config=cuda implicitly links in XLA.
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_gpu",
         "no_oss",  # No way to force no XLA linkage in OSS build from here.
         "no_pip",
-        "nogpu",
     ],
     deps = [
         ":def_function",

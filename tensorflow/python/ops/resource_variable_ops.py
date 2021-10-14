@@ -493,7 +493,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   def __tf_resource_id__(self):
     return self._handle._id  # pylint:disable=protected-access
 
-  def __tf_trace_type__(self, tracing_context):
+  def __tf_tracing_type__(self, tracing_context):
     return VariableType(self.dtype, self.shape,
                         tracing_context.get_local_id(self.__tf_resource_id__()))
 
@@ -2359,7 +2359,7 @@ class VariableSpec(tensor_spec.DenseSpec):
     assert len(tensor_list) == 1
     return tensor_list[0]
 
-  def __tf_trace_type__(self, tracing_context):
+  def __tf_tracing_type__(self, tracing_context):
     return VariableType(self.dtype, self.shape,
                         tracing_context.get_local_id(id(self)))
 

@@ -248,6 +248,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "//third_party/eigen3",
         "//tensorflow/compiler/xla/service:custom_call_status_internal",

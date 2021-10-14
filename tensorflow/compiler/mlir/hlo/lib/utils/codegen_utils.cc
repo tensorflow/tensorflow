@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "mlir-hlo/utils/codegen_utils.h"
 
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -29,11 +30,11 @@ namespace codegen_utils {
 Value emitNumElementsComputation(OpBuilder& b, Location loc, Value memref) {
   int rank = memref.getType().cast<MemRefType>().getRank();
   Value num_elements;
-  num_elements = b.create<mlir::ConstantOp>(
+  num_elements = b.create<mlir::arith::ConstantOp>(
       loc, b.getIndexType(), b.getIntegerAttr(b.getIndexType(), 1));
   for (int r = 0; r < rank; ++r) {
     auto dim_size = b.create<memref::DimOp>(loc, memref, r);
-    num_elements = b.create<MulIOp>(loc, num_elements, dim_size);
+    num_elements = b.create<arith::MulIOp>(loc, num_elements, dim_size);
   }
   return num_elements;
 }
@@ -62,7 +63,7 @@ SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
   Value tmp_acc_mul = shape[rank - 1];
   dim_acc_mul_vec.emplace_back(tmp_acc_mul);
   for (int i = rank - 2; i > 0; --i) {
-    tmp_acc_mul = b.create<MulIOp>(loc, tmp_acc_mul, shape[i]);
+    tmp_acc_mul = b.create<arith::MulIOp>(loc, tmp_acc_mul, shape[i]);
     dim_acc_mul_vec.emplace_back(tmp_acc_mul);
   }
   Value block_index = linear_index;
@@ -72,9 +73,9 @@ SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
       index = block_index;
     } else {
       index =
-          b.create<UnsignedDivIOp>(loc, block_index, dim_acc_mul_vec.back());
+          b.create<arith::DivUIOp>(loc, block_index, dim_acc_mul_vec.back());
       block_index =
-          b.create<UnsignedRemIOp>(loc, block_index, dim_acc_mul_vec.back());
+          b.create<arith::RemUIOp>(loc, block_index, dim_acc_mul_vec.back());
       dim_acc_mul_vec.pop_back();
     }
     result.push_back(index);

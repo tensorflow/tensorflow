@@ -296,7 +296,7 @@ static void Rewrite(mlir::lmhlo::FusionOp fusion_op,
     rewriter.setInsertionPoint(fusion_op);
     auto make_const_idx = [&](int64_t value) {
       auto attr = rewriter.getIndexAttr(value);
-      return rewriter.create<mlir::ConstantOp>(loc, attr).getResult();
+      return rewriter.create<mlir::arith::ConstantOp>(loc, attr).getResult();
     };
     auto make_kernel_dim3 = [&](const auto& dim3) {
       return mlir::gpu::KernelDim3{make_const_idx(dim3.x),

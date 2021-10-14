@@ -2090,10 +2090,10 @@ func @conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> ten
 
 // CHECK: func @lt_loop
 func @lt_loop(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<4xf32>, %arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>, %arg8: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
-  %cst = constant dense<-1> : tensor<i32>
-  %cst_0 = constant dense<1> : tensor<i32>
-  %cst_1 = constant dense<0> : tensor<i32>
-  %cst_2 = constant dense<1000> : tensor<i32>
+  %cst = arith.constant dense<-1> : tensor<i32>
+  %cst_0 = arith.constant dense<1> : tensor<i32>
+  %cst_1 = arith.constant dense<0> : tensor<i32>
+  %cst_2 = arith.constant dense<1000> : tensor<i32>
   %0 = "mhlo.tuple"(%cst_1, %cst, %cst_2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tuple<tensor<i32>, tensor<i32>, tensor<i32>>
   %1:3 = "mhlo.while"(%cst_1, %cst, %cst_2) ( {
   ^bb0(%arg9: tensor<i32>, %arg10: tensor<i32>, %arg11: tensor<i32>):  // no predecessors
@@ -2112,12 +2112,12 @@ func @lt_loop(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg
 
 // CHECK-LABEL: while_with_different_types
 func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
-  %cst_0 = constant dense<0> : tensor<1xi32>
-  %cst_1 = constant dense<[100, 100]> : tensor<2xi32>
-  %cst_2 = constant dense<1.00> : tensor<1xf32>
+  %cst_0 = arith.constant dense<0> : tensor<1xi32>
+  %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
+  %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
   %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ( {
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
-    %2 = constant dense<0> : tensor<i32>
+    %2 = arith.constant dense<0> : tensor<i32>
     %3 = "mhlo.slice"(%arg2) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
     %4 = "mhlo.compare"(%arg1, %3) {comparison_direction = "LT"} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
     "mhlo.return"(%4) : (tensor<1xi1>) -> ()
@@ -2133,13 +2133,13 @@ func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 // -----
 
 func @while_with_invalid_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
-  %cst_0 = constant dense<0> : tensor<1xi32>
-  %cst_1 = constant dense<[100, 100]> : tensor<2xi32>
-  %cst_2 = constant dense<1.00> : tensor<1xf32>
+  %cst_0 = arith.constant dense<0> : tensor<1xi32>
+  %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
+  %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
   // expected-error @+1 {{'mhlo.while' op requires the same type for operand and result at index 2}}
   %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ( {
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
-    %2 = constant dense<0> : tensor<i32>
+    %2 = arith.constant dense<0> : tensor<i32>
     %3 = "mhlo.slice"(%arg2) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
     %4 = "mhlo.compare"(%arg1, %3) {comparison_direction = "LT"} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
     "mhlo.return"(%4) : (tensor<1xi1>) -> ()
@@ -2156,15 +2156,15 @@ func @while_with_invalid_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 
 // CHECK-LABEL: while_with_tuples
 func @while_with_tuples(%arg0: tensor<3xf32>) -> tensor<3xf32> {
-  %cst_0 = constant dense<0> : tensor<1xi32>
-  %cst_1 = constant dense<[100, 100]> : tensor<2xi32>
-  %cst_2 = constant dense<1.00> : tensor<1xf32>
+  %cst_0 = arith.constant dense<0> : tensor<1xi32>
+  %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
+  %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
   %0 = "mhlo.tuple"(%cst_2, %arg0) : (tensor<1xf32>, tensor<3xf32>) -> tuple<tensor<1xf32>, tensor<3xf32>>
   %1 = "mhlo.tuple"(%cst_1, %0) : (tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>) -> tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>
   %2:2 = "mhlo.while"(%cst_0, %1) ( {
   ^bb0(%arg1: tensor<1xi32>, %arg2: tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>):  // no predecessors
     %t0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tensor<2xi32>
-    %3 = constant dense<0> : tensor<i32>
+    %3 = arith.constant dense<0> : tensor<i32>
     %4 = "mhlo.slice"(%t0) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
     %5 = "mhlo.compare"(%arg1, %4) {comparison_direction = "LT"} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
     "mhlo.return"(%5) : (tensor<1xi1>) -> ()
@@ -2188,16 +2188,16 @@ func @while_with_tuples(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 // -----
 
 func @while_with_invalid_tuples(%arg0: tensor<3xf32>) -> tensor<3xf32> {
-  %cst_0 = constant dense<0> : tensor<1xi32>
-  %cst_1 = constant dense<[100, 100]> : tensor<2xi32>
-  %cst_2 = constant dense<1.00> : tensor<1xf32>
+  %cst_0 = arith.constant dense<0> : tensor<1xi32>
+  %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
+  %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
   %0 = "mhlo.tuple"(%arg0, %cst_2) : (tensor<3xf32>, tensor<1xf32>) -> tuple<tensor<3xf32>, tensor<1xf32>>
   %1 = "mhlo.tuple"(%cst_1, %0) : (tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>) -> tuple<tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>>
   // expected-error @+1 {{'mhlo.while' op requires the same type for operand and result at index 1}}
   %2:2 = "mhlo.while"(%cst_0, %1) ( {
   ^bb0(%arg1: tensor<1xi32>, %arg2: tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>):  // no predecessors
     %t0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tensor<2xi32>
-    %3 = constant dense<0> : tensor<i32>
+    %3 = arith.constant dense<0> : tensor<i32>
     %4 = "mhlo.slice"(%t0) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
     %5 = "mhlo.compare"(%arg1, %4) {comparison_direction = "LT"} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
     "mhlo.return"(%5) : (tensor<1xi1>) -> ()

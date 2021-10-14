@@ -21,9 +21,9 @@ func @add_mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
 
 // CHECK-SCF-LABEL: @add_mul
 // CHECK-SCF-SAME: (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>, %[[ARG2:.*]]: tensor<*xf32>)
-// CHECK-SCF-DAG:  %[[C1:.*]] = constant 1
-// CHECK-SCF-DAG:  %[[C2:.*]] = constant 2
-// CHECK-SCF-DAG:  %[[C3:.*]] = constant 3
+// CHECK-SCF-DAG:  %[[C1:.*]] = arith.constant 1
+// CHECK-SCF-DAG:  %[[C2:.*]] = arith.constant 2
+// CHECK-SCF-DAG:  %[[C3:.*]] = arith.constant 3
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_1:.*]] = shape.const_shape [1]
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_2:.*]] = shape.const_shape [1, 1]
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_3:.*]] = shape.const_shape [1, 1, 1]
@@ -33,7 +33,7 @@ func @add_mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
 //                 Equal shapes case:
 // CHECK-SCF-DAG:  %[[EQ20:.*]] = shape.shape_eq %[[SHAPE_ARG2]], %[[SHAPE_ARG0]]
 // CHECK-SCF-DAG:  %[[EQ21:.*]] = shape.shape_eq %[[SHAPE_ARG2]], %[[SHAPE_ARG1]]
-// CHECK-SCF-DAG:  %[[SHAPES_EQ:.*]] = and %[[EQ20]], %[[EQ21]]
+// CHECK-SCF-DAG:  %[[SHAPES_EQ:.*]] = arith.andi %[[EQ20]], %[[EQ21]]
 // CHECK-SCF:      %[[UNSHAPED_RES_EQ_SHAPES:.*]] = scf.if %[[SHAPES_EQ]]
 // CHECK-SCF-DAG:    %[[ANY_SHAPE:.*]] = shape.any %[[SHAPE_ARG2]], %[[SHAPE_ARG0]], %[[SHAPE_ARG1]]
 // CHECK-SCF-DAG:    %[[N:.*]] = shape.num_elements %[[ANY_SHAPE]]
@@ -51,12 +51,12 @@ func @add_mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
 // CHECK-SCF-DAG:    %[[REDUCED_RANK0:.*]] = shape.rank %[[REDUCED_SHAPES]]#1
 // CHECK-SCF-DAG:    %[[REDUCED_RANK1:.*]] = shape.rank %[[REDUCED_SHAPES]]#2
 // CHECK-SCF-DAG:    %[[REDUCED_RANK2:.*]] = shape.rank %[[REDUCED_SHAPES]]#0
-// CHECK-SCF-DAG:    %[[R2_GT_R0:.*]] = cmpi sgt, %[[REDUCED_RANK2]], %[[REDUCED_RANK0]]
+// CHECK-SCF-DAG:    %[[R2_GT_R0:.*]] = arith.cmpi sgt, %[[REDUCED_RANK2]], %[[REDUCED_RANK0]]
 // CHECK-SCF-DAG:    %[[R20:.*]] = select %[[R2_GT_R0]], %[[REDUCED_RANK2]], %[[REDUCED_RANK0]]
-// CHECK-SCF-DAG:    %[[R20_GT_R1:.*]] = cmpi sgt, %[[R20]], %[[REDUCED_RANK1]]
+// CHECK-SCF-DAG:    %[[R20_GT_R1:.*]] = arith.cmpi sgt, %[[R20]], %[[REDUCED_RANK1]]
 // CHECK-SCF-DAG:    %[[MAX_RED_RANK:.*]] = select %[[R20_GT_R1]], %[[R20]], %[[REDUCED_RANK1]]
 //                 Generic case 1:
-// CHECK-SCF:        %[[MAX_RED_RANK_LE_1:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C1]]
+// CHECK-SCF:        %[[MAX_RED_RANK_LE_1:.*]] = arith.cmpi ule, %[[MAX_RED_RANK]], %[[C1]]
 // CHECK-SCF:        %[[UNSHAPED_RES_1:.*]] = scf.if %[[MAX_RED_RANK_LE_1]]
 // CHECK-SCF-DAG:      %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_1]]
 // CHECK-SCF-DAG:      %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#2, %[[ONE_SHAPE_1]]
@@ -73,7 +73,7 @@ func @add_mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
 // CHECK-SCF:          scf.yield %[[INNER_RES_]]
 // CHECK-SCF:        else
 //                 Generic case 2:
-// CHECK-SCF:          %[[MAX_RED_RANK_LE_2:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C2]]
+// CHECK-SCF:          %[[MAX_RED_RANK_LE_2:.*]] = arith.cmpi ule, %[[MAX_RED_RANK]], %[[C2]]
 // CHECK-SCF:          %[[UNSHAPED_RES_2:.*]] = scf.if %[[MAX_RED_RANK_LE_2]]
 // CHECK-SCF-DAG:        %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_2]]
 // CHECK-SCF-DAG:        %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#2, %[[ONE_SHAPE_2]]
@@ -90,7 +90,7 @@ func @add_mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
 // CHECK-SCF:            scf.yield %[[INNER_RES_]]
 // CHECK-SCF:          else
 //                 Generic case 3:
-// CHECK-SCF:            %[[MAX_RED_RANK_LE_3:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C3]]
+// CHECK-SCF:            %[[MAX_RED_RANK_LE_3:.*]] = arith.cmpi ule, %[[MAX_RED_RANK]], %[[C3]]
 // CHECK-SCF:            assert %[[MAX_RED_RANK_LE_3]], "Input for dynamic binary or n-ary op lowering was of a rank greater than 3"
 // CHECK-SCF-DAG:        %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_3]]
 // CHECK-SCF-DAG:        %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#2, %[[ONE_SHAPE_3]]
@@ -359,14 +359,14 @@ func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 
 // CHECK-SCF:      @xlogy
 // CHECK-SCF-SAME: (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
-// CHECK-SCF-DAG:  %[[C1:.*]] = constant 1
+// CHECK-SCF-DAG:  %[[C1:.*]] = arith.constant 1
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_1:.*]] = shape.const_shape [1]
 // CHECK-SCF-DAG:  %[[SHAPE_ARG0:.*]] = shape.shape_of %[[ARG0]]
 // CHECK-SCF-DAG:  %[[SHAPE_ARG1:.*]] = shape.shape_of %[[ARG1]]
 // CHECK-SCF-DAG:  %[[ZERO:.*]] = mhlo.constant dense<0.00{{.*}}>
 //                 Lhs scalar case:
 // CHECK-SCF-DAG:  %[[LHS_N:.*]] = shape.num_elements %[[SHAPE_ARG0]]
-// CHECK-SCF-DAG:  %[[LHS_SCALAR:.*]] = cmpi eq, %[[LHS_N]], %[[C1]]
+// CHECK-SCF-DAG:  %[[LHS_SCALAR:.*]] = arith.cmpi eq, %[[LHS_N]], %[[C1]]
 // CHECK-SCF:      %[[UNSHAPED_RES:.*]] = scf.if %[[LHS_SCALAR]]
 // CHECK-SCF-DAG:    %[[N:.*]] = shape.num_elements %[[SHAPE_ARG1]]
 // CHECK-SCF-DAG:    %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
@@ -381,7 +381,7 @@ func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF:      else
 //                   Rhs scalar case:
 // CHECK-SCF-DAG:    %[[RHS_N:.*]] = shape.num_elements %[[SHAPE_ARG1]]
-// CHECK-SCF-DAG:    %[[RHS_SCALAR:.*]] = cmpi eq, %[[RHS_N]], %[[C1]]
+// CHECK-SCF-DAG:    %[[RHS_SCALAR:.*]] = arith.cmpi eq, %[[RHS_N]], %[[C1]]
 // CHECK-SCF:        %{{.*}} = scf.if %[[RHS_SCALAR]]
 // CHECK-SCF-DAG:      %[[N:.*]] = shape.num_elements %[[SHAPE_ARG0]]
 // CHECK-SCF-DAG:      %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
@@ -413,10 +413,10 @@ func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF-DAG:        %[[REDUCED_SHAPES:.*]]:2 = chlo.minimum_broadcast_shapes %[[SHAPE_ARG0]], %[[SHAPE_ARG1]]
 // CHECK-SCF-DAG:        %[[REDUCED_RANK0:.*]] = shape.rank %[[REDUCED_SHAPES]]#0
 // CHECK-SCF-DAG:        %[[REDUCED_RANK1:.*]] = shape.rank %[[REDUCED_SHAPES]]#1
-// CHECK-SCF-DAG:        %[[R0_GT_R1:.*]] = cmpi sgt, %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
+// CHECK-SCF-DAG:        %[[R0_GT_R1:.*]] = arith.cmpi sgt, %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
 // CHECK-SCF-DAG:        %[[MAX_RED_RANK:.*]] = select %[[R0_GT_R1]], %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
 //                 Generic case 1:
-// CHECK-SCF:            %[[MAX_RED_RANK_LE_1:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C1]]
+// CHECK-SCF:            %[[MAX_RED_RANK_LE_1:.*]] = arith.cmpi ule, %[[MAX_RED_RANK]], %[[C1]]
 // CHECK-SCF:            %{{.*}} = scf.if %[[MAX_RED_RANK_LE_1]]
 // CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_1]]
 // CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_1]]
@@ -457,9 +457,9 @@ func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 
 // CHECK-SCF-LABEL: @mul
 // CHECK-SCF-SAME: (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
-// CHECK-SCF-DAG:  %[[C1:.*]] = constant 1
-// CHECK-SCF-DAG:  %[[C2:.*]] = constant 2
-// CHECK-SCF-DAG:  %[[C3:.*]] = constant 3
+// CHECK-SCF-DAG:  %[[C1:.*]] = arith.constant 1
+// CHECK-SCF-DAG:  %[[C2:.*]] = arith.constant 2
+// CHECK-SCF-DAG:  %[[C3:.*]] = arith.constant 3
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_1:.*]] = shape.const_shape [1]
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_2:.*]] = shape.const_shape [1, 1]
 // CHECK-SCF-DAG:  %[[ONE_SHAPE_3:.*]] = shape.const_shape [1, 1, 1]
@@ -467,7 +467,7 @@ func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF-DAG:  %[[SHAPE_ARG1:.*]] = shape.shape_of %[[ARG1]]
 //                 Lhs scalar case:
 // CHECK-SCF-DAG:  %[[LHS_N:.*]] = shape.num_elements %[[SHAPE_ARG0]]
-// CHECK-SCF-DAG:  %[[LHS_SCALAR:.*]] = cmpi eq, %[[LHS_N]], %[[C1]]
+// CHECK-SCF-DAG:  %[[LHS_SCALAR:.*]] = arith.cmpi eq, %[[LHS_N]], %[[C1]]
 // CHECK-SCF:      %[[UNSHAPED_RES_LHS_SCALAR:.*]] = scf.if %[[LHS_SCALAR]]
 // CHECK-SCF-DAG:    %[[N:.*]] = shape.num_elements %[[SHAPE_ARG1]]
 // CHECK-SCF-DAG:    %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
@@ -479,7 +479,7 @@ func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF:      else
 //                   Rhs scalar case:
 // CHECK-SCF-DAG:    %[[RHS_N:.*]] = shape.num_elements %[[SHAPE_ARG1]]
-// CHECK-SCF-DAG:    %[[RHS_SCALAR:.*]] = cmpi eq, %[[RHS_N]], %[[C1]]
+// CHECK-SCF-DAG:    %[[RHS_SCALAR:.*]] = arith.cmpi eq, %[[RHS_N]], %[[C1]]
 // CHECK-SCF:        %[[UNSHAPED_RES_RHS_SCALAR:.*]] = scf.if %[[RHS_SCALAR]]
 // CHECK-SCF-DAG:      %[[N:.*]] = shape.num_elements %[[SHAPE_ARG0]]
 // CHECK-SCF-DAG:      %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
@@ -505,10 +505,10 @@ func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF-DAG:        %[[REDUCED_SHAPES:.*]]:2 = chlo.minimum_broadcast_shapes %[[SHAPE_ARG0]], %[[SHAPE_ARG1]]
 // CHECK-SCF-DAG:        %[[REDUCED_RANK0:.*]] = shape.rank %[[REDUCED_SHAPES]]#0
 // CHECK-SCF-DAG:        %[[REDUCED_RANK1:.*]] = shape.rank %[[REDUCED_SHAPES]]#1
-// CHECK-SCF-DAG:        %[[R0_GT_R1:.*]] = cmpi sgt, %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
+// CHECK-SCF-DAG:        %[[R0_GT_R1:.*]] = arith.cmpi sgt, %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
 // CHECK-SCF-DAG:        %[[MAX_RED_RANK:.*]] = select %[[R0_GT_R1]], %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
 //                 Generic case 1:
-// CHECK-SCF:            %[[MAX_RED_RANK_LE_1:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C1]]
+// CHECK-SCF:            %[[MAX_RED_RANK_LE_1:.*]] = arith.cmpi ule, %[[MAX_RED_RANK]], %[[C1]]
 // CHECK-SCF:            %[[UNSHAPED_RES_1:.*]] = scf.if %[[MAX_RED_RANK_LE_1]]
 // CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_1]]
 // CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_1]]
@@ -521,7 +521,7 @@ func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF:              scf.yield %[[INNER_RES_]]
 // CHECK-SCF:            else
 //                 Generic case 2:
-// CHECK-SCF:              %[[MAX_RED_RANK_LE_2:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C2]]
+// CHECK-SCF:              %[[MAX_RED_RANK_LE_2:.*]] = arith.cmpi ule, %[[MAX_RED_RANK]], %[[C2]]
 // CHECK-SCF:              %[[UNSHAPED_RES_2:.*]] = scf.if %[[MAX_RED_RANK_LE_2]]
 // CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_2]]
 // CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_2]]
@@ -534,7 +534,7 @@ func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF:                scf.yield %[[INNER_RES_]]
 // CHECK-SCF:              else
 //                 Generic case 3:
-// CHECK-SCF:                %[[MAX_RED_RANK_LE_3:.*]] = cmpi ule, %[[MAX_RED_RANK]], %[[C3]]
+// CHECK-SCF:                %[[MAX_RED_RANK_LE_3:.*]] = arith.cmpi ule, %[[MAX_RED_RANK]], %[[C3]]
 // CHECK-SCF:                assert %[[MAX_RED_RANK_LE_3]], "Input for dynamic binary or n-ary op lowering was of a rank greater than 3"
 // CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG0:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#0, %[[ONE_SHAPE_3]]
 // CHECK-SCF-DAG:            %[[EXT_SHAPE_ARG1:.*]] = shape.broadcast %[[REDUCED_SHAPES]]#1, %[[ONE_SHAPE_3]]

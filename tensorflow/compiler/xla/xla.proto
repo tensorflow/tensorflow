@@ -341,6 +341,13 @@ message DebugOptions {
   // Combine GPU all-reduces into a single operation over a contiguous buffer.
   bool xla_gpu_all_reduce_contiguous = 158;
 
+  // Number of devices per host for first stage of BlueConnect decomposition
+  // pass. The pass will attempt to decompose all-reduces ops into a
+  // ReduceScatter-AllReduce-AllGather sequence, with the initial ReduceScatter
+  // being performed over all of the devices in the same host. Set to < 1 to
+  // disable all-reduce decomposition.
+  int32 xla_gpu_all_reduce_blueconnect_num_devices_per_host = 159;
+
   // Disable dumping metadata in HLO dumps.
   bool xla_dump_disable_metadata = 153;
 
@@ -353,7 +360,7 @@ message DebugOptions {
   // logging a warning and proceeding with fallback.
   bool xla_gpu_strict_conv_algorithm_picker = 156;
 
-  // Next id: 159
+  // Next id: 160
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

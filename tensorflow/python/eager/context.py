@@ -28,7 +28,6 @@ import six
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import coordination_service_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
@@ -710,24 +709,11 @@ class Context(object):
     else:
       raise ValueError("Context is not initialized.")
 
-  def configure_coordination_service(self,
-                                     service_type,
-                                     service_leader="",
-                                     enable_health_check=True,
-                                     cluster_register_timeout_in_ms=0,
-                                     heartbeat_timeout_in_ms=0):
-    """Enable distributed coordination service with specified configs."""
+  def configure_coordination_service(self, service_type):
     if self._context_handle:
       logging.warning("Configuring coordination service type may not be "
                       "effective because the context is already initialized.")
-    config = coordination_service_pb2.CoordinationServiceConfigs()
-    config.service_type = service_type
-    if service_leader:
-      config.service_leader = pydev.canonical_name(service_leader)
-    config.enable_health_check = enable_health_check
-    config.cluster_register_timeout_in_ms = cluster_register_timeout_in_ms
-    config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
-    self._coordination_service = config
+    self._coordination_service = service_type
 
   @property
   def coordination_service(self):
@@ -1136,8 +1122,7 @@ class Context(object):
 
     # Configure coordination service
     if self._coordination_service:
-      config.experimental.coordination_service.CopyFrom(
-          self._coordination_service)
+      config.experimental.coordination_service = self._coordination_service
 
     return config
 

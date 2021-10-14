@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
@@ -1657,6 +1658,7 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
   optimization_params.set_model_input_time(model_input_time);
   switch (algorithm) {
     case AutotuneAlgorithm::HILL_CLIMB:
+    case AutotuneAlgorithm::DEFAULT:
       OptimizeHillClimb(snapshot, optimization_params, cancellation_manager);
       break;
     case AutotuneAlgorithm::GRADIENT_DESCENT:

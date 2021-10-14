@@ -666,6 +666,17 @@ static void AllocateFlags() {
       flag_values->xla_gpu_all_reduce_contiguous(),
       "Combine all-reduces into a single operation over a contiguous buffer."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_all_reduce_blueconnect_num_devices_per_host",
+      int32_setter_for(
+          &DebugOptions::
+              set_xla_gpu_all_reduce_blueconnect_num_devices_per_host),
+      flag_values->xla_gpu_all_reduce_blueconnect_num_devices_per_host(),
+      "Number of devices per host for first stage of BlueConnect decomposition "
+      "pass. The pass will attempt to decompose all-reduces ops into a "
+      "ReduceScatter-AllReduce-AllGather sequence, with the initial "
+      "ReduceScatter being performed over all of the devices in the same host. "
+      "Set to < 1 to disable all-reduce decomposition."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_dump_disable_metadata",
       bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),
       flag_values->xla_dump_disable_metadata(),

@@ -95,6 +95,7 @@ cc_library(
 
 cc_library(
     name = "tf_mlir_opt_main",
+    testonly = True,
     srcs = ["tf_mlir_opt_main.cc"],
     deps = [
         ":init_mlir",
@@ -179,6 +180,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
@@ -200,10 +202,11 @@ cc_library(
 
 tf_cc_binary(
     name = "tf-opt",
+    testonly = True,
     deps = [
         ":passes",
         ":tf_mlir_opt_main",
-        "//tensorflow/compiler/mlir/tensorflow:bridge_pass_registration",
+        "//tensorflow/compiler/mlir/tensorflow:bridge_pass_test_pipeline_registration",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
@@ -213,6 +216,7 @@ tf_cc_binary(
 
 tf_cc_binary(
     name = "tf-reduce",
+    testonly = True,
     srcs = ["tf_mlir_reduce_main.cc"],
     deps = [
         ":init_mlir",

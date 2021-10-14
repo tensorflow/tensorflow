@@ -1209,8 +1209,8 @@ def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training", [NoSideEffect]> {
   let results = (outs HLO_Tuple);
 }
 
-def HLO_BitcastConvertOp : HLO_Op<"bitcast_convert",
-    [NoSideEffect]> {
+def HLO_BitcastConvertOp : HLO_ShapedInterfaceOp<"bitcast_convert",
+    [NoSideEffect, InferShapedTypeOpInterface]> {
   let summary = "BitcastConvert operator";
   let description = [{
     Similar to a 'tf.bitcast' in TensorFlow, performs an element-wise bitcast
@@ -1227,7 +1227,7 @@ def HLO_BitcastConvertOp : HLO_Op<"bitcast_convert",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_BroadcastOp : HLO_Op<"broadcast",
+def HLO_BroadcastOp : HLO_ShapedInterfaceOp<"broadcast",
       [NoSideEffect, SameOperandsAndResultElementType]> {
   let summary = "Broadcast a tensor to a higher rank by prepending dimensions";
   let description = [{
@@ -1339,7 +1339,7 @@ def HLO_CholeskyOp : HLO_Op<"cholesky",
   let results = (outs HLO_FpOrComplexTensor);
 }
 
-def HLO_ClampOp : HLO_Op<"clamp", [NoSideEffect,
+def HLO_ClampOp : HLO_ShapedInterfaceOp<"clamp", [NoSideEffect,
   SameOperandsAndResultElementType, HLO_BroadcastingElementwise]> {
   let summary = "Clamp operator";
   let description = [{

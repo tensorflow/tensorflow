@@ -673,9 +673,8 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!exec_ctx) {
     if (kind() == Thunk::kKernel) {
       tensorflow::mutex_lock lock(mutex_);
-      CUcontext context =
-          static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
-              ->context();
+      using AsyncStreamRef = tfrt::AsyncValueRef<tfrt::gpu::GpuStream>;
+      CUcontext context = static_cast<AsyncStreamRef>(stream)->context()->get();
       auto it = resource_contexts_.find(context);
       if (it == resource_contexts_.end()) {
         it = resource_contexts_.emplace_hint(it, context,

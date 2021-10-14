@@ -1850,12 +1850,12 @@ class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
 };
 
 // Returns the shape of the given value in a Constant Op.
-ConstantOp ShapeToConst(PatternRewriter &rewriter, Value value) {
+arith::ConstantOp ShapeToConst(PatternRewriter &rewriter, Value value) {
   ArrayRef<int64_t> shape = value.getType().cast<ShapedType>().getShape();
   auto attr_type = RankedTensorType::get({static_cast<int64_t>(shape.size())},
                                          rewriter.getIntegerType(64));
   auto attr = DenseElementsAttr::get(attr_type, shape);
-  return rewriter.create<ConstantOp>(value.getLoc(), attr_type, attr);
+  return rewriter.create<arith::ConstantOp>(value.getLoc(), attr_type, attr);
 }
 
 bool IsSign(APFloat a, APFloat sign) {
@@ -2284,7 +2284,8 @@ Value ConvertPadOp(PatternRewriter &rewriter, Operation *old_op) {
   auto attr_type = RankedTensorType::get({pad_op.edge_padding_low().size(), 2},
                                          rewriter.getI64Type());
   auto padding_attr = DenseIntElementsAttr::get(attr_type, padding);
-  auto padding_op = rewriter.create<ConstantOp>(loc, attr_type, padding_attr);
+  auto padding_op =
+      rewriter.create<arith::ConstantOp>(loc, attr_type, padding_attr);
   return rewriter.create<PadV2Op>(loc, pad_op.getType(), pad_op.operand(),
                                   padding_op, pad_op.padding_value());
 }
@@ -2304,9 +2305,9 @@ bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
 
 // Returns the intermediate shape that input tensor should be reshaped to during
 // legalization of BroadcastInDimOp.
-ConstantOp ExpandedShape(PatternRewriter &rewriter, Value input,
-                         DenseIntElementsAttr broadcast_dimensions,
-                         Value output) {
+arith::ConstantOp ExpandedShape(PatternRewriter &rewriter, Value input,
+                                DenseIntElementsAttr broadcast_dimensions,
+                                Value output) {
   // Initialize expanded shape with output rank and dimensions of 1.
   SmallVector<Attribute, 4> expanded_shape(
       output.getType().cast<ShapedType>().getRank(),
@@ -2319,12 +2320,12 @@ ConstantOp ExpandedShape(PatternRewriter &rewriter, Value input,
         rewriter.getI64IntegerAttr(input_shape[x.index()]);
   }
 
-  // Create the expanded type wrapped in a ConstantOp.
+  // Create the expanded type wrapped in a arith::ConstantOp.
   auto attr_type =
       RankedTensorType::get({static_cast<int64_t>(expanded_shape.size())},
                             rewriter.getIntegerType(64));
   auto attr = DenseElementsAttr::get(attr_type, expanded_shape);
-  return rewriter.create<ConstantOp>(output.getLoc(), attr_type, attr);
+  return rewriter.create<arith::ConstantOp>(output.getLoc(), attr_type, attr);
 }
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_legalize_hlo.inc"
@@ -2339,7 +2340,7 @@ void LegalizeHloToTf::runOnFunction() {
 
   ConversionTarget target(context);
   target.addLegalDialect<TensorFlowDialect>();
-  target.addLegalOp<CallOp, ConstantOp>();
+  target.addLegalOp<CallOp, ConstantOp, arith::ConstantOp>();
   target.addLegalOp<mhlo::TupleOp>();
   if (failed(
           applyPartialConversion(getFunction(), target, std::move(patterns)))) {

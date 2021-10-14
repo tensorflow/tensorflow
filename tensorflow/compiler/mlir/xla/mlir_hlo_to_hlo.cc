@@ -1423,8 +1423,8 @@ LogicalResult ConvertToHloModule::Lower(
   // Explicitly fail for ops that are not supported for export.
   if (inst->getDialect() !=
           inst->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() &&
-      !mlir::isa<mlir::ConstantOp, mlir::CallOp, mlir::tensor::CastOp,
-                 mlir::ReturnOp>(inst)) {
+      !mlir::isa<mlir::ConstantOp, mlir::arith::ConstantOp, mlir::CallOp,
+                 mlir::tensor::CastOp, mlir::ReturnOp>(inst)) {
     inst->emitOpError("unsupported op for export to XLA");
     return failure();
   }

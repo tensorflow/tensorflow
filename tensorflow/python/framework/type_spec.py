@@ -372,7 +372,7 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
 
   # === Private Helper Methods ===
 
-  def __tf_trace_type__(self, _):
+  def __tf_tracing_type__(self, _):
     return TypeSpecTraceType(self)
 
   def __check_tensor_list(self, tensor_list):

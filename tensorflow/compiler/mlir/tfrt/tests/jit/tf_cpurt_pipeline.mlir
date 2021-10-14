@@ -5,7 +5,7 @@
 // CHECK-LABEL: @tanh_lower_and_fuse
 // CHECK-SAME: %[[ARG:.*]]: memref<?x32xf32>
 func @tanh_lower_and_fuse(%arg0: tensor<?x32xf32>) -> tensor<?x32xf32> {
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: %[[DIM:.*]] = memref.dim %[[ARG]], %[[C0]]
   // CHECK: %[[MEMREF:.*]] = memref.alloc(%[[DIM]]) : memref<?x32xf32>
 
@@ -279,8 +279,8 @@ func @cast_sub(%arg0: tensor<?x32xi16>, %arg1: tensor<?x?x32xf16>)
   // CHECK-SAME: outs(%[[RESULT_BUF:.*]] : memref<?x?x32xf16>)
   // CHECK-SAME: {
   // CHECK:      ^bb0(%[[LHS:.*]]: f16, %[[RHS:.*]]: i16, %{{.*}}: f16):
-  // CHECK:        %[[RHS_CASTED:.*]] = sitofp %[[RHS]] : i16 to f16
-  // CHECK:        %[[RESULT:.*]] = subf %[[LHS]], %[[RHS_CASTED]] : f16
+  // CHECK:        %[[RHS_CASTED:.*]] = arith.sitofp %[[RHS]] : i16 to f16
+  // CHECK:        %[[RESULT:.*]] = arith.subf %[[LHS]], %[[RHS_CASTED]] : f16
   // CHECK:        linalg.yield %[[RESULT]] : f16
   // CHECK:      }
   // CHECK:      return %[[RESULT_BUF]] : memref<?x?x32xf16>
@@ -358,8 +358,8 @@ func @sub_sub(%arg0: tensor<?x32xf16>, %arg1: tensor<?x32xf16>, %arg2: tensor<?x
   // CHECK:      linalg.generic
   // CHECK-SAME: outs(%[[RESULT_BUF:.*]] : memref<?x?x32xf16>)
   // CHECK:      ^bb0(%[[A:.*]]: f16, %[[B:.*]]: f16, %[[C:.*]]: f16, %{{.*}}: f16):
-  // CHECK:        %[[TMP:.*]] = subf %[[B]], %[[C]]
-  // CHECK:        %[[RESULT:.*]] = subf %[[A]], %[[TMP]]
+  // CHECK:        %[[TMP:.*]] = arith.subf %[[B]], %[[C]]
+  // CHECK:        %[[RESULT:.*]] = arith.subf %[[A]], %[[TMP]]
   // CHECK:        linalg.yield %[[RESULT]]
   // CHECK:      return %[[RESULT_BUF]] : memref<?x?x32xf16>
   %0 = "tf.Sub"(%arg0, %arg1) : (tensor<?x32xf16>, tensor<?x32xf16>) -> tensor<?x32xf16>

@@ -636,7 +636,7 @@ add {
 %test_rng_normal (Arg_0.1: f32[], Arg_1.2: f32[]) -> f32[2,3,5] {
   %Arg_0.1 = f32[] parameter(0)
   %Arg_1.2 = f32[] parameter(1)
-  // CHECK:  [[CST:%.*]] = constant dense<[2, 3, 5]> : tensor<3xi64>
+  // CHECK:  [[CST:%.*]] = arith.constant dense<[2, 3, 5]> : tensor<3xi64>
   // CHECK:  "mhlo.rng_normal"([[ARG0]], [[ARG1]], [[CST]])
   ROOT %rng.4 = f32[2,3,5] rng(f32[] %Arg_0.1, f32[] %Arg_1.2), distribution=rng_normal
 }
@@ -646,7 +646,7 @@ add {
 %test_rng_uniform (Arg_0.1: f32[], Arg_1.2: f32[]) -> f32[2,3,5] {
   %Arg_0.1 = f32[] parameter(0)
   %Arg_1.2 = f32[] parameter(1)
-  // CHECK:  [[CST:%.*]] = constant dense<[2, 3, 5]> : tensor<3xi64>
+  // CHECK:  [[CST:%.*]] = arith.constant dense<[2, 3, 5]> : tensor<3xi64>
   // CHECK:  "mhlo.rng_uniform"([[ARG0]], [[ARG1]], [[CST]])
   ROOT %rng.4 = f32[2,3,5] rng(f32[] %Arg_0.1, f32[] %Arg_1.2), distribution=rng_uniform
 }
@@ -733,6 +733,50 @@ add {
   // CHECK-SAME:   window_strides = dense<[1, 4, 4, 1]> : tensor<4xi64>
   // CHECK_SAME: }
   ROOT %reduce-window.1 = f32[2,5,8,7] reduce-window(f32[2,17,31,7] %Arg_0.1, f32[] %Arg_1.2), window={size=1x2x2x1 stride=1x4x4x1 pad=0_0x2_0x0_2x0_0 rhs_dilate=1x2x2x1}, to_apply=%reduce_helper.3
+}
+
+// Test reduce-window with multiple outputs
+
+%reducer_window_helper (Arg0: f32[], Arg1: f32[], Arg2: f32[], Arg3: f32[]) -> (f32[], f32[]) {
+  %Arg0 = f32[] parameter(0)
+  %Arg1 = f32[] parameter(1)
+  %Arg2 = f32[] parameter(2)
+  %Arg3 = f32[] parameter(3)
+  %compare.11 = pred[] compare(f32[] %Arg0, f32[] %Arg2), direction=GE
+  %select.12 = f32[] select(pred[] %compare.11, f32[] %Arg0, f32[] %Arg2)
+  %select.13 = f32[] select(pred[] %compare.11, f32[] %Arg1, f32[] %Arg3)
+  ROOT %tuple.14 = (f32[], f32[]) tuple(f32[] %select.12, f32[] %select.13)
+}
+
+// CHECK-LABEL:  func private @test_reduce_window_multiple_outputs
+// CHECK-SAME: ([[ARG0:%.*]]: tensor<4x6xf32>, [[ARG1:%.*]]: tensor<4x6xf32>)
+%test_reduce_window_multiple_outputs (Arg0: f32[4,6], Arg1: f32[4,6]) -> f32[4,3] {
+  %Arg0 = f32[4,6] parameter(0)
+  %Arg1 = f32[4,6] parameter(1)
+  // CHECK: [[CONST_FALSE:%.*]] = mhlo.constant dense<false>
+  // CHECK: [[CONST_INF:%.*]] = mhlo.constant dense<0xFF800000>
+  // CHECK: [[CONST_ZERO:%.*]] = mhlo.constant dense<0.000000e+00>
+  %constant.3 = pred[] constant(false)
+  %constant.4 = f32[] constant(-inf)
+  %constant.5 = f32[] constant(0)
+  // CHECK: [[REDUCE_WINDOW:%.*]]:2 = "mhlo.reduce_window"([[ARG1]], [[ARG0]], [[CONST_INF]], [[CONST_ZERO]]) ( {
+  // CHECK: ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>, [[BARG2:%.*]]: tensor<f32>, [[BARG3:%.*]]: tensor<f32>)
+  // CHECK:   [[COMPARE:%.*]] = "mhlo.compare"([[BARG0]], [[BARG2]]) {comparison_direction = "GE"}
+  // CHECK:   [[SELECT_0:%.*]] = "mhlo.select"([[COMPARE]], [[BARG0]], [[BARG2]])
+  // CHECK:   [[SELECT_1:%.*]] = "mhlo.select"([[COMPARE]], [[BARG1]], [[BARG3]])
+  // CHECK: }) {
+  // CHECK-SAME:   base_dilations = dense<1> : tensor<2xi64>
+  // CHECK-SAME:   padding = dense<0> : tensor<2x2xi64>
+  // CHECK-SAME:   window_dilations = dense<1> : tensor<2xi64>
+  // CHECK-SAME:   window_dimensions = dense<[1, 2]> : tensor<2xi64>
+  // CHECK-SAME:   window_strides = dense<[1, 2]> : tensor<2xi64>
+  // CHECK_SAME: }
+  // CHECK_SAME: : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<f32>, tensor<f32>) -> (tensor<4x3xf32>, tensor<4x3xf32>)
+  // CHECK: [[TUPLE:%.*]] = "mhlo.tuple"([[REDUCE_WINDOW]]#0, [[REDUCE_WINDOW]]#1) {xla_shape = {{.*}}} : (tensor<4x3xf32>, tensor<4x3xf32>) -> tuple<tensor<4x3xf32>, tensor<4x3xf32>>
+  %reduce-window.15 = (f32[4,3], f32[4,3]) reduce-window(f32[4,6] %Arg1, f32[4,6] %Arg0, f32[] %constant.4, f32[] %constant.5), window={size=1x2 stride=1x2}, to_apply=%reducer_window_helper
+  // CHECK: [[GET_TUPLE_ELEMENT:%.*]] = "mhlo.get_tuple_element"([[TUPLE]]) {index = 1 : i32}
+  // CHECK: return [[GET_TUPLE_ELEMENT]] : tensor<4x3xf32>
+  ROOT %get-tuple-element.16 = f32[4,3] get-tuple-element((f32[4,3], f32[4,3]) %reduce-window.15), index=1
 }
 
 // CHECK-LABEL:  func private @test_remainder

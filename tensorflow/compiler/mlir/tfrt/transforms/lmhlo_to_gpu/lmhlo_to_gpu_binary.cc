@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -47,7 +48,8 @@ struct ConvertLmhloToGpuBinaryPass
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
-    registry.insert<mlir::StandardOpsDialect, mlir::gpu::GPUDialect>();
+    registry.insert<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+                    mlir::gpu::GPUDialect>();
   }
 };
 

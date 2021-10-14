@@ -1004,7 +1004,7 @@ func @topk(%arg0: tensor<*xf32>, %arg1: tensor<i32>) -> (tensor<*xf32>, tensor<*
 
 // CHECK-LABEL: topk_2
 func @topk_2(%arg0: tensor<3x4x8xf32>) -> (tensor<3x4x2xf32>, tensor<3x4x2xi32>) {
-  %0 = constant dense<2> : tensor<i32>
+  %0 = arith.constant dense<2> : tensor<i32>
   %1:2 = "tfl.topk_v2"(%arg0, %0) : (tensor<3x4x8xf32>, tensor<i32>) -> (tensor<3x4x2xf32>, tensor<3x4x2xi32>)
   return %1#0, %1#1: tensor<3x4x2xf32>, tensor<3x4x2xi32>
 }
@@ -1013,7 +1013,7 @@ func @topk_2(%arg0: tensor<3x4x8xf32>) -> (tensor<3x4x2xf32>, tensor<3x4x2xi32>)
 
 // CHECK-LABEL: topk_d
 func @topk_d(%arg0: tensor<?x8xf32>) -> (tensor<?x2xf32>, tensor<?x2xi32>) {
-  %0 = constant dense<2> : tensor<i32>
+  %0 = arith.constant dense<2> : tensor<i32>
   %1:2 = "tfl.topk_v2"(%arg0, %0) : (tensor<?x8xf32>, tensor<i32>) -> (tensor<?x2xf32>, tensor<?x2xi32>)
   return %1#0, %1#1: tensor<?x2xf32>, tensor<?x2xi32>
 }
@@ -1024,7 +1024,7 @@ func @topk_d(%arg0: tensor<?x8xf32>) -> (tensor<?x2xf32>, tensor<?x2xi32>) {
 // TODO(jpienaar): This should fail but doesn't as the op definition does not
 // include shape verification.
 func @topk_d(%arg0: tensor<?x8xf32>) -> (tensor<?x3xf32>, tensor<?x3xi32>) {
-  %0 = constant dense<2> : tensor<i32>
+  %0 = arith.constant dense<2> : tensor<i32>
   %1:2 = "tfl.topk_v2"(%arg0, %0) : (tensor<?x8xf32>, tensor<i32>) -> (tensor<?x3xf32>, tensor<?x3xi32>)
   return %1#0, %1#1: tensor<?x3xf32>, tensor<?x3xi32>
 }
@@ -1033,7 +1033,7 @@ func @topk_d(%arg0: tensor<?x8xf32>) -> (tensor<?x3xf32>, tensor<?x3xi32>) {
 
 // CHECK-LABEL: topk_d
 func @topk_d(%arg0: tensor<?x8xf32>) -> (tensor<*xf32>, tensor<*xi32>) {
-  %0 = constant dense<2> : tensor<i32>
+  %0 = arith.constant dense<2> : tensor<i32>
   %1:2 = "tfl.topk_v2"(%arg0, %0) : (tensor<?x8xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xi32>)
   return %1#0, %1#1: tensor<*xf32>, tensor<*xi32>
 }
@@ -1129,7 +1129,7 @@ func @testPadQuantizedI8(%arg0: tensor<2x1x3x!quant.uniform<i8:f32, 0.1>>, %arg1
 // CHECK-LABEL: testPadV2
 func @testPadV2(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<3x2xi32>):
-  %cst = constant dense<2.0> : tensor<f32>
+  %cst = arith.constant dense<2.0> : tensor<f32>
   // CHECK: "tfl.padv2"(%arg0, %arg1, %cst)
   %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<3x2xi32>, tensor<f32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
@@ -1140,7 +1140,7 @@ func @testPadV2(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
 // CHECK-LABEL: testPadV25D
 func @testPadV25D(tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<*xf32>, %arg1: tensor<5x3xi32>):
-  %cst = constant dense<2.0> : tensor<f32>
+  %cst = arith.constant dense<2.0> : tensor<f32>
   // CHECK: "tfl.padv2"(%arg0, %arg1, %cst)
   %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<*xf32>, tensor<5x3xi32>, tensor<f32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
@@ -1151,7 +1151,7 @@ func @testPadV25D(tensor<*xf32>, tensor<5x3xi32>) -> tensor<? x f32> {
 // test PadV2 with invalid paddings size
 func @testPadV2WithInvalidPaddingsDim(tensor<2x1x3xf32>, tensor<2x2xi32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<2x2xi32>):
-  %cst = constant dense<2.0> : tensor<f32>
+  %cst = arith.constant dense<2.0> : tensor<f32>
   //// expected-error @+1 {{'tfl.padv2' op failed to verify that operand 0's rank equals operand 1's size}}
   %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<2x2xi32>, tensor<f32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
@@ -1162,7 +1162,7 @@ func @testPadV2WithInvalidPaddingsDim(tensor<2x1x3xf32>, tensor<2x2xi32>) -> ten
 // test PadV2 with invalid paddings rank
 func @testPadV2WithInvalidPaddingsRank(tensor<2x1x3xf32>, tensor<1x3x2xi32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<1x3x2xi32>):
-  %cst = constant dense<2.0> : tensor<f32>
+  %cst = arith.constant dense<2.0> : tensor<f32>
   // expected-error @+1 {{'tfl.padv2' op failed to verify that operand 1 is 2-D}}
   %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<1x3x2xi32>, tensor<f32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
@@ -1173,7 +1173,7 @@ func @testPadV2WithInvalidPaddingsRank(tensor<2x1x3xf32>, tensor<1x3x2xi32>) -> 
 // test PadV2 with invalid constant rank
 func @testPadV2WithInvalidConstantScalar(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<3x2xi32>):
-  %cst = constant dense<[2.0]> : tensor<1xf32>
+  %cst = arith.constant dense<[2.0]> : tensor<1xf32>
   //// expected-error @+1 {{'tfl.padv2' op failed to verify that operand 2 is 0-D}}
   %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<3x2xi32>, tensor<1xf32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
@@ -1184,7 +1184,7 @@ func @testPadV2WithInvalidConstantScalar(tensor<2x1x3xf32>, tensor<3x2xi32>) -> 
 // test PadV2 with invalid constant data type
 func @testPadV2WithInvalidConstantScalar(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<3x2xi32>):
-  %cst = constant dense<2> : tensor<i32>
+  %cst = arith.constant dense<2> : tensor<i32>
   //// expected-error @+1 {{'tfl.padv2' op failed to verify that input and constant value operands must have same element type}}
   %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<3x2xi32>, tensor<i32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
@@ -1194,7 +1194,7 @@ func @testPadV2WithInvalidConstantScalar(tensor<2x1x3xf32>, tensor<3x2xi32>) -> 
 
 func @testPadV2UnknownPaddings(tensor<2x1x3xf32>, tensor<*xi32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<*xi32>):
-  %cst = constant dense<2.0> : tensor<f32>
+  %cst = arith.constant dense<2.0> : tensor<f32>
   %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<2x1x3xf32>, tensor<*xi32>, tensor<f32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
 
@@ -1207,7 +1207,7 @@ func @testPadV2UnknownPaddings(tensor<2x1x3xf32>, tensor<*xi32>) -> tensor<? x f
 
 func @testPadV2UnsupportedPaddings(tensor<*xf32>, tensor<6x3xi32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<*xf32>, %arg1: tensor<6x3xi32>):
-  %cst = constant dense<2.0> : tensor<f32>
+  %cst = arith.constant dense<2.0> : tensor<f32>
   // expected-error @+1 {{'tfl.padv2' op failed to verify that the first dim size of the padding argument must be at most 5}}
   %0 = "tfl.padv2"(%arg0, %arg1, %cst) : (tensor<*xf32>, tensor<6x3xi32>, tensor<f32>) -> tensor<? x f32>
   return %0#0 : tensor<? x f32>
@@ -1706,7 +1706,7 @@ func @transpose_perm_size(%arg0 : tensor<2x2xi32>, %arg1 : tensor<3xi32>) -> ten
 // -----
 
 func @transpose_unranked_shape(%arg0 : tensor<*xi32>) -> tensor<2x2xi32> {
-  %cst = constant dense<[1, 0]> : tensor<2xi32>
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
   %0 = "tfl.transpose"(%arg0, %cst) : (tensor<*xi32>, tensor<2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -1715,7 +1715,7 @@ func @transpose_unranked_shape(%arg0 : tensor<*xi32>) -> tensor<2x2xi32> {
 // -----
 
 func @transpose_dynamic_shape(%arg0 : tensor<2x?xi32>) -> tensor<?x2xi32> {
-  %cst = constant dense<[1, 0]> : tensor<2xi32>
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
   %0 = "tfl.transpose"(%arg0, %cst) : (tensor<2x?xi32>, tensor<2xi32>) -> tensor<?x2xi32>
   return %0 : tensor<?x2xi32>
 }
@@ -1724,7 +1724,7 @@ func @transpose_dynamic_shape(%arg0 : tensor<2x?xi32>) -> tensor<?x2xi32> {
 // -----
 
 func @transpose_perm_axis_invalid(%arg0 : tensor<2x2xi32>) -> tensor<2x2xi32> {
-  %cst = constant dense<[1, -1]> : tensor<2xi32>
+  %cst = arith.constant dense<[1, -1]> : tensor<2xi32>
   // expected-error @+1 {{perm[1] must be in [0, rank)}}
   %0 = "tfl.transpose"(%arg0, %cst) : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
@@ -1734,7 +1734,7 @@ func @transpose_perm_axis_invalid(%arg0 : tensor<2x2xi32>) -> tensor<2x2xi32> {
 // -----
 
 func @transpose_perm_axis_duplicated(%arg0 : tensor<2x2xi32>) -> tensor<2x2xi32> {
-  %cst = constant dense<[1, 1]> : tensor<2xi32>
+  %cst = arith.constant dense<[1, 1]> : tensor<2xi32>
   // expected-error @+1 {{perm[1] cannot have duplicated axis}}
   %0 = "tfl.transpose"(%arg0, %cst) : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
@@ -1744,7 +1744,7 @@ func @transpose_perm_axis_duplicated(%arg0 : tensor<2x2xi32>) -> tensor<2x2xi32>
 // -----
 
 func @transpose_output_type_bad(%arg0 : tensor<3x4x5x6xi32>) -> tensor<3x4x5x6xi32> {
-  %cst = constant dense<[0, 3, 1, 2]> : tensor<4xi32>
+  %cst = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
   // expected-error @+1 {{expect output type tensor<3x6x4x5xi32>, got tensor<3x4x5x6xi32>}}
   %0 = "tfl.transpose"(%arg0, %cst) : (tensor<3x4x5x6xi32>, tensor<4xi32>) -> tensor<3x4x5x6xi32>
   return %0 : tensor<3x4x5x6xi32>
@@ -1771,7 +1771,7 @@ func @transpose_1d_perm(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2x2xi32>) -> ten
 // -----
 
 func @transpose_uniform_qtype(%arg0 : tensor<1x3x4x3xf32>) -> tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>> {
-  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  %cst = arith.constant dense<[1, 2, 3, 0]> : tensor<4xi32>
   %0 = "tfl.quantize"(%arg0) {qtype = tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>} : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
   // CHECK: "tfl.transpose"
   %1 = "tfl.transpose"(%0, %cst) : (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>, tensor<4xi32>) -> tensor<3x4x3x1x!quant.uniform<i8:f32, 0.0078356266021728515:-1>>
@@ -1781,7 +1781,7 @@ func @transpose_uniform_qtype(%arg0 : tensor<1x3x4x3xf32>) -> tensor<3x4x3x1x!qu
 // -----
 
 func @transpose_uniform_per_axis_qtype(%arg0 : tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>> {
-  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  %cst = arith.constant dense<[1, 2, 3, 0]> : tensor<4xi32>
   // CHECK: "tfl.transpose"
   %0  = "tfl.transpose"(%arg0, %cst) : (tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>, tensor<4xi32>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>>
   return %0 : tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.072314441204071045,0.050758145749568939}>>
@@ -1790,7 +1790,7 @@ func @transpose_uniform_per_axis_qtype(%arg0 : tensor<2x1x1x3x!quant.uniform<i8<
 // -----
 
 func @transpose_uniform_per_axis_qtype_mismatch_axis(%arg0 : tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>> {
-  %cst = constant dense<[1, 2, 3, 0]> : tensor<4xi32>
+  %cst = arith.constant dense<[1, 2, 3, 0]> : tensor<4xi32>
   // expected-error @+1 {{op has mismatched quantized axes of input and output}}
   %0  = "tfl.transpose"(%arg0, %cst) : (tensor<2x1x1x3x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>, tensor<4xi32>) -> tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>
   return %0 : tensor<1x1x3x2x!quant.uniform<i8<-127:127>:f32:0, {0.072314441204071045,0.050758145749568939}>>
@@ -2007,7 +2007,7 @@ func @testSliceBadSizeDimension(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>, 
 // -----
 
 func @testSliceBadBegin(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -> tensor<?x3x5xf32> {
-  %cst = constant dense<[2, -1, 5]> : tensor<3xi32>
+  %cst = arith.constant dense<[2, -1, 5]> : tensor<3xi32>
   // expected-error @+1 {{begin[1] cannot be negative}}
   %0 = "tfl.slice"(%arg0, %cst, %arg1) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
   return %0 : tensor<?x3x5xf32>
@@ -2016,7 +2016,7 @@ func @testSliceBadBegin(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -> tenso
 // -----
 
 func @testSliceNegativeSize(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -> tensor<?x3x5xf32> {
-  %cst = constant dense<[-2, -1, 5]> : tensor<3xi32>
+  %cst = arith.constant dense<[-2, -1, 5]> : tensor<3xi32>
   // expected-error @+1 {{size[0] cannot be negative other than -1}}
   %0 = "tfl.slice"(%arg0, %arg1, %cst) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
   return %0 : tensor<?x3x5xf32>
@@ -2025,8 +2025,8 @@ func @testSliceNegativeSize(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -> t
 // -----
 
 func @testSliceSizeOutOfRange(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -> tensor<?x3x5xf32> {
-  %cst = constant dense<[2, 1, 5]> : tensor<3xi32>
-  %cst_1 = constant dense<[0, 1, 1]> : tensor<3xi32>
+  %cst = arith.constant dense<[2, 1, 5]> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[0, 1, 1]> : tensor<3xi32>
   // expected-error @+1 {{begin[2] + size[2] cannot exceed dimension length: 5}}
   %0 = "tfl.slice"(%arg0, %cst_1, %cst) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
   return %0 : tensor<?x3x5xf32>
@@ -2035,8 +2035,8 @@ func @testSliceSizeOutOfRange(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) ->
 // -----
 
 func @testSliceBeginOutOfRange(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -> tensor<?x3x5xf32> {
-  %cst = constant dense<[1, 1, 1]> : tensor<3xi32>
-  %cst_1 = constant dense<[3, 1, 3]> : tensor<3xi32>
+  %cst = arith.constant dense<[1, 1, 1]> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[3, 1, 3]> : tensor<3xi32>
   // expected-error @+1 {{begin[0] cannot exceed dimension length: 2}}
   %0 = "tfl.slice"(%arg0, %cst_1, %cst) : (tensor<2x3x5xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<?x3x5xf32>
   return %0 : tensor<?x3x5xf32>
@@ -2045,7 +2045,7 @@ func @testSliceBeginOutOfRange(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -
 // -----
 
 func @testSplitOpWithBadNumSplits(%arg0 : tensor<16xf32>) -> () {
-  %split_dim = constant dense<0> : tensor<i32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split' op attribute 'num_splits' failed to satisfy constraint: 32-bit signless integer attribute whose value is positive}}
   "tfl.split"(%split_dim, %arg0) {num_splits = 0 : i32} : (tensor<i32>, tensor<16xf32>) -> ()
   return
@@ -2054,7 +2054,7 @@ func @testSplitOpWithBadNumSplits(%arg0 : tensor<16xf32>) -> () {
 // -----
 
 func @testSplitOpWithMismatchedNumResults(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
-  %split_dim = constant dense<0> : tensor<i32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split' op output count should match 'num_splits' attribute}}
   %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 4 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>)
   return %0, %1 : tensor<8xf32>, tensor<8xf32>
@@ -2063,7 +2063,7 @@ func @testSplitOpWithMismatchedNumResults(%arg0 : tensor<16xf32>) -> (tensor<8xf
 // -----
 
 func @testSplitOpWithBadSplitDimTensorType(%arg0: tensor<16x4x4xf32>) -> tensor<16x4x4xf32> {
-  %split_dim = constant dense<0> : tensor<2x2xi32>
+  %split_dim = arith.constant dense<0> : tensor<2x2xi32>
   // expected-error @+1 {{'tfl.split' op failed to verify that operand #0 is an 0-d tensor or 1-d tensor w/ 1 element}}
   %0 = "tfl.split"(%split_dim, %arg0) {num_splits = 1 : i32} : (tensor<2x2xi32>, tensor<16x4x4xf32>) -> tensor<16x4x4xf32>
   return %0 : tensor<16x4x4xf32>
@@ -2080,7 +2080,7 @@ func @testSplitOpWithBadSplitDimUnrankedTensorType(%arg0: tensor<16x4x4xf32>, %s
 // -----
 
 func @testSplitOpWithOutOfRangeSplitDim(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
-  %split_dim = constant dense<1> : tensor<i32>
+  %split_dim = arith.constant dense<1> : tensor<i32>
   // expected-error @+1 {{'tfl.split' op 'split_dim' should be in [-rank, rank)}}
   %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>)
   return %0, %1 : tensor<8xf32>, tensor<8xf32>
@@ -2098,7 +2098,7 @@ func @testSplitOpWithOutOfRangeSplitDimTFLConst(%arg0 : tensor<16xf32>) -> (tens
 // -----
 
 func @testSplitOpWithOutOfRangeSplitDimNegative(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
-  %split_dim = constant dense<-2> : tensor<i32>
+  %split_dim = arith.constant dense<-2> : tensor<i32>
   // expected-error @+1 {{'tfl.split' op 'split_dim' should be in [-rank, rank)}}
   %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>)
   return %0, %1 : tensor<8xf32>, tensor<8xf32>
@@ -2107,7 +2107,7 @@ func @testSplitOpWithOutOfRangeSplitDimNegative(%arg0 : tensor<16xf32>) -> (tens
 // -----
 
 func @testSplitOpWithUnevenDivision(%arg0 : tensor<16xf32>) -> (tensor<6xf32>, tensor<5xf32>, tensor<5xf32>) {
-  %split_dim = constant dense<0> : tensor<i32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split' op 'num_splits' should evenly divide 'split_dim' axis}}
   %0, %1, %2 = "tfl.split"(%split_dim, %arg0) {num_splits = 3 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<6xf32>, tensor<5xf32>, tensor<5xf32>)
   return %0, %1, %2 : tensor<6xf32>, tensor<5xf32>, tensor<5xf32>
@@ -2116,7 +2116,7 @@ func @testSplitOpWithUnevenDivision(%arg0 : tensor<16xf32>) -> (tensor<6xf32>, t
 // -----
 
 func @testSplitOpWithMismatchTensorTypeSplitDimOut0(%arg0 : tensor<16xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
-  %split_dim = constant dense<0> : tensor<i32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split' op output #0 should be 'tensor<8xf32>'}}
   %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<4xf32>, tensor<4xf32>)
   return %0, %1 : tensor<4xf32>, tensor<4xf32>
@@ -2125,7 +2125,7 @@ func @testSplitOpWithMismatchTensorTypeSplitDimOut0(%arg0 : tensor<16xf32>) -> (
 // -----
 
 func @testSplitOpWithMismatchTensorTypeSplitDimOut1(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<4xf32>) {
-  %split_dim = constant dense<0> : tensor<i32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split' op output #1 should be 'tensor<8xf32>'}}
   %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16xf32>) -> (tensor<8xf32>, tensor<4xf32>)
   return %0, %1 : tensor<8xf32>, tensor<4xf32>
@@ -2134,7 +2134,7 @@ func @testSplitOpWithMismatchTensorTypeSplitDimOut1(%arg0 : tensor<16xf32>) -> (
 // -----
 
 func @testSplitOpWithMismatchTensorTypeNonSplitDim(%arg0 : tensor<16x4xf32>) -> (tensor<8x2xf32>, tensor<8x2xf32>) {
-  %split_dim = constant dense<0> : tensor<i32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split' op output #0 should be 'tensor<8x4xf32>'}}
   %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16x4xf32>) -> (tensor<8x2xf32>, tensor<8x2xf32>)
   return %0, %1 : tensor<8x2xf32>, tensor<8x2xf32>
@@ -2144,11 +2144,11 @@ func @testSplitOpWithMismatchTensorTypeNonSplitDim(%arg0 : tensor<16x4xf32>) -> 
 
 // CHECK-LABEL:testSplitOpWithValidTensorType
 func @testSplitOpWithValidTensorType(%arg0 : tensor<16x4xf32>) -> (tensor<8x4xf32>, tensor<8x4xf32>, tensor<16x2xf32>, tensor<16x2xf32>, tensor<16x2xf32>) {
-  %split_dim_0 = constant dense<0> : tensor<i32>
+  %split_dim_0 = arith.constant dense<0> : tensor<i32>
   %0, %1 = "tfl.split"(%split_dim_0, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16x4xf32>) -> (tensor<8x4xf32>, tensor<8x4xf32>)
-  %split_dim_1 = constant dense<1> : tensor<i32>
+  %split_dim_1 = arith.constant dense<1> : tensor<i32>
   %2, %3 = "tfl.split"(%split_dim_1, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16x4xf32>) -> (tensor<16x2xf32>, tensor<16x2xf32>)
-  %split_dim_2 = constant dense<1> : tensor<1xi32>
+  %split_dim_2 = arith.constant dense<1> : tensor<1xi32>
   %4, %5 = "tfl.split"(%split_dim_2, %arg0) {num_splits = 2 : i32} : (tensor<1xi32>, tensor<16x4xf32>) -> (tensor<16x2xf32>, tensor<16x2xf32>)
   %6:2 = "tfl.split"(%split_dim_2, %arg0) {num_splits = 2 : i32} : (tensor<1xi32>, tensor<16x4xf32>) -> (tensor<16x2xf32>, tensor<16x?xf32>)
   %7:2 = "tfl.split"(%split_dim_2, %arg0) {num_splits = 2 : i32} : (tensor<1xi32>, tensor<16x4xf32>) -> (tensor<?x2xf32>, tensor<16x?xf32>)
@@ -2159,7 +2159,7 @@ func @testSplitOpWithValidTensorType(%arg0 : tensor<16x4xf32>) -> (tensor<8x4xf3
 // -----
 
 func @testSplitOpWithValidTensorTypeDynamic(%arg0 : tensor<16x?xf32>) -> (tensor<8x?xf32>, tensor<8x?xf32>) {
-  %split_dim = constant dense<0> : tensor<i32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   %0, %1 = "tfl.split"(%split_dim, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<16x?xf32>) -> (tensor<8x?xf32>, tensor<8x?xf32>)
   return %0, %1 : tensor<8x?xf32>, tensor<8x?xf32>
 }
@@ -2167,8 +2167,8 @@ func @testSplitOpWithValidTensorTypeDynamic(%arg0 : tensor<16x?xf32>) -> (tensor
 // -----
 
 func @testSplitVOpWithBadNumSplits(%arg0 : tensor<16xf32>) -> () {
-  %size_splits = constant dense<[]> : tensor<0xi32>
-  %split_dim = constant dense<0> : tensor<i32>
+  %size_splits = arith.constant dense<[]> : tensor<0xi32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op attribute 'num_splits' failed to satisfy constraint: 32-bit signless integer attribute whose value is positive}}
   "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 0 : i32} : (tensor<16xf32>, tensor<0xi32>, tensor<i32>) -> ()
   return
@@ -2177,8 +2177,8 @@ func @testSplitVOpWithBadNumSplits(%arg0 : tensor<16xf32>) -> () {
 // -----
 
 func @testSplitVOpWithMismatchedNumResults(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
-  %size_splits = constant dense<[4, 4, 4, 4]> : tensor<4xi32>
-  %split_dim = constant dense<0> : tensor<i32>
+  %size_splits = arith.constant dense<[4, 4, 4, 4]> : tensor<4xi32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op output count should match 'num_splits' attribute}}
   %0, %1 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 4 : i32} : (tensor<16xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<8xf32>, tensor<8xf32>)
   return %0, %1 : tensor<8xf32>, tensor<8xf32>
@@ -2187,8 +2187,8 @@ func @testSplitVOpWithMismatchedNumResults(%arg0 : tensor<16xf32>) -> (tensor<8x
 // -----
 
 func @testSplitVOpWithBadSizeSplitsTensorType(%arg0: tensor<16x4x4xf32>) -> tensor<16x4x4xf32> {
-  %size_splits = constant dense<[[8, 8], [2, 2]]> : tensor<2x2xi32>
-  %split_dim = constant dense<0> : tensor<i32>
+  %size_splits = arith.constant dense<[[8, 8], [2, 2]]> : tensor<2x2xi32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op operand #1 must be 1D tensor of 32-bit signless integer values}}
   %0 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 1 : i32} : (tensor<16x4x4xf32>, tensor<2x2xi32>, tensor<i32>) -> tensor<16x4x4xf32>
   return %0 : tensor<16x4x4xf32>
@@ -2197,7 +2197,7 @@ func @testSplitVOpWithBadSizeSplitsTensorType(%arg0: tensor<16x4x4xf32>) -> tens
 // -----
 
 func @testSplitVOpWithBadSizeSplitsUnrankedTensorType(%arg0: tensor<16x4x4xf32>, %size_splits: tensor<*xi32>) -> tensor<16x4x4xf32> {
-  %split_dim = constant dense<0> : tensor<i32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op operand #1 must be 1D tensor of 32-bit signless integer values}}
   %0 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 1 : i32} : (tensor<16x4x4xf32>, tensor<*xi32>, tensor<i32>) -> tensor<16x4x4xf32>
   return %0 : tensor<16x4x4xf32>
@@ -2206,8 +2206,8 @@ func @testSplitVOpWithBadSizeSplitsUnrankedTensorType(%arg0: tensor<16x4x4xf32>,
 // -----
 
 func @testSplitVOpWithBadSizeSplitsConstant(%arg0: tensor<16x4x4xf32>) -> tensor<16x4x4xf32> {
-  %size_splits = constant dense<[-2]> : tensor<1xi32>
-  %split_dim = constant dense<0> : tensor<i32>
+  %size_splits = arith.constant dense<[-2]> : tensor<1xi32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op elements of 'size_splits' should be greater than or equal to -1}}
   %0 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 1 : i32} : (tensor<16x4x4xf32>, tensor<1xi32>, tensor<i32>) -> tensor<16x4x4xf32>
   return %0 : tensor<16x4x4xf32>
@@ -2216,8 +2216,8 @@ func @testSplitVOpWithBadSizeSplitsConstant(%arg0: tensor<16x4x4xf32>) -> tensor
 // -----
 
 func @testSplitVOpWithBadSizeSplitsConstantMultipleNegativeOne(%arg0: tensor<16x4x4xf32>) -> (tensor<1x4x4xf32>, tensor<1x4x4xf32>, tensor<14x4x4xf32>) {
-  %size_splits = constant dense<[-1, -1, 14]> : tensor<3xi32>
-  %split_dim = constant dense<0> : tensor<i32>
+  %size_splits = arith.constant dense<[-1, -1, 14]> : tensor<3xi32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op 'size_splits' can only have one -1}}
   %0, %1, %2 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 3 : i32} : (tensor<16x4x4xf32>, tensor<3xi32>, tensor<i32>) -> (tensor<1x4x4xf32>, tensor<1x4x4xf32>, tensor<14x4x4xf32>)
   return %0, %1, %2 : tensor<1x4x4xf32>, tensor<1x4x4xf32>, tensor<14x4x4xf32>
@@ -2226,8 +2226,8 @@ func @testSplitVOpWithBadSizeSplitsConstantMultipleNegativeOne(%arg0: tensor<16x
 // -----
 
 func @testSplitVOpWithBadSizeSplitsConstantSum(%arg0: tensor<16x4x4xf32>) -> (tensor<0x4x4xf32>, tensor<16x4x4xf32>) {
-  %size_splits = constant dense<[-1, 17]> : tensor<2xi32>
-  %split_dim = constant dense<0> : tensor<i32>
+  %size_splits = arith.constant dense<[-1, 17]> : tensor<2xi32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op sum of non-negative elements of 'size_splits' is greater than the dimension size of 'split_dim' axis}}
   %0, %1 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 2 : i32} : (tensor<16x4x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<0x4x4xf32>, tensor<16x4x4xf32>)
   return %0, %1 : tensor<0x4x4xf32>, tensor<16x4x4xf32>
@@ -2236,8 +2236,8 @@ func @testSplitVOpWithBadSizeSplitsConstantSum(%arg0: tensor<16x4x4xf32>) -> (te
 // -----
 
 func @testSplitVOpWithBadSizeSplitsSize(%arg0: tensor<16x4x4xf32>) -> tensor<15x4x4xf32> {
-  %size_splits = constant dense<[15, 1]> : tensor<2xi32>
-  %split_dim = constant dense<0> : tensor<i32>
+  %size_splits = arith.constant dense<[15, 1]> : tensor<2xi32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op 'size_splits' should be 'tensor<1xi32>'}}
   %0 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 1 : i32} : (tensor<16x4x4xf32>, tensor<2xi32>, tensor<i32>) -> tensor<15x4x4xf32>
   return %0 : tensor<15x4x4xf32>
@@ -2246,8 +2246,8 @@ func @testSplitVOpWithBadSizeSplitsSize(%arg0: tensor<16x4x4xf32>) -> tensor<15x
 // -----
 
 func @testSplitVOpWithBadSplitDimTensorType(%arg0: tensor<16x4x4xf32>) -> tensor<16x4x4xf32> {
-  %size_splits = constant dense<[16]> : tensor<1xi32>
-  %split_dim = constant dense<0> : tensor<2x2xi32>
+  %size_splits = arith.constant dense<[16]> : tensor<1xi32>
+  %split_dim = arith.constant dense<0> : tensor<2x2xi32>
   // expected-error @+1 {{'tfl.split_v' op operand #2 must be 0D tensor of 32-bit signless integer values}}
   %0 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 1 : i32} : (tensor<16x4x4xf32>, tensor<1xi32>, tensor<2x2xi32>) -> tensor<16x4x4xf32>
   return %0 : tensor<16x4x4xf32>
@@ -2256,7 +2256,7 @@ func @testSplitVOpWithBadSplitDimTensorType(%arg0: tensor<16x4x4xf32>) -> tensor
 // -----
 
 func @testSplitVOpWithBadSplitDimUnrankedTensorType(%arg0: tensor<16x4x4xf32>, %split_dim : tensor<*xi32>) -> tensor<16x4x4xf32> {
-  %size_splits = constant dense<[16]> : tensor<1xi32>
+  %size_splits = arith.constant dense<[16]> : tensor<1xi32>
   // expected-error @+1 {{'tfl.split_v' op operand #2 must be 0D tensor of 32-bit signless integer values}}
   %0 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 1 : i32} : (tensor<16x4x4xf32>, tensor<1xi32>, tensor<*xi32>) -> tensor<16x4x4xf32>
   return %0 : tensor<16x4x4xf32>
@@ -2265,8 +2265,8 @@ func @testSplitVOpWithBadSplitDimUnrankedTensorType(%arg0: tensor<16x4x4xf32>, %
 // -----
 
 func @testSplitVOpWithOutOfRangeSplitDim(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
-  %size_splits = constant dense<[8, 8]> : tensor<2xi32>
-  %split_dim = constant dense<1> : tensor<i32>
+  %size_splits = arith.constant dense<[8, 8]> : tensor<2xi32>
+  %split_dim = arith.constant dense<1> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op 'split_dim' should be in [-rank, rank)}}
   %0, %1 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 2 : i32} : (tensor<16xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<8xf32>, tensor<8xf32>)
   return %0, %1 : tensor<8xf32>, tensor<8xf32>
@@ -2275,7 +2275,7 @@ func @testSplitVOpWithOutOfRangeSplitDim(%arg0 : tensor<16xf32>) -> (tensor<8xf3
 // -----
 
 func @testSplitVOpWithOutOfRangeSplitDimTFLConst(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
-  %size_splits = constant dense<[8, 8]> : tensor<2xi32>
+  %size_splits = arith.constant dense<[8, 8]> : tensor<2xi32>
   %split_dim = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op 'split_dim' should be in [-rank, rank)}}
   %0, %1 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 2 : i32} : (tensor<16xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<8xf32>, tensor<8xf32>)
@@ -2285,8 +2285,8 @@ func @testSplitVOpWithOutOfRangeSplitDimTFLConst(%arg0 : tensor<16xf32>) -> (ten
 // -----
 
 func @testSplitVOpWithOutOfRangeSplitDimNegative(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
-  %size_splits = constant dense<[8, 8]> : tensor<2xi32>
-  %split_dim = constant dense<-2> : tensor<i32>
+  %size_splits = arith.constant dense<[8, 8]> : tensor<2xi32>
+  %split_dim = arith.constant dense<-2> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op 'split_dim' should be in [-rank, rank)}}
   %0, %1 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 2 : i32} : (tensor<16xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<8xf32>, tensor<8xf32>)
   return %0, %1 : tensor<8xf32>, tensor<8xf32>
@@ -2295,8 +2295,8 @@ func @testSplitVOpWithOutOfRangeSplitDimNegative(%arg0 : tensor<16xf32>) -> (ten
 // -----
 
 func @testSplitVOpWithMismatchSizeSplitsSum(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<4xf32>) {
-  %size_splits = constant dense<[8, 4]> : tensor<2xi32>
-  %split_dim = constant dense<0> : tensor<i32>
+  %size_splits = arith.constant dense<[8, 4]> : tensor<2xi32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op sum of 'size_splits' should match the dimension size of 'split_dim' axis}}
   %0, %1 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 2 : i32} : (tensor<16xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<8xf32>, tensor<4xf32>)
   return %0, %1 : tensor<8xf32>, tensor<4xf32>
@@ -2305,8 +2305,8 @@ func @testSplitVOpWithMismatchSizeSplitsSum(%arg0 : tensor<16xf32>) -> (tensor<8
 // -----
 
 func @testSplitVOpWithMismatchTensorTypeSplitDimOut0(%arg0 : tensor<16xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
-  %size_splits = constant dense<[8, 8]> : tensor<2xi32>
-  %split_dim = constant dense<0> : tensor<i32>
+  %size_splits = arith.constant dense<[8, 8]> : tensor<2xi32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op output #0 should be 'tensor<8xf32>'}}
   %0, %1 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 2 : i32} : (tensor<16xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<4xf32>, tensor<4xf32>)
   return %0, %1 : tensor<4xf32>, tensor<4xf32>
@@ -2315,8 +2315,8 @@ func @testSplitVOpWithMismatchTensorTypeSplitDimOut0(%arg0 : tensor<16xf32>) -> 
 // -----
 
 func @testSplitVOpWithMismatchTensorTypeSplitDimOut1(%arg0 : tensor<16xf32>) -> (tensor<8xf32>, tensor<4xf32>) {
-  %size_splits = constant dense<[8, 8]> : tensor<2xi32>
-  %split_dim = constant dense<0> : tensor<i32>
+  %size_splits = arith.constant dense<[8, 8]> : tensor<2xi32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op output #1 should be 'tensor<8xf32>'}}
   %0, %1 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 2 : i32} : (tensor<16xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<8xf32>, tensor<4xf32>)
   return %0, %1 : tensor<8xf32>, tensor<4xf32>
@@ -2325,8 +2325,8 @@ func @testSplitVOpWithMismatchTensorTypeSplitDimOut1(%arg0 : tensor<16xf32>) -> 
 // -----
 
 func @testSplitVOpWithMismatchTensorTypeNonSplitDim(%arg0 : tensor<16x4xf32>) -> (tensor<8x2xf32>, tensor<8x2xf32>) {
-  %size_splits = constant dense<[8, 8]> : tensor<2xi32>
-  %split_dim = constant dense<0> : tensor<i32>
+  %size_splits = arith.constant dense<[8, 8]> : tensor<2xi32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op output #0 should be 'tensor<8x4xf32>'}}
   %0, %1 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 2 : i32} : (tensor<16x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<8x2xf32>, tensor<8x2xf32>)
   return %0, %1 : tensor<8x2xf32>, tensor<8x2xf32>
@@ -2335,12 +2335,12 @@ func @testSplitVOpWithMismatchTensorTypeNonSplitDim(%arg0 : tensor<16x4xf32>) ->
 // -----
 
 func @testSplitVOpWithValidTensorType(%arg0 : tensor<16x4xf32>) -> (tensor<8x4xf32>, tensor<8x4xf32>, tensor<16x2xf32>, tensor<16x2xf32>) {
-  %size_splits_0 = constant dense<[8, 8]> : tensor<2xi32>
-  %split_dim_0 = constant dense<0> : tensor<i32>
+  %size_splits_0 = arith.constant dense<[8, 8]> : tensor<2xi32>
+  %split_dim_0 = arith.constant dense<0> : tensor<i32>
   %0, %1 = "tfl.split_v"(%arg0, %size_splits_0, %split_dim_0) {num_splits = 2 : i32} : (tensor<16x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<8x4xf32>, tensor<8x4xf32>)
 
-  %size_splits_1 = constant dense<[2, 2]> : tensor<2xi32>
-  %split_dim_1 = constant dense<1> : tensor<i32>
+  %size_splits_1 = arith.constant dense<[2, 2]> : tensor<2xi32>
+  %split_dim_1 = arith.constant dense<1> : tensor<i32>
   %2, %3 = "tfl.split_v"(%arg0, %size_splits_1, %split_dim_1) {num_splits = 2 : i32} : (tensor<16x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<16x2xf32>, tensor<16x2xf32>)
 
   return %0, %1, %2, %3 : tensor<8x4xf32>, tensor<8x4xf32>, tensor<16x2xf32>, tensor<16x2xf32>
@@ -2349,8 +2349,8 @@ func @testSplitVOpWithValidTensorType(%arg0 : tensor<16x4xf32>) -> (tensor<8x4xf
 // -----
 
 func @testSplitVOpWithValidTensorTypeDynamic(%arg0 : tensor<16x?xf32>) -> (tensor<8x?xf32>, tensor<8x?xf32>) {
-  %size_splits = constant dense<[8, 8]> : tensor<2xi32>
-  %split_dim = constant dense<0> : tensor<i32>
+  %size_splits = arith.constant dense<[8, 8]> : tensor<2xi32>
+  %split_dim = arith.constant dense<0> : tensor<i32>
   %0, %1 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 2 : i32} : (tensor<16x?xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<8x?xf32>, tensor<8x?xf32>)
   return %0, %1 : tensor<8x?xf32>, tensor<8x?xf32>
 }
@@ -2358,12 +2358,12 @@ func @testSplitVOpWithValidTensorTypeDynamic(%arg0 : tensor<16x?xf32>) -> (tenso
 // -----
 
 func @testSplitVOpWithValidSizeSplitsUneven(%arg0 : tensor<16x4xf32>) -> (tensor<7x4xf32>, tensor<3x4xf32>, tensor<6x4xf32>, tensor<16x1xf32>, tensor<16x3xf32>) {
-  %size_splits_0 = constant dense<[7, 3, 6]> : tensor<3xi32>
-  %split_dim_0 = constant dense<0> : tensor<i32>
+  %size_splits_0 = arith.constant dense<[7, 3, 6]> : tensor<3xi32>
+  %split_dim_0 = arith.constant dense<0> : tensor<i32>
   %0, %1, %2 = "tfl.split_v"(%arg0, %size_splits_0, %split_dim_0) {num_splits = 3 : i32} : (tensor<16x4xf32>, tensor<3xi32>, tensor<i32>) -> (tensor<7x4xf32>, tensor<3x4xf32>, tensor<6x4xf32>)
 
-  %size_splits_1 = constant dense<[1, 3]> : tensor<2xi32>
-  %split_dim_1 = constant dense<1> : tensor<i32>
+  %size_splits_1 = arith.constant dense<[1, 3]> : tensor<2xi32>
+  %split_dim_1 = arith.constant dense<1> : tensor<i32>
   %3, %4 = "tfl.split_v"(%arg0, %size_splits_1, %split_dim_1) {num_splits = 2 : i32} : (tensor<16x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<16x1xf32>, tensor<16x3xf32>)
 
   return %0, %1, %2, %3, %4 : tensor<7x4xf32>, tensor<3x4xf32>, tensor<6x4xf32>, tensor<16x1xf32>, tensor<16x3xf32>
@@ -2372,12 +2372,12 @@ func @testSplitVOpWithValidSizeSplitsUneven(%arg0 : tensor<16x4xf32>) -> (tensor
 // -----
 
 func @testSplitVOpWithValidSizeSplitsNegative(%arg0 : tensor<16x4xf32>) -> (tensor<7x4xf32>, tensor<3x4xf32>, tensor<6x4xf32>, tensor<16x0xf32>, tensor<16x4xf32>) {
-  %size_splits_0 = constant dense<[7, -1, 6]> : tensor<3xi32>
-  %split_dim_0 = constant dense<0> : tensor<i32>
+  %size_splits_0 = arith.constant dense<[7, -1, 6]> : tensor<3xi32>
+  %split_dim_0 = arith.constant dense<0> : tensor<i32>
   %0, %1, %2 = "tfl.split_v"(%arg0, %size_splits_0, %split_dim_0) {num_splits = 3 : i32} : (tensor<16x4xf32>, tensor<3xi32>, tensor<i32>) -> (tensor<7x4xf32>, tensor<3x4xf32>, tensor<6x4xf32>)
 
-  %size_splits_1 = constant dense<[-1, 4]> : tensor<2xi32>
-  %split_dim_1 = constant dense<1> : tensor<i32>
+  %size_splits_1 = arith.constant dense<[-1, 4]> : tensor<2xi32>
+  %split_dim_1 = arith.constant dense<1> : tensor<i32>
   %3, %4 = "tfl.split_v"(%arg0, %size_splits_1, %split_dim_1) {num_splits = 2 : i32} : (tensor<16x4xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<16x0xf32>, tensor<16x4xf32>)
 
   return %0, %1, %2, %3, %4 : tensor<7x4xf32>, tensor<3x4xf32>, tensor<6x4xf32>, tensor<16x0xf32>, tensor<16x4xf32>
@@ -2506,7 +2506,7 @@ func @testTransposeConvBadOutputRank(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x
 // -----
 
 func @testTransposeConvBadOutputShape(%arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x32x42x128xf32>) -> tensor<1x64x84x31xf32> {
-  %cst = constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  %cst = arith.constant dense<[1, 64, 84, 32]> : tensor<4xi32>
   %cst_1 = constant unit
   // expected-error @+1 {{expect output type tensor<1x64x84x32xf32>, got tensor<1x64x84x31xf32>}}
   %0 = "tfl.transpose_conv"(%cst, %arg1, %arg2, %cst_1) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x31xf32>
@@ -2525,13 +2525,13 @@ func @testDensify(%arg0: tensor<? x f32>) -> tensor<? x f32> {
 // -----
 
 func @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> tensor<i1> {
-  %cst = constant dense<0> : tensor<i32> loc("Const")
+  %cst = arith.constant dense<0> : tensor<i32> loc("Const")
   %0 = "tfl.greater"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
   return %0 : tensor<i1>
 }
 
 func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>) {
-  %cst = constant dense<1> : tensor<i32> loc("Const1")
+  %cst = arith.constant dense<1> : tensor<i32> loc("Const1")
   %0 = "tfl.sub"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
   %1 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<*xf32>
   return %0, %1 : tensor<*xi32>, tensor<*xf32>
@@ -2554,13 +2554,13 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<i32> {
 // -----
 
 func @WhileOp_cond(%arg0: tensor<*xi32>) -> tensor<i1> {
-  %cst = constant dense<0> : tensor<i32> loc("Const")
+  %cst = arith.constant dense<0> : tensor<i32> loc("Const")
   %0 = "tfl.greater"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
   return %0 : tensor<i1>
 }
 
 func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>) {
-  %cst = constant dense<1> : tensor<i32> loc("Const1")
+  %cst = arith.constant dense<1> : tensor<i32> loc("Const1")
   %0 = "tfl.sub"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
   %1 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<*xf32>
   return %0, %1 : tensor<*xi32>, tensor<*xf32>
@@ -2583,13 +2583,13 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<i32> {
 // -----
 
 func @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<1xf32>, %arg2: tensor<2xf32>) -> tensor<i1> {
-  %cst = constant dense<0> : tensor<i32> loc("Const")
+  %cst = arith.constant dense<0> : tensor<i32> loc("Const")
   %0 = "tfl.greater"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
   return %0 : tensor<i1>
 }
 
 func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<2xf32>, %arg2: tensor<1xf32>) -> (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) {
-  %cst = constant dense<1> : tensor<i32> loc("Const1")
+  %cst = arith.constant dense<1> : tensor<i32> loc("Const1")
   %0 = "tfl.sub"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
   %1 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<2xf32>
   return %0, %1, %arg2 : tensor<*xi32>, tensor<2xf32>, tensor<1xf32>
@@ -2643,7 +2643,7 @@ func @valid_unranked_inputs_on_reshape(%arg0: tensor<3x4xi32>, %arg1: tensor<*xi
 
 // CHECK-LABEL: valid_one_dynamic_dim_on_reshape
 func @valid_one_dynamic_dim_on_reshape(%arg0: tensor<3x4xi32>) -> tensor<1x3x4xi32> {
-  %cst = constant dense<[1, -1, 4]> : tensor<3xi32>
+  %cst = arith.constant dense<[1, -1, 4]> : tensor<3xi32>
   // CHECK: "tfl.reshape"(%arg0, %cst)
   %0 = "tfl.reshape"(%arg0, %cst) : (tensor<3x4xi32>, tensor<3xi32>) -> tensor<1x3x4xi32>
   return %0 : tensor<1x3x4xi32>
@@ -2652,7 +2652,7 @@ func @valid_one_dynamic_dim_on_reshape(%arg0: tensor<3x4xi32>) -> tensor<1x3x4xi
 // -----
 
 func @invalid_two_dynamic_dims_on_reshape(%arg0: tensor<3x4xi32>) -> tensor<1x3x4xi32> {
-  %cst = constant dense<[-1, -1, 4]> : tensor<3xi32>
+  %cst = arith.constant dense<[-1, -1, 4]> : tensor<3xi32>
   // expected-error @+1 {{tfl.reshape' op requires 'shape' to have at most one dynamic dimension, but got multiple dynamic dimensions at indices 0 and 1. You need to set up the unspecified size(s) to avoid this problem, for example,setting batch size in keras model or setting unspecified input size(s) with fixed ones.}}
   %0 = "tfl.reshape"(%arg0, %cst) : (tensor<3x4xi32>, tensor<3xi32>) -> tensor<1x3x4xi32>
   return %0 : tensor<1x3x4xi32>
@@ -2896,8 +2896,8 @@ func @select_v2_with_dynamic_shape_not_from_broadcast_args(%arg0: tensor<8x7x6x5
 // -----
 
 func @depthwise_conv_2D_invalid_bias(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
-  %w = constant dense<127.0> : tensor<32x3x3x3xf32>
-  %b = constant dense<0.0> : tensor<32x1xf32>
+  %w = arith.constant dense<127.0> : tensor<32x3x3x3xf32>
+  %b = arith.constant dense<0.0> : tensor<32x1xf32>
   // expected-error @+1 {{'tfl.depthwise_conv_2d' op operand #2 must be 1D tensor of any type values or none type, but got 'tensor<32x1xf32>'}}
   %dc = "tfl.depthwise_conv_2d"(%arg0, %w, %b) {depth_multiplier = 4 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32x1xf32>) -> tensor<1x112x112x32xf32>
   return %dc : tensor<1x112x112x32xf32>

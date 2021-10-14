@@ -68,7 +68,7 @@ void DeviceIndexSelector::runOnOperation() {
     }
     DenseElementsAttr attr =
         DenseElementsAttr::get(type, b.getI32IntegerAttr(index));
-    auto constant = b.create<ConstantOp>(op.getLoc(), type, attr);
+    auto constant = b.create<arith::ConstantOp>(op.getLoc(), type, attr);
     op.replaceAllUsesWith(constant.getOperation());
     op.erase();
   });

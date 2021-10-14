@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -560,7 +561,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         RankedTensorType type = RankedTensorType::get(
             {num_channels}, constant_val_type.getElementType());
         auto attr = rewriter.getZeroAttr(type);
-        bias = rewriter.create<ConstantOp>(add_op.getLoc(), type, attr);
+        bias = rewriter.create<arith::ConstantOp>(add_op.getLoc(), type, attr);
         auto none_af = rewriter.getStringAttr("NONE");
         bias =
             rewriter.create<AddOp>(add_op.getLoc(), bias, constant_val, none_af)
@@ -796,7 +797,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     }
 
     auto new_op =
-        rewriter.create<ConstantOp>(mul_op.getLoc(), new_type, new_cst);
+        rewriter.create<arith::ConstantOp>(mul_op.getLoc(), new_type, new_cst);
     Value new_const_val = new_op.getResult();
 
     // Rewrite. Since the folder of TFL::MulOp couldn't broadcast the operands,
@@ -831,18 +832,21 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
 // the TFL_DequantizeOp.
 // def : Pat<(TFL_MulOp (TFL_Conv2DOp:$conv_output $input,
 //                          (TFL_DequantizeOp (TFL_QuantizeOp
-//                              (ConstantOp F32ElementsAttr:$filter), $qtype)),
-//                          (ConstantOp F32ElementsAttr:$bias),
+//                              (Arith_ConstantOp F32ElementsAttr:$filter),
+//                              $qtype)),
+//                          (Arith_ConstantOp F32ElementsAttr:$bias),
 //                          $h_factor, $w_factor, TFL_AF_None,
 //                          $padding, $stride_h, $stride_w),
-//                      (ConstantOp F32ElementsAttr:$value), $act_fn),
+//                      (Arith_ConstantOp F32ElementsAttr:$value), $act_fn),
 //           (TFL_Conv2DOp $input,
 //                      (TFL_DequantizeOp (TFL_QuantizeOp
-//                          (TFL_MulOp (ConstantOp $filter),
-//                                     (ConstantOp (ExpandTo4DForConv $value)),
+//                          (TFL_MulOp (Arith_ConstantOp $filter),
+//                                     (Arith_ConstantOp (ExpandTo4DForConv
+//                                     $value)),
 //                                      TFL_AF_None),
 //                          (RescaleQtype $qtype, $value))),
-//                      (TFL_MulOp (ConstantOp $bias), (ConstantOp $value),
+//                      (TFL_MulOp (Arith_ConstantOp $bias), (Arith_ConstantOp
+//                      $value),
 //                          TFL_AF_None),
 //                      $h_factor, $w_factor, $act_fn,
 //                      $padding, $stride_h, $stride_w),
@@ -1079,11 +1083,11 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
 
 // If the operand to a broadcastable op is a splat constant, try to replace it
 // with a 0-d constant, e.g. before this optimization,
-//   %cst = constant dense<1.0> : tensor<16x16x4xf32>
+//   %cst = arith.constant dense<1.0> : tensor<16x16x4xf32>
 //   %0 = "tfl.conv_2d"...
 //   %1 = "tfl.add"(%0, %cst) : (tensor<16x16x4xf32>, tensor<16x16x4xf32>)
 // After this optimization:
-//   %cst = constant dense<1.0> : tensor<f32>
+//   %cst = arith.constant dense<1.0> : tensor<f32>
 //   %0 = "tfl.conv_2d"...
 //   %1 = "tfl.add"(%0, %cst) : (tensor<16x16x4xf32>, tensor<f32>)
 // This pattern can enable more fusing opportunities when the binary op is
@@ -1129,7 +1133,7 @@ struct ScalarizeSplatConstantForBroadcastableOps
                               splat_elements_attr.getType().getElementType()),
         splat_elements_attr.getSplatValue());
 
-    auto scalar_constant_op = rewriter.create<ConstantOp>(
+    auto scalar_constant_op = rewriter.create<arith::ConstantOp>(
         splat_operand.getLoc(), scalar_elements_attr.getType(),
         scalar_elements_attr);
 
@@ -1282,7 +1286,7 @@ struct ConvertTrivialTransposeOpToReshapeOp
 // does not alter the last dimension as FullyConnected will collapse all other
 // dimensions into a single dimension. For example,
 //
-//   %shape = constant dense<[1, 128, 64]> : tensor<3xi32>
+//   %shape = arith.constant dense<[1, 128, 64]> : tensor<3xi32>
 //   %reshape = tfl.reshape(%input, %shape) // %input: tensor<128x64xf32>
 //   %fc = tfl.fully_connected(%reshape, %filter, %bias)
 //           {keep_num_dims = false, weights_format = "DEFAULT"}
@@ -1335,7 +1339,7 @@ struct RemoveReshapeBeforeFullyConnected
 //   // %input: tensor<4x16x32xf32>
 //   %fc = tfl.fully_connected(%input, %filter, %bias)
 //           {keep_num_dims = false, weights_format = "DEFAULT"}
-//   %shape = constant dense<[4, 16, 32]> : tensor<3xi32>
+//   %shape = arith.constant dense<[4, 16, 32]> : tensor<3xi32>
 //   %rs = tfl.reshape(%fc, %shape)
 //
 // can be canonicalized to
@@ -1392,7 +1396,7 @@ struct RemoveReshapeAfterFullyConnected
 //
 // can be optimized to
 //
-//   %cst = constant dense<[1, 6]> : tensor<2xi32>
+//   %cst = arith.constant dense<[1, 6]> : tensor<2xi32>
 //   %res = "tfl.reshape"(%input, %cst)
 struct FuseUnpackAndConcatToReshape
     : public OpRewritePattern<TFL::ConcatenationOp> {

@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
@@ -469,7 +470,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
     }
 
     auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
-    auto shape = rewriter.create<ConstantOp>(loc, shape_type, shape_attr);
+    auto shape =
+        rewriter.create<arith::ConstantOp>(loc, shape_type, shape_attr);
     auto revised_output_type = RankedTensorType::get(
         revised_shape, original_input_type.getElementType());
     TF::ReshapeOp reshape = rewriter.create<TF::ReshapeOp>(
@@ -625,12 +627,14 @@ struct ConvertTFStridedSlice : public RewritePattern {
         RankedTensorType::get({full_dim_count}, rewriter.getIntegerType(32));
 
     auto begin_attr = DenseElementsAttr::get<int32_t>(type, padded_begin);
-    auto begin_op = rewriter.create<ConstantOp>(op->getLoc(), type, begin_attr);
+    auto begin_op =
+        rewriter.create<arith::ConstantOp>(op->getLoc(), type, begin_attr);
     auto end_attr = DenseElementsAttr::get<int32_t>(type, padded_end);
-    auto end_op = rewriter.create<ConstantOp>(op->getLoc(), type, end_attr);
+    auto end_op =
+        rewriter.create<arith::ConstantOp>(op->getLoc(), type, end_attr);
     auto stride_attr = DenseElementsAttr::get<int32_t>(type, padded_stride);
     auto stride_op =
-        rewriter.create<ConstantOp>(op->getLoc(), type, stride_attr);
+        rewriter.create<arith::ConstantOp>(op->getLoc(), type, stride_attr);
 
     rewriter.replaceOpWithNewOp<TF::StridedSliceOp>(
         op, strided_slice_op.getType(), input, begin_op.getResult(),
@@ -734,16 +738,16 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     auto begin_end_type =
         RankedTensorType::get({num_input_dims}, rewriter.getIntegerType(32));
-    auto new_begin_attr = rewriter.create<ConstantOp>(
+    auto new_begin_attr = rewriter.create<arith::ConstantOp>(
         op->getLoc(), begin_end_type,
         DenseElementsAttr::get<int32_t>(begin_end_type, padded_begin));
-    auto new_end_attr = rewriter.create<ConstantOp>(
+    auto new_end_attr = rewriter.create<arith::ConstantOp>(
         op->getLoc(), begin_end_type,
         DenseElementsAttr::get<int32_t>(begin_end_type, padded_end));
     auto strides_type =
         RankedTensorType::get({static_cast<long>(padded_strides.size())},
                               rewriter.getIntegerType(32));
-    auto new_strides_attr = rewriter.create<ConstantOp>(
+    auto new_strides_attr = rewriter.create<arith::ConstantOp>(
         op->getLoc(), strides_type,
         DenseElementsAttr::get<int32_t>(strides_type, padded_strides));
 
@@ -1198,6 +1202,7 @@ LogicalResult ValidateOp(Operation *op) {
 // TF2XLA ops aren't supported by later stages.
 LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   ConversionTarget target(*context);
+  target.addLegalDialect<arith::ArithmeticDialect>();
   target.addLegalDialect<StandardOpsDialect>();
   target.addLegalDialect<TF::TensorFlowDialect>();
   target.addLegalOp<ModuleOp>();

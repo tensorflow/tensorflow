@@ -72,7 +72,8 @@ void InitTextFileToImportTestPass::runOnOperation() {
   MLIRContext* context = &getContext();
 
   for (FuncOp func : module.getOps<FuncOp>()) {
-    llvm::SmallVector<ConstantOp, 4> constant_ops(func.getOps<ConstantOp>());
+    llvm::SmallVector<arith::ConstantOp, 4> constant_ops(
+        func.getOps<arith::ConstantOp>());
     for (auto op : constant_ops) {
       ShapedType shaped_type =
           RankedTensorType::get({1}, StringType::get(context));
