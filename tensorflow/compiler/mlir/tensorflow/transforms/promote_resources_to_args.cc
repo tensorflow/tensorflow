@@ -356,20 +356,21 @@ void PromoteResourcesToArgsPass::runOnOperation() {
   if (llvm::size(functions_) == 0) {
     functions_ = {"main"};
   }
+  SymbolTable symbolTable(module);
   for (std::string f : functions_) {
-    FuncOp main_func = module.lookupSymbol<FuncOp>(f);
-    if (!main_func) return;
+    FuncOp func = symbolTable.lookup<FuncOp>(f);
+    if (!func) return;
 
     // This routine should only be called when control flow operations are still
     // represented with TF IfOp and WhileOp operations. In this case, there should
     // be only one basic blocks in the MLIR representation.
-    if (failed(CheckSingleBlockFunction(main_func))) return signalPassFailure();
+    if (failed(CheckSingleBlockFunction(func))) return signalPassFailure();
 
     llvm::SmallVector<std::string, 4> var_handle_shared_names;
-    if (failed(ResourceLiftingForFunctionalControlFlow(main_func)) ||
-	failed(PromoteVarHandlesToArguments(main_func, /*add_validation=*/true,
+    if (failed(ResourceLiftingForFunctionalControlFlow(func)) ||
+	failed(PromoteVarHandlesToArguments(func, /*add_validation=*/true,
 					    &var_handle_shared_names)) ||
-	failed(PromoteResourcesToArguments(main_func, var_handle_shared_names)))
+	failed(PromoteResourcesToArguments(func, var_handle_shared_names)))
       return signalPassFailure();
   }
 }
