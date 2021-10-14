@@ -2066,17 +2066,19 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
 
 // Helper function to reverse negative striding. Only checks for -1 as that is
 // the only legal negative stride.
-static Value reverseNegativeStride(
-  PatternRewriter& rewriter, Operation*op, Value input, ArrayRef<int32_t> strides) {
+static Value reverseNegativeStride(PatternRewriter& rewriter, Operation* op,
+                                   Value input, ArrayRef<int32_t> strides) {
   Type reverse_ty = UnrankedTensorType::get(
-    input.getType().cast<ShapedType>().getElementType());
+      input.getType().cast<ShapedType>().getElementType());
   for (auto it : llvm::enumerate(strides)) {
     auto axis = it.index();
     auto stride = it.value();
     if (stride != -1) continue;
 
-    input = CreateOpAndInfer<tosa::ReverseOp>(
-      rewriter, op->getLoc(), reverse_ty, input, rewriter.getI64IntegerAttr(axis)).getResult();
+    input = CreateOpAndInfer<tosa::ReverseOp>(rewriter, op->getLoc(),
+                                              reverse_ty, input,
+                                              rewriter.getI64IntegerAttr(axis))
+                .getResult();
   }
 
   return input;
@@ -2236,7 +2238,6 @@ llvm::Optional<Value> convertStridedSliceOp(
     }
   }
 
-
   // Make sure we didn't lose any dimensions from the shrink_axis_mask
   assert(residual == 1);
 
@@ -2247,7 +2248,8 @@ llvm::Optional<Value> convertStridedSliceOp(
       rewriter.getI64ArrayAttr(a1_begin), rewriter.getI64ArrayAttr(a1_size));
 
   if (all_strides_one) {
-    return reverseNegativeStride(rewriter, op, a1_slice_op.getResult(), strides);
+    return reverseNegativeStride(rewriter, op, a1_slice_op.getResult(),
+                                 strides);
   }
 
   // Step 2: reshape the sliced array
@@ -2264,12 +2266,13 @@ llvm::Optional<Value> convertStridedSliceOp(
       rewriter.getI64ArrayAttr(a3_size));
 
   // Step 4: reshape the now-strided tensor
-  auto a4_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
-    rewriter, op->getLoc(), result_type, a3_slice_op.getResult(),
-    rewriter.getI64ArrayAttr(a4_shape)).getResult();
+  auto a4_reshape_op =
+      CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), result_type,
+                                        a3_slice_op.getResult(),
+                                        rewriter.getI64ArrayAttr(a4_shape))
+          .getResult();
 
-  return reverseNegativeStride(
-    rewriter, op, a4_reshape_op, strides);
+  return reverseNegativeStride(rewriter, op, a4_reshape_op, strides);
 }
 
 // Lowers FloorDiv to a sequence of TOSA operators.
