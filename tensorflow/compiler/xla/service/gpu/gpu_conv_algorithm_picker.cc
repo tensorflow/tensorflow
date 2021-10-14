@@ -412,16 +412,9 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
                      alg.ToString()),
         2);
 
-    profile_results.emplace_back();
-    AutotuneResult& result = profile_results.back();
-    result.mutable_conv()->set_algorithm(alg.algo_id());
-    result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
-
     if (absl::c_linear_search(disabled_algos, alg)) {
       LOG(INFO) << "Omitted potentially buggy algorithm " << alg.ToString()
                 << " for conv " << instr->ToString();
-      result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
-      result.mutable_failure()->set_msg("Disqualified for being known-buggy.");
       continue;
     }
 
@@ -432,8 +425,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     if (kind == CudnnConvKind::kForwardActivation &&
         backend_config.activation_mode() == se::dnn::ActivationMode::kNone &&
         alg.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
-      result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
-      result.mutable_failure()->set_msg("Disqualified for implicit RELU.");
       continue;
     }
 
@@ -454,21 +445,18 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
     if (!launch_status.ok()) {
       VLOG(4) << "Launch failed: " << launch_status;
-      result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
-      result.mutable_failure()->set_msg(
-          absl::StrCat("Profiling failure on cuDNN engine ", alg.ToString(),
-                       ": ", launch_status.ToString()));
       continue;
     }
 
     if (!profile_result.is_valid()) {
       VLOG(4) << "Launch succeeded but profile result is invalid.";
-      result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
-      result.mutable_failure()->set_msg(absl::StrCat(
-          "Launch succeeded but profile result is invalid, with cuDNN engine ",
-          alg.ToString(), ": ", launch_status.ToString()));
       continue;
     }
+
+    profile_results.emplace_back();
+    AutotuneResult& result = profile_results.back();
+    result.mutable_conv()->set_algorithm(alg.algo_id());
+    result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
 
     int64_t scratch_bytes_used =
         scratch_allocator.TotalAllocatedBytesExcludingRedzones();
