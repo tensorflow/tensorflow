@@ -187,7 +187,6 @@ enum StatType {
   kMemFreeDetails,
   kMemsetDetails,
   kMemoryResidencyDetails,
-  kKernelAnnotation,
   kNVTXRange,
   kKernelDetails,
   kStream,
