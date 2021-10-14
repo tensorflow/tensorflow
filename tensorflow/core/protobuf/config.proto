@@ -681,7 +681,11 @@ message ConfigProto {
     // kernels may not be loaded due to selective registration.
     bool disable_functional_ops_lowering = 21;
 
-    // Next: 22
+    // Provides a hint to XLA auto clustering to prefer forming a single large
+    // cluster that encompases most of the graph.
+    bool xla_prefer_single_graph_cluster = 22;
+
+    // Next: 23
   }
 
   Experimental experimental = 16;
