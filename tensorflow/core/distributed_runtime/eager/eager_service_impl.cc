@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -310,12 +311,12 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
 #if !defined(IS_MOBILE_PLATFORM)
   const auto& config = request->server_def().default_session_config();
   const bool enable_coordination =
-      !config.experimental().coordination_service().empty();
+      !config.experimental().coordination_config().service_type().empty();
   if (enable_coordination) {
     auto dist_mgr = std::make_unique<EagerContextDistributedManager>(ctx);
     ctx->SetDistributedManager(std::move(dist_mgr));
     TF_RETURN_IF_ERROR(ctx->GetDistributedManager()->EnableCoordinationService(
-        config.experimental().coordination_service(), env_,
+        config.experimental().coordination_config().service_type(), env_,
         request->server_def(), worker_session->worker_cache()));
     std::unique_ptr<CoordinationClientCache> client_cache;
     TF_RETURN_IF_ERROR(
