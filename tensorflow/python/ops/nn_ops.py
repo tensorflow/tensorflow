@@ -5607,7 +5607,7 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
       if rate_dtype != x_dtype:
         if not rate_dtype.is_compatible_with(x_dtype):
           raise ValueError(
-              "`x.dtype` must be comptaible with `rate.dtype`. "
+              "`x.dtype` must be compatible with `rate.dtype`. "
               f"Received: x.dtype={x_dtype} and rate.dtype={rate_dtype}")
         rate = gen_math_ops.cast(rate, x_dtype, name="rate")
       one_tensor = constant_op.constant(1, dtype=x_dtype)
