@@ -738,6 +738,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kReduceWindow: {
+      llvm::SmallVector<Type, 4> return_types = {result_type};
+      if (mlir::TupleType tuple_ty = result_type.dyn_cast<mlir::TupleType>()) {
+        return_types = llvm::to_vector<6>(tuple_ty.getTypes());
+      }
       llvm::SmallVector<int64_t, 4> sizes, strides, base_dilations,
           win_dilations;
       llvm::SmallVector<int64_t, 8> padding;
@@ -759,10 +763,18 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "window_dilations", ConvertDimensions(win_dilations)));
       attributes.push_back(ConvertPadding(padding));
       auto reduce = func_builder->create<mlir::mhlo::ReduceWindowOp>(
-          loc, result_type, operands, attributes);
+          loc, return_types, operands, attributes);
       TF_RETURN_IF_ERROR(
           ImportAsRegion(*instruction->to_apply(), &reduce.body()));
-      return reduce.getOperation();
+
+      // Check if the output needs to be tupled.
+      if (return_types.size() == 1 && return_types.front() == result_type) {
+        return reduce.getOperation();
+      }
+
+      return func_builder
+          ->create<mlir::mhlo::TupleOp>(loc, result_type, reduce.getResults())
+          .getOperation();
     }
     case HloOpcode::kMap: {
       auto op = func_builder->create<mlir::mhlo::MapOp>(
