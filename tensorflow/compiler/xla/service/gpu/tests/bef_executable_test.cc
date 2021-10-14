@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -107,6 +108,27 @@ XLA_TEST_F(ClientLibraryTestBase, GemmBiasOnly) {
                                    addend_handle.get()};
   ComputeAndCompareR2<Eigen::half>(&builder, *expected, args,
                                    ErrorSpec(0.3, 7e-3));
+}
+
+XLA_TEST_F(ClientLibraryTestBase, FusionAndCholesky) {
+  XlaBuilder builder(TestName());
+
+  Array2D<float> a_vals({
+      {16, 24, 8, 12},
+      {24, 61, 82, 48},
+      {8, 82, 456, 106},
+      {12, 48, 106, 62},
+  });
+
+  XlaOp a;
+  auto a_data = CreateR2Parameter<float>(a_vals, 0, "a", &builder, &a);
+  LowerTriangle(Cholesky(a, /*lower=*/true));
+
+  Array2D<float> expected(
+      {{4, 0, 0, 0}, {6, 5, 0, 0}, {2, 14, 16, 0}, {3, 6, 1, 4}});
+
+  ComputeAndCompareR2<float>(&builder, expected, {a_data.get()},
+                             ErrorSpec(1e-4, 1e-4));
 }
 
 }  // namespace gpu
