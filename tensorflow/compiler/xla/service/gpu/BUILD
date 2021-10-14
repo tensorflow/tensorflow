@@ -1634,6 +1634,7 @@ cc_library(
     }),
     deps = [
         ":alias_passthrough_params",
+        ":all_reduce_blueconnect",
         ":cudnn_batchnorm_rewriter",
         ":fusion_bitcast_lift",
         ":fusion_merger",
