@@ -411,7 +411,7 @@ class PodTpuDriver : public TpuDriver {
 
     ScheduleRequest(
         operation_id,
-        [this, core_id, region, children_ids,
+        [this, core_id, region, children_ids, children_ids_size,
          operation_id]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_)
             -> std::shared_ptr<Event> {
           std::vector<BufferHandle*> child_buffers;
