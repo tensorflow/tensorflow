@@ -3184,7 +3184,7 @@ class Graph(object):
   def _resource_creator_scope(self, resource_type, creator):
     """Scope which defines a resource creation function used by some resource.
 
-    The resource should be a subclass of CachableResource with a class method
+    The resource should be a subclass of CapturableResource with a class method
     `cls._resource_type`, the output of which is what the `resource_type`
     argument should be. By default, `cls._resource_type` returns the class name,
     `cls.__name__`. Given a scope, creators being added with the same
