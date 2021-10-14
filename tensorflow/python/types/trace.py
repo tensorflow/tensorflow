@@ -77,6 +77,7 @@ class SupportsTracingType(Protocol):
   classes according to the behaviour specified by their TraceType.
   """
 
-  @abc.abstractmethod
   def __tf_tracing_type__(self, context: TracingContext) -> TraceType:
-    pass
+    raise NotImplementedError(
+        "Class inheriting SupportsTracingType must implement __tf_tracing_type__"
+    )
