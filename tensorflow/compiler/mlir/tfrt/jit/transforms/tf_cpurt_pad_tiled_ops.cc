@@ -109,7 +109,7 @@ struct PaddingPattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
     // Attempt to pad the op.
     LinalgOp padded_op;
     if (mlir::failed(mlir::linalg::rewriteAsPaddedOp(
-            rewriter, op, getNeutralOfLinalgOp, padded_op))) {
+            rewriter, op, getNeutralOfLinalgOp, nullptr, padded_op))) {
       return failure();
     }
     if (padded_op) {
