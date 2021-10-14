@@ -2904,7 +2904,7 @@ class TensorFlowTestCase(googletest.TestCase):
             atol=atol,
             msg="Mismatched value: a%s is different from b%s. %s" %
             (path_str, path_str, msg))
-      except (ValueError, TypeError) as e:
+      except (ValueError, TypeError, NotImplementedError) as e:
         if len(a) != len(b):
           raise ValueError(
               "Mismatched length: a%s has %d items, but b%s has %d items. %s" %
