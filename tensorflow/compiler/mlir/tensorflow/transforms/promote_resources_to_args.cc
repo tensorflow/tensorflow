@@ -359,7 +359,7 @@ void PromoteResourcesToArgsPass::runOnOperation() {
   SymbolTable symbolTable(module);
   for (std::string f : functions_) {
     FuncOp func = symbolTable.lookup<FuncOp>(f);
-    if (!func) return;
+    if (!func) continue;
 
     // This routine should only be called when control flow operations are still
     // represented with TF IfOp and WhileOp operations. In this case, there should
