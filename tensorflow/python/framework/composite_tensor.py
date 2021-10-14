@@ -85,8 +85,8 @@ class CompositeTensor(object):
     ])
     return list(set(consumers))
 
-  def __tf_trace_type__(self, context):
-    return self._type_spec.__tf_trace_type__(context)
+  def __tf_tracing_type__(self, context):
+    return self._type_spec.__tf_tracing_type__(context)
 
 
 _pywrap_utils.RegisterType("CompositeTensor", CompositeTensor)

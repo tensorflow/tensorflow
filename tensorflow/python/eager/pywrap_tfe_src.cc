@@ -4291,11 +4291,11 @@ tensorflow::Status TryEncodingProtocol(PyObject* arg,
                                        EncodingContext& context) {
   // TODO(b/202447704): Drop _tf_tracing_type at protocol export.
   tensorflow::Safe_PyObjectPtr protocol(
-      PyObject_GetAttrString(arg, "_tf_trace_type"));
+      PyObject_GetAttrString(arg, "_tf_tracing_type"));
 
   if (protocol == nullptr) {
     PyErr_Clear();
-    protocol.reset(PyObject_GetAttrString(arg, "__tf_trace_type__"));
+    protocol.reset(PyObject_GetAttrString(arg, "__tf_tracing_type__"));
     if (protocol.get() == nullptr) {
       PyErr_Clear();
       return tensorflow::errors::Unimplemented(
@@ -4309,7 +4309,7 @@ tensorflow::Status TryEncodingProtocol(PyObject* arg,
   if (tracetype.get() == nullptr) {
     PyErr_Clear();
     return tensorflow::errors::Unknown(
-        "Call to '__tf_trace_type__' failed to return a TraceType.");
+        "Call to '__tf_tracing_type__' failed to return a TraceType.");
   }
   Py_INCREF(tracetype.get());
 
