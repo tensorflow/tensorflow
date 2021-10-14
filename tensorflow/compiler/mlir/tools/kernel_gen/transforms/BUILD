@@ -188,7 +188,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core/platform:cuda_libdevice_path",
-        "//tensorflow/core/platform:rocm_rocdl_path",
         "//tensorflow/core:lib",
     ] + if_cuda_is_configured([
         "//tensorflow/stream_executor/gpu:asm_compiler",
