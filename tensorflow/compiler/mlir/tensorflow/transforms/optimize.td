@@ -17,7 +17,7 @@ include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
-def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
+def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
 
 // Get the last dimension size as a 1-d single element attr.
 def GetLastDimSizeAsI32 : NativeCodeCall<

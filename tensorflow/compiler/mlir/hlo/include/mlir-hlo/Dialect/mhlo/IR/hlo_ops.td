@@ -689,7 +689,7 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
 
   let arguments = (ins
     HLO_Token:$token,
-    DefaultValuedAttr<StrAttr, "">:$infeed_config,
+    DefaultValuedStrAttr<StrAttr, "">:$infeed_config,
     OptionalAttr<ArrayAttr>:$layout
   );
   let results = (outs HLO_Tuple);
@@ -713,7 +713,7 @@ def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
   let arguments = (ins
     HLO_TensorOrTuple:$operand,
     HLO_Token:$token,
-    DefaultValuedAttr<StrAttr, "">:$outfeed_config
+    DefaultValuedStrAttr<StrAttr, "">:$outfeed_config
   );
   let results = (outs HLO_Token);
   let hasCustomHLOConverter = 1;
@@ -1496,7 +1496,7 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
     Variadic<HLO_TensorOrTokenOrTuple>:$args,
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
-    DefaultValuedAttr<StrAttr, "">:$backend_config,
+    DefaultValuedStrAttr<StrAttr, "">:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
     DefaultValuedAttr<HLO_CustomCallApiVersionAttr,

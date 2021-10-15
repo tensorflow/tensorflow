@@ -116,7 +116,7 @@ def BatchToSpaceToBatchToSpaceND :
 //===----------------------------------------------------------------------===//
 
 def BiasAddV1ToBiasAdd : Pat<(TF_BiasAddV1Op $arg0, $arg1),
-  (TF_BiasAddOp $arg0, $arg1, ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">)>;
+  (TF_BiasAddOp $arg0, $arg1, ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">)>;
 
 //===----------------------------------------------------------------------===//
 // Bitcast op patterns.

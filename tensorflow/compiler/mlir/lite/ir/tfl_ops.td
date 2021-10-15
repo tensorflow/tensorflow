@@ -3919,12 +3919,12 @@ def TFL_BasicLSTMOp : TFL_Op<"basic_lstm", [NoSideEffect,
     TFL_TensorOf<[F32, QI16]>:$prev_state_input,
 
     // Attributes
-    DefaultValuedAttr<TFL_AFAttr, "TANH">:$fused_activation_function,
+    DefaultValuedStrAttr<TFL_AFAttr, "TANH">:$fused_activation_function,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the BASIC kernel only, constrain it.
     Confined<
-      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "BASIC">,
+      DefaultValuedStrAttr<TFL_LSTMKernelTypeAttr, "BASIC">,
       [TFL_LSTM_KT_BASIC]>:$kernel_type
   );
 
@@ -4028,7 +4028,7 @@ Ba et al. 'Layer Normalization'
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the FULL kernel only, constrain it.
     Confined<
-      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "FULL">,
+      DefaultValuedStrAttr<TFL_LSTMKernelTypeAttr, "FULL">,
       [TFL_LSTM_KT_FULL]>:$kernel_type,
 
     // Types of the optional intermediate tensors, which exist for fully
@@ -4822,8 +4822,8 @@ def TFL_VarHandleOp : TFL_Op<"var_handle", []> {
   }];
 
   let arguments = (ins
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name
+    DefaultValuedStrAttr<StrAttr, "">:$container,
+    DefaultValuedStrAttr<StrAttr, "">:$shared_name
   );
 
   let results = (outs TFL_ResourceTensor:$resource_handle);
