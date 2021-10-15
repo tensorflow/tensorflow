@@ -362,7 +362,7 @@ Service::ExecuteParallelAndRegisterResult(
     CHECK_EQ(replicas.size(), arguments[i].size());
     std::vector<ScopedShapedBuffer> result_buffers;
     const int64_t n = replicas.size();
-    replicas.reserve(n);
+    result_buffers.reserve(n);
     for (int64_t replica = 0; replica < n; ++replica) {
       TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
                           backend->BorrowStream(replicas[replica]));
