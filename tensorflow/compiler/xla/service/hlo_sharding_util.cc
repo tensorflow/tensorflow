@@ -577,7 +577,9 @@ HloSharding GatherOutputSharding(const HloSharding& index_sharding,
 
   const GatherDimensionNumbers& dnums = hlo->gather_dimension_numbers();
   std::vector<int64_t> output_tile_assignment_dims;
-  for (int64_t i = 0, index_dim = 0; i < hlo->shape().rank(); ++i) {
+  const int64_t rank = hlo->shape().rank();
+  output_tile_assignment_dims.reserve(rank);
+  for (int64_t i = 0, index_dim = 0; i < rank; ++i) {
     if (absl::c_binary_search(dnums.offset_dims(), i)) {
       output_tile_assignment_dims.push_back(1);
     } else {
@@ -761,7 +763,9 @@ HloSharding ScatterDataSharding(const HloSharding& index_sharding,
   const ScatterDimensionNumbers& dnums = hlo->scatter_dimension_numbers();
   std::vector<int64_t> data_tile_assignment_dims;
   std::vector<int64_t> relevant_index_dims;
-  for (int64_t i = 0, index_dim = 0; i < hlo->operand(2)->shape().rank(); ++i) {
+  const int64_t rank = hlo->operand(2)->shape().rank();
+  data_tile_assignment_dims.reserve(rank);
+  for (int64_t i = 0, index_dim = 0; i < rank; ++i) {
     if (absl::c_binary_search(dnums.update_window_dims(), i)) {
       data_tile_assignment_dims.push_back(1);
     } else {
