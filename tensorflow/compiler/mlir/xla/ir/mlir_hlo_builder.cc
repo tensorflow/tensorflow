@@ -564,7 +564,12 @@ StatusOr<XlaOp> MlirHloBuilder::PadInternal(
   std::vector<int64_t> low;
   std::vector<int64_t> high;
   std::vector<int64_t> internal;
-  for (auto& dimension : padding_config.dimensions()) {
+  auto dimensions = padding_config.dimensions();
+  auto dimensions_size = dimensions.size();
+  low.reserve(dimensions_size);
+  high.reserve(dimensions_size);
+  internal.reserve(dimensions_size);
+  for (auto& dimension : dimensions) {
     low.push_back(dimension.edge_padding_low());
     high.push_back(dimension.edge_padding_high());
     internal.push_back(dimension.interior_padding());
