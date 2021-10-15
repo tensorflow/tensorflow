@@ -668,8 +668,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         std::vector<Shape> operand_shapes;
         const auto operand_shapes_with_layout = proto.operand_shapes_with_layout();
         operand_shapes.reserve(operand_shapes_with_layout.size());
-        for (const ShapeProto& shape_proto :
-             operand_shapes_with_layout) {
+        for (const ShapeProto& shape_proto : operand_shapes_with_layout) {
           operand_shapes.emplace_back(shape_proto);
         }
         instruction =
