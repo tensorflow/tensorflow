@@ -3303,7 +3303,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
     auto outputs = GetHloOutputs(op);
 
     std::vector<BufferSlice> slices;
-    slices.reserve(operands.size());
+    slices.reserve(operands.size() + outputs.size());
     for (mlir::Value operand : operands) {
       slices.emplace_back();
       BufferSlice& slice = slices.back();
