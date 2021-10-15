@@ -77,7 +77,7 @@ std::vector<int64_t> IntTensorAsVector(const Tensor& t) {
   DCHECK(t.dtype() == DT_INT32 || t.dtype() == DT_INT64);
   std::vector<int64_t> result;
   result.reserve(t.NumElements());
-  for (int i = 0; i < t.NumElements(); i++) {
+  for (size_t i = 0; i < t.NumElements(); i++) {
     int64_t element = t.dtype() == DT_INT32
                           ? static_cast<int64_t>(t.flat<int32>()(i))
                           : t.flat<int64_t>()(i);
@@ -194,7 +194,7 @@ Status ComputeSliceSize(const Scope& host_scope,
   ConstantCache constant_pool(host_scope, control_deps);
 
   std::vector<Output> slice_size;
-  for (int i = 0, end = slice_inputs.size_as_vector.size(); i < end; i++) {
+  for (size_t i = 0, end = slice_inputs.size_as_vector.size(); i < end; i++) {
     if (slice_inputs.size_as_vector[i] >= 0) {
       slice_size.push_back(
           constant_pool.Get1DHostConstant(slice_inputs.size_as_vector[i]));
