@@ -1158,7 +1158,7 @@ StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
   if (shape.IsToken()) return builder_->getUnitAttr();
   if (shape.IsTuple()) {
     std::vector<mlir::Attribute> tuple_layouts;
-    for (int64_t i = 0; i < shape.tuple_shapes_size(); i++) {
+    for (int i = 0; i < shape.tuple_shapes_size(); i++) {
       TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
                           ConvertShapeToMlirLayout(shape.tuple_shapes(i)));
       tuple_layouts.push_back(layout);

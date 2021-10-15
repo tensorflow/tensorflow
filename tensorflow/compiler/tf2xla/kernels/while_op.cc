@@ -521,7 +521,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       if (input_shape != list_shape) {
         // Prepare dynamic dimensions for element shapes.
         std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
-        for (int64_t i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+        for (int i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
           std::vector<xla::XlaOp> dynamic_dims;
 
           const xla::Shape& shape = list_shape.tuple_shapes(i);
