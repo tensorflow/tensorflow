@@ -37,6 +37,7 @@ typedef std::pair<string, DataType> IOSpec;
 
 std::vector<IOSpec> M(const std::initializer_list<string>& names) {
   std::vector<IOSpec> v;
+  v.reserve(names.size());
   for (const string& name : names) {
     v.push_back(IOSpec(name, DT_INVALID));
   }
@@ -144,6 +145,7 @@ class CApiFunctionTest : public ::testing::Test {
 
   std::vector<TF_Output> ToOutput(const std::vector<TF_Operation*> ops) {
     std::vector<TF_Output> out;
+    out.reserve(ops.size());
     for (auto op : ops) {
       out.push_back({op, 0});
     }
