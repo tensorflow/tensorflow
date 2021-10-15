@@ -137,21 +137,21 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
                              llvm::iplist<mlir::Operation>::iterator end_op,
                              mlir::AffineForOp where) {
   // All loops to hoist through.
-  llvm::SmallVector<mlir::AffineForOp, 4> ancestors;
+  constexpr size_t ancestors_size = 4;
+  llvm::SmallVector<mlir::AffineForOp, ancestors_size> ancestors;
   getPerfectlyNestedLoops(ancestors, where);
   {
-    int i;
-    for (i = 0; i < ancestors.size(); i++) {
+    size_t i;
+    for (i = 0; i < ancestors_size; i++) {
       if (&ancestors[i].getBody()->front() == &*begin_op) {
         break;
       }
     }
-    CHECK(i < ancestors.size());
+    CHECK(i < ancestors_size);
     ancestors.resize(i + 1);
   }
 
-  std::vector<int64_t> ancestor_dimensions;
-  ancestor_dimensions.reserve(ancestors.size());
+  llvm::SmallVector<int64_t, ancestors_size> ancestor_dimensions;
   for (auto ancestor : ancestors) {
     CHECK(IsSimpleLoop(ancestor));
     ancestor_dimensions.push_back(
@@ -172,7 +172,9 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     auto new_alloc = builder.create<mlir::memref::AllocOp>(
         builder.getUnknownLoc(), new_type);
 
-    std::vector<mlir::Value> indvars;
+    llvm::SmallVector<mlir::Value> indvars;
+    indvars.reserve(ancestors.size());
+
     for (auto ancestor : ancestors) {
       indvars.push_back(ancestor.getInductionVar());
     }
@@ -206,7 +208,8 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
 
   if (any_op_is_loop_variant) {
     auto builder = OpBuilder(where);
-    std::vector<mlir::AffineForOp> new_loops;
+    llvm::SmallVector<mlir::AffineForOp> new_loops;
+    new_loops.reserve(ancestor_dimensions.size());
     for (auto dim : ancestor_dimensions) {
       auto where =
           builder.create<mlir::AffineForOp>(builder.getUnknownLoc(), 0, dim);
@@ -217,8 +220,8 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
          llvm::make_early_inc_range(llvm::make_range(begin_op, end_op))) {
       op.moveBefore(&new_loops.back().getBody()->back());
     }
-    CHECK_EQ(ancestors.size(), new_loops.size());
-    for (int i = 0; i < ancestors.size(); i++) {
+    CHECK_EQ(ancestors_size, new_loops.size());
+    for (size_t i = 0; i < ancestors_size; i++) {
       replaceAllUsesInRegionWith(ancestors[i].getInductionVar(),
                                  new_loops[i].getInductionVar(),
                                  new_loops.back().region());
