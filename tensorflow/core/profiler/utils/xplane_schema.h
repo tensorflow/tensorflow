@@ -145,6 +145,7 @@ enum StatType {
   kChipOrdinal,
   kNodeOrdinal,
   kModelId,
+  kQueueId,
   kQueueAddr,
   kRequestId,
   kRunId,
