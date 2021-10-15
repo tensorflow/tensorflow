@@ -1073,7 +1073,9 @@ Status XlaCompiler::BuildArguments(
                                       : it->second;
       }
       std::vector<bool> is_same_across_replicas;
-      for (int i = 0, end = input_to_args->size(); i < end; ++i) {
+      auto input_to_args_size = input_to_args->size();
+      is_same_across_replicas.reserve(input_to_args_size);
+      for (int i = 0; i < input_to_args_size; ++i) {
         // Add an entry to is_same_across_replicas for every leaf buffer.
         is_same_across_replicas.insert(
             is_same_across_replicas.end(),
