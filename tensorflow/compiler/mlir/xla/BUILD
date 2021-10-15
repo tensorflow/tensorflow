@@ -97,7 +97,6 @@ cc_library(
     srcs = [
         "transforms/prepare_for_export.cc",
         "transforms/xla_legalize_tf_passes.h.inc",
-        "transforms/xla_passes.h.inc",
         "transforms/xla_passes_detail.h",
     ],
     hdrs = [
@@ -158,6 +157,7 @@ cc_library(
     name = "adjust_layout",
     srcs = [
         "transforms/adjust_layout.cc",
+        "transforms/xla_passes_detail.h",
     ],
     deps = [
         ":attribute_importer",
@@ -202,6 +202,7 @@ cc_library(
         "transforms/xla_legalize_tf_passes.h.inc",
         "transforms/xla_legalize_tf_passes_detail.h",
         "transforms/xla_passes.h.inc",
+        "transforms/xla_passes_detail.h",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -270,9 +271,13 @@ cc_library(
 
 cc_library(
     name = "xla_legalize_tf_with_tf2xla",
-    srcs = ["transforms/legalize_tf_with_tf2xla.cc"],
+    srcs = [
+        "transforms/legalize_tf_with_tf2xla.cc",
+        "transforms/xla_passes_detail.h",
+    ],
     deps = [
         ":mlir_hlo_builder",
+        ":xla_passes_inc_gen",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -636,12 +641,19 @@ tf_cc_binary(
     testonly = True,
     srcs = ["xla_opt_main.cc"],
     deps = [
-        ":xla_passes",
+        ":adjust_layout",  # buildcleaner: keep
+        ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
+        ":xla_legalize_tf",  # buildcleaner: keep
+        ":xla_legalize_tf_no_fallback",  # buildcleaner: keep
+        ":xla_passes",  # buildcleaner: keep
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
     ],

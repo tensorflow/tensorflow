@@ -19,7 +19,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/core/ir/types/dialect.h"
 
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);
@@ -29,11 +32,12 @@ int main(int argc, char **argv) {
   mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
   mlir::mhlo::registerXlaPasses();
-  mlir::mhlo::registerLegalizeTFPass();
-
+  mlir::mhlo::registerLegalizeTfPasses();
+  mlir::RegisterMhloToLhloWithXlaPass();
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
+  registry.insert<mlir::TF::TensorFlowDialect, mlir::tf_type::TFTypeDialect>();
   return failed(mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n",
                                   registry,
                                   /*preloadDialectsInContext=*/false));

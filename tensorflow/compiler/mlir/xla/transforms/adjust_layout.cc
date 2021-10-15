@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -40,17 +41,7 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
-class AdjustLayout : public PassWrapper<AdjustLayout, FunctionPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect>();
-  }
-
- public:
-  StringRef getArgument() const final { return "xla-adjust-layout"; }
-  StringRef getDescription() const final {
-    return "Adjust layouts so infeed send & receive use the same format.";
-  }
-
+class AdjustLayout : public AdjustLayoutPassBase<AdjustLayout> {
   static FailureOr<std::vector<int64_t>> GetTPUInfeedLayoutFromAPI(
       RankedTensorType t) {
     // Call the TPU API to determine the right infeed layout. Note that
@@ -131,8 +122,6 @@ class AdjustLayout : public PassWrapper<AdjustLayout, FunctionPass> {
 
   void runOnFunction() override { getFunction().walk(runOnInfeedOp); }
 };
-
-static PassRegistration<AdjustLayout> pass;
 
 // Header for this is in passes.h, which pulls into many deps. NOLINTNEXTLINE
 std::unique_ptr<Pass> CreateAdjustLayoutPass() {

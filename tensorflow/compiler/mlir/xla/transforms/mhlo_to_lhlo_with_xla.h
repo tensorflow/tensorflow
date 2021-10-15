@@ -282,6 +282,9 @@ tensorflow::Status OptimizeAndConvertHloToLmhlo(
 OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
                                                MLIRContext* context);
 
+// This register the MLIR pass with the command line.
+void RegisterMhloToLhloWithXlaPass();
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_

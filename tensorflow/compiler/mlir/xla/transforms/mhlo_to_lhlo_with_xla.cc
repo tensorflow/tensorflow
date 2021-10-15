@@ -1702,6 +1702,8 @@ OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
   return module;
 }
 
-static PassRegistration<XlaHloToLhloPass> registration;
+void RegisterMhloToLhloWithXlaPass() {
+  static PassRegistration<XlaHloToLhloPass> registration;
+}
 
 }  // namespace mlir
