@@ -632,12 +632,10 @@ distribute_py_test(
     name = "random_generator_test",
     srcs = ["random_generator_test.py"],
     main = "random_generator_test.py",
-    shard_count = 10,
+    shard_count = 12,
     tags = [
         "multi_and_single_gpu",
-        "no_cuda_asan",  #TODO(b/195770530)
         "no_rocm",
-        "noasan",  #TODO(b/195770530)
     ],
     tpu_tags = [
         "no_oss",
