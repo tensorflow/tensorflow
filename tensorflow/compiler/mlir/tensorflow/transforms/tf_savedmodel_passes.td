@@ -91,3 +91,8 @@ def FreezeAssetsPass : Pass<"tf-saved-model-freeze-assets", "ModuleOp"> {
   let summary = "Freeze tf_saved_model.asset's in func bodies.";
   let constructor = "mlir::tf_saved_model::CreateFreezeAssetsPass()";
 }
+
+def DedupBoundInputBindingPass : FunctionPass<"tf-saved-model-dedup-bound-input-binding-pass"> {
+  let summary = "Remove duplicate 'tf_saved_model.bound_input' bindings.";
+  let constructor = "mlir::tf_saved_model::CreateDedupBoundInputBindingPass()";
+}

@@ -384,6 +384,7 @@ cc_library(
         "transforms/generated_legalize_hlo.inc",
         "transforms/legalize_hlo.cc",
         "transforms/passes.h",
+        "transforms/passes_detail.h",
     ],
     deps = [
         ":lower_tf_lib",
@@ -828,6 +829,7 @@ cc_library(
 cc_library(
     name = "unroll_batch_matmul_pass",
     srcs = [
+        "transforms/passes_detail.h",
         "transforms/unroll_batch_matmul.cc",
     ],
     hdrs = [
@@ -835,6 +837,7 @@ cc_library(
     ],
     deps = [
         ":tensorflow",
+        ":tf_pass_inc_gen",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
@@ -1215,6 +1218,7 @@ cc_library(
         ":tensorflow_optimize_inc_gen",
         ":tensorflow_types",
         ":tf_data_optimization",
+        ":tf_legalize_hlo",
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
         ":tpu_rewrite_device_util",

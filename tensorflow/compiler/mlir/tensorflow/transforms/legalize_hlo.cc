@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
 
@@ -1830,21 +1831,7 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
   }
 };
 
-class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<TF::TensorFlowDialect>();
-  }
-
- public:
-  LegalizeHloToTf() = default;
-  LegalizeHloToTf(const LegalizeHloToTf &) {}
-
-  StringRef getArgument() const final { return "tf-legalize-hlo"; }
-
-  StringRef getDescription() const final {
-    return "Legalize from HLO to the TF dialect";
-  }
-
+class LegalizeHloToTf : public TF::LegalizeHloToTfPassBase<LegalizeHloToTf> {
   /// Performs the legalization to the TF dialect.
   void runOnFunction() override;
 };
@@ -2348,8 +2335,6 @@ void LegalizeHloToTf::runOnFunction() {
     signalPassFailure();
   }
 }
-
-static PassRegistration<LegalizeHloToTf> pass;
 
 }  // end namespace
 

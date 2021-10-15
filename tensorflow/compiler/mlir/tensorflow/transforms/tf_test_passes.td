@@ -28,6 +28,18 @@ def FreezeVariablesTestPass : Pass<"tf-freeze-variables-test-pass",
   let constructor = "::mlir::tf_test::CreateFreezeVariableTestPass()";
 }
 
+def InitTextFileToImportTestPass : Pass<"tf-init-text-file-to-import-test",
+  "ModuleOp"> {
+  let summary = "generate a temporary file and invoke InitTextFileToImportPass";
+  let constructor = "::mlir::tf_test::CreateInitTextFileToImportTestPass()";
+}
+
+def InitTextFileToImportSavedModelTestPass : Pass<"tf-init-text-file-to-import-saved-model-test",
+  "ModuleOp"> {
+  let summary = "mimick a saved model and invoke InitTextFileToImportPass";
+  let constructor = "::mlir::tf_test::CreateInitTextFileToImportSavedModelTestPass()";
+}
+
 def TestTensorFlowLowerTFPass : Pass<"test-tf-lower-tf", "FuncOp"> {
   let summary = "Test pass for TF->TF lowerings";
   let constructor = "::mlir::tf_test::CreateTestTFLowerTFPass()";

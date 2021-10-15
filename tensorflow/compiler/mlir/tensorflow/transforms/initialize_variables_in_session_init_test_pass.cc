@@ -17,16 +17,6 @@ limitations under the License.
 
 namespace mlir {
 namespace tf_saved_model {
-namespace {
-class InitializeVariablesInSessionInitializerPass;
-
-static PassRegistration<InitializeVariablesInSessionInitializerPass>
-    initialize_variables_in_session_init_test_pass([] {
-      static tensorflow::Session* session = new TF::test_util::FakeSession();
-      return CreateInitializeVariablesInSessionInitializerPass(session);
-    });
-}  // namespace
-
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateInitializeVariablesInSessionInitializerTestPass() {
   static tensorflow::Session* session = new TF::test_util::FakeSession();
