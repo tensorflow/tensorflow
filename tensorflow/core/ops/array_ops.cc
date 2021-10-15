@@ -168,7 +168,7 @@ Status TransposeShapeFn(InferenceContext* c) {
 
     for (int32 i = 0; i < rank; ++i) {
       int64 in_idx = data[i];
-      if (in_idx >= rank) {
+      if (in_idx >= rank || in_idx <= -rank) {
         return errors::InvalidArgument("perm dim ", in_idx,
                                        " is out of range of input rank ", rank);
       }
