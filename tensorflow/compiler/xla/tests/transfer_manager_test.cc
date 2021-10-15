@@ -362,6 +362,7 @@ class TransferDeviceToHostBenchmark : public TransferManagerTest {
     SetUp();
 
     std::vector<Literal> tuple_elements;
+    tuple_elements.reserve(num_tuple_elements);
     for (int i = 0; i < num_tuple_elements; ++i) {
       tuple_elements.push_back(
           LiteralUtil::CreateR2F32Linspace(0.0f, 1.0f, array_size, array_size));
@@ -391,6 +392,7 @@ class TransferHostToDeviceBenchmark : public TransferManagerTest {
     SetUp();
 
     std::vector<Literal> tuple_elements;
+    tuple_elements.reserve(num_tuple_elements);
     for (int i = 0; i < num_tuple_elements; ++i) {
       tuple_elements.push_back(
           LiteralUtil::CreateR2F32Linspace(0.0f, 1.0f, array_size, array_size));
