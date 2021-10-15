@@ -174,6 +174,7 @@ struct XlaCompilationResult {
   struct CollectiveReduceV2OpInfo {
     int group_key;
     int group_size;
+    int next_id;
   };
 
   // Group keys of the collectives encountered during the translation.
