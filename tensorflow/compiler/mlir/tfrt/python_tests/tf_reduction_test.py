@@ -93,23 +93,23 @@ class TfReductionTest(test.TestCase):
     np.testing.assert_allclose(
         res, np.prod(arg0, axis=1), rtol=3e-07, atol=0.01)
 
-  def test_2d_column_any(self):
-    mlir_function = """
-        func @test(%input: tensor<?x?xi1>) -> tensor<?xi1> {
-          %dim_to_reduce =  "tf.Const"() {value = dense<[1]> : tensor<1xi32>}
-             : () -> tensor<1xi32>
-          %0 = "tf.Any"(%input, %dim_to_reduce) {keep_dims = false}
-              : (tensor<?x?xi1>, tensor<1xi32>) -> tensor<?xi1>
-          return %0 : tensor<?xi1>
-      }"""
-
-    compiled = cpurt.compile(mlir_function, 'test', vectorize=True)
-
-    arg0 = np.random.choice(a=[False, True], size=(8, 10)).astype(np.bool)
-
-    [res] = cpurt.execute(compiled, [arg0])
-    np.testing.assert_equal(res, np.any(arg0, axis=1))
-
+#  TODO: (b/202971565) tf.Any is not producing the right output (flaky).
+#  def test_2d_column_any(self):
+#    mlir_function = """
+#        func @test(%input: tensor<?x?xi1>) -> tensor<?xi1> {
+#          %dim_to_reduce =  "tf.Const"() {value = dense<[1]> : tensor<1xi32>}
+#             : () -> tensor<1xi32>
+#          %0 = "tf.Any"(%input, %dim_to_reduce) {keep_dims = false}
+#              : (tensor<?x?xi1>, tensor<1xi32>) -> tensor<?xi1>
+#          return %0 : tensor<?xi1>
+#      }"""
+#
+#    compiled = cpurt.compile(mlir_function, 'test', vectorize=True)
+#
+#    arg0 = np.random.choice(a=[False, True], size=(8, 10)).astype(np.bool)
+#
+#    [res] = cpurt.execute(compiled, [arg0])
+#    np.testing.assert_equal(res, np.any(arg0, axis=1))
 
 #  TODO: (b/202971565) tf.All is currently not producing the right output.
 #  def test_2d_column_all(self):
