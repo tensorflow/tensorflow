@@ -294,7 +294,8 @@ class LinearOperatorLowRankUpdatetestWithDiagNotSquare(
     config.enable_tensor_float_32_execution(False)
 
 
-@test_util.run_all_without_tensor_float_32("")
+@test_util.run_all_without_tensor_float_32(
+    'Linear op calls matmul which uses TensorFloat-32.')
 class LinearOperatorLowRankUpdateBroadcastsShape(test.TestCase):
   """Test that the operator's shape is the broadcast of arguments."""
 
