@@ -626,8 +626,12 @@ HloSharding InferDotOperandSharding(
   auto other = instruction->operand(1 - operand_index);
   std::vector<int64_t> output_dims_to_replicate;
   std::vector<int64_t> other_operand_dims_to_replicate;
-  for (const auto& dim : operand_index == 0 ? dnums.rhs_non_contracting_dims
-                                            : dnums.lhs_non_contracting_dims) {
+  const auto dims = operand_index == 0 ? dnums.rhs_non_contracting_dims
+                                            : dnums.lhs_non_contracting_dims;
+  const auto dims_size = dims.size();
+  output_dims_to_replicate.reserve(dims_size);
+  other_operand_dims_to_replicate.reserve(dims_size);
+  for (const auto& dim : dims) {
     output_dims_to_replicate.push_back(dim.output);
     other_operand_dims_to_replicate.push_back(operand_index == 0 ? dim.rhs
                                                                  : dim.lhs);
@@ -2200,7 +2204,9 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
           inst->while_condition()->parameter_instruction(0)};
     } else if (inst->opcode() == HloOpcode::kConditional) {
       std::vector<HloInstruction*> comps{inst};
-      for (HloComputation* c : inst->called_computations()) {
+      auto called_computations = inst->called_computations();
+      comps.reserve(called_computations.size());
+      for (HloComputation* c : called_computations) {
         comps.push_back(c->root_instruction());
       }
       return comps;
