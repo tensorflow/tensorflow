@@ -5524,8 +5524,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
             start_indices.reserve(rank);
             end_indices.reserve(rank);
             strides.reserve(rank);
-            for (int64_t dim = 0; dim < rank;
-                 dim++) {
+            for (int64_t dim = 0; dim < rank; dim++) {
               if (dim == split_dim) {
                 start_indices.push_back(i * chunk_size);
                 end_indices.push_back(i * chunk_size + chunk_size);
