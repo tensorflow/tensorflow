@@ -191,6 +191,8 @@ std::string ImportGraphDef(const std::string &proto,
   std::vector<string> node_shapes_str = absl::StrSplit(input_data_shapes, ':');
   std::vector<std::vector<int>> node_shapes;
 
+  const std::vector<string>::size_type node_names_size = node_names.size();
+
   std::vector<int> dims;
   for (const string &shape_str : node_shapes_str) {
     dims.clear();
@@ -223,8 +225,8 @@ std::string ImportGraphDef(const std::string &proto,
       (node_dtypes.size() == 1 && node_dtypes[0].empty())) {
     // Mark all the node dtypes Invalid, so the importer can handle them by
     // using the type from the graph.
-    used_node_dtypes.resize(node_names.size(), DataType_Name(DT_INVALID));
-  } else if (node_names.size() == node_dtypes.size()) {
+    used_node_dtypes.resize(node_names_size, DataType_Name(DT_INVALID));
+  } else if (node_names_size == node_dtypes.size()) {
     for (const auto &dtype : node_dtypes) {
       if (dtype.empty()) {
         used_node_dtypes.push_back(DataType_Name(DT_INVALID));
@@ -249,13 +251,13 @@ std::string ImportGraphDef(const std::string &proto,
   }
 
   // Unmatched input node array and data shapes sizes.
-  if (node_names.size() != node_shapes.size()) {
+  if (node_names_size != node_shapes.size()) {
     auto s = tensorflow::errors::InvalidArgument(
         "Length of input node array and data shape doesn't match");
     Set_TF_Status_from_Status(status, s);
     return "// error";
   }
-  for (size_t i = 0, e = node_names.size(); i < e; i++) {
+  for (std::vector<string>::size_type i = 0, e = node_names_size; i < e; i++) {
     const string &name = node_names[i];
     if (name.empty()) continue;
 
