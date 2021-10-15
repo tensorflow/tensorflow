@@ -80,6 +80,7 @@ StatusOr<ExecutionOutput> MlirGpuTestBase::RunMlirModule(
   ServiceExecutableRunOptions run_options(executable_run_options,
                                           backend_->StreamBorrower());
   std::vector<ExecutionInput> execution_inputs;
+  execution_inputs.reserve(arguments.size());
 
   for (auto arg : arguments) {
     Shape shape =
