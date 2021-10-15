@@ -28,6 +28,7 @@ Status ShapeAnnotationsMatch(
     TF_RET_CHECK(sit != shape_info.end())
         << "Missing shape information for node " << node->name();
     std::vector<PartialTensorShape> shapes;
+    shapes.reserve(sit->second.size());
     for (const auto& output : sit->second) shapes.push_back(output.shape);
 
     auto it = expected_shapes.find(node->name());
