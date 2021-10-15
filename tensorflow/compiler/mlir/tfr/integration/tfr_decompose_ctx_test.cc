@@ -100,7 +100,9 @@ class TFRDecomposeContextTest : public Test {
 
 std::vector<NodeAndType> NodesSequenceOf(const FunctionDef& graph) {
   std::vector<NodeAndType> nodes;
-  for (auto& node : graph.node_def()) {
+  auto node_def = graph.node_def();
+  nodes.reserve(node_def.size());
+  for (auto& node : node_def) {
     nodes.push_back({node.op(), node.attr().at("T").type()});
   }
   return nodes;
