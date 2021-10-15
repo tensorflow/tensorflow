@@ -65,6 +65,7 @@ StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
 StatusOr<std::vector<ScopedShapedBuffer>> HloRunner::TransferLiteralsToDevice(
     absl::Span<const Literal* const> literals) {
   std::vector<ScopedShapedBuffer> buffers;
+  buffers.reserve(literals.size());
   for (const Literal* literal : literals) {
     CHECK(literal != nullptr);
     TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
@@ -325,6 +326,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
   LOG(INFO) << "Replicated execution terminated";
 
   std::vector<Literal> exec_results;
+  exec_results.reserve(options.num_replicas);
   for (int64_t i = 0; i < options.num_replicas; ++i) {
     TF_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
     TF_ASSIGN_OR_RETURN(Literal literal,
