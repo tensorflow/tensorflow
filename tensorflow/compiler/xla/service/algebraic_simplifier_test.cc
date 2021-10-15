@@ -6138,7 +6138,9 @@ std::vector<DotOfGatherTestSpec> DotOfGatherPositiveNegativeTests() {
        /*neg=*/false},
   };
   std::vector<DotOfGatherTestSpec> all;
-  for (int i = 0; i < positives.size(); i++) {
+  const auto positives_size = positives.size();
+  all.reserve(positives_size * 2);
+  for (int i = 0; i < positives_size; i++) {
     DotOfGatherTestSpec positive_test = positives[i];
     all.push_back(positive_test);
     DotOfGatherTestSpec negative_test = positive_test;
