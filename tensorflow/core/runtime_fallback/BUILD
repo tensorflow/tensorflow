@@ -8,6 +8,7 @@ package_group(
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/tfrt/...",
         "//learning/brain/mobile/lite/...",
     ]),
 )
