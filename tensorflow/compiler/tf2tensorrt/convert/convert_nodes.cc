@@ -1324,14 +1324,19 @@ class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
 
     absl::optional<int64_t> forced_algorithm_id  = absl::nullopt;
 
-    if (! allowed_algorithm_ids.empty()) {
+    if (!allowed_algorithm_ids.empty()) {
       assert(allowed_algorithm_ids.size() == 1);
       forced_algorithm_id = *allowed_algorithm_ids.begin(0);
       // Making sure that the requested TRT algorithm ID doesn't go above
       // the max value accepted.
+      int64_t allowed_algorithm_id = forced_algorithm_id.value();
       forced_algorithm_id = std::min(forced_algorithm_id.value(),
                                      static_cast<int64_t>(nbChoices) - 1);
 
+      if (allowed_algorithm_id != forced_algorithm_id) {
+        VLOG(1) << "User allowed algorithm ID: " << allowed_algorithm_id
+                << " is not available.";
+      }
       VLOG(1) << "Forcing TRT algorithm selection to: ID = "
               << forced_algorithm_id.value();
     }
@@ -1371,13 +1376,15 @@ class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
       nvinfer1::DataType datatype =
           algoChoices[i]->getAlgorithmIOInfo(0).getDataType();
 
-      // Reject shuffle node when input format is 32-wide channel vectorized
-      // row major FP32 format
+
       if (implementation == static_cast<int64_t>(LayerImpl::kSHUFFLE) && (
 #if IS_TRT_VERSION_GE(8, 0, 0, 0)
+          // Reject shuffle node when input format is linear row major INT8 format
           format == nvinfer1::TensorFormat::kLINEAR &&
           datatype == nvinfer1::DataType::kINT8
 #else
+          // Reject shuffle node when input format is 32-wide channel vectorized
+          // row major FP32 format
           format == nvinfer1::TensorFormat::kCHW32
 #endif  // !IS_TRT_VERSION_GE(8, 0, 0, 0)
          )) {
