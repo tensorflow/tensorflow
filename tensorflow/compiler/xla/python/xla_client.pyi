@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy
 
@@ -48,6 +48,13 @@ XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
 def dtype_to_etype(dtype: numpy.dtype) -> PrimitiveType:
   ...
+
+def execute_with_python_values(executable: Executable, arguments: Sequence[Any],
+                               backend: Client) -> Sequence[numpy.ndarray]: ...
+
+def execute_with_python_values_replicated(
+    executable: Executable, arguments: Sequence[Sequence[Any]],
+    backend: Client) -> Sequence[Sequence[numpy.ndarray]]: ...
 
 
 def heap_profile(client: Client) -> bytes:
