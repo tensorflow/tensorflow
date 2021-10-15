@@ -41,16 +41,6 @@ class WorkQueueInterface : public tfrt::ConcurrentWorkQueue {
     *intra_op_threadpool = nullptr;
     return tensorflow::Status::OK();
   }
-
- private:
-  // TODO(chky): The method below is not very useful right now because we have
-  // to initialize tensorflow specific concepts (eg. intra op threadpool) which
-  // cannot be known in TFRT core infra including ConcurrentWorkQueue. Consider
-  // removing this method from base, and consider whether we can introduce
-  // more interfaces in TFRT to support these tensorflow specific concepts.
-  llvm::Error InitRequest(tfrt::RequestContextBuilder*) final {
-    return llvm::Error::success();
-  }
 };
 
 inline WorkQueueInterface::~WorkQueueInterface() = default;
