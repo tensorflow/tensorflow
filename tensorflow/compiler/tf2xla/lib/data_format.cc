@@ -33,11 +33,11 @@ StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64_t dim) {
   // Transpose the input so C is directly followed by VECT_C.
   std::vector<int64_t> permutation;
   auto rank = input_shape.rank();
-  permutation.reserve(rank + 1);
+  permutation.reserve(rank);
   for (int64_t i = 0; i != rank - 1; ++i) {
     permutation.push_back(i);
     if (i == dim) {
-      permutation.push_back(input_shape.rank() - 1);
+      permutation.push_back(rank - 1);
     }
   }
 
