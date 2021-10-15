@@ -194,7 +194,7 @@ ENTRY entry {
     std::vector<int64_t> module_ids;
     const auto _companion_sets = *metadata->companion_sets()[0];
     module_ids.reserve(_companion_sets.size());
-    for (HloInstruction* companion : *metadata->companion_sets()[0]) {
+    for (HloInstruction* companion : _companion_sets) {
       module_ids.push_back(metadata->GetModuleId(companion->GetModule()));
     }
 
