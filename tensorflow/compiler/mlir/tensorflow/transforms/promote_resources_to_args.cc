@@ -357,7 +357,7 @@ void PromoteResourcesToArgsPass::runOnOperation() {
     functions_ = {"main"};
   }
   SymbolTable symbolTable(module);
-  for (std::string f : functions_) {
+  for (const std::string &f : functions_) {
     FuncOp func = symbolTable.lookup<FuncOp>(f);
     if (!func) continue;
 
