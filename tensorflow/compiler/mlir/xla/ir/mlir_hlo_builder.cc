@@ -563,7 +563,10 @@ StatusOr<XlaOp> MlirHloBuilder::PadInternal(
       ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
   auto dimensions = padding_config.dimensions();
   auto dimensions_size = dimensions.size();
-  llvm::SmallVector<int64_t, dimensions_size> low, high, internal;
+  llvm::SmallVector<int64_t> low, high, internal;
+  low.reserve(dimensions_size);
+  high.reserve(dimensions_size);
+  internal.reserve(dimensions_size);
   for (auto& dimension : dimensions) {
     low.push_back(dimension.edge_padding_low());
     high.push_back(dimension.edge_padding_high());
