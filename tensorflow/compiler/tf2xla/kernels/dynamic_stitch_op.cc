@@ -126,6 +126,7 @@ class DynamicStitchOp : public XlaOpKernel {
     int64_t result_rank = 1 + data0_shape.dims() - indices0_shape.dims();
     if (number_of_indices == 0) {
       std::vector<int64_t> result_shape(result_rank);
+      result_shape.reserve(data0_shape.dims());
       for (int d = indices0_shape.dims(); d < data0_shape.dims(); d++) {
         result_shape[d - indices0_shape.dims() + 1] = data0_shape.dim_size(d);
       }
