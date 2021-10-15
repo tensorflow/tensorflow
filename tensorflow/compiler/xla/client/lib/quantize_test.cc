@@ -35,8 +35,7 @@ std::vector<NativeT> GenerateInput() {
   const auto n = std::numeric_limits<NativeT>::max();
   input.reserve(n);
 
-  for (int64_t i = std::numeric_limits<NativeT>::min();
-       i < n; ++i) {
+  for (int64_t i = std::numeric_limits<NativeT>::min(); i < n; ++i) {
     input.push_back(static_cast<NativeT>(i));
   }
 
@@ -145,8 +144,7 @@ std::vector<bfloat16> GenerateMinCombinedOutput(const QuantizedRange &range) {
   std::vector<bfloat16> output;
   const auto n = std::numeric_limits<NativeT>::max();
   output.reserve(n);
-  for (int64_t i = std::numeric_limits<NativeT>::min();
-       i < n; ++i) {
+  for (int64_t i = std::numeric_limits<NativeT>::min(); i < n; ++i) {
     bfloat16 result =
         static_cast<bfloat16>(i + half_range) * scale_factor + range.min;
     output.push_back(result);
