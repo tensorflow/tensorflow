@@ -2597,7 +2597,9 @@ TEST_F(OpTest, Pad) {
 
     DataType tpaddings = Choose<DataType>({DT_INT32, DT_INT64});
     std::vector<int64_t> paddings_vec;
-    for (int i = 0; i < t_dims.size(); ++i) {
+    auto dims_size = t_dims.size();
+    paddings_vec.reserve(dims_size * 2);
+    for (int i = 0; i < dims_size; ++i) {
       std::uniform_int_distribution<int> pad_distribution(0, t_dims[i]);
       int pad_size = pad_distribution(generator());
       std::uniform_int_distribution<int> lower_distribution(0, pad_size);
@@ -2609,7 +2611,7 @@ TEST_F(OpTest, Pad) {
     Tensor paddings;
     CHECK(paddings.CopyFrom(
         AsIntTensor(tpaddings, paddings_vec),
-        TensorShape({static_cast<int64_t>(t_dims.size()), 2})));
+        TensorShape({static_cast<int64_t>(dims_size), 2})));
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Pad")
                                              .RandomInput(type, t_dims)
                                              .Input(paddings)
