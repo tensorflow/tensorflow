@@ -2383,8 +2383,9 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
   std::vector<std::complex<float>> xs;
   const auto _ys = {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f};
   const auto _xs = {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f};
-  ys.reserve(_ys.size());
-  xs.reserve(_xs.size());
+  const auto n = _ys.size() * _xs.size();
+  ys.reserve(n);
+  xs.reserve(n);
   for (auto y : _ys) {
     for (auto x : _xs) {
       ys.push_back(y);
