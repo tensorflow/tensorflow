@@ -950,7 +950,8 @@ is smaller than desired.}]>:$drop_remainder,
 
     DefaultValuedAttr<BoolAttr, "false">:$parallel_copy,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -1946,7 +1947,8 @@ def TF_CacheDatasetV2Op : TF_Op<"CacheDatasetV2", []> {
     Arg<TF_ResourceTensor, "", [TF_DatasetMemoryCacheRead, TF_DatasetMemoryCacheWrite]>:$cache,
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -4882,7 +4884,8 @@ into a single Dataset.
 
     SymbolRefAttr:$f,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -5476,7 +5479,8 @@ Creates a dataset that invokes a function to generate elements.
     SymbolRefAttr:$next_func,
     SymbolRefAttr:$finalize_func,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -7685,7 +7689,8 @@ is smaller than desired.}]>:$drop_remainder,
     SymbolRefAttr:$f,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
-    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -7708,7 +7713,8 @@ Creates a dataset that applies `f` to the outputs of `input_dataset`.
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
-    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -10231,7 +10237,8 @@ elements from `input_dataset` in parallel.}]>:$num_parallel_calls,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
     DefaultValuedAttr<BoolAttr, "false">:$sloppy,
-    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -10262,7 +10269,8 @@ elements from `input_dataset` in parallel.}]>:$num_parallel_calls,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism,
     DefaultValuedStrAttr<StrAttr, "default">:$deterministic,
-    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality
+    DefaultValuedAttr<BoolAttr, "false">:$preserve_cardinality,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -10442,7 +10450,8 @@ this dataset.}]>:$buffer_size,
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
     DefaultValuedAttr<I64Attr, "0">:$slack_period,
     DefaultValuedAttr<BoolAttr, "true">:$legacy_autotune,
-    DefaultValuedAttr<I64Attr, "0">:$buffer_size_min
+    DefaultValuedAttr<I64Attr, "0">:$buffer_size_min,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -11274,7 +11283,8 @@ Creates a dataset with a range of values. Corresponds to python's xrange.
     Arg<TF_Int64Tensor, [{corresponds to step in python's xrange().}]>:$step,
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -11621,7 +11631,8 @@ Creates a dataset that emits the outputs of `input_dataset` `count` times.
 be repeated. A value of `-1` indicates that it should be repeated infinitely.}]>:$count,
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -14114,7 +14125,7 @@ For example:
 
 ```
 c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.segment_sum(c, tf.constant([0, 0, 1]))
+tf.math.segment_sum(c, tf.constant([0, 0, 1]))
 # ==> [[5, 5, 5, 5],
 #      [5, 6, 7, 8]]
 ```
@@ -14468,7 +14479,8 @@ def TF_ShuffleAndRepeatDatasetV2Op : TF_Op<"ShuffleAndRepeatDatasetV2", []> {
 
     DefaultValuedAttr<BoolAttr, "true">:$reshuffle_each_iteration,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -14485,7 +14497,8 @@ def TF_ShuffleDatasetV2Op : TF_Op<"ShuffleDatasetV2", []> {
     Arg<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorRead, TF_DatasetSeedGeneratorWrite]>:$seed_generator,
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -14505,7 +14518,8 @@ def TF_ShuffleDatasetV3Op : TF_Op<"ShuffleDatasetV3", []> {
 
     DefaultValuedAttr<BoolAttr, "true">:$reshuffle_each_iteration,
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -17218,7 +17232,8 @@ that should be taken. A value of `-1` indicates that all of `input_dataset`
 is taken.}]>:$count,
 
     Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
-    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -18122,7 +18137,8 @@ Creates a dataset that emits each dim-0 slice of `components` once.
     Variadic<TF_Tensor>:$components,
 
     Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
-    DefaultValuedAttr<BoolAttr, "false">:$is_files
+    DefaultValuedAttr<BoolAttr, "false">:$is_files,
+    DefaultValuedAttr<StrAttr, "">:$metadata
   );
 
   let results = (outs
@@ -18565,8 +18581,7 @@ Read
 [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 for an explanation of segments.
 
-This operator is similar to the unsorted segment sum operator found
-[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+This operator is similar to `tf.math.unsorted_segment_sum`,
 Instead of computing the sum over segments, it computes the maximum such that:
 
 \\(output_i = \max_{j...} data[j...]\\) where max is over tuples `j...` such
@@ -18620,8 +18635,7 @@ Read
 [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 for an explanation of segments.
 
-This operator is similar to the unsorted segment sum operator found
-[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+This operator is similar to `tf.math.unsorted_segment_sum`,
 Instead of computing the sum over segments, it computes the minimum such that:
 
 \\(output_i = \min_{j...} data_[j...]\\) where min is over tuples `j...` such
@@ -18671,8 +18685,7 @@ Read
 [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 for an explanation of segments.
 
-This operator is similar to the unsorted segment sum operator found
-[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+This operator is similar to `tf.math.unsorted_segment_sum`,
 Instead of computing the sum over segments, it computes the product of all
 entries belonging to a segment such that:
 

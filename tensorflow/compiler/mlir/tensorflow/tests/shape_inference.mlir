@@ -807,7 +807,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   func @operand_pack_unranked(%arg0: tensor<*xf32>) -> () {
    // CHECK: tf.Pack
    %outputs_0 = "tf.Pack"(%arg0) {axis = 0 : i64, device = ""} : (tensor<*xf32>) -> tensor<*xf32>
-   %outputs_2 = "tf.TensorSliceDataset"(%outputs_0) {device = "", output_shapes = [#tf_type.shape<>]} : (tensor<*xf32>) -> tensor<!tf_type.variant>
+   %outputs_2 = "tf.TensorSliceDataset"(%outputs_0) {device = "", output_shapes = [#tf_type.shape<>], metadata=""} : (tensor<*xf32>) -> tensor<!tf_type.variant>
    return
   }
 
@@ -1275,7 +1275,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       f._tf_data_function = true,
       output_shapes = [#tf_type.shape<64>, #tf_type.shape<69>, #tf_type.shape<73>, #tf_type.shape<12>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<64>, #tf_type.shape<64>, #tf_type.shape<>, #tf_type.shape<>],
       output_types = [i32, i32, i32, i64, i32, i32, f32, i64, i32, i32, i32, f32],
-      preserve_cardinality = false, use_inter_op_parallelism = true} : (tensor<!tf_type.variant>, tensor<!tf_type.resource>, tensor<i64>, tensor<i64>) -> tensor<*x!tf_type.variant>
+      preserve_cardinality = false,
+      use_inter_op_parallelism = true,
+      metadata = ""} : (tensor<!tf_type.variant>, tensor<!tf_type.resource>, tensor<i64>, tensor<i64>) -> tensor<*x!tf_type.variant>
     // For this test case the first 12 inputs to the function f below will be
     // from ParallelMapDataset, while the remaining one is a captured input.
     %75 = "tf.MapDataset"(%74, %arg3) {
@@ -1284,7 +1286,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       f._tf_data_function = true,
       output_shapes = [#tf_type.shape<64>, #tf_type.shape<69>, #tf_type.shape<10>],
       output_types = [i32, i32, i32],
-      preserve_cardinality = false, use_inter_op_parallelism = true} : (tensor<*x!tf_type.variant>, tensor<10xi32>) -> tensor<*x!tf_type.variant>
+      preserve_cardinality = false,
+      use_inter_op_parallelism = true,
+      metadata = ""} : (tensor<*x!tf_type.variant>, tensor<10xi32>) -> tensor<*x!tf_type.variant>
     return
   }
 
@@ -1317,7 +1321,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %cst_13 = arith.constant dense<> : tensor<0x!tf_type.string>
     %51 = "tf.RepeatDataset"(%arg1, %cst_2) {device = "",
       output_shapes = [#tf_type.shape<?>, #tf_type.shape<?x?x512>, #tf_type.shape<?x?>, #tf_type.shape<?x300>, #tf_type.shape<?x300>, #tf_type.shape<?x300>, #tf_type.shape<?x300>, #tf_type.shape<?>, #tf_type.shape<?>],
-      output_types = [!tf_type.string, f32, f32, i32, i32, f32, f32, !tf_type.string, !tf_type.string]} : (tensor<*x!tf_type.variant>, tensor<i64>) -> tensor<!tf_type.variant>
+      output_types = [!tf_type.string, f32, f32, i32, i32, f32, f32, !tf_type.string, !tf_type.string],
+      metadata = ""} : (tensor<*x!tf_type.variant>, tensor<i64>) -> tensor<!tf_type.variant>
 
     %117:6 = "tf.ReduceDataset"(%51, %cst_12, %cst_12, %cst_12, %cst_12, %cst_13, %cst_13, %arg2, %arg3, %arg4, %arg5, %arg6, %arg6, %arg6, %arg6, %arg7, %arg8, %arg9, %arg10, %cst_0, %arg0, %arg6, %arg11, %arg6, %arg6, %arg6, %arg6, %arg9) {
 
