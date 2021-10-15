@@ -711,7 +711,9 @@ Status ValidateDotDimensionNumbers(
   std::vector<int64_t> dimensions;
   std::vector<bool> is_dynamic;
   const auto lhs_batch_dimensions = dimension_numbers.lhs_batch_dimensions();
-  const auto lhs_batch_dimensions_size = lhs_batch_dimensions.size();
+  const auto lhs_batch_dimensions_size = lhs.rank() - dimension_numbers.lhs_contracting_dimensions().size() \
+    + rhs.rank() - dimension_numbers.rhs_contracting_dimensions().size() \
+    - dimension_numbers.rhs_batch_dimensions().size();
   dimensions.reserve(lhs_batch_dimensions_size);
   is_dynamic.reserve(lhs_batch_dimensions_size);
   for (const int64_t lhs_dim : lhs_batch_dimensions) {
