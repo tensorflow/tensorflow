@@ -104,6 +104,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        ":xla_legalize_tf",
         ":xla_passes_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
         "@llvm-project//llvm:Support",
@@ -630,43 +631,18 @@ gentbl_cc_library(
     ],
 )
 
-cc_library(
-    name = "all_xla_passes_for_testing",
-    visibility = [
-        "//tensorflow/compiler/mlir:__subpackages__",
-    ],
-    deps = [
-        ":adjust_layout",
-        ":mhlo_to_lhlo_with_xla",
-        ":xla_legalize_tf",
-        ":xla_legalize_tf_with_tf2xla",
-        ":xla_passes",
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:chlo_legalize_to_hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
-        "//tensorflow/compiler/mlir/hlo:legalize_control_flow",
-        "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
-        "//tensorflow/compiler/mlir/hlo:legalize_to_standard",
-        "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo_fuse_linalg",
-        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
-        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",
-        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_parallel_loops",
-        "//tensorflow/compiler/mlir/hlo:mhlo_fusion",
-        "//tensorflow/compiler/mlir/hlo:mhlo_to_mhlo_lowering_patterns",
-        "//tensorflow/compiler/mlir/hlo:sink_constants_to_control_flow",
-        "//tensorflow/compiler/mlir/hlo:test_passes",
-    ],
-)
-
 tf_cc_binary(
     name = "xla-opt",
     testonly = True,
+    srcs = ["xla_opt_main.cc"],
     deps = [
-        ":all_xla_passes_for_testing",
-        "//tensorflow/compiler/mlir:tf_mlir_opt_main",
+        ":xla_passes",
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
     ],
 )

@@ -211,7 +211,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
-        "//tensorflow/compiler/mlir/xla:all_xla_passes_for_testing",
+        "//tensorflow/compiler/mlir/xla:xla_passes",
     ],
 )
 
