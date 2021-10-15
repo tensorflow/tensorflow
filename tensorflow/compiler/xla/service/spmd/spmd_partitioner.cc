@@ -1264,7 +1264,7 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
   // output.
   std::vector<int64_t> dimensions;
   const int64_t rank = base_shape_.rank();
-  dimensions.reserve(rank);
+  dimensions.reserve(rank + 1);
   for (int64_t i = 0; i < rank; ++i) {
     if (i == target_dim) {
       dimensions.push_back(group_size);
