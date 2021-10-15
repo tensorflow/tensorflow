@@ -188,6 +188,7 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
   TF_RETURN_IF_ERROR(scope.status());
 
   std::vector<Output> merge_outputs(num_loop_vars);
+  merge_outputs.reserve(num_loop_vars);
   for (int i = 0; i < num_loop_vars; ++i) {
     TF_RETURN_IF_ERROR(
         CreateMerge(scope, i, enter_outputs[i], &merge_outputs[i]));
