@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
@@ -57,11 +58,12 @@ py_library(
     ],
 )
 
-py_library(
+pytype_strict_library(
     name = "cross_device_utils",
     srcs = ["cross_device_utils.py"],
     srcs_version = "PY3",
     deps = [
+        ":collective_util",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
@@ -74,6 +76,8 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/types",
     ],
 )
 

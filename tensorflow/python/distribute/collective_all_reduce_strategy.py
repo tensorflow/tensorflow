@@ -398,11 +398,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices),
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     # CrossDeviceOps for per host tensors.
     self._host_cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=[self._worker_device],
         group_size=self._num_workers,
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
@@ -513,11 +515,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices) * self._num_workers,
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     # CrossDeviceOps for per host tensors.
     self._host_cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=[self._worker_device],
         group_size=self._num_workers,
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)

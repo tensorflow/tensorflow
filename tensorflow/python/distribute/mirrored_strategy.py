@@ -335,9 +335,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._cross_device_ops = cross_device_ops
     self._collective_ops_in_use = False
     self._collective_key_base = container_strategy._collective_key_base
-    self._initialize_strategy(devices)
     self._communication_options = collective_util.Options(
         implementation=collective_util.CommunicationImplementation.NCCL)
+    self._initialize_strategy(devices)
 
     # TODO(b/128995245): Enable last partial batch support in graph mode.
     if ops.executing_eagerly_outside_functions():
@@ -375,10 +375,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _make_collective_ops(self, devices):
     self._collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=1 + self._collective_key_base)  # pylint: disable=protected-access
+        group_key_start=1 + self._collective_key_base)
     return cross_device_ops_lib.CollectiveAllReduce(
         devices=self._devices,
         group_size=len(self._devices),
+        options=self._communication_options,
         collective_keys=self._collective_keys)
 
   def _initialize_single_worker(self, devices):
