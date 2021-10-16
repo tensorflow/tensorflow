@@ -111,7 +111,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -150,7 +149,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -189,7 +187,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -234,7 +231,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -266,7 +262,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -312,7 +307,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -324,7 +318,6 @@ cc_library(
         ":hlo_module_importer",
         ":hlo_utils",
         ":mlir_hlo_to_hlo",
-        ":translate_cl_options",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:hlo_ops_base_enums",
         "//tensorflow/compiler/mlir/hlo:lhlo",
@@ -353,7 +346,6 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Translation",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -396,7 +388,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
-    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -573,11 +564,19 @@ cc_library(
 )
 
 cc_library(
-    name = "translate_cl_options",
-    srcs = ["xla_mlir_translate_cl.cc"],
-    hdrs = ["xla_mlir_translate_cl.h"],
+    name = "translate_cl_registration",
+    testonly = True,
+    srcs = ["xla_mlir_translate_registration.cc"],
     deps = [
+        ":mhlo_to_lhlo_with_xla",
+        ":mlir_hlo_to_hlo",
+        ":type_to_shape",
+        ":xla_mlir_translate",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Translation",
     ],
     alwayslink = 1,
 )
@@ -590,7 +589,6 @@ cc_library(
         ":hlo_to_mlir_hlo",
         ":mhlo_to_lhlo_with_xla",
         ":mlir_hlo_to_hlo",
-        ":translate_cl_options",
         ":type_to_shape",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/jit:xla_gpu_jit",
@@ -606,9 +604,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:Translation",
     ],
-    alwayslink = 1,
 )
 
 tf_native_cc_binary(

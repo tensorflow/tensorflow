@@ -253,6 +253,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow:translate_registration",
         "//tensorflow/compiler/mlir/tensorflow:translate_tf_dialect_op",
+        "//tensorflow/compiler/mlir/xla:translate_cl_registration",
         "//tensorflow/compiler/mlir/xla:xla_mlir_translate",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

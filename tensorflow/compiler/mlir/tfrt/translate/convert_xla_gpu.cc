@@ -53,7 +53,8 @@ StatusOr<tfrt::gpu::Program> ConvertXlaGpuToGpuProgram(
 
   // XLA HLO -> LHLO
   TF_RETURN_IF_ERROR(mlir::OptimizeAndConvertHloToLmhlo(
-      std::move(hlo_module), *module, platform_name));
+      std::move(hlo_module), *module, platform_name,
+      /*optimize_xla_hlo=*/true));
 
   // LHLO -> TFRT Dialect (gpu kernels)
   mlir::PassManager pm(&context, mlir::PassManager::Nesting::Implicit);

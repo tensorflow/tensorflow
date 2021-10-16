@@ -2009,7 +2009,6 @@ cc_library(
         ":tensorflow",
         ":translate_cl_options",
         "//tensorflow/compiler/mlir:string_container_utils",
-        "//tensorflow/compiler/mlir/xla:translate_cl_options",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/tf2xla:xla_argument",
         "//tensorflow/compiler/tf2xla:xla_helpers",
