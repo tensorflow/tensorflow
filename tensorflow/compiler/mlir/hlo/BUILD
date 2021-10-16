@@ -457,6 +457,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
+    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -589,6 +590,7 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -627,6 +629,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:ViewLikeInterface",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -665,6 +668,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:ViewLikeInterface",
     ],
+    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -735,6 +739,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:ViewLikeInterface",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -753,6 +758,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -760,6 +766,7 @@ cc_library(
     srcs = ["lib/Dialect/mhlo/transforms/ral_lower_to_library_call.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
     ],
     deps = [
         ":disc_ral",
@@ -775,6 +782,7 @@ cc_library(
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -782,10 +790,10 @@ cc_library(
     srcs = ["lib/Dialect/mhlo/transforms/ral_legalize_to_llvm.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
     ],
     deps = [
         ":disc_ral",
-        ":mhlo_to_mhlo_lowering_patterns",
         ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
@@ -811,6 +819,7 @@ cc_library(
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -843,6 +852,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -937,6 +947,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TransformUtils",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -955,6 +966,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1046,6 +1058,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1067,6 +1080,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1097,6 +1111,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1120,6 +1135,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1142,6 +1158,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1164,6 +1181,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1186,6 +1204,7 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:ViewLikeInterface",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1225,6 +1244,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1251,6 +1271,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1261,6 +1282,7 @@ cc_library(
     deps = [
         "@llvm-project//llvm:Support",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -1289,6 +1311,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
+    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -1325,6 +1348,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1345,6 +1369,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1364,6 +1389,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1383,6 +1409,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1403,6 +1430,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -1447,6 +1475,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1539,6 +1568,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1549,6 +1579,7 @@ cc_library(
         ":pass_details",
         "@llvm-project//mlir:Pass",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1635,7 +1666,6 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":materialize_broadcasts",  # build-cleaner: keep
-        ":mhlo_to_mhlo_lowering_patterns",
         ":pass_details",
         ":shape_component_analysis",
         ":transforms_pass_details",
@@ -1655,6 +1685,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
