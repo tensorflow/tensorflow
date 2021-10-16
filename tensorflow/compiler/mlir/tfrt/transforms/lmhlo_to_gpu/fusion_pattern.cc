@@ -169,8 +169,18 @@ Emit(mlir::FuncOp func_op, absl::Span<const xla::BufferAllocation> allocations,
   const char target_triple[] = "nvptx64-nvidia-cuda";
   const char data_layout[] = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
   const char platform_name[] = "CUDA";
-  xla::gpu::GpuDeviceInfo gpu_device_info = {1024, 32,         49152, 2048,
-                                             30,   2147483647, 65535, 65535};
+  xla::gpu::GpuDeviceInfo gpu_device_info = {};
+  gpu_device_info.threads_per_block_limit = 1024;
+  gpu_device_info.threads_per_warp = 32;
+  gpu_device_info.shared_memory_per_block = 49152;  // static shmem limit.
+  // Should be 1024 for sm7.5, 1536 for sm8.6. This results in more blocks than
+  // SMs on those architectures, but doesn't hit any resource limit.
+  gpu_device_info.threads_per_core_limit = 2048;
+  // This is higher than any SKU, resulting in more blocks than SMs.
+  gpu_device_info.core_count = 128;
+  gpu_device_info.block_dim_limit_x = 2147483647;
+  gpu_device_info.block_dim_limit_y = 65535;
+  gpu_device_info.block_dim_limit_z = 65535;
   const xla::HloProfileIndexMap* profile_index_map = nullptr;
 
   llvm_module->setTargetTriple(target_triple);
@@ -215,7 +225,7 @@ static llvm::Expected<RewriteData> Match(mlir::lmhlo::FusionOp fusion_op) {
   xla::HloModuleConfig hlo_module_config;
   xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
   hlo_module_config.set_debug_options(options);
-  stream_executor::CudaComputeCapability cuda_compute_capability = {6, 1};
+  stream_executor::CudaComputeCapability cuda_compute_capability = {5, 2};
   llvm::LLVMContext llvm_context;
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
 
