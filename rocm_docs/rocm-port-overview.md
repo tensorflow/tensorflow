@@ -136,7 +136,7 @@ This release introduces support for automatically "fusing" certain sequences of 
 The ROCm Fusion feature is disabled by default, and can be enabled by the setting the env var `TF_ROCM_FUSION_ENABLE` to `1`.  The current release supports the fusion of following op/node sequences
 
 1. Convolution --> Bias --> Activation (forward and inference)
-2. BatchNorm --> Activation (forward, backward, and inferece)
+2. BatchNorm --> Activation (forward, backward, and inference)
 3. Add + Relu
 4. AddN + ReluGrad
 
