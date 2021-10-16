@@ -769,6 +769,7 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
   pm.addPass(mlir::createGpuAsyncRegionPass());
   tfrt::gpu::populateGpuToTfrtGpuPasses(pm);
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createSymbolDCEPass());
   if (pm.run(mlir_module).failed()) {
     return InternalError(
         "Failed to lower LHLO to TFRT Dialect with gpu kernels.");
