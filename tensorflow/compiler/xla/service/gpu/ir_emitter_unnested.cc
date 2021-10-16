@@ -3279,7 +3279,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
     const LaunchDimensions& launch_dimensions) {
   TF_RET_CHECK(!mlir::isa<mlir::lmhlo::FusionOp>(op));
 
-  std::vector<BufferSlice> slices;
+  llvm::SmallVector<BufferSlice> slices;
   slices.reserve(operands.size());
   for (mlir::Value operand : operands) {
     slices.emplace_back();
