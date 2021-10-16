@@ -1039,7 +1039,7 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
   Shape while_shape = while_init->shape();
 
   // The tuple index of the trip counter, if one is present.
-  absl::optional<int> trip_counter;
+  absl::optional<int64_t> trip_counter;
   // Maps the tuple index of each induction variable to its constant increment.
   absl::flat_hash_map<int64_t, const HloConstantInstruction*> induction_vars;
   for (int64_t i = 0; i < while_body_root->operand_count(); ++i) {
