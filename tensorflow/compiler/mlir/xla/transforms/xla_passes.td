@@ -31,12 +31,6 @@ def PrepareForExportPass : FunctionPass<"xla-prepare-for-export"> {
   let constructor = "::mlir::mhlo::CreatePrepareForExport()";
 }
 
-def AdjustLayoutPass : FunctionPass<"xla-adjust-layout"> {
-  let summary = "Adjust layouts so infeed send & receive use the same format.";
-  let dependentDialects = ["mhlo::MhloDialect"];
-  let constructor = "::mlir::mhlo::CreateAdjustLayoutPass()";
-}
-
 def LegalizeTFPass : FunctionPass<"xla-legalize-tf-with-tf2xla"> {
   let summary = "Legalize from TensorFlow to the HLO dialect using tf2xla kernels";
   let dependentDialects = ["mhlo::MhloDialect"];

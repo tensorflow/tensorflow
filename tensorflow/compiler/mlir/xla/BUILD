@@ -157,6 +157,9 @@ cc_library(
         "transforms/adjust_layout.cc",
         "transforms/xla_passes_detail.h",
     ],
+    hdrs = [
+        "transforms/adjust_layout.h",
+    ],
     deps = [
         ":attribute_importer",
         ":type_to_shape",
