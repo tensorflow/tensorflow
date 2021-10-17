@@ -1015,6 +1015,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
 
           if (output_dynamic_dimension == -1) {
             std::vector<int64_t> output_non_degenerated;
+            output_non_degenerated.reserve(output_dim_end - output_dim_start - 1);
             for (int64_t i = output_dim_start; i < output_dim_end; ++i) {
               if (reshape->shape().dimensions(i) != 1) {
                 output_non_degenerated.push_back(i);
