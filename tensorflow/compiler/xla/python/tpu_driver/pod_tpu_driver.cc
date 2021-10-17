@@ -400,7 +400,9 @@ class PodTpuDriver : public TpuDriver {
     auto deps = GetDependencyOperationIds(wait_for);
 
     std::vector<int64_t> children_ids;
-    for (int i = 0; i < children.size(); ++i) {
+    const size_t children_ids_size = children.size();
+    children_ids.reserve(children_ids_size);
+    for (size_t i = 0; i < children_ids_size; ++i) {
       auto child_op_id =
           static_cast<PodBufferHandle* const>(children[i])->operation_id();
       deps.insert(child_op_id);
@@ -409,12 +411,12 @@ class PodTpuDriver : public TpuDriver {
 
     ScheduleRequest(
         operation_id,
-        [this, core_id, region, children_ids,
+        [this, core_id, region, children_ids, children_ids_size,
          operation_id]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_)
             -> std::shared_ptr<Event> {
           std::vector<BufferHandle*> child_buffers;
-          child_buffers.reserve(children_ids.size());
-          for (int i = 0; i < children_ids.size(); ++i) {
+          child_buffers.reserve(children_ids_size);
+          for (size_t i = 0; i < children_ids_size; ++i) {
             CHECK_EXISTS_OR_RETURN(underlying_buffers_, children_ids[i],
                                    operation_id);
             child_buffers.push_back(underlying_buffers_[children_ids[i]].get());
@@ -664,6 +666,9 @@ class PodTpuDriver : public TpuDriver {
 
     std::vector<int64_t> input_op_ids;
     std::vector<int64_t> output_op_ids;
+    const auto inputs_size = inputs.size();
+    input_op_ids.reserve(inputs_size);
+    output_op_ids.reserve(inputs_size);
 
     for (auto* input : inputs) {
       auto input_dep =
@@ -686,13 +691,13 @@ class PodTpuDriver : public TpuDriver {
           std::vector<BufferHandle*> underlying_inputs;
           std::vector<BufferHandle*> underlying_outputs;
 
-          underlying_inputs.reserve(input_op_ids.size());
+          underlying_inputs.reserve(inputs_size);
           for (auto input_op_id : input_op_ids) {
             CHECK_EXISTS_OR_RETURN(underlying_buffers_, input_op_id,
                                    operation_id);
             underlying_inputs.push_back(underlying_buffers_[input_op_id].get());
           }
-          underlying_outputs.reserve(output_op_ids.size());
+          underlying_outputs.reserve(inputs_size);
           for (auto output_op_id : output_op_ids) {
             CHECK_EXISTS_OR_RETURN(underlying_buffers_, output_op_id,
                                    operation_id);
