@@ -539,6 +539,7 @@ StatusOr<bool> WhileLoopAllReduceCodeMotion::Run(HloModule* module) {
       std::vector<HloInstruction*> computation_callers =
           call_graph->GetComputationCallers(computation);
       std::vector<HloInstruction*> while_caller_instructions;
+      while_caller_instructions.reserve(computation_callers.size());
       for (HloInstruction* caller_instruction : computation_callers) {
         // For simplicity, we only support while instructions whose shape is
         // tuple.
