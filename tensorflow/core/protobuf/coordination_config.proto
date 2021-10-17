@@ -25,4 +25,8 @@ message CoordinationServiceConfig {
   // Heartbeat timeout, if a worker does not record heartbeat in this time
   // window, it will be considered disconnected.
   int64 heartbeat_timeout_in_ms = 5;
+
+  // The list of jobs that partipate in the coordination service. If empty, all
+  // jobs will be included in the coordination service by default.
+  repeated string coordinated_jobs = 6;
 }
