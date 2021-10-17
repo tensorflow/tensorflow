@@ -771,9 +771,9 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       return InternalError("Failed to load BEF file.");
     }
 
-    TF_RETURN_IF_ERROR(ExecuteBef(bef_file, module_name_, run_options,
-                                  buffer_allocations, allocations_.size(),
-                                  block_host_until_done));
+    TF_RETURN_IF_ERROR(ExecuteBef(
+        bef_file, bef_buffer.get_deleter().entry_function_name, run_options,
+        buffer_allocations, allocations_.size(), block_host_until_done));
   } else {
     return FailedPrecondition("Expected BefBuffer is not supplied.");
   }

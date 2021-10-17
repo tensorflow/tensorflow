@@ -755,7 +755,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 }
 
 #if BEF_EXECUTABLE
-static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
+static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
+                                           std::string entry_function_name) {
   if (!mlir_module) {
     return tensorflow::errors::FailedPrecondition(
         "No mlir module to lower to BEF.");
@@ -785,7 +786,7 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module) {
   auto ptr = static_cast<uint8_t*>(
       tfrt::AlignedAlloc(tfrt::GetRequiredBefAlignment(), bef.size()));
   std::copy(bef.begin(), bef.end(), ptr);
-  return OwnedBefBuffer(ptr, {bef.size()});
+  return OwnedBefBuffer(ptr, {entry_function_name, bef.size()});
 }
 #endif  // BEF_EXECUTABLE
 
@@ -891,7 +892,8 @@ static Status CompileModuleToLlvmIrImpl(
   }
 
 #if BEF_EXECUTABLE
-  TF_ASSIGN_OR_RETURN(results->thunks_or_bef, LowerToBef(*mlir_module));
+  TF_ASSIGN_OR_RETURN(results->thunks_or_bef,
+                      LowerToBef(*mlir_module, entry_function.getName().str()));
 #else   // BEF_EXECUTABLE
   results->thunks_or_bef =
       absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
@@ -1040,7 +1042,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   llvm::SplitModule(
-      *llvm_module.get(),
+      *llvm_module,
       std::max<unsigned>(
           1, std::min<unsigned>(thread_pool->NumThreads(), num_functions)),
       [&](std::unique_ptr<llvm::Module> module) {
