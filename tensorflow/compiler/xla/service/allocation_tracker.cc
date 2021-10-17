@@ -144,9 +144,9 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
   }
 
   std::vector<GlobalDataHandle> element_handles;
-  for (int i = 0;
-       i < ShapeUtil::TupleElementCount(shaped_buffer->on_device_shape());
-       ++i) {
+  const auto n = ShapeUtil::TupleElementCount(shaped_buffer->on_device_shape());
+  element_handles.reserve(n);
+  for (int i = 0; i < n; ++i) {
     auto element_buffer = ShapedBuffer(
         ShapeUtil::GetTupleElementShape(shaped_buffer->on_device_shape(), i),
         shaped_buffer->device_ordinal());
