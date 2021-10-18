@@ -1194,12 +1194,14 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   core::RefCountPtr<KernelAndDevice> kernel;
   auto status = GetOrCreateKernelAndDevice(op, retvals, num_retvals, &kernel);
 
+#ifdef INTEL_MKL
   if (IsMKLEnabled() && kernel != nullptr && !ctx.RunEagerOpAsFunction() &&
       op->Device() == kVariantDeviceNull) {
     // oneDNN optimization pass relies on the op's assigned device to determine
     // whether it can be rewritten.
     op->SetDevice(kernel->device());
   }
+#endif  // INTEL_MKL
 
   // Run all the registered rewrite pass after the placement, regardless whether
   // the placement is successful or not. The passes can either create new ops
