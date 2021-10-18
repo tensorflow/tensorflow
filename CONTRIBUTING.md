@@ -185,6 +185,10 @@ There are two ways to run TensorFlow unit tests.
     Once you have the packages installed, you can run a specific unit test in
     bazel by doing as follows:
 
+    ```bash
+    export flags="--config=opt -k"
+    ```
+    
     If the tests are to be run on GPU, add CUDA paths to LD_LIBRARY_PATH and add
     the `cuda` option flag
 
@@ -212,7 +216,7 @@ There are two ways to run TensorFlow unit tests.
     (Requires `python>=3.7`)
 
     ```bash
-    bazel test //tensorflow/python/saved_model:load_test --test_arg=-- --test_arg=-k=*LoadTest.test_capture_variables*
+    bazel test ${flags} //tensorflow/python/saved_model:load_test --test_arg=-- --test_arg=-k=*LoadTest.test_capture_variables*
     ```
 
     **Note:** You can add `--test_sharding_strategy=disabled` to disables the
