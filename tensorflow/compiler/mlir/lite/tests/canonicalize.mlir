@@ -21,7 +21,7 @@ func @squeeze_folder(%arg0 : tensor<?x?xf32>) -> tensor<*xf32> {
 // Checks that tfl.reshape shape operand is converted to a vector if it is possible
 func @reshape_vector_shape(tensor<4x4x4xf32>) -> tensor<16x4xf32> {
 ^bb0(%arg0: tensor<4x4x4xf32>) :
-  %shape0 = constant dense<[[16, 4]]> : tensor<1x2xi32>
+  %shape0 = arith.constant dense<[[16, 4]]> : tensor<1x2xi32>
   // expected-error @+1 {{'tfl.reshape' op requires 'shape' to be rank 1, but got 2}}
   %1 = "tfl.reshape"(%arg0, %shape0) : (tensor<4x4x4xf32>, tensor<1x2xi32>) -> tensor<16x4xf32>
   return %1 : tensor<16x4xf32>
@@ -33,14 +33,14 @@ func @reshape_vector_shape(tensor<4x4x4xf32>) -> tensor<16x4xf32> {
 // another tfl.reshape
 func @reshape_removeAdjacent(tensor<4x4x4xf32>) -> tensor<64xf32> {
 ^bb0(%arg0: tensor<4x4x4xf32>) :
-  %shape0 = constant dense<[16, 4]> : tensor<2xi32>
-  %shape1 = constant dense<[64]> : tensor<1xi32>
+  %shape0 = arith.constant dense<[16, 4]> : tensor<2xi32>
+  %shape1 = arith.constant dense<[64]> : tensor<1xi32>
   %0 = "tfl.reshape"(%arg0, %shape0) : (tensor<4x4x4xf32>, tensor<2xi32>) -> tensor<16x4xf32>
   %1 = "tfl.reshape"(%0, %shape1) : (tensor<16x4xf32>, tensor<1xi32>) -> tensor<64xf32>
   return %1 : tensor<64xf32>
 
 // CHECK-LABEL: func @reshape_removeAdjacent
-// CHECK:  %[[CST:.*]] = constant dense<64> : tensor<1xi32>
+// CHECK:  %[[CST:.*]] = arith.constant dense<64> : tensor<1xi32>
 // CHECK:  %[[RESHAPE:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
 // CHECK:  return %[[RESHAPE]]
 }
@@ -49,19 +49,19 @@ func @reshape_removeAdjacent(tensor<4x4x4xf32>) -> tensor<64xf32> {
 // user but all users are tfl.reshape
 func @reshape_removeAdjacentWithMultipleUse(tensor<4x4x4xf32>) -> tensor<64xf32> {
 ^bb0(%arg0: tensor<4x4x4xf32>) :
-  %shape0 = constant dense<[16, 4]> : tensor<2xi32>
-  %shape1 = constant dense<[64]> : tensor<1xi32>
+  %shape0 = arith.constant dense<[16, 4]> : tensor<2xi32>
+  %shape1 = arith.constant dense<[64]> : tensor<1xi32>
   %0 = "tfl.reshape"(%arg0, %shape0) : (tensor<4x4x4xf32>, tensor<2xi32>) -> tensor<16x4xf32>
   %1 = "tfl.reshape"(%0, %shape1) : (tensor<16x4xf32>, tensor<1xi32>) -> tensor<64xf32>
   %2 = "tfl.reshape"(%0, %shape1) : (tensor<16x4xf32>, tensor<1xi32>) -> tensor<64xf32>
-  %3 = addf %1, %2 : tensor<64xf32>
+  %3 = arith.addf %1, %2 : tensor<64xf32>
   return %3 : tensor<64xf32>
 
 // CHECK-LABEL: func @reshape_removeAdjacentWithMultipleUse
-// CHECK:  %[[CST:.*]] = constant dense<64> : tensor<1xi32>
+// CHECK:  %[[CST:.*]] = arith.constant dense<64> : tensor<1xi32>
 // CHECK:  %[[RESHAPE_1:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
 // CHECK:  %[[RESHAPE_2:.*]]  = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
-// CHECK:  %[[RESULT:.*]] = addf %[[RESHAPE_1]], %[[RESHAPE_2]]
+// CHECK:  %[[RESULT:.*]] = arith.addf %[[RESHAPE_1]], %[[RESHAPE_2]]
 // CHECK:  return %[[RESULT]]
 }
 
@@ -69,15 +69,15 @@ func @reshape_removeAdjacentWithMultipleUse(tensor<4x4x4xf32>) -> tensor<64xf32>
 // user and not all users are tfl.reshape
 func @reshape_keepAdjacentWithMultipleUse(tensor<4x4x4xf32>) -> (tensor<16x4xf32>, tensor<64xf32>) {
 ^bb0(%arg0: tensor<4x4x4xf32>) :
-  %shape0 = constant dense<[16, 4]> : tensor<2xi32>
-  %shape1 = constant dense<[64]> : tensor<1xi32>
+  %shape0 = arith.constant dense<[16, 4]> : tensor<2xi32>
+  %shape1 = arith.constant dense<[64]> : tensor<1xi32>
   %0 = "tfl.reshape"(%arg0, %shape0) : (tensor<4x4x4xf32>, tensor<2xi32>) -> tensor<16x4xf32>
   %1 = "tfl.reshape"(%0, %shape1) : (tensor<16x4xf32>, tensor<1xi32>) -> tensor<64xf32>
   return %0, %1 : tensor<16x4xf32>, tensor<64xf32>
 
 // CHECK-LABEL: func @reshape_keepAdjacentWithMultipleUse
-// CHECK-DAG:  %[[CST:.*]]  = constant dense<[16, 4]> : tensor<2xi32>
-// CHECK-DAG:  %[[CST_0:.*]]  = constant dense<64> : tensor<1xi32>
+// CHECK-DAG:  %[[CST:.*]]  = arith.constant dense<[16, 4]> : tensor<2xi32>
+// CHECK-DAG:  %[[CST_0:.*]]  = arith.constant dense<64> : tensor<1xi32>
 // CHECK:  %[[RESHAPE_1:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<4x4x4xf32>, tensor<2xi32>) -> tensor<16x4xf32>
 // CHECK:  %[[RESHAPE_2:.*]] = "tfl.reshape"(%arg0, %[[CST_0]]) : (tensor<4x4x4xf32>, tensor<1xi32>) -> tensor<64xf32>
 // CHECK:  return  %[[RESHAPE_1]],  %[[RESHAPE_2]]
@@ -87,7 +87,7 @@ func @reshape_keepAdjacentWithMultipleUse(tensor<4x4x4xf32>) -> (tensor<16x4xf32
 // as its input type and both are static.
 func @reshape_removeIdentity(tensor<4x4x4xf32>) -> tensor<4x4x4xf32> {
 ^bb0(%arg0: tensor<4x4x4xf32>) :
-  %cst = constant dense<[4, 4, 4]> : tensor<3xi32>
+  %cst = arith.constant dense<[4, 4, 4]> : tensor<3xi32>
   %0 = "tfl.reshape"(%arg0, %cst) : (tensor<4x4x4xf32>, tensor<3xi32>) -> tensor<4x4x4xf32>
   return %0 : tensor<4x4x4xf32>
 
@@ -146,8 +146,8 @@ func @Int64SliceBeginSize(%arg0: tensor<4x128x32xf32>) -> tensor<1x128x32xf32> {
   %2 = "tfl.slice"(%arg0, %0, %1) : (tensor<4x128x32xf32>, tensor<3xi64>, tensor<3xi64>) -> tensor<1x128x32xf32>
   return %2 : tensor<1x128x32xf32>
 
-// CHECK-DAG:  [[VAL_1:%.*]] = constant dense<0> : tensor<3xi32>
-// CHECK-DAG:  [[VAL_2:%.*]] = constant dense<[1, 128, 32]> : tensor<3xi32>
+// CHECK-DAG:  [[VAL_1:%.*]] = arith.constant dense<0> : tensor<3xi32>
+// CHECK-DAG:  [[VAL_2:%.*]] = arith.constant dense<[1, 128, 32]> : tensor<3xi32>
 // CHECK:  [[VAL_3:%.*]] = "tfl.slice"(%arg0, [[VAL_1]], [[VAL_2]]) : (tensor<4x128x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x128x32xf32>
 }
 
@@ -161,13 +161,13 @@ func @Int64SliceBeginSize(%arg0: tensor<4x128x32xf32>) -> tensor<1x128x32xf32> {
 func @WhileCanonicalizeBug(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32> {
   %0:2 = "tfl.while"(%arg0, %arg1) ( {
   ^bb0(%arg2: tensor<i32>, %arg3: tensor<f32>):
-    %limit = constant dense<100> : tensor<i32>
+    %limit = arith.constant dense<100> : tensor<i32>
     %test = "tfl.less"(%arg0, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "tfl.yield"(%test) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg2: tensor<i32>, %arg3: tensor<f32>):
-    %cst = constant dense<22.0> : tensor<f32>
-    %stride = constant dense<1> : tensor<i32>
+    %cst = arith.constant dense<22.0> : tensor<f32>
+    %stride = arith.constant dense<1> : tensor<i32>
     %inc = tfl.add %arg2, %stride {fused_activation_function = "NONE"} : tensor<i32>
     "tfl.yield"(%inc, %cst) : (tensor<i32>, tensor<f32>) -> ()
   }) : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
@@ -190,12 +190,12 @@ func @WhileCanonicalizeBug(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32
 func @WhileCanonicalizeBug1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %0:2 = "tfl.while"(%arg0, %arg1) ( {
   ^bb0(%carg0: tensor<f32>, %carg1: tensor<f32>):
-    %limit = constant dense<100> : tensor<i32>
+    %limit = arith.constant dense<100> : tensor<i32>
     %test = "tfl.less"(%limit, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "tfl.yield"(%test) : (tensor<i1>) -> ()
   },  {
   ^bb0(%barg0: tensor<f32>, %barg1: tensor<f32>):
-    %cst = constant dense<22.0> : tensor<f32>
+    %cst = arith.constant dense<22.0> : tensor<f32>
     "tfl.yield"(%barg0, %cst) : (tensor<f32>, tensor<f32>) -> ()
   }) : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
   return %0#1 : tensor<f32>

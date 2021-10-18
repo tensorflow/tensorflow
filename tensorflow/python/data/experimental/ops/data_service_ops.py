@@ -15,11 +15,11 @@
 """Python API for executing a tf.data.Dataset using a tf.data service."""
 import enum
 import functools
+import typing
 import six
 
 from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import compression_ops
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils
@@ -120,37 +120,16 @@ class ShardingPolicy(enum.IntEnum):
     raise ValueError(f"Unable to convert sharding policy {self!r} to proto.")
 
 
-def _get_validated_sharding_policy(processing_mode):
+def _get_validated_sharding_policy(
+    processing_mode: typing.Union[ShardingPolicy, str]) -> ShardingPolicy:
   """Validates `processing_mode` and converts it to ShardingPolicy."""
 
   if isinstance(processing_mode, ShardingPolicy):
     return processing_mode
-  if compat.forward_compatible(2021, 8, 24):
-    if processing_mode == _PARALLEL_EPOCHS:
-      return ShardingPolicy.OFF
-    if processing_mode == _DISTRIBUTED_EPOCH:
-      return ShardingPolicy.DYNAMIC
-  elif processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
-    return processing_mode
-
-  raise ValueError("tf.data service processing mode should be a "
-                   "`tf.data.experimental.service.ShardingPolicy`, "
-                   "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
-                   f"{processing_mode!r}.")
-
-
-def _serialize(processing_mode):
-  """Serializes `processing_mode`."""
-
-  processing_mode = _get_validated_sharding_policy(processing_mode)
-  if isinstance(processing_mode, ShardingPolicy):
-    # pylint: disable=protected-access
-    processing_mode_def = data_service_pb2.ProcessingModeDef(
-        sharding_policy=_get_validated_sharding_policy(
-            processing_mode)._to_proto())
-    return processing_mode_def.SerializeToString()
-  if processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
-    return processing_mode
+  if processing_mode == _PARALLEL_EPOCHS:
+    return ShardingPolicy.OFF
+  if processing_mode == _DISTRIBUTED_EPOCH:
+    return ShardingPolicy.DYNAMIC
 
   raise ValueError("tf.data service processing mode should be a "
                    "`tf.data.experimental.service.ShardingPolicy`, "
@@ -238,8 +217,6 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         service worker. Consumers of a shared job must use the same
         `target_workers`. Defaults to `"AUTO"`.
     """
-    processing_mode = _serialize(
-        _get_validated_sharding_policy(processing_mode))
     if consumer_index is None != num_consumers is None:
       raise ValueError(
           "Must either set both `consumer_index` and `num_consumers`, "
@@ -249,6 +226,9 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
       raise ValueError("`job_name` must be set when setting `num_consumers`. "
                        f"num_consumers was set to {num_consumers}.")
 
+    processing_mode_def = data_service_pb2.ProcessingModeDef(
+        sharding_policy=_get_validated_sharding_policy(
+            processing_mode)._to_proto())
     if job_name is None:
       job_name = ""
     if max_outstanding_requests is None:
@@ -259,7 +239,9 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     self._dataset_id = ops.convert_to_tensor(
         dataset_id, dtype=dtypes.int64, name="dataset_id")
     self._processing_mode = ops.convert_to_tensor(
-        processing_mode, dtype=dtypes.string, name="processing_mode")
+        processing_mode_def.SerializeToString(),
+        dtype=dtypes.string,
+        name="processing_mode")
     self._address = ops.convert_to_tensor(
         address, dtype=dtypes.string, name="address")
     self._protocol = ops.convert_to_tensor(

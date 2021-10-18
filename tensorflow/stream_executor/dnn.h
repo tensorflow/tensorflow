@@ -28,7 +28,6 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/stream_executor/data_type.h"
@@ -790,7 +789,7 @@ class AlgorithmDesc {
                                         : AlgorithmProto::DEFAULT_MATH);
   }
   AlgorithmDesc(int64_t engine_id,
-                const absl::flat_hash_map<int64_t, int64_t>& tuning_knobs);
+                const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs);
   bool is_cudnn_frontend() const { return proto_.is_cudnn_frontend(); }
 
   bool tensor_ops_enabled() const {
@@ -798,7 +797,7 @@ class AlgorithmDesc {
   }
   Index algo_id() const { return proto_.algo_id(); }
 
-  absl::flat_hash_map<int64_t, int64_t> TuningKnobs() const;
+  std::vector<std::pair<int64_t, int64_t>> TuningKnobs() const;
 
   bool operator==(const AlgorithmDesc& other) const;
 

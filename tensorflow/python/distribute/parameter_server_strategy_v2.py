@@ -834,14 +834,13 @@ class ParameterServerStrategyV2Extended(
   def _assert_being_scheduled_by_cluster_coordinator(self):
     if not self._being_scheduled and not self._allow_run_without_coordinator:
       logging.warning(
-          "It is detected that a function used with "
-          "`tf.distribute.experimental.ParameterServerStrategy` "
-          "is executed locally on the coordinator. This is inefficient but may "
-          "be valid for one-off tasks such as inferring output signature. "
-          "To properly distribute functions to run on workers, `run` or "
-          "`reduce` should be used within a function passed to `"
-          "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`."
-      )
+          "A `tf.distribute.experimental.ParameterServerStrategy` method is "
+          "invoked without using `ClusterCoordinator.schedule`. If you are not "
+          "tracing a tf.function, this method is possibly executed on the "
+          "coordinator, which can be slow. To properly dispatch functions to "
+          "run on workers, methods like `run` or `reduce` should be used "
+          "within a function passed to `tf.distribute.experimental.coordinator."
+          "ClusterCoordinator.schedule`.")
 
   # options is not used right now. But we may want to support options while
   # creating InputWorkers in future, similar to MirroredStrategy.

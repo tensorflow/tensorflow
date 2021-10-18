@@ -273,9 +273,9 @@ bool miscFuseHelper<ConstOp>(PatternRewriter& rewriter, Operation* user,
   assert(memref_type.getRank() == 0 && "only scalar ConstOp can be fused");
   auto loc = user->getLoc();
   rewriter.setInsertionPoint(load_op);
-  Value inlined_result =
-      rewriter.create<ConstantOp>(loc, memref_type.getElementType(),
-                                  cast<ConstOp>(producer).value().getValue({}));
+  Value inlined_result = rewriter.create<arith::ConstantOp>(
+      loc, memref_type.getElementType(),
+      cast<ConstOp>(producer).value().getValue({}));
   for (LoadOp to_be_replaced : load_ops)
     to_be_replaced.replaceAllUsesWith(inlined_result);
   return true;

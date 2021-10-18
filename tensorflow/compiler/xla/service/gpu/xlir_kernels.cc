@@ -195,7 +195,7 @@ static llvm::Error CustomCall(
     return tfrt::MakeStringError("Failed to get CustomCallContext.");
   }
 
-  auto current = tfrt::gpu::wrapper::CtxSetCurrent(stream.context());
+  auto current = tfrt::gpu::wrapper::CtxSetCurrent(stream.context()->get());
   if (!current) {
     return tfrt::MakeStringError(llvm::toString(current.takeError()));
   }

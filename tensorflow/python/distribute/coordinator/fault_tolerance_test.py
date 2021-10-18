@@ -345,7 +345,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
     try:
       self.thread_coord.join([run_thread])
-    except errors.UnavailableError as e:
+    except (errors.UnavailableError, errors.AbortedError) as e:
       logging.info("Got exception %r, error message is %s", e, e)
 
       self.assertIn(_RPC_ERROR_FROM_WORKER, str(e))  # pylint: disable=g-assert-in-except
@@ -379,7 +379,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
     try:
       self.thread_coord.join([run_thread])
-    except errors.UnavailableError as e:
+    except (errors.UnavailableError, errors.AbortedError) as e:
       logging.info("Got exception %r, error message is %s", e, e)
 
       self.assertIn(_RPC_ERROR_FROM_WORKER, str(e))  # pylint: disable=g-assert-in-except
@@ -426,14 +426,14 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
       if isinstance(e, errors.UnavailableError):
         self.assertTrue("failed to connect to all addresses" in str(e) or
-                        "Unable to find a context_id" in str(e) or
                         "Socket closed" in str(e) or
                         "Connection reset by peer" in str(e) or
                         "Transport closed" in str(e))
 
       if isinstance(e, errors.AbortedError):
-        self.assertIn("RecvTensor expects a different device incarnation",
-                      str(e))
+        self.assertTrue(
+            "RecvTensor expects a different device incarnation" in str(e) or
+            "Unable to find a context_id" in str(e))
       self._ensure_threads_closed()
 
   def testTwoWorkersPreempted(self):

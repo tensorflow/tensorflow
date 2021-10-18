@@ -108,7 +108,7 @@ struct ShapeVisitor {
         backwardShapeOf(shapeof);
       } else if (auto dim = instruction.getDefiningOp<tensor::DimOp>()) {
         backwardDim(dim);
-      } else if (auto cast = instruction.getDefiningOp<IndexCastOp>()) {
+      } else if (auto cast = instruction.getDefiningOp<arith::IndexCastOp>()) {
         backwardIndexCast(cast);
       } else if (auto fromElements =
                      instruction.getDefiningOp<tensor::FromElementsOp>()) {
@@ -171,7 +171,7 @@ struct ShapeVisitor {
         forwardShapeOf(shapeof);
       } else if (auto dim = instruction.getDefiningOp<tensor::DimOp>()) {
         forwardDim(dim);
-      } else if (auto cast = instruction.getDefiningOp<IndexCastOp>()) {
+      } else if (auto cast = instruction.getDefiningOp<arith::IndexCastOp>()) {
         forwardIndexCast(cast);
       } else if (auto fromElements =
                      instruction.getDefiningOp<tensor::FromElementsOp>()) {
@@ -227,7 +227,7 @@ struct ShapeVisitor {
   }
   void forwardDim(tensor::DimOp op) {
     auto &dims = insert(ShapeOrValueOfTensor::getValueOf(op));
-    if (auto index = op.index().getDefiningOp<ConstantOp>()) {
+    if (auto index = op.index().getDefiningOp<arith::ConstantOp>()) {
       int64_t i = index.value().cast<IntegerAttr>().getInt();
       auto in = lookup(ShapeOrValueOfTensor::getShapeOf(op.source()));
       dims.push_back({in[i].symbols, in[i].expr});
@@ -256,11 +256,11 @@ struct ShapeVisitor {
                                                    lhs[i].symbols.size()));
     }
   }
-  void backwardIndexCast(IndexCastOp op) {
+  void backwardIndexCast(arith::IndexCastOp op) {
     forwards_worklist.push_back(ShapeOrValueOfTensor::getValueOf(op));
     backwards_worklist.push_back(ShapeOrValueOfTensor::getValueOf(op.in()));
   }
-  void forwardIndexCast(IndexCastOp op) {
+  void forwardIndexCast(arith::IndexCastOp op) {
     auto &dims = insert(ShapeOrValueOfTensor::getValueOf(op));
     auto in = lookup(ShapeOrValueOfTensor::getValueOf(op.in()));
     for (int64_t i = 0, e = dim0size(op.getType()); i != e; ++i) {
@@ -290,7 +290,7 @@ struct ShapeVisitor {
   void forwardTensorExtract(tensor::ExtractOp op) {
     auto &dims = insert(ShapeOrValueOfTensor::getValueOf(op));
     assert(op.indices().size() == 1);
-    if (auto index = op.indices().front().getDefiningOp<ConstantOp>()) {
+    if (auto index = op.indices().front().getDefiningOp<arith::ConstantOp>()) {
       int64_t i = index.value().cast<IntegerAttr>().getInt();
       // We asssume this is in bounds.
       auto in = lookup(ShapeOrValueOfTensor::getValueOf(op.tensor()));

@@ -1009,9 +1009,12 @@ class Trackable(object):
       restore_ops.extend(new_restore_ops)
       tensor_saveables.update(new_tensor_saveables)
       python_saveables.extend(new_python_saveables)
-    restore_ops.extend(
-        current_position.checkpoint.restore_saveables(
-            tensor_saveables, python_saveables))
+
+    # Restore slot variables first.
+    #
+    # Order matters because tensor_saveables from above may contain "saveables"
+    # with side effects that expect the restored slot variable values.
+    #
     # It is faster to restore slot variables separately because the file reader
     # (BundleReader) assumes that variables are stored on disk in alphabetical
     # order. However, slot variables are stored in their own groups after other
@@ -1026,6 +1029,10 @@ class Trackable(object):
         current_position.checkpoint.restore_saveables(
             current_position.checkpoint.slot_restoration_tensor_saveables, []))
     current_position.checkpoint.slot_restoration_tensor_saveables.clear()
+
+    restore_ops.extend(
+        current_position.checkpoint.restore_saveables(tensor_saveables,
+                                                      python_saveables))
     return restore_ops
 
   def _single_restoration_from_checkpoint_position(self, checkpoint_position,
@@ -1249,6 +1256,8 @@ class Trackable(object):
       **kwargs: Keyword arguments passed to the object when loading. As of now,
         the only supported kwarg is:
         * proto: A `google.protobuf.Any` proto read from the SavedModel.
+        * dependencies: A dictionary mapping names to dependencies (see
+          `_deserialization_dependencies`).
 
     Returns:
       A new object.
@@ -1282,3 +1291,32 @@ class Trackable(object):
       value: The child `Trackable` object.
     """
     self._track_trackable(value, name, overwrite=True)
+
+  def _deserialization_dependencies(self):
+    """Returns a dictionary containing `Trackables` that this object depends on.
+
+    Dependencies define the order to serialize and deserialize objects in the
+    SavedModel. For example:
+
+    class A(Trackable):
+      b = B()
+      def _deserialization_dependencies(self):
+        return {'b': self.b}
+
+    class B(Trackable):
+      pass
+
+    We say that object `a=A()` depends on `a.b`.
+
+    Dependencies are guaranteed to be serialized and deserialized before the
+    object depending on them. The following methods use dependencies:
+      - `_deserialize_from_proto` [loading]
+
+    SavedModel loads with the bottom-up approach, by first creating all objects
+    (in the order defined by the dependencies), then connecting the children.
+
+    Returns:
+      A dictionary mapping names to `Trackable` dependencies. All trackables
+      returned must also be in the `_checkpoint_dependencies` dict.
+    """
+    return {}

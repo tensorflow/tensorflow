@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -41,14 +42,8 @@ namespace {
 // are used to propagate such information.
 
 struct TPUIdentityPruning
-    : public PassWrapper<TPUIdentityPruning, OperationPass<ModuleOp>> {
+    : public TF::TPUIdentityPruningPassBase<TPUIdentityPruning> {
   void runOnOperation() override;
-
-  StringRef getArgument() const final { return "tf-tpu-identity-pruning"; }
-
-  StringRef getDescription() const final {
-    return "Removes Identity/IdentityN ops from the TPU computation";
-  }
 };
 
 // Collects all reachable functions (via call ops) from a given region.
@@ -109,8 +104,6 @@ void TPUIdentityPruning::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUIdentityPruningPass() {
   return std::make_unique<TPUIdentityPruning>();
 }
-
-static PassRegistration<TPUIdentityPruning> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

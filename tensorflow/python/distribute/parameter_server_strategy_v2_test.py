@@ -173,14 +173,13 @@ class ParameterServerStrategyV2Test(test.TestCase):
       yield
 
     self.assertIn(
-        "It is detected that a function used with "
-        "`tf.distribute.experimental.ParameterServerStrategy` "
-        "is executed locally on the coordinator. This is inefficient but may "
-        "be valid for one-off tasks such as inferring output signature. "
-        "To properly distribute functions to run on workers, `run` or "
-        "`reduce` should be used within a function passed to `"
-        "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`.",
-        logs.output[0])
+        "A `tf.distribute.experimental.ParameterServerStrategy` method is "
+        "invoked without using `ClusterCoordinator.schedule`. If you are not "
+        "tracing a tf.function, this method is possibly executed on the "
+        "coordinator, which can be slow. To properly dispatch functions to "
+        "run on workers, methods like `run` or `reduce` should be used "
+        "within a function passed to `tf.distribute.experimental.coordinator."
+        "ClusterCoordinator.schedule`.", logs.output[0])
 
   def testRunNotUsedWithClusterCoordinator(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(

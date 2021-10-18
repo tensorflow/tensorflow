@@ -4460,11 +4460,11 @@ Status ConvertConcat(OpConverterParams* params) {
         "Number of inputs for ConcatV2 is inconsistent with N attribute, at ",
         node_def.name());
   }
-  // Validate inputs. Values must be tensors for now, although it would be
-  // possible to accept weights in explicit batch mode. See CheckInputsWeights
-  // for details. TODO(tfeher): Allow weight input in explicit batch mode.
+  // Validate inputs.
   std::vector<std::pair<string, TrtInputArg>> inputs_kinds;
-  TrtInputArg expected_input = TrtInputArg::kTensor;
+  TrtInputArg expected_input =
+      params->use_implicit_batch ? TrtInputArg::kTensor : TrtInputArg::kBoth;
+
   inputs_kinds.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     inputs_kinds.push_back({StrCat("values_", i), expected_input});
@@ -4494,8 +4494,14 @@ Status ConvertConcat(OpConverterParams* params) {
   // Gather inputs as tensors
   std::vector<ITensorProxyPtr> input_tensors;
   input_tensors.reserve(num_inputs);
+
   for (int i = 0; i < num_inputs; i++) {
-    input_tensors.push_back(inputs.at(i).tensor());
+    if (inputs.at(i).is_tensor()) {
+      input_tensors.push_back(inputs.at(i).tensor());
+    } else {
+      input_tensors.push_back(params->converter->CreateConstantLayer(
+          inputs.at(i).weights(), inputs.at(i).GetTrtDims()));
+    }
   }
   std::vector<nvinfer1::ITensor*> trt_input_tensors;
   for (const auto& t : input_tensors) {
@@ -6738,7 +6744,6 @@ Status ConvertSegmentToGraphDef(
     EngineInfo* engine_info) {
   std::vector<EngineConnection>* connections = &engine_info->connections;
   GraphDef* segment_def = &engine_info->segment_graph_def;
-  bool has_int32_input = false;
   std::set<string> marker_nodes;
   // Update connection shapes/data types and add corresponding input/output
   // nodes in the segment graphdef.
@@ -6769,10 +6774,6 @@ Status ConvertSegmentToGraphDef(
 
     // Add dummy input/output nodes to the segment graphdef.
     if (connection.is_input_edge) {
-      if (dtype == DT_INT32 && !has_int32_input) {
-        has_int32_input = true;
-      }
-
       const string node_name =
           StrCat(IONamePrefixes::kInputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
@@ -6818,11 +6819,6 @@ Status ConvertSegmentToGraphDef(
     }
   }  // for each connection.
 
-  std::set<string> subgraph_node_names;
-  for (const Node* node : subgraph_nodes) {
-    subgraph_node_names.insert(node->name());
-  }
-
   std::unordered_map<int, int> old_to_new_id_map;
   // Copy internal nodes to new graphdef
   string local_scope = subgraph_nodes.front()->name();
@@ -6831,27 +6827,6 @@ Status ConvertSegmentToGraphDef(
     old_to_new_id_map[node->id()] = segment_def->node_size();
     auto snode = segment_def->add_node();
     *snode = node->def();
-    if (snode->op() == "Shape") {
-      const std::string copy_op_name = snode->name();
-      std::string shape_op_name = copy_op_name + "_cpu_result";
-
-      // Add a node to copy the Shape OP output to GPU. Use the Shape OP node
-      // name for this new node so that users switch to use the result of this
-      // new node without having to change the name of the value they use.
-      NodeDef* copy_op = segment_def->add_node();
-      copy_op->set_name(copy_op_name);
-      copy_op->set_op("_CopyFromHostToGpu");
-      *copy_op->add_input() = shape_op_name + ":0";
-      tensorflow::DataType type = snode->attr().at("out_type").type();
-      AddNodeAttr("T", type, copy_op);
-      AddNodeAttr("out_type", type, copy_op);
-
-      // Rename the Shape OP node and add the new name to the set of node names
-      // for the engine.
-      snode->set_name(shape_op_name);
-      subgraph_node_names.insert(shape_op_name);
-      VLOG(2) << "Add copy node " << copy_op->DebugString();
-    }
     VLOG(2) << "Copying " << snode->name() << " to subgraph";
   }
   // Update the inputs of the new input nodes to point to placeholder nodes.
@@ -6866,6 +6841,10 @@ Status ConvertSegmentToGraphDef(
             << " from " << snode->input(connection.inside_port) << " to "
             << arg_name;
     snode->set_input(connection.inside_port, arg_name);
+  }
+  std::set<string> subgraph_node_names;
+  for (const Node* node : subgraph_nodes) {
+    subgraph_node_names.insert(node->name());
   }
 
   // Remove control inputs that are not inside the segment.
@@ -6901,8 +6880,6 @@ Status ConvertSegmentToGraphDef(
       snode->mutable_input()->RemoveLast();
     }
   }
-  engine_info->engine_name = StrCat(local_scope, engine_info->engine_name);
-  engine_info->has_int32_input = has_int32_input;
   return Status::OK();
 }
 

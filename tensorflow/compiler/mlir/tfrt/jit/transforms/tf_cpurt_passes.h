@@ -59,6 +59,9 @@ std::unique_ptr<mlir::FunctionPass> CreateLinalgMatmulSpecializationPass();
 // Pass to split _Fused Tensorflow kernels into primitives.
 std::unique_ptr<mlir::FunctionPass> CreateFissionPass();
 
+// Pass to fuse Linalg generic operations on Tensors.
+std::unique_ptr<mlir::FunctionPass> CreateFusionPass();
+
 // Pass to optimize broadcasts based on the symbolic shape constraints.
 std::unique_ptr<mlir::FunctionPass> CreateSymbolicShapeOptimizationPass(
     bool constraints_only = false);

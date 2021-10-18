@@ -26,7 +26,7 @@ tf_module {
   }
   member {
     name: "IteratorSpec"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'typing._ProtocolMeta\'>"
   }
   member {
     name: "Options"

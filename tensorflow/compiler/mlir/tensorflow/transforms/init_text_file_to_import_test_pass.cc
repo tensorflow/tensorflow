@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes_detail.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
@@ -35,8 +38,8 @@ namespace {
 // InitTextFileToImportTestPass generates a temporary file and run the
 // InitTextFileToImportPass for testing purpose.
 class InitTextFileToImportTestPass
-    : public mlir::PassWrapper<InitTextFileToImportTestPass,
-                               OperationPass<ModuleOp>> {
+    : public tf_test::InitTextFileToImportTestPassBase<
+          InitTextFileToImportTestPass> {
  public:
   explicit InitTextFileToImportTestPass() {}
 
@@ -72,7 +75,8 @@ void InitTextFileToImportTestPass::runOnOperation() {
   MLIRContext* context = &getContext();
 
   for (FuncOp func : module.getOps<FuncOp>()) {
-    llvm::SmallVector<ConstantOp, 4> constant_ops(func.getOps<ConstantOp>());
+    llvm::SmallVector<arith::ConstantOp, 4> constant_ops(
+        func.getOps<arith::ConstantOp>());
     for (auto op : constant_ops) {
       ShapedType shaped_type =
           RankedTensorType::get({1}, StringType::get(context));
@@ -100,18 +104,10 @@ void InitTextFileToImportTestPass::runOnOperation() {
 // InitTextFileToImportSavedModelTestPass mimicks a temporary saved model and
 // run the InitTextFileToImportPass for testing purpose.
 class InitTextFileToImportSavedModelTestPass
-    : public mlir::PassWrapper<InitTextFileToImportSavedModelTestPass,
-                               OperationPass<ModuleOp>> {
+    : public tf_test::InitTextFileToImportSavedModelTestPassBase<
+          InitTextFileToImportSavedModelTestPass> {
  public:
   explicit InitTextFileToImportSavedModelTestPass() {}
-
-  StringRef getArgument() const final {
-    return "tf-init-text-file-to-import-saved-model-test";
-  }
-
-  StringRef getDescription() const final {
-    return "mimick a saved model and invoke InitTextFileToImportPass";
-  }
 
  private:
   void runOnOperation() override;
@@ -148,11 +144,16 @@ void InitTextFileToImportSavedModelTestPass::runOnOperation() {
 }
 
 }  // namespace
-
-static PassRegistration<InitTextFileToImportTestPass> pass;
-
-static PassRegistration<InitTextFileToImportSavedModelTestPass>
-    saved_model_pass;
-
 }  // namespace TF
+
+namespace tf_test {
+std::unique_ptr<OperationPass<ModuleOp>> CreateInitTextFileToImportTestPass() {
+  return std::make_unique<TF::InitTextFileToImportTestPass>();
+}
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateInitTextFileToImportSavedModelTestPass() {
+  return std::make_unique<TF::InitTextFileToImportSavedModelTestPass>();
+}
+}  // namespace tf_test
+
 }  // namespace mlir

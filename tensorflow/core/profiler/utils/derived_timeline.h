@@ -108,7 +108,8 @@ struct Symbol {
   std::string source_info;
 };
 
-using SymbolResolver = std::function<Symbol(absl::string_view hlo_module_name,
+using SymbolResolver = std::function<Symbol(absl::optional<uint64_t> program_id,
+                                            absl::string_view hlo_module_name,
                                             absl::string_view hlo_op)>;
 
 // Derives TF name scope and op events from the TF op's fully qualified name

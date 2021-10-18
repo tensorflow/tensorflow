@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -84,15 +85,8 @@ namespace cutil = TF::collection_ops_util;
 //
 // The pass also works across control flow and functional calls.
 struct StackOpsDecompositionPass
-    : public PassWrapper<StackOpsDecompositionPass, OperationPass<ModuleOp>> {
-  StringRef getArgument() const final { return "tf-stack-ops-decomposition"; }
-
-  StringRef getDescription() const final {
-    return "Decompose stack operations into local variable operations. Needs "
-           "static shapes.";
-  }
-
-  void runOnOperation() override;
+    : public TF::StackOpsDecompositionPassBase<StackOpsDecompositionPass> {
+  void runOnOperation() final;
 };
 
 // Returns the type of the local variable for the stack size.
@@ -590,8 +584,6 @@ void StackOpsDecompositionPass::runOnOperation() {
     signalPassFailure();
   }
 }
-
-static PassRegistration<StackOpsDecompositionPass> pass;
 
 }  // namespace
 

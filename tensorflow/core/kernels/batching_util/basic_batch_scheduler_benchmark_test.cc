@@ -290,7 +290,7 @@ string LatencyBenchmark::ReportLatencyBatchSz() {
 // Multi-threaded (thread > 1) version simulates N concurrent request streams.
 void ThroughputBM(::testing::benchmark::State& state) {
   static std::unique_ptr<ThroughputBenchmark> bm;
-  if (state.thread_index == 0) {
+  if (state.thread_index() == 0) {
     BasicBatchScheduler<BenchmarkBatchTask>::Options scheduler_options;
     const int kMaxBatchSize = 100;
     scheduler_options.max_batch_size = kMaxBatchSize;
@@ -312,7 +312,7 @@ void ThroughputBM(::testing::benchmark::State& state) {
     }
   }
 
-  if (state.thread_index == 0) {
+  if (state.thread_index() == 0) {
     state.ResumeTiming();
     // Wait for the scheduler to process all tasks.
     bm->ResetScheduler();
@@ -336,7 +336,7 @@ BENCHMARK(ThroughputBM)
 // Multi-threaded (thread > 1) version simulates N concurrent request streams.
 void LatencyBM(::testing::benchmark::State& state) {
   static std::unique_ptr<LatencyBenchmark> bm;
-  if (state.thread_index == 0) {
+  if (state.thread_index() == 0) {
     BasicBatchScheduler<BenchmarkBatchTask>::Options scheduler_options;
     const int kMaxBatchSize = 100;
     scheduler_options.max_batch_size = kMaxBatchSize;
@@ -345,7 +345,7 @@ void LatencyBM(::testing::benchmark::State& state) {
     scheduler_options.max_enqueued_batches = INT_MAX;  // Unbounded queue.
     const int kBatchCpuCost = 10 * 1000 * 1000;
     const int64 kQps = state.range(2);
-    const int64 kInjectionIntervalMicros = 1000000 / (kQps / state.threads);
+    const int64 kInjectionIntervalMicros = 1000000 / (kQps / state.threads());
     const int64 kNumTasks = latency_benchmark_duration_secs * kQps;
     if (kNumTasks <= 10000) {
       LOG(WARNING) << "Not enough tasks (" << kNumTasks << ")"
@@ -361,7 +361,7 @@ void LatencyBM(::testing::benchmark::State& state) {
     bm->InjectLoad();
   }
 
-  if (state.thread_index == 0) {
+  if (state.thread_index() == 0) {
     state.ResumeTiming();
     // Wait for the scheduler to process all tasks.
     bm->ResetScheduler();

@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 
@@ -49,13 +50,7 @@ namespace {
 // implementations to decrease the number of operations needed to perform a
 // computation.
 struct FusedKernelMatcherPass
-    : public PassWrapper<FusedKernelMatcherPass, FunctionPass> {
-  StringRef getArgument() const final { return "tf-fused-kernel-matcher"; }
-
-  StringRef getDescription() const final {
-    return "Matches computations corresponding to optimized fused kernels";
-  }
-
+    : public FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
   void runOnFunction() override;
 };
 
@@ -262,8 +257,6 @@ void FusedKernelMatcherPass::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass() {
   return std::make_unique<FusedKernelMatcherPass>();
 }
-
-static PassRegistration<FusedKernelMatcherPass> pass;
 
 }  // namespace TF
 

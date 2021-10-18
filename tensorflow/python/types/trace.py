@@ -57,14 +57,14 @@ class TraceType(abc.ABC):
     pass
 
 
-class SignatureContext():
-  """Contains information scoped to the entirety of signature tracing.
+class TracingContext():
+  """Contains information scoped to the tracing of multiple objects.
 
-  `SignatureContext` is a container class for flags and variables that have
+  `TracingContext` is a container class for flags and variables that have
   any kind of influence on the tracing behaviour of the class implementing
-  the __tf_trace_protocol__. This context will be shared across all
-  __tf_trace_protocol__ calls while constructing the TraceType for a particular
-  set of arguments.
+  the __tf_tracing_type__. This context will be shared across all
+  __tf_tracing_type__ calls while constructing the TraceType for a particular
+  set of objects.
   """
   pass
 
@@ -77,6 +77,7 @@ class SupportsTracingType(Protocol):
   classes according to the behaviour specified by their TraceType.
   """
 
-  @abc.abstractmethod
-  def __tf_tracing_type__(self, context: SignatureContext) -> TraceType:
-    pass
+  def __tf_tracing_type__(self, context: TracingContext) -> TraceType:
+    raise NotImplementedError(
+        "Class inheriting SupportsTracingType must implement __tf_tracing_type__"
+    )

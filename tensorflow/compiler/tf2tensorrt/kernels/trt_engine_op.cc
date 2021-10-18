@@ -506,19 +506,60 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   }
 }
 
+// Copies input tensor ctx->input(i) (which is in device memory) to the host,
+// and place the resulting host tensor to the back of native_inputs.
+Status CopyToHostAsync(OpKernelContext* ctx, std::vector<Tensor>* native_inputs,
+                       int i, const cudaStream_t stream) {
+  // The TRTEngineOp has all ctx->inputs on the device. In contrast, the
+  // native segment expects to find int32 inputs on the host. We copy int32
+  // inputs from device to host.
+
+  AllocatorAttributes allocator_attr;
+  allocator_attr.set_on_host(true);
+  Tensor t;
+  TF_RETURN_IF_ERROR(ctx->allocate_temp(
+      ctx->input_dtype(i), ctx->input(i).shape(), &t, allocator_attr));
+  native_inputs->push_back(t);
+  const Tensor& gpu_tensor = ctx->input(i);
+  auto ret = cudaMemcpyAsync(
+      t.flat<int32>().data(), gpu_tensor.flat<int32>().data(),
+      t.NumElements() * sizeof(int32), cudaMemcpyDeviceToHost, stream);
+  if (ret != 0) {
+    return errors::Internal("Could not copy tensor for native segment input");
+  }
+  return Status::OK();
+}
+
+// Copies native_tensor, which is in host memory to ctx->output(t), which is in
+// device memory.
+Status CopyToDeviceAsync(OpKernelContext* ctx, const Tensor& native_tensor,
+                         int t, cudaStream_t stream) {
+  Tensor* gpu_tensor;
+  TF_RETURN_IF_ERROR(
+      ctx->allocate_output(t, native_tensor.shape(), &gpu_tensor));
+  auto ret = cudaMemcpyAsync(gpu_tensor->flat<int32>().data(),
+                             native_tensor.flat<int32>().data(),
+                             native_tensor.NumElements() * sizeof(int32),
+                             cudaMemcpyHostToDevice, stream);
+  if (ret != 0) {
+    return errors::Internal("Could not copy tensor for native segment output");
+  }
+  return Status::OK();
+}
+
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                        AsyncHelper* async_helper) {
   tensorflow::profiler::TraceMe activity(
       "TRTEngineOp::ExecuteNativeSegment",
       tensorflow::profiler::TraceMeLevel::kInfo);
-  std::vector<Tensor> inputs;
-  std::vector<Tensor>* outputs = new std::vector<Tensor>();
+  std::vector<Tensor> native_inputs;
+  std::vector<Tensor>* native_outputs = new std::vector<Tensor>();
+  DummyAsyncHelper dummy_async_helper;
   if (native_execution_func_handle_ == kInvalidHandle) {
     StatusOr<FunctionLibraryRuntime::Handle> status_or_handle =
         ConstructFunctionHandle(ctx->function_library(), ctx->device()->name(),
                                 allow_soft_placement_, ctx->num_inputs(),
                                 ctx->num_outputs());
-    DummyAsyncHelper dummy_async_helper;
     OP_REQUIRES_OK_ASYNC(ctx, status_or_handle.status(), dummy_async_helper);
     native_execution_func_handle_ = *status_or_handle;
   }
@@ -528,26 +569,55 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   opts.rendezvous = ctx->rendezvous();
   opts.cancellation_manager = ctx->cancellation_manager();
   opts.runner = ctx->runner();
-  inputs.reserve(ctx->num_inputs());
+  native_inputs.reserve(ctx->num_inputs());
+  int n_copies = 0;
+  const cudaStream_t* stream = CHECK_NOTNULL(
+      reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
+                                                ->stream()
+                                                ->implementation()
+                                                ->GpuStreamMemberHack()));
   for (int i = 0; i < ctx->num_inputs(); i++) {
-    inputs.push_back(ctx->input(i));
+    if (ctx->input_dtype(i) != DT_INT32) {
+      native_inputs.push_back(ctx->input(i));
+    } else {
+      OP_REQUIRES_OK_ASYNC(ctx,
+                           CopyToHostAsync(ctx, &native_inputs, i, *stream),
+                           dummy_async_helper);
+      n_copies++;
+    }
+  }
+  if (n_copies > 0) {
+    // If we have any int32 tensors, then wait until data is copied to host.
+    cudaStreamSynchronize(*stream);
   }
   VLOG(1) << "Executing native segment: " << name();
   // Increment the reference count of the async_helper by 1. When the native
-  // segment finishes execution asynchronously, we decrement the reference count
-  // of the object.
+  // segment finishes execution asynchronously, we decrement the reference
+  // count of the object.
   async_helper->Ref();
-  lib->Run(opts, native_execution_func_handle_, inputs, outputs,
-           [this, ctx, outputs, async_helper](const Status& s) {
-             core::ScopedUnref sc(async_helper);
-             DummyAsyncHelper dummy_async_helper;
-             std::unique_ptr<std::vector<Tensor>> outputs_wrapper(outputs);
-             OP_REQUIRES_OK_ASYNC(ctx, s, dummy_async_helper);
-             VLOG(1) << "Native Segment completed";
-             for (size_t t = 0; t < outputs->size(); ++t) {
-               ctx->set_output(t, outputs->at(t));
-             }
-           });
+  lib->Run(
+      opts, native_execution_func_handle_, native_inputs, native_outputs,
+      [this, ctx, native_outputs, async_helper, stream](const Status& s) {
+        core::ScopedUnref sc(async_helper);
+        DummyAsyncHelper dummy_async_helper;
+        std::unique_ptr<std::vector<Tensor>> outputs_wrapper(native_outputs);
+        OP_REQUIRES_OK_ASYNC(ctx, s, dummy_async_helper);
+        VLOG(1) << "Native Segment completed";
+        int n_copies = 0;
+        for (size_t t = 0; t < native_outputs->size(); ++t) {
+          if (native_outputs->at(t).dtype() == DT_INT32) {
+            OP_REQUIRES_OK_ASYNC(
+                ctx, CopyToDeviceAsync(ctx, native_outputs->at(t), t, *stream),
+                dummy_async_helper);
+            n_copies++;
+          } else {
+            ctx->set_output(t, native_outputs->at(t));
+          }
+        }
+        if (n_copies > 0) {
+          cudaStreamSynchronize(*stream);
+        }
+      });
 }
 
 void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,

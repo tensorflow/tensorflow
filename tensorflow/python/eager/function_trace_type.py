@@ -27,6 +27,22 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.types import trace
 
 
+class SignatureContext(trace.TracingContext):
+  """Container for variables and flags shared across signature tracing."""
+
+  def __init__(self):
+    self._global_to_local_id = {}
+
+  # TODO(b/202772221): Consider dropping after alias pattern matching is
+  # supported.
+  def get_local_id(self, local_id):
+
+    if local_id not in self._global_to_local_id:
+      self._global_to_local_id[local_id] = len(self._global_to_local_id)
+
+    return self._global_to_local_id[local_id]
+
+
 class GenericType(trace.TraceType):
   """Represents an arbitrary Python object."""
 
@@ -212,7 +228,7 @@ def get_arg_spec(inputs, include_tensor_ranks_only,
   """
 
   # TODO(b/201533914): Drop GenericType once TFE_Py_EncodeArg returns TraceType.
-  signature_context = trace.SignatureContext()
+  signature_context = SignatureContext()
   return GenericType(
       pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
                                   include_tensor_ranks_only,

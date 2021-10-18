@@ -21,6 +21,7 @@ package_group(
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/mlir/tfrt_compiler/...",
         "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/tfrt/...",
         "//learning/serving/contrib/tfrt/mlir/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
@@ -310,6 +311,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_op_interfaces",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_clustering",
         "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_opdefs",
@@ -323,8 +325,7 @@ cc_library(
         "@tf_runtime//:stream_analysis",
         "@tf_runtime//:test_kernels_opdefs",
     ] + if_google([
-        # TODO(tfrt-devs): Move out of experimental.
-        "//tensorflow/compiler/mlir/tfrt/experimental:tf_to_corert_tpu",
+        "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
     alwayslink = 1,
 )
@@ -343,6 +344,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
@@ -374,6 +376,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -409,6 +412,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/core:framework",
@@ -420,7 +424,7 @@ cc_library(
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:tensor",
     ] + if_google([
-        "//tensorflow/compiler/mlir/tfrt/experimental:tf_to_corert_tpu",
+        "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
 )
 
@@ -457,7 +461,7 @@ cc_library(
         "@tf_runtime//:bef",
         "@tf_runtime//:mlirtobef",
     ] + if_google([
-        "//tensorflow/compiler/mlir/tfrt/experimental:tf_to_corert_tpu",
+        "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
 )
 
@@ -584,12 +588,13 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt_data",
     ] + if_google([
-        "//tensorflow/compiler/mlir/tfrt/experimental:tf_to_corert_tpu",
+        "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
 )
 
 tf_cc_binary(
     name = "tf-tfrt-opt",
+    testonly = True,
     srcs = ["tf-tfrt-opt.cc"],
     deps = [
         ":passes",
@@ -600,7 +605,8 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
+        "//tensorflow/compiler/mlir/tensorflow:bridge_pass_test_pipeline_registration",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_test_passes",
         "//tensorflow/core:lib",

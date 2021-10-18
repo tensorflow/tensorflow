@@ -4038,6 +4038,7 @@ class LocalResourceIdMap {
 };
 
 // Contains encoding configuration, intermediary data and result.
+// TODO(b/201533914): Move EncodingContext fields to signature_context.
 struct EncodingContext {
   bool include_tensor_ranks_only;
   bool encode_variable_by_resource_id;
@@ -4290,11 +4291,11 @@ tensorflow::Status TryEncodingProtocol(PyObject* arg,
                                        EncodingContext& context) {
   // TODO(b/202447704): Drop _tf_tracing_type at protocol export.
   tensorflow::Safe_PyObjectPtr protocol(
-      PyObject_GetAttrString(arg, "_tf_trace_type"));
+      PyObject_GetAttrString(arg, "_tf_tracing_type"));
 
   if (protocol == nullptr) {
     PyErr_Clear();
-    protocol.reset(PyObject_GetAttrString(arg, "__tf_trace_type__"));
+    protocol.reset(PyObject_GetAttrString(arg, "__tf_tracing_type__"));
     if (protocol.get() == nullptr) {
       PyErr_Clear();
       return tensorflow::errors::Unimplemented(
@@ -4302,13 +4303,13 @@ tensorflow::Status TryEncodingProtocol(PyObject* arg,
     }
   }
 
-  tensorflow::Safe_PyObjectPtr tracetype(
-      PyObject_CallObject(protocol.get(), context.signature_context));
+  tensorflow::Safe_PyObjectPtr tracetype(PyObject_CallObject(
+      protocol.get(), Py_BuildValue("(O)", context.signature_context)));
 
   if (tracetype.get() == nullptr) {
     PyErr_Clear();
     return tensorflow::errors::Unknown(
-        "Call to '__tf_trace_type__' failed to return a TraceType.");
+        "Call to '__tf_tracing_type__' failed to return a TraceType.");
   }
   Py_INCREF(tracetype.get());
 

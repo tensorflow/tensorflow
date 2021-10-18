@@ -2123,18 +2123,18 @@ if not six.PY2:
   ops.register_tensor_conversion_function(builtins.range,
                                           _range_tensor_conversion_function)
 
+
 # Reduction operations
 def _ReductionDims(x, axis):  # pylint: disable=invalid-name
   """Returns range(0, rank(x)) if axis is None."""
   if axis is not None:
     return axis
   else:
-    x_rank = None
-    if isinstance(x, ops.Tensor):
+    try:
       x_rank = x.shape.rank
-    elif (isinstance(x, sparse_tensor.SparseTensor) and
-          x.dense_shape.shape.is_fully_defined()):
-      x_rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
+    except AttributeError:
+      x_rank = None
+
     # Fast path: avoid creating Rank and Range ops if ndims is known.
     if x_rank:
       return constant_op.constant(np.arange(x_rank, dtype=np.int32))
@@ -3415,25 +3415,20 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor.
   """
-  keepdims = False if keepdims is None else keepdims
-  input_tensor = ops.convert_to_tensor(input_tensor)
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
-    reduce_dim = _ReductionDims(input_tensor, axis)
-    raw_max = reduce_max_with_dims(
-        input_tensor, axis=axis, keepdims=True, dims=reduce_dim)
+    raw_max = reduce_max(input_tensor, axis=axis, keepdims=True)
     my_max = array_ops.stop_gradient(
         gen_math_ops.select(
             gen_math_ops.is_finite(raw_max), raw_max,
             gen_array_ops.zeros_like(raw_max)))
     result = gen_math_ops.log(
-        reduce_sum_with_dims(
-            gen_math_ops.exp(gen_math_ops.sub(input_tensor, my_max)),
+        reduce_sum(
+            exp(subtract(input_tensor, my_max)),
             axis=axis,
-            keepdims=keepdims,
-            dims=reduce_dim))
+            keepdims=keepdims))
     if not keepdims:
       my_max = array_ops.reshape(my_max, gen_array_ops.shape(result))
-    result = _add_dispatch(result, my_max, name=name)
+    result = add(result, my_max, name=name)
     return _may_reduce_to_scalar(keepdims, axis, result)
 
 

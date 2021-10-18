@@ -39,7 +39,7 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
-
+namespace {
 class AdjustLayout : public PassWrapper<AdjustLayout, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect>();
@@ -131,13 +131,14 @@ class AdjustLayout : public PassWrapper<AdjustLayout, FunctionPass> {
 
   void runOnFunction() override { getFunction().walk(runOnInfeedOp); }
 };
-
-static PassRegistration<AdjustLayout> pass;
+}  // anonymous namespace
 
 // Header for this is in passes.h, which pulls into many deps. NOLINTNEXTLINE
 std::unique_ptr<Pass> CreateAdjustLayoutPass() {
   return std::make_unique<AdjustLayout>();
 }
+
+void RegisterAdjustLayoutPass() { static PassRegistration<AdjustLayout> pass; }
 
 }  // namespace mhlo
 }  // namespace mlir

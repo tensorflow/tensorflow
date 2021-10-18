@@ -50,6 +50,7 @@ from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import graph_view
+from tensorflow.python.training.tracking import trackable_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
@@ -145,6 +146,8 @@ class Loader(object):
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
 
+    self._pretty_printer = util.ObjectGraphProtoPrettyPrinter(self._proto)
+
     # Stores user-defined node_filters argument.
     self._node_filters = filters
     # Stores map of string paths to integers.
@@ -154,7 +157,7 @@ class Loader(object):
       # If node_filters is a dict, then the values may contain already created
       # trackable objects. In this case, create a dictionary mapping node IDs to
       # the already created nodes. This dict will be updated in
-      # `_retrieve_all_filtered_nodes` with tracked dependencies.
+      # `_retrieve_all_filtered_nodes` with tracked children.
       for node_path, node in filters.items():
         if isinstance(node, tuple):
           self._loaded_nodes[self._node_path_to_id[node_path]] = node
@@ -164,6 +167,9 @@ class Loader(object):
     # Get a list of all integer node ids to load, or None if all nodes should be
     # loaded. This list includes ids of child nodes.
     self._filtered_nodes = self._retrieve_all_filtered_nodes()
+
+    # Order all nodes or filtered nodes using the dependencies.
+    self._ordered_node_ids = self._generate_ordered_node_ids()
 
     self._load_all()
 
@@ -201,7 +207,7 @@ class Loader(object):
     """Traverses through the object graph to get the IDs of all nodes to load.
 
     As a side-effect, if node_filters is a dictionary that contains already-
-    created objects, then the dependencies tracked by those objects will be
+    created objects, then the children tracked by those objects will be
     added to node_filters.
 
     Returns:
@@ -429,18 +435,48 @@ class Loader(object):
       node_setters[node_id] = setter
     return nodes, node_setters
 
-  def _iter_all_nodes(self):
+  def _generate_ordered_node_ids(self):
+    """Orders the node ids so that dependencies appear first."""
     if self._filtered_nodes is None:
-      return enumerate(self._proto.nodes)
+      unordered_ids = range(len(self._proto.nodes))
     else:
-      return [(node_id, self._proto.nodes[node_id])
-              for node_id in self._filtered_nodes]
+      unordered_ids = list(self._filtered_nodes)
+
+    dependency_map = {}
+    for node_id in unordered_ids:
+      deps = dependency_map[node_id] = []
+      if self._loaded_nodes.get(node_id) is not None:
+        # Deps are only used if the node has not been created.
+        continue
+      for reference in self._proto.nodes[node_id].dependencies:
+        dep = reference.node_id
+        deps.append(dep)
+        if self._filtered_nodes is not None and dep not in self._filtered_nodes:
+          raise ValueError(
+              "Unable to partially load SavedModel since the specified filter "
+              "does not include all deserialization dependencies. Please "
+              "include this path in the filter: "
+              f"{self._pretty_printer.node_names[dep]}")
+
+    try:
+      return list(trackable_utils.order_by_dependency(dependency_map))
+    except trackable_utils.CyclicDependencyError:
+      # This should not happen since there is already a validation for cycles
+      # when saving, but raise an error just in case.
+      raise ValueError("Encountered a cycle in the deserialization dependencies"
+                       "in the SavedModel. This is extremely unexpected, please"
+                       "file a bug and make sure you are not manually modifying"
+                       " the SavedModel.")
+
+  def _iter_all_nodes(self):
+    for node_id in self._ordered_node_ids:
+      yield node_id, self._proto.nodes[node_id]
 
   def _load_nodes(self):
     """Load all saved objects."""
     # `nodes` maps from node ids to recreated objects
     # `node_setters` maps from node ids to setter functions
-    # (same signature as setattr) for setting dependencies.
+    # (same signature as setattr) for setting children.
     nodes, node_setters = self._initialize_loaded_nodes()
 
     # Figure out which objects are slot variables. These objects are created
@@ -457,13 +493,16 @@ class Loader(object):
         # Defer recreating slot variables so we can use the public Optimizer
         # interface.
         continue
-      node, setter = self._recreate(proto, node_id)
+      node, setter = self._recreate(proto, node_id, nodes)
       nodes[node_id] = node
       node_setters[node_id] = setter
 
     # Now that we have created the variables being optimized, we have enough
     # information to re-create slot variables for them.
     for node_id, proto in self._iter_all_nodes():
+      if node_id not in nodes:
+        # This is a slot variable that has not been created yet.
+        continue
       optimizer_object = nodes[node_id]
       for slot_variable_proto in proto.slot_variables:
         optimized_variable = nodes[
@@ -544,12 +583,13 @@ class Loader(object):
       node_id = self._node_path_to_id[node_id]
     return self._nodes[node_id]
 
-  def _recreate(self, proto, node_id):
+  def _recreate(self, proto, node_id, nodes):
     """Creates a Python object from a SavedObject protocol buffer.
 
     Args:
       proto: a SavedObject proto
       node_id: int, the index of this object in the SavedObjectGraph node list.
+      nodes: dict mapping int node_ids -> created objects.
 
     Returns:
       The recreated object, and the set-attribute function for reconnecting
@@ -557,8 +597,12 @@ class Loader(object):
     """
     registered_class = registration.get_registered_class(proto.registered_name)
     if registered_class:
+      dependencies = {}
+      for reference in proto.dependencies:
+        dependencies[reference.local_name] = nodes[reference.node_id]
       obj = registered_class._deserialize_from_proto(  # pylint: disable=protected-access
-          proto=proto.serialized_user_proto)
+          proto=proto.serialized_user_proto,
+          dependencies=dependencies)
       return obj, type(obj)._add_trackable_child  # pylint: disable=protected-access
     else:
       return self._recreate_default(proto, node_id)

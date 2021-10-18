@@ -520,25 +520,11 @@ static void* benchmarks = []() {
             "_perm_", absl::StrJoin(benchmark_case.permutation, "_"));
 
         TransposeTestCase testcase = benchmark_case;
-        // FIXME(vyng):
-        // Once we've added OSS benchmark as a dependency, this #if-#else case
-        // should be updated to simply:
-        //
-        // benchmark::RegisterBenchmark( name.c_str(),
-        //    [fn, num_threads, testcase](benchmark::State& state) {
-        //      fn(testcase, num_threads, state);
-        //    });
-#if USING_TF_BENCHMARK
         BenchmarkFn fn = std::get<1>(variant);
-        auto* bm = new tensorflow::testing::Benchmark(
-            name.c_str(),
-            [fn, num_threads, &testcase](benchmark::State& state) {
+        benchmark::RegisterBenchmark(
+            name.c_str(), [fn, num_threads, testcase](benchmark::State& state) {
               fn(testcase, num_threads, state);
             });
-#else
-        LOG(WARNING) << "Benchmarks can only be run with USING_TF_BENCHMARK";
-        (void)(&num_threads);  // avoid "unused variable" warnings.
-#endif
       }
     }
   }

@@ -26,7 +26,7 @@ func @while_body(%arg0: tensor<*xi32>) -> (tensor<*xi32>) {
 }
 
 func @while_cond(%arg0: tensor<*xi32>) -> tensor<*xi1> {
-  %cst = constant dense<10> : tensor<i32>
+  %cst = arith.constant dense<10> : tensor<i32>
   %0 = "tf.Less"(%arg0, %cst) {T = i32, device = ""} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
   return %0 : tensor<*xi1>
 }

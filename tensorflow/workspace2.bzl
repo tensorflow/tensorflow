@@ -51,6 +51,7 @@ load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("@tf_toolchains//toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("@tf_toolchains//toolchains/remote:configure.bzl", "remote_execution_configure")
 load("@tf_toolchains//toolchains/clang6:repo.bzl", "clang6_configure")
+load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -188,11 +189,11 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "a19e5fcf04d6ff775cc5f9d9d0ef01e4c74e77519caf4077052f16f037eba6a6",
-        strip_prefix = "oneDNN-2.4-rc",
+        sha256 = "930a2327c4fe4018a604f67ca3c0ebea01436aad7ce1f4e01d088732bd19d16f",
+        strip_prefix = "oneDNN-2.4.1",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.4-rc.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v2.4-rc.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.4.1.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.4.1.tar.gz",
         ],
     )
 
@@ -1090,6 +1091,10 @@ def workspace():
     _tf_repositories()
 
     tfrt_dependencies()
+
+    # TODO(rostam): Delete after the release of Bazel built-in cc_shared_library.
+    # Initializes Bazel package rules' external dependencies.
+    rules_pkg_dependencies()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

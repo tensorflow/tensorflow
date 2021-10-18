@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/visitor_util.h"
 
 #define DEBUG_TYPE "tf-resource-device-inference"
@@ -60,14 +61,7 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 // This pass changes the module by adding "tf.device" attribute to function
 // arguments and adding "device" attribute to TF ops.
 struct ResourceDeviceInference
-    : public PassWrapper<ResourceDeviceInference, OperationPass<ModuleOp>> {
-  StringRef getArgument() const final { return "tf-resource-device-inference"; }
-
-  StringRef getDescription() const final {
-    return "Propagates the device attribute on resources from callers to "
-           "callees.";
-  }
-
+    : public ResourceDeviceInferencePassBase<ResourceDeviceInference> {
   void runOnOperation() override;
 };
 
@@ -317,8 +311,6 @@ void ResourceDeviceInference::runOnOperation() {
     if (walk_res.wasInterrupted()) return signalPassFailure();
   }
 }
-
-PassRegistration<ResourceDeviceInference> pass;
 
 }  // namespace
 

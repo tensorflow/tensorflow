@@ -48,7 +48,7 @@ GPU = "/device:GPU:0"
 
 
 # TODO(srbs): Why can't we use absl parameterized here?
-@test_util.with_eager_op_as_function(only_as_function=True)
+@test_util.with_eager_op_as_function
 class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def __init__(self):
@@ -78,6 +78,8 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       raise ValueError("Unable to determine calling Benchmark function.")
     if context.is_tfrt_enabled():
       name = name + "_tfrt"
+    if context.run_eager_op_as_function_enabled():
+      name = name + "_eager_op_as_function"
     return name
 
   def _run(self, func, num_iters):
@@ -90,7 +92,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       if device == GPU:
         mat = mat.gpu()
       func = lambda: math_ops.matmul(mat, mat)
-      self._run(func, num_iters=1000)
+      self._run(func, num_iters=5000)
 
   def benchmark_tf_matmul_2_by_2_CPU(self):
     self._benchmark_matmul(self._m_2_by_2, CPU)
@@ -111,7 +113,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._benchmark_matmul(self._m_1000_by_1000, GPU)
 
 
-@test_util.with_eager_op_as_function(only_as_function=True)
+@test_util.with_eager_op_as_function
 class RunEagerOpAsFunctionTest(test.TestCase):
 
   def setUp(self):

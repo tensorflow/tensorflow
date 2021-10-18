@@ -20,7 +20,7 @@ namespace tensorflow {
 static const char* mlir_input = R"(
 #map0 = affine_map<(d0) -> (d0)>
 func @log2_1d(%input: memref<?xf32>) -> memref<?xf32> {
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   %0 = memref.dim %input, %c0 : memref<?xf32>
   %output = memref.alloc(%0) : memref<?xf32>
 

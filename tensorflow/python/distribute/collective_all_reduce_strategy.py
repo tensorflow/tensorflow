@@ -42,6 +42,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
+from tensorflow.python.platform import remote_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training.tracking import base
@@ -398,11 +399,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices),
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     # CrossDeviceOps for per host tensors.
     self._host_cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=[self._worker_device],
         group_size=self._num_workers,
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
@@ -463,6 +466,16 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           scoped_allocator_enabled_ops=("CollectiveReduce",),
           device_filters=("/job:%s/task:%d" % (task_type, task_id),))
       self._collective_ops_configured = True
+      if context.context().coordination_service is None:
+        coordination_service = remote_utils.coordination_service_type(
+            cluster_resolver.rpc_layer)
+        coordinated_jobs = ["chief", "worker"]
+        if coordination_service and task_type in coordinated_jobs:
+          context.context().configure_coordination_service(
+              service_type=coordination_service,
+              service_leader=multi_worker_util.coordination_leader(
+                  cluster_spec),
+              coordinated_jobs=coordinated_jobs)
 
     # Starting a std server in eager mode and in independent worker mode.
     if (context.executing_eagerly() and
@@ -475,7 +488,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
       # If coordination service is enabled, use its internal heartbeat to detect
       # peer failures instead of the Python-level health check.
-      if config_proto.experimental.coordination_service.service_type:
+      if config_proto.experimental.coordination_config.service_type:
         self._enable_check_health = False
 
       if hasattr(cluster_resolver, "port"):
@@ -513,11 +526,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices) * self._num_workers,
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     # CrossDeviceOps for per host tensors.
     self._host_cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=[self._worker_device],
         group_size=self._num_workers,
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)

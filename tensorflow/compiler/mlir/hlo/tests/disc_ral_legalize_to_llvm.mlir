@@ -39,7 +39,7 @@ func @test_recv_input(%arg0: !disc_ral.context) {
   // CHECK: %[[T17:.*]] = llvm.getelementptr %[[T15]][%[[T16]], %[[T16]]] : (!llvm.ptr<array<42 x i8>>, i64, i64) -> !llvm.ptr<i8>
   // CHECK: llvm.call @disc_ral_call(%[[CTX]], %[[T17]], %[[T2]]) : (!llvm.ptr<i8>, !llvm.ptr<i8>, !llvm.ptr<ptr<i8>>) -> ()
   // CHECK: %[[OUT:.*]] = llvm.load %[[T12]] : !llvm.ptr<struct<(ptr<f32>, ptr<f32>, i64, array<2 x i64>, array<2 x i64>)>>
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   %0 = "disc_ral.dispatch"(%arg0, %c0) {backend_config = "cpu", call_target_name = "ral_recv_input", has_side_effect = false} : (!disc_ral.context, index) -> memref<?x?xf32>
   return
 }
@@ -83,7 +83,7 @@ func @test_send_output(%arg0: !disc_ral.context, %arg1: memref<?x?xf32>) {
   // CHECK: %[[T3:.*]] = llvm.getelementptr %[[T2]]{{.*}} : (!llvm.ptr<array<48 x i8>>, i64, i64) -> !llvm.ptr<i8>
   // CHECK: llvm.call @disc_ral_call(%[[CTX]], %[[T3]], %[[OARGS]]) : (!llvm.ptr<i8>, !llvm.ptr<i8>, !llvm.ptr<ptr<i8>>) -> ()
 
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   "disc_ral.dispatch"(%arg0, %c0, %arg1) {backend_config = "cpu", call_target_name = "ral_send_output", has_side_effect = false} : (!disc_ral.context, index, memref<?x?xf32>) -> ()
   return
 }
@@ -103,7 +103,7 @@ module @main attributes {gpu.container_module}  {
 
   // CHECK: llvm.func @test_gpu_launch(%[[CTX:.*]]: !llvm.ptr<i8>
   func @test_gpu_launch(%arg0: !disc_ral.context, %arg1: memref<?x?xf32>) {
-    %c1 = constant 1 : index
+    %c1 = arith.constant 1 : index
 
     // CHECK: %[[T18:.*]] = llvm.mlir.addressof @kernel_module_blob : !llvm.ptr<array<5 x i8>>
     // CHECK: %[[T19:.*]] = llvm.getelementptr %[[T18]]{{.*}}

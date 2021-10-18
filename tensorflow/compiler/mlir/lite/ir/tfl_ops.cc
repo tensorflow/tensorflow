@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -2735,10 +2736,17 @@ struct FoldPseudoConstOp : public OpRewritePattern<ConstOp> {
 
   LogicalResult matchAndRewrite(ConstOp const_op,
                                 PatternRewriter &rewriter) const override {
-    if (!ConstantOp::isBuildableWith(const_op.value(), const_op.getType()))
-      return failure();
-    rewriter.replaceOpWithNewOp<ConstantOp>(const_op, const_op.value());
-    return success();
+    if (arith::ConstantOp::isBuildableWith(const_op.value(),
+                                           const_op.getType())) {
+      rewriter.replaceOpWithNewOp<arith::ConstantOp>(const_op,
+                                                     const_op.value());
+      return success();
+    } else if (ConstantOp::isBuildableWith(const_op.value(),
+                                           const_op.getType())) {
+      rewriter.replaceOpWithNewOp<ConstantOp>(const_op, const_op.value());
+      return success();
+    }
+    return failure();
   }
 };
 
@@ -3665,6 +3673,8 @@ Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
   if (value.isa<OpaqueElementsAttr>() ||
       (value.isa<ElementsAttr>() && value.getType() != type))
     return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
+  if (arith::ConstantOp::isBuildableWith(value, type))
+    return builder.create<arith::ConstantOp>(loc, type, value);
   if (ConstantOp::isBuildableWith(value, type))
     return builder.create<ConstantOp>(loc, type, value);
   return nullptr;

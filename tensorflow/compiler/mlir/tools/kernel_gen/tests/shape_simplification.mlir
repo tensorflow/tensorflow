@@ -65,11 +65,11 @@ func @f(%arg0 : tensor<?x?xf32>) -> !shape.shape {
 // -----
 
 // CHECK-LABEL: func @static_non1_succeeds
-// CHECK-NEXT:   %[[C2:.*]] = constant 2
+// CHECK-NEXT:   %[[C2:.*]] = arith.constant 2
 // CHECK-NEXT:   return %[[C2]]
 func @static_non1_succeeds(%arg0 : tensor<?x?xf64>, %arg1 : tensor<?x1xf64>,
                            %arg2: tensor<?x2xf64>) -> index {
- %c1 = constant 1 : index
+ %c1 = arith.constant 1 : index
  %1 = shape.shape_of %arg0 : tensor<?x?xf64> -> tensor<2xindex>
  %2 = shape.shape_of %arg1 : tensor<?x1xf64> -> tensor<2xindex>
  %3 = shape.shape_of %arg2 : tensor<?x2xf64> -> tensor<2xindex>
@@ -82,11 +82,11 @@ func @static_non1_succeeds(%arg0 : tensor<?x?xf64>, %arg1 : tensor<?x1xf64>,
 // -----
 
 // CHECK-LABEL: func @all_static_1s_succeeds
-// CHECK-NEXT:   %[[C1:.*]] = constant 1
+// CHECK-NEXT:   %[[C1:.*]] = arith.constant 1
 // CHECK-NEXT:   return %[[C1]]
 func @all_static_1s_succeeds(%arg0 : tensor<?x1xf64>, %arg1 : tensor<?x1xf64>)
                             -> index {
- %c1 = constant 1 : index
+ %c1 = arith.constant 1 : index
  %1 = shape.shape_of %arg0 : tensor<?x1xf64> -> tensor<2xindex>
  %2 = shape.shape_of %arg1 : tensor<?x1xf64> -> tensor<2xindex>
  %3 = shape.broadcast %1, %2 : tensor<2xindex>, tensor<2xindex>
@@ -99,12 +99,12 @@ func @all_static_1s_succeeds(%arg0 : tensor<?x1xf64>, %arg1 : tensor<?x1xf64>)
 
 // CHECK-LABEL: func @single_non_static_1_succeeds
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<?x?xf64>
-// CHECK:        %[[C1:.*]] = constant 1
+// CHECK:        %[[C1:.*]] = arith.constant 1
 // CHECK:        %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK:        return %[[DIM]]
 func @single_non_static_1_succeeds(%arg0 : tensor<?x?xf64>,
                                    %arg1 : tensor<?x1xf64>) -> index {
- %c0 = constant 1 : index
+ %c0 = arith.constant 1 : index
  %1 = shape.shape_of %arg0 : tensor<?x?xf64> -> tensor<2xindex>
  %2 = shape.shape_of %arg1 : tensor<?x1xf64> -> tensor<2xindex>
  %3 = shape.broadcast %1, %2 : tensor<2xindex>, tensor<2xindex>
@@ -124,7 +124,7 @@ func @single_non_static_1_succeeds(%arg0 : tensor<?x?xf64>,
 // CHECK-NEXT:   return %[[RESULT]]
 func @multiple_non_static_1_fails(%arg0 : tensor<?x?xf64>,
                                   %arg1 : tensor<?x1xf64>) -> index {
- %c0 = constant 0 : index
+ %c0 = arith.constant 0 : index
  %1 = shape.shape_of %arg0 : tensor<?x?xf64> -> tensor<2xindex>
  %2 = shape.shape_of %arg1 : tensor<?x1xf64> -> tensor<2xindex>
  %3 = shape.broadcast %1, %2 : tensor<2xindex>, tensor<2xindex>

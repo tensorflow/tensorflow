@@ -253,7 +253,7 @@ func @testBroadcastGradientArgsInvalidR1Size() -> (tensor<0xi32>, tensor<3xi32>)
 // Test valid tf.BroadcastTo
 // CHECK-LABEL: func @testBroadcastTo(%arg0: tensor<16xf32>)
 func @testBroadcastTo(%arg0: tensor<16xf32>) -> tensor<16x16x16x16xf32> {
-  %cst = constant dense<16> : tensor<4xi32>
+  %cst = arith.constant dense<16> : tensor<4xi32>
   %0 = "tf.BroadcastTo"(%arg0, %cst) : (tensor<16xf32>, tensor<4xi32>) -> tensor<16x16x16x16xf32>
   return %0 : tensor<16x16x16x16xf32>
 }
@@ -348,12 +348,12 @@ func @testMirrorPadRank1Paddings(%input: tensor<2xi64>) -> tensor<3xi64> {
 
 // CHECK-LABEL: func @testReshape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<10000xf32>, %arg3: tensor<*xi32>)
 func @testReshape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<10000xf32>, %arg3: tensor<*xi32>) -> (tensor<100x100xf32>, tensor<*xf32>, tensor<100x100xf32>, tensor<100x100xf32>, tensor<*xf32>, tensor<*xf32>) {
-  %shape1 = constant dense<100> : tensor<2xi32>
+  %shape1 = arith.constant dense<100> : tensor<2xi32>
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<*xf32>, tensor<2xi32>) -> tensor<100x100xf32>
   %shape2 = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi32>
   %r2 = "tf.Reshape"(%arg1, %shape2) : (tensor<*xf32>, tensor<?xi32>) -> tensor<*xf32>
   %r3 = "tf.Reshape"(%arg2, %shape1) : (tensor<10000xf32>, tensor<2xi32>) -> tensor<100x100xf32>
-  %shape3 = constant dense<[-1, 100]> : tensor<2xi32>
+  %shape3 = arith.constant dense<[-1, 100]> : tensor<2xi32>
   %r4 = "tf.Reshape"(%arg2, %shape3) : (tensor<10000xf32>, tensor<2xi32>) -> tensor<100x100xf32>
   %r5 = "tf.Reshape"(%arg0, %arg3) : (tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
   %r6 = "tf.Reshape"(%arg2, %arg3) : (tensor<10000xf32>, tensor<*xi32>) -> tensor<*xf32>
@@ -364,7 +364,7 @@ func @testReshape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<1000
 // tf.Reshape with incorrect type.
 func @testReshape(tensor<*xf32>, tensor<*xf32>) -> (tensor<100x100xf32>) {
 ^bb0(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>):
-  %shape1 = constant dense<100.> : tensor<2xf32>
+  %shape1 = arith.constant dense<100.> : tensor<2xf32>
   // expected-error @+1 {{must be tensor of 32/64-bit signed integer values}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<*xf32>, tensor<2xf32>) -> tensor<100x100xf32>
   return %r1 : tensor<100x100xf32>
@@ -389,7 +389,7 @@ func @testReshape(%arg0: tensor<10x10x10xf32>, %shape1: tensor<2x2xi32>) -> tens
 // -----
 // tf.Reshape with more than one -1 in the shape.
 func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
-  %shape1 = constant dense<-1> : tensor<2xi32>
+  %shape1 = arith.constant dense<-1> : tensor<2xi32>
   // expected-error @+1 {{requires 'shape' to have at most one dynamic dimension, but got multiple dynamic dimensions at indices 0 and 1}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10x10xf32>, tensor<2xi32>) -> tensor<100x100xf32>
   return %r1 : tensor<100x100xf32>
@@ -398,7 +398,7 @@ func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
 // -----
 // tf.Reshape with shape operand element < -1.
 func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
-  %shape1 = constant dense<[100, -2]> : tensor<2xi32>
+  %shape1 = arith.constant dense<[100, -2]> : tensor<2xi32>
   // expected-error @+1 {{requires 'shape' to have dimensions greater than -1, but got -2 at index 1}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10x10xf32>, tensor<2xi32>) -> tensor<100x100xf32>
   return %r1 : tensor<100x100xf32>
@@ -407,7 +407,7 @@ func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
 // -----
 // tf.Reshape with -1 in the shape can't infer the dimension.
 func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
-  %shape1 = constant dense<[101, -1]> : tensor<2xi32>
+  %shape1 = arith.constant dense<[101, -1]> : tensor<2xi32>
   // expected-error @+1 {{requires 'tensor' number of elements be a multiple of 101, but got 10000}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10x10xf32>, tensor<2xi32>) -> tensor<100x100xf32>
   return %r1 : tensor<100x100xf32>
@@ -416,7 +416,7 @@ func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
 // -----
 // tf.Reshape with incorrect output rank.
 func @testReshape(%arg0: tensor<10x10xf32>) -> tensor<?x?xf32> {
-  %shape1 = constant dense<[100]> : tensor<1xi32>
+  %shape1 = arith.constant dense<[100]> : tensor<1xi32>
   // expected-error @+1 {{requires 'output' type 'tensor<?x?xf32>' to be cast compatible with expected type 'tensor<100xf32>'}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10xf32>, tensor<1xi32>) -> tensor<?x?xf32>
   return %r1 : tensor<?x?xf32>
@@ -425,7 +425,7 @@ func @testReshape(%arg0: tensor<10x10xf32>) -> tensor<?x?xf32> {
 // -----
 // tf.Reshape with incorrect output dimension.
 func @testReshape(%arg0: tensor<1000xf32>) -> tensor<?x8x?xf32> {
-  %shape1 = constant dense<[10, 10, 10]> : tensor<3xi32>
+  %shape1 = arith.constant dense<[10, 10, 10]> : tensor<3xi32>
   // expected-error @+1 {{requires 'output' type 'tensor<?x8x?xf32>' to be cast compatible with expected type 'tensor<10x10x10xf32>'}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<1000xf32>, tensor<3xi32>) -> tensor<?x8x?xf32>
   return %r1 : tensor<?x8x?xf32>
@@ -434,7 +434,7 @@ func @testReshape(%arg0: tensor<1000xf32>) -> tensor<?x8x?xf32> {
 // -----
 // tf.Reshape with a shape operand that has 0 for one of its elements.
 func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<?x0xf32> {
-  %shape1 = constant dense<[-1, 0]> : tensor<2xi32>
+  %shape1 = arith.constant dense<[-1, 0]> : tensor<2xi32>
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> tensor<?x0xf32>
   return %r1 : tensor<?x0xf32>
 }
@@ -442,7 +442,7 @@ func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<?x0xf32> {
 // -----
 // tf.Reshape with a tensor operand that has 0 for one of its elements.
 func @testReshape(%arg0: tensor<10x10x0xf32>) -> tensor<?x0xf32> {
-  %shape1 = constant dense<[-1, 0]> : tensor<2xi32>
+  %shape1 = arith.constant dense<[-1, 0]> : tensor<2xi32>
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x0xf32>, tensor<2xi32>) -> tensor<?x0xf32>
   return %r1 : tensor<?x0xf32>
 }
@@ -450,7 +450,7 @@ func @testReshape(%arg0: tensor<10x10x0xf32>) -> tensor<?x0xf32> {
 // -----
 // tf.Reshape with a tensor operand that has non-static shape.
 func @testReshape(%arg0: tensor<10x10x?xf32>) -> tensor<10x10xf32> {
-  %shape1 = constant dense<[10, 10]> : tensor<2xi32>
+  %shape1 = arith.constant dense<[10, 10]> : tensor<2xi32>
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x?xf32>, tensor<2xi32>) -> tensor<10x10xf32>
   return %r1 : tensor<10x10xf32>
 }
@@ -2026,7 +2026,7 @@ func @testValidWhileRegion(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor
     {
       // condition, check if count has reached 0
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
-      %zero = constant dense<0> : tensor<i32>
+      %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "tf.Yield"(%ne) : (tensor<i1>) -> ()
     },
@@ -2034,7 +2034,7 @@ func @testValidWhileRegion(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor
       // loop body
       ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
       %add = "tf.Add"(%barg0, %barg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-      %one = constant dense<1> : tensor<i32>
+      %one = arith.constant dense<1> : tensor<i32>
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%add, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
     }
@@ -2051,11 +2051,11 @@ func private @printer(tensor<i32>) -> ()
 func @testValidWhileRegionNoInputs() -> () {
   "tf.WhileRegion"() (
     {
-      %true = constant dense<1> : tensor<i1>
+      %true = arith.constant dense<1> : tensor<i1>
       "tf.Yield"(%true) : (tensor<i1>) -> ()
     },
     {
-      %one = constant dense<1> : tensor<i32>
+      %one = arith.constant dense<1> : tensor<i32>
       call @printer(%one) : (tensor<i32>) -> ()
       // TODO(b/159753381): tf.IfRegion implicit terminator not working
       "tf.Yield"() : () -> ()
@@ -2080,7 +2080,7 @@ func @testInvalidTestValidBase(%arg0 : tensor<i32>) -> (tensor<i32>) {
   %0 = "tf.WhileRegion"(%arg0) (
     {
      ^bb0(%carg: tensor<i32>):
-      %false = constant dense<false> : tensor<i1>
+      %false = arith.constant dense<false> : tensor<i1>
       "tf.Yield"(%false) : (tensor<i1>) -> ()
     },
     {
@@ -2096,7 +2096,7 @@ func @testInvalidWhileRegion_I_CI_CountMismatch(%arg0 : tensor<i32>) -> (tensor<
   %0 = "tf.WhileRegion"(%arg0) (
     {
      //^bb0(%carg: tensor<i32>):
-      %false = constant dense<false> : tensor<i1>
+      %false = arith.constant dense<false> : tensor<i1>
       "tf.Yield"(%false) : (tensor<i1>) -> ()
     },
     {
@@ -2114,7 +2114,7 @@ func @testInvalidWhileRegion_I_CI_TypeMismatch(%arg0 : tensor<i32>) -> (tensor<i
   %0 = "tf.WhileRegion"(%arg0) (
     {
      ^bb0(%carg: tensor<f32>):
-      %false = constant dense<false> : tensor<i1>
+      %false = arith.constant dense<false> : tensor<i1>
       "tf.Yield"(%false) : (tensor<i1>) -> ()
     },
     {
@@ -2132,7 +2132,7 @@ func @testInvalidWhileRegion_I_BI_CountMismatch(%arg0 : tensor<i32>) -> (tensor<
   %0 = "tf.WhileRegion"(%arg0) (
      {
        ^bb0(%carg: tensor<i32>):
-        %true = constant dense<1> : tensor<i1>
+        %true = arith.constant dense<1> : tensor<i1>
         "tf.Yield"(%true) : (tensor<i1>) -> ()
      },
      {
@@ -2151,7 +2151,7 @@ func @testInvalidWhileRegion_I_BI_TypeMismatch(%arg0 : tensor<i32>) -> (tensor<i
   %0 = "tf.WhileRegion"(%arg0) (
      {
        ^bb0(%carg: tensor<i32>):
-        %true = constant dense<1> : tensor<i1>
+        %true = arith.constant dense<1> : tensor<i1>
         "tf.Yield"(%true) : (tensor<i1>) -> ()
      },
      {
@@ -2171,7 +2171,7 @@ func @testInvalidWhileRegion_O_BO_CountMismatch(%arg0 : tensor<i32>) -> (tensor<
   %0 = "tf.WhileRegion"(%arg0) (
     {
      ^bb0(%carg: tensor<i32>):
-      %false = constant dense<false> : tensor<i1>
+      %false = arith.constant dense<false> : tensor<i1>
       "tf.Yield"(%false) : (tensor<i1>) -> ()
     },
     {
@@ -2189,7 +2189,7 @@ func @testInvalidWhileRegionMismatch_O_BO_TypeMismatch(%arg0 : tensor<i32>, %arg
   %0 = "tf.WhileRegion"(%arg0) (
     {
      ^bb0(%carg: tensor<i32>):
-      %false = constant dense<false> : tensor<i1>
+      %false = arith.constant dense<false> : tensor<i1>
       "tf.Yield"(%false) : (tensor<i1>) -> ()
     },
     {
@@ -2207,7 +2207,7 @@ func @testInvalidWhileRegion_I_O_CountMismatch(%arg0 : tensor<i32>) -> (tensor<i
   %0:2 = "tf.WhileRegion"(%arg0) (
     {
      ^bb0(%carg: tensor<i32>):
-      %false = constant dense<false> : tensor<i1>
+      %false = arith.constant dense<false> : tensor<i1>
       "tf.Yield"(%false) : (tensor<i1>) -> ()
     },
     {
@@ -2225,7 +2225,7 @@ func @testInvalidWhileRegion_I_O_TypeMismatch(%arg0: tensor<i32>, %arg1 : tensor
   %0 = "tf.WhileRegion"(%arg0) (
     {
      ^bb0(%carg: tensor<i32>):
-      %false = constant dense<false> : tensor<i1>
+      %false = arith.constant dense<false> : tensor<i1>
       "tf.Yield"(%false) : (tensor<i1>) -> ()
     },
     {
@@ -2242,7 +2242,7 @@ func @testInvalidWhileRegionConditionOutputCount2(%arg : tensor<i32>) -> (tensor
   %0 = "tf.WhileRegion"(%arg) (
      {
        ^bb0(%carg: tensor<i32>):
-        %true = constant dense<1> : tensor<i1>
+        %true = arith.constant dense<1> : tensor<i1>
         "tf.Yield"(%true, %true) : (tensor<i1>, tensor<i1>) -> ()
      },
      {
@@ -2487,7 +2487,7 @@ func @testInvalidToBool(%arg0: tensor<i32>) -> tensor<1xi1> {
 // CHECK-LABEL: testTranspose
 func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {
 ^bb0(%arg0: tensor<2x3xf32>):
-  %cst = constant dense<[1, 0]> : tensor<2xi32>
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
   %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<3x2xf32>
   return %0 : tensor<3x2xf32>
 }
@@ -2498,7 +2498,7 @@ func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {
 // CHECK-LABEL: testTranspose
 func @testTranspose(tensor<2x?xf32>) -> tensor<?x2xf32> {
 ^bb0(%arg0: tensor<2x?xf32>):
-  %cst = constant dense<[1, 0]> : tensor<2xi32>
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
   %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x?xf32>, tensor<2xi32>) -> tensor<?x2xf32>
   return %0 : tensor<?x2xf32>
 }
@@ -2509,7 +2509,7 @@ func @testTranspose(tensor<2x?xf32>) -> tensor<?x2xf32> {
 // CHECK-LABEL: testTranspose
 func @testTranspose(tensor<2x?x?xf32>) -> tensor<3x?x2xf32> {
 ^bb0(%arg0: tensor<2x?x?xf32>):
-  %cst = constant dense<[2, 1, 0]> : tensor<3xi32>
+  %cst = arith.constant dense<[2, 1, 0]> : tensor<3xi32>
   %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x?x?xf32>, tensor<3xi32>) -> tensor<3x?x2xf32>
   return %0 : tensor<3x?x2xf32>
 }
@@ -2529,7 +2529,7 @@ func @testTranspose(tensor<2x3xf32>, tensor<1x2xi32>) -> tensor<3x2xf32> {
 // Test tf.Transpose with invalid size of perm
 func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {
 ^bb0(%arg0: tensor<2x3xf32>):
-  %cst = constant dense<[1, 0, 2]> : tensor<3xi32>
+  %cst = arith.constant dense<[1, 0, 2]> : tensor<3xi32>
   // expected-error @+1 {{expected perm to be a 1-D Tensor of size equal to the rank of x, got perm of size 3, and x of rank 2}}
   %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3xf32>, tensor<3xi32>) -> tensor<3x2xf32>
   return %0 : tensor<3x2xf32>
@@ -2540,7 +2540,7 @@ func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {
 // Test tf.Transpose with invalid rank of y
 func @testTranspose(tensor<2x3xf32>) -> tensor<3x2x1xf32> {
 ^bb0(%arg0: tensor<2x3xf32>):
-  %cst = constant dense<[1, 0]> : tensor<2xi32>
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
   // expected-error @+1 {{x should be of the same rank with y, got x of rank 2, and y of rank 3}}
   %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<3x2x1xf32>
   return %0 : tensor<3x2x1xf32>
@@ -2551,7 +2551,7 @@ func @testTranspose(tensor<2x3xf32>) -> tensor<3x2x1xf32> {
 // Test tf.Transpose with invalid shape of y
 func @testTranspose(tensor<2x3x4xf32>) -> tensor<3x2x4xf32> {
 ^bb0(%arg0: tensor<2x3x4xf32>):
-  %cst = constant dense<[2, 0, 1]> : tensor<3xi32>
+  %cst = arith.constant dense<[2, 0, 1]> : tensor<3xi32>
   // expected-error @+1 {{requires y.shape[0] (3) to be equal to x.shape[perm[2]] (4)}}
   %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3x4xf32>, tensor<3xi32>) -> tensor<3x2x4xf32>
   return %0 : tensor<3x2x4xf32>
@@ -4055,7 +4055,7 @@ func @testCumprod(%arg: tensor<8x16xf32>, %axis: tensor<2xi32>) -> tensor<8x16xf
 // -----
 
 func @testCumprod(%arg: tensor<8x16xf32>) -> tensor<8x16xf32> {
-  %axis = constant dense<-3> : tensor<i32>
+  %axis = arith.constant dense<-3> : tensor<i32>
   // expected-error @+1 {{axis operand should be within range [-2, 2)}}
   %0 = "tf.Cumprod"(%arg, %axis) : (tensor<8x16xf32>, tensor<i32>) -> tensor<8x16xf32>
   return %0 : tensor<8x16xf32>
@@ -4064,7 +4064,7 @@ func @testCumprod(%arg: tensor<8x16xf32>) -> tensor<8x16xf32> {
 // -----
 
 func @testTile(%arg0: tensor<2x3x?xf32>) {
-  %cst = constant dense <[2, 3, 4]> : tensor<3xi32>
+  %cst = arith.constant dense <[2, 3, 4]> : tensor<3xi32>
   %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3x?xf32>, tensor<3xi32>) -> tensor<4x9x?xf32>
   return
 }
@@ -4096,7 +4096,7 @@ func @testTileInputRankNotEqualToOutputRank(%arg0: tensor<2x3xf32>, %arg1: tenso
 // -----
 
 func @testTileNegativeMultiples(%arg0: tensor<2x3xf32>) {
-  %cst = constant dense <[-1, 1]> : tensor<2xi32>
+  %cst = arith.constant dense <[-1, 1]> : tensor<2xi32>
   // expected-error @+1 {{expected multiples to be non-negative, got multiples[0] = -1}}
   %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x3xf32>
   return
@@ -4105,7 +4105,7 @@ func @testTileNegativeMultiples(%arg0: tensor<2x3xf32>) {
 // -----
 
 func @testTileInvalidOutputShape(%arg0: tensor<2x3xf32>) {
-  %cst = constant dense <[2, 3]> : tensor<2xi32>
+  %cst = arith.constant dense <[2, 3]> : tensor<2xi32>
   // expected-error @+1 {{requires input.shape[1] (3) * 3 to be equal to output.shape[1] (6)}}
   %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<4x6xf32>
   return

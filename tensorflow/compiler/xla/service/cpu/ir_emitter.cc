@@ -3098,29 +3098,11 @@ llvm::BasicBlock* IrEmitter::GetReturnBlock() {
 
 void IrEmitter::EmitEarlyReturnIfErrorStatus() {
   // Use the runtime helper to get the success/failure state as a boolean.
-  auto succeeded =
+  llvm::Value* succeeded =
       EmitCallToFunc(runtime::kStatusIsSuccessSymbolName, {GetStatusArgument()},
                      b_.getInt1Ty(), /*does_not_throw=*/true,
                      /*only_accesses_arg_memory=*/true);
-  llvm::BasicBlock* continued;
-  if (b_.GetInsertBlock()->getTerminator() == nullptr) {
-    // If we are generating code into an incomplete basic block we can just
-    // create a new basic block to jump to after our conditional branch.
-    continued = llvm_ir::CreateBasicBlock(/*insert_before=*/nullptr,
-                                          /*name=*/"", &b_);
-  } else {
-    // If we are generating code into a basic block that already has code, we
-    // need to split that block so as to not disturb the existing code.
-    auto original = b_.GetInsertBlock();
-    continued = original->splitBasicBlock(b_.GetInsertPoint());
-    // Remove the auto-generated unconditional branch to replace with our
-    // conditional branch.
-    original->getTerminator()->eraseFromParent();
-    b_.SetInsertPoint(original);
-  }
-  CondBr(succeeded, continued, GetReturnBlock());
-
-  b_.SetInsertPoint(continued, continued->getFirstInsertionPt());
+  llvm_ir::EmitEarlyReturn(succeeded, &b_, GetReturnBlock());
 }
 
 llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(

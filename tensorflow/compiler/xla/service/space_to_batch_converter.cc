@@ -152,6 +152,9 @@ class ConvolutionVisitor {
   // Perform space-to-batch propagation on concatenate.
   Status PropagateOnConcat(HloInstruction* concat);
 
+  // Perform space-to-batch propagation on reverse.
+  Status PropagateOnReverse(HloInstruction* reverse);
+
   // Perform space-to-batch propagation on the backprop filter convolution.
   // Assumes the activations and kernel were already space-to-batched.
   Status PropagateOnBackpropFilterConv(HloInstruction* convolution);
@@ -1457,6 +1460,24 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
     return true;
   }
 
+  if (consumer->opcode() == HloOpcode::kReverse) {
+    auto operand_0 = consumer->mutable_operand(0);
+    if (!instr_to_dim_map_.contains(operand_0)) {
+      return false;
+    }
+    // Disallow reversing on the batch and space dims
+    auto result = instr_to_dim_map_[operand_0];
+    const int64_t old_batch_dim = result.batch;
+    const int64_t old_space_dim = result.space;
+
+    for (auto dim : consumer->dimensions()) {
+      if (dim == old_batch_dim || dim == old_space_dim) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   if (consumer->opcode() == HloOpcode::kReduce) {
     // Support only the trivial case where both batch and split spatial dim are
     // being reduced
@@ -1728,6 +1749,11 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
 
   if (consumer->opcode() == HloOpcode::kConcatenate) {
     TF_CHECK_OK(PropagateOnConcat(consumer));
+    return true;
+  }
+
+  if (consumer->opcode() == HloOpcode::kReverse) {
+    TF_CHECK_OK(PropagateOnReverse(consumer));
     return true;
   }
 
@@ -2464,6 +2490,26 @@ Status ConvolutionVisitor::PropagateOnConcat(HloInstruction* concat) {
   // Set mappings from operand 0.
   instr_to_dim_map_[concat] = instr_to_dim_map_[concat->mutable_operand(0)];
   instr_to_dim_permute_map_[new_concat] =
+      std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
+
+  return Status::OK();
+}
+
+Status ConvolutionVisitor::PropagateOnReverse(HloInstruction* reverse) {
+  auto first_operand = old_to_new_instrs_[reverse->mutable_operand(0)];
+  auto permute_dims = instr_to_dim_permute_map_[first_operand];
+
+  std::vector<int64_t> new_reverse_dimensions(reverse->dimensions().size());
+  int dim_count = 0;
+  for (auto dim : reverse->dimensions()) {
+    new_reverse_dimensions[dim_count++] = DimLookUp(permute_dims, dim);
+  }
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_reverse,
+                      MakeReverseHlo(first_operand, new_reverse_dimensions));
+  old_to_new_instrs_[reverse] = new_reverse;
+  // Set mappings from operand 0.
+  instr_to_dim_map_[reverse] = instr_to_dim_map_[reverse->mutable_operand(0)];
+  instr_to_dim_permute_map_[new_reverse] =
       std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
 
   return Status::OK();

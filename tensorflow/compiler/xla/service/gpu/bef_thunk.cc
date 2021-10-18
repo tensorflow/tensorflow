@@ -487,10 +487,6 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
   TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
   tfrt::RequestContextBuilder request_context_builder(
       runtime_and_queue.core_runtime->GetHostContext(), resource_context);
-  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-  TF_RETURN_IF_ERROR(runtime_and_queue.work_queue->InitializeRequest(
-      &request_context_builder, &intra_op_threadpool));
-
   TF_RETURN_IF_ERROR(build_request_context(request_context_builder));
 
   auto expected_req_ctx = std::move(request_context_builder).build();
@@ -673,9 +669,8 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!exec_ctx) {
     if (kind() == Thunk::kKernel) {
       tensorflow::mutex_lock lock(mutex_);
-      CUcontext context =
-          static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
-              ->context();
+      using AsyncStreamRef = tfrt::AsyncValueRef<tfrt::gpu::GpuStream>;
+      CUcontext context = static_cast<AsyncStreamRef>(stream)->context()->get();
       auto it = resource_contexts_.find(context);
       if (it == resource_contexts_.end()) {
         it = resource_contexts_.emplace_hint(it, context,

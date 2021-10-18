@@ -175,6 +175,11 @@ Status BuildHloFromGraph(
 static inline Status CompileToHloGraphAnalysisFailedError() {
   return errors::Internal("disabled after graph analysis");
 }
+
+// Register a convenient pipeline for invoking TF/XLA lowering from the command
+// line.
+void RegisterConvertMlirToXlaHloPipelineWithDefaults();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_COMPILE_MLIR_UTIL_H_

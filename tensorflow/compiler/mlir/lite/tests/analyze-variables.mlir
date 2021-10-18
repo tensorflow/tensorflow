@@ -48,7 +48,7 @@ module {
 module {
   func @main() -> tensor<*xi32> {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
-    %cst = constant dense<2> : tensor<4xi32>
+    %cst = arith.constant dense<2> : tensor<4xi32>
     "tf.AssignAddVariableOp"(%0, %cst) {} : (tensor<*x!tf_type.resource<tensor<*xi32>>>, tensor<4xi32>) -> ()
     %1 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
     return %1 : tensor<*xi32>
@@ -61,7 +61,7 @@ module {
 module {
   func @main() -> tensor<i32> {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
-    %cst = constant dense<1> : tensor<i32>
+    %cst = arith.constant dense<1> : tensor<i32>
     %1:2 = "tfl.while"(%cst, %0) ( {
     ^bb0(%arg1: tensor<*xi32>, %arg2: tensor<*x!tf_type.resource<tensor<*xi32>>>):
       %2 = "tf.ReadVariableOp"(%arg2) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
