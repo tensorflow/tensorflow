@@ -323,9 +323,9 @@ PersistentCompilationCache::PersistentCompilationCache()
       continue;
     }
     // The filename is the hash key.
-    int64 key;
+    int64_t key;
     if (!absl::SimpleAtoi(file, &key)) {
-      // Invalid filename. Filename must be an int64
+      // Invalid filename. Filename must be an int64_t
       LOG(WARNING) << "Skipping invalid entry name \"" << file << ".\"";
       continue;
     }
@@ -348,10 +348,10 @@ PersistentCompilationCache::PersistentCompilationCache()
   }
 }
 
-constexpr const int64 PersistentCompilationCache::kPtxHash;
-constexpr const int64 PersistentCompilationCache::kCubinHash;
+constexpr const int64_t PersistentCompilationCache::kPtxHash;
+constexpr const int64_t PersistentCompilationCache::kCubinHash;
 
-int64 PersistentCompilationCache::CreateKey(
+int64_t PersistentCompilationCache::CreateKey(
     llvm::Module* llvm_module,
     const se::CudaComputeCapability &compute_capability,
     const se::GpuAsmOpts &options,
@@ -360,7 +360,7 @@ int64 PersistentCompilationCache::CreateKey(
   std::string ptx_options = absl::StrJoin(GetGpuAsmParameters(
       compute_capability.major, compute_capability.minor, options), " ");
 
-  int64 key = tensorflow::Hash64(llvm_str);
+  int64_t key = tensorflow::Hash64(llvm_str);
   key = tensorflow::Hash64Combine(key, tensorflow::Hash64(ptx_options));
 
   VLOG(3) << "Created key " << key << ".";
@@ -381,7 +381,7 @@ int64 PersistentCompilationCache::CreateKey(
   return key;
 }
 
-void PersistentCompilationCache::AddToCache(int64 key, absl::string_view text,
+void PersistentCompilationCache::AddToCache(int64_t key, absl::string_view text,
                                             const std::string &kind) {
   VLOG(2) << "Attempting to add " << kind << " to cache for key: "
           << key << ".";
@@ -416,24 +416,24 @@ void PersistentCompilationCache::AddToCache(int64 key, absl::string_view text,
   }
 }
 
-void PersistentCompilationCache::AddToCache(int64 key, const std::string &ptx) {
-  int64 ptx_key = tensorflow::Hash64Combine(key, kPtxHash);
+void PersistentCompilationCache::AddToCache(int64_t key, const std::string &ptx) {
+  int64_t ptx_key = tensorflow::Hash64Combine(key, kPtxHash);
   AddToCache(ptx_key, ptx, "PTX");
 }
 
-void PersistentCompilationCache::AddToCache(int64 key,
+void PersistentCompilationCache::AddToCache(int64_t key,
                                             const std::vector<uint8> &cubin) {
   size_t size = cubin.size();
   if (size > 0) { // 0 sized cubin is a result of ptxas failure.
     absl::string_view cubin_str(reinterpret_cast<const char*>(cubin.data()),
                                 size);
-    int64 cubin_key = tensorflow::Hash64Combine(key, kCubinHash);
+    int64_t cubin_key = tensorflow::Hash64Combine(key, kCubinHash);
     AddToCache(cubin_key, cubin_str, "cubin");
   }
 }
 
 template <typename T>
-bool PersistentCompilationCache::LookupCache(int64 key, T &text,
+bool PersistentCompilationCache::LookupCache(int64_t key, T &text,
                                              const std::string &kind) {
   VLOG(2) << "Attempting to lookup " << kind << " in cache for key: " << key << ".";
   bool in_cache = in_memory_cache_.contains(key);
@@ -446,15 +446,15 @@ bool PersistentCompilationCache::LookupCache(int64 key, T &text,
   return in_cache;
 }
 
-bool PersistentCompilationCache::LookupCache(int64 key, std::string &ptx) {
-  int64 ptx_key = tensorflow::Hash64Combine(key, kPtxHash);
+bool PersistentCompilationCache::LookupCache(int64_t key, std::string &ptx) {
+  int64_t ptx_key = tensorflow::Hash64Combine(key, kPtxHash);
 
   return LookupCache(ptx_key, ptx, "PTX");
 }
 
-bool PersistentCompilationCache::LookupCache(int64 key,
+bool PersistentCompilationCache::LookupCache(int64_t key,
                                              std::vector<uint8> &cubin) {
-  int64 cubin_key = tensorflow::Hash64Combine(key, kCubinHash);
+  int64_t cubin_key = tensorflow::Hash64Combine(key, kCubinHash);
 
   return LookupCache(cubin_key, cubin, "cubin");
 }
@@ -483,7 +483,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     absl::get<se::CudaComputeCapability>(gpu_version);
 
   bool use_cache = persistent_compilation_cache_.InUse();
-  int64 key;
+  int64_t key;
   bool have_ptx = false;
   bool have_cubin = false;
   std::vector<uint8> cubin;
@@ -491,7 +491,8 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   if (use_cache) {
     key = persistent_compilation_cache_.CreateKey(
       llvm_module, compute_capability,
-      PtxOptsFromConfig(module_config), use_cache);
+      PtxOptsFromDebugOptions(module_config.debug_options()),
+      use_cache);
     if (use_cache) {
       have_ptx = persistent_compilation_cache_.LookupCache(key, ptx);
     }
