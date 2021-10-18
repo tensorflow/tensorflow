@@ -144,11 +144,26 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset
     f()
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testIteratorOnDeviceEagerMode(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
+  @combinations.generate(test_base.default_test_combinations())
+  @test_util.run_gpu_only
+  def testFunctionCall(self):
+    # Ideally, placer should know that Call(dataset) should be on the same
+    # device as the dataset. Create a funciton that could be place don the GPU,
+    # but a Dataset that cannot.
+    @def_function.function
+    def test_call(dataset):
+      return dataset.reduce(0, lambda s, _: s + 1)
 
+    @def_function.function
+    def f():
+      dataset = dataset_ops.Dataset.range(10)
+      return test_call(dataset)
+
+    self.assertEqual(self.evaluate(f()), 10)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  @test_util.run_gpu_only
+  def testIteratorOnDeviceEagerMode(self):
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
     iterator = iter(dataset)
@@ -162,10 +177,8 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertIn("gpu:0", optional_data.has_value().device.lower())
 
   @combinations.generate(test_base.graph_only_combinations())
+  @test_util.run_gpu_only()
   def testIteratorOnDeviceGraphModeOneShotIterator(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
     self.skipTest("TODO(b/169429285): tf.data.Dataset.make_one_shot_iterator "
                   "does not support GPU placement.")
 
@@ -196,10 +209,8 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertIn(b"GPU:0", self.evaluate(has_value_device))
 
   @combinations.generate(test_base.graph_only_combinations())
+  @test_util.run_gpu_only()
   def testIteratorOnDeviceGraphModeInitializableIterator(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
     iterator = dataset_ops.make_initializable_iterator(dataset)
@@ -227,9 +238,8 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertIn(b"GPU:0", self.evaluate(has_value_device))
 
   @combinations.generate(test_base.eager_only_combinations())
+  @test_util.run_gpu_only()
   def testIterDatasetEagerModeWithExplicitDevice(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
 
     @def_function.function
     def comp():
@@ -243,9 +253,8 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(result.numpy(), 45)
 
   @combinations.generate(test_base.eager_only_combinations())
+  @test_util.run_gpu_only()
   def testFunctionInliningColocation(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
 
     @def_function.function
     def f(ds):
