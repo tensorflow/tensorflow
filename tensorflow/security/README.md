@@ -6,7 +6,7 @@ Python fuzzing: [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapi
 
 We regularly publish security advisories about using TensorFlow.
 
-**Note**: In conjunction with these security advisories, we strongly encourage
+*Note*: In conjunction with these security advisories, we strongly encourage
 TensorFlow users to read and understand TensorFlow's security model as outlined
 in
 [SECURITY.md](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md).
