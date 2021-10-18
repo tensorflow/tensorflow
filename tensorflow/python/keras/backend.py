@@ -321,6 +321,17 @@ def clear_session():
 keras_deps.register_clear_session_function(clear_session)
 
 
+def clear_specific_session(graph):
+  """Clear specific graph's global state.
+  """
+  global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
+  global _GRAPH_VARIABLES  # pylint: disable=global-variable-not-assigned
+  global _GRAPH_TF_OPTIMIZERS  # pylint: disable=global-variable-not-assigned
+  _GRAPH_LEARNING_PHASES.pop(graph, None)
+  _GRAPH_VARIABLES.pop(graph, None)
+  _GRAPH_TF_OPTIMIZERS.pop(graph, None)
+
+
 @keras_export('keras.backend.manual_variable_initialization')
 @doc_controls.do_not_generate_docs
 def manual_variable_initialization(value):

@@ -25,6 +25,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import distribute_coordinator_context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
@@ -928,7 +929,9 @@ class _MonitoredSession(object):
       try:
         if self._sess is None:
           raise RuntimeError('Session is already closed.')
+        graph = self.graph
         self._sess.close()
+        backend.clear_specific_session(graph)
       finally:
         self._sess = None
         self._coordinated_creator.tf_sess = None
