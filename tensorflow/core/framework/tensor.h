@@ -170,6 +170,15 @@ class Tensor {
   /// for details.
   explicit Tensor(DataType type);
 
+  /// \brief Initializes a tensor with the input `type` and `shape`, or returns
+  /// an error and leaves `out_tensor` unmodified. This factory method should be
+  /// used instead of the corresponding constructor if calling code cannot
+  /// validate that the `DataType` is valid and supported.
+  ///
+  /// The underlying buffer is allocated using a `CPUAllocator`.
+  static Status BuildTensor(DataType type, const TensorShape& shape,
+                            Tensor* out_tensor);
+
  private:
   // A tag type for selecting the `Tensor` constructor overload that creates a
   // scalar tensor in host memory.
