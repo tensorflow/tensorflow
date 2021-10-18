@@ -1478,6 +1478,10 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
     return true;
   }
 
+  if (consumer->opcode() == HloOpcode::kTranspose) {
+    return true;
+  }
+
   if (consumer->opcode() == HloOpcode::kReduce) {
     // Support only the trivial case where both batch and split spatial dim are
     // being reduced
@@ -1790,6 +1794,45 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
     // Since the resultant ordering of dimension is the same as before, no
     // further propagation is needed.
     return false;
+  }
+
+  if (consumer->opcode() == HloOpcode::kTranspose) {
+    auto first_operand = old_to_new_instrs_[consumer->mutable_operand(0)];
+    // Pass the first operand forward, with the map of the permuted dims.
+    auto new_consumer = computation->AddInstruction(first_operand->Clone());
+    old_to_new_instrs_[consumer] = new_consumer;
+    auto dim_map_val = instr_to_dim_map_[consumer->mutable_operand(0)];
+    const int64_t old_batch_dim = dim_map_val.batch;
+    const int64_t old_space_dim = dim_map_val.space;
+    const int64_t old_feature_dim = dim_map_val.feature;
+
+    int64_t new_batch_dim, new_space_dim, new_feature_dim;
+    std::vector<int64_t> new_dimensions(consumer->dimensions().size());
+    for (int64_t ctr = 0; ctr < consumer->dimensions().size(); ++ctr) {
+      int64_t dim = consumer->dimensions(ctr);
+      if (dim == old_batch_dim) {
+        new_batch_dim = ctr;
+      }
+      if (dim == old_space_dim) {
+        new_space_dim = ctr;
+      }
+      if (dim == old_feature_dim) {
+        new_feature_dim = ctr;
+      }
+    }
+
+    instr_to_dim_map_[consumer] =
+        DimensionMap{new_batch_dim, new_space_dim, new_feature_dim};
+
+    std::vector<int64_t> new_permute_dims(consumer->dimensions().size());
+    auto permute_dims = instr_to_dim_permute_map_[first_operand];
+    for (int64_t i = 0; i < consumer->dimensions().size(); ++i) {
+      new_permute_dims[i] = DimLookUp(permute_dims, consumer->dimensions(i));
+    }
+
+    instr_to_dim_permute_map_[new_consumer] = new_permute_dims;
+
+    return true;
   }
 
   if (consumer->opcode() == HloOpcode::kReduceWindow ||
