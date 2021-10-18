@@ -375,7 +375,7 @@ int64_t PersistentCompilationCache::CreateKey(
       valid = false;
     }
   } else {
-    AddToCache(key, llvm_ir, "LLVM IR");
+    AddToCache(key, llvm_str, "LLVM IR");
   }
  
   return key;
