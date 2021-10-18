@@ -25,8 +25,8 @@
     *   Renaming of tensorflow::int64 to int_64_t in numerous places (the former is an alias for the latter) which could result in needing to regenerate selective op registration headers else execution would fail with unregistered kernels error.
 
 * Modular File System Migration:
-    *   Support for S3 and HDFS file systems has been migrated to a modular file systems based approach and is now available in https://github.com/tensorflow/io. The tensorflow-io
-        python package should be installed for S3 and HDFS support with tensorflow.
+    *   Support for S3 and HDFS file systems has been migrated to a modular file systems based approach and is now available in https://github.com/tensorflow/io. The `tensorflow-io` python package should be installed for S3 and HDFS support with tensorflow.
+
 ## Major Features and Improvements
 
 * Improvements to the TensorFlow debugging experience:
