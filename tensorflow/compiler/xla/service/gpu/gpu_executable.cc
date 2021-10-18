@@ -126,8 +126,9 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
   // workaround for a bug in ROCm 3.3 hipModuleLoadData
   binary_.reserve(binary_.size() + 256);
 #endif
-  XlaDebugInfoManager::Get()->RegisterModule(module_name_, shared_module(),
-                                             debug_buffer_assignment_);
+  XlaDebugInfoManager::Get()->RegisterModule(
+      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
+      debug_buffer_assignment_);
 }
 
 GpuExecutable::~GpuExecutable() {
