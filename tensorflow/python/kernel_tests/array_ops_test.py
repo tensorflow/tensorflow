@@ -42,6 +42,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -1917,6 +1918,26 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
                 array_ops.ones([2, 0]),
                 side=side,
                 out_type=dtype), array_ops.zeros([2, 0], dtype))
+
+  def testInt64(self):
+
+    @def_function.function
+    def g():
+      x = random_ops.random_normal(shape=[int(1e10)])
+      y = array_ops.ones(shape=[int(1e10)])
+      return array_ops.searchsorted(x, y, out_type=dtypes.int64)
+
+    _ = g.get_concrete_function()
+
+  def testInt64UnspecifiedOutType(self):
+
+    @def_function.function
+    def g():
+      x = random_ops.random_normal(shape=[int(1e10)])
+      y = array_ops.ones(shape=[int(1e10)])
+      return array_ops.searchsorted(x, y)
+
+    _ = g.get_concrete_function()
 
 
 class BatchGatherNdTest(test_util.TensorFlowTestCase):
