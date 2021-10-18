@@ -15,10 +15,14 @@
 """Tests for function_trace_type."""
 
 import timeit
+from absl.testing import parameterized
+
 
 from tensorflow.python import keras
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import function
 from tensorflow.python.eager import function_trace_type
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
@@ -29,8 +33,24 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
-class CacheKeyGenerationTest(test.TestCase):
+class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
 
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def testIteratorAliasing(self):
+    it1 = iter(dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3]))
+    it2 = iter(dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3]))
+
+    self.assertEqual(
+        function_trace_type.get_arg_spec((it1, it1), False, False, True),
+        function_trace_type.get_arg_spec((it2, it2), False, False, True))
+    self.assertEqual(
+        function_trace_type.get_arg_spec((it1, it2), False, False, True),
+        function_trace_type.get_arg_spec((it2, it1), False, False, True))
+    self.assertNotEqual(
+        function_trace_type.get_arg_spec((it1, it1), False, False, True),
+        function_trace_type.get_arg_spec((it1, it2), False, False, True))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testCompositeAndSpec(self):
     composite_tensor = ragged_tensor.RaggedTensor.from_row_splits(
         values=[1, 2, 3], row_splits=[0, 2, 3])
@@ -40,6 +60,7 @@ class CacheKeyGenerationTest(test.TestCase):
         function_trace_type.get_arg_spec(composite_tensor, False, False, True),
         function_trace_type.get_arg_spec(spec, False, False, True))
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testVariableAliasing(self):
     v1 = resource_variable_ops.ResourceVariable([1])
     v2 = resource_variable_ops.ResourceVariable([1])
@@ -59,6 +80,7 @@ class CacheKeyGenerationTest(test.TestCase):
     self.assertEqual(all_unique, all_unique_again)
     self.assertEqual(all_same, all_same_again)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testTensorEquality(self):
     context = function_trace_type.SignatureContext()
     tensor_a = array_ops.zeros([11, 3, 5],
@@ -75,6 +97,7 @@ class CacheKeyGenerationTest(test.TestCase):
     self.assertNotEqual(tensor_b, tensor_c)
     self.assertEqual(tensor_a, tensor_d)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testTensorAndSpecEquality(self):
     context = function_trace_type.SignatureContext()
     tensor = array_ops.zeros([11, 3, 5],
@@ -87,6 +110,7 @@ class CacheKeyGenerationTest(test.TestCase):
     self.assertEqual(tensor, spec)
     self.assertNotEqual(tensor, spec_with_name)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testTupleEquality(self):
     trace_a = function_trace_type.get_arg_spec((1, 2, 3, 4), False, False, True)
     trace_b = function_trace_type.get_arg_spec((1, 2, 2, 4), False, False, True)
@@ -98,6 +122,7 @@ class CacheKeyGenerationTest(test.TestCase):
     self.assertNotEqual(trace_b, trace_c)
     self.assertEqual(trace_a, trace_d)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testListEquality(self):
     trace_a = function_trace_type.get_arg_spec([1, 2, 3, 4], False, False, True)
     trace_b = function_trace_type.get_arg_spec([1, 2, 2, 4], False, False, True)
@@ -109,6 +134,7 @@ class CacheKeyGenerationTest(test.TestCase):
     self.assertNotEqual(trace_b, trace_c)
     self.assertEqual(trace_a, trace_d)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testDictEquality(self):
     trace_a = function_trace_type.get_arg_spec({1: 2, 3: 4}, False, False, True)
     trace_b = function_trace_type.get_arg_spec({1: 2, 3: 2}, False, False, True)
@@ -120,6 +146,7 @@ class CacheKeyGenerationTest(test.TestCase):
     self.assertNotEqual(trace_b, trace_c)
     self.assertEqual(trace_a, trace_d)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testComplexStruct(self):
     struct = {(1, 2, 3): {(1, 2): {12: 2}}, (3, 2, 3): (2, {2: 3})}
     trace_a = function_trace_type.get_arg_spec(struct, False, False, True)

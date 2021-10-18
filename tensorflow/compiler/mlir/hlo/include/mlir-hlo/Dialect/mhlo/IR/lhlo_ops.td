@@ -620,7 +620,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
-    DefaultValuedAttr<StrAttr, "">:$backend_config,
+    DefaultValuedStrAttr<StrAttr, "">:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
     DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
@@ -1215,14 +1215,14 @@ def LHLO_InfeedOp: LHLO_Op<"infeed", []> {
   }];
   let arguments = (ins
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedStrAttr<StrAttr, "">:$config
   );
 }
 
 def LHLO_OutfeedOp: LHLO_Op<"outfeed", []> {
   let arguments = (ins
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
-    DefaultValuedAttr<StrAttr, "">:$config
+    DefaultValuedStrAttr<StrAttr, "">:$config
   );
 }
 

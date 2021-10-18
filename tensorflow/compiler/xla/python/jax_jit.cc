@@ -1087,6 +1087,19 @@ PyObject* JaxCompiledFunction_tp_call(PyObject* self, PyObject* args,
   }
 }
 
+PyObject* JaxCompiledFunction_tp_repr(PyObject* self) {
+  try {
+    const std::string& repr = absl::StrFormat(
+        "<CompiledFunction of %s>",
+        static_cast<std::string>(
+            py::repr(py::getattr(self, "__wrapped__"))));
+    return PyUnicode_FromString(repr.c_str());
+  } catch (...) {
+    // Ignore all errors when accessing a repr.
+    return PyUnicode_FromString("<CompiledFunction>");
+  }
+}
+
 void InitializeCompiledFunction(JaxCompiledFunctionObject* cfun,
                                 py::function fun, py::function cache_miss,
                                 py::function get_device,
@@ -1199,6 +1212,7 @@ void BuildJaxjitSubmodule(py::module& m) {
     type->tp_getset = JaxCompiledFunction_tp_getset;
     type->tp_descr_get = JaxCompiledFunction_tp_descr_get;
     type->tp_call = JaxCompiledFunction_tp_call;
+    type->tp_repr = JaxCompiledFunction_tp_repr;
     CHECK_EQ(PyType_Ready(type), 0);
     JaxCompiledFunction_Type = reinterpret_cast<PyObject*>(type);
     cfun = py::reinterpret_borrow<py::object>(JaxCompiledFunction_Type);

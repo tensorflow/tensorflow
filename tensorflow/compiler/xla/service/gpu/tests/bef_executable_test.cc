@@ -58,7 +58,11 @@ XLA_TEST_F(ClientLibraryTestBase, GemmOnly) {
                              ErrorSpec(1e-6));
 };
 
-XLA_TEST_F(ClientLibraryTestBase, GemmBiasOnly) {
+// Flaky. Will pass with --runs_per_test=1000, yet still sporadically fail
+// 4 successive attempts. The most recent error message was:
+// loc("constant"): error: BEF files cannot encode the 'constant' attribute
+// cl/403428650 might have addressed this already.
+XLA_TEST_F(ClientLibraryTestBase, DISABLED_GemmBiasOnly) {
   // Disable algebraic simplification because the pass may replace a dot
   // instruction with a layout-changing multiplication instruction.
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(

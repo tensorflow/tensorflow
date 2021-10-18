@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
 namespace mlir {
@@ -46,13 +47,7 @@ namespace {
 // of the inputs, matmul them individually, then stack them all back together at
 // the end.
 struct UnrollBatchMatMulPass
-    : public PassWrapper<UnrollBatchMatMulPass, FunctionPass> {
-  StringRef getArgument() const final { return "tf-unroll-batch-matmul"; }
-
-  StringRef getDescription() const final {
-    return "Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.";
-  }
-
+    : public UnrollBatchMatMulPassBase<UnrollBatchMatMulPass> {
   void runOnFunction() override;
 };
 
@@ -274,8 +269,6 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   rewriter.replaceOp(op, reshape_op.output());
   return success();
 }
-
-static PassRegistration<UnrollBatchMatMulPass> pass;
 
 std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass() {
   return std::make_unique<UnrollBatchMatMulPass>();

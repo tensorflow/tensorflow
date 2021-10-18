@@ -6090,6 +6090,9 @@ class ConvertInplaceUpdateOp : public OpRewritePattern<TF::InplaceUpdateOp> {
     auto input_type = input.getType().cast<ShapedType>();
     auto updates_type = updates.getType().cast<ShapedType>();
     auto indices_type = indices.getType().cast<ShapedType>();
+    if (!input_type.hasRank()) return failure();
+    if (!updates_type.hasRank() || updates_type.isDynamicDim(0))
+      return failure();
     if (!indices_type.hasStaticShape()) return failure();
 
     if (indices_type.getRank() != 1) return failure();
@@ -6123,11 +6126,6 @@ class ConvertInplaceUpdateOp : public OpRewritePattern<TF::InplaceUpdateOp> {
 
     SmallVector<Value, 6> input_indices;
     input_indices.resize(input_type.getRank(), cst);
-
-    SmallVector<int64_t, 6> starts(updates_type.getRank(), 0);
-    SmallVector<int64_t, 6> strides(updates_type.getRank(), 1);
-    SmallVector<int64_t, 6> limits(updates_type.getShape().begin(),
-                                   updates_type.getShape().end());
 
     for (auto pair :
          llvm::zip(unpacked_indices.output(), split_updates.output())) {

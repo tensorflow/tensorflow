@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -56,19 +57,7 @@ constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 // Note, this currently does not handle nested modules/functions or region based
 // ops other than certain control flow ops (`mhlo.if`, `mhlo.while`).
 class LegalizeTFCommunication
-    : public PassWrapper<LegalizeTFCommunication, OperationPass<ModuleOp>> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mhlo::MhloDialect>();
-  }
-
- public:
-  StringRef getArgument() const final {
-    return "xla-legalize-tf-communication";
-  }
-  StringRef getDescription() const final {
-    return "Legalize TF/XLA communication ops (TensorFlow dialect) to the HLO "
-           "dialect";
-  }
+    : public LegalizeTFCommunicationPassBase<LegalizeTFCommunication> {
   void runOnOperation() override;
 };
 
@@ -903,7 +892,6 @@ void LegalizeTFCommunication::runOnOperation() {
   }
 }
 
-static PassRegistration<LegalizeTFCommunication> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass() {

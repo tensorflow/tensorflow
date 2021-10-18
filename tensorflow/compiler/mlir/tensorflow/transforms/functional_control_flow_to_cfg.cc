@@ -305,7 +305,5 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
   return std::make_unique<FunctionalControlFlowToCFG>();
 }
 
-static PassRegistration<FunctionalControlFlowToCFG> pass;
-
 }  // namespace TF
 }  // namespace mlir

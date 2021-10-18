@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
@@ -57,11 +58,12 @@ py_library(
     ],
 )
 
-py_library(
+pytype_strict_library(
     name = "cross_device_utils",
     srcs = ["cross_device_utils.py"],
     srcs_version = "PY3",
     deps = [
+        ":collective_util",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
@@ -74,6 +76,8 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -632,12 +636,10 @@ distribute_py_test(
     name = "random_generator_test",
     srcs = ["random_generator_test.py"],
     main = "random_generator_test.py",
-    shard_count = 10,
+    shard_count = 12,
     tags = [
         "multi_and_single_gpu",
-        "no_cuda_asan",  #TODO(b/195770530)
         "no_rocm",
-        "noasan",  #TODO(b/195770530)
     ],
     tpu_tags = [
         "no_oss",

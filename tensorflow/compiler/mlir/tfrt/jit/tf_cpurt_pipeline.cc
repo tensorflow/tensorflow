@@ -68,6 +68,7 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // Run shape inference to propagate potentially specialized input shapes.
   pm.addPass(std::make_unique<AddTensorflowProducerVersion>());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::createCanonicalizerPass());
 
   // Transform TF operation to HLO.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass());

@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -507,6 +508,20 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   return success();
 }
 
+// Transform Einsum to other TF Ops for the supported variants.
+struct TransformEinsumPass
+    : public TransformEinsumPassBase<TransformEinsumPass> {
+  void runOnFunction() override;
+};
+
+void TransformEinsumPass::runOnFunction() {
+  OwningRewritePatternList patterns(&getContext());
+  auto func = getFunction();
+
+  patterns.insert<ConvertTFEinsumOp>(&getContext());
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+}
+
 }  // namespace
 
 LogicalResult ConvertTFEinsumOp::matchAndRewrite(
@@ -528,27 +543,9 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }
 
-// Transform Einsum to other TF Ops for the supported variants.
-struct TransformEinsumPass
-    : public PassWrapper<TransformEinsumPass, FunctionPass> {
-  StringRef getArgument() const final { return "tf-einsum"; }
-
-  StringRef getDescription() const final {
-    return "Transform Einsum to other TF Ops for the supported variants";
-  }
-
-  void runOnFunction() override;
-};
-
-void TransformEinsumPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
-
-  patterns.insert<ConvertTFEinsumOp>(&getContext());
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+std::unique_ptr<FunctionPass> CreateTransformEinsumPass() {
+  return std::make_unique<TransformEinsumPass>();
 }
-
-static PassRegistration<TransformEinsumPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

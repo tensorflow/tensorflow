@@ -787,7 +787,7 @@ cc_library(
         "multinomial.cc",
         "pooling3d.cc",
         "random_standard_normal_custom.cc",
-        "random_uniform.cc",
+        "random_uniform_custom.cc",
         "roll.cc",
         "sign.cc",
         "table.cc",
@@ -1588,9 +1588,9 @@ cc_test(
 )
 
 cc_test(
-    name = "random_uniform_test",
+    name = "random_uniform_custom_test",
     size = "small",
-    srcs = ["random_uniform_test.cc"],
+    srcs = ["random_uniform_custom_test.cc"],
     deps = [
         ":custom_ops",
         ":test_main",

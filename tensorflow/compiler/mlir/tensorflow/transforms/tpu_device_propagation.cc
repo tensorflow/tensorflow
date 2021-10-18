@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
@@ -225,17 +226,8 @@ void PropagateDevicesToResults(
 }
 
 struct TPUDevicePropagation
-    : public PassWrapper<TPUDevicePropagation, FunctionPass> {
+    : public TF::TPUDevicePropagationPassBase<TPUDevicePropagation> {
   void runOnFunction() override;
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tf-tpu-device-propagation";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Propagates TPU devices from ops to users";
-  }
 };
 
 void TPUDevicePropagation::runOnFunction() {
@@ -254,8 +246,6 @@ void TPUDevicePropagation::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> CreateTPUDevicePropagationPass() {
   return std::make_unique<TPUDevicePropagation>();
 }
-
-static PassRegistration<TPUDevicePropagation> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

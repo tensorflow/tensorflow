@@ -38,6 +38,9 @@ class SyncKernelFrame;
 
 namespace tensorflow {
 namespace tfd {
+class OpKernelRunner;
+
+ABSL_CONST_INIT extern const char kOpKernelRunnerCacheResourceName[];
 
 // `builder`, `eager_context`, and `pflr` can't be null.
 Status SetUpKernelFallbackCompatRequestContext(
@@ -61,7 +64,8 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
     const tfrt::ExecutionContext& exec_ctx, tfrt::string_view op_name,
     tfrt::string_view device_name, llvm::ArrayRef<tfrt::Tensor*> arguments,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
-    const tfrt::OpAttrsRef& attrs);
+    const KernelFallbackCompatRequestState& fallback_request_state,
+    const OpKernelRunner& op_kernel_runner);
 
 }  // namespace tfd
 }  // namespace tensorflow

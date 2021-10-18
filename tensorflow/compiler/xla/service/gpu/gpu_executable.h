@@ -52,6 +52,7 @@ namespace gpu {
 class GpuExecutable : public Executable {
   struct BefBufferDeleter {
     void operator()(uint8_t* ptr) const;
+    std::string entry_function_name;
     size_t size;
   };
 

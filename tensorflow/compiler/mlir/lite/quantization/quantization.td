@@ -150,4 +150,6 @@ class AffineOpCoefficient<int dim, int index> : NativeOpTrait<
 // apply quantization on this op.
 def NoQuantizableResult : NativeOpTrait<"quant::NoQuantizableResult">;
 
+// Specify this trait if the op supports dynamic quantization.
+def DynamicQuantizableOp : NativeOpTrait<"quant::DynamicQuantizableOp">;
 #endif // TF_Quantization

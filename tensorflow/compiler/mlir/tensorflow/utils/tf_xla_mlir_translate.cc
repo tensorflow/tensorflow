@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
-#include "tensorflow/compiler/mlir/xla/xla_mlir_translate_cl.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -54,6 +53,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
+namespace {
+
 // NOLINTNEXTLINE
 llvm::cl::opt<std::string> input_types(
     "tf-xla-input-types",
@@ -61,6 +62,18 @@ llvm::cl::opt<std::string> input_types(
                    "Supported types include ['parameter', 'resource']. If "
                    "empty, all arguments are assumed to be parameters."),
     llvm::cl::init(""));
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> emit_use_tuple_arg(
+    "tf-xla-emit-use-tuple-args",
+    llvm::cl::desc(
+        "Emit HLO modules using tuples as args for the entry computation"),
+    llvm::cl::init(false));
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> emit_return_tuple(
+    "tf-xla-emit-return-tuple",
+    llvm::cl::desc("Emit HLO modules with entry computations returning tuple"),
+    llvm::cl::init(false));
+}  // namespace
 
 namespace tensorflow {
 
