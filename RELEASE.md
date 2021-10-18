@@ -111,6 +111,10 @@ This release contains contributions from many people at Google, as well as:
         selective op registration headers else execution would fail with
         unregistered kernels error.
 
+* Modular File System Migration:
+    *   Support for S3 and HDFS file systems has been migrated to a modular file systems
+        based approach and is now available in https://github.com/tensorflow/io. The tensorflow-io
+        python package should be installed for S3 and HDFS support with tensorflow.
 ## Known Caveats
 
 *<CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
