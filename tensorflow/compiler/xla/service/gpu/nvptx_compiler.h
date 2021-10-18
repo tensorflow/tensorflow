@@ -61,14 +61,6 @@ class PersistentCompilationCache
 {
   public:
     PersistentCompilationCache();
-    int64_t CreateKey(llvm::Module* llvm_module,
-                    const se::CudaComputeCapability &compute_capability,
-		    const se::GpuAsmOpts &options, bool &valid);
-    void AddToCache(int64_t key, const string &ptx);
-    bool LookupCache(int64_t key, string &ptx);
-    void AddToCache(int64_t key, const std::vector<uint8> &cubin);
-    bool LookupCache(int64_t key, std::vector<uint8> &cubin);
-    bool InUse() { return in_use_; }
 
     // Return nothing if it ca not generate a valid key.
     // Otherwise return CompileResult with the valid key.
@@ -80,6 +72,14 @@ class PersistentCompilationCache
     void Insert(CompileResult result);
 
   private:
+    int64_t CreateKey(llvm::Module* llvm_module,
+                    const se::CudaComputeCapability &compute_capability,
+		    const se::GpuAsmOpts &options, bool &valid);
+    void AddToCache(int64_t key, const string &ptx);
+    bool LookupCache(int64_t key, string &ptx);
+    void AddToCache(int64_t key, const std::vector<uint8> &cubin);
+    bool LookupCache(int64_t key, std::vector<uint8> &cubin);
+    bool InUse() { return in_use_; }
     void AddToCache(int64_t key,  absl::string_view text, const string &kind);
     template <typename T> bool LookupCache(int64_t key, T &text,
                                            const string &kind);
