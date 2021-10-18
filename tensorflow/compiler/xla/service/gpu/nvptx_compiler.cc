@@ -411,6 +411,8 @@ void PersistentCompilationCache::AddToCache(int64_t key, absl::string_view text,
       } else {
         VLOG(2) << "Added " << kind << ": " << key << " to cache directory "
                 << cache_dir_ << ".";
+        // Add the entry to the in memory cache too.
+        in_memory_cache_[key] = std::string(text);
       }
     }
   }
