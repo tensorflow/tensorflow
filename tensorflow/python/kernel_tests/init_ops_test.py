@@ -542,6 +542,12 @@ class RangeTest(test.TestCase):
         constant_op.constant(4, dtype=dtypes.int32), dtype=dtypes.int64)
     self.assertAllEqual(self.evaluate(tf_ans), np.array([0, 1, 2, 3]))
 
+  def testLargeStarts(self):
+    # Test case for GitHub issue 46899.
+    with self.session():
+      with self.assertRaises(errors_impl.InternalError):
+        v = math_ops.range(start=-1e+38, limit=1)
+        self.evaluate(v)
 
 # TODO(vrv): move to sequence_ops_test?
 class LinSpaceTest(test.TestCase):
