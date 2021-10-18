@@ -117,7 +117,6 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       entry_computation_profile_index_(params.entry_computation_profile_index),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
   // ROCm uses hsaco hashes to distinguish between modules.
   // Bad things happen if multiple modules with identical code are loaded.
@@ -129,11 +128,6 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
 #endif
   XlaDebugInfoManager::Get()->RegisterModule(module_name_, shared_module(),
                                              debug_buffer_assignment_);
-=======
-  XlaDebugInfoManager::Get()->RegisterModule(
-      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
-      debug_buffer_assignment_);
->>>>>>> upstream/master
 }
 
 GpuExecutable::~GpuExecutable() {
