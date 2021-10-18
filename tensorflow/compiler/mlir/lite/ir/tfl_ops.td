@@ -924,7 +924,8 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const",
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
       [DeclareOpInterfaceMethods<InferTypeOpInterface>,
-       DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
+       DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
+       DynamicQuantizableOp]> {
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
@@ -985,7 +986,8 @@ def TFL_CumsumOp: TFL_Op<"cumsum", [
 
 def TFL_DepthwiseConv2DOp :
     TFL_ConvOp<"depthwise_conv_2d", "Depthwise-separable convolution", 3,
-                [DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
+                [DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
+                DynamicQuantizableOp]> {
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
@@ -1027,7 +1029,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     AffineQuantizedOpInterface,
     AffineOpCoefficient<-1, 1>,
     TFL_SparseOp,
-    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
+    DynamicQuantizableOp]> {
   let summary = "Fully connected op";
 
   let arguments = (ins
@@ -1072,7 +1075,8 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
        Or<[TFL_TCresVTEtIsSameAsOp<0, 0>,
            And<[CPred<"getElementTypeOrSelf($_op.getOperand(0)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getOperand(1)).isInteger(8)">,
-                CPred<"getElementTypeOrSelf($_op.getResult(0)).isInteger(32)">]>]>>]> {
+                CPred<"getElementTypeOrSelf($_op.getResult(0)).isInteger(32)">]>]>>,
+   DynamicQuantizableOp]> {
 
   let summary = "Batch Matrix Multiply Operator";
 
