@@ -350,6 +350,43 @@ PersistentCompilationCache::PersistentCompilationCache()
 
 constexpr const int64_t PersistentCompilationCache::kPtxHash;
 constexpr const int64_t PersistentCompilationCache::kCubinHash;
+absl::optional<CompileResult> PersistentCompilationCache::Lookup(
+    llvm::Module* llvm_module,
+    const se::CudaComputeCapability &compute_capability,
+    const se::GpuAsmOpts &options) {
+  if (!InUse()) {
+    return {};
+  }
+  bool have_ptx = false;
+  bool valid = true;
+  int64_t key = CreateKey(
+      llvm_module, compute_capability,
+      options, valid);
+  if (!valid) return {};
+
+  std::string ptx;
+  have_ptx = LookupCache(key, ptx);
+  if (have_ptx) { // Don't look up the cubin if ptx will be recompiled.
+    std::vector<uint8> cubin;
+    bool have_cubin = false;
+    have_cubin = LookupCache(key, cubin);
+    if (have_cubin) {
+      VLOG(2) << "Found cubin and PTX in the cache";
+      return CompileResult{key, cubin, ptx};
+    }
+  }
+
+  VLOG(2) << "Not Found cubin and PTX in the cache";
+  return CompileResult{key, {}, ""};
+}
+
+void PersistentCompilationCache::Insert(CompileResult result) {
+  if (!InUse()) {
+    return;
+  }
+  AddToCache(result.key, result.ptx);
+  AddToCache(result.key, result.cubin);
+}
 
 int64_t PersistentCompilationCache::CreateKey(
     llvm::Module* llvm_module,
@@ -383,6 +420,9 @@ int64_t PersistentCompilationCache::CreateKey(
 
 void PersistentCompilationCache::AddToCache(int64_t key, absl::string_view text,
                                             const std::string &kind) {
+  if (!InUse()) {
+    return;
+  }
   VLOG(2) << "Attempting to add " << kind << " to cache for key: "
           << key << ".";
   tensorflow::Env* env = tensorflow::Env::Default();
@@ -484,23 +524,20 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   const se::CudaComputeCapability &compute_capability =
     absl::get<se::CudaComputeCapability>(gpu_version);
 
-  bool use_cache = persistent_compilation_cache_.InUse();
-  int64_t key;
   bool have_ptx = false;
   bool have_cubin = false;
   std::vector<uint8> cubin;
   std::string ptx;
-  if (use_cache) {
-    key = persistent_compilation_cache_.CreateKey(
-      llvm_module, compute_capability,
-      PtxOptsFromDebugOptions(module_config.debug_options()),
-      use_cache);
-    if (use_cache) {
-      have_ptx = persistent_compilation_cache_.LookupCache(key, ptx);
-    }
-    if (have_ptx) { // Don't look up the cubin if ptx will be recompiled.
-      have_cubin = persistent_compilation_cache_.LookupCache(key, cubin);
-    }
+  int64_t key;
+  if (absl::optional<CompileResult> cache_result =
+      persistent_compilation_cache_.Lookup(
+          llvm_module, compute_capability,
+          PtxOptsFromDebugOptions(module_config.debug_options()))) {
+    key = cache_result->key;
+    cubin = cache_result->cubin;
+    ptx = cache_result->ptx;
+    have_ptx = ptx.length() > 0;
+    have_cubin = cubin.size() > 0;
   }
 
   if (!have_ptx) {
@@ -539,13 +576,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, compute_capability, module_config, relocatable);
   }
-  if (use_cache) {
-    if (!have_ptx) {
-      persistent_compilation_cache_.AddToCache(key, ptx);
-    }
-    if (!have_cubin) {
-      persistent_compilation_cache_.AddToCache(key, cubin);
-    }
+  if (!have_ptx && !have_ptx) {
+    persistent_compilation_cache_.Insert(
+        CompileResult{key, cubin, ptx});
   }
 
   return std::pair<std::string, std::vector<uint8>>(std::move(ptx),

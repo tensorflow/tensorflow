@@ -33,6 +33,14 @@ namespace gpu {
 
 void WarnIfBadDriverJITVersion();
 
+// Returns the directory containing nvvm libdevice files.
+string GetLibdeviceDir(const HloModuleConfig& hlo_module_config);
+
+struct CompileResult {
+  int64_t key;
+  std::vector<uint8> cubin;
+  std::string ptx;
+};
 
 // Persistent compilation cache.
 // This cache stores .ptx and .cubin files to be used by subsequent
@@ -61,6 +69,16 @@ class PersistentCompilationCache
     void AddToCache(int64_t key, const std::vector<uint8> &cubin);
     bool LookupCache(int64_t key, std::vector<uint8> &cubin);
     bool InUse() { return in_use_; }
+
+    // Return nothing if it ca not generate a valid key.
+    // Otherwise return CompileResult with the valid key.
+    // The cubin and ptx will be empty when they are not in the cache.
+    absl::optional<CompileResult> Lookup(
+        llvm::Module* llvm_module,
+        const se::CudaComputeCapability &compute_capability,
+        const se::GpuAsmOpts &options);
+    void Insert(CompileResult result);
+
   private:
     void AddToCache(int64_t key,  absl::string_view text, const string &kind);
     template <typename T> bool LookupCache(int64_t key, T &text,
