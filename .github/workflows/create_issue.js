@@ -47,13 +47,15 @@ module.exports = async ({github, context}) => {
   }
   const pr_title = pr_resp.data.title;
   // Assign to PR owner and reviewers
-  let assignees = pr_resp.data.assignees;
-  assignees.push(pr_resp.data.user.login);
+  const assignees = pr_resp.data.assignees.concat(pr_resp.data.requested_reviewers);
+  let assignee_logins = assignees.map(x => x.login);
+  assignee_logins.push(pr_resp.data.user.login);
+  console.log(assignee_logins);
   // Create an new GH Issue and reference the Original PR
   const resp = await github.rest.issues.create({
     owner,
     repo,
-    assignees,
+    assignees: assignee_logins,
     title: `Issue created for Rollback of PR #${pr_number}: ${pr_title}`,
     body: `Merged PR #${pr_number} is rolled back in ${rollback_commit}.
     Please follow up with the reviewer and close this issue once its resolved.`
