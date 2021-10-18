@@ -526,10 +526,13 @@ StatusOr<AutotuneResult> PickBestResult(
       });
 
   if (filtered_results.empty()) {
-    return InternalError(
-        "All algorithms tried for %s failed. Falling back to "
-        "default algorithm. ",
-        instr.ToString());
+    std::ostringstream msg;
+    msg << "All algorithms tried for " << instr.ToString()
+        << " failed. Falling back to default algorithm.  Per-algorithm errors:";
+    for (const auto& result : profile_results) {
+      msg << "\n  " << result.failure().msg();
+    }
+    return InternalError("%s", msg.str());
   }
 
   auto selected_result = filtered_results.begin();
