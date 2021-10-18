@@ -135,5 +135,35 @@ XLA_TEST_F(ClientLibraryTestBase, FusionAndCholesky) {
                              ErrorSpec(1e-4, 1e-4));
 }
 
+XLA_TEST_F(ClientLibraryTestBase, FusionAndTriangularSolve) {
+  constexpr float kNan = std::numeric_limits<float>::quiet_NaN();
+
+  Array2D<float> a_vals_lower({{2, kNan, kNan, kNan},
+                               {3, 6, kNan, kNan},
+                               {4, 7, 9, kNan},
+                               {5, 8, 10, 11}});
+
+  Array2D<float> b_vals_right({{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
+
+  XlaBuilder builder(TestName());
+
+  XlaOp a, b;
+  auto a_data = CreateR2Parameter<float>(a_vals_lower, 0, "a", &builder, &a);
+  auto b_data = CreateR2Parameter<float>(b_vals_right, 1, "b", &builder, &b);
+  TriangularSolve(a, b,
+                  /*left_side=*/false, /*lower=*/true,
+                  /*unit_diagonal=*/false,
+                  /*transpose_a=*/TriangularSolveOptions::TRANSPOSE);
+
+  Array2D<float> expected({
+      {0.5, 0.08333334, 0.04629629, 0.03367003},
+      {2.5, -0.25, -0.1388889, -0.1010101},
+      {4.5, -0.58333331, -0.32407406, -0.23569024},
+  });
+
+  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+                             ErrorSpec(1e-2, 1e-2));
+}
+
 }  // namespace gpu
 }  // namespace xla
