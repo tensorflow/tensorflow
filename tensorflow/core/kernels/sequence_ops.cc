@@ -75,9 +75,10 @@ class RangeOp : public OpKernel {
                       ? ((std::abs(limit - start) + std::abs(delta) - 1) /
                          std::abs(delta))
                       : std::ceil(std::abs((limit - start) / delta)));
+    TensorShape shape;
+    OP_REQUIRES_OK(context, shape.AddDimWithStatus(size));
     Tensor* out = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, TensorShape({size}), &out));
+    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
     auto flat = out->flat<T>();
     T val = start;
     for (int64 i = 0; i < size; ++i) {
