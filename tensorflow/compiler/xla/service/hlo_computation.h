@@ -131,6 +131,12 @@ class HloComputation {
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
                                  const std::string& new_name = "");
 
+  // Replace the old parameter at index param_no with
+  // `instruction`. Updates uses and root instruction. Removes old
+  // instruction from computation. No check is done on the shape.
+  HloInstruction* ReplaceParameter(int64_t param_no,
+                                   std::unique_ptr<HloInstruction> instruction);
+
   // Remove the param_no'th parameter from the computation.
   // Note this is only applicatable to the computation for the fusion
   // instruction.
@@ -161,7 +167,7 @@ class HloComputation {
       std::unique_ptr<HloInstruction> instruction);
 
   // Replaces an old parameter with a new parameter. Adds the new parameter
-  // instruction to the entry computation.
+  // instruction to the entry computation.  Updates users instruction.
   Status ReplaceEntryComputationParameter(
       int64_t param_no, HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> instruction);
@@ -196,12 +202,12 @@ class HloComputation {
   HloInstruction* root_instruction() const { return root_instruction_; }
 
   // Returns the number of parameters for this computation.
-  int64 num_parameters() const { return param_instructions_.size(); }
+  int64_t num_parameters() const { return param_instructions_.size(); }
 
   // Returns the parameter instruction for the given parameter number.
   HloInstruction* parameter_instruction(int64_t param_no) const {
     CHECK_GE(param_no, 0);
-    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()))
+    CHECK_LT(param_no, static_cast<int64_t>(param_instructions_.size()))
         << "Computation " << name() << " has no parameter number " << param_no;
     return param_instructions_[param_no];
   }
@@ -239,7 +245,7 @@ class HloComputation {
   //     calls.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       const HloComputationProto& proto,
-      const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+      const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
       bool prohibit_empty_literal = true);
 
   using InstructionSequence = tensorflow::gtl::iterator_range<
@@ -269,7 +275,7 @@ class HloComputation {
   // this order, definitions of values always appear before their uses.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
 
-  int64 instruction_count() const { return instruction_iterators_.size(); }
+  int64_t instruction_count() const { return instruction_iterators_.size(); }
 
   // Creates and returns a list of the embedded computations called by this
   // computation. This includes all embedded computations called directly or
@@ -356,6 +362,10 @@ class HloComputation {
   // receive the sharding information of |old_instruction|.
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction);
+
+  // As ReplaceInstruction, but the new instruction can have a different shape.
+  Status ReplaceInstructionWithDifferentShape(HloInstruction* old_instruction,
+                                              HloInstruction* new_instruction);
 
   // Set/get the module containing this computation.
   void set_parent(HloModule* module) { parent_ = module; }
@@ -452,7 +462,7 @@ class HloComputation {
   // dependency purposes. Send and RecvDone are in the group, and AllReduces
   // with the same channel id are in the group.
   using ChannelDependencyGroup =
-      absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>;
+      absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>>;
   ChannelDependencyGroup ComputeChannelDependencies() const;
 
   // Returns true if this computation has a side effect. A computation has a
@@ -508,7 +518,7 @@ class HloComputation {
   // null if there is no such computation.
   HloInstruction* GetInstructionWithName(absl::string_view name);
 
-  int64 unique_id() const { return unique_id_; }
+  int64_t unique_id() const { return unique_id_; }
 
   // Deallocate instructions that are marked by "RemoveInstruction". The two
   // stage clean up process is designed such that HloPass can have stable
@@ -563,7 +573,7 @@ class HloComputation {
                                bool ignore_safety_check);
 
   string name_;
-  int64 unique_id_;
+  int64_t unique_id_;
   HloInstruction* root_instruction_;
 
   // If this computation is a fusion computation, this field points to the

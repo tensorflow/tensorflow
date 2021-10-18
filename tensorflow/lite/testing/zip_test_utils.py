@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Utils for make_zip tests."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import itertools
 import operator
@@ -77,6 +73,7 @@ TF_TYPE_INFO = {
     tf.float16: (np.float16, "FLOAT"),
     tf.float64: (np.float64, "FLOAT64"),
     tf.int32: (np.int32, "INT32"),
+    tf.uint32: (np.uint32, "UINT32"),
     tf.uint8: (np.uint8, "QUANTIZED_UINT8"),
     tf.int16: (np.int16, "QUANTIZED_INT16"),
     tf.int64: (np.int64, "INT64"),
@@ -115,7 +112,7 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
     real = (max_value - min_value) * np.random.random_sample(shape) + min_value
     imag = (max_value - min_value) * np.random.random_sample(shape) + min_value
     value = real + imag * 1j
-  elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
+  elif dtype in (tf.uint32, tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1, shape)
   elif dtype == tf.bool:
     value = np.random.choice([True, False], size=shape)
@@ -192,7 +189,8 @@ def write_examples(fp, examples):
   for example in examples:
     fp.write("inputs,%d\n" % len(example["inputs"]))
     for i in example["inputs"]:
-      write_tensor(fp, i)
+      if i is not None:
+        write_tensor(fp, i)
     fp.write("outputs,%d\n" % len(example["outputs"]))
     for i in example["outputs"]:
       write_tensor(fp, i)
@@ -214,12 +212,14 @@ def write_test_cases(fp, model_name, examples):
   for example in examples:
     fp.write("reshape {\n")
     for t in example["inputs"]:
-      fp.write("  input: \"" + ",".join(map(str, t.shape)) + "\"\n")
+      if t is not None:
+        fp.write("  input: \"" + ",".join(map(str, t.shape)) + "\"\n")
     fp.write("}\n")
     fp.write("invoke {\n")
 
     for t in example["inputs"]:
-      fp.write("  input: \"" + format_result(t) + "\"\n")
+      if t is not None:
+        fp.write("  input: \"" + format_result(t) + "\"\n")
     for t in example["outputs"]:
       fp.write("  output: \"" + format_result(t) + "\"\n")
       fp.write("  output_shape: \"" + ",".join([str(dim) for dim in t.shape]) +
@@ -327,6 +327,16 @@ def make_zip_of_tests(options,
 
   processed_labels = set()
 
+  if options.make_tf_ptq_tests:
+    # For cases with fully_quantize is True, also generates a case with
+    # fully_quantize is False. Marks these cases as suitable for PTQ tests.
+    parameter_count = 0
+    for parameters in test_parameters:
+      if True in parameters.get("fully_quantize", []):
+        parameters.update({"fully_quantize": [True, False], "tf_ptq": [True]})
+        parameter_count += functools.reduce(
+            operator.mul, [len(values) for values in parameters.values()])
+
   if options.make_edgetpu_tests:
     extra_toco_options.inference_input_type = tf.uint8
     extra_toco_options.inference_output_type = tf.uint8
@@ -367,6 +377,9 @@ def make_zip_of_tests(options,
       processed_labels.add(label)
 
       param_dict = dict(zip(keys, curr))
+
+      if options.make_tf_ptq_tests and not param_dict.get("tf_ptq", False):
+        continue
 
       if options.make_edgetpu_tests and (not param_dict.get(
           "fully_quantize", False) or param_dict.get("quant_16x8", False)):
@@ -453,8 +466,11 @@ def make_zip_of_tests(options,
           report["converter"] = report_lib.FAILED
           report["tf"] = report_lib.SUCCESS
           # Convert graph to toco
-          input_tensors = [(input_tensor.name.split(":")[0], input_tensor.shape,
-                            input_tensor.dtype) for input_tensor in inputs]
+          input_tensors = []
+          for input_tensor in inputs:
+            if input_tensor is not None:
+              input_tensors.append((input_tensor.name.split(":")[0],
+                                    input_tensor.shape, input_tensor.dtype))
           output_tensors = [_normalize_output_name(out.name) for out in outputs]
           # pylint: disable=g-long-ternary
           graph_def = freeze_graph(
@@ -563,7 +579,8 @@ def make_zip_of_tests(options,
                         "TensorFlow fails in %d percent of the cases.") %
                        (zip_path, int(100 * tf_failures / parameter_count)))
 
-  if not options.make_edgetpu_tests and tf_failures != expected_tf_failures:
+  if tf_failures != expected_tf_failures and not (options.make_edgetpu_tests or
+                                                  options.make_tf_ptq_tests):
     raise RuntimeError(("Expected TF to fail %d times while generating '%s', "
                         "but that happened %d times") %
                        (expected_tf_failures, zip_path, tf_failures))

@@ -128,7 +128,7 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     case PrimitiveType::S32:
       return CreateDenseAttrFromLiteral<int32>(type, literal);
     case PrimitiveType::S64:
-      return CreateDenseAttrFromLiteral<int64>(type, literal);
+      return CreateDenseAttrFromLiteral<int64_t>(type, literal);
     case PrimitiveType::U8:
       return CreateDenseAttrFromLiteral<uint8>(type, literal);
     case PrimitiveType::U16:
@@ -217,7 +217,7 @@ StatusOr<int> GetElementTypeBytes(mlir::Type type) {
 }
 
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
-    const llvm::ArrayRef<int64> vector, mlir::Builder builder,
+    const llvm::ArrayRef<int64_t> vector, mlir::Builder builder,
     llvm::ArrayRef<int64_t> shape) {
   return mlir::DenseIntElementsAttr::get(
       mlir::RankedTensorType::get(shape.empty() ? vector.size() : shape,
@@ -265,27 +265,15 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
   }
 }
 
-mlir::mhlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
+mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
     const GatherDimensionNumbers& input, mlir::Builder builder) {
-  auto offset_dims = CreateDenseIntElementsAttrFromVector(
-      llvm::SmallVector<int64, 4>{input.offset_dims().begin(),
-                                  input.offset_dims().end()},
-      builder);
-  auto collapsed_slice_dims = CreateDenseIntElementsAttrFromVector(
-      llvm::SmallVector<int64, 4>{input.collapsed_slice_dims().begin(),
-                                  input.collapsed_slice_dims().end()},
-      builder);
-  auto start_index_map = CreateDenseIntElementsAttrFromVector(
-      llvm::SmallVector<int64, 4>{input.start_index_map().begin(),
-                                  input.start_index_map().end()},
-      builder);
-
-  mlir::IntegerAttr index_vector_dim =
-      builder.getI64IntegerAttr(input.index_vector_dim());
-
-  return mlir::mhlo::GatherDimensionNumbers::get(
-      offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim,
-      builder.getContext());
+  auto get_i64_array = [](absl::Span<const int64_t> container) {
+    return llvm::ArrayRef<int64_t>{container.data(), container.size()};
+  };
+  return mlir::mhlo::GatherDimensionNumbersAttr::get(
+      builder.getContext(), get_i64_array(input.offset_dims()),
+      get_i64_array(input.collapsed_slice_dims()),
+      get_i64_array(input.start_index_map()), input.index_vector_dim());
 }
 
 StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {

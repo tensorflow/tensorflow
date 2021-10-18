@@ -68,7 +68,7 @@ class OrderedCode {
   // otherwise.
   static bool ReadString(StringPiece* src, string* result);
   static bool ReadNumIncreasing(StringPiece* src, uint64* result);
-  static bool ReadSignedNumIncreasing(StringPiece* src, int64* result);
+  static bool ReadSignedNumIncreasing(StringPiece* src, int64_t* result);
 
   // Helper for testing: corrupt "*str" by changing the kth item separator
   // in the string.

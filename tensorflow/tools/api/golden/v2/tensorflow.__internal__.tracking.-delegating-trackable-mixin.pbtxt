@@ -1,0 +1,9 @@
+path: "tensorflow.__internal__.tracking.DelegatingTrackableMixin"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.tracking.base_delegate.DelegatingTrackableMixin\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'trackable_obj\'], varargs=None, keywords=None, defaults=None"
+  }
+}

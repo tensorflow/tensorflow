@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for Split Op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -95,7 +91,8 @@ class SplitOpTest(test.TestCase):
     with self.session() as sess:
       with self.assertRaises(ValueError) as context:
         sess.run(array_ops.split(value, size_splits), {size_splits: [2, 2, 6]})
-      self.assertTrue("Cannot infer num from shape" in str(context.exception))
+      self.assertIn("Cannot infer argument `num` from shape",
+                    str(context.exception))
 
   @test_util.run_in_graph_and_eager_modes
   def testExplicitNum(self):
@@ -386,6 +383,24 @@ class SplitOpTest(test.TestCase):
       with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                   "must have exactly one element"):
         sess.run(y, {x: np.array([], dtype=np.int32), splits: [4, 11, 15]})
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNegativeSizes(self):
+    x = constant_op.constant([1, 2, 3], dtypes.float32)
+    # A size of -1 signifies to determine size based on sum of other splits.
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "Split size at index 1 must be >= 0. Got: -2"):
+      splits = [-1, -2]
+      self.evaluate(array_ops.split(x, splits, axis=0))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBadSplitSizes(self):
+    x = constant_op.constant([1, 2], dtypes.float32)
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "Determined shape must either match input"
+                                "|can't split axis"):
+      splits = [1, 2]
+      self.evaluate(array_ops.split(x, splits, axis=0))
 
 
 if __name__ == "__main__":

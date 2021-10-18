@@ -45,7 +45,7 @@ namespace xla {
   Status status;
   tensorflow::WritableFile* f_ptr = f.get();
   literal.EachCellAsString(
-      [f_ptr, &status](absl::Span<const int64> indices, const string& value) {
+      [f_ptr, &status](absl::Span<const int64_t> indices, const string& value) {
         if (!status.ok()) {
           return;
         }

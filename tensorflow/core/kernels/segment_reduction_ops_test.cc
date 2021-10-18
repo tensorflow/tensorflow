@@ -85,7 +85,7 @@ static void BM_SegmentReduction(::testing::benchmark::State& state,
     reduction_op->Compute(reduction_context.get());
   }
   int64_t bytes_per_iter =
-      static_cast<int64>(num_rows * num_cols * sizeof(float));
+      static_cast<int64_t>(num_rows * num_cols * sizeof(float));
   state.SetBytesProcessed(bytes_per_iter * state.iterations());
 }
 
@@ -96,7 +96,7 @@ static void BM_SegmentReduction(::testing::benchmark::State& state,
   }                                                    \
   static void BM_Reduce_##O##_##R##_##C##_##S##_int64( \
       ::testing::benchmark::State & state) {           \
-    BM_SegmentReduction<int64>(state, #O, R, C, S);    \
+    BM_SegmentReduction<int64_t>(state, #O, R, C, S);  \
   }                                                    \
   BENCHMARK(BM_Reduce_##O##_##R##_##C##_##S##_int32);  \
   BENCHMARK(BM_Reduce_##O##_##R##_##C##_##S##_int64);
@@ -151,7 +151,7 @@ static void SparseSegmentMeanGradHelper(::testing::benchmark::State& state,
                   .Finalize(g, &node));
 
   test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
                           (kDim1 * kDim2) * sizeof(float));
 }
 

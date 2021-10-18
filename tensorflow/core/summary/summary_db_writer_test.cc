@@ -31,7 +31,7 @@ namespace {
 
 Tensor MakeScalarInt64(int64_t x) {
   Tensor t(DT_INT64, TensorShape({}));
-  t.scalar<int64>()() = x;
+  t.scalar<int64_t>()() = x;
   return t;
 }
 
@@ -62,7 +62,7 @@ class SummaryDbWriterTest : public ::testing::Test {
     db_ = nullptr;
   }
 
-  int64 QueryInt(const string& sql) {
+  int64_t QueryInt(const string& sql) {
     SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
     Status s = stmt.Step(&is_done);

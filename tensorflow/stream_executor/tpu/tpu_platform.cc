@@ -111,7 +111,7 @@ TpuPlatform::GetUncachedExecutor(
 
 const std::string& TpuPlatform::Name() const { return name_; }
 
-int64 TpuPlatform::TpuMemoryLimit() {
+int64_t TpuPlatform::TpuMemoryLimit() {
   return tpu::ExecutorApiFn()->TpuPlatform_TpuMemoryLimitFn(platform_);
 }
 
@@ -165,7 +165,7 @@ Status TpuPlatform::TpusPerHost(int* tpus) {
   return ret_status;
 }
 
-Status TpuPlatform::TpuMemoryLimit(int64* memory_limit) {
+Status TpuPlatform::TpuMemoryLimit(int64_t* memory_limit) {
   TF_Status* status = TF_NewStatus();
 
   if (tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn == nullptr) {

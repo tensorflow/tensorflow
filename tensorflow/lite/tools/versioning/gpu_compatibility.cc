@@ -331,9 +331,9 @@ absl::Status CheckCustomOpsGpuDelegateCompatibility(const OpSignature& op_sig) {
 
 }  // namespace
 
-// TODO(b/189917229): Logics are copied from TFLiteOperationParser:IsSupported()
-// in tensorflow/lite/delegates/gpu/common/model_builder.cc. Once this logic is
-// stabilized, the original logic in model_builder.cc will be replaced by this.
+// Logics here used to be in TFLiteOperationParser:IsSupported()
+// of tensorflow/lite/delegates/gpu/common/model_builder.cc but they're all
+// migrated into here.
 absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
   TfLiteBuiltinOperator opcode = static_cast<TfLiteBuiltinOperator>(op_sig.op);
   switch (opcode) {

@@ -65,8 +65,8 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
                                       orig_crops.shape().DebugString()));
   // To avoid out-of-bounds access in the case that the block_shape and/or
   // crops tensors are concurrently modified, we must copy the values.
-  gtl::InlinedVector<int64, 4> block_shape;
-  gtl::InlinedVector<int64, 8> crops;
+  gtl::InlinedVector<int64_t, 4> block_shape;
+  gtl::InlinedVector<int64_t, 8> crops;
   internal::spacetobatch::SubtleMustCopyFlat(orig_block_shape, &block_shape);
   internal::spacetobatch::SubtleMustCopyFlat(orig_crops, &crops);
 
@@ -178,8 +178,8 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
   OP_REQUIRES_OK(context, context->allocate_output(0, external_output_shape,
                                                    &output_tensor));
 
-  const int64* internal_crops = &crops[2 * removed_prefix_block_dims];
-  const int64* internal_block_shape = &block_shape[removed_prefix_block_dims];
+  const int64_t* internal_crops = &crops[2 * removed_prefix_block_dims];
+  const int64_t* internal_block_shape = &block_shape[removed_prefix_block_dims];
 
   switch (internal_block_dims) {
 #define TF_BATCHTOSPACE_BLOCK_DIMS_CASE(NUM_BLOCK_DIMS)                   \
@@ -224,7 +224,7 @@ class BatchToSpaceOp : public OpKernel {
         context, block_size_ > 1,
         errors::InvalidArgument("Block size should be > 1: ", block_size_));
     block_shape_ = Tensor(tensorflow::DT_INT64, TensorShape({2}));
-    auto block_shape_vec = block_shape_.vec<int64>();
+    auto block_shape_vec = block_shape_.vec<int64_t>();
     block_shape_vec(0) = block_size_;
     block_shape_vec(1) = block_size_;
   }

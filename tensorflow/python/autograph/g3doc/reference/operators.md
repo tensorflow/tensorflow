@@ -108,9 +108,10 @@ ag__.if_expr(cond, lambda: true_val, lambda: false_val, 'cond')
 ```
 
 Dispatch on `cond`:
- * default: to Python if-else statement.
- * tf.Tensor: to `tf.cond`, checking that `true_val` and `false_val` have
-   compatible shape and type.
+
+*   default: to Python if-else statement.
+*   tf.Tensor: to `tf.cond`, checking that `true_val` and `false_val` have
+    compatible shape and type.
 
 #### Control flow
 
@@ -138,12 +139,17 @@ subject to restrictions of the respective implementations. For example,
 For loop: `for var in target: body`, extended with a per-iteration
 condition to handle early termination (e.g. due to a `break`).
 
-Args: iter_: iteration target; same as `n` in `for _ in n`. extra_test: optional
-extra per-iteration condition (as thunk). body: loop body (as unary thunk); same
-as `def body(i): <b>` in `for i in _: <b>`. get_state: returns the current value
-of the loop variables set_state: sets new values into the loop variables
-symbol_names: human readable string representing each loop variable. Used for
-error messages. opts: additional, implementation-specific, keyword arguments.
+Args:
+
+*   iter_: iteration target; same as `n` in `for _ in n`.
+*   extra_test: optional extra per-iteration condition (as thunk).
+*   body: loop body (as unary thunk); same as `def body(i): <b>` in `for i in _:
+    <b>`.
+*   get_state: returns the current value of the loop variables
+*   set_state: sets new values into the loop variables
+*   symbol_names: human readable string representing each loop variable. Used
+    for error messages.
+*   opts: additional, implementation-specific, keyword arguments.
 
 Example:
 
@@ -197,18 +203,19 @@ ag__.for_stmt(range(3), extra_test, loop_body, get_state, set_state, ('j',), {})
 ```
 
 Dispatch on `iter_`:
- * default: to Python for loop (accounting for `extra_test`).
- * `tf.Tensor` produced by `tf.range`: to `tf.while_loop`, removing the
-   `tf.range`.
- * `tf.Tensor`, `tf.RagedTensor`: to `tf.while_loop`, checking the loop vars for
-   consistency. `opts` forwarded to `tf.while_loop`. Iterates over the outermost
-   dimension of the tensor (similar to `tf.map_fn`).
- * `tf.data.Dataset`: to `tf.data.Dataset.take_while`, checking the loop vars
-   for consistency.
- * `tf.data.Iterator`, `tf.distribute.Iterator`: to `tf.while_loop` called on
-   the iterator's `get_next_as_optional`, checking the loop vars for
-   consistency.
- * `tf.distribute.Iterable`: to `tf.distribute.Iterable.reduce`.
+
+*   default: to Python for loop (accounting for `extra_test`).
+*   `tf.Tensor` produced by `tf.range`: to `tf.while_loop`, removing the
+    `tf.range`.
+*   `tf.Tensor`, `tf.RagedTensor`: to `tf.while_loop`, checking the loop vars
+    for consistency. `opts` forwarded to `tf.while_loop`. Iterates over the
+    outermost dimension of the tensor (similar to `tf.map_fn`).
+*   `tf.data.Dataset`: to `tf.data.Dataset.take_while`, checking the loop vars
+    for consistency.
+*   `tf.data.Iterator`, `tf.distribute.Iterator`: to `tf.while_loop` called on
+    the iterator's `get_next_as_optional`, checking the loop vars for
+    consistency.
+*   `tf.distribute.Iterable`: to `tf.distribute.Iterable.reduce`.
 
 ##### `if_stmt`
 
@@ -217,17 +224,19 @@ Dispatch on `iter_`:
 If statement: `if cond: body else: orelse-body`.
 
 Args:
-  cond: if condition; same as `cond` in `if cond`.
-  body: true branch (as unary thunk); same as `def body(): <b>` in `if _: <b>`.
-  orelse: false branch (as unary thunk); same as `def body(): <b>`
-      in `if _: <b>`.
-  get_state: returns the current value of the conditional variables
-  set_state: sets new values into the conditional variables
-  symbol_names: human readable string representing each conditional variable.
-      Used for error messages.
-  nouts: number of output conditional variables. Not all conditional variables
-      are outputs - some are just inputs. The first nouts values in get_state
-      and set_state are the conditional outputs.
+
+*   cond: if condition; same as `cond` in `if cond`.
+*   body: true branch (as unary thunk); same as `def body(): <b>` in `if _:
+    <b>`.
+*   orelse: false branch (as unary thunk); same as `def body(): <b>` in `if _:
+    <b>`.
+*   get_state: returns the current value of the conditional variables
+*   set_state: sets new values into the conditional variables
+*   symbol_names: human readable string representing each conditional variable.
+    Used for error messages.
+*   nouts: number of output conditional variables. Not all conditional variables
+    are outputs - some are just inputs. The first nouts values in get_state and
+    set_state are the conditional outputs.
 
 Example:
 
@@ -255,8 +264,9 @@ ag__.if_stmt(k > 1, body, orelse, get_state, set_state, ('j', 'i'), 1)
 ```
 
 Dispatch on `cond`:
- * default: to Python if statement.
- * `tf.Tensor`: to `tf.cond`, removing the `tf.range`.
+
+*   default: to Python if statement.
+*   `tf.Tensor`: to `tf.cond`, removing the `tf.range`.
 
 ##### `while_stmt`
 
@@ -265,14 +275,14 @@ Dispatch on `cond`:
 While loop: `while cond: body`.
 
 Args:
-  test: loop condition (as thunk); same as `def test(): cond` in `while cond`.
-  body: loop body (as thunk); same as `def body(): <b>` in
-      `while _: <b>`.
-  get_state: returns the current value of the loop variables
-  set_state: sets new values into the loop variables
-  symbol_names: human readable string representing each loop variable. Used for
-      error messages.
-  opts: additional, implementation-specific, keyword arguments.
+
+*   test: loop condition (as thunk); same as `def test(): cond` in `while cond`.
+*   body: loop body (as thunk); same as `def body(): <b>` in `while _: <b>`.
+*   get_state: returns the current value of the loop variables
+*   set_state: sets new values into the loop variables
+*   symbol_names: human readable string representing each loop variable. Used
+    for error messages.
+*   opts: additional, implementation-specific, keyword arguments.
 
 Example:
 
@@ -301,8 +311,9 @@ ag__.while_stmt(loop_test, loop_body, get_state, set_state, ('j',), {})
 ```
 
 Dispatch on return type of `test`:
- * default: to Python while loop.
- * `tf.Tensor`: to `tf.while_loop`.
+
+*   default: to Python while loop.
+*   `tf.Tensor`: to `tf.while_loop`.
 
 #### Data structures
 
@@ -316,10 +327,13 @@ List append operation: `l.append(x)`. Callers should assume that the list
 argument is modified, if that is possible.
 
 Args:
-  list_: a list-like value.
-  x: value to append to list.
+
+*   list_: a list-like value.
+*   x: value to append to list.
+
 Returns:
-  same as list_, with an appended value.
+
+*   same as list_, with an appended value.
 
 Example:
 
@@ -332,9 +346,10 @@ l = ag__.list_append(l, x)
 ```
 
 Dispatch on `list_`:
- * default: to `list_.append`.
- * `tf.Tensor`: to `tf.raw_ops.tensor_list_push_back`.
- * `tf.TensorArray`: to `tf.TensorArray.write`.
+
+*   default: to `list_.append`.
+*   `tf.Tensor`: to `tf.raw_ops.tensor_list_push_back`.
+*   `tf.TensorArray`: to `tf.TensorArray.write`.
 
 ##### `list_pop`
 
@@ -344,12 +359,15 @@ List pop operation: `l.pop(i)`. Callers should assume that the list
 argument is modified, if that is possible.
 
 Args:
-  list_: a list-like value.
-  i: optional index to remove from.
-  opts: optional, implementation-specific arguments.
+
+*   list_: a list-like value.
+*   i: optional index to remove from.
+*   opts: optional, implementation-specific arguments.
+
 Returns:
-  new_list: same as list_, with the value removed
-  x: the value that was removed
+
+*   new_list: same as list_, with the value removed
+*   x: the value that was removed
 
 Example:
 
@@ -362,8 +380,9 @@ l, x = ag__.list_pop(l)
 ```
 
 Dispatch on `list_`:
- * default: to `list_.pop`.
- * `tf.Tensor`: to `tf.raw_ops.tensor_list_pop_back`.
+
+*   default: to `list_.pop`.
+*   `tf.Tensor`: to `tf.raw_ops.tensor_list_pop_back`.
 
 ##### `list_stack`
 ##### `ListPopOpts`

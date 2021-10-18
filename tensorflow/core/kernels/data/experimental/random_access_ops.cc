@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/core/platform/errors.h"
+
 namespace tensorflow {
 namespace data {
 namespace experimental {
@@ -27,8 +29,15 @@ Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
+  int64_t cardinality = dataset->Cardinality();
+  if (cardinality == kInfiniteCardinality ||
+      cardinality == kUnknownCardinality) {
+    return tensorflow::errors::FailedPrecondition(
+        "Only datasets with finite known cardinality support random access.");
+  }
+
   int64 index = 0;
-  TF_RETURN_IF_ERROR(ParseScalarArgument<int64>(ctx, "index", &index));
+  TF_RETURN_IF_ERROR(ParseScalarArgument<int64_t>(ctx, "index", &index));
 
   std::vector<Tensor> components;
   TF_RETURN_IF_ERROR(dataset->Get(ctx, index, &components));
@@ -41,8 +50,12 @@ Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
   return Status::OK();
 }
 
+namespace {
+
 REGISTER_KERNEL_BUILDER(Name("GetElementAtIndex").Device(DEVICE_CPU),
                         GetElementAtIndexOp);
+
+}
 
 }  // namespace experimental
 }  // namespace data

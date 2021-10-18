@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
@@ -50,7 +51,7 @@ class RecvBufCall : public CancellableCall {
     *req_.mutable_client_locality() = client_locality;
     *req_.mutable_server_locality() = server_attributes.locality();
     req_.set_num_bytes(to_tensor->TotalBytes());
-    req_.set_buf_ptr(reinterpret_cast<int64>(DMAHelper::base(to_tensor)));
+    req_.set_buf_ptr(reinterpret_cast<int64_t>(DMAHelper::base(to_tensor)));
     req_.set_src_device(peer_device);
     req_.set_src_incarnation(server_attributes.incarnation());
     req_.set_dst_device(to_device->name());
@@ -151,10 +152,11 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     }
     AllocatorAttributes cpu_attr;
     cpu_attr.set_gpu_compatible(true);
-    ScopedMemoryDebugAnnotation op_annotation(
+    profiler::ScopedMemoryDebugAnnotation op_annotation(
         "CollectiveRemoteAccessDistributed::RecvFromPeer"
         "::recv_buf_callback",
-        step_id_, "dynamic", to_tensor->dtype(), &to_tensor->shape());
+        step_id_, "dynamic", to_tensor->dtype(),
+        [to_tensor]() { return to_tensor->shape().DebugString(); });
 
     state->cpu_tensor =
         std::make_unique<Tensor>(cpu_dev->GetAllocator(cpu_attr),

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.errors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import pickle
 import warnings
@@ -168,8 +164,36 @@ class ErrorsTest(test.TestCase):
     ]:
       with self.assertRaises(expected_exception) as error:
         _errors_test_helper.TestRaiseFromStatus(code)
-      self.assertEqual(error.exception.experimental_payloads["key1"], "value1")
-      self.assertEqual(error.exception.experimental_payloads["key2"], "value2")
+      self.assertEqual(error.exception.experimental_payloads[b"key1"],
+                       b"value1")
+      self.assertEqual(error.exception.experimental_payloads[b"key2"],
+                       b"value2")
+
+  def testErrorPayloadsFromTFStatus(self):
+    for code, expected_exception in [
+        (1, errors.CancelledError),
+        (2, errors.UnknownError),
+        (3, errors.InvalidArgumentError),
+        (4, errors.DeadlineExceededError),
+        (5, errors.NotFoundError),
+        (6, errors.AlreadyExistsError),
+        (7, errors.PermissionDeniedError),
+        (16, errors.UnauthenticatedError),
+        (8, errors.ResourceExhaustedError),
+        (9, errors.FailedPreconditionError),
+        (10, errors.AbortedError),
+        (11, errors.OutOfRangeError),
+        (12, errors.UnimplementedError),
+        (13, errors.InternalError),
+        (14, errors.UnavailableError),
+        (15, errors.DataLossError),
+    ]:
+      with self.assertRaises(expected_exception) as error:
+        _errors_test_helper.TestRaiseFromTFStatus(code)
+      self.assertEqual(error.exception.experimental_payloads[b"key1"],
+                       b"value1")
+      self.assertEqual(error.exception.experimental_payloads[b"key2"],
+                       b"value2")
 
   def testErrorPayloadsDefaultValue(self):
     for exception_type in [

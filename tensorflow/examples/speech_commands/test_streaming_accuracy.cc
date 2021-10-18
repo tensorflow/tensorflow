@@ -82,12 +82,12 @@ bazel run tensorflow/examples/speech_commands:test_streaming_accuracy -- \
 #include "tensorflow/examples/speech_commands/recognize_commands.h"
 
 // These are all common classes it's handy to reference with no namespace.
+using ::int64_t;
 using tensorflow::Flag;
-using tensorflow::Status;
-using tensorflow::Tensor;
 using tensorflow::int32;
-using tensorflow::int64;
+using tensorflow::Status;
 using tensorflow::string;
+using tensorflow::Tensor;
 using tensorflow::uint16;
 using tensorflow::uint32;
 
@@ -199,7 +199,7 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  std::vector<std::pair<string, tensorflow::int64>> ground_truth_list;
+  std::vector<std::pair<string, int64_t>> ground_truth_list;
   Status read_ground_truth_status =
       tensorflow::ReadGroundTruthFile(ground_truth, &ground_truth_list);
   if (!read_ground_truth_status.ok()) {
@@ -241,7 +241,7 @@ int main(int argc, char* argv[]) {
   tensorflow::RecognizeCommands recognize_commands(
       labels_list, average_window_ms, detection_threshold, suppression_ms);
 
-  std::vector<std::pair<string, int64>> all_found_words;
+  std::vector<std::pair<string, int64_t>> all_found_words;
   tensorflow::StreamingAccuracyStats previous_stats;
 
   const int64_t audio_data_end = (sample_count - clip_duration_samples);

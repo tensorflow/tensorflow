@@ -67,45 +67,45 @@ typedef Eigen::GpuDevice GPUDevice;
   OP_REQUIRES(                                                                 \
       context, out_backprop.dims() == 4,                                       \
       errors::InvalidArgument(label, ": out_backprop must be 4-dimensional")); \
-  const int64 batch = input_shape.dim_size(0);                                 \
+  const int64_t batch = input_shape.dim_size(0);                               \
   OP_REQUIRES(                                                                 \
       context, batch == out_backprop.dim_size(0),                              \
       errors::InvalidArgument(                                                 \
           label, ": input and out_backprop must have the same batch size"));   \
-  const int64 input_rows_raw = GetTensorDim(input_shape, data_format_, 'H');   \
+  const int64_t input_rows_raw = GetTensorDim(input_shape, data_format_, 'H'); \
   OP_REQUIRES(                                                                 \
       context,                                                                 \
       FastBoundsCheck(input_rows_raw, std::numeric_limits<int32>::max()),      \
       errors::InvalidArgument("Input rows too large"));                        \
   const int32 input_rows = static_cast<int32>(input_rows_raw);                 \
-  const int64 input_cols_raw = GetTensorDim(input_shape, data_format_, 'W');   \
+  const int64_t input_cols_raw = GetTensorDim(input_shape, data_format_, 'W'); \
   OP_REQUIRES(                                                                 \
       context,                                                                 \
       FastBoundsCheck(input_cols_raw, std::numeric_limits<int32>::max()),      \
       errors::InvalidArgument("Input cols too large"));                        \
   const int32 input_cols = static_cast<int32>(input_cols_raw);                 \
-  const int64 filter_rows = filter_shape.dim_size(0);                          \
-  const int64 filter_cols = filter_shape.dim_size(1);                          \
-  const int64 output_rows_raw =                                                \
+  const int64_t filter_rows = filter_shape.dim_size(0);                        \
+  const int64_t filter_cols = filter_shape.dim_size(1);                        \
+  const int64_t output_rows_raw =                                              \
       GetTensorDim(out_backprop.shape(), data_format_, 'H');                   \
   OP_REQUIRES(                                                                 \
       context,                                                                 \
       FastBoundsCheck(output_rows_raw, std::numeric_limits<int32>::max()),     \
       errors::InvalidArgument("Output rows too large"));                       \
   const int32 output_rows = static_cast<int32>(output_rows_raw);               \
-  const int64 output_cols_raw =                                                \
+  const int64_t output_cols_raw =                                              \
       GetTensorDim(out_backprop.shape(), data_format_, 'W');                   \
   OP_REQUIRES(                                                                 \
       context,                                                                 \
       FastBoundsCheck(output_cols_raw, std::numeric_limits<int32>::max()),     \
       errors::InvalidArgument("Output cols too large"));                       \
   const int32 output_cols = static_cast<int32>(output_cols_raw);               \
-  const int64 in_depth = GetTensorDim(input_shape, data_format_, 'C');         \
+  const int64_t in_depth = GetTensorDim(input_shape, data_format_, 'C');       \
   OP_REQUIRES(context, in_depth == filter_shape.dim_size(2),                   \
               errors::InvalidArgument(                                         \
                   label, ": input and filter must have the same in_depth"));   \
-  const int64 depth_multiplier = filter_shape.dim_size(3);                     \
-  const int64 out_depth_raw =                                                  \
+  const int64_t depth_multiplier = filter_shape.dim_size(3);                   \
+  const int64_t out_depth_raw =                                                \
       GetTensorDim(out_backprop.shape(), data_format_, 'C');                   \
   OP_REQUIRES(                                                                 \
       context,                                                                 \
@@ -117,8 +117,8 @@ typedef Eigen::GpuDevice GPUDevice;
       errors::InvalidArgument(                                                 \
           label, ": depth_multiplier * in_depth not equal to out_depth"));     \
   const auto stride = stride_;                                                 \
-  int64 out_rows = 0, out_cols = 0, pad_top = 0, pad_bottom = 0, pad_left = 0, \
-        pad_right = 0;                                                         \
+  int64_t out_rows = 0, out_cols = 0, pad_top = 0, pad_bottom = 0,             \
+          pad_left = 0, pad_right = 0;                                         \
   if (padding_ == Padding::EXPLICIT) {                                         \
     GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'H', &pad_top,  \
                              &pad_bottom);                                     \
@@ -205,11 +205,13 @@ static void CopyOutputBackpropRegion(const DepthwiseArgs& args,
   const int64_t out_cols = args.out_cols;
 
   // Calculate the output spatial region which used point (in_r, in_c) as input.
-  const int64_t out_r_start = std::max(
-      static_cast<int64>(0), (in_r - filter_rows + pad_rows + stride) / stride);
+  const int64_t out_r_start =
+      std::max(static_cast<int64_t>(0),
+               (in_r - filter_rows + pad_rows + stride) / stride);
   const int64_t out_r_end = std::min(out_rows - 1, (in_r + pad_rows) / stride);
-  const int64_t out_c_start = std::max(
-      static_cast<int64>(0), (in_c - filter_cols + pad_cols + stride) / stride);
+  const int64_t out_c_start =
+      std::max(static_cast<int64_t>(0),
+               (in_c - filter_cols + pad_cols + stride) / stride);
   const int64_t out_c_end = std::min(out_cols - 1, (in_c + pad_cols) / stride);
 
   // Zero-pad 'buffer' if output region is smaller than filter spatial size.
@@ -694,9 +696,9 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
  private:
   std::vector<int32> strides_;
   Padding padding_;
-  std::vector<int64> explicit_paddings_;
+  std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
-  int64 stride_;
+  int64_t stride_;
 
   // For in_depth == 1 and grouped convolutions.
   LaunchConv2DBackpropInputOp<Device, T> launcher_;
@@ -1225,9 +1227,9 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
  private:
   std::vector<int32> strides_;
   Padding padding_;
-  std::vector<int64> explicit_paddings_;
+  std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
-  int64 stride_;
+  int64_t stride_;
 
   // For in_depth == 1 and grouped convolutions.
   LaunchConv2DBackpropFilterOp<Device, T> launcher_;

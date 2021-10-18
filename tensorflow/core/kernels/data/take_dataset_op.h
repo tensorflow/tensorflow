@@ -38,7 +38,7 @@ class TakeDataset : public DatasetBase {
 
   string DebugString() const override;
 
-  int64 Cardinality() const override;
+  int64_t Cardinality() const override;
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
 
@@ -52,7 +52,7 @@ class TakeDataset : public DatasetBase {
  private:
   class EmptyIterator;
   class FiniteIterator;
-  const int64 count_;
+  const int64_t count_;
   const DatasetBase* const input_;
 };
 

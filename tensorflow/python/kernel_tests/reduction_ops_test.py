@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for reduction ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 import numbers
 
@@ -762,6 +758,7 @@ class MinReductionTest(test.TestCase):
         tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
+  @test_util.disable_xla("b/168718272")  # XLA handling of NaN is inconsistent
   def testSpecialValues(self):
     for dtype in [np.float32, np.float64]:
       for size in range(1, 4):
@@ -878,6 +875,7 @@ class MaxReductionTest(test.TestCase):
         tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
+  @test_util.disable_xla("b/168718272")  # XLA handling of NaN is inconsistent
   def testSpecialValues(self):
     for dtype in [np.float32, np.float64]:
       for size in range(1, 4):

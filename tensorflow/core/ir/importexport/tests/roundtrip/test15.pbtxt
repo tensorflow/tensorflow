@@ -1,0 +1,309 @@
+node {
+  name: "variable"
+  op: "VarHandleOp"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+}
+node {
+  name: "const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+      }
+    }
+  }
+}
+node {
+  name: "__forward_foo_24542"
+  op: "__forward_foo_24542"
+  input: "const"
+  input: "variable"
+}
+library {
+  function {
+    signature {
+      name: "__forward_foo_24542"
+      input_arg {
+        name: "x"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "var"
+        type: DT_RESOURCE
+      }
+      output_arg {
+        name: "identity"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "while"
+        type: DT_RESOURCE
+      }
+      output_arg {
+        name: "while_maximum_iterations"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "while_0"
+        type: DT_INT32
+      }
+      is_stateful: true
+      control_output: "while"
+    }
+    node_def {
+      name: "Const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 0
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Const"
+      }
+    }
+    node_def {
+      name: "while/maximum_iterations"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: -1
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "while/maximum_iterations"
+      }
+    }
+    node_def {
+      name: "while/loop_counter"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 0
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "while/loop_counter"
+      }
+    }
+    node_def {
+      name: "while_1"
+      op: "While"
+      input: "while/loop_counter:output:0"
+      input: "while/maximum_iterations:output:0"
+      input: "Const:output:0"
+      input: "x"
+      input: "var"
+      attr {
+        key: "T"
+        value {
+          list {
+            type: DT_INT32
+            type: DT_INT32
+            type: DT_INT32
+            type: DT_FLOAT
+            type: DT_RESOURCE
+          }
+        }
+      }
+      attr {
+        key: "_lower_using_switch_merge"
+        value {
+          b: true
+        }
+      }
+      attr {
+        key: "_num_original_outputs"
+        value {
+          i: 5
+        }
+      }
+      attr {
+        key: "_read_only_resource_inputs"
+        value {
+          list {
+            i: 4
+          }
+        }
+      }
+      attr {
+        key: "body"
+        value {
+          func {
+            name: "while_body_24398"
+          }
+        }
+      }
+      attr {
+        key: "cond"
+        value {
+          func {
+            name: "while_cond_24397"
+          }
+        }
+      }
+      attr {
+        key: "output_shapes"
+        value {
+          list {
+            shape {
+            }
+            shape {
+            }
+            shape {
+            }
+            shape {
+            }
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "parallel_iterations"
+        value {
+          i: 10
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "while"
+      }
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "while_1:output:3"
+      input: "^NoOp"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Identity"
+      }
+    }
+    node_def {
+      name: "NoOp"
+      op: "NoOp"
+      input: "^while_1"
+      experimental_debug_info {
+        original_node_names: "NoOp"
+      }
+    }
+    ret {
+      key: "identity"
+      value: "Identity:output:0"
+    }
+    ret {
+      key: "while"
+      value: "while_1:output:4"
+    }
+    ret {
+      key: "while_0"
+      value: "while_1:output:0"
+    }
+    ret {
+      key: "while_maximum_iterations"
+      value: "while/maximum_iterations:output:0"
+    }
+    attr {
+      key: "backward_function_name"
+      value {
+        s: "__inference___backward_foo_24467_24543"
+      }
+    }
+    control_ret {
+      key: "while"
+      value: "while_1"
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape {
+              }
+            }
+          }
+        }
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "x"
+          }
+        }
+      }
+    }
+    arg_attr {
+      key: 1
+      value {
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "var"
+          }
+        }
+      }
+    }
+  }
+}

@@ -36,14 +36,14 @@ namespace tensorflow {
 namespace {
 
 template <typename T>
-void FillTensorWithRandomValues(Tensor* t, int string_length, int64* bytes) {
+void FillTensorWithRandomValues(Tensor* t, int string_length, int64_t* bytes) {
   t->flat<T>().setRandom();
   *bytes = t->flat<T>().size() * sizeof(T);
 }
 
 template <>
 void FillTensorWithRandomValues<tstring>(Tensor* t, int string_length,
-                                         int64* bytes) {
+                                         int64_t* bytes) {
   auto ts = t->flat<tstring>();
   *bytes = 0;
   for (int i = 0; i < ts.size(); i++) {
@@ -82,7 +82,7 @@ static void ConcatHelper(::testing::benchmark::State& state,
           .Finalize(g, &node));
 
   test::Benchmark("cpu", g, /*old_benchmark_api=*/false).Run(state);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
                           (in0_bytes + in1_bytes));
 }
 
@@ -180,7 +180,7 @@ static void ConcatManyHelper(::testing::benchmark::State& state,
                   .Attr("T", dt)
                   .Finalize(g, &node));
   test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * kDim1 *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * kDim1 *
                           dim2 * kNumInputs * sizeof(T));
 }
 
@@ -205,7 +205,7 @@ void MemcpyAlternativeHelper(::testing::benchmark::State& state, int dim2) {
     memcpy(&result[n0], &data2[0], n1 * sizeof(float));
     delete[] result;
   }
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
                           ((kDim1 * dim2) + (kDim1 * dim2)) * sizeof(float));
 }
 
@@ -263,7 +263,7 @@ void MemcpyManyAlternative1(::testing::benchmark::State& state) {
     delete[] result;
   }
   delete[] data;
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * kDim1 *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * kDim1 *
                           dim2 * kNumCopies * sizeof(bfloat16));
 }
 
@@ -297,7 +297,7 @@ void MemcpyManyAlternative2(::testing::benchmark::State& state) {
   }
   delete[] data;
 
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * kDim1 *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * kDim1 *
                           dim2 * kNumCopies * sizeof(bfloat16));
 }
 

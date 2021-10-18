@@ -69,7 +69,7 @@ class TpuCompilationCacheRpcLookup : public TpuCompilationCacheLookup {
 
   // The maximum size of entries that are stored in the cache before entries are
   // evicted.
-  const int64 max_cache_size_;
+  const int64_t max_cache_size_;
 
   std::unique_ptr<StubType> stub_;
 
@@ -77,17 +77,17 @@ class TpuCompilationCacheRpcLookup : public TpuCompilationCacheLookup {
   mutable absl::Mutex mu_;
 
   // The total size of entries in the cache.
-  int64 cache_size_ ABSL_GUARDED_BY(mu_) = 0;
+  int64_t cache_size_ ABSL_GUARDED_BY(mu_) = 0;
   // The value to assign to the last_use field of the next entry that is looked
   // up.
-  int64 use_counter_ ABSL_GUARDED_BY(mu_) = 0;
+  int64_t use_counter_ ABSL_GUARDED_BY(mu_) = 0;
   // The entries that can be looked up in the cache. An entry is deleted from
   // the cache as soon as it is evicted, but the underlying shared_ptr won't be
   // freed until any wrappers holding it go out of scope.
   std::unordered_map<std::string, std::shared_ptr<CacheEntry>> cache_
       ABSL_GUARDED_BY(mu_);
   // Map from last_use to entry, used to evict entries in LRU order.
-  std::map<int64, CacheEntry*> entries_by_last_use_ ABSL_GUARDED_BY(mu_);
+  std::map<int64_t, CacheEntry*> entries_by_last_use_ ABSL_GUARDED_BY(mu_);
 };
 }  // namespace tpu
 }  // namespace tensorflow

@@ -65,7 +65,7 @@ class TransferManagerTest : public LocalClientTestBase {
   se::Stream* stream_;
 
  private:
-  std::function<int64(const Shape&)> shape_size_fn_;
+  std::function<int64_t(const Shape&)> shape_size_fn_;
 };
 
 XLA_TEST_F(TransferManagerTest, TransferR0U32) {

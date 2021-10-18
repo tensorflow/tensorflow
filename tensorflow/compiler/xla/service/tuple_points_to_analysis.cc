@@ -478,7 +478,8 @@ Status TuplePointsToAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
 Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   auto ccall = Cast<HloCustomCallInstruction>(custom_call);
   PointsToSet& points_to_set = CreateEmptyPointsToSet(custom_call);
-  absl::flat_hash_map<ShapeIndex, std::pair<int64, ShapeIndex>> aliased_outputs;
+  absl::flat_hash_map<ShapeIndex, std::pair<int64_t, ShapeIndex>>
+      aliased_outputs;
   for (const auto& pair : ccall->output_to_operand_aliasing()) {
     aliased_outputs.emplace(pair.first, pair.second);
   }
@@ -706,14 +707,14 @@ bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(
 }
 
 // Returns all uses of all aliases of 'instruction' at 'index' in 'uses'.
-// Each use in 'uses' is a pair (HloInstruction* user, int64 operand_index)
+// Each use in 'uses' is a pair (HloInstruction* user, int64_t operand_index)
 // where 'user' is a user of an alias of 'instruction' at 'index', and
 // 'operand_index' is the operand index at which the alias appears in the
 // operand list of 'user'.
-std::vector<std::pair<HloInstruction*, int64>>
+std::vector<std::pair<HloInstruction*, int64_t>>
 TuplePointsToAnalysis::GetAllUsesOfInstructionAtIndex(
     HloInstruction* instruction, const ShapeIndex& index) const {
-  std::vector<std::pair<HloInstruction*, int64>> uses;
+  std::vector<std::pair<HloInstruction*, int64_t>> uses;
   const PointsToSet::BufferList& points_to =
       GetPointsToSet(instruction).element(index);
   for (const LogicalBuffer* buffer : points_to) {

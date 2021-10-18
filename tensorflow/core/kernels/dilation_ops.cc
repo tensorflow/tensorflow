@@ -65,8 +65,8 @@ void ParseAttributes(OpKernelConstruction* context, std::vector<int32>* strides,
 void ParseSizes(OpKernelContext* context, const std::vector<int32>& strides,
                 const std::vector<int32>& rates, const Padding& padding,
                 int* stride_rows, int* stride_cols, int* rate_rows,
-                int* rate_cols, int64* pad_top, int64* pad_left,
-                int64* out_rows, int64* out_cols) {
+                int* rate_cols, int64_t* pad_top, int64_t* pad_left,
+                int64_t* out_rows, int64_t* out_cols) {
   // Input tensor is of the following dimensions:
   // [ batch, input_rows, input_cols, depth ]
   const Tensor& input = context->input(0);
@@ -137,7 +137,7 @@ class DilationOp : public OpKernel {
     // [ batch, out_rows, out_cols, depth ]
     const int batch = input.dim_size(0);
     const int depth = input.dim_size(3);
-    const std::vector<int64> out_sizes = {batch, out_rows, out_cols, depth};
+    const std::vector<int64_t> out_sizes = {batch, out_rows, out_cols, depth};
     TensorShape out_shape(out_sizes);
 
     Tensor* output = nullptr;

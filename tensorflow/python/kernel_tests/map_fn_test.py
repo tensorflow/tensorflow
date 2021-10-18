@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.kernels.functional_ops."""
+# pylint: disable=anomalous-backslash-in-string
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Tests for tensorflow.kernels.functional_ops."""
 
 import numpy as np
 
@@ -94,9 +92,9 @@ class MapFnTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testMapOverScalarErrors(self):
-    with self.assertRaisesRegex(ValueError, "not scalars"):
+    with self.assertRaisesRegex(ValueError, "must be .* Tensor.* not scalar"):
       map_fn.map_fn(lambda x: x, [1, 2])
-    with self.assertRaisesRegex(ValueError, "not a scalar"):
+    with self.assertRaisesRegex(ValueError, "must be .* Tensor.* not scalar"):
       map_fn.map_fn(lambda x: x, 1)
 
   @test_util.run_deprecated_v1

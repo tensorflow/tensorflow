@@ -142,7 +142,7 @@ CreateShardedConvForDotGeneralConvolution(
     auto wd = window.mutable_dimensions(dim.spatial_dim);
     wd->set_size(sharded_lhs_hlo->shape().dimensions(
         conv_dnums.input_spatial_dimensions(dim.spatial_dim)));
-    wd->set_stride(std::max<int64>(1, wd->size() - 1));
+    wd->set_stride(std::max<int64_t>(1, wd->size() - 1));
     wd->set_base_dilation(wd->size());
   }
   for (const auto& dim : dot_dnums.contracting_dims) {

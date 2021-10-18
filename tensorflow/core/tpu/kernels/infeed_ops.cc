@@ -78,7 +78,7 @@ xla::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
   profiler::TraceMe trace_me("TransposeTensor", /*level=*/2);
   const int64_t rank = xla_shape.rank();
   std::vector<int32> permutation(rank);
-  std::vector<int64> transposed_shapes(rank);
+  std::vector<int64_t> transposed_shapes(rank);
   for (int64_t i = 0; i < rank; ++i) {
     permutation[i] = xla_shape.layout().minor_to_major(rank - 1 - i);
     transposed_shapes[i] = xla_shape.dimensions(permutation[i]);
@@ -113,7 +113,7 @@ xla::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
 
 xla::StatusOr<bool> GetLayoutOverride(OpKernelConstruction* ctx,
                                       const char* attrn_name,
-                                      std::vector<int64>* minor_to_major) {
+                                      std::vector<int64_t>* minor_to_major) {
   if (!ctx->HasAttr(attrn_name)) {
     return false;
   }
@@ -125,7 +125,7 @@ Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
                                 const char* attrn_name,
                                 const xla::Shape& input_shape,
                                 xla::Shape* output_shape) {
-  std::vector<int64> minor_to_major;
+  std::vector<int64_t> minor_to_major;
   TF_ASSIGN_OR_RETURN(bool has_override,
                       GetLayoutOverride(ctx, attrn_name, &minor_to_major));
   if (!has_override) {

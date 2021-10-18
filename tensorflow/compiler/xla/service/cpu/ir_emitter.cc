@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
@@ -88,13 +89,18 @@ using llvm_ir::SetToFirstInsertPoint;
 
 namespace cpu {
 
-IrEmitter::IrEmitter(
-    mlir::MLIRContext* mlir_context, const HloModule& hlo_module,
-    const BufferAssignment& assignment, llvm::Module* llvm_module,
-    std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx,
-    std::unordered_map<const HloComputation*, int64> computation_to_profile_idx,
-    const TargetMachineFeatures* target_machine_features,
-    bool emit_code_for_msan)
+IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
+                     const HloModule& hlo_module,
+                     const BufferAssignment& assignment,
+                     llvm::Module* llvm_module,
+                     std::unordered_map<const HloInstruction*, int64_t>
+                         instruction_to_profile_idx,
+                     std::unordered_map<const HloComputation*, int64_t>
+                         computation_to_profile_idx,
+                     absl::flat_hash_map<const HloComputation*, bool>
+                         computation_transitively_contains_custom_call,
+                     const TargetMachineFeatures* target_machine_features,
+                     bool emit_code_for_msan)
     : assignment_(assignment),
       module_(llvm_module),
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
@@ -102,6 +108,8 @@ IrEmitter::IrEmitter(
       mlir_context_(mlir_context),
       instruction_to_profile_idx_(std::move(instruction_to_profile_idx)),
       computation_to_profile_idx_(std::move(computation_to_profile_idx)),
+      computation_transitively_contains_custom_call_(
+          std::move(computation_transitively_contains_custom_call)),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
       is_top_level_computation_(false),
@@ -201,7 +209,7 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
     EmitThreadLocalFunctionEpilogue(computation);
   }
 
-  // Destructor for compute_function_ emits the "ret void" instruction.
+  // Destructor for compute_function_ terminates the LLVM function definition.
   compute_function_.reset();
   computation_root_allocation_ = BufferAllocation::Slice();
   computation_parameter_allocations_.clear();
@@ -304,10 +312,10 @@ int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
   DCHECK_LE(byte_size, 16);
 
   // Allocations may be 8-byte aligned if part of a small block.
-  return std::min(int64{8}, byte_size);
+  return std::min(int64_t{8}, byte_size);
 }
 
-int64 IrEmitter::ByteSizeOf(const Shape& shape) const {
+int64_t IrEmitter::ByteSizeOf(const Shape& shape) const {
   return llvm_ir::ByteSizeOf(shape, module_->getDataLayout());
 }
 
@@ -727,7 +735,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
 
   // Create the inner loop to iterate over the window.
   llvm_ir::ForLoopNest window_loops(IrName(select_and_scatter, "window"), &b_);
-  std::vector<int64> window_size;
+  std::vector<int64_t> window_size;
   for (const auto& dim : window.dimensions()) {
     window_size.push_back(dim.size());
   }
@@ -898,27 +906,30 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       const ConvolutionDimensionNumbers& dnums =
           convolution->convolution_dimension_numbers();
 
+      absl::InlinedVector<int64_t, 2> input_dims;
+      absl::InlinedVector<int64_t, 2> kernel_dims;
+      absl::InlinedVector<int64_t, 2> output_dims;
+      if (one_dim_convolution) {
+        input_dims.push_back(1);
+        kernel_dims.push_back(1);
+        output_dims.push_back(1);
+      }
+
       // Input tensor.
       const Shape& input_shape = convolution->operand(0)->shape();
       int64_t input_batch =
           input_shape.dimensions(dnums.input_batch_dimension());
-      int64_t input_rows =
-          input_shape.dimensions(dnums.input_spatial_dimensions(0));
-      int64_t input_cols =
-          one_dim_convolution
-              ? 1
-              : input_shape.dimensions(dnums.input_spatial_dimensions(1));
+      for (int d : dnums.input_spatial_dimensions()) {
+        input_dims.push_back(input_shape.dimensions(d));
+      }
       int64_t input_channels =
           input_shape.dimensions(dnums.input_feature_dimension());
 
       // Kernel tensor.
       const Shape& kernel_shape = convolution->operand(1)->shape();
-      int64_t kernel_rows =
-          kernel_shape.dimensions(dnums.kernel_spatial_dimensions(0));
-      int64_t kernel_cols =
-          one_dim_convolution
-              ? 1
-              : kernel_shape.dimensions(dnums.kernel_spatial_dimensions(1));
+      for (int d : dnums.kernel_spatial_dimensions()) {
+        kernel_dims.push_back(kernel_shape.dimensions(d));
+      }
       int64_t kernel_channels =
           kernel_shape.dimensions(dnums.kernel_input_feature_dimension());
       int64_t kernel_filters =
@@ -926,32 +937,28 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 
       // Output tensor.
       const Shape& convolution_shape = convolution->shape();
-      int64_t output_rows =
-          convolution_shape.dimensions(dnums.output_spatial_dimensions(0));
-      int64_t output_cols = one_dim_convolution
-                                ? 1
-                                : convolution_shape.dimensions(
-                                      dnums.output_spatial_dimensions(1));
+      for (int d : dnums.output_spatial_dimensions()) {
+        output_dims.push_back(convolution_shape.dimensions(d));
+      }
 
       // Extract the window stride for the convolution.
       const Window& window = convolution->window();
-      int64_t row_stride = window.dimensions(0).stride();
-      int64_t col_stride =
-          one_dim_convolution ? 1 : window.dimensions(1).stride();
-
-      int64_t padding_top = window.dimensions(0).padding_low();
-      int64_t padding_bottom = window.dimensions(0).padding_high();
-      int64_t padding_left =
-          one_dim_convolution ? 0 : window.dimensions(1).padding_low();
-      int64_t padding_right =
-          one_dim_convolution ? 0 : window.dimensions(1).padding_high();
-
-      int64_t lhs_row_dilation = window.dimensions(0).base_dilation();
-      int64_t lhs_col_dilation =
-          one_dim_convolution ? 1 : window.dimensions(1).base_dilation();
-      int64_t rhs_row_dilation = window.dimensions(0).window_dilation();
-      int64_t rhs_col_dilation =
-          one_dim_convolution ? 1 : window.dimensions(1).window_dilation();
+      absl::InlinedVector<int64_t, 2> strides;
+      absl::InlinedVector<std::pair<int64_t, int64_t>, 2> padding;
+      absl::InlinedVector<int64_t, 2> base_dilation;
+      absl::InlinedVector<int64_t, 2> window_dilation;
+      if (one_dim_convolution) {
+        strides.push_back(1);
+        padding.push_back({0, 0});
+        base_dilation.push_back(1);
+        window_dilation.push_back(1);
+      }
+      for (const auto& d : window.dimensions()) {
+        strides.push_back(d.stride());
+        padding.push_back({d.padding_low(), d.padding_high()});
+        base_dilation.push_back(d.base_dilation());
+        window_dilation.push_back(d.window_dilation());
+      }
 
       PrimitiveType primitive_type = lhs->shape().element_type();
       llvm::Type* ir_ptr_type = primitive_type == F16
@@ -977,6 +984,13 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         LOG(WARNING) << "Using Eigen instead of MKL-DNN for single-threaded "
                         "conv2d function.";
       }
+      TF_RET_CHECK(input_dims.size() == 2);
+      TF_RET_CHECK(kernel_dims.size() == 2);
+      TF_RET_CHECK(output_dims.size() == 2);
+      TF_RET_CHECK(strides.size() == 2);
+      TF_RET_CHECK(padding.size() == 2);
+      TF_RET_CHECK(base_dilation.size() == 2);
+      TF_RET_CHECK(window_dilation.size() == 2);
       EmitCallToFunc(fn_name,
                      {
                          GetExecutableRunOptionsArgument(),
@@ -984,25 +998,25 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
                          BitCast(lhs_address, ir_ptr_type),
                          BitCast(rhs_address, ir_ptr_type),
                          b_.getInt64(input_batch),
-                         b_.getInt64(input_rows),
-                         b_.getInt64(input_cols),
+                         b_.getInt64(input_dims[0]),
+                         b_.getInt64(input_dims[1]),
                          b_.getInt64(input_channels),
-                         b_.getInt64(kernel_rows),
-                         b_.getInt64(kernel_cols),
+                         b_.getInt64(kernel_dims[0]),
+                         b_.getInt64(kernel_dims[1]),
                          b_.getInt64(kernel_channels),
                          b_.getInt64(kernel_filters),
-                         b_.getInt64(output_rows),
-                         b_.getInt64(output_cols),
-                         b_.getInt64(row_stride),
-                         b_.getInt64(col_stride),
-                         b_.getInt64(padding_top),
-                         b_.getInt64(padding_bottom),
-                         b_.getInt64(padding_left),
-                         b_.getInt64(padding_right),
-                         b_.getInt64(lhs_row_dilation),
-                         b_.getInt64(lhs_col_dilation),
-                         b_.getInt64(rhs_row_dilation),
-                         b_.getInt64(rhs_col_dilation),
+                         b_.getInt64(output_dims[0]),
+                         b_.getInt64(output_dims[1]),
+                         b_.getInt64(strides[0]),
+                         b_.getInt64(strides[1]),
+                         b_.getInt64(padding[0].first),
+                         b_.getInt64(padding[0].second),
+                         b_.getInt64(padding[1].first),
+                         b_.getInt64(padding[1].second),
+                         b_.getInt64(base_dilation[0]),
+                         b_.getInt64(base_dilation[1]),
+                         b_.getInt64(window_dilation[0]),
+                         b_.getInt64(window_dilation[1]),
                      },
                      b_.getVoidTy(), /*does_not_throw=*/true,
                      /*only_accesses_arg_memory=*/true);
@@ -1033,7 +1047,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   llvm::Value* operand_address = GetEmittedValueFor(operand);
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fft));
 
-  const std::vector<int64>& fft_length = fft->fft_length();
+  const std::vector<int64_t>& fft_length = fft->fft_length();
   int64_t input_batch = 1;
   for (int i = 0; i < fft->shape().dimensions_size() - fft_length.size(); i++) {
     input_batch *= fft->shape().dimensions(i);
@@ -1329,10 +1343,10 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
   //
   // So if we reduce f32[A,B,C,D] on dimensions 1 and 2, this map contains
   // [0->0, 3->1].
-  absl::flat_hash_map<int64, int64> unreduced_dim_map;
+  absl::flat_hash_map<int64_t, int64_t> unreduced_dim_map;
 
-  absl::flat_hash_set<int64> reduced_dims(reduce.dimensions().begin(),
-                                          reduce.dimensions().end());
+  absl::flat_hash_set<int64_t> reduced_dims(reduce.dimensions().begin(),
+                                            reduce.dimensions().end());
 
   const Shape& operand_shape = reduce.operand(0)->shape();
   const Shape& result_shape = reduce.shape();
@@ -1536,7 +1550,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     const ReductionGenerator& reduction_generator,
     const llvm_ir::IrArray::Index& output_index,
     const ShardedVectorType& accumulator_type, HloInstruction* init_value,
-    HloInstruction* arg, absl::Span<const int64> dimensions,
+    HloInstruction* arg, absl::Span<const int64_t> dimensions,
     llvm::Align element_alignment) {
   ShardedVector accumulator;
   accumulator.reserve(accumulator_type.size());
@@ -1633,7 +1647,7 @@ void IrEmitter::EmitShardedVectorStore(
 
 StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
-    absl::Span<const int64> dimensions, HloComputation* function,
+    absl::Span<const int64_t> dimensions, HloComputation* function,
     string* failure_reason) {
   if (!reduce->shape().IsArray()) {
     *failure_reason = "vectorization of variadic reduce not implemented";
@@ -1799,7 +1813,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   auto arg = reduce->mutable_operand(0);
   auto init_value = reduce->mutable_operand(1);
-  absl::Span<const int64> dimensions(reduce->dimensions());
+  absl::Span<const int64_t> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
   if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
     string vectorization_failure_reason;
@@ -1869,7 +1883,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   //
   // * Implement the memcpy within the innermost loop.
 
-  absl::flat_hash_set<int64> inner_dims;
+  absl::flat_hash_set<int64_t> inner_dims;
   for (int64_t dim : LayoutUtil::MinorToMajor(layout)) {
     if (operand->shape().dimensions(dim) != slice->shape().dimensions(dim)) {
       break;
@@ -1909,7 +1923,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
           : 1;
 
   // Determine the dimensions that get lowered as loops.
-  std::vector<int64> outer_dims;
+  std::vector<int64_t> outer_dims;
   for (int64_t i = 0; i < num_dims - inner_dims.size() - 1; ++i) {
     outer_dims.push_back(LayoutUtil::Major(layout, i));
   }
@@ -2127,19 +2141,32 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
 
   if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
-    // ParallelTaskAssignment assigned partitions, emit call to
-    // ParallelForkJoin.
+    // Having a nonempty set of 'outer_dimension_partitions' means that this
+    // computation has been specially selected to be parallelized (one where the
+    // root instruction is trivially parallelizable, like elementwise addition
+    // of two tensors). The LLVM function generated for this computation accepts
+    // an additional set of loop bounds, allowing the caller to control the
+    // subset of the output that is generated by each call.
+
     std::vector<llvm::Value*> call_args = GetArrayFunctionCallArguments(
         {}, &b_, computation->name(),
         /*return_value_buffer=*/emitted_value_[call],
         /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
         /*buffer_table_arg=*/GetBufferTableArgument(),
+        /*status_arg=*/GetStatusArgument(),
         /*profile_counters_arg=*/GetProfileCountersArgument());
 
+    // The parallel fork/join runtime will call the generated function once for
+    // each partition in parallel, using an appropriate set of loop bounds for
+    // each call such that it only generates one partition of the output.
     HloInstruction* root = computation->root_instruction();
     TF_RETURN_IF_ERROR(EmitCallToParallelForkJoin(
         call_args, root->shape(), root->outer_dimension_partitions(), &b_,
         call_ir_function, computation->name()));
+
+    if (ComputationTransitivelyContainsCustomCall(computation)) {
+      EmitEarlyReturnIfErrorStatus();
+    }
   } else {
     EmitGlobalCall(*computation, computation->name());
   }
@@ -2309,22 +2336,6 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
     return HandleTopK(custom_call);
   }
 
-  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
-  switch (typed_custom_call->api_version()) {
-    case CustomCallApiVersion::API_VERSION_ORIGINAL:
-      break;
-    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
-      // TODO(b/194529780): Support status-returning custom calls on CPU.
-      return Unimplemented(
-          "XLA CPU does not support custom calls that return a success/failure "
-          "status");
-    default:
-      return InternalError(
-          "Unknown custom-call API version enum value: %d (%s)",
-          typed_custom_call->api_version(),
-          CustomCallApiVersion_Name(typed_custom_call->api_version()));
-  }
-
   absl::Span<HloInstruction* const> operands(custom_call->operands());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
@@ -2371,8 +2382,24 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   auto* output_address_arg =
       PointerCast(GetEmittedValueFor(custom_call), i8_ptr_type);
 
-  EmitCallToFunc(custom_call->custom_call_target(),
-                 {output_address_arg, operands_alloca}, b_.getVoidTy());
+  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
+  switch (typed_custom_call->api_version()) {
+    case CustomCallApiVersion::API_VERSION_ORIGINAL:
+      EmitCallToFunc(custom_call->custom_call_target(),
+                     {output_address_arg, operands_alloca}, b_.getVoidTy());
+      break;
+    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+      EmitCallToFunc(custom_call->custom_call_target(),
+                     {output_address_arg, operands_alloca, GetStatusArgument()},
+                     b_.getVoidTy());
+      EmitEarlyReturnIfErrorStatus();
+      break;
+    default:
+      return InternalError(
+          "Unknown custom-call API version enum value: %d (%s)",
+          typed_custom_call->api_version(),
+          CustomCallApiVersion_Name(typed_custom_call->api_version()));
+  }
 
   return Status::OK();
 }
@@ -2491,9 +2518,10 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   auto output_min2maj = LayoutUtil::MinorToMajor(output_layout);
   auto concat_dim_layout_itr = absl::c_find(output_min2maj, concat_dim);
 
-  std::vector<int64> inner_dims(output_min2maj.begin(), concat_dim_layout_itr);
-  std::vector<int64> outer_dims(std::next(concat_dim_layout_itr),
-                                output_min2maj.end());
+  std::vector<int64_t> inner_dims(output_min2maj.begin(),
+                                  concat_dim_layout_itr);
+  std::vector<int64_t> outer_dims(std::next(concat_dim_layout_itr),
+                                  output_min2maj.end());
 
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
 
@@ -2844,7 +2872,7 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
 template <typename T>
 llvm::Value* IrEmitter::GetProfileCounterCommon(
     const T& hlo,
-    const std::unordered_map<const T*, int64>& profile_index_map) {
+    const std::unordered_map<const T*, int64_t>& profile_index_map) {
   auto it = profile_index_map.find(&hlo);
   if (it == profile_index_map.end()) {
     return nullptr;
@@ -2989,7 +3017,8 @@ bool IsHloVeryCheap(const HloInstruction* hlo) {
          hlo->opcode() == HloOpcode::kTuple ||
          hlo->opcode() == HloOpcode::kGetTupleElement ||
          hlo->opcode() == HloOpcode::kParameter ||
-         hlo->opcode() == HloOpcode::kConstant;
+         hlo->opcode() == HloOpcode::kConstant ||
+         hlo->opcode() == HloOpcode::kReplicaId;
 }
 }  // namespace
 
@@ -3051,12 +3080,29 @@ llvm::Value* IrEmitter::GetProfileCountersArgument() {
   return compute_function_->profile_counters_arg();
 }
 
+llvm::Value* IrEmitter::GetStatusArgument() {
+  return compute_function_->status_arg();
+}
+
 llvm::Value* IrEmitter::GetBufferTableArgument() {
   return compute_function_->buffer_table_arg();
 }
 
 llvm::Value* IrEmitter::GetExecutableRunOptionsArgument() {
   return compute_function_->exec_run_options_arg();
+}
+
+llvm::BasicBlock* IrEmitter::GetReturnBlock() {
+  return compute_function_->return_block();
+}
+
+void IrEmitter::EmitEarlyReturnIfErrorStatus() {
+  // Use the runtime helper to get the success/failure state as a boolean.
+  llvm::Value* succeeded =
+      EmitCallToFunc(runtime::kStatusIsSuccessSymbolName, {GetStatusArgument()},
+                     b_.getInt1Ty(), /*does_not_throw=*/true,
+                     /*only_accesses_arg_memory=*/true);
+  llvm_ir::EmitEarlyReturn(succeeded, &b_, GetReturnBlock());
 }
 
 llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(
@@ -3320,7 +3366,12 @@ std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(
            /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
            /*buffer_table_arg=*/
            llvm::Constant::getNullValue(b_.getInt8PtrTy()->getPointerTo()),
+           /*status_arg=*/GetStatusArgument(),
            /*profile_counters_arg=*/GetProfileCountersArgument()));
+
+  if (ComputationTransitivelyContainsCustomCall(&callee)) {
+    EmitEarlyReturnIfErrorStatus();
+  }
 
   std::vector<llvm::Value*> returned_scalars;
   returned_scalars.reserve(allocas_for_returned_scalars.size());
@@ -3341,7 +3392,12 @@ void IrEmitter::EmitGlobalCall(const HloComputation& callee,
            llvm::Constant::getNullValue(b_.getInt8PtrTy()),
            /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
            /*buffer_table_arg=*/GetBufferTableArgument(),
+           /*status_arg=*/GetStatusArgument(),
            /*profile_counters_arg=*/GetProfileCountersArgument()));
+
+  if (ComputationTransitivelyContainsCustomCall(&callee)) {
+    EmitEarlyReturnIfErrorStatus();
+  }
 }
 
 llvm::Value* IrEmitter::GetBufferForGlobalCallReturnValue(

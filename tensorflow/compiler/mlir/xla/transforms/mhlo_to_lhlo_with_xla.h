@@ -52,7 +52,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 
   xla::StatusOr<mlir::Operation*> EmitOp(const xla::HloInstruction* instr);
 
-  static xla::StatusOr<mhlo::ScatterDimensionNumbers>
+  static xla::StatusOr<mhlo::ScatterDimensionNumbersAttr>
   GetScatterDimensionNumbers(const xla::HloInstruction* instr,
                              mlir::MLIRContext* context);
 
@@ -125,7 +125,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // actual number of operands and results generated for MLIR in `num_arguments`
   // and `num_results`.
   xla::Status CreateOperands(const xla::HloInstruction* instr,
-                             absl::optional<xla::int64> num_operands,
+                             absl::optional<int64_t> num_operands,
                              TokenLoweringMode token_mode,
                              SmallVectorImpl<Value>& operands,
                              size_t& num_arguments, size_t& num_results);
@@ -133,7 +133,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   template <typename OpType>
   xla::StatusOr<OpType> CreateOpWithoutAttrs(
       const xla::HloInstruction* instr,
-      absl::optional<xla::int64> num_operands = absl::nullopt) {
+      absl::optional<int64_t> num_operands = absl::nullopt) {
     size_t unused;
     return CreateOpWithoutAttrs<OpType>(instr, unused, unused, num_operands);
   }
@@ -142,7 +142,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   xla::StatusOr<OpType> CreateOpWithoutAttrs(
       const xla::HloInstruction* instr, size_t& num_arguments,
       size_t& num_results,
-      absl::optional<xla::int64> num_operands = absl::nullopt);
+      absl::optional<int64_t> num_operands = absl::nullopt);
 
   template <typename OpType>
   OpType CreateOpWithoutAttrs(const xla::HloInstruction* instr,
@@ -277,10 +277,13 @@ tensorflow::Status HloToLhloModule(const xla::BufferAssignment& assignment,
 
 tensorflow::Status OptimizeAndConvertHloToLmhlo(
     std::unique_ptr<xla::HloModule> hlo_module, ModuleOp module,
-    StringRef platform_name);
-
+    StringRef platform_name, bool optimize_xla_hlo);
 OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
-                                               MLIRContext* context);
+                                               MLIRContext* context,
+                                               bool optimize_xla_hlo);
+
+// This register the MLIR pass with the command line.
+void RegisterMhloToLhloWithXlaPass();
 
 }  // namespace mlir
 

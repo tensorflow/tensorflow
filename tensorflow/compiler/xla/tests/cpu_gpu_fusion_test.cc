@@ -919,8 +919,8 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
     auto result = executable->Run({&buffer0, &buffer1, &buffer2}, options);
     ASSERT_TRUE(result.ok());
   }
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * total_bytes *
-                          sizeof(float));
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+                          total_bytes * sizeof(float));
 }
 
 BENCHMARK(BM_ParallelFusion)->UseRealTime();

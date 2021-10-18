@@ -56,23 +56,23 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
   // Return the number of allocations that have been performed.
-  int64 allocation_count() const;
-  int64 allocation_count(int device_ordinal) const;
+  int64_t allocation_count() const;
+  int64_t allocation_count(int device_ordinal) const;
 
   // Return the number of deallocations that have been performed.
-  int64 deallocation_count() const;
-  int64 deallocation_count(int device_ordinal) const;
+  int64_t deallocation_count() const;
+  int64_t deallocation_count(int device_ordinal) const;
 
  private:
   mutable tensorflow::mutex count_mutex_;
 
   // Global counts of allocations and deallocations.
-  int64 allocation_count_ TF_GUARDED_BY(count_mutex_) = 0;
-  int64 deallocation_count_ TF_GUARDED_BY(count_mutex_) = 0;
+  int64_t allocation_count_ TF_GUARDED_BY(count_mutex_) = 0;
+  int64_t deallocation_count_ TF_GUARDED_BY(count_mutex_) = 0;
 
   // Per-device counts of allocations and deallocations.
-  std::map<int, int64> device_allocation_count_ TF_GUARDED_BY(count_mutex_);
-  std::map<int, int64> device_deallocation_count_ TF_GUARDED_BY(count_mutex_);
+  std::map<int, int64_t> device_allocation_count_ TF_GUARDED_BY(count_mutex_);
+  std::map<int, int64_t> device_deallocation_count_ TF_GUARDED_BY(count_mutex_);
 };
 
 // A base class for tests which exercise the LocalClient interface.

@@ -86,7 +86,7 @@ struct data_type_can_memcpy {
       std::is_same<T, bool>::value || std::is_same<T, uint16>::value ||
       std::is_same<T, int16>::value || std::is_same<T, Eigen::half>::value ||
       std::is_same<T, int32>::value || std::is_same<T, float>::value ||
-      std::is_same<T, int64>::value || std::is_same<T, double>::value ||
+      std::is_same<T, int64_t>::value || std::is_same<T, double>::value ||
       std::is_same<T, complex64>::value || std::is_same<T, complex128>::value;
 };
 
@@ -298,23 +298,23 @@ class ReverseV2Op : public OpKernel {
   }
 };
 
-#define REGISTER_KERNELS(T)                                  \
-  REGISTER_KERNEL_BUILDER(Name("Reverse")                    \
-                              .Device(DEVICE_CPU)            \
-                              .TypeConstraint<T>("T")        \
-                              .HostMemory("dims"),           \
-                          ReverseOp<CPUDevice, T>)           \
-  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
-                              .Device(DEVICE_CPU)            \
-                              .TypeConstraint<T>("T")        \
-                              .TypeConstraint<int32>("Tidx") \
-                              .HostMemory("axis"),           \
-                          ReverseV2Op<CPUDevice, T, int32>)  \
-  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
-                              .Device(DEVICE_CPU)            \
-                              .TypeConstraint<T>("T")        \
-                              .TypeConstraint<int64>("Tidx") \
-                              .HostMemory("axis"),           \
+#define REGISTER_KERNELS(T)                                    \
+  REGISTER_KERNEL_BUILDER(Name("Reverse")                      \
+                              .Device(DEVICE_CPU)              \
+                              .TypeConstraint<T>("T")          \
+                              .HostMemory("dims"),             \
+                          ReverseOp<CPUDevice, T>)             \
+  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                    \
+                              .Device(DEVICE_CPU)              \
+                              .TypeConstraint<T>("T")          \
+                              .TypeConstraint<int32>("Tidx")   \
+                              .HostMemory("axis"),             \
+                          ReverseV2Op<CPUDevice, T, int32>)    \
+  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                    \
+                              .Device(DEVICE_CPU)              \
+                              .TypeConstraint<T>("T")          \
+                              .TypeConstraint<int64_t>("Tidx") \
+                              .HostMemory("axis"),             \
                           ReverseV2Op<CPUDevice, T, int64>)
 TF_CALL_POD_TYPES(REGISTER_KERNELS);
 TF_CALL_tstring(REGISTER_KERNELS);
@@ -351,23 +351,23 @@ TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_GPU_KERNELS(T)                              \
-  REGISTER_KERNEL_BUILDER(Name("Reverse")                    \
-                              .Device(DEVICE_GPU)            \
-                              .TypeConstraint<T>("T")        \
-                              .HostMemory("dims"),           \
-                          ReverseOp<GPUDevice, T>)           \
-  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
-                              .Device(DEVICE_GPU)            \
-                              .TypeConstraint<T>("T")        \
-                              .TypeConstraint<int32>("Tidx") \
-                              .HostMemory("axis"),           \
-                          ReverseV2Op<GPUDevice, T, int32>)  \
-  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
-                              .Device(DEVICE_GPU)            \
-                              .TypeConstraint<T>("T")        \
-                              .TypeConstraint<int64>("Tidx") \
-                              .HostMemory("axis"),           \
+#define REGISTER_GPU_KERNELS(T)                                \
+  REGISTER_KERNEL_BUILDER(Name("Reverse")                      \
+                              .Device(DEVICE_GPU)              \
+                              .TypeConstraint<T>("T")          \
+                              .HostMemory("dims"),             \
+                          ReverseOp<GPUDevice, T>)             \
+  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                    \
+                              .Device(DEVICE_GPU)              \
+                              .TypeConstraint<T>("T")          \
+                              .TypeConstraint<int32>("Tidx")   \
+                              .HostMemory("axis"),             \
+                          ReverseV2Op<GPUDevice, T, int32>)    \
+  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                    \
+                              .Device(DEVICE_GPU)              \
+                              .TypeConstraint<T>("T")          \
+                              .TypeConstraint<int64_t>("Tidx") \
+                              .HostMemory("axis"),             \
                           ReverseV2Op<GPUDevice, T, int64>)
 TF_CALL_uint8(REGISTER_GPU_KERNELS);
 TF_CALL_int8(REGISTER_GPU_KERNELS);
@@ -395,7 +395,7 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
 REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int64>("Tidx")
+                            .TypeConstraint<int64_t>("Tidx")
                             .HostMemory("tensor")
                             .HostMemory("axis")
                             .HostMemory("output"),

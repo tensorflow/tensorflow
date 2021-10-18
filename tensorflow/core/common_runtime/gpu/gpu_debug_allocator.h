@@ -42,7 +42,7 @@ class GPUDebugAllocator : public Allocator {
   bool TracksAllocationSizes() const override;
   size_t RequestedSize(const void* ptr) const override;
   size_t AllocatedSize(const void* ptr) const override;
-  int64 AllocationId(const void* ptr) const override;
+  int64_t AllocationId(const void* ptr) const override;
   absl::optional<AllocatorStats> GetStats() override;
   bool ClearStats() override;
 

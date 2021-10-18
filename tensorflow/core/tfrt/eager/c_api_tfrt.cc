@@ -44,7 +44,9 @@ limitations under the License.
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
@@ -106,12 +108,11 @@ constexpr char kGpuDeviceName[] = "GPU";
 constexpr char kEnableNativeOpsAttr[] = "TFRT_TEST_enable_native_ops";
 constexpr char kEnableGrapplerAttr[] = "TFRT_TEST_enable_grappler";
 
-TensorMetadata CreateMetadata(DType dtype,
-                              absl::Span<const ssize_t> dim_sizes) {
-  return TensorMetadata(DType(dtype),
-                        TensorShape(llvm::ArrayRef<ssize_t>(
-                            reinterpret_cast<const ssize_t*>(dim_sizes.data()),
-                            dim_sizes.size())));
+TensorMetadata CreateMetadata(DType dtype, absl::Span<const Index> dim_sizes) {
+  return TensorMetadata(
+      DType(dtype),
+      TensorShape(llvm::ArrayRef<Index>(
+          reinterpret_cast<const Index*>(dim_sizes.data()), dim_sizes.size())));
 }
 
 tensorflow::DataType ConvertDType(DType kind) {
@@ -353,12 +354,24 @@ AsyncValueRef<Tensor> TensorInterface::TensorRef() const {
   return tensor_.CopyRef();
 }
 
-TensorHandleInterface::TensorHandleInterface(Value&& v, CoreRuntime* corert)
+TensorHandleInterface::TensorHandleInterface(Value&& v, TfrtContext* context)
     : ImmediateExecutionTensorHandle(kTfrt),
-      corert_(*corert),
+      context_(*context),
+      value_(std::move(v)) {}
+
+TensorHandleInterface::TensorHandleInterface(tensorflow::DataType dtype,
+                                             Value&& v, TfrtContext* context)
+    : ImmediateExecutionTensorHandle(kTfrt),
+      dtype_(dtype),
+      context_(*context),
       value_(std::move(v)) {}
 
 tensorflow::DataType TensorHandleInterface::DataType() const {
+  // If dtype_ field is set, use it instead of waiting for the underlying
+  // TensorHandle's metadata to be available.
+  if (dtype_) {
+    return dtype_.getValue();
+  }
   auto metadata = Metadata();
   if (!metadata.hasValue()) {
     LOG(ERROR)
@@ -370,7 +383,7 @@ tensorflow::DataType TensorHandleInterface::DataType() const {
   if (kind == DType::Unsupported) {
     AsyncValue* async_tensor = value_.get<TensorHandle>().GetAsyncTensor();
     if (!async_tensor->IsAvailable()) {
-      corert_.GetHostContext()->Await(FormRef(async_tensor));
+      context_.GetHostContext()->Await(FormRef(async_tensor));
     }
 
     if (async_tensor->IsError()) {
@@ -386,6 +399,34 @@ tensorflow::DataType TensorHandleInterface::DataType() const {
   return ConvertDType(kind);
 }
 
+tensorflow::Status TensorHandleInterface::TensorHandleStatus() const {
+  if (context_.IsAsync()) {
+    return tensorflow::Status::OK();
+  } else {
+    auto metadata = Metadata();
+    if (!metadata.hasValue()) {
+      LOG(ERROR)
+          << "Metadata in the tensor handle is an error metadata: "
+          << value_.get<TensorHandle>().GetAsyncMetadata().GetError().message;
+      return tensorflow::errors::Internal(
+          value_.get<TensorHandle>().GetAsyncMetadata().GetError().message);
+    }
+
+    AsyncValue* async_tensor = value_.get<TensorHandle>().GetAsyncTensor();
+    if (!async_tensor->IsAvailable()) {
+      context_.GetHostContext()->Await(FormRef(async_tensor));
+    }
+
+    if (async_tensor->IsError()) {
+      LOG(ERROR) << "Async tensor in the tensor handle is an error tensor: "
+                 << async_tensor->GetError().message;
+      return tensorflow::errors::Internal(async_tensor->GetError().message);
+    }
+
+    return tensorflow::Status::OK();
+  }
+}
+
 tensorflow::Status TensorHandleInterface::Shape(
     tensorflow::PartialTensorShape* shape) const {
   auto metadata = Metadata();
@@ -397,7 +438,7 @@ tensorflow::Status TensorHandleInterface::Shape(
   if (num_dims == -1) {
     return tensorflow::Status::OK();
   }
-  SmallVector<ssize_t, 8> dims;
+  SmallVector<Index, 8> dims;
   metadata.getValue()->shape.GetDimensions(&dims);
   TF_RETURN_IF_ERROR(tensorflow::TensorShapeUtils::MakeShape(dims, shape));
   return tensorflow::Status::OK();
@@ -442,7 +483,7 @@ const char* TensorHandleInterface::DeviceName(
     tensorflow::Status* status) const {
   auto& th = value_.get<TensorHandle>();
   if (!th.IsDeviceAvailable()) {
-    corert_.GetHostContext()->Await(th.GetAsyncDevice().CopyRCRef());
+    context_.GetHostContext()->Await(th.GetAsyncDevice().CopyRCRef());
   }
   if (th.IsDeviceError()) {
     *status = CreateTfErrorStatus(th.GetAsyncDevice().GetError());
@@ -460,7 +501,7 @@ const char* TensorHandleInterface::DeviceType(
     tensorflow::Status* status) const {
   auto& th = value_.get<TensorHandle>();
   if (!th.IsDeviceAvailable()) {
-    corert_.GetHostContext()->Await(th.GetAsyncDevice().CopyRCRef());
+    context_.GetHostContext()->Await(th.GetAsyncDevice().CopyRCRef());
   }
   if (th.IsDeviceError()) {
     *status = CreateTfErrorStatus(th.GetAsyncDevice().GetError());
@@ -471,7 +512,7 @@ const char* TensorHandleInterface::DeviceType(
 
 tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
     tensorflow::Status* status) {
-  auto* host_ctx = corert_.GetHostContext();
+  auto* host_ctx = context_.GetHostContext();
   auto host_device_ref = host_ctx->GetHostDeviceRef();
   auto& th = value_.get<TensorHandle>();
 
@@ -494,7 +535,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
 
   // Convert the tensor to DenseHostTensor.
   auto req_ctx =
-      tfrt::RequestContextBuilder(host_ctx, /*resource_context=*/nullptr)
+      tfrt::RequestContextBuilder(host_ctx, context_.GetResourceContext())
           .build();
   if (!req_ctx) {
     *status = tensorflow::Status(
@@ -523,7 +564,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
 llvm::Optional<const TensorMetadata*> TensorHandleInterface::Metadata() const {
   auto& th = value_.get<TensorHandle>();
   if (!th.IsMetadataAvailable()) {
-    corert_.GetHostContext()->Await(th.GetAsyncMetadata().CopyRCRef());
+    context_.GetHostContext()->Await(th.GetAsyncMetadata().CopyRCRef());
   }
   if (th.IsMetadataError()) {
     return llvm::None;
@@ -644,7 +685,7 @@ tensorflow::AbstractTensorInterface* ContextInterface::CreateBoolScalar(
 
 tensorflow::AbstractTensorInterface* ContextInterface::CreateTensor(
     tensorflow::DataType dtype, absl::Span<const int64_t> dim_sizes) {
-  std::vector<ssize_t> dimvec(dim_sizes.size());
+  std::vector<Index> dimvec(dim_sizes.size());
   for (int i = 0; i < dim_sizes.size(); ++i) {
     dimvec[i] = static_cast<int64_t>(dim_sizes[i]);
   }
@@ -750,12 +791,12 @@ tensorflow::ImmediateExecutionTensorHandle* ContextInterface::CreateLocalHandle(
               MakeAvailableAsyncValueRef<
                   tensorflow::tfd::RuntimeFallbackTensor>(
                   host, std::move(expected_result_tensor.get())))),
-          GetCoreRuntime());
+          GetTfrtContext());
     } else {
       return new TensorHandleInterface(
           Value(TensorHandle::CreateError(MakeErrorAsyncValueRef(
               GetHostContext(), StrCat(expected_result_tensor.takeError())))),
-          GetCoreRuntime());
+          GetTfrtContext());
     }
   }
 
@@ -779,11 +820,11 @@ tensorflow::ImmediateExecutionTensorHandle* ContextInterface::CreateLocalHandle(
                   tensorflow::tfd::RuntimeFallbackTensor>(
                   host, tensorflow::tfd::CopyRefDHTToRuntimeFallbackTensor(
                             *dht, host)))),
-          GetCoreRuntime());
+          GetTfrtContext());
     }
   } else {
     auto result_tensor = MakeIndirectAsyncValue(host);
-    tensor_av.AndThen([host, result_tensor = result_tensor.CopyRef(),
+    tensor_av.AndThen([host, result_tensor = result_tensor,
                        tensor_av = tensor_av.CopyRef()]() {
       if (auto* dht =
               llvm::dyn_cast<DenseHostTensor>(&tensor_av.get<Tensor>())) {
@@ -798,11 +839,11 @@ tensorflow::ImmediateExecutionTensorHandle* ContextInterface::CreateLocalHandle(
     return new TensorHandleInterface(
         Value(TensorHandle(host->GetHostDeviceRef(), md,
                            AsyncValueRef<Tensor>(std::move(result_tensor)))),
-        GetCoreRuntime());
+        GetTfrtContext());
   }
   return new TensorHandleInterface(
       Value(TensorHandle(host->GetHostDeviceRef(), md, std::move(tensor_av))),
-      GetCoreRuntime());
+      GetTfrtContext());
 }
 
 tensorflow::ImmediateExecutionTensorHandle*
@@ -825,12 +866,12 @@ ContextInterface::CreateLocalHandleFromTFTensor(tensorflow::Tensor& t,
             host->GetHostDeviceRef(), expected_result_tensor.get().metadata(),
             MakeAvailableAsyncValueRef<tensorflow::tfd::RuntimeFallbackTensor>(
                 host, std::move(expected_result_tensor.get())))),
-        GetCoreRuntime());
+        GetTfrtContext());
   } else {
     return new TensorHandleInterface(
         Value(TensorHandle::CreateError(MakeErrorAsyncValueRef(
             GetHostContext(), StrCat(expected_result_tensor.takeError())))),
-        GetCoreRuntime());
+        GetTfrtContext());
   }
 }
 
@@ -849,8 +890,8 @@ ContextInterface::TFTensorHandleFromInterface(
 
   if (auto* dht = llvm::dyn_cast<tfrt::DenseHostTensor>(&tensor)) {
     return tensorflow::TensorHandle::CreateLocalHandle(
-        tensorflow::tfd::MoveHostBufferToTfTensor(dht->buffer().CopyRef(),
-                                                  dht->dtype(), dht->shape()));
+        tensorflow::tfd::MoveHostBufferToTfTensor(dht->buffer(), dht->dtype(),
+                                                  dht->shape()));
   }
 
   if (auto* sht = llvm::dyn_cast<tfrt::StringHostTensor>(&tensor)) {
@@ -1009,7 +1050,7 @@ ContextInterface::CopyTensorHandleToDevice(
         MakeErrorAsyncValueRef(host_ctx, status->error_message());
     return new TensorHandleInterface(
         Value(TensorHandle::CreateError(std::move(error_av))),
-        GetCoreRuntime());
+        GetTfrtContext());
   }
   auto dst_device_ref = host_ctx->GetDeviceManager()->GetDeviceRef<Device>(
       tfrt_device_name.get());
@@ -1022,7 +1063,7 @@ ContextInterface::CopyTensorHandleToDevice(
         MakeErrorAsyncValueRef(host_ctx, error_message);
     return new TensorHandleInterface(
         Value(TensorHandle::CreateError(std::move(error_av))),
-        GetCoreRuntime());
+        GetTfrtContext());
   }
 
   RCReference<RequestContext> request_ctx;
@@ -1042,7 +1083,7 @@ ContextInterface::CopyTensorHandleToDevice(
     return nullptr;
   }
   return new TensorHandleInterface(Value(target_th.CopyRef()),
-                                   GetCoreRuntime());
+                                   GetTfrtContext());
 }
 
 tensorflow::Status ContextInterface::AddFunctionDef(
@@ -1129,6 +1170,8 @@ const tensorflow::EagerContext* ContextInterface::GetEagerContext() const {
 CoreRuntime* ContextInterface::GetCoreRuntime() {
   return context_.GetCoreRuntime();
 }
+
+TfrtContext* ContextInterface::GetTfrtContext() { return &context_; }
 
 OpHandler* ContextInterface::GetFallbackOpHandler() {
   return context_.GetFallbackOpHandler();
@@ -1257,6 +1300,11 @@ tensorflow::Status OperationInterface::Reset(const char* op,
 
 tensorflow::Status OperationInterface::Execute(
     absl::Span<tensorflow::AbstractTensorHandle*> retvals, int* num_retvals) {
+  tensorflow::profiler::TraceMe trace(
+      [&] {
+        return absl::StrCat("TFRT_Execute:", Name(), " device:", DeviceName());
+      },
+      tensorflow::profiler::TraceMeLevel::kInfo);
   if (custom_device_tensor_handle_count_ > 0) {
     return tensorflow::errors::InvalidArgument(
         "Cannot execute ops that conntains unsupported arg in TFRT.");
@@ -1327,8 +1375,8 @@ tensorflow::Status OperationInterface::Execute(
       auto dst_device_ref = op_->GetDeviceRef();
 
       for (auto& th_arg : th_args) {
-        th_arg = th_arg.TransferTo(exec_ctx, dst_device_ref.CopyRef(),
-                                   op_->GetTensorType());
+        th_arg =
+            th_arg.TransferTo(exec_ctx, dst_device_ref, op_->GetTensorType());
       }
     }
 
@@ -1337,7 +1385,7 @@ tensorflow::Status OperationInterface::Execute(
 
   tensorflow::Status s = tensorflow::Status::OK();
 
-  if (TF_PREDICT_FALSE(!this->context_->is_async() && !chain->IsAvailable()))
+  if (TF_PREDICT_FALSE(!this->context_->IsAsync() && !chain->IsAvailable()))
     host->Await({chain->CopyRCRef()});
 
   if (TF_PREDICT_FALSE(chain->IsError())) {
@@ -1348,7 +1396,7 @@ tensorflow::Status OperationInterface::Execute(
 
   for (size_t i = 0, e = result_ths.size(); i != e; ++i) {
     auto& th_ref = result_ths[i];
-    if (TF_PREDICT_FALSE(!this->context_->is_async() &&
+    if (TF_PREDICT_FALSE(!this->context_->IsAsync() &&
                          !th_ref.GetAsyncTensor()->IsAvailable()))
       host->Await(FormRef(th_ref.GetAsyncTensor()));
 
@@ -1357,12 +1405,18 @@ tensorflow::Status OperationInterface::Execute(
     // current TF. However, in the future, we may want to update this
     // behavior since synchronous error may improve user experience in async
     // mode.
-    if (TF_PREDICT_FALSE(!this->context_->is_async() &&
+    if (TF_PREDICT_FALSE(!this->context_->IsAsync() &&
                          th_ref.GetAsyncTensor()->IsError() && s.ok()))
       s = CreateTfErrorStatus(th_ref.GetAsyncTensor()->GetError());
 
-    retvals[i] =
-        new TensorHandleInterface(Value(std::move(result_ths[i])), corert);
+    if (function_state_ && context_->IsAsync()) {
+      retvals[i] = new TensorHandleInterface(function_state_->GetRetTypes()[i],
+                                             Value(std::move(result_ths[i])),
+                                             context_->GetTfrtContext());
+    } else {
+      retvals[i] = new TensorHandleInterface(Value(std::move(result_ths[i])),
+                                             context_->GetTfrtContext());
+    }
   }
 
   return s;
@@ -1435,10 +1489,13 @@ tensorflow::Status OperationInterface::Initialize() {
   FunctionCache::FunctionCacheResult result;
 
   tensorflow::TfrtFunctionCompileOptions compile_options;
-  // TODO(tfrt-devs): Formalize the convention of converting TF's device name
-  // to MLIR compilation option's device name.
-  std::string tf_device_name = device_name_;
-  compile_options.default_device = std::move(tf_device_name);
+
+  // Use the host device if the user does not place the function to a specific
+  // device.
+  compile_options.default_device =
+      device_name_.empty() ? context_->GetEagerContext()->HostCPUName()
+                           : device_name_;
+
   // TODO(b/172659131): Do not use TFRT native ops for TF integration for now.
   // Re-enable once we have a concrete plan to implement feature complete
   // TFRT native ops (kernels).
@@ -1466,6 +1523,10 @@ tensorflow::Status OperationInterface::Initialize() {
   tfrt::SmallVector<const tfrt::Device*, 4> input_devices;
   input_devices.reserve(args_.size());
   for (auto& arg : args_) {
+    auto arg_th = down_cast<TensorHandleInterface*>(arg.get())->Handle();
+    if (!arg_th.IsDeviceAvailable()) {
+      corert->GetHostContext()->Await(arg_th.GetAsyncDevice().CopyRCRef());
+    }
     input_devices.push_back(down_cast<TensorHandleInterface*>(arg.get())
                                 ->Handle()
                                 .GetAvailableDevice()

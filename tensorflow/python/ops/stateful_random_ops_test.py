@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for stateful_random_ops.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import re
 
@@ -743,6 +739,25 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     # Run multiple times so that cp.write is called in various RNG states
     for _ in range(2):
       write_restore_compare()
+
+  @test_util.run_v2_only
+  def testDeterministicOpsErrors(self):
+    try:
+      config.enable_op_determinism()
+      random.set_global_generator(None)
+      with self.assertRaisesWithPredicateMatch(
+          RuntimeError,
+          '"get_global_generator" cannot be called if determinism is enabled'):
+        random.get_global_generator()
+      random.set_global_generator(random.Generator.from_seed(50))
+      random.get_global_generator()
+      with self.assertRaisesWithPredicateMatch(
+          RuntimeError,
+          '"from_non_deterministic_state" cannot be called when determinism '
+          "is enabled."):
+        random.Generator.from_non_deterministic_state()
+    finally:
+      config.disable_op_determinism()
 
 
 if __name__ == "__main__":

@@ -14,11 +14,8 @@
 # ==============================================================================
 """Tests for tensorflow.ops.image_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import colorsys
+import contextlib
 import functools
 import itertools
 import math
@@ -37,6 +34,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1592,6 +1590,43 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
                                 "Shape must be rank 0 but is rank 1"):
       image_ops.adjust_contrast(x_np, [2.0])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testDeterminismUnimplementedExceptionThrowing(self):
+    """Test d9m-unimplemented exception-throwing when op-determinism is enabled.
+
+    This test depends upon other tests, tests which do not enable
+    op-determinism, to ensure that determinism-unimplemented exceptions are not
+    erroneously thrown when op-determinism is not enabled.
+    """
+    if test_util.is_xla_enabled():
+      self.skipTest('XLA implementation does not raise exception')
+    with self.session(), test_util.deterministic_ops():
+      input_shape = (1, 2, 2, 1)
+      on_gpu = len(tf_config.list_physical_devices("GPU"))
+      # AdjustContrast seems to now be inaccessible via the Python API.
+      # AdjustContrastv2 only supports float16 and float32 on GPU, and other
+      # types are converted to and from float32 at the Python level before
+      # AdjustContrastv2 is called.
+      dtypes_to_test = [
+          dtypes.uint8, dtypes.int8, dtypes.int16, dtypes.int32, dtypes.float32,
+          dtypes.float64
+      ]
+      if on_gpu:
+        dtypes_to_test.append(dtypes.float16)
+        ctx_mgr = self.assertRaisesRegex(
+            errors.UnimplementedError,
+            "A deterministic GPU implementation of AdjustContrastv2 is not" +
+            " currently available.")
+      else:
+        ctx_mgr = contextlib.suppress()
+      for dtype in dtypes_to_test:
+        input_images = array_ops.zeros(input_shape, dtype=dtype)
+        contrast_factor = 1.
+        with ctx_mgr:
+          output_images = image_ops.adjust_contrast(input_images,
+                                                    contrast_factor)
+          self.evaluate(output_images)
+
 
 class AdjustBrightnessTest(test_util.TensorFlowTestCase):
 
@@ -2254,6 +2289,21 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
       y = image_ops.pad_to_bounding_box(image, 0, 0, 55, 66)
       self.assertTrue(y.op.name.startswith("pad_to_bounding_box"))
 
+  def testInvalidInput(self):
+    # Test case for GitHub issue 46890.
+    if test_util.is_xla_enabled():
+      # TODO(b/200850176): test fails with XLA.
+      return
+    with self.session():
+      with self.assertRaises(errors_impl.InternalError):
+        v = image_ops.pad_to_bounding_box(
+            image=np.ones((1, 1, 1)),
+            target_height=5191549470,
+            target_width=5191549470,
+            offset_height=1,
+            offset_width=1)
+        self.evaluate(v)
+
 
 class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
 
@@ -2604,6 +2654,25 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([3], end.shape)
       self.assertAllEqual([1, 1, 4], bbox_for_drawing.shape)
 
+  def testDeterminismExceptionThrowing(self):
+    with test_util.deterministic_ops():
+      with self.assertRaisesRegex(
+          ValueError, "requires a non-zero seed to be passed in when "
+          "determinism is enabled"):
+        image_ops_impl.sample_distorted_bounding_box_v2(
+            image_size=[50, 50, 1],
+            bounding_boxes=[[[0., 0., 1., 1.]]],
+        )
+      image_ops_impl.sample_distorted_bounding_box_v2(
+          image_size=[50, 50, 1], bounding_boxes=[[[0., 0., 1., 1.]]], seed=1)
+
+      with self.assertRaisesRegex(
+          ValueError, 'requires "seed" or "seed2" to be non-zero when '
+          "determinism is enabled"):
+        image_ops_impl.sample_distorted_bounding_box(
+            image_size=[50, 50, 1], bounding_boxes=[[[0., 0., 1., 1.]]])
+      image_ops_impl.sample_distorted_bounding_box(
+          image_size=[50, 50, 1], bounding_boxes=[[[0., 0., 1., 1.]]], seed=1)
 
 class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
 
@@ -3160,6 +3229,14 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
     x = np.random.uniform(size=x_shape)
 
     self._assertResizeCheckShape(x, x_shape, [320, 320], [320, 320, 3])
+
+  def testLargeDim(self):
+    with self.session():
+      with self.assertRaises(errors.InternalError):
+        x = np.ones((5, 1, 1, 2))
+        v = image_ops.resize_images_v2(x, [1610637938, 1610637938],
+                                       image_ops.ResizeMethod.BILINEAR)
+        _ = self.evaluate(v)
 
 
 class ResizeImagesTest(test_util.TensorFlowTestCase,
@@ -6026,6 +6103,16 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             boxes=[[1.0e+40, 0, 0, 0]],
             box_indices=[1],
             crop_size=[1, 1])
+        self.evaluate(op)
+
+  def testImageCropAndResizeWithInvalidInput(self):
+    with self.session():
+      with self.assertRaises((errors.InternalError, ValueError)):
+        op = image_ops_impl.crop_and_resize_v2(
+            image=np.ones((1, 1, 1, 1)),
+            boxes=np.ones((11, 4)),
+            box_indices=np.ones((11)),
+            crop_size=[2065374891, 1145309325])
         self.evaluate(op)
 
   @parameterized.named_parameters(

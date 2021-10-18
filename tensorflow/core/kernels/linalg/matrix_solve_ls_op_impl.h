@@ -62,13 +62,13 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
                                       input_matrix_shapes[1].dim_size(1)})});
   }
 
-  int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
+  int64_t GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
     double m = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double n = static_cast<double>(input_matrix_shapes[0].dim_size(1));
     double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
     double cost = std::max(m, n) * std::min(m, n) * (std::min(m, n) + num_rhss);
     return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64>(cost);
+                                                  : static_cast<int64_t>(cost);
   }
 
   bool EnableInputForwarding() const final { return false; }

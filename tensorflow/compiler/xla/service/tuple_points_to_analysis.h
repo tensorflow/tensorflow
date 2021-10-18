@@ -331,8 +331,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     }
   }
 
-  std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
-      HloInstruction* instruction, const ShapeIndex& index) const;
+  std::vector<std::pair<HloInstruction*, int64_t>>
+  GetAllUsesOfInstructionAtIndex(HloInstruction* instruction,
+                                 const ShapeIndex& index) const;
   bool HasUniqueFusedUseOfOperandAt(HloInstruction* operand,
                                     const ShapeIndex& operand_index,
                                     HloInstruction* fusion,

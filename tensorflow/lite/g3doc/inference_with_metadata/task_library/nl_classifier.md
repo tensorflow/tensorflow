@@ -160,7 +160,8 @@ The compatible models should meet the following requirements:
     -   If input type is kTfLiteString, no [Metadata](../../convert/metadata.md)
         is required for the model.
     -   If input type is kTfLiteInt32, a `RegexTokenizer` needs to be set up in
-        the input tensor's [Metadata](../../convert/metadata.md).
+        the input tensor's
+        [Metadata](https://www.tensorflow.org/lite/convert/metadata_writer_tutorial#natural_language_classifiers).
 
 *   Output score tensor:
     (kTfLiteUInt8/kTfLiteInt8/kTfLiteInt16/kTfLiteFloat32/kTfLiteFloat64)
@@ -174,7 +175,8 @@ The compatible models should meet the following requirements:
         corresponding [Metadata](../../convert/metadata.md) for category labels,
         the file should be a plain text file with one label per line, and the
         number of labels should match the number of categories as the model
-        outputs.
+        outputs. See the
+        [exmaple label file](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/python/tests/testdata/nl_classifier/labels.txt).
 
 *   Output label tensor: (kTfLiteString/kTfLiteInt32)
 

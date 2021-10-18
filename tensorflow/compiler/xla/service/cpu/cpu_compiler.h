@@ -95,7 +95,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
   const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos() const {
     return buffer_infos_;
   }
-  int64 result_buffer_index() const { return result_buffer_index_; }
+  int64_t result_buffer_index() const { return result_buffer_index_; }
 
  private:
   // Contains the compiled computation: an object file.
@@ -108,7 +108,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
   // Contains which buffer index into |buffer_sizes| was designated to the
   // result of the computation.  This buffer should be passed into the output
   // parameter when calling the compiled computation.
-  const int64 result_buffer_index_;
+  const int64_t result_buffer_index_;
 
   // Contains an instance of HloProfilePrinterData if HLO profiling is enabled,
   // otherwise is nullptr.
@@ -134,11 +134,8 @@ class CpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  StatusOr<
-      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-  RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
-                                   se::StreamExecutor* executor, bool optimize,
-                                   const CompileOptions& options) override;
+  StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+      const HloModule* module) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -170,6 +167,8 @@ class CpuCompiler : public LLVMCompiler {
   Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
       LLVMTargetMachineFeatures* target_machine_features);
+
+  mutable std::unique_ptr<HloProto> hlo_proto_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
 };

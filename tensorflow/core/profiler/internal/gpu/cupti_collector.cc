@@ -36,7 +36,7 @@ namespace profiler {
 
 namespace {
 
-bool IsHostEvent(const CuptiTracerEvent& event, int64* line_id) {
+bool IsHostEvent(const CuptiTracerEvent& event, int64_t* line_id) {
   // DriverCallback(i.e. kernel launching) events are host events.
   if (event.source == CuptiTracerEventSource::DriverCallback) {
     *line_id = event.thread_id;
@@ -151,11 +151,6 @@ class PerDeviceCollector {
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kCorrelationId)),
                           event.correlation_id);
-    }
-    if (!event.annotation.empty()) {
-      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
-                              GetStatTypeStr(StatType::kKernelAnnotation)),
-                          *plane->GetOrCreateStatMetadata(event.annotation));
     }
     if (!event.nvtx_range.empty()) {
       xevent.AddStatValue(
@@ -311,7 +306,7 @@ class PerDeviceCollector {
                XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
     mutex_lock l(m_);
     // Tracking event types per line.
-    absl::flat_hash_map<int64, absl::flat_hash_set<CuptiTracerEventType>>
+    absl::flat_hash_map<int64_t, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
     for (auto& event : events_) {
       int64_t line_id = CuptiTracerEvent::kInvalidThreadId;
@@ -346,6 +341,10 @@ class PerDeviceCollector {
 
   void GetDeviceCapabilities(int32_t device_ordinal,
                              XPlaneBuilder* device_plane) {
+    device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
+                                   GetStatTypeStr(StatType::kDevVendor)),
+                               kDeviceVendorNvidia);
+
     CUdevice device;
     if (cuDeviceGet(&device, device_ordinal) != CUDA_SUCCESS) return;
 

@@ -64,7 +64,7 @@ public class GpuDelegate implements Delegate, Closeable {
     }
 
     /**
-     * Enables running quantized models with the delegate. Defaults to false.
+     * Enables running quantized models with the delegate.
      *
      * <p>WARNING: This is an experimental API and subject to change.
      *
@@ -86,9 +86,30 @@ public class GpuDelegate implements Delegate, Closeable {
       return this;
     }
 
+    /**
+     * Enables serialization on the delegate. Note non-null {@code serializationDir} and {@code
+     * modelToken} are required for serialization.
+     *
+     * <p>WARNING: This is an experimental API and subject to change.
+     *
+     * @param serializationDir The directory to use for storing data. Caller is responsible to
+     *     ensure the model is not stored in a public directory. It's recommended to use {@link
+     *     android.content.Context#getCodeCacheDir()} to provide a private location for the
+     *     application on Android.
+     * @param modelToken The token to be used to identify the model. Caller is responsible to ensure
+     *     the token is unique to the model graph and data.
+     */
+    public Options setSerializationParams(String serializationDir, String modelToken) {
+      this.serializationDir = serializationDir;
+      this.modelToken = modelToken;
+      return this;
+    }
+
     boolean precisionLossAllowed = true;
     boolean quantizedModelsAllowed = true;
     int inferencePreference = INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
+    String serializationDir = null;
+    String modelToken = null;
   }
 
   public GpuDelegate(Options options) {
@@ -96,7 +117,9 @@ public class GpuDelegate implements Delegate, Closeable {
         createDelegate(
             options.precisionLossAllowed,
             options.quantizedModelsAllowed,
-            options.inferencePreference);
+            options.inferencePreference,
+            options.serializationDir,
+            options.modelToken);
   }
 
   @UsedByReflection("TFLiteSupport/model/GpuDelegateProxy")
@@ -127,7 +150,11 @@ public class GpuDelegate implements Delegate, Closeable {
   }
 
   private static native long createDelegate(
-      boolean precisionLossAllowed, boolean quantizedModelsAllowed, int preference);
+      boolean precisionLossAllowed,
+      boolean quantizedModelsAllowed,
+      int preference,
+      String serializationDir,
+      String modelToken);
 
   private static native void deleteDelegate(long delegateHandle);
 }

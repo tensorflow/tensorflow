@@ -266,6 +266,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:StandardOps",
     ],

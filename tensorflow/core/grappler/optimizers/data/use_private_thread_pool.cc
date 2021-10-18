@@ -41,7 +41,7 @@ Status UsePrivateThreadPool::OptimizeAndCollectStats(Cluster* cluster,
   *output = item.graph;
   MutableGraphView graph(output);
 
-  // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
+  // If the GrapplerItem is derived from a FunctionDef, we don't optimize it.
   if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
     return Status::OK();
 
@@ -74,7 +74,7 @@ Status UsePrivateThreadPool::OptimizeAndCollectStats(Cluster* cluster,
 
   // Add a const node with value 0 to indicate it is not set by users.
   NodeDef* num_threads_value =
-      graph_utils::AddScalarConstNode(int64{0}, &graph);
+      graph_utils::AddScalarConstNode(int64_t{0}, &graph);
 
   NodeDef insert_node;
   graph_utils::SetUniqueGraphNodeName("private_thread_pool", graph.graph(),
@@ -89,13 +89,8 @@ Status UsePrivateThreadPool::OptimizeAndCollectStats(Cluster* cluster,
   // Set `output_types` and `output_shapes` attributes by copying the relevant
   // attrs from the input node. If we fail to set the attributes, we abort the
   // rewrite.
-  for (auto attr : {"output_shapes", "output_types"}) {
-    if (last_node->attr().find(attr) != last_node->attr().end()) {
-      graph_utils::CopyAttribute(attr, *last_node, &insert_node);
-    } else {
-      return Status::OK();
-    }
-  }
+  if (!graph_utils::CopyShapesAndTypesAttrs(*last_node, &insert_node))
+    return Status::OK();
 
   auto* added_node = graph.AddNode(std::move(insert_node));
   TF_RETURN_IF_ERROR(

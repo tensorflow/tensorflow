@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -35,7 +36,7 @@ using ConfigMap =
     std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
 // tf.data optimizations, in the order we want to perform them.
-constexpr std::array<const char*, 16> kTFDataOptimizations = {
+constexpr std::array<const char*, 18> kTFDataOptimizations = {
     "noop_elimination",
     "disable_intra_op_parallelism",
     "use_private_thread_pool",
@@ -50,8 +51,10 @@ constexpr std::array<const char*, 16> kTFDataOptimizations = {
     "parallel_batch",
     "slack",
     "autotune_buffer_sizes",
+    "inject_prefetch",
     "disable_prefetch_legacy_autotune",
-    "enable_gradient_descent"};
+    "enable_gradient_descent",
+    "make_deterministic"};
 
 // Parses a list of string optimizer configurations into a map from
 // optimizer name -> rewriter config for that optimizer.
@@ -99,8 +102,11 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Perform optimizations in a meaningful order.
   for (const auto& optimization : kTFDataOptimizations) {
-    TF_RETURN_IF_ERROR(
-        ApplyOptimization(optimization, cluster, &optimized_item));
+    const uint64 pass_start_us = Env::Default()->NowMicros();
+    Status status = ApplyOptimization(optimization, cluster, &optimized_item);
+    const uint64 pass_end_us = Env::Default()->NowMicros();
+    metrics::UpdateTFDataPassTime(optimization, pass_end_us - pass_start_us);
+    if (!status.ok()) return status;
   }
 
   // Store the final result of all the optimizations in `output`.

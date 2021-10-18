@@ -1,5 +1,4 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
     default_visibility = [
@@ -8,28 +7,30 @@ package(
     licenses = ["notice"],
 )
 
-cc_library(
-    name = "format_converter",
-    srcs = ["format_converter.cc"],
-    hdrs = ["format_converter.h"],
-    compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts(),
+pybind_extension(
+    name = "format_converter_wrapper_pybind11",
+    srcs = ["format_converter_wrapper_pybind11.cc"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    module_name = "format_converter_wrapper_pybind11",
     deps = [
         "//tensorflow/lite/c:common",
-        "//third_party/eigen3",
+        "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
     ],
 )
 
-cc_test(
-    name = "format_converter_test",
-    srcs = ["format_converter_test.cc"],
-    data = ["//tensorflow/lite:testdata/sparse_tensor.bin"],
-    tags = [
-        "tflite_not_portable",
-    ],
+py_test(
+    name = "format_converter_wrapper_pybind11_test",
+    srcs = ["format_converter_wrapper_pybind11_test.py"],
+    python_version = "PY3",
     deps = [
-        ":format_converter",
-        "//tensorflow/lite:framework",
-        "@com_google_googletest//:gtest_main",
+        ":format_converter_wrapper_pybind11",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:absltest",
     ],
 )

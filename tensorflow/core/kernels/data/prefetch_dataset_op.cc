@@ -16,11 +16,11 @@ limitations under the License.
 
 #include <deque>
 
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
@@ -93,7 +93,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64_t Cardinality() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -154,6 +154,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
+      interleave_depth_ = ctx->interleave_depth();
+
       if (buffer_size_->value == model::kAutotune) {
         buffer_size_->value = buffer_size_min_;
       }
@@ -234,7 +236,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           /*ratio=*/1,
           {model::MakeParameter(kBufferSize, buffer_size_,
                                 /*min=*/buffer_size_min_,
-                                /*max=*/std::numeric_limits<int64>::max())});
+                                /*max=*/std::numeric_limits<int64_t>::max())});
     }
 
     Status SaveInternal(SerializationContext* ctx,
@@ -339,6 +341,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             "slack",
             strings::Printf("%lld", static_cast<long long>(slack_us_.load()))));
       }
+      result.push_back(std::make_pair(
+          "interleave_depth",
+          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -352,11 +357,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       Status status;
       // The buffered data element.
       std::vector<Tensor> value;
-      int64 created_us;
+      int64_t created_us;
       const uint64 uid;
     };
 
-    int64 buffer_limit() const TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+    int64_t buffer_limit() const TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (legacy_autotune_) {
         return auto_tuner_.buffer_limit();
       }
@@ -520,7 +525,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                        const Status& status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(absl::StrCat(prefix(), "::", index), CodeKey(),
-                              static_cast<int64>(status.code())));
+                              static_cast<int64_t>(status.code())));
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(absl::StrCat(prefix(), "::", index),
@@ -568,7 +573,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<CancellationManager> cancellation_manager_;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(input_mu_);
     const std::shared_ptr<condition_variable> cond_var_;
-    const int64 buffer_size_min_;
+    const int64_t buffer_size_min_;
     PrefetchAutotuner auto_tuner_ TF_GUARDED_BY(*mu_);
     std::deque<BufferElement> buffer_ TF_GUARDED_BY(*mu_);
     std::unique_ptr<Thread> prefetch_thread_ TF_GUARDED_BY(*mu_);
@@ -576,27 +581,34 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     bool prefetch_thread_finished_ TF_GUARDED_BY(*mu_) = false;
     const bool legacy_autotune_;
 
-    std::atomic<int64> slack_us_;
+    std::atomic<int64_t> slack_us_;
 
     // If legacy_autotune_ is false, identifies the maximum size of the buffer.
     const std::shared_ptr<model::SharedState> buffer_size_;
 
     // Method for deregistering the cancellation callback.
     std::function<void()> deregister_fn_;
+
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree. We record the interleave depth so that it can be included in the
+    // trace metadata.
+    int64 interleave_depth_ = -1;
   };
+
   const DatasetBase* const input_;
-  const int64 buffer_size_;
+  const int64_t buffer_size_;
 
   // If non-zero, determines the period between injecting "slack" into the
   // execution.
-  const int64 slack_period_;
+  const int64_t slack_period_;
 
   // Determines whether legacy autotuning should be used.
   const bool legacy_autotune_ = true;
 
   // If autotune is enabled, determines the minimal value of `buffer_size`
   // parameter.
-  const int64 buffer_size_min_ = 0;
+  const int64_t buffer_size_min_ = 0;
 
   TraceMeMetadata traceme_metadata_;
 };
@@ -618,7 +630,7 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                     DatasetBase** output) {
   int64_t buffer_size = 0;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
+                 ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx, buffer_size >= 0 || buffer_size == model::kAutotune,
               errors::InvalidArgument("buffer_size must be >= 0 or set "
                                       "buffer_size to be ",

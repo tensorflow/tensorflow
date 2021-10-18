@@ -240,9 +240,9 @@ class TensorShapeOld {
  public:
   /// \brief Construct a `TensorShape` from the provided sizes.
   /// REQUIRES: `dim_sizes[i] >= 0`
-  explicit TensorShapeOld(gtl::ArraySlice<int64> dim_sizes);
-  TensorShapeOld(std::initializer_list<int64> dim_sizes)
-      : TensorShapeOld(gtl::ArraySlice<int64>(dim_sizes)) {}
+  explicit TensorShapeOld(gtl::ArraySlice<int64_t> dim_sizes);
+  TensorShapeOld(std::initializer_list<int64_t> dim_sizes)
+      : TensorShapeOld(gtl::ArraySlice<int64_t>(dim_sizes)) {}
 
   /// REQUIRES: `IsValid(proto)`
   explicit TensorShapeOld(const TensorShapeProto& proto);
@@ -289,20 +289,20 @@ class TensorShapeOld {
   /// REQUIRES: `0 <= d < dims()`
   // TODO(touts): Rename to `dimension()` to match
   // `Eigen::Tensor::dimension()`?
-  int64 dim_size(int d) const {
+  int64_t dim_size(int d) const {
     DCHECK_GE(d, 0);
     DCHECK_LT(d, dims());
     return dim_sizes_[d];
   }
 
   /// Returns sizes of all dimensions.
-  gtl::ArraySlice<int64> dim_sizes() const { return dim_sizes_; }
+  gtl::ArraySlice<int64_t> dim_sizes() const { return dim_sizes_; }
 
   /// \brief Returns the number of elements in the tensor.
   ///
   /// We use `int64` and not `size_t` to be compatible with `Eigen::Tensor`
   /// which uses `ptrdiff_t`.
-  int64 num_elements() const { return num_elements_; }
+  int64_t num_elements() const { return num_elements_; }
 
   /// Returns true if `*this` and `b` have the same sizes. Ignores
   /// dimension names.
@@ -338,15 +338,15 @@ class TensorShapeOld {
 
   // TODO(josh11b): Maybe use something from the Eigen Tensor library
   // for the sizes.
-  gtl::InlinedVector<int64, 4> dim_sizes_;
+  gtl::InlinedVector<int64_t, 4> dim_sizes_;
 
   // total number of elements (avoids recomputing it each time).
-  int64 num_elements_;
+  int64_t num_elements_;
 };
 
 struct TensorShapeDimOld {
   explicit TensorShapeDimOld(int64_t s) : size(s) {}
-  int64 size;
+  int64_t size;
 };
 
 class TensorShapeIterOld {
@@ -410,7 +410,7 @@ TensorShapeOld::TensorShapeOld(const TensorShapeProto& proto) {
   }
 }
 
-TensorShapeOld::TensorShapeOld(gtl::ArraySlice<int64> dim_sizes) {
+TensorShapeOld::TensorShapeOld(gtl::ArraySlice<int64_t> dim_sizes) {
   dim_sizes_.reserve(dim_sizes.size());
   num_elements_ = 1;
   for (auto s : dim_sizes) {
@@ -502,7 +502,7 @@ TensorShapeIterOld TensorShapeOld::end() const {
 
 string TensorShapeOld::DebugString() const {
   return strings::StrCat(
-      "[", absl::StrJoin(gtl::ArraySlice<int64>(dim_sizes_), ","), "]");
+      "[", absl::StrJoin(gtl::ArraySlice<int64_t>(dim_sizes_), ","), "]");
 }
 
 string TensorShapeOld::DebugString(const TensorShapeProto& proto) {
@@ -518,7 +518,7 @@ string TensorShapeOld::DebugString(const TensorShapeProto& proto) {
 // End of old implementation
 // ------------------------------------------------------------------------
 
-static int64 SkewedSize(random::SimplePhilox* gen, int64_t current_elements) {
+static int64_t SkewedSize(random::SimplePhilox* gen, int64_t current_elements) {
   int64_t result = 0;
   do {
     if (current_elements < 100) {
@@ -580,13 +580,13 @@ TEST(TensorShapeTest, Randomized) {
       s.InsertDim(dim, sz);
       sold.InsertDim(dim, sz);
     } else {
-      std::vector<int64> sizes;
+      std::vector<int64_t> sizes;
       const int N = (gen.Uniform(4) == 0) ? gen.Uniform(10) : gen.Uniform(3);
       int64_t num_elements = 1;
       for (int i = 0; i < N; i++) {
         int64_t sz = SkewedSize(&gen, num_elements);
         sizes.push_back(sz);
-        num_elements *= std::max<int64>(1, sz);
+        num_elements *= std::max<int64_t>(1, sz);
       }
 
       s = TensorShape(sizes);
@@ -599,7 +599,7 @@ TEST(TensorShapeTest, Large) {
   // We used to cap shapes at 2**40 elements.  Ensure the
   // bound is now higher.
   int64_t one = 1;
-  int64_t max = std::numeric_limits<int64>::max();
+  int64_t max = std::numeric_limits<int64_t>::max();
   EXPECT_EQ(TensorShape({max}).num_elements(), max);
   EXPECT_EQ(TensorShape({1, max}).num_elements(), max);
   EXPECT_EQ(TensorShape({max, 1}).num_elements(), max);
@@ -611,7 +611,7 @@ TEST(TensorShapeTest, Large) {
 
 TEST(TensorShapeTest, Overflow) {
   int64_t one = 1;
-  std::vector<std::vector<int64>> overflows = {
+  std::vector<std::vector<int64_t>> overflows = {
       {1 << 30, 1 << 30, 1 << 30},
       {1 << 5, (one << 60) + 1},
   };
@@ -685,8 +685,8 @@ TEST(TensorShapeUtilsTest, EndsWith) {
 }
 
 // A few different test cases for tensor sizes for benchmarks
-static std::vector<int64> MakeSizes(int arg) {
-  std::vector<int64> sizes;
+static std::vector<int64_t> MakeSizes(int arg) {
+  std::vector<int64_t> sizes;
   switch (arg) {
     case 0:
       sizes = {100};

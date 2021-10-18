@@ -41,12 +41,12 @@ limitations under the License.
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
@@ -181,7 +181,15 @@ class SingleOpModel {
   // Set a delegate that is applied right after graph is prepared. This is
   // useful for testing other runtimes like NN API or GPU.
   // Note: the caller still owns the memory of the passed-in `delegate`.
-  void SetDelegate(TfLiteDelegate* delegate) { delegate_ = delegate; }
+  void SetDelegate(TfLiteDelegate* delegate) {
+    delegate_ = delegate;
+    // As this is a manually-set TF Lite delegate, we assume the intention of
+    // the test is to test against the particular delegate, hence bypassing
+    // applying TfLite default delegates (i.e. the XNNPACK delegate).
+    if (delegate_ != nullptr) {
+      SetBypassDefaultDelegates();
+    }
+  }
 
   TfLiteStatus ApplyDelegate();
 
@@ -222,7 +230,7 @@ class SingleOpModel {
     const int dims_count = t.traversal_order.size();
     std::vector<int8_t> dense_data(data);
 
-    tflite::optimize::sparsity::FormatConverter<int8_t> converter(
+    tflite::internal::sparsity::FormatConverter<int8_t> converter(
         t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
     converter.DenseToSparse(dense_data.data());
 
@@ -294,7 +302,7 @@ class SingleOpModel {
     const int dims_count = t.traversal_order.size();
     std::vector<T> dense_data(data);
 
-    tflite::optimize::sparsity::FormatConverter<T> converter(
+    tflite::internal::sparsity::FormatConverter<T> converter(
         t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
     converter.DenseToSparse(dense_data.data());
 
@@ -617,6 +625,10 @@ class SingleOpModel {
  protected:
   int32_t GetTensorSize(int index) const;
 
+  // Tell TF Lite runtime to skip applying default delegates (i.e. XNNPACK
+  // delegate) when handling this op-level model.
+  void SetBypassDefaultDelegates() { bypass_default_delegates_ = true; }
+
   flatbuffers::FlatBufferBuilder builder_;
   std::unique_ptr<tflite::Interpreter> interpreter_;
   std::unique_ptr<OpResolver> resolver_;
@@ -865,6 +877,10 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   TfLiteDelegate* delegate_ = nullptr;  // not own the memory.
   int num_applied_delegates_ = 0;
+
+  // Whether to bypass the application of TF Lite default delegates (i.e.
+  // XNNPACK delegate) at rutnime.
+  bool bypass_default_delegates_ = false;
 };
 
 // Populate string tensors.

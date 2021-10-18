@@ -29,7 +29,7 @@ namespace port {
 class HumanReadableNumBytes {
  public:
   static std::string ToString(int64_t num_bytes) {
-    if (num_bytes == std::numeric_limits<int64>::min()) {
+    if (num_bytes == std::numeric_limits<int64_t>::min()) {
       // Special case for number with not representable nagation.
       return "-8E";
     }
@@ -42,7 +42,7 @@ class HumanReadableNumBytes {
       return absl::StrFormat("%s%dB", neg_str, num_bytes);
     }
 
-    static const char units[] = "KMGTPE";  // int64 only goes up to E.
+    static const char units[] = "KMGTPE";  // int64_t only goes up to E.
     const char* unit = units;
     while (num_bytes >= (1024LL) * (1024LL)) {
       num_bytes /= (1024LL);

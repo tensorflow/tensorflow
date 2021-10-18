@@ -189,8 +189,8 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
   return root_.get();
 }
 
-int64 TFOp::SearchRoot(const std::vector<OpNode*> nodes,
-                       const std::vector<string>& regexes) {
+int64_t TFOp::SearchRoot(const std::vector<OpNode*> nodes,
+                         const std::vector<string>& regexes) {
   if (regexes.empty() || (regexes.size() == 1 && regexes[0] == ".*")) {
     return 0;
   }

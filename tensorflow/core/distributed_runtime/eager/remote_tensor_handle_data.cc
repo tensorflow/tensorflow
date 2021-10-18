@@ -139,7 +139,7 @@ Status RemoteTensorHandleData::NumDims(int* num_dims) const {
   return Status::OK();
 }
 
-Status RemoteTensorHandleData::Dim(int dim_index, int64* dim) const {
+Status RemoteTensorHandleData::Dim(int dim_index, int64_t* dim) const {
   TF_RETURN_IF_ERROR(WaitReady("Dim"));
 
   tf_shared_lock l(mu_);
@@ -148,7 +148,7 @@ Status RemoteTensorHandleData::Dim(int dim_index, int64* dim) const {
   return Status::OK();
 }
 
-Status RemoteTensorHandleData::NumElements(int64* num_elements) const {
+Status RemoteTensorHandleData::NumElements(int64_t* num_elements) const {
   TF_RETURN_IF_ERROR(WaitReady("NumElements"));
 
   tf_shared_lock l(mu_);
@@ -204,7 +204,7 @@ string RemoteTensorHandleData::DebugString() const {
 }
 
 Status RemoteTensorHandleData::OpIdAndOutputNum(const bool wait_util_ready,
-                                                int64* op_id,
+                                                int64_t* op_id,
                                                 int32* output_num) const {
   if (wait_util_ready) {
     TF_RETURN_IF_ERROR(WaitReady("OpIdAndOutputNumUntilReady"));

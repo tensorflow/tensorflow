@@ -135,6 +135,8 @@ inline void execute_primitives(
   }
 }
 
+bool AreWeightsFrozen();
+
 // In MKL-DNN v1.x, the format (ex. NCHW) used to initialize a memory descriptor
 // (md) structure will no longer be recorded in its `format` field. Instead, it
 // will be set to a canonical `blocked` format for every fully described md.
@@ -955,7 +957,7 @@ inline Tensor GetMklMetaTensor() {
   MklDnnShape non_mkl_shape;
   non_mkl_shape.SetMklTensor(false);
 
-  auto size = static_cast<int64>(non_mkl_shape.GetSerializeBufferSize());
+  auto size = static_cast<int64_t>(non_mkl_shape.GetSerializeBufferSize());
   Tensor tensor(DT_UINT8, {size});
 
   non_mkl_shape.SerializeMklDnnShape(tensor.flat<uint8>().data(),

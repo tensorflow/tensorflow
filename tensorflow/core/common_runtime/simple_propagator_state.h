@@ -60,7 +60,7 @@ class SimplePropagatorState {
     const NodeItem& get_node_item() const { return *node_item; }
 
     bool get_is_dead() const { return false; }
-    int64 get_iter_num() const { return 0; }
+    int64_t get_iter_num() const { return 0; }
   };
 
   // A drop-in replacement for std::deque<TaggedNode>.  We typically don't
@@ -161,7 +161,7 @@ class SimplePropagatorState {
                         bool vlog);
 
   const ImmutableExecutorState& immutable_state_;
-  const int64 step_id_;
+  const int64_t step_id_;
   const bool vlog_;
 
   // The i-th node's j-th input is stored at

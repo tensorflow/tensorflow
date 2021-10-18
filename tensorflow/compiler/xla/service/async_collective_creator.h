@@ -24,10 +24,16 @@ namespace xla {
 // all-reduce-done.
 class AsyncCollectiveCreator : public HloModulePass {
  public:
-  explicit AsyncCollectiveCreator(bool convert_all_reduce = false,
-                                  bool convert_all_gather = false)
-      : convert_all_reduce_(convert_all_reduce),
-        convert_all_gather_(convert_all_gather) {}
+  struct CollectiveCreatorConfig {
+    bool convert_all_reduce = false;
+    bool convert_all_gather = false;
+    bool convert_collective_permute = false;
+  };
+  explicit AsyncCollectiveCreator(CollectiveCreatorConfig creator_config)
+      : convert_all_reduce_(creator_config.convert_all_reduce),
+        convert_all_gather_(creator_config.convert_all_gather),
+        convert_collective_permute_(creator_config.convert_collective_permute) {
+  }
   absl::string_view name() const override { return "async-collective-creator"; }
 
   StatusOr<bool> Run(HloModule* module) override;
@@ -35,6 +41,7 @@ class AsyncCollectiveCreator : public HloModulePass {
  private:
   bool convert_all_reduce_;
   bool convert_all_gather_;
+  bool convert_collective_permute_;
 };
 
 }  // namespace xla

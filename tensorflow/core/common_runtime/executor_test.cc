@@ -470,7 +470,7 @@ static void BM_executor(::testing::benchmark::State& state) {
   test::Benchmark("cpu", g, /*old_benchmark_api=*/false).Run(state);
 
   state.SetLabel(strings::StrCat("Nodes = ", cur));
-  state.SetItemsProcessed(cur * static_cast<int64>(state.iterations()));
+  state.SetItemsProcessed(cur * static_cast<int64_t>(state.iterations()));
 }
 
 // Tall skinny graphs
@@ -500,7 +500,7 @@ static void BM_const_identity(::testing::benchmark::State& state) {
   test::Benchmark("cpu", g, /*old_benchmark_api=*/false).Run(state);
   state.SetLabel(strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
   state.SetItemsProcessed((1 + outputs_per_const) * width *
-                          static_cast<int64>(state.iterations()));
+                          static_cast<int64_t>(state.iterations()));
 }
 
 // Graph with actual op execution.
@@ -530,7 +530,7 @@ static void BM_FeedInputFetchOutput(::testing::benchmark::State& state) {
   FixupSourceAndSinkEdges(g);
   test::Benchmark("cpu", g, /*old_benchmark_api=*/false)
       .RunWithRendezvousArgs({{x_key, val}, {y_key, val}}, {z_key}, state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()));
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
 BENCHMARK(BM_FeedInputFetchOutput);
 

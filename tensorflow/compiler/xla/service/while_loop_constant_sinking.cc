@@ -58,7 +58,7 @@ StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileLoop(
 
   bool changed = false;
 
-  absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>
+  absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>>
       conditional_gte_index_to_insts =
           WhileUtil::GetGTEsMapForWhileConditional(*while_cond);
   std::vector<HloInstruction*> invariant_body_gtes =

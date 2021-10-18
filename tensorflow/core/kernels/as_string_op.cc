@@ -168,7 +168,7 @@ class AsStringOp : public OpKernel {
       ENCODE_TYPE(DT_INT8, int8, format_);
       ENCODE_TYPE(DT_INT16, int16, format_);
       ENCODE_TYPE(DT_INT32, int32, format_);
-      ENCODE_TYPE(DT_INT64, int64, format_);
+      ENCODE_TYPE(DT_INT64, int64_t, format_);
       ENCODE_TYPE(DT_FLOAT, float, format_);
       ENCODE_TYPE(DT_DOUBLE, double, format_);
       case (DT_BOOL): {

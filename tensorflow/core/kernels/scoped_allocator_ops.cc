@@ -75,7 +75,7 @@ class ScopedAllocatorOp : public OpKernel {
  private:
   std::vector<TensorShape> shapes_;
   DataType dtype_;
-  int64 num_elements_;
+  int64_t num_elements_;
   std::vector<ScopedAllocator::Field> fields_;
   string name_;
   int32 id_;

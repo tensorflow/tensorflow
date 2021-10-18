@@ -39,7 +39,7 @@ StatusOr<xla::XlaOp> XlaScatter(
   TF_ASSIGN_OR_RETURN(xla::Shape buffer_shape, builder->GetShape(buffer));
   TF_ASSIGN_OR_RETURN(xla::Shape updates_shape, builder->GetShape(updates));
   TF_ASSIGN_OR_RETURN(xla::Shape indices_shape, builder->GetShape(indices));
-  absl::Span<const int64> indices_dims =
+  absl::Span<const int64_t> indices_dims =
       xla::AsInt64Slice(indices_shape.dimensions());
 
   // If the indices are N-dimensional, the minor dimension of indices contains
@@ -147,8 +147,8 @@ StatusOr<xla::XlaOp> XlaScatter(
   // If the rank of `updates` is 0 and does not match the expected rank of
   // updates, broadcast `updates` to the expected shape of updates.
   auto new_updates = updates;
-  std::vector<int64> expected_updates_dims(indices_dims.begin(),
-                                           indices_dims.end());
+  std::vector<int64_t> expected_updates_dims(indices_dims.begin(),
+                                             indices_dims.end());
   for (int64_t dim = num_index_dims; dim < buffer_rank; ++dim) {
     expected_updates_dims.push_back(buffer_shape.dimensions(dim));
   }

@@ -22,7 +22,6 @@ def mlir_generated_test_denylisted_models():
 def mlir_only_generated_test_models():
     return [
         "avg_pool3d",
-        "batchmatmul",
         "broadcast_args",
         "broadcast_to",
         "broadcast_gradient_args",
@@ -33,9 +32,7 @@ def mlir_only_generated_test_models():
         "conv3d",
         "conv3d_transpose",
         "cumsum",
-        # TODO(b/186563810): Enable after resolving tensorflow_addons dep issue
-        # that causes test failures in the exported codebase.
-        # copybara:uncomment_begin
+        # copybara:uncomment_begin(Exclude tests that depend on tensorflow_addons APIs)
         # "dense_image_warp",
         # copybara:uncomment_end
         "dynamic_rnn",

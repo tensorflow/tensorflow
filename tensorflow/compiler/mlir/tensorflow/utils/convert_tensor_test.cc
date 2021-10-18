@@ -111,7 +111,7 @@ class ConvertTensorTest : public ::testing::Test {
   void VerifyConversion(std::initializer_list<T> values, DataType dtype,
                         mlir::Type expected_ty) {
     mlir::Builder b(expected_ty.getContext());
-    Tensor tensor(dtype, TensorShape({static_cast<int64>(values.size())}));
+    Tensor tensor(dtype, TensorShape({static_cast<int64_t>(values.size())}));
     tensor.flat<T>().setValues(values);
 
     auto value_or = ConvertTensor(tensor, &b);
@@ -146,7 +146,7 @@ TEST_F(ConvertTensorTest, Simple) {
       {1, -1}, DT_INT16, mlir::IntegerType::get(&context, 16)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int32>(
       {1, -1}, DT_INT32, mlir::IntegerType::get(&context, 32)));
-  ASSERT_NO_FATAL_FAILURE(VerifyConversion<int64>(
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<int64_t>(
       {1, -1}, DT_INT64, mlir::IntegerType::get(&context, 64)));
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<uint8>(

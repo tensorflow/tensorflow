@@ -104,7 +104,7 @@ bool safe_strtou32(StringPiece str, uint32* value);
 // Convert strings to 64bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strto64(StringPiece str, int64* value);
+bool safe_strto64(StringPiece str, int64_t* value);
 
 // Convert strings to unsigned 64bit integer values.
 // Leading and trailing spaces are allowed.
@@ -131,7 +131,7 @@ inline bool ProtoParseNumeric(StringPiece s, uint32* value) {
   return safe_strtou32(s, value);
 }
 
-inline bool ProtoParseNumeric(StringPiece s, int64* value) {
+inline bool ProtoParseNumeric(StringPiece s, int64_t* value) {
   return safe_strto64(s, value);
 }
 

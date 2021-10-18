@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for trackable object SavedModel save."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl.testing import parameterized
@@ -765,6 +761,48 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     result = save.save(root, save_dir)
     self.assertIsNone(result)
 
+  def test_validate_dependencies(self):
+
+    class Valid(tracking.AutoTrackable):
+
+      def _deserialization_dependencies(self):
+        return {x.name: x.ref for x in self._checkpoint_dependencies}
+
+    root = Valid()
+    root.f = variables.Variable(1.0)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+
+  def test_validate_dependencies_error_untracked(self):
+    untracked = variables.Variable(1.0)
+
+    class Invalid(tracking.AutoTrackable):
+
+      def _deserialization_dependencies(self):
+        return {"untracked": untracked}
+    invalid_deps = Invalid()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegex(ValueError, "Found an untracked dependency"):
+      save.save(invalid_deps, save_dir)
+
+  def test_validate_dependencies_error_cyclic(self):
+
+    class Invalid(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.cycle_ref = None
+
+      def _deserialization_dependencies(self):
+        return {"cycle_ref": self.cycle_ref}
+    cycle1 = Invalid()
+    cycle2 = Invalid()
+    cycle1.cycle_ref = cycle2
+    cycle2.cycle_ref = cycle1
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegex(ValueError,
+                                "dependency cycle in the saved Trackable"):
+      save.save(cycle1, save_dir)
+
 
 class VariablePolicyEnumTest(test.TestCase):
 
@@ -792,7 +830,7 @@ class VariablePolicyEnumTest(test.TestCase):
         save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES,
         save_options.VariablePolicy.from_obj("eXpAnD_dIsTrIbUtEd_VaRiAbLeS"))
     for invalid in ["not_a_valid_value", 2.0, []]:
-      with self.assertRaisesRegex(ValueError, "Invalid VariablePolicy value"):
+      with self.assertRaisesRegex(ValueError, "invalid VariablePolicy value"):
         save_options.VariablePolicy.from_obj(invalid)
 
   def testNamingConvention(self):
@@ -824,6 +862,21 @@ class SavingOptionsTest(test.TestCase):
         ValueError, "Attempted to save ops from non-whitelisted namespaces"):
       save._verify_ops(graph_def, [])
     save._verify_ops(graph_def, ["Test"])
+
+  def test_save_custom_op_with_no_whitelist_specified(self):
+    # Test that we are able to save a model that contains a custom op with a
+    # custom namespace when the user has not explicitly specified a namespace
+    # whitelist (i.e. that we default to allowing all custom ops when saving
+    # and no whitelist is specified, rather than throwing an exception).
+    graph_def = graph_pb2.GraphDef()
+    text_format.Parse("node { name: 'A' op: 'Test>CustomOp' }", graph_def)
+    save._verify_ops(graph_def, namespace_whitelist=None)
+
+    # If the user passes an empty list for the namespace whitelist rather than
+    # nothing, we should then throw an exception if a custom op is used.
+    with self.assertRaisesRegex(
+        ValueError, "Attempted to save ops from non-whitelisted namespaces"):
+      save._verify_ops(graph_def, [])
 
   def test_save_debug_info_enabled(self):
     root = tracking.AutoTrackable()
@@ -913,7 +966,7 @@ class SavingOptionsTest(test.TestCase):
         experimental_variable_policy="expand_distributed_variables")
     self.assertEqual(save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES,
                      options.experimental_variable_policy)
-    with self.assertRaisesRegex(ValueError, "Invalid VariablePolicy value"):
+    with self.assertRaisesRegex(ValueError, "invalid VariablePolicy value"):
       options = save_options.SaveOptions(
           experimental_variable_policy="not_a_valid_value")
 

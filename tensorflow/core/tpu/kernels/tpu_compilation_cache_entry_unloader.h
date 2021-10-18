@@ -60,7 +60,7 @@ class TpuCompilationCacheEntryUnloader : public ResourceBase {
   TF_DISALLOW_COPY_AND_ASSIGN(TpuCompilationCacheEntryUnloader);
   mutable absl::Mutex mu_;
   TpuCompilationCacheInterface* cache_;  // Not owned.
-  absl::flat_hash_set<int64> cache_entry_uids_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_set<int64_t> cache_entry_uids_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace tpu

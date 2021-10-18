@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
+#include <cstddef>
+
+#include "tensorflow/core/framework/dataset_metadata.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -28,6 +32,10 @@ namespace {
 
 constexpr char kConstOpName[] = "Const";
 constexpr char kRetValOp[] = "_Retval";
+
+constexpr char kOutputShapes[] = "output_shapes";
+constexpr char kOutputTypes[] = "output_types";
+constexpr char kToutputTypes[] = "Toutput_types";
 
 template <typename Predicate, typename Collection>
 std::vector<int> GetElementIndicesWithPredicate(const Predicate& predicate,
@@ -186,10 +194,10 @@ Status GetScalarConstNodeValueHelper(
 }
 
 template <>
-Status GetScalarConstNodeValue(const NodeDef& node, int64* value) {
+Status GetScalarConstNodeValue(const NodeDef& node, int64_t* value) {
   return GetScalarConstNodeValueHelper(
       node, DT_INT64,
-      [value](const Tensor& tensor) { *value = tensor.scalar<int64>()(); });
+      [value](const Tensor& tensor) { *value = tensor.scalar<int64_t>()(); });
 }
 
 template <>
@@ -379,6 +387,77 @@ bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
   }
   // All fetch nodes are `Retval` ops (or we don't have any fetch nodes).
   return true;
+}
+
+void MaybeSetFusedMetadata(const NodeDef& node1, const NodeDef& node2,
+                           NodeDef* fused_node) {
+  data::Metadata metadata1;
+  if (node1.attr().contains("metadata")) {
+    metadata1.ParseFromString(node1.attr().at("metadata").s());
+  }
+  data::Metadata metadata2;
+  if (node2.attr().contains("metadata")) {
+    metadata2.ParseFromString(node2.attr().at("metadata").s());
+  }
+  data::Metadata fused_metadata;
+  auto normalize_name = [](const string& name) {
+    return name.empty() ? "?" : name;
+  };
+  *fused_metadata.mutable_name() =
+      strings::StrCat("fused(", normalize_name(metadata1.name()), ",",
+                      normalize_name(metadata2.name()), ")");
+  fused_metadata.SerializeToString(
+      (*fused_node->mutable_attr())["metadata"].mutable_s());
+}
+
+bool CopyShapesAndTypesAttrs(const NodeDef& from, NodeDef* to_node) {
+  auto* attr = gtl::FindOrNull(from.attr(), kOutputTypes);
+  attr = (attr == nullptr ? gtl::FindOrNull(from.attr(), kToutputTypes) : attr);
+
+  if (attr == nullptr) return false;
+  (*to_node->mutable_attr())[kOutputTypes] = *attr;
+
+  attr = gtl::FindOrNull(from.attr(), kOutputShapes);
+  if (attr == nullptr) return false;
+  (*to_node->mutable_attr())[kOutputShapes] = *attr;
+  return true;
+}
+
+namespace {
+const auto* kSloppyAttrOps = new absl::flat_hash_set<string>{
+    "ParallelInterleaveDatasetV2",
+    "ParallelMapDataset",
+    "ParseExampleDataset",
+};
+
+const auto* kDeterministicAttrOps = new absl::flat_hash_set<string>{
+    "LegacyParallelInterleaveDatasetV2",
+    "ParallelInterleaveDatasetV3",
+    "ParallelInterleaveDatasetV4",
+    "ParallelMapDatasetV2",
+    "ParallelBatchDataset",
+};
+}  // anonymous namespace
+
+bool HasSloppyAttr(const string& op) { return kSloppyAttrOps->contains(op); }
+
+bool HasDeterministicAttr(const string& op) {
+  return kDeterministicAttrOps->contains(op);
+}
+
+Status SetMetadataName(const std::string& name, NodeDef* node) {
+  data::Metadata metadata;
+  if (node->attr().contains("metadata")) {
+    metadata.ParseFromString(node->attr().at("metadata").s());
+  }
+  if (!metadata.name().empty()) {
+    return errors::InvalidArgument("Node ", node->name(),
+                                   " already has a metadata name \"",
+                                   metadata.name(), "\".");
+  }
+  *metadata.mutable_name() = name;
+  metadata.SerializeToString((*node->mutable_attr())["metadata"].mutable_s());
+  return Status::OK();
 }
 
 }  // namespace graph_utils

@@ -292,7 +292,7 @@ namespace {
 
 struct HeapProfileKey {
   Traceback* traceback;
-  int64 size;
+  int64_t size;
   PjRtDevice* device;
   bool operator==(const HeapProfileKey& other) const;
 };
@@ -325,7 +325,7 @@ H AbslHashValue(H h, const HeapProfileKey& key) {
 StatusOr<py::bytes> PyClient::HeapProfile() {
   CHECK(PyGILState_Check());
   absl::flat_hash_set<PjRtBuffer*> buffer_set;
-  absl::flat_hash_map<HeapProfileKey, int64> entries;
+  absl::flat_hash_map<HeapProfileKey, int64_t> entries;
   for (PyBuffer* device_buffers : buffers_) {
     for (PyBuffer* buffer = device_buffers; buffer; buffer = buffer->next_) {
       // We only wish to count each PjRtBuffer once, even though they may be

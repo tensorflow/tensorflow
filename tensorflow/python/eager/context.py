@@ -14,10 +14,6 @@
 # ==============================================================================
 """State management for eager execution."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import contextlib
 import copy
@@ -32,6 +28,7 @@ import six
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import coordination_config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
@@ -79,9 +76,13 @@ _python_eager_context_create_counter = monitoring.Counter(
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
 
-_RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+# This flag and the associated environment var are transient and will eventually
+# be removed, once this experiment is enabled by default.
+_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv(
+    "TF_RUN_EAGER_OP_AS_FUNCTION") == "1"
 
 
+# This method should only be called after the context has beein initialized.
 def enable_run_eager_op_as_function():
   """Execute elementary eager ops (non-function) wrapped in a call op.
 
@@ -90,12 +91,23 @@ def enable_run_eager_op_as_function():
   TF2 programs in the runtime, thereby improving consistency (in terms of
   optimizations and rewrites for instance) and maintainability.
   """
-  # Must be called before context is actually built.
   global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
   _RUN_EAGER_OP_AS_FUNCTION_ENABLED = True
+  if context_safe() is not None:
+    context_safe().run_eager_op_as_function = True
+
+
+# This method should only be called after the context has been initialized.
+def disable_run_eager_op_as_function():
+  global _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+  _RUN_EAGER_OP_AS_FUNCTION_ENABLED = False
+  if context_safe() is not None:
+    context_safe().run_eager_op_as_function = False
 
 
 def run_eager_op_as_function_enabled():
+  if context_safe() is not None:
+    return context_safe().run_eager_op_as_function
   return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
 
 
@@ -449,7 +461,7 @@ class Context(object):
     self._collective_scoped_allocator_enabled_ops = None
     self._collective_use_nccl_communication = None
     self._collective_device_filters = None
-    self._coordination_service = None
+    self._coordination_service_config = None
 
     self._device_lock = threading.Lock()
     self._physical_devices = None
@@ -506,6 +518,10 @@ class Context(object):
     device_list = pywrap_tfe.TFE_ContextListDevices(self._context_handle)
     try:
       self._num_gpus = 0
+      current_job, current_task = None, None
+      server_def = self._server_def or self._collective_ops_server_def
+      if server_def is not None:
+        current_job, current_task = server_def.job_name, server_def.task_index
       for i in range(pywrap_tfe.TF_DeviceListCount(device_list)):
         dev_name = pywrap_tfe.TF_DeviceListName(device_list, i)
         context_devices.append(pydev.canonical_name(dev_name))
@@ -517,7 +533,8 @@ class Context(object):
         logical_devices.append(
             LogicalDevice(name=spec.to_string(), device_type=spec.device_type))
         dev_type = pywrap_tfe.TF_DeviceListType(device_list, i)
-        if dev_type == "GPU":
+        if (dev_type == "GPU" and spec.job == current_job and
+            spec.task == current_task):
           self._num_gpus += 1
 
     finally:
@@ -693,15 +710,35 @@ class Context(object):
     else:
       raise ValueError("Context is not initialized.")
 
-  def enable_coordination_service(self, service_type):
+  def configure_coordination_service(self,
+                                     service_type,
+                                     service_leader="",
+                                     enable_health_check=True,
+                                     cluster_register_timeout_in_ms=0,
+                                     heartbeat_timeout_in_ms=0,
+                                     coordinated_jobs=None):
+    """Enable distributed coordination service with specified configs."""
     if self._context_handle:
-      logging.warn("Configuring coordination service type may not be effective "
-                   "because the context is already initialized.")
-    self._coordination_service = service_type
+      logging.warning("Configuring coordination service type may not be "
+                      "effective because the context is already initialized.")
+    config = coordination_config_pb2.CoordinationServiceConfig()
+    config.service_type = service_type
+    if service_leader:
+      config.service_leader = pydev.canonical_name(service_leader)
+    config.enable_health_check = enable_health_check
+    config.cluster_register_timeout_in_ms = cluster_register_timeout_in_ms
+    config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
+    if coordinated_jobs is not None:
+      if isinstance(coordinated_jobs, list):
+        config.coordinated_jobs.extend(coordinated_jobs)
+      else:
+        raise ValueError("`coordinated_jobs` must be a list of job names or "
+                         "None, but got: %s" % (coordinated_jobs,))
+    self._coordination_service_config = config
 
   @property
   def coordination_service(self):
-    return self._coordination_service
+    return self._coordination_service_config
 
   def set_config_key_value(self, key, value):
     ensure_initialized()
@@ -1105,8 +1142,9 @@ class Context(object):
         config.device_filters.append(f)
 
     # Configure coordination service
-    if self._coordination_service:
-      config.experimental.coordination_service = self._coordination_service
+    if self._coordination_service_config:
+      config.experimental.coordination_config.CopyFrom(
+          self._coordination_service_config)
 
     return config
 
@@ -1604,9 +1642,16 @@ class Context(object):
      RuntimeError: If virtual CPUs are already configured at context
      initialization.
     """
+    server_def = self._server_def or self._collective_ops_server_def
+    local_prefix = ["/device"]
+    if server_def is not None:
+      local_prefix.append("/job:%s/replica:0/task:%d" % (server_def.job_name,
+                                                         server_def.task_index))
+    logical_local_devices = [d for d in self.list_logical_devices("CPU") if
+                             d.name.startswith(tuple(local_prefix))]
     self.ensure_initialized()
     # Error out if there are already multiple logical CPU in the context.
-    if len(self.list_logical_devices("CPU")) > 1:
+    if len(logical_local_devices) > 1:
       raise RuntimeError("Virtual CPUs already set, cannot modify again.")
 
     pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
@@ -1754,6 +1799,16 @@ class Context(object):
 
     self._log_device_placement = enable
     self._thread_local_data.function_call_options = None
+
+  @property
+  def run_eager_op_as_function(self):
+    return self._run_eager_op_as_function
+
+  @run_eager_op_as_function.setter
+  def run_eager_op_as_function(self, enable):
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextSetRunEagerOpAsFunction(self._handle, enable)
+    self._run_eager_op_as_function = enable
 
   @property
   def device_policy(self):
@@ -2131,24 +2186,19 @@ def in_eager_mode():
   return executing_eagerly()
 
 
-def shared_name(name=None):
-  """Returns the anonymous shared name GUID if no shared name is specified.
+def anonymous_name():
+  """Returns the anonymous shared name.
 
-  In eager mode we need to use a unique shared name to avoid spurious sharing
-  issues. The runtime generates a unique name on our behalf when the reserved
-  GUID is used as a shared name.
-
-  Args:
-    name: Optional shared name
+  In eager mode we create anonymous resources to avoid spurious sharing issues.
+  The runtime generates a unique name on our behalf when the reserved
+  anonymous shared name is used as a shared name.
 
   Returns:
-    Eager compatible shared name.
+    The anonymous shared name.
   """
-  if name or not executing_eagerly():
-    return name
 
-  # Ensure a unique name when eager execution is enabled to avoid spurious
-  # sharing issues.
+  # The magic value is defined as
+  # `tensorflow::ResourceHandle::ANONYMOUS_NAME` in C++.
   return "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
 
 
@@ -2527,6 +2577,9 @@ def async_wait():
   are finished, potentially raising exceptions if async execution results in
   an error state. It is a no-op if the context is not initialized.
   """
+  disable_async_executor_env_var = "TF_PS_DISABLE_ASYNC_EXECUTOR_GLOBALLY"
+  if os.environ.get(disable_async_executor_env_var) == str(True):
+    return
   if context()._context_handle is not None:  # pylint: disable=protected-access
     context().sync_executors()
 

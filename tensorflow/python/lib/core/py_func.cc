@@ -413,7 +413,7 @@ DataType gpu_types[] = {
 };
 
 REGISTER_KERNEL_BUILDER(Name("EagerPyFunc")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint("Tin", gpu_types)
                             .TypeConstraint("Tout", gpu_types),
                         PyFuncOp);

@@ -31,7 +31,7 @@ const int64_t kIllegalIterId = -1;
 // in the frame with frame_id at the iteration of iter_id.
 struct FrameAndIter {
   uint64 frame_id = kIllegalFrameId;
-  int64 iter_id = kIllegalIterId;
+  int64_t iter_id = kIllegalIterId;
 
   FrameAndIter() {}
 
@@ -48,7 +48,7 @@ struct FrameAndIter {
 struct FrameAndIterHash {
   size_t operator()(const FrameAndIter& key) const {
     // Make sure there are no padding bytes that we don't want
-    CHECK_EQ(sizeof(uint64) + sizeof(int64), sizeof(FrameAndIter));
+    CHECK_EQ(sizeof(uint64) + sizeof(int64_t), sizeof(FrameAndIter));
     return Hash64(reinterpret_cast<const char*>(&key), sizeof(FrameAndIter));
   }
 };

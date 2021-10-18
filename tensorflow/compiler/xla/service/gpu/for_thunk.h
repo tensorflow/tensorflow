@@ -40,7 +40,7 @@ class ForThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  const int64 loop_limit_;
+  const int64_t loop_limit_;
   std::unique_ptr<SequentialThunk> body_thunk_sequence_;
 };
 

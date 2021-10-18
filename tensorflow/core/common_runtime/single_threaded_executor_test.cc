@@ -367,7 +367,7 @@ void BM_executor(::testing::benchmark::State& state) {
                   "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api=*/false)
       .Run(state);
   state.SetLabel(strings::StrCat("Nodes = ", cur));
-  state.SetItemsProcessed(cur * static_cast<int64>(state.iterations()));
+  state.SetItemsProcessed(cur * static_cast<int64_t>(state.iterations()));
 }
 
 // Tall skinny graphs
@@ -400,7 +400,7 @@ void BM_const_identity(::testing::benchmark::State& state) {
       .Run(state);
   state.SetLabel(strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
   state.SetItemsProcessed((1 + outputs_per_const) * width *
-                          static_cast<int64>(state.iterations()));
+                          static_cast<int64_t>(state.iterations()));
 }
 
 // Graph with actual op execution.

@@ -212,7 +212,7 @@ Status ReplicateNodesAndEdges(const std::vector<string>& allowed_devices,
         --pair.second;
       }
     }
-    // Node is ready to delete when all its comsumer nodes are assigned to a
+    // Node is ready to delete when all its consumer nodes are assigned to a
     // physical device.
     if (cluster_nodes->at(node) == 0) {
       nodes_ready_to_delete.push(node);

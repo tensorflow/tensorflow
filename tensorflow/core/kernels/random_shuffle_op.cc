@@ -95,7 +95,7 @@ class RandomShuffleOp : public OpKernel {
         if (size < kint32max) {
           IndexedShuffle<int32>(size, input_mat, output_mat, uniform);
         } else {
-          IndexedShuffle<int64>(size, input_mat, output_mat, uniform);
+          IndexedShuffle<int64_t>(size, input_mat, output_mat, uniform);
         }
       }
     }

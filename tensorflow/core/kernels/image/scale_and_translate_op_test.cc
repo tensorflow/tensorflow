@@ -99,22 +99,22 @@ void Sample(const DynamicKernel& kernel, const bool antialias,
   const int64_t in_width = images.dimension(2);
   const int channels = images.dimension(3);
   const int64_t y_span_start = Clamp(
-      static_cast<int64>(0), in_height - 1,
-      static_cast<int64>(
+      static_cast<int64_t>(0), in_height - 1,
+      static_cast<int64_t>(
           std::ceil(sample_f.y() - kernel.Radius() * kernel_scale.y() - 0.5f)));
   const int64_t y_span_end =
-      Clamp(static_cast<int64>(0), in_height - 1,
-            static_cast<int64>(std::floor(
+      Clamp(static_cast<int64_t>(0), in_height - 1,
+            static_cast<int64_t>(std::floor(
                 sample_f.y() + kernel.Radius() * kernel_scale.y() - 0.5f))) +
       1;
   const int64_t x_span_start = Clamp(
-      static_cast<int64>(0), in_width - 1,
-      static_cast<int64>(
+      static_cast<int64_t>(0), in_width - 1,
+      static_cast<int64_t>(
           std::ceil(sample_f.x() - kernel.Radius() * kernel_scale.x() - 0.5f)));
 
   const int64_t x_span_end =
-      Clamp(static_cast<int64>(0), in_width - 1,
-            static_cast<int64>(std::floor(
+      Clamp(static_cast<int64_t>(0), in_width - 1,
+            static_cast<int64_t>(std::floor(
                 sample_f.x() + kernel.Radius() * kernel_scale.x() - 0.5f))) +
       1;
 

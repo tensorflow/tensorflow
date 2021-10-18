@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -66,11 +67,47 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
 }
 
+void AddConvertHloToTfPass(std::string entry_function_name,
+                           mlir::OpPassManager* pass_manager) {
+  // Legalize jax random to tflite custom op.
+  // The CreateLegalizeJaxRandom Pass has to stay at because we need to replace
+  // the random function body before being inlined.
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateLegalizeJaxRandomPass());
+
+  // Canonicalize, CSE etc.
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  // DCE for private symbols.
+  pass_manager->addPass(mlir::createSymbolDCEPass());
+
+  // Add inline pass.
+  pass_manager->addPass(mlir::createInlinerPass());
+
+  // Expands mhlo.tuple ops.
+  pass_manager->addPass(
+      mlir::mhlo::CreateExpandHloTuplesPass(entry_function_name));
+  // Flatten tuples for control flows.
+  pass_manager->addPass(mlir::mhlo::createFlattenTuplePass());
+
+  // TF dialect passes
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TF::CreateLegalizeHloToTfPass());
+
+  // Canonicalization after TF legalization.
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+}
+
 void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
                                 const toco::TocoFlags& toco_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager,
                                 llvm::Optional<tensorflow::Session*> session) {
+  if (pass_config.enable_hlo_to_tf_conversion) {
+    // TODO(b/194747383): We need to valid that indeed the "main" func is
+    // presented.
+    AddConvertHloToTfPass("main", pass_manager);
+  }
   // This pass wraps all the tf.FakeQuant ops in a custom op so they are not
   // folded before being converted to tfl.quantize and tfl.dequantize ops.
   auto wrapped_ops = mlir::TFL::AllTfFakeQuantOps();
@@ -146,7 +183,9 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
     // TODO(haoliang): Add this pass by default.
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass(
         /*allow_tensorlist_pass_through=*/toco_flags.force_select_tf_ops() ||
-        toco_flags.enable_select_tf_ops()));
+            toco_flags.enable_select_tf_ops(),
+        /*default_to_single_batch=*/toco_flags
+            .default_to_single_batch_in_tensor_list_ops()));
   }
 
   // This pass does resource analysis of saved model global tensors and marks
@@ -171,7 +210,14 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
   // Add function inlining pass. Both TF and TFLite dialects are opted into
   // function inliner interface.
   pass_manager->addPass(mlir::createInlinerPass());
-
+  // Reduce operands of TFL::While without changing the outcome.
+  // It needs to stay here because:
+  // 1. WhileOps are in TFL dialect.
+  // 2. The body and cond are inlined.
+  // 3. We need to do this before while canonicalization, otherwise it would be
+  //   difficult to find dependencies.
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateReduceWhileOperandsPass());
   // Canonicalization includes const folding, which is utilized here to optimize
   // away ops that can't get constant folded after PrepareTF pass. For example,
   // tf.Conv2D is split into tf.Transpose and tfl.Conv2D.
@@ -315,7 +361,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
 
   // This is needed for control flow support with TF TensorList.
   pm.addPass(mlir::TFL::CreateLowerStaticTensorListPass(
-      /*allow_tensorlist_pass_through=*/false));
+      /*allow_tensorlist_pass_through=*/false,
+      /*default_to_single_batch=*/false));
 
   // Saved model pass to mark global tensors immutable.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());

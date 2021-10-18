@@ -34,9 +34,9 @@ class XlaPadOp : public XlaOpKernel {
     const TensorShape padding_value_shape =
         context->InputShape("padding_value");
 
-    std::vector<int64> padding_low;
-    std::vector<int64> padding_high;
-    std::vector<int64> padding_interior;
+    std::vector<int64_t> padding_low;
+    std::vector<int64_t> padding_high;
+    std::vector<int64_t> padding_interior;
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("padding_low",
                                                               &padding_low));
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("padding_high",

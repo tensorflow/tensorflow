@@ -40,7 +40,8 @@ struct PassConfig {
         enable_tflite_variables(false),
         disable_variable_freezing(false),
         unfold_large_splat_constant(false),
-        guarantee_all_funcs_one_use(false) {}
+        guarantee_all_funcs_one_use(false),
+        enable_hlo_to_tf_conversion(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -79,6 +80,8 @@ struct PassConfig {
   // Whether to run the `GuaranteeAllFuncsOneUsePass` to ensure each function
   // has a single use.
   bool guarantee_all_funcs_one_use;
+  // Whether to enable the hlo to tf conversion.
+  bool enable_hlo_to_tf_conversion;
 };
 
 }  // namespace TFL

@@ -62,13 +62,13 @@ OptionsDatasetParams OptionsDatasetParams2() {
 std::vector<GetNextTestCase<OptionsDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/OptionsDatasetParams0(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {3}, {6}, {9}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {3}, {6}, {9}})},
           {/*dataset_params=*/OptionsDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{10}, {7}, {4}, {1}})},
+           CreateTensors<int64_t>(TensorShape({}), {{10}, {7}, {4}, {1}})},
           {/*dataset_params=*/OptionsDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}, {3}, {4}})}};
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}, {3}, {4}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(OptionsDatasetOpTest, OptionsDatasetParams,

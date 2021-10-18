@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
@@ -33,15 +34,8 @@ namespace {
 // Pass that co-locates resource ops that use composite device resources
 // (packed tensors) with the underlying physical TPU device.
 struct TPUColocateCompositeResourceOps
-    : public PassWrapper<TPUColocateCompositeResourceOps, FunctionPass> {
-  StringRef getArgument() const final {
-    return "tf-tpu-colocate-composite-resource-ops";
-  }
-
-  StringRef getDescription() const final {
-    return "Colocate resource with composite device assignment to TPU device.";
-  }
-
+    : public TF::TPUColocateCompositeResourceOpsPassBase<
+          TPUColocateCompositeResourceOps> {
   void runOnFunction() override;
 };
 
@@ -136,8 +130,6 @@ void TPUColocateCompositeResourceOps::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps() {
   return std::make_unique<TPUColocateCompositeResourceOps>();
 }
-
-static PassRegistration<TPUColocateCompositeResourceOps> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

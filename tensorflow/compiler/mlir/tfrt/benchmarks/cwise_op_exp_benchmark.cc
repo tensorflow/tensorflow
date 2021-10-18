@@ -29,22 +29,52 @@ using f32 = float;
 
 #define EXPR_BUILDER [](auto& in) { return in.exp(); }
 
-BM_TFMlir(Exp, mlir_input, "exp_1d", 1, f32, 1.0, 0.0)
+BM_TFMlir(Exp, mlir_input, "exp_1d", 1, f32, 1.0, 0.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
-    ->Arg(10 * 1024);
+    ->Arg(10 * 1024)
+    ->Arg(100 * 1024)
+    ->Arg(1000 * 1024);
 
-BM_EigenScalar(Exp, EXPR_BUILDER, 1, f32, 1.0, 0.0)
+BM_TFMlir(Exp, mlir_input, "exp_1d", 1, f32, 1.0, 0.0, /* num_threads */ 12)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
-    ->Arg(10 * 1024);
+    ->Arg(10 * 1024)
+    ->Arg(100 * 1024)
+    ->Arg(1000 * 1024);
 
-BM_EigenVectorized(Exp, EXPR_BUILDER, 1, f32, 1.0, 0.0)
+BM_EigenScalar(Exp, EXPR_BUILDER, 1, f32, 1.0, 0.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
-    ->Arg(10 * 1024);
+    ->Arg(10 * 1024)
+    ->Arg(100 * 1024)
+    ->Arg(1000 * 1024);
+
+BM_EigenScalar(Exp, EXPR_BUILDER, 1, f32, 1.0, 0.0, /* num_threads */ 12)
+    ->Arg(10)
+    ->Arg(100)
+    ->Arg(1024)
+    ->Arg(10 * 1024)
+    ->Arg(100 * 1024)
+    ->Arg(1000 * 1024);
+
+BM_EigenVectorized(Exp, EXPR_BUILDER, 1, f32, 1.0, 0.0, /* num_threads */ 0)
+    ->Arg(10)
+    ->Arg(100)
+    ->Arg(1024)
+    ->Arg(10 * 1024)
+    ->Arg(100 * 1024)
+    ->Arg(1000 * 1024);
+
+BM_EigenVectorized(Exp, EXPR_BUILDER, 1, f32, 1.0, 0.0, /* num_threads */ 12)
+    ->Arg(10)
+    ->Arg(100)
+    ->Arg(1024)
+    ->Arg(10 * 1024)
+    ->Arg(100 * 1024)
+    ->Arg(1000 * 1024);
 
 }  // namespace tensorflow

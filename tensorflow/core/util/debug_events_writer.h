@@ -243,7 +243,7 @@ class DebugEventsWriter {
   bool is_initialized_ TF_GUARDED_BY(initialization_mu_);
   mutex initialization_mu_;
 
-  const int64 circular_buffer_size_;
+  const int64_t circular_buffer_size_;
   std::deque<string> execution_buffer_ TF_GUARDED_BY(execution_buffer_mu_);
   mutex execution_buffer_mu_;
   std::deque<string> graph_execution_trace_buffer_

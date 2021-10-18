@@ -160,9 +160,9 @@ class UnsortedSegmentJoinOp : public OpKernel {
       UnsortedSegmentJoinOp<indices_type, num_segments_type>);
 
 REGISTER_CPU_KERNEL(int32, int32);
-REGISTER_CPU_KERNEL(int32, int64);
-REGISTER_CPU_KERNEL(int64, int32);
-REGISTER_CPU_KERNEL(int64, int64);
+REGISTER_CPU_KERNEL(int32, int64_t);
+REGISTER_CPU_KERNEL(int64_t, int32);
+REGISTER_CPU_KERNEL(int64_t, int64_t);
 #undef REGISTER_CPU_KERNEL
 
 }  // namespace tensorflow

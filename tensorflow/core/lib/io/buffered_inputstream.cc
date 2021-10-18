@@ -117,7 +117,7 @@ Status BufferedInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
       }
     }
     const int64_t bytes_to_copy =
-        std::min<int64>(limit_ - pos_, bytes_to_read - result->size());
+        std::min<int64_t>(limit_ - pos_, bytes_to_read - result->size());
     result->insert(result->size(), buf_, pos_, bytes_to_copy);
     pos_ += bytes_to_copy;
   }
@@ -154,7 +154,7 @@ Status BufferedInputStream::SkipNBytes(int64_t bytes_to_skip) {
   return Status::OK();
 }
 
-int64 BufferedInputStream::Tell() const {
+int64_t BufferedInputStream::Tell() const {
   return input_stream_->Tell() - (limit_ - pos_);
 }
 

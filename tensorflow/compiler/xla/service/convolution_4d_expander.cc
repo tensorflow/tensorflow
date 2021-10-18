@@ -60,9 +60,9 @@ StatusOr<HloInstruction*> Convolution4DExpander::ExpandInstruction(
       instruction->convolution_dimension_numbers();
   ConvolutionDimensionNumbers new_dim_nums = dim_nums;
 
-  std::vector<int64> removed_input_dimensions;
-  std::vector<int64> removed_kernel_dimensions;
-  std::vector<int64> removed_output_dimensions;
+  std::vector<int64_t> removed_input_dimensions;
+  std::vector<int64_t> removed_kernel_dimensions;
+  std::vector<int64_t> removed_output_dimensions;
   new_dim_nums.clear_input_spatial_dimensions();
   new_dim_nums.clear_output_spatial_dimensions();
   new_dim_nums.clear_kernel_spatial_dimensions();
@@ -116,14 +116,15 @@ StatusOr<HloInstruction*> Convolution4DExpander::ExpandInstruction(
   // Relabel the dimension numbers to account for the deleted dimensions. For
   // each dimension number, we need to reduce its value by the number of removed
   // smaller dimensions.
-  auto compute_new_dimension = [](const std::vector<int64>& removed_dimensions,
-                                  int64_t old_dimension) {
-    int64_t num_smaller = absl::c_count_if(
-        removed_dimensions, [old_dimension](int64_t removed_dimension) {
-          return removed_dimension < old_dimension;
-        });
-    return old_dimension - num_smaller;
-  };
+  auto compute_new_dimension =
+      [](const std::vector<int64_t>& removed_dimensions,
+         int64_t old_dimension) {
+        int64_t num_smaller = absl::c_count_if(
+            removed_dimensions, [old_dimension](int64_t removed_dimension) {
+              return removed_dimension < old_dimension;
+            });
+        return old_dimension - num_smaller;
+      };
   new_dim_nums.set_input_batch_dimension(compute_new_dimension(
       removed_input_dimensions, new_dim_nums.input_batch_dimension()));
   new_dim_nums.set_input_feature_dimension(compute_new_dimension(

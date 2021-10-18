@@ -60,14 +60,15 @@ TEST_F(HloConstantFoldingTest, ConvertF32ToS64) {
   EXPECT_TRUE(result);
 
   EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Constant()));
-  EXPECT_EQ(computation->root_instruction()->literal().GetFirstElement<int64>(),
-            42);
+  EXPECT_EQ(
+      computation->root_instruction()->literal().GetFirstElement<int64_t>(),
+      42);
 }
 
 TEST_F(HloConstantFoldingTest, ConvertS64ToF32) {
   HloComputation::Builder builder(TestName());
   HloInstruction* input = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64>(42)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64_t>(42)));
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(F32, {}), input));
 
@@ -104,15 +105,15 @@ TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
   EXPECT_TRUE(result);
 
   EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Constant()));
-  EXPECT_EQ(computation->root_instruction()->literal().Get<int64>({0}), 42);
-  EXPECT_EQ(computation->root_instruction()->literal().Get<int64>({1}), 19);
+  EXPECT_EQ(computation->root_instruction()->literal().Get<int64_t>({0}), 42);
+  EXPECT_EQ(computation->root_instruction()->literal().Get<int64_t>({1}), 19);
 }
 
 TEST_F(HloConstantFoldingTest, Concatenate) {
   const struct TestConfig {
     int concat_dimension;
-    std::vector<int64> dimensions;
-    std::vector<int64> concat_sizes;
+    std::vector<int64_t> dimensions;
+    std::vector<int64_t> concat_sizes;
   } test_configs[] = {
       {1, {11, 0, 7, 5, 9}, {2, 5, 7, 11}},
       {3, {1, 4, 17, 0, 8}, {1, 3, 9, 12}},
@@ -120,8 +121,8 @@ TEST_F(HloConstantFoldingTest, Concatenate) {
 
   for (auto& test_config : test_configs) {
     HloComputation::Builder builder(TestName());
-    std::vector<int64> dimensions(test_config.dimensions.begin(),
-                                  test_config.dimensions.end());
+    std::vector<int64_t> dimensions(test_config.dimensions.begin(),
+                                    test_config.dimensions.end());
     int64_t concat_size = 0;
     std::vector<HloInstruction*> operands;
     for (auto csize : test_config.concat_sizes) {
@@ -151,10 +152,10 @@ TEST_F(HloConstantFoldingTest, Concatenate) {
 
 TEST_F(HloConstantFoldingTest, Slice) {
   HloComputation::Builder builder(TestName());
-  const int64 dimensions[] = {11, 8, 7, 5, 9};
-  const int64 slice_start[] = {4, 2, 3, 1, 5};
-  const int64 slice_limits[] = {10, 8, 6, 5, 9};
-  const int64 slice_strides[] = {1, 1, 1, 1, 1};
+  const int64_t dimensions[] = {11, 8, 7, 5, 9};
+  const int64_t slice_start[] = {4, 2, 3, 1, 5};
+  const int64_t slice_limits[] = {10, 8, 6, 5, 9};
+  const int64_t slice_strides[] = {1, 1, 1, 1, 1};
   TF_ASSERT_OK_AND_ASSIGN(auto literal,
                           LiteralUtil::CreateRandomLiteral<F32>(
                               ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
@@ -177,7 +178,7 @@ TEST_F(HloConstantFoldingTest, Slice) {
 
 TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   HloComputation::Builder builder(TestName());
-  const int64 dimensions[] = {11, 8, 7, 5, 9};
+  const int64_t dimensions[] = {11, 8, 7, 5, 9};
   TF_ASSERT_OK_AND_ASSIGN(auto literal,
                           LiteralUtil::CreateRandomLiteral<F32>(
                               ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
@@ -185,7 +186,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   HloInstruction* literal_instruction = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
   Shape shape = ShapeUtil::MakeShape(F32, {8, 7, 11, 9, 5});
-  const int64 permutation[] = {1, 2, 0, 4, 3};
+  const int64_t permutation[] = {1, 2, 0, 4, 3};
   builder.AddInstruction(
       HloInstruction::CreateTranspose(shape, literal_instruction, permutation));
   auto module = CreateNewVerifiedModule();
@@ -202,8 +203,8 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   bool matched = true;
   root->literal().EachCell<NativeT>(
-      [&](absl::Span<const int64> indices, NativeT value) {
-        std::vector<int64> rindexes = PermuteInverse(indices, permutation);
+      [&](absl::Span<const int64_t> indices, NativeT value) {
+        std::vector<int64_t> rindexes = PermuteInverse(indices, permutation);
         matched = matched && (value == literal_clone.Get<NativeT>(rindexes));
       });
   EXPECT_TRUE(matched);

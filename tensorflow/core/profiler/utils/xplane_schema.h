@@ -57,6 +57,10 @@ TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
 
+// GPU device vendors.
+TF_CONST_INIT extern const absl::string_view kDeviceVendorNvidia;
+TF_CONST_INIT extern const absl::string_view kDeviceVendorAMD;
+
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
   kFirstHostEventType = 0,
@@ -118,6 +122,7 @@ enum HostEventType {
   kMergeInputTensors,
   kScheduleWithoutSplit,
   kScheduleWithSplit,
+  kScheduleWithEagerSplit,
   kASBSQueueSchedule,
   // TFRT related.
   kTfrtModelRun,
@@ -140,6 +145,7 @@ enum StatType {
   kChipOrdinal,
   kNodeOrdinal,
   kModelId,
+  kQueueId,
   kQueueAddr,
   kRequestId,
   kRunId,
@@ -182,7 +188,6 @@ enum StatType {
   kMemFreeDetails,
   kMemsetDetails,
   kMemoryResidencyDetails,
-  kKernelAnnotation,
   kNVTXRange,
   kKernelDetails,
   kStream,
@@ -194,6 +199,7 @@ enum StatType {
   kTfOp,
   kHloOp,
   kHloModule,
+  kProgramId,
   kEquation,
   kIsEager,
   kTfFunctionCall,
@@ -219,6 +225,7 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
+  kDevVendor,
   // Batching related.
   kBatchSizeAfterPadding,
   kPaddingAmount,
@@ -243,9 +250,9 @@ inline bool IsHostEventType(HostEventType event_type,
   return GetHostEventTypeStr(event_type) == event_name;
 }
 
-absl::optional<int64> FindHostEventType(absl::string_view event_name);
+absl::optional<int64_t> FindHostEventType(absl::string_view event_name);
 
-absl::optional<int64> FindTfOpEventType(absl::string_view event_name);
+absl::optional<int64_t> FindTfOpEventType(absl::string_view event_name);
 
 absl::string_view GetStatTypeStr(StatType stat_type);
 
@@ -255,13 +262,13 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
 
-absl::optional<int64> FindStatType(absl::string_view stat_name);
+absl::optional<int64_t> FindStatType(absl::string_view stat_name);
 
 // Returns true if the given event shouldn't be shown in the trace viewer.
-bool IsInternalEvent(absl::optional<int64> event_type);
+bool IsInternalEvent(absl::optional<int64_t> event_type);
 
 // Returns true if the given stat shouldn't be shown in the trace viewer.
-bool IsInternalStat(absl::optional<int64> stat_type);
+bool IsInternalStat(absl::optional<int64_t> stat_type);
 
 // Support for flow events:
 // This class enables encoding/decoding the flow id and direction, stored as

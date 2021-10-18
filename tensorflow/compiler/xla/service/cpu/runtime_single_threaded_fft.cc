@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
+using ::int64_t;
 using tensorflow::int32;
-using tensorflow::int64;
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenSingleThreadedFft(
     const void* run_options_ptr, void* out, void* operand, int32_t fft_type,

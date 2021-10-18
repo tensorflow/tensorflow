@@ -63,8 +63,8 @@ class GpuSolverContext {
 
   // Returns the size of the `workspace` required by Potrf, in number of
   // elements of `type`.
-  StatusOr<int64> PotrfBufferSize(PrimitiveType type, se::blas::UpperLower uplo,
-                                  int n, int lda);
+  StatusOr<int64_t> PotrfBufferSize(PrimitiveType type,
+                                    se::blas::UpperLower uplo, int n, int lda);
 
  private:
   GpuSolverContext(se::Stream* stream, gpusolverHandle_t handle);

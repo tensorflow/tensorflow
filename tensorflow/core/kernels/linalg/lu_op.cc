@@ -55,11 +55,11 @@ class LuOp : public OpKernel {
   // LU decomposition for a square matrix takes roughly (2/3) * (num_rows)^3.
   // TODO(anudhyan): Refine this estimate after taking constant factors into
   // account.
-  int64 GetCostPerUnit(const TensorShape& input_matrix_shape) const {
+  int64_t GetCostPerUnit(const TensorShape& input_matrix_shape) const {
     double num_rows = static_cast<double>(input_matrix_shape.dim_size(0));
     double cost = (2 / 3.0) * MathUtil::IPow(num_rows, 3);
     return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64>(cost);
+                                                  : static_cast<int64_t>(cost);
   }
 
   void Compute(OpKernelContext* context) override {
@@ -185,9 +185,9 @@ REGISTER_LU(double, int32);
 REGISTER_LU(complex64, int32);
 REGISTER_LU(complex128, int32);
 
-REGISTER_LU(float, int64);
-REGISTER_LU(double, int64);
-REGISTER_LU(complex64, int64);
-REGISTER_LU(complex128, int64);
+REGISTER_LU(float, int64_t);
+REGISTER_LU(double, int64_t);
+REGISTER_LU(complex64, int64_t);
+REGISTER_LU(complex128, int64_t);
 
 }  // namespace tensorflow

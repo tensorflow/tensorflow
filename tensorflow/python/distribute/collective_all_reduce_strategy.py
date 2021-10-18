@@ -14,10 +14,6 @@
 # ==============================================================================
 """Class CollectiveAllReduceStrategy implementing DistributionStrategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import threading
 import time
@@ -46,7 +42,9 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
+from tensorflow.python.platform import remote_utils
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -194,7 +192,7 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "num_workers").set(self.extended._num_workers)
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
-        "num_replicas_per_worker").set(self.extended._num_gpus_per_worker)
+        "num_replicas_per_worker").set(self.extended._num_devices_per_worker)
 
   @classmethod
   def _from_local_devices(cls, devices, communication_options=None):
@@ -292,7 +290,10 @@ class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "num_workers").set(self.extended._num_workers)
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
-        "num_gpu_per_worker").set(self.extended._num_gpus_per_worker)
+        "num_gpu_per_worker").set(
+            self.extended._num_devices_per_worker
+            if self.extended._local_device_type == "GPU"
+            else 0)
 
 
 class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
@@ -340,6 +341,30 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       self._initialize_local(cluster_resolver)
 
+  def _initialize_local_devices(self, cluster_resolver, worker_device):
+    # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
+    # some cases.
+    if isinstance(cluster_resolver, TFConfigClusterResolver):
+      num_gpus = context.num_gpus()
+      num_tpus = 0
+    else:
+      num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
+      num_tpus = cluster_resolver.num_accelerators().get("TPU", 0)
+
+    if num_gpus:
+      local_device_type = "GPU"
+      num_local_devices = num_gpus
+    elif num_tpus:
+      local_device_type = "TPU"
+      num_local_devices = num_tpus
+    else:
+      local_device_type = "CPU"
+      num_local_devices = 1
+    local_devices = tuple(
+        f"{worker_device}/device:{local_device_type}:{i}"
+        for i in range(num_local_devices))
+    return local_devices, local_device_type
+
   def _initialize_local(self, cluster_resolver, devices=None):
     """Initializes the object for local training."""
     self._is_chief = True
@@ -354,20 +379,17 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
                         "Some performance features may not be enabled.")
       self._collective_ops_configured = True
 
-    # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
-    # some cases.
-    if isinstance(cluster_resolver, TFConfigClusterResolver):
-      num_gpus = context.num_gpus()
-    else:
-      num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
-
     if devices:
       local_devices = devices
-    else:
-      if num_gpus:
-        local_devices = tuple("/device:GPU:%d" % i for i in range(num_gpus))
+      if "GPU" in devices[0]:
+        local_device_type = "GPU"
+      elif "TPU" in devices[0]:
+        local_device_type = "TPU"
       else:
-        local_devices = ("/device:CPU:0",)
+        local_device_type = "CPU"
+    else:
+      local_devices, local_device_type = self._initialize_local_devices(
+          cluster_resolver, worker_device="")
 
     self._worker_device = device_util.canonicalize("/device:CPU:0")
     self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
@@ -377,11 +399,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices),
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     # CrossDeviceOps for per host tensors.
     self._host_cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=[self._worker_device],
         group_size=self._num_workers,
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
@@ -397,8 +421,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # configure call.
     self._local_or_standalone_client_mode = True
 
-    # Save the num_gpus_per_worker and rpc_layer for configure method.
-    self._num_gpus_per_worker = num_gpus
+    # Save the num_devices_per_worker and rpc_layer for configure method.
+    self._num_devices_per_worker = len(local_devices)
+    self._local_device_type = local_device_type
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
@@ -441,6 +466,16 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           scoped_allocator_enabled_ops=("CollectiveReduce",),
           device_filters=("/job:%s/task:%d" % (task_type, task_id),))
       self._collective_ops_configured = True
+      if context.context().coordination_service is None:
+        coordination_service = remote_utils.coordination_service_type(
+            cluster_resolver.rpc_layer)
+        coordinated_jobs = ["chief", "worker"]
+        if coordination_service and task_type in coordinated_jobs:
+          context.context().configure_coordination_service(
+              service_type=coordination_service,
+              service_leader=multi_worker_util.coordination_leader(
+                  cluster_spec),
+              coordinated_jobs=coordinated_jobs)
 
     # Starting a std server in eager mode and in independent worker mode.
     if (context.executing_eagerly() and
@@ -450,6 +485,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       # create the std server in standalone client mode.
       config_proto = copy.deepcopy(context.context().config)
       config_proto = self._update_config_proto(config_proto)
+
+      # If coordination service is enabled, use its internal heartbeat to detect
+      # peer failures instead of the Python-level health check.
+      if config_proto.experimental.coordination_config.service_type:
+        self._enable_check_health = False
 
       if hasattr(cluster_resolver, "port"):
         port = cluster_resolver.port
@@ -476,27 +516,23 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # assumption by querying all tasks for their numbers of GPUs.
     # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
     # some cases.
-    if isinstance(cluster_resolver, TFConfigClusterResolver):
-      num_gpus = context.num_gpus()
-    else:
-      num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
-
-    if num_gpus:
-      local_devices = tuple("%s/device:GPU:%d" % (self._worker_device, i)
-                            for i in range(num_gpus))
-    else:
-      local_devices = (self._worker_device,)
+    local_devices, local_device_type = self._initialize_local_devices(
+        cluster_resolver, self._worker_device)
+    if local_device_type == "TPU":
+      tpu_strategy_util.initialize_tpu_system()
 
     self._collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=1 + self._collective_key_base)
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices) * self._num_workers,
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     # CrossDeviceOps for per host tensors.
     self._host_cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=[self._worker_device],
         group_size=self._num_workers,
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
@@ -505,8 +541,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # on other workers.
     self._default_device = "/job:%s/task:%d" % (task_type, task_id)
 
-    # Save the num_gpus_per_worker and rpc_layer for configure method.
-    self._num_gpus_per_worker = num_gpus
+    # Save the num_devices_per_worker and rpc_layer for configure method.
+    self._num_devices_per_worker = len(local_devices)
+    self._local_device_type = local_device_type
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
@@ -678,13 +715,12 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       ValueError: if `task_type` is not in the `cluster_spec`.
     """
     if cluster_spec:
-      # Use the num_gpus_per_worker recorded in constructor since _configure
-      # doesn't take num_gpus.
       cluster_resolver = SimpleClusterResolver(
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
           task_id=task_id,
-          num_accelerators={"GPU": self._num_gpus_per_worker},
+          num_accelerators={
+              self._local_device_type: self._num_devices_per_worker},
           rpc_layer=self._rpc_layer)
       self._initialize_multi_worker(cluster_resolver)
       assert isinstance(self._cross_device_ops,
@@ -892,7 +928,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   def _warn_nccl_no_gpu(self):
     if ((self._communication_options.implementation ==
          collective_util.CommunicationImplementation.NCCL) and
-        self._num_gpus_per_worker == 0):
+        self._local_device_type != "GPU"):
       logging.warning("Enabled NCCL communication but no GPUs detected/"
                       "specified.")
 

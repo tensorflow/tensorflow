@@ -29,8 +29,20 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
 
 namespace m = match;
+
+// Give this instruction a more useful name than "custom-call.42".
+Status SetName(HloModule *module, HloInstruction *gemm) {
+  GemmBackendConfig config;
+  TF_ASSIGN_OR_RETURN(config, gemm->backend_config<GemmBackendConfig>());
+  bool is_batch_dot = config.batch_size() > 1;
+
+  module->SetAndUniquifyInstrName(
+      gemm, is_batch_dot ? "cublas-batch-gemm" : "cublas-gemm");
+  return Status::OK();
+}
 
 // The rewriting proceeds in a bottom-up way:
 //
@@ -56,7 +68,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       const Shape &output_shape = instr->shape();
       int64_t batch_size = std::accumulate(output_shape.dimensions().begin(),
                                            output_shape.dimensions().end() - 2,
-                                           1, std::multiplies<int64>());
+                                           1, std::multiplies<int64_t>());
       std::unique_ptr<HloInstruction> gemm_call =
           HloInstruction::CreateCustomCall(output_shape, {lhs, rhs},
                                            kGemmCallTarget);
@@ -68,16 +80,17 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           instr->dot_dimension_numbers();
       gemm_config.set_batch_size(batch_size);
 
-      int64 lhs_batch_dims_size =
+      int64_t lhs_batch_dims_size =
           instr->dot_dimension_numbers().lhs_batch_dimensions_size();
-      int64 lhs_stride = lhs->shape().dimensions(lhs_batch_dims_size) *
-                         lhs->shape().dimensions(lhs_batch_dims_size + 1);
-      int64 rhs_stride = rhs->shape().dimensions(lhs_batch_dims_size) *
-                         rhs->shape().dimensions(lhs_batch_dims_size + 1);
+      int64_t lhs_stride = lhs->shape().dimensions(lhs_batch_dims_size) *
+                           lhs->shape().dimensions(lhs_batch_dims_size + 1);
+      int64_t rhs_stride = rhs->shape().dimensions(lhs_batch_dims_size) *
+                           rhs->shape().dimensions(lhs_batch_dims_size + 1);
 
       gemm_config.set_lhs_stride(lhs_stride);
       gemm_config.set_rhs_stride(rhs_stride);
       TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gemm_config));
+      TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
       TF_RETURN_IF_ERROR(
           ReplaceWithNewInstruction(instr, std::move(gemm_call)));
     }
@@ -137,6 +150,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                  existing_gemm->mutable_operand(1), bias},
                 kGemmCallTarget);
         TF_RETURN_IF_ERROR(gemm_call->set_backend_config(config));
+        TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
         TF_RETURN_IF_ERROR(
             ReplaceWithNewInstruction(instr, std::move(gemm_call)));
       }
@@ -145,11 +159,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-static StatusOr<bool> RunOnComputation(HloComputation *computation) {
+StatusOr<bool> RunOnComputation(HloComputation *computation) {
   GemmRewriterVisitor visitor;
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
+
+}  // anonymous namespace
 
 StatusOr<bool> GemmRewriter::Run(HloModule *module) {
   bool changed = false;

@@ -66,6 +66,10 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateMergeTfIfOpsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDeduplicateFunctionsInovkedByBatchFunctionPass();
 
+// Create a pass to fuse the TPU Ops for TFRT.
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateFuseTpuCompileAndExecutePass();
+
 }  // namespace tfrt_compiler
 
 class CoreRTConverter;
@@ -126,9 +130,9 @@ struct TfrtPipelineOptions
       *this, "skip-fold-transpose-in-ops",
       llvm::cl::desc("Skip folding transpose operands in Ops which can support "
                      "different layouts.")};
-  Option<bool> target_tpu{*this, "target-tpu",
-                          llvm::cl::desc("target TPU programs if true"),
-                          llvm::cl::init(false)};
+  Option<bool> target_tpurt{*this, "target-tpurt",
+                            llvm::cl::desc("target TPURT dialect if true"),
+                            llvm::cl::init(false)};
   Option<bool> tpu_use_core_selector{
       *this, "tpu-use-core-selector",
       llvm::cl::desc("If true, use ServingCoreSelector to pick TPU core. "
@@ -145,6 +149,10 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, lower an TF op that's placed on TPU device "
                      "to be executed by tfrt_fallback.execute."),
       llvm::cl::init(true)};
+  Option<bool> tpu_fuse_ops{
+      *this, "tpu-fuse-ops",
+      llvm::cl::desc("If true, use the TPU fused compile_and_execute kernel"),
+      llvm::cl::init(false)};
   // TODO(b/194081364): remove this option once we unify servo TPU serving
   // result transfer behavior.
   Option<bool> tpu_transfer_result_to_host{
@@ -152,6 +160,11 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, transfer the result of tpurt.execute from TPU "
                      "to host."),
       llvm::cl::init(true)};
+  Option<bool> use_tpu_host_allocator_for_inputs{
+      *this, "use-tpu-host-allocator-for-inputs",
+      llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
+                     "program will use tpu host allocator."),
+      llvm::cl::init(false)};
   Option<bool> enable_native_ops{
       *this, "enable-native-ops",
       llvm::cl::desc(

@@ -455,6 +455,9 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
             << ", thus setting _profile_generation_mode=false";
     profile_generation_mode_ = false;
   }
+  if (static_engine_) {
+    if (profile_generation_mode_) profile_generation_mode_ = false;
+  }
   if (use_implicit_batch_) {
     OP_REQUIRES(context, !profile_generation_mode_,
                 errors::InvalidArgument(
@@ -503,19 +506,60 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   }
 }
 
+// Copies input tensor ctx->input(i) (which is in device memory) to the host,
+// and place the resulting host tensor to the back of native_inputs.
+Status CopyToHostAsync(OpKernelContext* ctx, std::vector<Tensor>* native_inputs,
+                       int i, const cudaStream_t stream) {
+  // The TRTEngineOp has all ctx->inputs on the device. In contrast, the
+  // native segment expects to find int32 inputs on the host. We copy int32
+  // inputs from device to host.
+
+  AllocatorAttributes allocator_attr;
+  allocator_attr.set_on_host(true);
+  Tensor t;
+  TF_RETURN_IF_ERROR(ctx->allocate_temp(
+      ctx->input_dtype(i), ctx->input(i).shape(), &t, allocator_attr));
+  native_inputs->push_back(t);
+  const Tensor& gpu_tensor = ctx->input(i);
+  auto ret = cudaMemcpyAsync(
+      t.flat<int32>().data(), gpu_tensor.flat<int32>().data(),
+      t.NumElements() * sizeof(int32), cudaMemcpyDeviceToHost, stream);
+  if (ret != 0) {
+    return errors::Internal("Could not copy tensor for native segment input");
+  }
+  return Status::OK();
+}
+
+// Copies native_tensor, which is in host memory to ctx->output(t), which is in
+// device memory.
+Status CopyToDeviceAsync(OpKernelContext* ctx, const Tensor& native_tensor,
+                         int t, cudaStream_t stream) {
+  Tensor* gpu_tensor;
+  TF_RETURN_IF_ERROR(
+      ctx->allocate_output(t, native_tensor.shape(), &gpu_tensor));
+  auto ret = cudaMemcpyAsync(gpu_tensor->flat<int32>().data(),
+                             native_tensor.flat<int32>().data(),
+                             native_tensor.NumElements() * sizeof(int32),
+                             cudaMemcpyHostToDevice, stream);
+  if (ret != 0) {
+    return errors::Internal("Could not copy tensor for native segment output");
+  }
+  return Status::OK();
+}
+
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                        AsyncHelper* async_helper) {
   tensorflow::profiler::TraceMe activity(
       "TRTEngineOp::ExecuteNativeSegment",
       tensorflow::profiler::TraceMeLevel::kInfo);
-  std::vector<Tensor> inputs;
-  std::vector<Tensor>* outputs = new std::vector<Tensor>();
+  std::vector<Tensor> native_inputs;
+  std::vector<Tensor>* native_outputs = new std::vector<Tensor>();
+  DummyAsyncHelper dummy_async_helper;
   if (native_execution_func_handle_ == kInvalidHandle) {
     StatusOr<FunctionLibraryRuntime::Handle> status_or_handle =
         ConstructFunctionHandle(ctx->function_library(), ctx->device()->name(),
                                 allow_soft_placement_, ctx->num_inputs(),
                                 ctx->num_outputs());
-    DummyAsyncHelper dummy_async_helper;
     OP_REQUIRES_OK_ASYNC(ctx, status_or_handle.status(), dummy_async_helper);
     native_execution_func_handle_ = *status_or_handle;
   }
@@ -525,26 +569,55 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   opts.rendezvous = ctx->rendezvous();
   opts.cancellation_manager = ctx->cancellation_manager();
   opts.runner = ctx->runner();
-  inputs.reserve(ctx->num_inputs());
+  native_inputs.reserve(ctx->num_inputs());
+  int n_copies = 0;
+  const cudaStream_t* stream = CHECK_NOTNULL(
+      reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
+                                                ->stream()
+                                                ->implementation()
+                                                ->GpuStreamMemberHack()));
   for (int i = 0; i < ctx->num_inputs(); i++) {
-    inputs.push_back(ctx->input(i));
+    if (ctx->input_dtype(i) != DT_INT32) {
+      native_inputs.push_back(ctx->input(i));
+    } else {
+      OP_REQUIRES_OK_ASYNC(ctx,
+                           CopyToHostAsync(ctx, &native_inputs, i, *stream),
+                           dummy_async_helper);
+      n_copies++;
+    }
+  }
+  if (n_copies > 0) {
+    // If we have any int32 tensors, then wait until data is copied to host.
+    cudaStreamSynchronize(*stream);
   }
   VLOG(1) << "Executing native segment: " << name();
   // Increment the reference count of the async_helper by 1. When the native
-  // segment finishes execution asynchronously, we decrement the reference count
-  // of the object.
+  // segment finishes execution asynchronously, we decrement the reference
+  // count of the object.
   async_helper->Ref();
-  lib->Run(opts, native_execution_func_handle_, inputs, outputs,
-           [this, ctx, outputs, async_helper](const Status& s) {
-             core::ScopedUnref sc(async_helper);
-             DummyAsyncHelper dummy_async_helper;
-             std::unique_ptr<std::vector<Tensor>> outputs_wrapper(outputs);
-             OP_REQUIRES_OK_ASYNC(ctx, s, dummy_async_helper);
-             VLOG(1) << "Native Segment completed";
-             for (size_t t = 0; t < outputs->size(); ++t) {
-               ctx->set_output(t, outputs->at(t));
-             }
-           });
+  lib->Run(
+      opts, native_execution_func_handle_, native_inputs, native_outputs,
+      [this, ctx, native_outputs, async_helper, stream](const Status& s) {
+        core::ScopedUnref sc(async_helper);
+        DummyAsyncHelper dummy_async_helper;
+        std::unique_ptr<std::vector<Tensor>> outputs_wrapper(native_outputs);
+        OP_REQUIRES_OK_ASYNC(ctx, s, dummy_async_helper);
+        VLOG(1) << "Native Segment completed";
+        int n_copies = 0;
+        for (size_t t = 0; t < native_outputs->size(); ++t) {
+          if (native_outputs->at(t).dtype() == DT_INT32) {
+            OP_REQUIRES_OK_ASYNC(
+                ctx, CopyToDeviceAsync(ctx, native_outputs->at(t), t, *stream),
+                dummy_async_helper);
+            n_copies++;
+          } else {
+            ctx->set_output(t, native_outputs->at(t));
+          }
+        }
+        if (n_copies > 0) {
+          cudaStreamSynchronize(*stream);
+        }
+      });
 }
 
 void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
@@ -769,7 +842,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       VLOG(1) << "Native segment is used during collecting shapes for profiles";
       ExecuteNativeSegment(ctx, async_helper);
       return;
-    } else if (cache_res->profiles_.GetNumProfiles() == 0) {
+    } else if (cache_res->profiles_.GetNumProfiles() == 0 && !static_engine_) {
       // Add current shape if we did not collect any shapes so far.
       if (!cache_res->profiles_.HasShape()) {
         cache_res->profiles_.AddShape(input_concrete_shapes);
@@ -859,8 +932,9 @@ Status TRTEngineOp::ExecuteTrtEngine(
   // for it.
   mutex_lock lock(engine_context->mu);
   nvinfer1::IExecutionContext* execution_context;
-  TF_RETURN_IF_ERROR(
-      engine_context->GetExecutionContext(trt_context_idx, &execution_context));
+  bool has_device_memory;
+  TF_RETURN_IF_ERROR(engine_context->GetExecutionContext(
+      trt_context_idx, &execution_context, &has_device_memory));
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "Selected execution context: " << trt_context_idx;
@@ -885,11 +959,12 @@ Status TRTEngineOp::ExecuteTrtEngine(
                                                 ->GpuStreamMemberHack()));
 
   ContextDeviceMemory context_device_memory;
-  // Allocate device memory for the TensorRT engine execution. The device
-  // memory will be released when context_device_memory goes out of scope.
-  TF_RETURN_IF_ERROR(
-      context_device_memory.AllocateDeviceMemory(execution_context, allocator));
-
+  if (!has_device_memory) {
+    // Allocate device memory for the TensorRT engine execution. The device
+    // memory will be released when context_device_memory goes out of scope.
+    TF_RETURN_IF_ERROR(context_device_memory.AllocateDeviceMemory(
+        execution_context, allocator));
+  }
   // Enqueue the TensorRT engine for execution.
   return TrtEnqueue(execution_context, buffers, *stream, use_implicit_batch_,
                     num_batch);
@@ -981,7 +1056,14 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       // implicit batch is disabled.
       if (!use_implicit_batch_ ||
           AreShapesCompatible(input_concrete_shapes, cache.begin()->first)) {
-        return std::pair<EngineContext*, int>(cache.begin()->second.get(), 0);
+        int profile_id = 0;
+        if (!use_implicit_batch_)
+          profile_id =
+              cache_res->profiles_.GetProfileNumber(input_concrete_shapes);
+        if (profile_id != -1) {
+          return std::pair<EngineContext*, int>(cache.begin()->second.get(),
+                                                profile_id);
+        }
       }
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
@@ -994,6 +1076,28 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
                                      serialized_segment_.size(), nullptr));
+    int profile_id = 0;
+    if (static_engine && !use_implicit_batch_) {
+      // load profiles
+      std::vector<ExecutionContext> exec_contexts;
+      TF_RETURN_IF_ERROR(
+          cache_res->profiles_.RestoreProfiles(static_engine.get()));
+      TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
+          static_engine.get(), &exec_contexts));
+      cache.emplace(input_concrete_shapes,
+                    absl::make_unique<EngineContext>(std::move(static_engine),
+                                                     std::move(exec_contexts)));
+      VLOG(1) << "Added new engine to cache of " << name()
+              << ". Cache size: " << cache.size();
+      // Query which profile of the new engine matches the actual input.
+      profile_id = cache_res->profiles_.GetProfileNumber(input_concrete_shapes);
+      if (profile_id == -1) {
+        return std::pair<EngineContext*, int>(&empty_context, 0);
+      }
+      EngineContext* engine_context = cache_res->GetEngineContext(profile_id);
+      return std::pair<EngineContext*, int>(engine_context, profile_id);
+    }
+
     if (!static_engine) {
       if (!allow_build_at_runtime_) {
         // Store an empty engine in the cache so we don't try to load the same

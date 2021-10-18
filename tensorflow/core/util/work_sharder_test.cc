@@ -81,7 +81,7 @@ TEST(Shard, OverflowTest) {
   for (auto workers : {1, 2, 3}) {
     const int64_t total_elements = 1LL << 32;
     const int64_t cost_per_unit = 10;
-    std::atomic<int64> num_elements(0);
+    std::atomic<int64_t> num_elements(0);
     Shard(workers, &threads, total_elements, cost_per_unit,
           [&num_elements](int64_t start, int64_t limit) {
             num_elements += limit - start;

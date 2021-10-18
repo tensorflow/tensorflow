@@ -39,7 +39,7 @@ class FusionNodeIndexingEvaluation {
 
   // Evaluate the number of times 'producer' would be emitted if it is fused
   // into 'fusion_'.
-  int64 EvaluateEmittedInstructions(const HloInstruction* producer) const;
+  int64_t EvaluateEmittedInstructions(const HloInstruction* producer) const;
 
   // Update the evaluation cache after having fused 'producer' into 'fusion_'.
   // 'producer' is the cloned instruction which is now part of the fusion
@@ -85,7 +85,7 @@ class FusionNodeIndexingEvaluation {
   // Stores the number of different index accesses for each instruction in a
   // fusion node. The fusion emitter caches access with the same index, so this
   // value indicates how many times a specific instruction will be emitted.
-  absl::flat_hash_map<const HloInstruction*, int64> index_usage_count_;
+  absl::flat_hash_map<const HloInstruction*, int64_t> index_usage_count_;
 
   // The fusion instruction.
   const HloInstruction* fusion_;

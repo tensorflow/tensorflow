@@ -196,7 +196,7 @@ class WeightedQuantilesSummary {
   // designed to be cache-friendly.
   void Compress(int64_t size_hint, double min_eps = 0) {
     // No-op if we're already within the size requirement.
-    size_hint = std::max(size_hint, int64{2});
+    size_hint = std::max(size_hint, int64_t{2});
     if (entries_.size() <= size_hint) {
       return;
     }
@@ -253,12 +253,12 @@ class WeightedQuantilesSummary {
 
     // Remove the least important boundaries by the gap removing them would
     // create.
-    std::list<int64> boundaries_to_keep;
+    std::list<int64_t> boundaries_to_keep;
     for (int64_t i = 0; i != compressed_summary.entries_.size(); ++i) {
       boundaries_to_keep.push_back(i);
     }
     while (boundaries_to_keep.size() > num_boundaries) {
-      std::list<int64>::iterator min_element = boundaries_to_keep.end();
+      std::list<int64_t>::iterator min_element = boundaries_to_keep.end();
       auto prev = boundaries_to_keep.begin();
       auto curr = prev;
       ++curr;
@@ -295,7 +295,7 @@ class WeightedQuantilesSummary {
     if (entries_.empty()) {
       return output;
     }
-    num_quantiles = std::max(num_quantiles, int64{2});
+    num_quantiles = std::max(num_quantiles, int64_t{2});
     output.reserve(num_quantiles + 1);
 
     // Make successive rank queries to get boundaries.
@@ -349,7 +349,7 @@ class WeightedQuantilesSummary {
   WeightType TotalWeight() const {
     return !entries_.empty() ? entries_.back().max_rank : 0;
   }
-  int64 Size() const { return entries_.size(); }
+  int64_t Size() const { return entries_.size(); }
   void Clear() { entries_.clear(); }
   const std::vector<SummaryEntry>& GetEntryList() const { return entries_; }
 

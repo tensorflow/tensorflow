@@ -66,6 +66,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateShapeToDescriptorsPass();
 // corresponding counterparts on buffers. Also bufferizes function signatures.
 std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass();
 
+// Pass to bufferize `linalg.tiled_loop` including the operations contained in
+// its body.
+std::unique_ptr<FunctionPass> CreateTiledLoopBufferizePass();
+
 // Pass to tranform computations on values to their corresponding parts on
 // buffers.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass();

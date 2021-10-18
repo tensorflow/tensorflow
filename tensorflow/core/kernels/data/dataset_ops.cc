@@ -136,7 +136,7 @@ void DatasetCardinalityOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
   Tensor* result;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
-  result->scalar<int64>()() = dataset->Cardinality();
+  result->scalar<int64_t>()() = dataset->Cardinality();
 }
 
 void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {

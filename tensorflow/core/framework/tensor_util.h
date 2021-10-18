@@ -62,7 +62,7 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors,
 //           appropriately memory-aligned.
 //
 // Split() and Concat() are inverse operations.
-Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
+Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
              std::vector<Tensor>* result) TF_MUST_USE_RESULT;
 
 namespace internal {
@@ -101,7 +101,7 @@ DEFINE_PROTO_FIELD_HELPER(int16, int);
 DEFINE_PROTO_FIELD_HELPER(uint16, int);
 DEFINE_PROTO_FIELD_HELPER(int32, int);
 DEFINE_PROTO_FIELD_HELPER(uint32, uint32);
-DEFINE_PROTO_FIELD_HELPER(int64, int64);
+DEFINE_PROTO_FIELD_HELPER(int64_t, int64);
 DEFINE_PROTO_FIELD_HELPER(uint64, uint64);
 DEFINE_PROTO_FIELD_HELPER(bool, bool);
 DEFINE_PROTO_FIELD_HELPER(qint8, int);

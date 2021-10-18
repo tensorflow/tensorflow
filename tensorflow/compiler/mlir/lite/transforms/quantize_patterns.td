@@ -16,6 +16,7 @@ limitations under the License.
 // This is the quantization pattern definition file for TensorFlow Lite.
 
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
@@ -32,5 +33,5 @@ def : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in)>;
 // If the tfl.dequantize op wasn't fused, we shouldn't quantize the floating
 // point constant.
 def : Pat<(TFL_DequantizeOp
-             (TFL_QuantizeOp (ConstantOp F32ElementsAttr:$cst), $qt)),
+             (TFL_QuantizeOp (Arith_ConstantOp F32ElementsAttr:$cst), $qt)),
           (TFL_ConstOp $cst)>;

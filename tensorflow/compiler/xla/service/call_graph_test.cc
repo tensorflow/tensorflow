@@ -108,7 +108,7 @@ TEST_F(CallGraphTest, SingletonComputation) {
   EXPECT_TRUE(node.callees().empty());
   EXPECT_TRUE(node.caller_callsites().empty());
   EXPECT_TRUE(node.callers().empty());
-  EXPECT_EQ(CallContext::kSequential, node.context());
+  EXPECT_EQ(CallContext::kControlFlow, node.context());
 }
 
 TEST_F(CallGraphTest, UnreachableComputation) {
@@ -126,13 +126,13 @@ TEST_F(CallGraphTest, UnreachableComputation) {
   const CallGraphNode& entry_node = call_graph->GetNode(entry_computation);
   EXPECT_EQ(entry_node.depth(), 0);
   EXPECT_EQ(entry_computation, entry_node.computation());
-  EXPECT_EQ(CallContext::kSequential, entry_node.context());
+  EXPECT_EQ(CallContext::kControlFlow, entry_node.context());
 
   const CallGraphNode& unreachable_node =
       call_graph->GetNode(unreachable_computation);
   EXPECT_EQ(unreachable_node.depth(), 0);
   EXPECT_EQ(unreachable_computation, unreachable_node.computation());
-  EXPECT_EQ(CallContext::kSequential, unreachable_node.context());
+  EXPECT_EQ(CallContext::kControlFlow, unreachable_node.context());
 }
 
 TEST_F(CallGraphTest, ParallelComputation) {
@@ -150,7 +150,7 @@ TEST_F(CallGraphTest, ParallelComputation) {
   const CallGraphNode& entry_node = call_graph->GetNode(entry_computation);
   EXPECT_EQ(entry_computation, entry_node.computation());
   EXPECT_EQ(entry_node.depth(), 0);
-  EXPECT_EQ(CallContext::kSequential, entry_node.context());
+  EXPECT_EQ(CallContext::kControlFlow, entry_node.context());
   EXPECT_EQ(5, entry_node.callsites().size());
   EXPECT_EQ(1, entry_node.callees().size());
   EXPECT_TRUE(entry_node.caller_callsites().empty());
@@ -159,7 +159,7 @@ TEST_F(CallGraphTest, ParallelComputation) {
   const CallGraphNode& map_node = call_graph->GetNode(map_computation);
   EXPECT_EQ(map_computation, map_node.computation());
   EXPECT_EQ(map_node.depth(), 1);
-  EXPECT_EQ(CallContext::kParallel, map_node.context());
+  EXPECT_EQ(CallContext::kEmbedded, map_node.context());
   EXPECT_TRUE(map_node.callsites().empty());
   EXPECT_TRUE(map_node.callees().empty());
   EXPECT_EQ(5, map_node.caller_callsites().size());
@@ -184,7 +184,7 @@ TEST_F(CallGraphTest, SequentialComputations) {
 
   const CallGraphNode& entry_node = call_graph->GetNode(entry_computation);
   EXPECT_EQ(entry_computation, entry_node.computation());
-  EXPECT_EQ(CallContext::kSequential, entry_node.context());
+  EXPECT_EQ(CallContext::kControlFlow, entry_node.context());
   EXPECT_EQ(3, entry_node.callsites().size());
   EXPECT_EQ(1, entry_node.callees().size());
   EXPECT_TRUE(entry_node.caller_callsites().empty());
@@ -192,7 +192,7 @@ TEST_F(CallGraphTest, SequentialComputations) {
 
   const CallGraphNode& called_node = call_graph->GetNode(called_computation);
   EXPECT_EQ(called_computation, called_node.computation());
-  EXPECT_EQ(CallContext::kSequential, called_node.context());
+  EXPECT_EQ(CallContext::kControlFlow, called_node.context());
   EXPECT_TRUE(called_node.callsites().empty());
   EXPECT_TRUE(called_node.callees().empty());
   EXPECT_EQ(3, called_node.caller_callsites().size());
@@ -229,14 +229,14 @@ TEST_F(CallGraphTest, ContextBothComputations) {
   EXPECT_EQ(call, call_callsite.instruction());
   EXPECT_THAT(call_callsite.called_computations(),
               UnorderedElementsAre(subcomputation));
-  EXPECT_EQ(CallContext::kSequential, call_callsite.context());
+  EXPECT_EQ(CallContext::kControlFlow, call_callsite.context());
   EXPECT_EQ(entry_node.GetCallSite(call), &call_callsite);
 
   const CallSite& map_callsite = entry_node.callsites()[1];
   EXPECT_EQ(map, map_callsite.instruction());
   EXPECT_THAT(map_callsite.called_computations(),
               UnorderedElementsAre(subcomputation));
-  EXPECT_EQ(CallContext::kParallel, map_callsite.context());
+  EXPECT_EQ(CallContext::kEmbedded, map_callsite.context());
   EXPECT_EQ(entry_node.GetCallSite(map), &map_callsite);
 
   const CallGraphNode& sub_node = call_graph->GetNode(subcomputation);
@@ -279,7 +279,7 @@ TEST_F(CallGraphTest, ComputationWithConditional) {
   EXPECT_EQ(conditional, conditional_callsite.instruction());
   EXPECT_THAT(conditional_callsite.called_computations(),
               UnorderedElementsAre(true_computation, false_computation));
-  EXPECT_EQ(CallContext::kSequential, conditional_callsite.context());
+  EXPECT_EQ(CallContext::kControlFlow, conditional_callsite.context());
   EXPECT_EQ(entry_node.GetCallSite(conditional), &conditional_callsite);
 
   const CallGraphNode& true_node = call_graph->GetNode(true_computation);
@@ -362,7 +362,7 @@ TEST_F(CallGraphTest, ComplexGraph) {
       entry_node.callsites()[0].called_computations();
   EXPECT_THAT(called_computations,
               UnorderedElementsAre(cond_computation, a_computation));
-  EXPECT_EQ(CallContext::kSequential, entry_node.context());
+  EXPECT_EQ(CallContext::kControlFlow, entry_node.context());
 
   EXPECT_TRUE(c_node.callsites().empty());
   EXPECT_THAT(c_node.callers(),

@@ -52,8 +52,8 @@ class TFOp : public TFMultiShow {
   const ShowMultiNode* ShowInternal(const Options& opts,
                                     Timeline* timeline) override;
 
-  int64 SearchRoot(const std::vector<OpNode*> nodes,
-                   const std::vector<string>& regexes);
+  int64_t SearchRoot(const std::vector<OpNode*> nodes,
+                     const std::vector<string>& regexes);
 
   bool ShouldShowIfExtra(const ShowMultiNode* node, const Options& opts,
                          int depth) const override {

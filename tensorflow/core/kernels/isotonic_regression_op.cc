@@ -22,8 +22,8 @@ limitations under the License.
 
 namespace {
 
+using ::int64_t;
 using tensorflow::int32;
-using tensorflow::int64;
 
 // The # of ops estimated for the isotonic regression solver is the size of the
 // array multiplied by this constant. This is used by the thread pool executor

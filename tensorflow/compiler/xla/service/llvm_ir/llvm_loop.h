@@ -240,7 +240,7 @@ class ForLoopNest {
   // size equals the rank of shape and there is a null for each
   // dimension that is not in "dimensions".
   std::vector<llvm::Value*> AddLoopsForShapeOnDimensions(
-      const Shape& shape, absl::Span<const int64> dimensions,
+      const Shape& shape, absl::Span<const int64_t> dimensions,
       absl::string_view suffix);
 
   // Emits a series of nested loops for iterating over an operand array. Loops

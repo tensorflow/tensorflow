@@ -44,7 +44,7 @@ typedef Eigen::GpuDevice GPUDevice;
   FN(arg0, int8);                \
   FN(arg0, int16);               \
   FN(arg0, int32);               \
-  FN(arg0, int64);               \
+  FN(arg0, int64_t);             \
   FN(arg0, Eigen::half);         \
   FN(arg0, float);               \
   FN(arg0, double);              \
@@ -253,7 +253,7 @@ CURRY_SUBSET_OF_TYPES(REGISTER_CAST_GPU, bool);
 CURRY_SUBSET_OF_TYPES(REGISTER_CAST_GPU, int8);
 CURRY_SUBSET_OF_TYPES(REGISTER_CAST_GPU, int16);
 CURRY_SUBSET_OF_TYPES(REGISTER_CAST_GPU, int32);
-CURRY_SUBSET_OF_TYPES(REGISTER_CAST_GPU, int64);
+CURRY_SUBSET_OF_TYPES(REGISTER_CAST_GPU, int64_t);
 CURRY_SUBSET_OF_TYPES(REGISTER_CAST_GPU, uint8);
 CURRY_SUBSET_OF_TYPES(REGISTER_CAST_GPU, uint16);
 CURRY_SUBSET_OF_TYPES(REGISTER_CAST_GPU, uint32);

@@ -59,9 +59,10 @@ tensorflow::Status RunTPUBridge(
   // Add set of passes to lower back to graph (from tf_executor).
   TF::AddGraphExportLoweringPasses(bridge);
 
-  // Run the bridge on the module, in case of failure, the `diag_handler`
-  // converts MLIR errors emitted to the MLIRContext into a tensorflow::Status.
-  mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+  mlir::StatusScopedDiagnosticHandler diag_handler(
+      module.getContext(), /*propagate=*/false,
+      /*filter_stack=*/!VLOG_IS_ON(1));
+
   LogicalResult result = bridge.run(module);
   (void)result;
   if (enable_logging || VLOG_IS_ON(1))
@@ -116,10 +117,12 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // will be removed from launch causing an error.
   pm.addNestedPass<FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass());
 
+  // TODO(b/173622615): This can be removed once more passes support outside
+  // compilation represented by op and conversion back to attribute is removed.
+  pm.addPass(CreateOutsideCompiledToHostLaunchPass());
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
-  pm.addPass(CreateOutsideCompiledToHostLaunchPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<FuncOp>(
       TF::CreateDropWhileShapeInvariantInDeviceClusterPass());
@@ -130,16 +133,17 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addPass(CreateTPUClusterCleanupAttributesPass());
-  // TODO(b/173622615): This should incrementally be moved down as
-  // more passes support this representation and then can be removed once
-  // all passes support it.
-  pm.addPass(TFDevice::CreateHostLaunchToOutsideCompiledPass());
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   // Re-run the canonicalizer pass as some cleanup during resource op lifting
   // pass opens up some opportunities for canonicalization of cluster ops.
   // Specifically, we want to eliminate pass through results from the cluster
   // op.
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
+
+  // TODO(b/173622615): This should incrementally be moved down as
+  // more passes support this representation and then can be removed once
+  // all passes support it.
+  pm.addPass(TFDevice::CreateHostLaunchToOutsideCompiledPass());
   pm.addNestedPass<FuncOp>(createCSEPass());
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_merge_control_flow_pass) {
@@ -209,6 +213,10 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
   pm.addNestedPass<FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
   pm.addPass(createSymbolDCEPass());
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
+    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass());
+  }
   pm.addPass(CreateVerifySuitableForExportPass());
 }
 
@@ -224,7 +232,11 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
   StandardPipelineOptions pipeline_options;
   pipeline_options.enable_inliner.setValue(enable_inliner);
   CreateTFStandardPipeline(bridge, pipeline_options);
-  mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+
+  mlir::StatusScopedDiagnosticHandler diag_handler(
+      module.getContext(), /*propagate=*/false,
+      /*filter_stack=*/!VLOG_IS_ON(1));
+
   LogicalResult result = bridge.run(module);
   (void)result;
   if (enable_logging || VLOG_IS_ON(1))

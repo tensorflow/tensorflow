@@ -16,10 +16,6 @@
 # pylint: disable=g-long-lambda
 """Tests for tensorflow.ops.control_flow_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import math
 import re

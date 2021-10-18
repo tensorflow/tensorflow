@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/types/optional.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -68,13 +69,12 @@ class HloFunctionImporter {
       mlir::OpBuilder* builder);
 
   static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
-                               llvm::StringRef attr_name = "minor_to_major");
+                               llvm::StringRef attr_name);
 
   // TODO(b/179166199): move this to attribute_importer.h.
   // Converts XLA instruction source target pairs to MLIR attribute.
   static mlir::NamedAttribute ConvertSourceTargetPairs(
-      const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
-          source_target_pairs,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
       mlir::Builder* builder);
 
   // TODO(b/179166199): move this to attribute_importer.h.
@@ -91,6 +91,7 @@ class HloFunctionImporter {
         module_(module),
         builder_(builder),
         function_map_(function_map) {
+    context_->loadDialect<mlir::arith::ArithmeticDialect>();
     context_->loadDialect<mlir::StandardOpsDialect>();
     context_->loadDialect<mlir::mhlo::MhloDialect>();
   }
@@ -152,7 +153,7 @@ class HloFunctionImporter {
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
   mlir::DenseIntElementsAttr ConvertDimensions(
-      llvm::ArrayRef<tensorflow::int64> op_dimensions);
+      llvm::ArrayRef<int64_t> op_dimensions);
 
   // Converts Array ref to an DenseIntElementsAttr.
   mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements);
@@ -162,8 +163,7 @@ class HloFunctionImporter {
   mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
 
   // Converts channel id to attribute
-  mlir::NamedAttribute ConvertChannelHandle(
-      absl::optional<tensorflow::int64> channel_id);
+  mlir::NamedAttribute ConvertChannelHandle(absl::optional<int64_t> channel_id);
 
   // Converts channel handle to attribute
   mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);

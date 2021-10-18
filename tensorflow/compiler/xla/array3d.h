@@ -36,15 +36,15 @@ namespace xla {
 template <typename T>
 class Array3D : public Array<T> {
  public:
-  Array3D() : Array<T>(std::vector<int64>{0, 0, 0}) {}
+  Array3D() : Array<T>(std::vector<int64_t>{0, 0, 0}) {}
 
   // Creates an array of dimensions n1 x n2 x n3, uninitialized values.
   Array3D(const int64_t n1, const int64_t n2, const int64_t n3)
-      : Array<T>(std::vector<int64>{n1, n2, n3}) {}
+      : Array<T>(std::vector<int64_t>{n1, n2, n3}) {}
 
   // Creates an array of dimensions n1 x n2 x n3, initialized to value.
   Array3D(const int64_t n1, const int64_t n2, const int64_t n3, const T value)
-      : Array<T>(std::vector<int64>{n1, n2, n3}, value) {}
+      : Array<T>(std::vector<int64_t>{n1, n2, n3}, value) {}
 
   // Creates an array from the given nested initializer list. The outer
   // initializer list is the first dimension, and so on.
@@ -70,9 +70,9 @@ class Array3D : public Array<T> {
           values)
       : Array<T>(values) {}
 
-  int64 n1() const { return this->dim(0); }
-  int64 n2() const { return this->dim(1); }
-  int64 n3() const { return this->dim(2); }
+  int64_t n1() const { return this->dim(0); }
+  int64_t n2() const { return this->dim(1); }
+  int64_t n3() const { return this->dim(2); }
 };
 
 }  // namespace xla

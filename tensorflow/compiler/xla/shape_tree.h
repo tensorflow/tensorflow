@@ -235,7 +235,7 @@ class ShapeTree {
   }
 
   // Returns the number of leaf nodes in the tree.
-  int64 leaf_count() const { return std::distance(leaf_begin(), leaf_end()); }
+  int64_t leaf_count() const { return std::distance(leaf_begin(), leaf_end()); }
 
   // Recursively traverses the shape and calls the given function at each
   // element. The function has the following arguments:
@@ -307,7 +307,7 @@ class ShapeTree {
   void InitChildren(const Shape& shape, Node* node, Index* index);
 
   // Returns the number of subshapes, including interior nodes, in shape.
-  int64 CountSubshapes(const Shape& shape);
+  int64_t CountSubshapes(const Shape& shape);
 
   // Helpers for traversing the shape via ForEachElement. The helpers
   // recursively traverse the subtree rooted at "index" (defined as in
@@ -435,7 +435,7 @@ class ShapeTreeLeafIterator
 };
 
 template <typename T>
-int64 ShapeTree<T>::CountSubshapes(const Shape& shape) {
+int64_t ShapeTree<T>::CountSubshapes(const Shape& shape) {
   int64_t current_count = 1;
   if (shape.IsTuple()) {
     int64_t count = ShapeUtil::TupleElementCount(shape);

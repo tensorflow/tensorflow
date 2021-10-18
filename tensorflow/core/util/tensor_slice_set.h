@@ -58,7 +58,7 @@ class TensorSliceSet {
   struct SliceInfo {
     TensorSlice slice;
     const string tag;
-    int64 num_floats;
+    int64_t num_floats;
   };
 
   // Returns the map from slice string to SliceInfo.

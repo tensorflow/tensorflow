@@ -123,14 +123,15 @@ class DecodeCSVOp : public OpKernel {
                               "Field ", f,
                               " is required but missing in record ", i, "!"));
 
-              output[f]->flat<int64>()(i) = record_defaults[f].flat<int64>()(0);
+              output[f]->flat<int64_t>()(i) =
+                  record_defaults[f].flat<int64_t>()(0);
             } else {
               int64_t value;
               OP_REQUIRES(ctx, strings::safe_strto64(fields[f], &value),
                           errors::InvalidArgument(
                               "Field ", f, " in record ", i,
                               " is not a valid int64: ", fields[f]));
-              output[f]->flat<int64>()(i) = value;
+              output[f]->flat<int64_t>()(i) = value;
             }
             break;
           }
@@ -199,7 +200,7 @@ class DecodeCSVOp : public OpKernel {
 
  private:
   std::vector<DataType> out_type_;
-  std::vector<int64> select_cols_;
+  std::vector<int64_t> select_cols_;
   char delim_;
   bool use_quote_delim_;
   bool select_all_cols_;

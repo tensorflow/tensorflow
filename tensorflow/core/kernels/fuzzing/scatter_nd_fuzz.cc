@@ -54,7 +54,7 @@ class FuzzScatterNd : public FuzzSession {
     size_t data_ix = 0;
     size_t shape_dims = 1 + (data[data_ix++] % kMaxShapeDims);
     Tensor shape_tensor(tensorflow::DT_INT32,
-                        TensorShape({static_cast<int64>(shape_dims)}));
+                        TensorShape({static_cast<int64_t>(shape_dims)}));
 
     // Check that we have enough elements left for the shape tensor
     if (data_ix + shape_dims >= size) {
@@ -79,7 +79,7 @@ class FuzzScatterNd : public FuzzSession {
     if (data_ix + indices_rank >= size) {
       return;
     }
-    std::vector<int64> indices_dims;
+    std::vector<int64_t> indices_dims;
     size_t num_indices = 1;
     for (i = 0; i < indices_rank; i++) {
       // Modulo kMaxDim to not request too much memory
@@ -101,7 +101,7 @@ class FuzzScatterNd : public FuzzSession {
     // Given the values in the shape_tensor and the dimensions of the
     // indices_tensor, the shape of updates_tensor is fixed.
     num_indices = 1;
-    std::vector<int64> updates_dims;
+    std::vector<int64_t> updates_dims;
     for (i = 0; i < indices_rank - 1; i++) {
       updates_dims.push_back(indices_dims[i]);
       num_indices *= indices_dims[i];

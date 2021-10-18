@@ -22,24 +22,25 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
+#include "tensorflow/lite/toco/toco_flags.pb.h"
 
 namespace tflite {
 // Options for exporting to Flatbuffer.
 struct FlatbufferExportOptions {
-  bool emit_builtin_tflite_ops = false;
-  bool emit_select_tf_ops = false;
-  bool emit_custom_ops = false;
+  // TocoFlags proto. The following fields are migrated.
+  // bool emit_builtin_tflite_ops  -> !toco_flags.force_select_tf_ops()
+  // bool emit_select_tf_ops       -> toco_flags.enable_select_tf_ops()
+  // bool emit_custom_ops          -> toco_flags.allow_custom_ops()
+  // bool allow_all_select_tf_ops  -> toco_flags.allow_all_select_tf_ops()
+  // std::set<> select_user_tf_ops -> toco_flags.select_user_tf_ops()
+  toco::TocoFlags toco_flags;
   // When exporting from SavedModel, this will have the requested tags.
   std::unordered_set<std::string> saved_model_tags;
-  // TF custom op passed by the user.
-  std::unordered_set<std::string> select_user_tf_ops;
   // Metadata key/value pairs to write to the flatbuffer.
   std::map<std::string, std::string> metadata;
   // OpOrArgNameMapper to convert location of the op to name in flatbuffer.
   // If not set, a default mapper will be used.
   tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper = nullptr;
-  // If set to true, then allow pass through of TF ops as select Tensorflow ops.
-  bool allow_all_select_tf_ops = false;
 };
 
 // Translates the given MLIR `module` into a FlatBuffer and stores the

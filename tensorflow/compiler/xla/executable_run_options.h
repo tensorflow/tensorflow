@@ -58,7 +58,7 @@ class RunId {
   RunId& operator=(const RunId&) = default;
   friend bool operator==(const RunId& a, const RunId& b);
   std::string ToString() const;
-  int64 ToInt() const;
+  int64_t ToInt() const;
 
   template <typename H>
   friend H AbslHashValue(H h, const RunId& id) {
@@ -66,7 +66,7 @@ class RunId {
   }
 
  private:
-  int64 data_;
+  int64_t data_;
 };
 
 // Callback used by the GPU backend only. This is an "one-sided" version of

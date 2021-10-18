@@ -379,7 +379,7 @@ TEST_F(ConstantFoldingTest, TestNoReplaceNonCPUOp) {
   Graph g(OpRegistry::Global());
   {
     Scope s = Scope::NewRootScope();
-    auto aconst = ops::Const<int64>(s, 0, {5});
+    auto aconst = ops::Const<int64_t>(s, 0, {5});
 
     NodeDef def;
     TF_ASSERT_OK(NodeDefBuilder("testop", "ConstantFoldingTestOp")

@@ -20,6 +20,22 @@ limitations under the License.
 
 namespace tensorflow {
 
+bool UseDeterministicSegmentReductions() {
+  // See comment below regarding CI build error on Windows.
+#if !defined(PLATFORM_WINDOWS)
+  static bool cached_result = [] {
+    bool result = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_USE_DETERMINISTIC_SEGMENT_REDUCTIONS",
+        /*default_val=*/false, &result));
+    return result;
+  }();
+  return cached_result;
+#else
+  return false;
+#endif
+}
+
 bool DisableSegmentReductionOpDeterminismExceptions() {
   static bool cached_disable = [] {
     bool disable = false;
@@ -33,36 +49,36 @@ bool DisableSegmentReductionOpDeterminismExceptions() {
 
 namespace functor {
 
-#define DEFINE_SORTED_GPU_SPECS_INDEX(T, Index)                           \
-  template struct SegmentReductionFunctor<T, Index, functor::Zero<T>,     \
-                                          functor::NonAtomicSumOpGpu<T>,  \
-                                          functor::AtomicSumOpGpu<T>>;    \
-  template struct SegmentReductionFunctor<T, Index, functor::One<T>,      \
-                                          functor::NonAtomicProdOpGpu<T>, \
-                                          functor::AtomicProdOpGpu<T>>;   \
-  template struct SegmentReductionFunctor<T, Index, functor::Highest<T>,  \
-                                          functor::NonAtomicMinOpGpu<T>,  \
-                                          functor::AtomicMinOpGpu<T>>;    \
-  template struct SegmentReductionFunctor<T, Index, functor::Lowest<T>,   \
-                                          functor::NonAtomicMaxOpGpu<T>,  \
-                                          functor::AtomicMaxOpGpu<T>>;
+#define DEFINE_SORTED_GPU_SPECS_INDEX(T, Index)               \
+  template struct SegmentReductionFunctor<                    \
+      T, Index, /*InitialValueF=*/functor::Zero<T>,           \
+      /*EmptySegmentValueF=*/functor::Zero<T>, functor::Sum>; \
+  template struct SegmentReductionFunctor<                    \
+      T, Index, /*InitialValueF=*/functor::One<T>,            \
+      /*EmptySegmentValueF=*/functor::One<T>, functor::Prod>; \
+  template struct SegmentReductionFunctor<                    \
+      T, Index, /*InitialValueF=*/functor::Highest<T>,        \
+      /*EmptySegmentValueF=*/functor::Zero<T>, functor::Min>; \
+  template struct SegmentReductionFunctor<                    \
+      T, Index, /*InitialValueF=*/functor::Lowest<T>,         \
+      /*EmptySegmentValueF=*/functor::Zero<T>, functor::Max>;
 
 #define DEFINE_SORTED_GPU_SPECS(T) DEFINE_SORTED_GPU_SPECS_INDEX(T, int32);
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SORTED_GPU_SPECS);
 
 #define DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, Index)                         \
-  template struct UnsortedSegmentFunctor<                                      \
-      GPUDevice, T, Index, functor::Lowest<T>, functor::AtomicMaxOpGpu<T>>;    \
-  template struct UnsortedSegmentFunctor<                                      \
-      GPUDevice, T, Index, functor::Highest<T>, functor::AtomicMinOpGpu<T>>;   \
+  template struct UnsortedSegmentFunctor<GPUDevice, T, Index,                  \
+                                         functor::Lowest<T>, functor::Max>;    \
+  template struct UnsortedSegmentFunctor<GPUDevice, T, Index,                  \
+                                         functor::Highest<T>, functor::Min>;   \
   template struct UnsortedSegmentFunctor<GPUDevice, T, Index, functor::One<T>, \
-                                         functor::AtomicProdOpGpu<T>>;
+                                         functor::Prod>;
 
 // Sum is the only op that supports all input types currently.
-#define DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, Index) \
-  template struct UnsortedSegmentFunctor<             \
-      GPUDevice, T, Index, functor::Zero<T>, functor::AtomicSumOpGpu<T>>;
+#define DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, Index)         \
+  template struct UnsortedSegmentFunctor<GPUDevice, T, Index, \
+                                         functor::Zero<T>, functor::Sum>;
 
 #define DEFINE_REAL_GPU_SPECS(T) DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, int32);
 
@@ -88,13 +104,13 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_SUM_GPU_SPECS);
 
 #define DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR(T)                \
   template struct SparseSegmentReductionFunctor<T, int32, int32>; \
-  template struct SparseSegmentReductionFunctor<T, int32, int64>;
+  template struct SparseSegmentReductionFunctor<T, int32, int64_t>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR);
 #undef DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR
 
 #define DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR(T)                           \
   template struct SparseSegmentGradFunctor<GPUDevice, T, int32, int32>; \
-  template struct SparseSegmentGradFunctor<GPUDevice, T, int32, int64>;
+  template struct SparseSegmentGradFunctor<GPUDevice, T, int32, int64_t>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR);
 #undef DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR
 

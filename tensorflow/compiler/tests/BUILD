@@ -487,6 +487,9 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",
+        "nomsan",
+        "notsan",
     ],
     deps = [
         ":xla_test",
@@ -907,6 +910,7 @@ tf_xla_py_test(
     srcs = ["matrix_diag_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 8,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -1541,6 +1545,29 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "cast_ops_test",
+    size = "small",
+    srcs = ["cast_ops_test.py"],
+    disabled_backends = ["cpu_ondemand"],
+    enable_mlir_bridge = False,  # TODO(b/200894060): Re-enable on MLIR bridge.
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "gather_test",
     size = "medium",
     srcs = ["gather_test.py"],
@@ -1744,6 +1771,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/jit:common",
+        "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -1762,12 +1790,68 @@ cc_library(
 
 tf_cuda_cc_test(
     name = "randomized_tests",
-    size = "large",
+    size = "medium",
+    args = ["--tf_xla_test_use_mlir=false"],
+    shard_count = 20,
     # This test is randomized, so only run it if explicitly requested.
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "manual",
         "notap",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+tf_cuda_cc_test(
+    name = "randomized_tests_mlir",
+    size = "medium",
+    args = ["--tf_xla_test_use_mlir=true"],
+    shard_count = 20,
+    # This test is randomized, so only run it if explicitly requested.
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "manual",
+        "notap",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+# Create a deterministic version of randomized_tests_mlir with fixed seed.
+# This can be used in presubmit checks as it is no longer randomized.
+tf_cuda_cc_test(
+    name = "randomized_tests_mlir_seeded",
+    size = "medium",
+    args = [
+        "--tf_xla_random_seed=200839030",
+        "--tf_xla_test_use_mlir=true",
+        "--tf_xla_test_device=GPU:0",
+    ],
+    shard_count = 20,
+    tags = [
+        "config-cuda-only",
+        "no_cuda_asan",  # TODO(b/201651800)
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "requires-gpu-nvidia",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+# Create a deterministic version of randomized_tests with fixed seed.
+# This can be used in presubmit checks as it is no longer randomized.
+tf_cuda_cc_test(
+    name = "randomized_tests_seeded",
+    size = "medium",
+    args = [
+        "--tf_xla_random_seed=200839030",
+        "--tf_xla_test_use_mlir=false",
+        "--tf_xla_test_device=GPU:0",
+    ],
+    shard_count = 20,
+    tags = [
+        "config-cuda-only",
+        "no_cuda_asan",  # TODO(b/201651800)
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
@@ -2071,5 +2155,32 @@ tpu_py_test(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/tpu:tpu_lib",
+    ],
+)
+
+tf_xla_py_test(
+    name = "sharding_util_ops_test",
+    srcs = ["sharding_util_ops_test.py"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+        "gpu",
+    ],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    shard_count = 10,
+    tags = [
+        "notap",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/tpu:tpu_lib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -38,7 +38,7 @@ class TypedQueue : public QueueBase {
 
   virtual Status Initialize();  // Must be called before any other method.
 
-  int64 MemoryUsed() const override;
+  int64_t MemoryUsed() const override;
 
  protected:
   std::vector<SubQueue> queues_ TF_GUARDED_BY(mu_);
@@ -72,13 +72,13 @@ Status TypedQueue<SubQueue>::Initialize() {
 }
 
 template <typename SubQueue>
-inline int64 SizeOf(const SubQueue& sq) {
+inline int64_t SizeOf(const SubQueue& sq) {
   static_assert(sizeof(SubQueue) != sizeof(SubQueue), "SubQueue size unknown.");
   return 0;
 }
 
 template <>
-inline int64 SizeOf(const std::deque<Tensor>& sq) {
+inline int64_t SizeOf(const std::deque<Tensor>& sq) {
   if (sq.empty()) {
     return 0;
   }
@@ -86,17 +86,17 @@ inline int64 SizeOf(const std::deque<Tensor>& sq) {
 }
 
 template <>
-inline int64 SizeOf(const std::vector<Tensor>& sq) {
+inline int64_t SizeOf(const std::vector<Tensor>& sq) {
   if (sq.empty()) {
     return 0;
   }
   return sq.size() * sq.front().AllocatedBytes();
 }
 
-using TensorPair = std::pair<int64, Tensor>;
+using TensorPair = std::pair<int64_t, Tensor>;
 
 template <typename U, typename V>
-int64 SizeOf(const std::priority_queue<TensorPair, U, V>& sq) {
+int64_t SizeOf(const std::priority_queue<TensorPair, U, V>& sq) {
   if (sq.empty()) {
     return 0;
   }
@@ -104,7 +104,7 @@ int64 SizeOf(const std::priority_queue<TensorPair, U, V>& sq) {
 }
 
 template <typename SubQueue>
-inline int64 TypedQueue<SubQueue>::MemoryUsed() const {
+inline int64_t TypedQueue<SubQueue>::MemoryUsed() const {
   int memory_size = 0;
   mutex_lock l(mu_);
   for (const auto& sq : queues_) {

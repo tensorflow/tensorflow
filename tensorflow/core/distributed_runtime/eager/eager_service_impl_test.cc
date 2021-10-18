@@ -182,7 +182,7 @@ void SetTensorProto(TensorProto* tensor_proto) {
 
 void BuildOperation(
     Operation* operation, int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
+    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device) {
   operation->set_id(id);
@@ -195,7 +195,7 @@ void BuildOperation(
           absl::get<TensorProto>(input);
     } else {
       const auto& tensor_handle_pair =
-          absl::get<std::pair<int64, int32>>(input);
+          absl::get<std::pair<int64_t, int32>>(input);
       auto* input = operation->add_op_inputs()->mutable_remote_handle();
       input->set_op_id(tensor_handle_pair.first);
       input->set_output_num(tensor_handle_pair.second);
@@ -211,7 +211,7 @@ void BuildOperation(
 
 void AddOperationToEnqueueRequest(
     int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
+    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     EnqueueRequest* request) {
@@ -221,7 +221,7 @@ void AddOperationToEnqueueRequest(
 
 void AddOperationToRunComponentFunctionRequest(
     int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
+    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     const int output_num, RunComponentFunctionRequest* request) {
@@ -1245,7 +1245,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   // Unable to handle the request since there is no eager context.
   Status status = eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
                                              &remote_enqueue_response);
-  EXPECT_EQ(error::UNAVAILABLE, status.code());
+  EXPECT_EQ(error::ABORTED, status.code());
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
       "Unable to find a context_id matching the specified one"));
@@ -1282,7 +1282,7 @@ TEST_F(EagerServiceImplTest, KeepAliveTest) {
   Status status =
       eager_service_impl.KeepAlive(&keep_alive_request, &keep_alive_response);
 
-  EXPECT_EQ(status.code(), error::UNAVAILABLE);
+  EXPECT_EQ(status.code(), error::ABORTED);
   EXPECT_PRED_FORMAT2(::testing::IsSubstring, "Unable to find a context_id",
                       status.error_message());
 

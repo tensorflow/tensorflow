@@ -80,8 +80,8 @@ struct ActivationRecord {
   Timespan timespan;                       // timespan of this invocation.
   TfFunctionExecutionMode execution_mode;  // execution mode.
   TfFunctionCompiler compiler;             // compiler used.
-  int64 tracing_count;  // the total tracing count of this function when this
-                        // invocation happened.
+  int64_t tracing_count;  // the total tracing count of this function when this
+                          // invocation happened.
   uint64 children_duration_ps;  // Sum of the duration of all (immediate)
                                 // children tf-functions of this function.
   ActivationRecord()
@@ -112,7 +112,7 @@ struct ActivationRecord {
 // Entry or exit point of a tf-function.
 struct EntryOrExit {
   bool is_entry;        // true for entry, false for exit.
-  int64 index;          // index to the ActivationRecord.
+  int64_t index;        // index to the ActivationRecord.
   uint64 timestamp_ps;  // the time when this entry/exit happens.
   EntryOrExit() : is_entry(false), index(-1), timestamp_ps(0) {}
   EntryOrExit(bool is_entry, int64_t index, uint64 timestamp_ps)
@@ -223,7 +223,7 @@ class TfFunctionExecutions {
     for (const auto& record : activations_) {
       TfFunction* fun = &(*result.mutable_tf_functions())[record.function_name];
       fun->set_total_tracing_count(
-          std::max(static_cast<int64>(fun->total_tracing_count()),
+          std::max(static_cast<int64_t>(fun->total_tracing_count()),
                    record.tracing_count));
       fun->set_compiler(CombineCompilers(fun->compiler(), record.compiler));
       // The self-time of this function is the difference between the duration
@@ -245,7 +245,7 @@ class TfFunctionExecutions {
 
   // Calculates the children duration of every tf-function.
   void CalculateChildrenDurations() {
-    std::stack<int64> call_stack;
+    std::stack<int64_t> call_stack;
     for (const auto& pt : points_) {
       if (pt.is_entry) {
         // Function entry.

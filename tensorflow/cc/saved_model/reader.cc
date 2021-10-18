@@ -72,35 +72,6 @@ Status ReadSavedModel(absl::string_view export_dir,
                       export_dir));
 }
 
-// Swap tensor_content field of Const Op Tensors in the named functions
-static Status SwapTensorContent(MetaGraphDef* meta_graph_def) {
-  GraphDef graph_def = *meta_graph_def->mutable_graph_def();
-  for (auto& function : *meta_graph_def->mutable_graph_def()
-                             ->mutable_library()
-                             ->mutable_function()) {
-    for (auto& node : (*function.mutable_node_def())) {
-      if (node.op() != "Const") continue;
-      auto node_iterator = node.mutable_attr()->find("value");
-      if (node_iterator == node.mutable_attr()->end()) continue;
-      AttrValue node_value = node_iterator->second;
-      if (!node_value.has_tensor()) continue;
-
-      auto tsize = node_value.mutable_tensor()->tensor_content().size();
-      auto p_type = node_value.mutable_tensor()->dtype();
-      // Swap only when there is something in tensor_content field
-      if (tsize != 0 && DataTypeCanUseMemcpy(p_type)) {
-        Tensor parsed(p_type);
-        DCHECK(parsed.FromProto(*node_value.mutable_tensor()));
-        TF_RETURN_IF_ERROR(ByteSwapTensor(&parsed));
-        (*node.mutable_attr())["value"].mutable_tensor()->set_tensor_content(
-            string(reinterpret_cast<const char*>(parsed.tensor_data().data()),
-                   parsed.tensor_data().size()));
-      }
-    }
-  }
-  return Status::OK();
-}
-
 Status FindMetaGraphDef(const std::unordered_set<string>& tags,
                         SavedModel* saved_model_proto,
                         MetaGraphDef* meta_graph_def) {
@@ -117,7 +88,7 @@ Status FindMetaGraphDef(const std::unordered_set<string>& tags,
       *meta_graph_def = std::move(graph_def);
       // Correct the endiness of Tensor content on big-endian system
       if (!port::kLittleEndian) {
-        TF_RETURN_IF_ERROR(SwapTensorContent(meta_graph_def));
+        TF_RETURN_IF_ERROR(ByteSwapTensorContent(meta_graph_def));
       }
       return Status::OK();
     }

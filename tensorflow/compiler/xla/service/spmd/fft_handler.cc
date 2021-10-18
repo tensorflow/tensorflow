@@ -52,7 +52,7 @@ namespace {
 absl::optional<HloInstruction*> PadEachPartitionWithHaloExchange(
     HloInstruction* hlo, int64_t num_partitions, const HloSharding& sharding,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
-    int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b) {
+    int64_t* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b) {
   int64_t size_per_partition = hlo->shape().dimensions().back();
   int64_t size_padded_per_partition =
       CeilOfRatio(size_per_partition, num_partitions) * num_partitions;
@@ -159,9 +159,9 @@ HloInstruction* ShuffleWithinEachPartitionUsingOneHot(HloInstruction* hlo,
 HloInstruction* ShuffleDataWithAllToAll(
     HloInstruction* hlo, int64_t num_partitions,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
-    int64* next_channel_id, SpmdBuilder* b) {
-  std::vector<std::vector<int64>> groups(1);
-  std::vector<int64> partition_subgroups(num_partitions);
+    int64_t* next_channel_id, SpmdBuilder* b) {
+  std::vector<std::vector<int64_t>> groups(1);
+  std::vector<int64_t> partition_subgroups(num_partitions);
   std::iota(partition_subgroups.begin(), partition_subgroups.end(), 0);
   groups[0] = partition_subgroups;
   auto all_to_all = collective_ops_creator.create_cross_partition_all_to_all(
@@ -228,7 +228,7 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
     HloInstruction* hlo, const HloSharding& sharding,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t num_partitions, HloInstruction* partition_id,
-    int64* next_channel_id, HloModule* module, SpmdBuilder* b) {
+    int64_t* next_channel_id, HloModule* module, SpmdBuilder* b) {
   auto iteration = b->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(0)));
   auto converted_partition_id = b->AddInstruction(HloInstruction::CreateConvert(
@@ -281,10 +281,10 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
       hlo->shape(), HloOpcode::kAdd, phase_adjust_source_transform,
       dest_transform));
   // collective permute for source partition_id and source_transfrom.
-  std::vector<std::pair<int64, int64>> src_dst_pairs;
+  std::vector<std::pair<int64_t, int64_t>> src_dst_pairs;
   sharding.tile_assignment().Each(
-      [&](absl::Span<const int64> indices, int64_t src_device) {
-        std::vector<int64> target_indices(indices.begin(), indices.end());
+      [&](absl::Span<const int64_t> indices, int64_t src_device) {
+        std::vector<int64_t> target_indices(indices.begin(), indices.end());
         target_indices.back() = (indices.back() + 1) % num_partitions;
         int64_t dst_device = sharding.tile_assignment()(target_indices);
         src_dst_pairs.emplace_back(src_device, dst_device);
@@ -339,8 +339,8 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
 // Slice valid data in each partition.
 HloInstruction* SliceValidData(HloInstruction* hlo, const Shape& target_shape,
                                SpmdBuilder* b) {
-  std::vector<int64> start_indices(target_shape.rank(), 0);
-  std::vector<int64> strides(target_shape.rank(), 1);
+  std::vector<int64_t> start_indices(target_shape.rank(), 0);
+  std::vector<int64_t> strides(target_shape.rank(), 1);
   return b->AddInstruction(HloInstruction::CreateSlice(
       target_shape, hlo, start_indices, target_shape.dimensions(), strides));
 }

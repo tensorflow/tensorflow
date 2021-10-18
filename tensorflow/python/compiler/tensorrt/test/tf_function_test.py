@@ -41,6 +41,7 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
 
   def __init__(self, methodName):  # pylint: disable=invalid-name
     super(TfFunctionTest, self).__init__(methodName)
+    self._profile_strategy = "Range"
     self._trt_engine_op_count_offset = 0
     self._test_conversion_params = {
         "_tftrt_convert_function": True,
@@ -53,7 +54,7 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
         "_tftrt_max_cached_engines": 1,
         "_tftrt_use_calibration": False,
         "_tftrt_use_implicit_batch": True,
-        "_tftrt_profile_strategy": "Range",
+        "_tftrt_profile_strategy": self._profile_strategy,
         "_tftrt_allow_build_at_runtime": False
     }
     self._is_v2 = False
@@ -333,6 +334,8 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
     else:
       self._test_conversion_params["_tftrt_allow_build_at_runtime"] = (
           run_params.convert_online or run_params.dynamic_engine)
+    self._test_conversion_params["_tftrt_use_implicit_batch"] = \
+        not run_params.dynamic_shape
     self.DisableNonTrtOptimizers()
     trt_test.TfTrtIntegrationTestBase.RunTest(self, run_params)
 

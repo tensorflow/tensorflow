@@ -79,7 +79,7 @@ inline PrimitiveType NativeToPrimitiveType<uint32>() {
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint64>() {
+inline PrimitiveType NativeToPrimitiveType<uint64_t>() {
   return U64;
 }
 
@@ -100,7 +100,7 @@ inline PrimitiveType NativeToPrimitiveType<int32>() {
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int64>() {
+inline PrimitiveType NativeToPrimitiveType<int64_t>() {
   return S64;
 }
 
@@ -320,7 +320,7 @@ struct PrimitiveTypeToNative<S32> {
 
 template <>
 struct PrimitiveTypeToNative<S64> {
-  using type = int64;
+  using type = int64_t;
 };
 
 // Floating point

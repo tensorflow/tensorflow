@@ -112,7 +112,7 @@ static void BM_SGD(::testing::benchmark::State& state) {
   test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
                   /*old_benchmark_api*/ false)
       .Run(state);
-  const int64_t tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64_t>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
@@ -148,7 +148,7 @@ static void BM_Adagrad(::testing::benchmark::State& state) {
   test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
                   /*old_benchmark_api*/ false)
       .Run(state);
-  const int64_t tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64_t>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
@@ -187,7 +187,7 @@ static void BM_SparseAdagrad(::testing::benchmark::State& state) {
   test::Benchmark("cpu", train, GetMultiThreadedOptions(), init, nullptr, "",
                   /*old_benchmark_api*/ false)
       .Run(state);
-  const int64_t tot = static_cast<int64>(state.iterations()) * m * n;
+  const int64_t tot = static_cast<int64_t>(state.iterations()) * m * n;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
@@ -231,7 +231,7 @@ static void BM_Momentum(::testing::benchmark::State& state) {
   test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
                   /*old_benchmark_api*/ false)
       .Run(state);
-  const int64_t tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64_t>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
@@ -286,7 +286,7 @@ static void BM_Adam(::testing::benchmark::State& state) {
                     /*old_benchmark_api*/ false)
         .Run(state);
   }
-  const int64_t tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64_t>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
@@ -331,7 +331,7 @@ static void BM_RMSProp(::testing::benchmark::State& state) {
   test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
                   /*old_benhcmark_api*/ false)
       .Run(state);
-  const int64_t tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64_t>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
@@ -372,7 +372,7 @@ static void BM_AddSign(::testing::benchmark::State& state) {
   test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
                   /*old_benhcmark_api*/ false)
       .Run(state);
-  const int64_t tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64_t>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }
@@ -414,7 +414,7 @@ static void BM_PowerSign(::testing::benchmark::State& state) {
                   /*old_benhcmark_api*/ false)
       .Run(state);
 
-  const int64_t tot = static_cast<int64>(state.iterations()) * params;
+  const int64_t tot = static_cast<int64_t>(state.iterations()) * params;
   state.SetItemsProcessed(tot);
   state.SetBytesProcessed(tot * sizeof(float));
 }

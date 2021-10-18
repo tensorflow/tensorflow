@@ -80,7 +80,7 @@ bool ConsumeAttrType(StringPiece* sp, StringPiece* out) {
       .GetResult(sp, out);
 }
 
-bool ConsumeAttrNumber(StringPiece* sp, int64* out) {
+bool ConsumeAttrNumber(StringPiece* sp, int64_t* out) {
   Scanner scan(*sp);
   StringPiece match;
   StringPiece remaining;
@@ -633,6 +633,11 @@ OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
 
 OpDefBuilder& OpDefBuilder::SetTypeConstructor(OpTypeConstructor c) {
   op_reg_data_.type_ctor = c;
+  return *this;
+}
+
+OpDefBuilder& OpDefBuilder::SetForwardTypeFn(ForwardTypeInferenceFn f) {
+  op_reg_data_.fwd_type_fn = f;
   return *this;
 }
 

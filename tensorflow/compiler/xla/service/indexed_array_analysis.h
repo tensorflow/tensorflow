@@ -183,17 +183,17 @@ class IndexedArrayAnalysis {
     // `source_dim` is the dimension in the source array that is being indexed
     // over using indices from the `indices` array.  See the class documentation
     // and the overview for more details.
-    int64 source_dim() const { return source_dim_; }
+    int64_t source_dim() const { return source_dim_; }
 
     // `output_dims` are the dimensions in the output array that are being used
     // to compute an index into the `indices` array.  See the class
     // documentation and the overview for more details.
-    absl::Span<const int64> output_dims() const { return output_dims_; }
+    absl::Span<const int64_t> output_dims() const { return output_dims_; }
 
    private:
     explicit ScalarIndexedArray(Array* source, Array* indices,
                                 int64_t source_dim,
-                                std::vector<int64> output_dims, Shape shape)
+                                std::vector<int64_t> output_dims, Shape shape)
         : source_(source),
           indices_(indices),
           source_dim_(source_dim),
@@ -202,8 +202,8 @@ class IndexedArrayAnalysis {
 
     Array* source_;
     Array* indices_;
-    int64 source_dim_;
-    std::vector<int64> output_dims_;
+    int64_t source_dim_;
+    std::vector<int64_t> output_dims_;
     Shape shape_;
 
     friend class IndexedArrayAnalysis;
@@ -224,7 +224,7 @@ class IndexedArrayAnalysis {
    private:
     explicit ScalarIndexedConstantArray(Array* source, Array* indices,
                                         int64_t source_dim,
-                                        std::vector<int64> output_dims,
+                                        std::vector<int64_t> output_dims,
                                         Shape shape)
         : ScalarIndexedArray(source, indices, source_dim,
                              std::move(output_dims), std::move(shape)) {
@@ -264,7 +264,7 @@ class IndexedArrayAnalysis {
 
   StatusOr<Array*> ComputeArrayForGather(
       const Shape& shape, const GatherDimensionNumbers& dim_numbers,
-      absl::Span<const int64> slice_sizes, Array* source, Array* indices);
+      absl::Span<const int64_t> slice_sizes, Array* source, Array* indices);
 
   StatusOr<Array*> ComputeArrayForDotWithIndexedLhs(
       const Shape& shape, const DotDimensionNumbers& dim_numbers,
@@ -304,7 +304,7 @@ class IndexedArrayAnalysis {
   //    G1 = [Arr[i] for i in I2]
   StatusOr<ScalarIndexedArray*> FoldGatherOfGather(
       ScalarIndexedArray* source, Array* indices, int64_t source_dim,
-      absl::Span<const int64> output_dims, Shape shape);
+      absl::Span<const int64_t> output_dims, Shape shape);
 
   // Reshapes a scalar-indexed node to remove the degenerate dimensions in its
   // output.  The result is always a scalar-indexed node.
@@ -314,7 +314,7 @@ class IndexedArrayAnalysis {
   // Reshapes a scalar-indexed node such that the result has the degenerate
   // dimensions `degenerate_dims`.  The result is always a scalar-indexed node.
   StatusOr<ScalarIndexedArray*> ReshapeToAddDegenerateDims(
-      ScalarIndexedArray* operand, absl::Span<const int64> degenerate_dims);
+      ScalarIndexedArray* operand, absl::Span<const int64_t> degenerate_dims);
 
   StatusOr<ScalarIndexedArray*> FoldReshapeOfGather(
       const Shape& shape, ScalarIndexedConstantArray* operand);
@@ -336,7 +336,7 @@ class IndexedArrayAnalysis {
 
   ScalarIndexedArray* ConstructScalarIndexedArray(
       Array* source, Array* indices, int64_t source_dim,
-      std::vector<int64> output_dims, Shape shape) {
+      std::vector<int64_t> output_dims, Shape shape) {
     if (source->kind() == Array::kConstant) {
       return Construct<ScalarIndexedConstantArray>(source, indices, source_dim,
                                                    std::move(output_dims),

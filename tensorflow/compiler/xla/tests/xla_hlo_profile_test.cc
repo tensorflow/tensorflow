@@ -43,7 +43,7 @@ namespace {
 class HloProfileTest : public ClientLibraryTestBase {};
 
 struct ParsedProfileOutputLine {
-  int64 cycles;
+  int64_t cycles;
   string cycles_percentage;
   double usec;
   string flops;

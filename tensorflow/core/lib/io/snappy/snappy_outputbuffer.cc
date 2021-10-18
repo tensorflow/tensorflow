@@ -63,7 +63,7 @@ Status SnappyOutputBuffer::Sync() {
   return file_->Sync();
 }
 
-Status SnappyOutputBuffer::Tell(int64* position) {
+Status SnappyOutputBuffer::Tell(int64_t* position) {
   return file_->Tell(position);
 }
 

@@ -76,10 +76,10 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
     // Split the reduction into a pre-reduction and a final reduction.
     VLOG(3) << "Splitting reduction " << reduce->name() << " at dimension "
             << max_reduce_dim;
-    std::vector<int64> pre_reduce_dims;
+    std::vector<int64_t> pre_reduce_dims;
     pre_reduce_dims.push_back(max_reduce_dim);
-    std::vector<int64> pre_reduce_shape_dims(input_shape.dimensions().begin(),
-                                             input_shape.dimensions().end());
+    std::vector<int64_t> pre_reduce_shape_dims(input_shape.dimensions().begin(),
+                                               input_shape.dimensions().end());
     pre_reduce_shape_dims.erase(pre_reduce_shape_dims.begin() + max_reduce_dim);
     Shape pre_reduce_shape = ShapeUtil::MakeShape(
         reduce->shape().element_type(), pre_reduce_shape_dims);
@@ -88,8 +88,8 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
         reduce->mutable_operand(1), pre_reduce_dims, reduce->to_apply());
     pre_reduce->set_metadata(reduce->metadata());
 
-    std::vector<int64> final_reduce_dims(reduce->dimensions().begin(),
-                                         reduce->dimensions().end());
+    std::vector<int64_t> final_reduce_dims(reduce->dimensions().begin(),
+                                           reduce->dimensions().end());
     final_reduce_dims.erase(
         std::remove(final_reduce_dims.begin(), final_reduce_dims.end(),
                     max_reduce_dim),

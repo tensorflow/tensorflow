@@ -127,7 +127,7 @@ class HloRunner : public HloRunnerInterface {
   // since we've already compiled the Executable.
   StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::function<Executable*(int64_t)> executable_provider,
-      std::function<int64(int64_t)> argument_count_provider,
+      std::function<int64_t(int64_t)> argument_count_provider,
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options);
 
@@ -138,6 +138,8 @@ class HloRunner : public HloRunnerInterface {
   // HloRunner in a program without any backends linked in.
   Backend& backend();
   const Backend& backend() const;
+
+  absl::string_view Name() const override;
 
  private:
   // Creates a ServiceExecutableRunOptions object to configure a run on device,
@@ -154,7 +156,7 @@ class HloRunner : public HloRunnerInterface {
           const std::vector<ServiceExecutableRunOptions>&,
           const std::vector<absl::Span<const ShapedBuffer* const>>&)>
           execution_helper,
-      std::function<int64(int64_t)> argument_count_provider,
+      std::function<int64_t(int64_t)> argument_count_provider,
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);

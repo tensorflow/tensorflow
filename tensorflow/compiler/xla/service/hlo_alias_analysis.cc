@@ -57,7 +57,7 @@ class BufferValueMap {
   // contiguous, while BufferNumbers may not be. BufferNumbers may not be
   // dense because buffers may be created and destroyed during the analysis
   // construction process.
-  using BufferNumber = int64;
+  using BufferNumber = int64_t;
 
   explicit BufferValueMap(const HloModule* module,
                           const HloDataflowAnalysis& dataflow)

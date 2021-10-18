@@ -71,10 +71,10 @@ class BaseCandidateSamplerOp : public OpKernel {
                    context->allocate_output(2, TensorShape({num_sampled_}),
                                             &out_sampled_expected_count));
 
-    gtl::ArraySlice<int64> true_candidate(true_classes.matrix<int64>().data(),
-                                          batch_size * num_true_);
-    gtl::MutableArraySlice<int64> sampled_candidate(
-        out_sampled_candidates->vec<int64>().data(), num_sampled_);
+    gtl::ArraySlice<int64_t> true_candidate(
+        true_classes.matrix<int64_t>().data(), batch_size * num_true_);
+    gtl::MutableArraySlice<int64_t> sampled_candidate(
+        out_sampled_candidates->vec<int64_t>().data(), num_sampled_);
     gtl::MutableArraySlice<float> true_expected_count(
         out_true_expected_count->matrix<float>().data(),
         batch_size * num_true_);
@@ -212,19 +212,20 @@ class ComputeAccidentalHitsOp : public OpKernel {
                     "sampled_candidates must be a vector, which is typically "
                     "an output from CandidateSampler"));
 
-    std::unordered_map<int64, int> sampled_candidate_to_pos;
+    std::unordered_map<int64_t, int> sampled_candidate_to_pos;
     for (int64_t i = 0; i < in_sampled_candidates.dim_size(0); ++i) {
-      sampled_candidate_to_pos[in_sampled_candidates.vec<int64>()(i)] = i;
+      sampled_candidate_to_pos[in_sampled_candidates.vec<int64_t>()(i)] = i;
     }
 
     // Produce output in the same format as UnpackSparseFeatures.
     std::vector<int> indices;
-    std::vector<int64> ids;
+    std::vector<int64_t> ids;
     std::vector<float> weights;
 
     for (int64_t i = 0; i < batch_size; ++i) {
       for (int64_t j = 0; j < num_true_; ++j) {
-        const int64_t true_candidate = in_true_candidates.matrix<int64>()(i, j);
+        const int64_t true_candidate =
+            in_true_candidates.matrix<int64_t>()(i, j);
         const auto look = sampled_candidate_to_pos.find(true_candidate);
         if (look != sampled_candidate_to_pos.end()) {
           indices.push_back(i);
@@ -251,13 +252,13 @@ class ComputeAccidentalHitsOp : public OpKernel {
 
     for (size_t i = 0; i < indices.size(); ++i) {
       out_indices->vec<int32>()(i) = indices[i];
-      out_ids->vec<int64>()(i) = ids[i];
+      out_ids->vec<int64_t>()(i) = ids[i];
       out_weights->vec<float>()(i) = weights[i];
     }
   }
 
  private:
-  int64 num_true_;
+  int64_t num_true_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ComputeAccidentalHits").Device(DEVICE_CPU),

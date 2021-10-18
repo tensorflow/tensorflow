@@ -58,7 +58,7 @@ class TpuOpExecutable : public xla::TpuExecutableInterface {
 
   xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) override;
 
-  int64 ShapeSize(const xla::Shape& shape) override;
+  int64_t ShapeSize(const xla::Shape& shape) override;
 
   const XLA_TpuProgram* const core_program_;
 

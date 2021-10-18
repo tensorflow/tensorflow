@@ -31,12 +31,12 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
   TF_ASSIGN_OR_RETURN(
       auto replication,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/false));
-  std::vector<std::pair<HloInstruction*, int64>> all_reduces_to_replace;
+  std::vector<std::pair<HloInstruction*, int64_t>> all_reduces_to_replace;
 
   // Returns the size of a replica group if all groups have the same size, or -1
   // if they have different sizes.
   auto get_replica_group_size =
-      [this](const HloInstruction* all_reduce) -> int64 {
+      [this](const HloInstruction* all_reduce) -> int64_t {
     if (all_reduce->replica_groups().empty()) {
       return replica_count_;
     }

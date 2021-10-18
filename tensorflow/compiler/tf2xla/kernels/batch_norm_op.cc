@@ -298,7 +298,7 @@ class FusedBatchNormGradOp : public XlaOpKernel {
       offset_backprop = xla::GetTupleElement(output, 2);
     } else {
       // Reduce over all dimensions except the feature dim.
-      std::vector<int64> reduction_dims(input_dims - 1);
+      std::vector<int64_t> reduction_dims(input_dims - 1);
       std::iota(reduction_dims.begin(), reduction_dims.begin() + feature_index,
                 0);
       std::iota(reduction_dims.begin() + feature_index, reduction_dims.end(),

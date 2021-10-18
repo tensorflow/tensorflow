@@ -88,6 +88,16 @@ namespace tensorflow {
     }                                                       \
   } while (0)
 
+#define OP_REQUIRES_VALUE(lhs, ctx, rexpr)                                   \
+  OP_REQUIRES_VALUE_IMPL(                                                    \
+      TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, ctx, \
+      rexpr)
+
+#define OP_REQUIRES_VALUE_IMPL(statusor, lhs, ctx, rexpr) \
+  auto statusor = (rexpr);                                \
+  OP_REQUIRES_OK(ctx, statusor.status());                 \
+  lhs = std::move(statusor.ValueOrDie())
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_OP_REQUIRES_H_

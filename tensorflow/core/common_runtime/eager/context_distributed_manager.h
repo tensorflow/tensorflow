@@ -36,6 +36,7 @@ class EagerContextDistributedManager
  public:
   explicit EagerContextDistributedManager(EagerContext* context)
       : context_(context),
+        step_id_(0),
         coordination_service_agent_(CreateCoordinationServiceAgent()) {}
 
   Status SetOrUpdateServerDef(const ServerDef& server_def, bool reset_context,
@@ -55,8 +56,16 @@ class EagerContextDistributedManager
     return coordination_service_agent_.get();
   }
 
+  // An atomic operation for getting the next (monotonically increasing)
+  // step_id. It is the caller's responsibility to make sure the threads use the
+  // same step_id for rendezvous send/recv.
+  int64_t GetNextStepId() override { return ++step_id_; }
+
+  int64_t step_id() override { return step_id_; }
+
  private:
   EagerContext* context_;
+  std::atomic<int64_t> step_id_;
   std::unique_ptr<CoordinationServiceInterface> coordination_service_;
   std::unique_ptr<CoordinationServiceAgent> coordination_service_agent_;
 };

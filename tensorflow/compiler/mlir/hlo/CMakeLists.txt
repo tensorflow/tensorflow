@@ -108,10 +108,7 @@ add_definitions(${LLVM_DEFINITIONS})
 
 if(MHLO_ENABLE_BINDINGS_PYTHON)
   include(MLIRDetectPythonEnv)
-  mlir_detect_pybind11_install()
-  find_package(Python3 ${LLVM_MINIMUM_PYTHON_VERSION}
-  COMPONENTS Interpreter Development NumPy REQUIRED)
-  find_package(pybind11 2.6 CONFIG REQUIRED)
+  mlir_configure_python_dev_packages()
 endif()
 
 #-------------------------------------------------------------------------------
@@ -125,6 +122,7 @@ add_custom_target(check-mlir-hlo)
 
 add_subdirectory(include/mlir-hlo)
 add_subdirectory(lib)
+add_subdirectory(runtime)
 add_subdirectory(tools)
 add_subdirectory(tests)
 

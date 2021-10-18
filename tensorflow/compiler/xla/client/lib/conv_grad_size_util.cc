@@ -43,8 +43,8 @@ StatusOr<SpatialDimensionOutputSizeAndPadding> GetWindowedOutputSize(
     case Padding::kSame:
       dim.output_size = (input_size + stride - 1) / stride;
       const int64_t padding_needed =
-          std::max(int64{0}, (dim.output_size - 1) * stride +
-                                 effective_filter_size - input_size);
+          std::max(int64_t{0}, (dim.output_size - 1) * stride +
+                                   effective_filter_size - input_size);
       // For odd values of total padding, add more padding on the "after" side
       // of the given dimension.
       dim.pad_before = padding_needed / 2;

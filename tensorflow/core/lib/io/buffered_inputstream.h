@@ -46,7 +46,7 @@ class BufferedInputStream : public InputStreamInterface {
 
   tensorflow::Status SkipNBytes(int64_t bytes_to_skip) override;
 
-  int64 Tell() const override;
+  int64_t Tell() const override;
 
   // Seek to this offset within the file.
   //

@@ -13,11 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Test base for tf.data service tests."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tempfile
+
+from absl import flags
 
 from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python.data.experimental.ops import data_service_ops
@@ -35,6 +33,8 @@ NO_WORK_DIR = ""
 TEST_HEARTBEAT_INTERVAL_MS = 100
 TEST_DISPATCHER_TIMEOUT_MS = 1000
 PROTOCOL = "grpc"
+TRANSFER_PROTOCOL = flags.DEFINE_string(
+    "tf_data_service_test_transfer_protocol", None, "Data plane protocol.")
 
 
 def all_cluster_configurations():
@@ -45,7 +45,11 @@ def all_cluster_configurations():
   return with_work_dir + without_work_dir
 
 
-def _make_worker(dispatcher_address, shutdown_quiet_period_ms=0, port=0):
+def _make_worker(dispatcher_address,
+                 data_transfer_protocol,
+                 shutdown_quiet_period_ms=0,
+                 port=0,
+                 worker_tags=None):
   """Creates a worker server."""
   defaults = server_lib.WorkerConfig(dispatcher_address=dispatcher_address)
   config_proto = service_config_pb2.WorkerConfig(
@@ -53,9 +57,11 @@ def _make_worker(dispatcher_address, shutdown_quiet_period_ms=0, port=0):
       worker_address=defaults.worker_address,
       port=port,
       protocol=PROTOCOL,
+      worker_tags=worker_tags,
       heartbeat_interval_ms=TEST_HEARTBEAT_INTERVAL_MS,
       dispatcher_timeout_ms=TEST_DISPATCHER_TIMEOUT_MS,
-      data_transfer_protocol=None,
+      data_transfer_protocol=data_transfer_protocol,
+      data_transfer_address=defaults.worker_address,
       shutdown_quiet_period_ms=shutdown_quiet_period_ms)
   return server_lib.WorkerServer(config_proto, start=False)
 
@@ -64,11 +70,20 @@ def _make_worker(dispatcher_address, shutdown_quiet_period_ms=0, port=0):
 class TestWorker(object):
   """A tf.data service worker."""
 
-  def __init__(self, dispatcher_address, shutdown_quiet_period_ms):
+  def __init__(self,
+               dispatcher_address,
+               shutdown_quiet_period_ms,
+               data_transfer_protocol=None,
+               worker_tags=None):
     self._dispatcher_address = dispatcher_address
     self._shutdown_quiet_period_ms = shutdown_quiet_period_ms
-    self._server = _make_worker(dispatcher_address, shutdown_quiet_period_ms)
+    self._server = _make_worker(
+        dispatcher_address,
+        data_transfer_protocol,
+        shutdown_quiet_period_ms,
+        worker_tags=worker_tags)
     self._running = False
+    self._data_transfer_protocol = data_transfer_protocol
 
   def stop(self):
     self._server._stop()
@@ -87,6 +102,7 @@ class TestWorker(object):
     if use_same_port:
       port = self._port
     self._server = _make_worker(self._dispatcher_address,
+                                self._data_transfer_protocol,
                                 self._shutdown_quiet_period_ms, port)
     self._server.start()
     self._port = int(self._server._address.split(":")[1])
@@ -113,7 +129,8 @@ class TestCluster(object):
                job_gc_check_interval_ms=None,
                job_gc_timeout_ms=None,
                worker_shutdown_quiet_period_ms=0,
-               start=True):
+               start=True,
+               data_transfer_protocol=None):
     """Creates a tf.data service test cluster.
 
     Args:
@@ -134,10 +151,16 @@ class TestCluster(object):
       start: Whether to immediately start the servers in the cluster. If
         `False`, the servers can be started later by calling
         `start_dispatcher()` and `start_workers()`.
+      data_transfer_protocol: (Optional.) The protocol to use for transferring
+        data with the tf.data service. The default can controlled via
+        tf_data_service_test_transfer_protocol flag.
     """
     if work_dir == TMP_WORK_DIR:
       work_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     self._worker_shutdown_quiet_period_ms = worker_shutdown_quiet_period_ms
+    if not data_transfer_protocol:
+      data_transfer_protocol = TRANSFER_PROTOCOL.value
+    self._data_transfer_protocol = data_transfer_protocol
     self.dispatcher = server_lib.DispatchServer(
         server_lib.DispatcherConfig(
             port=dispatcher_port,
@@ -157,7 +180,8 @@ class TestCluster(object):
 
   def add_worker(self, start=True):
     worker = TestWorker(self.dispatcher_address(),
-                        self._worker_shutdown_quiet_period_ms)
+                        self._worker_shutdown_quiet_period_ms,
+                        self._data_transfer_protocol)
     if start:
       worker.start()
     self.workers.append(worker)
@@ -211,6 +235,28 @@ class TestCluster(object):
 class TestBase(test_base.DatasetTestBase):
   """Base class for tf.data service tests."""
 
+  def register_dataset(self, dispatcher_address, dataset):
+    compression = "AUTO"
+    if TRANSFER_PROTOCOL.value is not None:
+      compression = None
+
+    return data_service_ops.register_dataset(
+        dispatcher_address, dataset, compression=compression)
+
+  def from_dataset_id(self,
+                      processing_mode,
+                      cluster,
+                      dataset_id,
+                      element_spec,
+                      job_name=None):
+    return data_service_ops.from_dataset_id(
+        processing_mode,
+        cluster.dispatcher_address(),
+        dataset_id,
+        element_spec,
+        data_transfer_protocol=TRANSFER_PROTOCOL.value,
+        job_name=job_name)
+
   def make_distributed_dataset(self,
                                dataset,
                                cluster,
@@ -231,6 +277,7 @@ class TestBase(test_base.DatasetTestBase):
             num_consumers=num_consumers,
             max_outstanding_requests=max_outstanding_requests,
             task_refresh_interval_hint_ms=20,
+            data_transfer_protocol=TRANSFER_PROTOCOL.value,
             compression=compression,
             target_workers=target_workers))
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -162,9 +163,9 @@ static LogicalResult MlirToFlatBufferFileTranslateFunction(
         std::make_unique<tensorflow::OpOrArgLocNameMapper>();
   }
   tflite::FlatbufferExportOptions options;
-  options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-  options.emit_custom_ops = emit_custom_ops;
-  options.emit_select_tf_ops = emit_select_tf_ops;
+  options.toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
+  options.toco_flags.set_enable_select_tf_ops(emit_select_tf_ops);
+  options.toco_flags.set_allow_custom_ops(emit_custom_ops);
   options.op_or_arg_name_mapper = op_or_arg_name_mapper.get();
   if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
                                                  &serialized_flatbuffer))
@@ -189,6 +190,7 @@ static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(
       registry.insert<quant::QuantizationDialect>();
       mlir::RegisterAllTensorFlowDialects(registry);
       registry.insert<TFL::TensorFlowLiteDialect>();
+      registry.insert<arith::ArithmeticDialect>();
       registry.insert<StandardOpsDialect>();
     });
 }  // namespace mlir

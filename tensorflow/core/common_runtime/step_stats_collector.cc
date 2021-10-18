@@ -35,9 +35,9 @@ const int kMaxAllocReportNodes = 100;
 const float kMaxAllocReportFraction = 0.99;
 
 struct AllocStats {
-  std::map<int64, std::vector<string>> nodes_by_size;
-  int64 total_bytes = 0;
-  int64 total_nodes = 0;
+  std::map<int64_t, std::vector<string>> nodes_by_size;
+  int64_t total_bytes = 0;
+  int64_t total_nodes = 0;
 };
 
 bool IsRecv(const NodeDef* node) {

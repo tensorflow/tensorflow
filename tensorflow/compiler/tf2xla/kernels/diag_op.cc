@@ -32,7 +32,7 @@ namespace {
 
 // Create a diagonal / batch diagonal matrix with 'input' on the diagonal.
 xla::XlaOp CreateDiagonal(xla::XlaOp input, int64_t last_dim_size,
-                          absl::Span<const int64> other_dims) {
+                          absl::Span<const int64_t> other_dims) {
   xla::XlaBuilder* builder = input.builder();
   // Create two matrices that have the following forms, and compare them:
   //
@@ -60,12 +60,12 @@ xla::XlaOp CreateDiagonal(xla::XlaOp input, int64_t last_dim_size,
   // select(  [f, t, f]  ,  [4, 4, 4]  ,  [0, 0, 0]  ) =  [0, 4, 0]
   //          [f, f, t]]    [9, 9, 9]]    [0, 0, 0]]      [0, 0, 9]]
   //
-  std::vector<int64> out_dim_sizes(other_dims.begin(), other_dims.end());
+  std::vector<int64_t> out_dim_sizes(other_dims.begin(), other_dims.end());
   out_dim_sizes.push_back(last_dim_size);
   out_dim_sizes.push_back(last_dim_size);
 
   // Broadcast into the second to last dimension.
-  std::vector<int64> broadcast_dimensions(other_dims.size() + 1);
+  std::vector<int64_t> broadcast_dimensions(other_dims.size() + 1);
   absl::c_iota(broadcast_dimensions, 0);
   ++broadcast_dimensions.back();
   xla::XlaOp input_broadcast =
@@ -103,7 +103,7 @@ class DiagOp : public XlaOpKernel {
     xla::XlaOp diag = CreateDiagonal(input, size, /*other_dims=*/{});
 
     // Reshapes to the final shape.
-    std::vector<int64> new_dims(dims.size() * 2);
+    std::vector<int64_t> new_dims(dims.size() * 2);
     std::copy(dims.begin(), dims.end(), new_dims.begin());
     std::copy(dims.begin(), dims.end(), new_dims.begin() + dims.size());
     diag = xla::Reshape(diag, new_dims);

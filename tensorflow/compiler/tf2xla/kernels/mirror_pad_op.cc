@@ -42,8 +42,8 @@ class MirrorPadOp : public XlaOpKernel {
     xla::XlaOp accum = t;
     for (int64_t dimno = original_shape.rank() - 1; dimno >= 0; --dimno) {
       auto t_rev = xla::Rev(accum, {dimno});
-      int64_t lhs_padding = pad_literal.Get<int64>({dimno, 0});
-      int64_t rhs_padding = pad_literal.Get<int64>({dimno, 1});
+      int64_t lhs_padding = pad_literal.Get<int64_t>({dimno, 0});
+      int64_t rhs_padding = pad_literal.Get<int64_t>({dimno, 1});
       int64_t dim_size = original_shape.dimensions(dimno);
 
       // Padding amounts on each side must be no more than the size of the
@@ -128,8 +128,8 @@ class MirrorPadGradOp : public XlaOpKernel {
     int64_t excluded_edges = mode == MirrorPadMode::REFLECT ? 1 : 0;
     xla::XlaOp grad = t;
     for (int64_t dimno = original_shape.rank() - 1; dimno >= 0; --dimno) {
-      int64_t lhs_padding = pad_literal.Get<int64>({dimno, 0});
-      int64_t rhs_padding = pad_literal.Get<int64>({dimno, 1});
+      int64_t lhs_padding = pad_literal.Get<int64_t>({dimno, 0});
+      int64_t rhs_padding = pad_literal.Get<int64_t>({dimno, 1});
       int64_t dim_size = original_shape.dimensions(dimno);
       int64_t result_dim_size = dim_size - lhs_padding - rhs_padding;
 

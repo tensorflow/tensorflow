@@ -1380,7 +1380,7 @@ XlaOp NextAfter(XlaOp from, XlaOp to) {
     result_for_nan = BitcastConvertType(result_for_nan, int_type);
 
     // The sign bit is the MSB.
-    const int64_t sign_mask = int64{1} << (bitwidth - 1);
+    const int64_t sign_mask = int64_t{1} << (bitwidth - 1);
     // Discard the sign bit to make the result non-negative.
     auto from_abs = And(from_as_int, ScalarLike(from_as_int, ~sign_mask));
     auto to_abs = And(to_as_int, ScalarLike(to_as_int, ~sign_mask));

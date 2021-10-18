@@ -250,7 +250,7 @@ bool TensorResponse::ParseFast(Source* source) {
       case RecvTensorResponse::kSendStartMicrosFieldNumber: {
         protobuf_uint64 v;
         if ((wt != WIRETYPE_VARINT) || !input.ReadVarint64(&v)) return false;
-        meta_.set_send_start_micros(static_cast<int64>(v));
+        meta_.set_send_start_micros(static_cast<int64_t>(v));
         break;
       }
       case RecvTensorResponse::kTransportOptionsFieldNumber: {

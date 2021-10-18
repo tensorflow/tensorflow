@@ -175,6 +175,10 @@ class FusedMatMulOp : public OpKernel {
     const Tensor& b = ctx->input(1);
 
     // Check that the dimensions of the two matrices are valid.
+    OP_REQUIRES(ctx, a.dims() == b.dims(),
+                errors::InvalidArgument("In[0] and In[1] has different ndims: ",
+                                        a.shape().DebugString(), " vs. ",
+                                        b.shape().DebugString()));
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsMatrix(a.shape()),
         errors::InvalidArgument("In[0] is not a matrix. Instead it has shape ",

@@ -25,10 +25,6 @@ To more easily debug failures use (or override) the --save_graphdefs flag to
 place text proto graphdefs into the generated zip files.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import datetime
 import os
@@ -218,6 +214,8 @@ class Options(object):
     self.run_with_flex = False
     # Whether to generate test cases for edgetpu.
     self.make_edgetpu_tests = False
+    # Whether to generate test cases for TF PTQ.
+    self.make_tf_ptq_tests = False
     # The function to convert a TensorFLow model to TFLite model.
     # See the document for `toco_convert` function for its required signature.
     self.tflite_convert_function = None

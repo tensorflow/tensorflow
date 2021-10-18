@@ -425,8 +425,8 @@ TEST_F(SingleMachineTest, PersistentMemory) {
   keys_node->set_name("table_keys");
   SetNodeAttr("dtype", key_dtype, keys_node);
   Tensor keys(key_dtype, TensorShape{2});
-  keys.vec<int64>()(0) = 123;
-  keys.vec<int64>()(1) = 321;
+  keys.vec<int64_t>()(0) = 123;
+  keys.vec<int64_t>()(1) = 321;
   SetNodeAttr("value", keys, keys_node);
 
   NodeDef* values_node = item.graph.add_node();
@@ -434,8 +434,8 @@ TEST_F(SingleMachineTest, PersistentMemory) {
   values_node->set_name("table_values");
   SetNodeAttr("dtype", data_dtype, values_node);
   Tensor values(data_dtype, TensorShape{2});
-  values.vec<int64>()(0) = 789;
-  values.vec<int64>()(1) = 987;
+  values.vec<int64_t>()(0) = 789;
+  values.vec<int64_t>()(1) = 987;
   SetNodeAttr("value", values, values_node);
 
   // InitializeTable node
@@ -455,7 +455,7 @@ TEST_F(SingleMachineTest, PersistentMemory) {
   query_node->set_name("query");
   SetNodeAttr("dtype", key_dtype, query_node);
   Tensor query(key_dtype, TensorShape({}));
-  query.flat<int64>()(0) = 0;
+  query.flat<int64_t>()(0) = 0;
   SetNodeAttr("value", query, query_node);
 
   // Default return value of hashtable lookup
@@ -464,7 +464,7 @@ TEST_F(SingleMachineTest, PersistentMemory) {
   default_value_node->set_name("default_table_value");
   SetNodeAttr("dtype", data_dtype, default_value_node);
   Tensor dflt(data_dtype, TensorShape({}));
-  dflt.flat<int64>()(0) = 456;
+  dflt.flat<int64_t>()(0) = 456;
   SetNodeAttr("value", dflt, default_value_node);
 
   // HashTable lookup node
@@ -495,7 +495,7 @@ TEST_F(SingleMachineTest, PersistentMemory) {
     } else if (node.name() == "initialize_table") {
       found_table_init = true;
       // Persistent memory should hold 2 keys and 2 values.
-      EXPECT_LE(4 * sizeof(int64), node.persistent_memory_size());
+      EXPECT_LE(4 * sizeof(int64_t), node.persistent_memory_size());
     }
   }
   EXPECT_TRUE(found_table_init);

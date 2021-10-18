@@ -26,7 +26,7 @@ namespace tensorflow {
 namespace gtl {
 namespace {
 
-typedef FlatSet<int64> NumSet;
+typedef FlatSet<int64_t> NumSet;
 
 // Returns true iff set has an entry for k.
 // Also verifies that find and count give consistent results.
@@ -43,7 +43,7 @@ bool Has(const NumSet& set, int64_t k) {
 }
 
 // Return contents of set as a sorted list of numbers.
-typedef std::vector<int64> NumSetContents;
+typedef std::vector<int64_t> NumSetContents;
 NumSetContents Contents(const NumSet& set) {
   NumSetContents result(set.begin(), set.end());
   std::sort(result.begin(), result.end());
@@ -382,7 +382,7 @@ TEST(FlatSet, Prefetch) {
 
 // Non-assignable values should work.
 struct NA {
-  int64 value;
+  int64_t value;
   NA() : value(-1) {}
   explicit NA(int64_t v) : value(v) {}
   NA(const NA& x) : value(x.value) {}
@@ -511,8 +511,8 @@ TEST(FlatSet, ConstructDestruct) {
 // Type to use to ensure that custom equality operator is used
 // that ignores extra value.
 struct CustomCmpKey {
-  int64 a;
-  int64 b;
+  int64_t a;
+  int64_t b;
   CustomCmpKey(int64_t v1, int64_t v2) : a(v1), b(v2) {}
   bool operator==(const CustomCmpKey& x) const { return a == x.a && b == x.b; }
 };

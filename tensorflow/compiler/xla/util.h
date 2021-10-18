@@ -56,12 +56,12 @@ namespace xla {
 // creation backtraces.
 Status WithLogBacktrace(const Status& status);
 
-// Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
+// Ranks greater than 8 are very rare, so use InlinedVector<int64_t, 8> to store
 // the bounds and indices. And for the rare cases of ranks greater than 8,
 // the InlinedVector will just behave like an std::vector<> and allocate the
 // memory to store its values.
 static constexpr int kInlineRank = 8;
-using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
+using DimensionVector = absl::InlinedVector<int64_t, kInlineRank>;
 
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
@@ -172,29 +172,29 @@ absl::Span<T> AsMutableSlice(std::vector<T>* v) {
   return absl::Span<T>(v->data(), v->size());
 }
 
-// xla::int64 is not the same type as tensorflow::protobuf_int64 in open-source.
-// Wrapper function that gives an int64 array slice view of a repeated int64
+// int64_t is not the same type as tensorflow::protobuf_int64 in open-source.
+// Wrapper function that gives an int64_t array slice view of a repeated int64
 // protobuf field.
-static inline absl::Span<const int64> AsInt64Slice(
+static inline absl::Span<const int64_t> AsInt64Slice(
     const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>& v) {
   absl::Span<const tensorflow::protobuf_int64> slice(v);
-  return absl::Span<const int64>(reinterpret_cast<const int64*>(slice.data()),
-                                 slice.size());
+  return absl::Span<const int64_t>(
+      reinterpret_cast<const int64_t*>(slice.data()), slice.size());
 }
 
 // TODO(b/29771030): This nop overload was added to simplify the migration of
 // Shape from a proto to a C++ class. Remove after class has been migrated.
-static inline absl::Span<const int64> AsInt64Slice(
-    absl::Span<const int64> slice) {
+static inline absl::Span<const int64_t> AsInt64Slice(
+    absl::Span<const int64_t> slice) {
   return slice;
 }
 
 // As above, but for uint64 types.
-static inline absl::Span<const uint64> AsUInt64Slice(
+static inline absl::Span<const uint64_t> AsUInt64Slice(
     const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>& v) {
   absl::Span<const tensorflow::protobuf_uint64> slice(v);
-  return absl::Span<const uint64>(reinterpret_cast<const uint64*>(slice.data()),
-                                  slice.size());
+  return absl::Span<const uint64_t>(
+      reinterpret_cast<const uint64_t*>(slice.data()), slice.size());
 }
 
 // Compares two containers for equality. Returns true iff the two containers
@@ -330,7 +330,7 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 string Reindent(absl::string_view original, absl::string_view indentation);
 
 template <typename Container>
-int64 PositionInContainer(const Container& container, int64_t value) {
+int64_t PositionInContainer(const Container& container, int64_t value) {
   return std::distance(container.begin(), absl::c_find(container, value));
 }
 
@@ -392,7 +392,7 @@ PaddingConfig MakeNoPaddingConfig(int64_t rank);
 // Returns a PaddingConfig object where 'padding' contains
 // (low edge padding, high edge padding) pairs for each dimension.
 PaddingConfig MakeEdgePaddingConfig(
-    absl::Span<const std::pair<int64, int64>> padding);
+    absl::Span<const std::pair<int64_t, int64_t>> padding);
 
 // Returns true if the padding configuration has at least one dimension with
 // non-zero interior padding.
@@ -537,7 +537,7 @@ std::unique_ptr<Derived> unique_ptr_static_cast(std::unique_ptr<Base> ptr) {
   return std::unique_ptr<Derived>(static_cast<Derived*>(ptr.release()));
 }
 
-int64 Product(absl::Span<const int64> xs);
+int64_t Product(absl::Span<const int64_t> xs);
 
 // Returns the start indices of consecutive non-overlapping subsequences of `a`
 // and `b` with the same product, i.e. `(i, j)` so
@@ -552,8 +552,8 @@ int64 Product(absl::Span<const int64> xs);
 // b.size}}, otherwise if the given shapes have non-zero size, returns the
 // bounds of the shortest possible such subsequences; else, returns `{(0, 0),
 // (a.size, b.size)}`.
-absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
-    absl::Span<const int64> a, absl::Span<const int64> b);
+absl::InlinedVector<std::pair<int64_t, int64_t>, 8> CommonFactors(
+    absl::Span<const int64_t> a, absl::Span<const int64_t> b);
 
 struct ConvertedDimensionNumbers {
   DimensionVector transformed_from_dimensions;
@@ -564,14 +564,14 @@ struct ConvertedDimensionNumbers {
 // Convert and unsorted list of dimensions from one shapes dimension sizes to
 // another shapes dimensions sizes.
 ConvertedDimensionNumbers ConvertDimensionNumbers(
-    absl::Span<const int64> from_dimensions, absl::Span<const int64> from_sizes,
-    absl::Span<const int64> to_sizes);
+    absl::Span<const int64_t> from_dimensions,
+    absl::Span<const int64_t> from_sizes, absl::Span<const int64_t> to_sizes);
 
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
 
 template <typename C, typename Value>
-int64 FindIndex(const C& c, Value&& value) {
+int64_t FindIndex(const C& c, Value&& value) {
   auto it = absl::c_find(c, std::forward<Value>(value));
   return std::distance(c.begin(), it);
 }

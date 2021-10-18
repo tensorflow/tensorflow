@@ -52,7 +52,7 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
   void RefreshStepIdSequenceAsync(int64_t graph_key,
                                   const StatusCallback& done) override;
 
-  int64 NextStepId(int64_t graph_key) override;
+  int64_t NextStepId(int64_t graph_key) override;
 
   void RetireStepId(int64_t graph_key, int64_t step_id) override;
 
@@ -73,12 +73,12 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
     explicit GraphKeySequence(int64_t k)
         : graph_key_(k), next_step_id_(CollectiveExecutor::kInvalidId) {}
 
-    const int64 graph_key_;
-    int64 next_step_id_;
+    const int64_t graph_key_;
+    int64_t next_step_id_;
   };
 
   mutex sequence_mu_;
-  gtl::FlatMap<int64, GraphKeySequence*> sequence_table_
+  gtl::FlatMap<int64_t, GraphKeySequence*> sequence_table_
       TF_GUARDED_BY(sequence_mu_);
 };
 

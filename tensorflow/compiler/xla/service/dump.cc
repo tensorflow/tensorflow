@@ -163,7 +163,7 @@ struct CanonicalDebugOptions {
   bool dump_fusion_visualization;
   bool dump_snapshots;
   bool dump_include_timestamp;
-  int64 dump_max_hlo_modules;
+  int64_t dump_max_hlo_modules;
   bool dump_module_metadata;
   bool dump_compress_protos;
   bool dump_hlo_metadata;
@@ -225,7 +225,7 @@ absl::optional<std::string> DumpToFileInDirImpl(
                  << ": " << status;
     }
     static const LazyRE2 module_id_regex = {R"(.*module_(\d+)\..*)"};
-    absl::flat_hash_set<int64> dumped_module_ids;
+    absl::flat_hash_set<int64_t> dumped_module_ids;
     for (const string& match : matches) {
       int64_t dumped_module_id;
       if (RE2::FullMatch(match, *module_id_regex, &dumped_module_id)) {
@@ -370,7 +370,7 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
 
 void DumpHloModuleMetadata(const HloModuleMetadataProto& metadata,
                            const CanonicalDebugOptions& opts,
-                           absl::flat_hash_set<int64>* dumped_module_ids) {
+                           absl::flat_hash_set<int64_t>* dumped_module_ids) {
   // Return if metadata for this module has already been dumped.
   if (!dumped_module_ids->insert(metadata.canonical_module_id()).second) {
     return;
@@ -396,7 +396,7 @@ static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
 static auto& module_id_to_step_number TF_GUARDED_BY(mu) =
-    *new absl::flat_hash_map<int64, int64>();
+    *new absl::flat_hash_map<int64_t, int64_t>();
 
 // Maps a module's unique ID to a timestamp indicating when we've first dumped
 // this module during the compilation pipeline and when we first started
@@ -407,9 +407,9 @@ static auto& module_id_to_step_number TF_GUARDED_BY(mu) =
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
 static auto& module_id_to_timestamp TF_GUARDED_BY(mu) =
-    *new absl::flat_hash_map<int64, uint64>();
+    *new absl::flat_hash_map<int64_t, uint64_t>();
 
-int64 StepNumberForModule(const HloModule& module) {
+int64_t StepNumberForModule(const HloModule& module) {
   tensorflow::mutex_lock lock(mu);
   return module_id_to_step_number[module.unique_id()]++;
 }
@@ -594,7 +594,7 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
   uint64 timestamp;
   {
     static auto& module_id_to_execution_count TF_GUARDED_BY(mu) =
-        *new absl::flat_hash_map<int64, int64>();
+        *new absl::flat_hash_map<int64_t, int64_t>();
     tensorflow::mutex_lock lock(mu);
     execution_count = module_id_to_execution_count[module.unique_id()]++;
     auto timestamp_emplace = module_id_to_timestamp.try_emplace(
@@ -631,7 +631,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
   int64_t execution_count;
   {
     static auto& module_name_to_execution_count TF_GUARDED_BY(mu) =
-        *new absl::flat_hash_map<string, int64>();
+        *new absl::flat_hash_map<string, int64_t>();
     tensorflow::mutex_lock lock(mu);
     execution_count = module_name_to_execution_count[name]++;
   }
@@ -650,7 +650,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
 }
 
 void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {
-  absl::flat_hash_set<int64> dumped_module_ids;
+  absl::flat_hash_set<int64_t> dumped_module_ids;
   for (const HloModule* module : modules) {
     CanonicalDebugOptions opts(module->config().debug_options());
     if (!opts.dump_module_metadata) {

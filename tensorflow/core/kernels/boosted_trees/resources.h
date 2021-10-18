@@ -38,11 +38,11 @@ class StampedResource : public ResourceBase {
 
   bool is_stamp_valid(int64_t stamp) const { return stamp_ == stamp; }
 
-  int64 stamp() const { return stamp_; }
+  int64_t stamp() const { return stamp_; }
   void set_stamp(int64_t stamp) { stamp_ = stamp; }
 
  private:
-  int64 stamp_;
+  int64_t stamp_;
 };
 
 // Keep a tree ensemble in memory for efficient evaluation and mutation.
@@ -87,7 +87,7 @@ class BoostedTreesEnsembleResource : public StampedResource {
   void GetLastLayerNodesRange(int32* node_range_start,
                               int32* node_range_end) const;
 
-  int64 GetNumNodes(const int32_t tree_id);
+  int64_t GetNumNodes(const int32_t tree_id);
 
   void UpdateGrowingMetadata() const;
 

@@ -175,7 +175,7 @@ class DirectSession : public Session {
 
     CallableOptions callable_options;
 
-    int64 collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
+    int64_t collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
   };
 
   // A FunctionInfo object is created for every unique set of feeds/fetches.
@@ -235,7 +235,7 @@ class DirectSession : public Session {
     string handle;
     std::unique_ptr<Graph> graph;
     const DebugOptions& debug_options;
-    int64 collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
+    int64_t collective_graph_key = BuildGraphOptions::kNoCollectiveGraphKey;
   };
 
   // Retrieves an already existing set of executors to run 'inputs' and
@@ -261,7 +261,7 @@ class DirectSession : public Session {
       std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
       std::unique_ptr<FunctionLibraryDefinition>* flib_def,
       RunStateArgs* run_state_args, DataTypeVector* input_types,
-      DataTypeVector* output_types, int64* collective_graph_key);
+      DataTypeVector* output_types, int64_t* collective_graph_key);
 
   ::tensorflow::Status RunInternal(
       int64_t step_id, const RunOptions& run_options,
@@ -374,8 +374,9 @@ class DirectSession : public Session {
     ~Callable();
   };
   mutex callables_lock_;
-  int64 next_callable_handle_ TF_GUARDED_BY(callables_lock_) = 0;
-  std::unordered_map<int64, Callable> callables_ TF_GUARDED_BY(callables_lock_);
+  int64_t next_callable_handle_ TF_GUARDED_BY(callables_lock_) = 0;
+  std::unordered_map<int64_t, Callable> callables_
+      TF_GUARDED_BY(callables_lock_);
 
   // Holds mappings from handle to partial run state.
   std::unordered_map<string, std::unique_ptr<PartialRunState>> partial_runs_
@@ -409,21 +410,21 @@ class DirectSession : public Session {
   bool closed_ TF_GUARDED_BY(closed_lock_) = false;
 
   // For generating unique names for this session instance.
-  std::atomic<int64> edge_name_counter_ = {0};
-  std::atomic<int64> handle_name_counter_ = {0};
+  std::atomic<int64_t> edge_name_counter_ = {0};
+  std::atomic<int64_t> handle_name_counter_ = {0};
 
   // For generating step ids that are unique among all sessions.
   static std::atomic_int_fast64_t step_id_counter_;
 
   // Global timeout for all blocking operations in this session.
-  const int64 operation_timeout_in_ms_ = 0;
+  const int64_t operation_timeout_in_ms_ = 0;
 
   // Manages all the cost models for the graphs executed in this session.
   CostModelManager cost_model_manager_;
 
   // For testing collective graph key generation.
   mutex collective_graph_key_lock_;
-  int64 collective_graph_key_ TF_GUARDED_BY(collective_graph_key_lock_) = -1;
+  int64_t collective_graph_key_ TF_GUARDED_BY(collective_graph_key_lock_) = -1;
 
   // Run in caller's thread if RunOptions.inter_op_thread_pool is negative or
   // all of following conditions are met:

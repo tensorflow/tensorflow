@@ -630,15 +630,22 @@ Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
 StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElement(
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements) {
-  const Shape& return_shape = computation.root_instruction()->shape();
-  llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
-      llvm_ir::ShapeToIrType(return_shape, module_), "return_buffer", &b_);
   std::vector<llvm::Value*> parameter_buffers;
   for (llvm::Value* parameter_element : parameter_elements) {
     parameter_buffers.push_back(llvm_ir::EmitAllocaAtFunctionEntry(
         parameter_element->getType(), "parameter_buffer", &b_));
     Store(parameter_element, parameter_buffers.back());
   }
+
+  return ComputeNestedElementFromAddrs(computation, parameter_buffers);
+}
+
+StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElementFromAddrs(
+    const HloComputation& computation,
+    absl::Span<llvm::Value* const> parameter_elements_addrs) {
+  const Shape& return_shape = computation.root_instruction()->shape();
+  llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
+      llvm_ir::ShapeToIrType(return_shape, module_), "return_buffer", &b_);
 
   std::vector<llvm::Value*> allocas_for_returned_scalars;
   if (!return_shape.IsTuple()) {
@@ -651,8 +658,8 @@ StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElement(
     EmitTuple(tuple_array, allocas_for_returned_scalars, &b_);
   }
 
-  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(computation, parameter_buffers,
-                                                 return_buffer));
+  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
+      computation, parameter_elements_addrs, return_buffer));
 
   std::vector<llvm::Value*> returned_scalars;
   returned_scalars.reserve(allocas_for_returned_scalars.size());

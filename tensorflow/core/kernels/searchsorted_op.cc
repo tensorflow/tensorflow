@@ -177,11 +177,11 @@ class LowerBoundOp : public OpKernel {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#define REGISTER_KERNELS(type)                                    \
-  REGISTER_KERNEL_BUILDER(Name("UpperBound")                      \
-                              .Device(DEVICE_CPU)                 \
-                              .TypeConstraint<type>("T")          \
-                              .TypeConstraint<int64>("out_type"), \
+#define REGISTER_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("UpperBound")                        \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64_t>("out_type"), \
                           UpperBoundOp<CPUDevice, type, int64>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
@@ -199,11 +199,11 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#define REGISTER_KERNELS(type)                                    \
-  REGISTER_KERNEL_BUILDER(Name("UpperBound")                      \
-                              .Device(DEVICE_GPU)                 \
-                              .TypeConstraint<type>("T")          \
-                              .TypeConstraint<int64>("out_type"), \
+#define REGISTER_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("UpperBound")                        \
+                              .Device(DEVICE_GPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64_t>("out_type"), \
                           UpperBoundOp<GPUDevice, type, int64>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
@@ -221,11 +221,11 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#define REGISTER_KERNELS(type)                                    \
-  REGISTER_KERNEL_BUILDER(Name("LowerBound")                      \
-                              .Device(DEVICE_CPU)                 \
-                              .TypeConstraint<type>("T")          \
-                              .TypeConstraint<int64>("out_type"), \
+#define REGISTER_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("LowerBound")                        \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64_t>("out_type"), \
                           LowerBoundOp<CPUDevice, type, int64>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
@@ -243,11 +243,11 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#define REGISTER_KERNELS(type)                                    \
-  REGISTER_KERNEL_BUILDER(Name("LowerBound")                      \
-                              .Device(DEVICE_GPU)                 \
-                              .TypeConstraint<type>("T")          \
-                              .TypeConstraint<int64>("out_type"), \
+#define REGISTER_KERNELS(type)                                      \
+  REGISTER_KERNEL_BUILDER(Name("LowerBound")                        \
+                              .Device(DEVICE_GPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .TypeConstraint<int64_t>("out_type"), \
                           LowerBoundOp<GPUDevice, type, int64>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);

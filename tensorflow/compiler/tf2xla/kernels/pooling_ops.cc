@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/pooling.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -80,7 +81,7 @@ class PoolingOp : public XlaOpKernel {
   int num_dims() const { return num_spatial_dims_ + 2; }
 
  protected:
-  StatusOr<std::vector<int64>> GetKernelSize(XlaOpKernelContext* ctx) {
+  StatusOr<std::vector<int64_t>> GetKernelSize(XlaOpKernelContext* ctx) {
     if (ctx->num_inputs() == 1) {
       return ksize_;
     }
@@ -96,7 +97,7 @@ class PoolingOp : public XlaOpKernel {
           "specify ",
           num_dims(), " dimensions");
     }
-    std::vector<int64> ksize;
+    std::vector<int64_t> ksize;
     auto status = ctx->ConstantInputAsIntVector(1, &ksize);
     if (!status.ok()) {
       return status;
@@ -104,7 +105,7 @@ class PoolingOp : public XlaOpKernel {
     return ksize;
   }
 
-  StatusOr<std::vector<int64>> GetStride(XlaOpKernelContext* ctx) {
+  StatusOr<std::vector<int64_t>> GetStride(XlaOpKernelContext* ctx) {
     if (ctx->num_inputs() == 1) {
       return stride_;
     }
@@ -120,7 +121,7 @@ class PoolingOp : public XlaOpKernel {
           "specify ",
           num_dims(), " dimensions");
     }
-    std::vector<int64> stride;
+    std::vector<int64_t> stride;
     auto status = ctx->ConstantInputAsIntVector(2, &stride);
     if (!status.ok()) {
       return status;
@@ -130,8 +131,8 @@ class PoolingOp : public XlaOpKernel {
 
  protected:
   const int num_spatial_dims_;
-  std::vector<int64> ksize_;
-  std::vector<int64> stride_;
+  std::vector<int64_t> ksize_;
+  std::vector<int64_t> stride_;
   xla::Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
   DataType reduction_type_;
@@ -145,7 +146,7 @@ xla::TensorFormat XlaTensorFormat(tensorflow::TensorFormat data_format,
   int num_dims = num_spatial_dims + 2;
   int batch_dimension = GetTensorBatchDimIndex(num_dims, data_format);
   int feature_dimension = GetTensorFeatureDimIndex(num_dims, data_format);
-  absl::InlinedVector<int64, 4> spatial_dimensions(num_spatial_dims);
+  absl::InlinedVector<int64_t, 4> spatial_dimensions(num_spatial_dims);
   for (int spatial_dim = 0; spatial_dim < num_spatial_dims; ++spatial_dim) {
     spatial_dimensions[spatial_dim] =
         GetTensorSpatialDimIndex(num_dims, data_format, spatial_dim);
@@ -174,11 +175,11 @@ class MaxPoolOp : public PoolingOp {
   void Compile(XlaOpKernelContext* ctx) override {
     auto ksize_or_error = GetKernelSize(ctx);
     OP_REQUIRES_OK(ctx, ksize_or_error.status());
-    std::vector<int64> ksize = ksize_or_error.ValueOrDie();
+    std::vector<int64_t> ksize = ksize_or_error.ValueOrDie();
 
     auto stride_or_error = GetStride(ctx);
     OP_REQUIRES_OK(ctx, stride_or_error.status());
-    std::vector<int64> stride = stride_or_error.ValueOrDie();
+    std::vector<int64_t> stride = stride_or_error.ValueOrDie();
 
     xla::XlaOp input = ctx->Input(0);
 
@@ -188,7 +189,7 @@ class MaxPoolOp : public PoolingOp {
     // For VECT_C max-pool ops, transpose to plain NCHW, do the max-pool, and
     // transpose back.  This isn't necessarily the most efficient algorithm, but
     // it's ok for starters.
-    absl::optional<int64> vect_width;
+    absl::optional<int64_t> vect_width;
     if (data_format_ == FORMAT_NCHW_VECT_C) {
       vect_width = input_shape->dimensions().back();
       input = xla::Collapse(xla::Transpose(input, {0, 1, 4, 2, 3}), {1, 2});
@@ -263,11 +264,11 @@ class AvgPoolOp : public PoolingOp {
   void Compile(XlaOpKernelContext* ctx) override {
     auto ksize_or_error = GetKernelSize(ctx);
     OP_REQUIRES_OK(ctx, ksize_or_error.status());
-    std::vector<int64> ksize = ksize_or_error.ValueOrDie();
+    std::vector<int64_t> ksize = ksize_or_error.ValueOrDie();
 
     auto stride_or_error = GetStride(ctx);
     OP_REQUIRES_OK(ctx, stride_or_error.status());
-    std::vector<int64> stride = stride_or_error.ValueOrDie();
+    std::vector<int64_t> stride = stride_or_error.ValueOrDie();
 
     const TensorShape input_shape = ctx->InputShape(0);
     OP_REQUIRES(ctx, input_shape.dims() == num_dims(),
@@ -403,8 +404,8 @@ class MaxPoolGradOp : public XlaOpKernel {
 
  protected:
   const int num_spatial_dims_;
-  std::vector<int64> ksize_;
-  std::vector<int64> stride_;
+  std::vector<int64_t> ksize_;
+  std::vector<int64_t> stride_;
   Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
 };
@@ -460,7 +461,9 @@ class AvgPoolGradOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape gradients_shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &gradients_shape));
+    OP_REQUIRES_OK(
+        ctx, ctx->ConstantInputAsShape(0, &gradients_shape,
+                                       xla::ValueInferenceMode::kUpperBound));
 
     const TensorShape out_backprop_shape = ctx->InputShape(1);
 
@@ -475,7 +478,7 @@ class AvgPoolGradOp : public XlaOpKernel {
                                         "-dimensional"));
 
     auto out_backprop = ctx->Input(1);
-    std::vector<int64> stride_int64s(stride_.begin(), stride_.end());
+    std::vector<int64_t> stride_int64s(stride_.begin(), stride_.end());
     xla::Padding xla_padding =
         (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
     xla::PrimitiveType xla_reduction_type;
@@ -503,7 +506,7 @@ class AvgPoolGradOp : public XlaOpKernel {
 
  protected:
   const int num_spatial_dims_;
-  std::vector<int64> ksize_;
+  std::vector<int64_t> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
@@ -680,8 +683,8 @@ class MaxPoolGradGradOp : public XlaOpKernel {
 
  protected:
   const int num_spatial_dims_;
-  std::vector<int64> ksize_;
-  std::vector<int64> stride_;
+  std::vector<int64_t> ksize_;
+  std::vector<int64_t> stride_;
   Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
 };

@@ -110,10 +110,10 @@ class CounterCell {
   void IncrementBy(int64_t step);
 
   // Retrieves the current value.
-  int64 value() const;
+  int64_t value() const;
 
  private:
-  std::atomic<int64> value_;
+  std::atomic<int64_t> value_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CounterCell);
 };
@@ -155,7 +155,7 @@ class Counter {
 
  private:
   explicit Counter(
-      const MetricDef<MetricKind::kCumulative, int64, NumLabels>& metric_def)
+      const MetricDef<MetricKind::kCumulative, int64_t, NumLabels>& metric_def)
       : metric_def_(metric_def),
         registration_handle_(CollectionRegistry::Default()->Register(
             &metric_def_, [&](MetricCollectorGetter getter) {
@@ -180,7 +180,7 @@ class Counter {
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
-  const MetricDef<MetricKind::kCumulative, int64, NumLabels> metric_def_;
+  const MetricDef<MetricKind::kCumulative, int64_t, NumLabels> metric_def_;
 
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
@@ -199,14 +199,14 @@ inline void CounterCell::IncrementBy(const int64_t step) {
   value_ += step;
 }
 
-inline int64 CounterCell::value() const { return value_; }
+inline int64_t CounterCell::value() const { return value_; }
 
 template <int NumLabels>
 template <typename... MetricDefArgs>
 Counter<NumLabels>* Counter<NumLabels>::New(
     MetricDefArgs&&... metric_def_args) {
   return new Counter<NumLabels>(
-      MetricDef<MetricKind::kCumulative, int64, NumLabels>(
+      MetricDef<MetricKind::kCumulative, int64_t, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));
 }
 

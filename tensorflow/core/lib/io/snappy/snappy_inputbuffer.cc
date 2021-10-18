@@ -56,7 +56,7 @@ Status SnappyInputBuffer::ReadNBytes(int64_t bytes_to_read, tstring* result) {
   return Status::OK();
 }
 
-int64 SnappyInputBuffer::Tell() const { return bytes_read_; }
+int64_t SnappyInputBuffer::Tell() const { return bytes_read_; }
 
 Status SnappyInputBuffer::Reset() {
   file_pos_ = 0;

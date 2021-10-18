@@ -24,25 +24,25 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 
 #define MASK_WORDS 2
-#define MASK_BYTES (MASK_WORDS * sizeof(int64))
+#define MASK_BYTES (MASK_WORDS * sizeof(int64_t))
 
 namespace tensorflow {
 namespace {
 
-int64* NewMask(int64_t word) {
-  int64* m = new int64[MASK_WORDS];
+int64_t* NewMask(int64_t word) {
+  int64_t* m = new int64_t[MASK_WORDS];
   for (int i = 0; i < MASK_WORDS; ++i) {
     m[i] = word;
   }
   return m;
 }
 
-int64* before_mask = NewMask(0xabababababababab);
-int64* after_mask = NewMask(0xcdcdcdcdcdcdcdcd);
+int64_t* before_mask = NewMask(0xabababababababab);
+int64_t* after_mask = NewMask(0xcdcdcdcdcdcdcdcd);
 
-bool CheckMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
-  se::DeviceMemory<int64> gpu_ptr{se::DeviceMemoryBase{ptr, MASK_BYTES}};
-  int64 tmp[MASK_WORDS];
+bool CheckMask(se::StreamExecutor* exec, void* ptr, int64_t* mask) {
+  se::DeviceMemory<int64_t> gpu_ptr{se::DeviceMemoryBase{ptr, MASK_BYTES}};
+  int64_t tmp[MASK_WORDS];
 
   Status result = exec->SynchronousMemcpyD2H(gpu_ptr, MASK_BYTES, tmp);
   if (!result.ok()) {
@@ -62,8 +62,8 @@ bool CheckMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
   return ok;
 }
 
-void InitMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
-  se::DeviceMemory<int64> gpu_ptr{se::DeviceMemoryBase{ptr, MASK_BYTES}};
+void InitMask(se::StreamExecutor* exec, void* ptr, int64_t* mask) {
+  se::DeviceMemory<int64_t> gpu_ptr{se::DeviceMemoryBase{ptr, MASK_BYTES}};
   Status result = exec->SynchronousMemcpyH2D(mask, MASK_BYTES, &gpu_ptr);
   if (!result.ok()) {
     LOG(FATAL) << "Could not copy debug mask, " << result;
@@ -128,7 +128,7 @@ size_t GPUDebugAllocator::AllocatedSize(const void* ptr) const {
                                         MASK_BYTES);
 }
 
-int64 GPUDebugAllocator::AllocationId(const void* ptr) const {
+int64_t GPUDebugAllocator::AllocationId(const void* ptr) const {
   return base_allocator_->AllocationId(static_cast<const char*>(ptr) -
                                        MASK_BYTES);
 }

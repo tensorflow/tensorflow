@@ -33,7 +33,7 @@ class FuncOpConverter : public OpConversionPattern<FuncOp> {
   using OpConversionPattern<FuncOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      FuncOp func, ArrayRef<Value> operands,
+      FuncOp func, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     // Convert function arguments using the provided TypeConverter.
     auto func_type = func.getType();
@@ -73,7 +73,7 @@ struct AllocOpConverter : public OpConversionPattern<memref::AllocOp> {
   using OpConversionPattern<memref::AllocOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      memref::AllocOp alloc, ArrayRef<Value> operands,
+      memref::AllocOp alloc, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(alloc);
     if (!ctx) return failure();
@@ -88,8 +88,8 @@ struct AllocOpConverter : public OpConversionPattern<memref::AllocOp> {
     auto reuse_output_index =
         alloc->getAttrOfType<IntegerAttr>(TFAllocOp::kReuseOutputAttrName);
     Value buffer = rewriter.replaceOpWithNewOp<TFAllocOp>(
-        alloc, alloc.getType(), *ctx, operands, reuse_input_candidates,
-        reuse_output_index);
+        alloc, alloc.getType(), *ctx, adaptor.getOperands(),
+        reuse_input_candidates, reuse_output_index);
     Location loc = buffer.getLoc();
     Value cond = rewriter.create<IsValidMemRefOp>(
         loc, rewriter.getIntegerType(1), buffer);
@@ -105,7 +105,7 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
   using OpConversionPattern<memref::DeallocOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      memref::DeallocOp dealloc, ArrayRef<Value> operands,
+      memref::DeallocOp dealloc, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(dealloc);
     if (!ctx) return failure();
@@ -115,9 +115,7 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
     if (!operand_memref_type.getAffineMaps().empty()) {
       return failure();
     }
-    memref::DeallocOp::Adaptor transformed(operands);
-    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx,
-                                             transformed.memref());
+    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx, adaptor.memref());
     return success();
   }
 };
@@ -129,14 +127,13 @@ struct AssertOpConverter : public OpConversionPattern<AssertOp> {
   using OpConversionPattern<AssertOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      AssertOp op, ArrayRef<Value> operands,
+      AssertOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
-    AssertOp::Adaptor transformed(operands, op->getAttrDictionary());
-    rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, transformed.arg(),
+    rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, adaptor.arg(),
                                             ErrorCode::INVALID_ARGUMENT,
-                                            transformed.msg().getValue());
+                                            adaptor.msg().getValue());
     return success();
   }
 };
@@ -146,7 +143,7 @@ struct JITExecuteOpConverter : public OpConversionPattern<JITExecuteOp> {
   using OpConversionPattern<JITExecuteOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      JITExecuteOp op, ArrayRef<Value> operands,
+      JITExecuteOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
@@ -163,7 +160,7 @@ struct JITCompileFromStrOpConverter
   using OpConversionPattern<JITCompileFromStrOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      JITCompileFromStrOp op, ArrayRef<Value> operands,
+      JITCompileFromStrOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();

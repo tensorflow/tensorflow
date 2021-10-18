@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -369,8 +372,8 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
                                               PRED, ModuleFromIRBuilder(b)));
 }
 
-// Internal helper that is called from emitted code to log an int64 value with a
-// tag.
+// Internal helper that is called from emitted code to log an int64_t value with
+// a tag.
 static void LogS64(const char* tag, int64_t value) {
   LOG(INFO) << tag << " (int64): " << value;
 }
@@ -379,9 +382,9 @@ void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
   llvm::FunctionType* log_function_type = llvm::FunctionType::get(
       b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
   b->CreateCall(log_function_type,
-                b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64>(&LogS64)),
+                b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64_t>(&LogS64)),
                                   log_function_type->getPointerTo()),
-                {b->getInt64(absl::bit_cast<int64>(tag)), value});
+                {b->getInt64(absl::bit_cast<int64_t>(tag)), value});
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {
@@ -498,7 +501,7 @@ llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
       builder->CreateLShr(rotand, mod(rotor)));
 }
 
-int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
+int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   unsigned pointer_size = data_layout.getPointerSize();
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
 }
@@ -652,32 +655,6 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   return function;
 }
 
-void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
-  auto options = config.debug_options().xla_backend_extra_options();
-  if (!options.empty()) {
-    std::vector<string> fake_argv_storage;
-    fake_argv_storage.push_back("");
-    for (const auto& it : options) {
-      // Skip options the XLA backend itself consumes.
-      if (!absl::StartsWith(it.first, "xla_")) {
-        if (it.second.empty()) {
-          fake_argv_storage.push_back(it.first);
-        } else {
-          fake_argv_storage.push_back(it.first + "=" + it.second);
-        }
-      }
-    }
-
-    VLOG(2) << "Passing argv to LLVM:";
-    std::vector<const char*> fake_argv;
-    for (const auto& s : fake_argv_storage) {
-      fake_argv.push_back(s.c_str());
-      VLOG(2) << s;
-    }
-    llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
-  }
-}
-
 std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,
                                                     llvm::Value* src0,
                                                     llvm::Value* src1) {
@@ -738,6 +715,48 @@ llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
       llvm::ConstantInt::get(state_value_old->getType(), delta));
   builder->CreateStore(state_value_new, state_ptr);
   return state_value_old;
+}
+
+llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilder<>* b) {
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  llvm::IRBuilder<>::InsertPointGuard guard(*b);
+  llvm::BasicBlock* early_return =
+      llvm::BasicBlock::Create(/*Context=*/module->getContext(),
+                               /*Name=*/"early_return",
+                               /*Parent=*/function);
+  b->SetInsertPoint(early_return);
+  b->CreateRetVoid();
+  return early_return;
+}
+
+void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilder<>* b,
+                     llvm::BasicBlock* return_block) {
+  if (!return_block) {
+    return_block = EmitReturnBlock(b);
+  }
+
+  llvm::BasicBlock* continued;
+
+  // Implicitly check whtether we are already at the end of unterminated block.
+  if (b->GetInsertBlock()->getTerminator() == nullptr) {
+    // If we are generating code into an incomplete basic block we can just
+    // create a new basic block to jump to after our conditional branch.
+    continued = llvm_ir::CreateBasicBlock(/*insert_before=*/nullptr,
+                                          /*name=*/"", b);
+  } else {
+    // If we are generating code into a basic block that already has code, we
+    // need to split that block so as to not disturb the existing code.
+    auto original = b->GetInsertBlock();
+    continued = original->splitBasicBlock(b->GetInsertPoint());
+    // Remove the auto-generated unconditional branch to replace with our
+    // conditional branch.
+    original->getTerminator()->eraseFromParent();
+    b->SetInsertPoint(original);
+  }
+
+  b->CreateCondBr(condition, continued, return_block);
+  b->SetInsertPoint(continued, continued->getFirstInsertionPt());
 }
 
 }  // namespace llvm_ir

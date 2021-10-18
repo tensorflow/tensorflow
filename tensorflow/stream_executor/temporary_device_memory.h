@@ -91,14 +91,14 @@ class TemporaryDeviceMemoryBase {
   // Note: construction DCHECKs that the memory is known-allocated in the
   // stream's temporary-allocation-manager.
   TemporaryDeviceMemoryBase(Stream* parent, DeviceMemoryBase device_memory,
-                            uint64 allocation_generation);
+                            uint64_t allocation_generation);
 
   // The device memory region that has allocated.
   DeviceMemoryBase device_memory_;
 
   // The generation counter value for the temporary memory record in the
   // temporary memory manager.
-  uint64 allocation_generation_;
+  uint64_t allocation_generation_;
 
   // The stream that this temporary memory was allocated for.
   Stream* parent_;

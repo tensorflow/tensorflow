@@ -51,39 +51,39 @@ enum OpDynamismSupport {
   kRequired,
 };
 
-class DynamicPadder : public HloModulePass {
- public:
-  // Returns true if given instruction supports native dynamic lowering. If so,
-  // dynamic padder will not attempt to pad it.
+struct DynamicPadderOptions {
+  // Returns true if given instruction supports native dynamic lowering. If
+  // so, dynamic padder will not attempt to pad it.
   using OpSupportsDynamismHandler =
       std::function<OpDynamismSupport(HloInstruction*)>;
 
+  OpSupportsDynamismHandler op_supports_dynamism_handler = nullptr;
+
+  // Instruct how to inference output dynamic dimensions of custom calls.
+  DynamicDimensionInference::CustomCallInferenceHandler custom_call_handler =
+      nullptr;
+
   // If `slice_dynamic_output` is true, insert 'slice_to_dynamic' ops to all
   // outputs that are inferred to be dynamic.
-  explicit DynamicPadder(
-      bool slice_dynamic_output = true,
-      DynamicDimensionInference::CustomCallInferenceHandler
-          custom_call_handler = nullptr,
-      OpSupportsDynamismHandler op_supports_dynamism_handler = nullptr)
-      : slice_dynamic_output_(slice_dynamic_output),
-        custom_call_handler_(custom_call_handler),
-        op_supports_dynamism_handler_(op_supports_dynamism_handler) {}
+  bool slice_dynamic_output = true;
+
+  // If set to true, pessimisticly assumes runtime shape checks may fail and
+  // returns a compile-time error.
+  DynamicDimensionInference::ShapeCheckMode shape_check_mode =
+      DynamicDimensionInference::ShapeCheckMode::kIgnore;
+};
+
+class DynamicPadder : public HloModulePass {
+ public:
+  explicit DynamicPadder(DynamicPadderOptions options = DynamicPadderOptions())
+      : options_(options) {}
 
   absl::string_view name() const override { return "dynamic_padder"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  // Insert 'slice_to_dynamic' ops to all outputs that are inferred to be
-  // dynamic.
-  bool slice_dynamic_output_;
-
-  // A handler for dynamic dimension inference of custom calls.
-  DynamicDimensionInference::CustomCallInferenceHandler custom_call_handler_;
-
-  // A handler to indicate if a given hlo instruction support native dynamism
-  // lowering.
-  OpSupportsDynamismHandler op_supports_dynamism_handler_;
+  DynamicPadderOptions options_;
 };
 
 }  // namespace xla

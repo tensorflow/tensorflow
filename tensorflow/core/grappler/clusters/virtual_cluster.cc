@@ -89,7 +89,7 @@ Status VirtualCluster::Run(const GrapplerItem& item, RunMetadata* metadata) {
       estimator_->PredictCosts(item.graph, metadata, /*cost=*/nullptr));
 
   const std::unordered_map<string, DeviceProperties>& device = GetDevices();
-  std::unordered_map<string, int64> peak_mem_usage =
+  std::unordered_map<string, int64_t> peak_mem_usage =
       estimator_->GetScheduler()->GetPeakMemoryUsage();
   for (const auto& mem_usage : peak_mem_usage) {
     const string& device_name = mem_usage.first;

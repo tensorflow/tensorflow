@@ -55,7 +55,7 @@ Status LocalTensorHandleData::NumDims(int* num_dims) const {
   return Status::OK();
 }
 
-Status LocalTensorHandleData::Dim(int dim_index, int64* dim) const {
+Status LocalTensorHandleData::Dim(int dim_index, int64_t* dim) const {
   TF_RETURN_IF_ERROR(WaitReady("Dim"));
 
   *dim = tensor_.dim_size(dim_index);
@@ -63,7 +63,7 @@ Status LocalTensorHandleData::Dim(int dim_index, int64* dim) const {
   return Status::OK();
 }
 
-Status LocalTensorHandleData::NumElements(int64* num_elements) const {
+Status LocalTensorHandleData::NumElements(int64_t* num_elements) const {
   TF_RETURN_IF_ERROR(WaitReady("NumElements"));
 
   *num_elements = tensor_.NumElements();

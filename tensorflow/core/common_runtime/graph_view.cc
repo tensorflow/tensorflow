@@ -133,7 +133,7 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   // (versus 64 bits on most machines if we just stored an array of NodeItem*
   // pointers). Casting to int64 is needed on 32bit CPU to avoid comparing
   // values as "int" vs "size_t" in CHECK_LE.
-  CHECK_LE(static_cast<int64>(ptr - space_), kuint32max);
+  CHECK_LE(static_cast<int64_t>(ptr - space_), kuint32max);
   const uint32 offset = static_cast<uint32>(ptr - space_);
   node_offsets_[id] = offset;
   ptr += bytes;

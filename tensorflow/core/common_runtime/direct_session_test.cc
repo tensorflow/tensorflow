@@ -1196,7 +1196,7 @@ FunctionDef SessionMetadataReaderOpFn() {
 TEST(DirectSessionTest, SessionMetadataAbsent) {
   Graph g(OpRegistry::Global());
   Tensor vx(DT_INT64, TensorShape({}));
-  vx.scalar<int64>()() = 17;
+  vx.scalar<int64_t>()() = 17;
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "SessionMetadataReader", x);
   GraphDef def;
@@ -1217,7 +1217,7 @@ TEST(DirectSessionTest, SessionMetadataAbsentViaFunction) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
   Graph g(&flib);
   Tensor vx(DT_INT64, TensorShape({}));
-  vx.scalar<int64>()() = 17;
+  vx.scalar<int64_t>()() = 17;
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "SessionMetadataReaderFn", x);
   GraphDef def;
@@ -1236,7 +1236,7 @@ TEST(DirectSessionTest, SessionMetadataAbsentViaFunction) {
 TEST(DirectSessionTest, SessionMetadataPresent) {
   Graph g(OpRegistry::Global());
   Tensor vx(DT_INT64, TensorShape({}));
-  vx.scalar<int64>()() = 17;
+  vx.scalar<int64_t>()() = 17;
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "SessionMetadataReader", x);
   GraphDef def;
@@ -1266,7 +1266,7 @@ TEST(DirectSessionTest, SessionMetadataPresentViaFunction) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
   Graph g(&flib);
   Tensor vx(DT_INT64, TensorShape({}));
-  vx.scalar<int64>()() = 17;
+  vx.scalar<int64_t>()() = 17;
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "SessionMetadataReaderFn", x);
   GraphDef def;
@@ -1362,8 +1362,8 @@ class ThreadIDOp : public OpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output("y", TensorShape({}), &out_tensor));
     std::hash<std::thread::id> hasher;
-    out_tensor->scalar<int64>()() =
-        static_cast<int64>(hasher(std::this_thread::get_id()));
+    out_tensor->scalar<int64_t>()() =
+        static_cast<int64_t>(hasher(std::this_thread::get_id()));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("ThreadID").Device(DEVICE_CPU), ThreadIDOp);
@@ -1371,7 +1371,7 @@ REGISTER_KERNEL_BUILDER(Name("ThreadID").Device(DEVICE_CPU), ThreadIDOp);
 TEST(DirectSessionTest, SessionSyncRun) {
   Graph g(OpRegistry::Global());
   Tensor vx(DT_INT64, TensorShape({}));
-  vx.scalar<int64>()() = 17;
+  vx.scalar<int64_t>()() = 17;
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "ThreadID", x);
   GraphDef def;
@@ -1384,8 +1384,8 @@ TEST(DirectSessionTest, SessionSyncRun) {
   auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
 
   std::hash<std::thread::id> hasher;
-  EXPECT_EQ(static_cast<int64>(hasher(std::this_thread::get_id())),
-            static_cast<int64>(outputs[0].scalar<int64>()()));
+  EXPECT_EQ(static_cast<int64_t>(hasher(std::this_thread::get_id())),
+            static_cast<int64_t>(outputs[0].scalar<int64_t>()()));
 }
 
 REGISTER_OP("ExpensiveNoop").SetIsStateful();
@@ -1451,7 +1451,7 @@ TEST(DirectSessionTest, SessionSyncRun_DeepGraph) {
 TEST(DirectSessionTest, SyncSession) {
   Graph g(OpRegistry::Global());
   Tensor vx(DT_INT64, TensorShape({}));
-  vx.scalar<int64>()() = 17;
+  vx.scalar<int64_t>()() = 17;
   Node* x = test::graph::Constant(&g, vx);
   Node* y = test::graph::Unary(&g, "ThreadID", x);
   GraphDef def;
@@ -1465,8 +1465,8 @@ TEST(DirectSessionTest, SyncSession) {
   auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
 
   std::hash<std::thread::id> hasher;
-  EXPECT_EQ(static_cast<int64>(hasher(std::this_thread::get_id())),
-            static_cast<int64>(outputs[0].scalar<int64>()()));
+  EXPECT_EQ(static_cast<int64_t>(hasher(std::this_thread::get_id())),
+            static_cast<int64_t>(outputs[0].scalar<int64_t>()()));
 }
 
 REGISTER_OP("Darth").Input("x: float").Output("y: float").Doc(R"doc(
@@ -2718,7 +2718,7 @@ class DirectSessionCollectiveTest : public ::testing::Test {
   // Creates a graph with CollectiveOps inside functions and runs it.  Returns
   // the generated collective_graph_key.
   Status RunGraphWithCollectiveFunctions(bool add_unused_function,
-                                         int64* collective_graph_key) {
+                                         int64_t* collective_graph_key) {
     GraphDef g = CreateGraph(add_unused_function);
     const Tensor t1 =
         test::AsTensor<float>({0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1});
@@ -2832,8 +2832,9 @@ class StatefulOutputRequiredOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     // The op counts the number of outputs required in the current subgraph,
     // and emits that number on each of its required outputs.
-    Tensor count_outputs_required_t(int64{0});
-    int64& count_outputs_required = count_outputs_required_t.scalar<int64>()();
+    Tensor count_outputs_required_t(int64_t{0});
+    int64_t& count_outputs_required =
+        count_outputs_required_t.scalar<int64_t>()();
     for (int i = 0; i < num_outputs(); ++i) {
       if (ctx->output_required(i)) ++count_outputs_required;
     }
@@ -2878,7 +2879,7 @@ TEST(DirectSessionTest, TestStatefulOutputRequiredOp) {
     TF_ASSERT_OK(session->Run({}, fetch_tensor_names, {}, &fetch_tensors));
     ASSERT_EQ(num_outputs_required, fetch_tensors.size());
     for (const Tensor& t : fetch_tensors) {
-      ASSERT_EQ(num_outputs_required, t.scalar<int64>()());
+      ASSERT_EQ(num_outputs_required, t.scalar<int64_t>()());
     }
   }
 

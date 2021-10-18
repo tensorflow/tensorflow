@@ -292,11 +292,11 @@ class RaggedGatherOp : public RaggedGatherOpBase<INDEX_TYPE, SPLITS_TYPE> {
           .TypeConstraint<value_type>("Tvalues")                    \
           .TypeConstraint<splits_type>("Tsplits"),                  \
       RaggedGatherOp<index_type, value_type, splits_type>);
-#define REGISTER_CPU_KERNEL(value_type)                         \
-  REGISTER_CPU_KERNEL_WITH_INDEX_TYPE(int32, value_type, int32) \
-  REGISTER_CPU_KERNEL_WITH_INDEX_TYPE(int64, value_type, int32) \
-  REGISTER_CPU_KERNEL_WITH_INDEX_TYPE(int32, value_type, int64) \
-  REGISTER_CPU_KERNEL_WITH_INDEX_TYPE(int64, value_type, int64)
+#define REGISTER_CPU_KERNEL(value_type)                           \
+  REGISTER_CPU_KERNEL_WITH_INDEX_TYPE(int32, value_type, int32)   \
+  REGISTER_CPU_KERNEL_WITH_INDEX_TYPE(int64_t, value_type, int32) \
+  REGISTER_CPU_KERNEL_WITH_INDEX_TYPE(int32, value_type, int64_t) \
+  REGISTER_CPU_KERNEL_WITH_INDEX_TYPE(int64_t, value_type, int64_t)
 TF_CALL_POD_TYPES(REGISTER_CPU_KERNEL);
 TF_CALL_tstring(REGISTER_CPU_KERNEL);
 TF_CALL_QUANTIZED_TYPES(REGISTER_CPU_KERNEL);

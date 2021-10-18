@@ -100,14 +100,14 @@ struct ComputeOptions {
         errors::InvalidArgument("Requires at least one feature to train."));
 
     OP_REQUIRES(context,
-                static_cast<int64>(num_sparse_features) +
-                        static_cast<int64>(num_dense_features) <=
+                static_cast<int64_t>(num_sparse_features) +
+                        static_cast<int64_t>(num_dense_features) <=
                     std::numeric_limits<int>::max(),
-                errors::InvalidArgument(
-                    absl::StrFormat("Too many feature groups: %d > %d",
-                                    static_cast<int64>(num_sparse_features) +
-                                        static_cast<int64>(num_dense_features),
-                                    std::numeric_limits<int>::max())));
+                errors::InvalidArgument(absl::StrFormat(
+                    "Too many feature groups: %d > %d",
+                    static_cast<int64_t>(num_sparse_features) +
+                        static_cast<int64_t>(num_dense_features),
+                    std::numeric_limits<int>::max())));
     OP_REQUIRES_OK(
         context, context->GetAttr("num_loss_partitions", &num_loss_partitions));
     OP_REQUIRES_OK(context, context->GetAttr("num_inner_iterations",
@@ -314,7 +314,7 @@ class SdcaFprint : public OpKernel {
                                 0, TensorShape({num_elements, 2}), &out));
 
     const auto in_values = input.flat<tstring>();
-    auto out_values = out->matrix<int64>();
+    auto out_values = out->matrix<int64_t>();
 
     for (int64_t i = 0; i < num_elements; ++i) {
       const Fprint128 fprint = Fingerprint128(in_values(i));

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.resource_variable_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import gc
 import os
@@ -1174,7 +1170,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       v = resource_variable_ops.ResourceVariable(initial_value=zero)
       return (i + 1, v.read_value())
 
-    with self.assertRaisesRegex(ValueError, "initializer"):
+    with self.assertRaisesRegex(ValueError, "initial_value"):
       control_flow_ops.while_loop(cond, body, [0, 0])
 
   def testVariableEager(self):
@@ -1344,6 +1340,22 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # eager execution (where the error is realized during kernel execution).
     with self.assertRaisesRegex(Exception, r"shape.*2.*3"):
       state_ops.scatter_update(v, [0, 1], [0, 1, 2])
+
+  def testScatterAddDeterministic(self):
+    with context.eager_mode(), test_util.deterministic_ops():
+      # Normally a nondeterministic codepath occurs when the variable has at
+      # least 1024 elements. Test that op determinism ensures the op is
+      # deterministc.
+      v = resource_variable_ops.ResourceVariable(array_ops.zeros([1024]))
+      delta = ops.IndexedSlices(
+          values=np.random.normal(size=(1_000_000,)),
+          indices=array_ops.zeros((1_000_000,), dtype=np.int32),
+          dense_shape=(1024,))
+      v.scatter_add(delta)
+      for _ in range(5):
+        v2 = resource_variable_ops.ResourceVariable(array_ops.zeros([1024]))
+        v2.scatter_add(delta)
+        self.assertAllEqual(v, v2)
 
   @test_util.run_in_graph_and_eager_modes
   def testAssignIncompatibleShape(self):
@@ -1599,6 +1611,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       checker.record_snapshot()
     checker.report()
     checker.assert_no_leak_if_all_possibly_except_one()
+
+  @test_util.run_v2_only
+  def testIterateVariable(self):
+    v = variables.Variable([1., 2.])
+    self.assertAllClose([1., 2.], list(iter(v)))
+
 
 if __name__ == "__main__":
   test.main()

@@ -363,7 +363,7 @@ void TpuCompilationCacheInterface::InsertEntry(const std::string& key,
 Status TpuCompilationCacheInterface::CompileIfKeyAbsent(
     const TpuCompilationCacheKey& subgraph_key,
     const SessionMetadata* session_metadata,
-    CompilationRefHolder* per_step_ref_holder, int64* uid,
+    CompilationRefHolder* per_step_ref_holder, int64_t* uid,
     std::vector<std::string>* proto_key, std::vector<std::string>* sharding_key,
     std::vector<bool>* may_modify_variables,
     absl::Span<const xla::HloProto* const>* hlo_metadatas,
@@ -401,7 +401,7 @@ std::string TpuCompilationCacheInterface::FindCacheKey(
 Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     const TpuCompilationCacheKey& subgraph_key,
     const SessionMetadata* session_metadata,
-    CompilationRefHolder* per_step_ref_holder, int64* uid,
+    CompilationRefHolder* per_step_ref_holder, int64_t* uid,
     std::vector<std::string>* proto_key, std::vector<std::string>* sharding_key,
     std::vector<bool>* may_modify_variables,
     std::vector<CompiledSubgraph*>* removed_entries,

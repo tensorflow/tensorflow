@@ -31,8 +31,8 @@ class TensorSliceDatasetOpTest : public DatasetOpsTestBase {};
 
 TensorSliceDatasetParams PlainTensorSliceDatasetParams() {
   std::vector<Tensor> components = {
-      CreateTensor<int64>(TensorShape({2}), {1, 2}),
-      CreateTensor<int64>(TensorShape({2, 2}), {1, 2, 3, 4}),
+      CreateTensor<int64_t>(TensorShape({2}), {1, 2}),
+      CreateTensor<int64_t>(TensorShape({2, 2}), {1, 2, 3, 4}),
       CreateTensor<uint32>(TensorShape({2}), {2, 3}),
       CreateTensor<uint32>(TensorShape({2, 2}), {2, 3, 4, 5}),
       CreateTensor<uint64>(TensorShape({2}), {3, 4}),
@@ -53,7 +53,7 @@ TensorSliceDatasetParams NestedTensorSliceDatasetParams() {
           TensorShape({2, 1}),
           {CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"}),
            CreateTensor<tstring>(TensorShape({1, 2}), {"c", "d"})}),
-      CreateTensor<int64>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6})};
+      CreateTensor<int64_t>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6})};
 
   return {std::move(components), kNodeName};
 }
@@ -61,16 +61,16 @@ TensorSliceDatasetParams NestedTensorSliceDatasetParams() {
 std::vector<GetNextTestCase<TensorSliceDatasetParams>> GetNextTestCases() {
   return {
       {/*dataset_params=*/PlainTensorSliceDatasetParams(),
-       /*expected_outputs=*/{CreateTensor<int64>(TensorShape({}), {1}),
-                             CreateTensor<int64>(TensorShape({2}), {1, 2}),
+       /*expected_outputs=*/{CreateTensor<int64_t>(TensorShape({}), {1}),
+                             CreateTensor<int64_t>(TensorShape({2}), {1, 2}),
                              CreateTensor<uint32>(TensorShape({}), {2}),
                              CreateTensor<uint32>(TensorShape({2}), {2, 3}),
                              CreateTensor<uint64>(TensorShape({}), {3}),
                              CreateTensor<uint64>(TensorShape({2}), {3, 4}),
                              CreateTensor<double>(TensorShape({1}), {37.0}),
                              CreateTensor<tstring>(TensorShape({1}), {"a"}),
-                             CreateTensor<int64>(TensorShape({}), {2}),
-                             CreateTensor<int64>(TensorShape({2}), {3, 4}),
+                             CreateTensor<int64_t>(TensorShape({}), {2}),
+                             CreateTensor<int64_t>(TensorShape({2}), {3, 4}),
                              CreateTensor<uint32>(TensorShape({}), {3}),
                              CreateTensor<uint32>(TensorShape({2}), {4, 5}),
                              CreateTensor<uint64>(TensorShape({}), {4}),
@@ -85,14 +85,14 @@ std::vector<GetNextTestCase<TensorSliceDatasetParams>> GetNextTestCases() {
         CreateTensor<Variant>(
             TensorShape({1}),
             {CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})}),
-        CreateTensor<int64>(TensorShape({3}), {1, 2, 3}),
+        CreateTensor<int64_t>(TensorShape({3}), {1, 2, 3}),
         CreateTensor<Variant>(
             TensorShape({1}),
             {CreateTensor<double>(TensorShape({2, 2}), {5.0, 6.0, 7.0, 8.0})}),
         CreateTensor<Variant>(
             TensorShape({1}),
             {CreateTensor<tstring>(TensorShape({1, 2}), {"c", "d"})}),
-        CreateTensor<int64>(TensorShape({3}), {4, 5, 6})}}};
+        CreateTensor<int64_t>(TensorShape({3}), {4, 5, 6})}}};
 }
 
 class ParameterizedGetNextTest
@@ -224,16 +224,16 @@ IteratorSaveAndRestoreTestCases() {
       {/*dataset_params=*/PlainTensorSliceDatasetParams(),
        /*breakpoints=*/{0, 1, 2},
        /*expected_outputs=*/
-       {CreateTensor<int64>(TensorShape({}), {1}),
-        CreateTensor<int64>(TensorShape({2}), {1, 2}),
+       {CreateTensor<int64_t>(TensorShape({}), {1}),
+        CreateTensor<int64_t>(TensorShape({2}), {1, 2}),
         CreateTensor<uint32>(TensorShape({}), {2}),
         CreateTensor<uint32>(TensorShape({2}), {2, 3}),
         CreateTensor<uint64>(TensorShape({}), {3}),
         CreateTensor<uint64>(TensorShape({2}), {3, 4}),
         CreateTensor<double>(TensorShape({1}), {37.0}),
         CreateTensor<tstring>(TensorShape({1}), {"a"}),
-        CreateTensor<int64>(TensorShape({}), {2}),
-        CreateTensor<int64>(TensorShape({2}), {3, 4}),
+        CreateTensor<int64_t>(TensorShape({}), {2}),
+        CreateTensor<int64_t>(TensorShape({2}), {3, 4}),
         CreateTensor<uint32>(TensorShape({}), {3}),
         CreateTensor<uint32>(TensorShape({2}), {4, 5}),
         CreateTensor<uint64>(TensorShape({}), {4}),
@@ -249,14 +249,14 @@ IteratorSaveAndRestoreTestCases() {
         CreateTensor<Variant>(
             TensorShape({1}),
             {CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})}),
-        CreateTensor<int64>(TensorShape({3}), {1, 2, 3}),
+        CreateTensor<int64_t>(TensorShape({3}), {1, 2, 3}),
         CreateTensor<Variant>(
             TensorShape({1}),
             {CreateTensor<double>(TensorShape({2, 2}), {5.0, 6.0, 7.0, 8.0})}),
         CreateTensor<Variant>(
             TensorShape({1}),
             {CreateTensor<tstring>(TensorShape({1, 2}), {"c", "d"})}),
-        CreateTensor<int64>(TensorShape({3}), {4, 5, 6})}}};
+        CreateTensor<int64_t>(TensorShape({3}), {4, 5, 6})}}};
 }
 
 class ParameterizedIteratorSaveAndRestoreTest
@@ -328,26 +328,26 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_F(TensorSliceDatasetOpTest, SplitProvider) {
   auto params = TensorSliceDatasetParams(
-      CreateTensors<int64>(TensorShape({7}), {{6, 2, 3, 8, 7, 0, 10}}),
+      CreateTensors<int64_t>(TensorShape({7}), {{6, 2, 3, 8, 7, 0, 10}}),
       kNodeName);
   TF_ASSERT_OK(InitializeRuntime(params));
   TF_EXPECT_OK(CheckSplitProviderFullIteration(
-      params, CreateTensors<int64>(TensorShape({}),
-                                   {{6}, {2}, {3}, {8}, {7}, {0}, {10}})));
+      params, CreateTensors<int64_t>(TensorShape({}),
+                                     {{6}, {2}, {3}, {8}, {7}, {0}, {10}})));
   TF_EXPECT_OK(CheckSplitProviderShardedIteration(
       params, /*num_shards=*/3, /*shard_index=*/1,
-      CreateTensors<int64>(TensorShape({}), {{2}, {7}})));
+      CreateTensors<int64_t>(TensorShape({}), {{2}, {7}})));
 }
 
 TEST_F(TensorSliceDatasetOpTest, SplitProviderEmpty) {
   auto params = TensorSliceDatasetParams(
-      CreateTensors<int64>(TensorShape({0}), {{}}), kNodeName);
+      CreateTensors<int64_t>(TensorShape({0}), {{}}), kNodeName);
   TF_ASSERT_OK(InitializeRuntime(params));
   TF_EXPECT_OK(CheckSplitProviderFullIteration(
-      params, CreateTensors<int64>(TensorShape({}), {})));
+      params, CreateTensors<int64_t>(TensorShape({}), {})));
   TF_EXPECT_OK(CheckSplitProviderShardedIteration(
       params, /*num_shards=*/3, /*shard_index=*/1,
-      CreateTensors<int64>(TensorShape({}), {})));
+      CreateTensors<int64_t>(TensorShape({}), {})));
 }
 
 }  // namespace

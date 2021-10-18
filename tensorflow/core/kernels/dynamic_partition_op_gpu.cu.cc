@@ -343,9 +343,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
         c,
-        c->allocate_temp(DT_INT8,
-                         TensorShape({static_cast<int64>(temp_storage_bytes)}),
-                         &cub_temp_storage),
+        c->allocate_temp(
+            DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
+            &cub_temp_storage),
         done);
     // Radix-sort the partition information.
     gpuprim::DeviceRadixSort::SortPairs(
@@ -419,9 +419,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
         c,
-        c->allocate_temp(DT_INT8,
-                         TensorShape({static_cast<int64>(temp_storage_bytes)}),
-                         &cub_temp_storage),
+        c->allocate_temp(
+            DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
+            &cub_temp_storage),
         done);
     // Run reduce-by-key. The effect is that we count how many times
     // each index appears in partitions. The distinct indices are stored

@@ -1518,9 +1518,10 @@ void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
       sum_sq += val * val;
     }
 
+    // Divide by `n_input` first to avoid overflow but only works for POT
+    // `n_input`.
     int32_t mean =
         static_cast<int32_t>(static_cast<int64_t>(sum) * 1024 / n_input);
-    // TODO(jianlijianli): Avoids overflow but only works for POT n_input.
     int64_t variance =
         sum_sq * temp - static_cast<int64_t>(mean) * static_cast<int64_t>(mean);
     int32_t variance2 = static_cast<int32>(variance / 1048576);

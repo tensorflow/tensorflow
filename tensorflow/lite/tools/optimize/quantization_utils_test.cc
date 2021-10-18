@@ -259,6 +259,51 @@ TEST_F(QuantizationUtilsTest, SymmetricPerChannelQuantization) {
   EXPECT_THAT(output_data, ElementsAreArray(expected_output_data));
 }
 
+TEST_F(QuantizationUtilsTest, SymmetricPerChannelQuantization2DTensor) {
+  // Set up an input with [3, 8] size and 0 is the channel index.
+  const std::vector<float> input = {
+      3.0, 2.0, 5.0,  -2.0, 3.0,  2.0,  5.0,  -2.0,  // Batch 1.
+      1.0, 2.0, 3.0,  4.0,  5.0,  6.0,  7.0,  8.0,   // Batch 2.
+      1.0, 0.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0,  // Batch 3.
+  };
+  const int32_t channel_index = 1;
+
+  // Create holder for output scale and data.
+  std::vector<float> output_scales(8);
+  std::vector<int8_t> output_data(3 * 8);
+
+  // Initialize pointer to quantization parameters
+  TensorT tensor = TensorT();
+  tensor.quantization = absl::make_unique<QuantizationParametersT>();
+  tensor.shape = {3, 8};
+  FillPerChannelMinMax(input.data(), tensor.shape, channel_index,
+                       tensor.quantization.get(), &error_reporter_);
+
+  // Test that FillPerChanneMinMax worked
+  const std::vector<float> expected_mins = {1.0,  0.0,  -1.0, -2.0,
+                                            -3.0, -4.0, -5.0, -6.0};
+  const std::vector<float> expected_maxs = {3.0, 2.0, 5.0, 4.0,
+                                            5.0, 6.0, 7.0, 8.0};
+  EXPECT_THAT(tensor.quantization->min, ElementsAreArray(expected_mins));
+  EXPECT_THAT(tensor.quantization->max, ElementsAreArray(expected_maxs));
+
+  // Call SymmetricPerChannelQuantization with quant_params as a null pointer
+  // and verify the result.
+  SymmetricPerChannelQuantization(&tensor, input.data(), channel_index,
+                                  &output_scales, &output_data,
+                                  &error_reporter_);
+  const std::vector<float> expected_output_scales = {
+      0.02362204724, 0.01574803149, 0.03937007874, 0.03149606299,
+      0.03937007874, 0.04724409448, 0.05511811023, 0.06299212598};
+  const std::vector<int8_t> expected_output_data = {
+      127, 127, 127, -64, 76,  42,  91,  -32,  // Batch 1.
+      42,  127, 76,  127, 127, 127, 127, 127,  // Batch 2.
+      42,  0,   -25, -64, -76, -85, -91, -95,  // Batch 3.
+  };
+  EXPECT_THAT(output_scales, ElementsAreArray(expected_output_scales));
+  EXPECT_THAT(output_data, ElementsAreArray(expected_output_data));
+}
+
 TEST_F(QuantizationUtilsTest, SymmetricPerChannelQuantizeValues) {
   // Set up an input with [3, 1, 1, 2] size and 0 is the channel index.
   const std::vector<float> input = {
@@ -318,6 +363,28 @@ TEST_F(QuantizationUtilsTest, FillPerChannelMinMaxFillDim3) {
   QuantizationParametersT quantization_params = QuantizationParametersT();
   std::vector<int> dimension = {3, 1, 1, 2};
   int32_t channel_dim_idx = 3;
+  const std::vector<float> expected_mins = {13.0, 21.0};
+  const std::vector<float> expected_maxs = {31.0, 40.0};
+
+  FillPerChannelMinMax(input.data(), dimension, channel_dim_idx,
+                       &quantization_params, &error_reporter_);
+
+  EXPECT_EQ(quantization_params.min, expected_mins);
+  EXPECT_EQ(quantization_params.max, expected_maxs);
+  EXPECT_EQ(quantization_params.quantized_dimension, channel_dim_idx);
+}
+
+TEST_F(QuantizationUtilsTest, FillPerChannelMinMax2DTensor) {
+  // Set up an input with [3, 2] size.
+  const std::vector<float> input = {
+      // Channel 1, Channel 2
+      13.0, 21.0, 21.0, 22.0, 31.0, 40.0,
+  };
+
+  // Initialize pointer to quantization parameters.
+  QuantizationParametersT quantization_params = QuantizationParametersT();
+  std::vector<int> dimension = {3, 2};
+  int32_t channel_dim_idx = 1;
   const std::vector<float> expected_mins = {13.0, 21.0};
   const std::vector<float> expected_maxs = {31.0, 40.0};
 

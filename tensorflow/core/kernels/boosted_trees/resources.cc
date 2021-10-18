@@ -156,7 +156,7 @@ void BoostedTreesEnsembleResource::GetLastLayerNodesRange(
   *node_range_end = tree_ensemble_->growing_metadata().last_layer_node_end();
 }
 
-int64 BoostedTreesEnsembleResource::GetNumNodes(const int32_t tree_id) {
+int64_t BoostedTreesEnsembleResource::GetNumNodes(const int32_t tree_id) {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   return tree_ensemble_->trees(tree_id).nodes_size();
 }

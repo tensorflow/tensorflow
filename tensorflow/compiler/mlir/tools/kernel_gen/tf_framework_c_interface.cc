@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_gpu_runtime_wrappers.h"
@@ -171,7 +173,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
 
   if (item.result_module().empty()) {
     // Otherwise, compile the module now.
-    xla::StatusOr<mlir::OwningModuleRef> status_or_module =
+    tensorflow::StatusOr<mlir::OwningModuleRef> status_or_module =
         tensorflow::kernel_gen::GenerateKernelForTfCode(
             context, code, architectures, tile_sizes, unroll_factors,
             max_supported_rank, /*embed_memref_prints=*/false,

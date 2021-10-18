@@ -14,12 +14,6 @@
 # ==============================================================================
 """SavedModel utility functions implementation."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import os
-
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import struct_pb2
@@ -70,7 +64,8 @@ def build_tensor_info(tensor):
   @end_compatibility
   """
   if context.executing_eagerly():
-    raise RuntimeError("build_tensor_info is not supported in Eager mode.")
+    raise RuntimeError("`build_tensor_info` is not supported in eager "
+                       "execution.")
   return build_tensor_info_internal(tensor)
 
 
@@ -139,7 +134,7 @@ def build_tensor_info_from_op(op):
   """
   if context.executing_eagerly():
     raise RuntimeError(
-        "build_tensor_info_from_op is not supported in Eager mode.")
+        "`build_tensor_info_from_op` is not supported in eager execution.")
   return meta_graph_pb2.TensorInfo(
       dtype=types_pb2.DT_INVALID,
       tensor_shape=tensor_shape.unknown_shape().as_proto(),
@@ -193,7 +188,9 @@ def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
                   tensor_info.composite_tensor.components]
     return nest.pack_sequence_as(spec, components, expand_composites=True)
   else:
-    raise ValueError("Invalid TensorInfo.encoding: %s" % encoding)
+    raise ValueError(f"Invalid TensorInfo.encoding: {encoding}. Expected `"
+                     "coo_sparse`, `composite_tensor`, or `name` for a dense "
+                     "tensor.")
 
 
 def get_element_from_tensor_info(tensor_info, graph=None, import_scope=None):
@@ -229,14 +226,13 @@ def get_or_create_variables_dir(export_dir):
 
 def get_variables_dir(export_dir):
   """Return variables sub-directory in the SavedModel."""
-  return os.path.join(
-      compat.as_text(export_dir),
-      compat.as_text(constants.VARIABLES_DIRECTORY))
+  return file_io.join(
+      compat.as_text(export_dir), compat.as_text(constants.VARIABLES_DIRECTORY))
 
 
 def get_variables_path(export_dir):
   """Return the variables path, used as the prefix for checkpoint files."""
-  return os.path.join(
+  return file_io.join(
       compat.as_text(get_variables_dir(export_dir)),
       compat.as_text(constants.VARIABLES_FILENAME))
 
@@ -252,9 +248,8 @@ def get_or_create_assets_dir(export_dir):
 
 def get_assets_dir(export_dir):
   """Return path to asset directory in the SavedModel."""
-  return os.path.join(
-      compat.as_text(export_dir),
-      compat.as_text(constants.ASSETS_DIRECTORY))
+  return file_io.join(
+      compat.as_text(export_dir), compat.as_text(constants.ASSETS_DIRECTORY))
 
 
 def get_or_create_debug_dir(export_dir):
@@ -267,20 +262,20 @@ def get_or_create_debug_dir(export_dir):
 
 
 def get_saved_model_pbtxt_path(export_dir):
-  return os.path.join(
+  return file_io.join(
       compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
 
 
 def get_saved_model_pb_path(export_dir):
-  return os.path.join(
+  return file_io.join(
       compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
 
 
 def get_debug_dir(export_dir):
   """Returns path to the debug sub-directory in the SavedModel."""
-  return os.path.join(
+  return file_io.join(
       compat.as_text(export_dir), compat.as_text(constants.DEBUG_DIRECTORY))
 
 # Based on tensor_bundle/byte_swap.cc

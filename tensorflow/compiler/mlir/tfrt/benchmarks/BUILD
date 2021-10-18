@@ -16,7 +16,7 @@ cc_library(
     hdrs = ["benchmark.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_passes",
+        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_pipeline",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:logging",
@@ -24,6 +24,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
@@ -41,7 +42,7 @@ cc_library(
     deps = [
         ":benchmark",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_passes",
+        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_pipeline",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -157,4 +158,67 @@ tf_cc_binary(
     testonly = 1,
     srcs = ["transpose_op_benchmark.cc"],
     deps = [":benchmark_mlir_function"],
+)
+
+cc_library(
+    name = "reduction_benchmark",
+    testonly = 1,
+    srcs = ["reduction_benchmark.cc"],
+    hdrs = ["reduction_benchmark.h"],
+    deps = [
+        ":benchmark",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_binary(
+    name = "reduction_1D_all_benchmark",
+    testonly = 1,
+    srcs = ["reduction_1D_all_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [":reduction_benchmark"],
+)
+
+tf_cc_binary(
+    name = "reduction_2D_all_benchmark",
+    testonly = 1,
+    srcs = ["reduction_2D_all_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [":reduction_benchmark"],
+)
+
+tf_cc_binary(
+    name = "reduction_2D_row_benchmark",
+    testonly = 1,
+    srcs = ["reduction_2D_row_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [":reduction_benchmark"],
+)
+
+tf_cc_binary(
+    name = "reduction_2D_column_benchmark",
+    testonly = 1,
+    srcs = ["reduction_2D_column_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [":reduction_benchmark"],
 )

@@ -82,8 +82,8 @@ ENTRY %cluster {
            .default_stream_executor()
            ->GetDeviceDescription()
            .cuda_compute_capability()
-           .IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
-    // We do not vectorize for GPU before Pascal.
+           .IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    // We do not vectorize for GPU before Volta.
     expected = "CHECK-NOT: ld.global.nc.v2.f32";
   } else {
     expected = R"(

@@ -3,4 +3,4 @@
 this is not a valid graph def
 
 # CHECK: Error parsing Protobuf
-# CHECK: Graph import failed: Invalid argument: Could not parse input proto
+# CHECK: Could not parse input proto

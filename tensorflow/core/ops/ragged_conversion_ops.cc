@@ -158,7 +158,7 @@ REGISTER_OP("RaggedTensorToTensor")
 
 Status RaggedTensorToSparseShapeFn(InferenceContext* c) {
   int64_t num_splits;
-  TF_RETURN_IF_ERROR(c->GetAttr<int64>("RAGGED_RANK", &num_splits));
+  TF_RETURN_IF_ERROR(c->GetAttr<int64_t>("RAGGED_RANK", &num_splits));
   // TODO(b/112274756): Allow ragged_rank to be 0.
   if (num_splits < 1) {
     return errors::InvalidArgument("Requires RAGGED_RANK>0");
@@ -187,7 +187,7 @@ Status RaggedTensorToSparseShapeFn(InferenceContext* c) {
 
 Status RaggedTensorToVariantShapeFn(InferenceContext* c) {
   int64_t num_splits;
-  TF_RETURN_IF_ERROR(c->GetAttr<int64>("RAGGED_RANK", &num_splits));
+  TF_RETURN_IF_ERROR(c->GetAttr<int64_t>("RAGGED_RANK", &num_splits));
   bool batched;
   TF_RETURN_IF_ERROR(c->GetAttr<bool>("batched_input", &batched));
   shape_inference::ShapeHandle rt_dense_values = c->input(num_splits);
@@ -222,10 +222,10 @@ Status RaggedTensorToVariantGradientShapeFn(InferenceContext* c) {
 Status RaggedTensorFromVariantShapeFn(InferenceContext* c) {
   int64_t input_ragged_rank;
   TF_RETURN_IF_ERROR(
-      c->GetAttr<int64>("input_ragged_rank", &input_ragged_rank));
+      c->GetAttr<int64_t>("input_ragged_rank", &input_ragged_rank));
   int64_t output_ragged_rank;
   TF_RETURN_IF_ERROR(
-      c->GetAttr<int64>("output_ragged_rank", &output_ragged_rank));
+      c->GetAttr<int64_t>("output_ragged_rank", &output_ragged_rank));
   shape_inference::ShapeHandle encoded_ragged = c->input(0);
   if (c->RankKnown(encoded_ragged) && input_ragged_rank >= 0) {
     shape_inference::ShapeHandle unused;

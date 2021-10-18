@@ -98,6 +98,17 @@ class BufferAssignmentTest : public HloTestBase {
         .ConsumeValueOrDie();
   }
 
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentWithSequentialOrdering(
+      HloModule* module, int64_t alignment = 1) {
+    return BufferAssigner::Run(
+               module,
+               absl::make_unique<SequentialHloOrdering>(module->schedule()),
+               backend().compiler()->BufferSizeBytesFunction(),
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allocate_buffers_for_constants=*/true)
+        .ConsumeValueOrDie();
+  }
+
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersForConstants(
       HloModule* module, int64_t alignment = 1) {
     return BufferAssigner::Run(
@@ -283,8 +294,9 @@ class BufferAssignmentTest : public HloTestBase {
   // kConstant have assigned buffers, and returns their total size. If min_index
   // and max_index are not nullptr, the minimum and maximum buffer indices in
   // the assignment are written into them.
-  int64 ValidateBuffers(const std::vector<const HloInstruction*>& instructions,
-                        const BufferAssignment& buffers) {
+  int64_t ValidateBuffers(
+      const std::vector<const HloInstruction*>& instructions,
+      const BufferAssignment& buffers) {
     // Verifies all instructions have buffers, and gets the index ranges.
     for (const HloInstruction* hlo : instructions) {
       if (!buffers.HasTopLevelAllocation(hlo)) {
@@ -1559,8 +1571,8 @@ TEST_F(BufferAssignmentTest, TupleConstantAsOutput) {
   // Test that a tuple constant which is forwarded to the computation output
   // is properly handled.
   auto builder = HloComputation::Builder(TestName());
-  Literal elements[] = {LiteralUtil::CreateR0<int64>(0),
-                        LiteralUtil::CreateR0<int64>(1)};
+  Literal elements[] = {LiteralUtil::CreateR0<int64_t>(0),
+                        LiteralUtil::CreateR0<int64_t>(1)};
   builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::MakeTuple({&elements[0], &elements[1]})));
 
@@ -1589,6 +1601,27 @@ TEST_F(BufferAssignmentTest, TupleCustomCallAsOutput) {
       GetAllocation(*assignment, custom_call, /*index=*/{0}).maybe_live_out());
   EXPECT_TRUE(
       GetAllocation(*assignment, custom_call, /*index=*/{1}).maybe_live_out());
+}
+
+TEST_F(BufferAssignmentTest, CustomCallAliasedBuffer) {
+  // Test a computation with custom call aliasing.
+  const char* const kModuleString = R"(
+    HloModule xla_computation_f
+    ENTRY xla_computation_f {
+      parameter.1 = f32[2,3,4,5] parameter(0)
+      parameter.2 = f32[2,3,4,5] parameter(1)
+      add = f32[2,3,4,5] add(parameter.1, parameter.2)
+      ROOT custom-call = f32[2,3,4,5] custom-call(add, parameter.2), custom_call_target="dm_softmax", operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]}, output_to_operand_aliasing={{}: (0, {})}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+  std::unique_ptr<BufferAssignment> assignment =
+      RunBufferAssignment(module.get());
+  HloInstruction* custom_call = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(
+      assignment->SharesTopLevelSlice(custom_call, custom_call->operand(0)));
 }
 
 TEST_F(BufferAssignmentTest, TupleCallAsOutput) {
@@ -1943,6 +1976,49 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
   EXPECT_THAT(peak_instructions, UnorderedElementsAre(rev, neg, concat));
 }
 
+TEST_F(BufferAssignmentTest, AliasedBuffersShouldntCoexistInPeakBuffers) {
+  std::string hlo_text = R"(
+HloModule test_module, is_scheduled=true
+
+cond {
+  param = (s32[], s32[]) parameter(0)
+  ROOT constant = pred[] constant(true)
+}
+
+body {
+  param.0 = (s32[], s32[]) parameter(0)
+  gte = s32[] get-tuple-element(param.0), index=0
+  add = s32[] add(gte, gte)
+  ROOT tuple = (s32[], s32[]) tuple(add, add)
+}
+
+ENTRY test_module {
+  param.3 = s32[] parameter(0)
+  copy = s32[] copy(param.3)
+  tuple = (s32[], s32[]) tuple(copy, copy)
+  while = (s32[], s32[]) while(tuple), condition=cond, body=body
+  gte = s32[] get-tuple-element(while), index=0
+  ROOT negate = s32[] negate(gte)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto assignment = RunBufferAssignmentWithSequentialOrdering(module.get());
+  const BufferAllocation& buffer =
+      GetTopLevelAllocation(*assignment, FindInstruction(module.get(), "copy"));
+  const std::vector<const HloValue*>& peak_buffers =
+      buffer.PeakMemoryLogicalBuffers();
+
+  // Since the same aliased buffer (copy) is passed into while, we expect the
+  // number of peak array buffers to be one.
+  int num_peak_buffers = 0;
+  for (const HloValue* peak_buffer : peak_buffers) {
+    if (peak_buffer->shape().IsArray()) {
+      ++num_peak_buffers;
+    }
+  }
+  EXPECT_EQ(num_peak_buffers, 1);
+}
+
 TEST_F(BufferAssignmentTest, InPlaceBuffer) {
   const char* hlo_text = R"(
 HloModule Module
@@ -2085,7 +2161,7 @@ class WhileBufferAssignmentTest : public HloTestBase {
         .ConsumeValueOrDie();
   }
 
-  static int64 ByteSizeOf(const BufferValue& buffer) {
+  static int64_t ByteSizeOf(const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
   }
 

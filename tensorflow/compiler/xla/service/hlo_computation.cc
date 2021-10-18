@@ -200,6 +200,25 @@ Status HloComputation::RemoveParameter(int64_t param_no) {
   return Status::OK();
 }
 
+HloInstruction* HloComputation::ReplaceParameter(
+    int64_t param_no, std::unique_ptr<HloInstruction> instruction) {
+  CHECK_GE(param_no, 0);
+  CHECK_LT(param_no, param_instructions_.size());
+  CHECK(instruction->opcode() == HloOpcode::kParameter);
+  CHECK(IsFusionComputation());
+  CHECK_EQ(fusion_instruction_->operand_count(), param_instructions_.size());
+
+  instruction->set_parent(this);
+  HloInstruction* new_instruction =
+      AddInstructionInternal(std::move(instruction));
+  HloInstruction* old_instruction = param_instructions_[param_no];
+  CHECK(
+      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction).ok());
+  param_instructions_[param_no] = new_instruction;
+  CHECK(RemoveInstruction(old_instruction).ok());
+  return new_instruction;
+}
+
 Status HloComputation::RemoveUnusedParametersFromFusedComputation() {
   return RemoveUnusedParametersImpl(/*allow_non_fusion=*/false);
 }
@@ -418,7 +437,7 @@ void HloComputation::ComputeInstructionPostOrder(
     visited->insert({current, kVisiting});
 
     const auto get_channel_id =
-        [](HloInstruction* inst) -> absl::optional<int64> {
+        [](HloInstruction* inst) -> absl::optional<int64_t> {
       switch (inst->opcode()) {
         case HloOpcode::kRecvDone:
         case HloOpcode::kAllReduce:
@@ -682,10 +701,10 @@ HloComputationProto HloComputation::ToProto() const {
 /* static */ StatusOr<std::unique_ptr<HloComputation>>
 HloComputation::CreateFromProto(
     const HloComputationProto& proto,
-    const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+    const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
     bool prohibit_empty_literal) {
-  absl::flat_hash_map<int64, HloInstruction*> instruction_map;
-  absl::flat_hash_map<HloInstruction*, int64> to_proto_id;
+  absl::flat_hash_map<int64_t, HloInstruction*> instruction_map;
+  absl::flat_hash_map<HloInstruction*, int64_t> to_proto_id;
   std::vector<std::unique_ptr<HloInstruction>> instructions;
   int64_t parameter_count = 0;
   for (const HloInstructionProto& instruction_proto : proto.instructions()) {
@@ -931,7 +950,11 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
       ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
       << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
       << ShapeUtil::HumanString(new_instruction->shape());
+  return ReplaceInstructionWithDifferentShape(old_instruction, new_instruction);
+}
 
+Status HloComputation::ReplaceInstructionWithDifferentShape(
+    HloInstruction* old_instruction, HloInstruction* new_instruction) {
   VLOG(10) << "transformed " << old_instruction->ToString() << " to "
            << new_instruction->ToString();
   // Try to add metadata for HLO instructions that are created to replace
@@ -961,7 +984,8 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
     new_instruction->set_sharding(old_instruction->sharding_ptr());
   }
 
-  TF_RETURN_IF_ERROR(old_instruction->ReplaceAllUsesWith(new_instruction));
+  TF_RETURN_IF_ERROR(
+      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction));
   return RemoveInstructionAndUnusedOperands(old_instruction);
 }
 

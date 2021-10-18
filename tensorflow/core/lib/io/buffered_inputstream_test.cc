@@ -49,7 +49,7 @@ class ReadOnceInputStream : public InputStreamInterface {
         "Redudant call to ReadNBytes after an OutOfRange error.");
   }
 
-  int64 Tell() const override { return start_ ? 0 : 10; }
+  int64_t Tell() const override { return start_ ? 0 : 10; }
 
   // Resets the stream to the beginning.
   Status Reset() override {

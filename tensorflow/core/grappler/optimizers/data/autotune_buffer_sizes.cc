@@ -58,7 +58,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
   }
   MutableGraphView graph(output);
 
-  // Add a const node with value kAutotune
+  // Add a const node with value kAutotune.
   NodeDef* autotune_value =
       graph_utils::AddScalarConstNode(data::model::kAutotune, &graph);
 
@@ -121,10 +121,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
     // `buffer_size` input
     *prefetch_node.mutable_input()->Add() = autotune_value->name();
 
-    for (const auto& attr_name : {"output_types", "output_shapes"}) {
-      graph_utils::CopyAttribute(attr_name, *async_dataset_node,
-                                 &prefetch_node);
-    }
+    graph_utils::CopyShapesAndTypesAttrs(*async_dataset_node, &prefetch_node);
 
     auto* added_node = graph.AddNode(std::move(prefetch_node));
     TF_RETURN_IF_ERROR(

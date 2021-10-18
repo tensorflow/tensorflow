@@ -197,7 +197,7 @@ class StringSplitOp : public OpKernel {
 
     int64_t output_size = 0;
     int64_t max_num_entries = 0;
-    std::vector<int64> num_indices(batch_size);
+    std::vector<int64_t> num_indices(batch_size);
     for (int64_t i = 0; i < batch_size; ++i) {
       std::vector<StringPiece> parts =
           skip_empty_ ? Split(input_vec(i), delimiter, str_util::SkipEmpty())
@@ -219,9 +219,9 @@ class StringSplitOp : public OpKernel {
     Tensor* sp_shape_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(2, TensorShape({2}), &sp_shape_t));
 
-    auto sp_indices = sp_indices_t->matrix<int64>();
+    auto sp_indices = sp_indices_t->matrix<int64_t>();
     auto sp_tokens = sp_tokens_t->vec<tstring>();
-    auto sp_shape = sp_shape_t->vec<int64>();
+    auto sp_shape = sp_shape_t->vec<int64_t>();
     sp_shape(0) = batch_size;
     sp_shape(1) = max_num_entries;
     size_t c = 0;
@@ -270,7 +270,7 @@ class StringSplitV2Op : public OpKernel {
 
     int64_t output_size = 0;
     int64_t max_num_entries = 0;
-    std::vector<int64> num_indices(batch_size);
+    std::vector<int64_t> num_indices(batch_size);
     for (int64_t i = 0; i < batch_size; ++i) {
       std::vector<StringPiece> parts = SplitV2(input_vec(i), sep, maxsplit_);
       int64_t n_entries = parts.size();
@@ -289,9 +289,9 @@ class StringSplitV2Op : public OpKernel {
     Tensor* sp_shape_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(2, TensorShape({2}), &sp_shape_t));
 
-    auto sp_indices = sp_indices_t->matrix<int64>();
+    auto sp_indices = sp_indices_t->matrix<int64_t>();
     auto sp_tokens = sp_tokens_t->vec<tstring>();
-    auto sp_shape = sp_shape_t->vec<int64>();
+    auto sp_shape = sp_shape_t->vec<int64_t>();
     sp_shape(0) = batch_size;
     sp_shape(1) = max_num_entries;
     size_t c = 0;

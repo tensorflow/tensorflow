@@ -191,7 +191,7 @@ An n-way switch statement, implementing the following:
 // its type encoding the tensor's shape and data type.
 def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Constant tensor op";
 
   let arguments = (ins
@@ -216,22 +216,6 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
       return BroadcastCompatible(l, r);
     }
   }];
-}
-
-def TF_XlaAllReduceOp : TF_Op<"XlaAllReduce", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>]> {
-  let summary = "An Op to reduce inputs across replicated TPU instances.";
-
-  let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>:$input,
-    TF_Int32Tensor:$group_assignment,
-    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean"]>:$reduce_op
-  );
-
-  let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_EmptyTensorListOp : TF_TensorListInitOp<"EmptyTensorList"> {
@@ -296,12 +280,14 @@ else_branch: A function that takes 'inputs' and returns a list of
   let extraClassDeclaration = [{
     // Get the then branch function.
     FuncOp then_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, then_branch());
+     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+         *this, then_branchAttr());
     }
 
     // Get the else branch function.
     FuncOp else_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, else_branch());
+     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+         *this, else_branchAttr());
     }
   }];
 }
@@ -411,7 +397,7 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
 
     // returns the callee of this operation.
     FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
   }];
 }
@@ -568,7 +554,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
     // returns the callee of this operation.
     FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
   }];
 
@@ -631,12 +617,12 @@ body: A function that takes a list of tensors and returns another
   let extraClassDeclaration = [{
     // Get the condition function.
     FuncOp cond_function() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, cond());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
     }
 
     // Get the body function.
     FuncOp body_function() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, body());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
     }
   }];
 }
@@ -738,8 +724,8 @@ Example:
   }];
 
   let arguments = (ins
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name
+    DefaultValuedStrAttr<StrAttr, "">:$container,
+    DefaultValuedStrAttr<StrAttr, "">:$shared_name
   );
 
   let results = (outs
@@ -781,7 +767,7 @@ An op which shards the input based on the given sharding attribute.
   let arguments = (ins
     TF_Tensor:$input,
 
-    DefaultValuedAttr<StrAttr, "">:$sharding,
+    DefaultValuedStrAttr<StrAttr, "">:$sharding,
     OptionalAttr<StrAttr>:$_XlaSharding
   );
 
@@ -838,8 +824,8 @@ Formats a string template using a list of tensors, pretty-printing tensor summar
   let arguments = (ins
     Variadic<TF_Tensor>:$inputs,
 
-    DefaultValuedAttr<StrAttr, "%s">:$strtemplate,
-    DefaultValuedAttr<StrAttr, "%s">:$placeholder,
+    DefaultValuedStrAttr<StrAttr, "%s">:$strtemplate,
+    DefaultValuedStrAttr<StrAttr, "%s">:$placeholder,
     DefaultValuedAttr<I64Attr, "3">:$summarize
   );
 
@@ -985,7 +971,7 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
 
     // returns the callee of this operation.
     FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, f());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
     }
   }];
 
@@ -1451,7 +1437,7 @@ outputs outside the XLA computation.
 // Declares symbol reference attribute `shape_inference_graph` to be optional
 // unlike the TensorFlow definition. This is required to support ops that use
 // empty string value for the attribute to signify missing.
-def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", []> {
+def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", [TF_SendRecvSideEffect]> {
   let summary = [{
 A pseudo-op to represent host-side computation in an XLA program.
   }];
@@ -1463,8 +1449,8 @@ A pseudo-op to represent host-side computation in an XLA program.
     TF_ShapeAttrArray:$shapes,
     OptionalAttr<SymbolRefAttr>:$shape_inference_graph,
     StrAttr:$key,
-    DefaultValuedAttr<StrAttr, "">:$send_key,
-    DefaultValuedAttr<StrAttr, "">:$recv_key,
+    DefaultValuedStrAttr<StrAttr, "">:$send_key,
+    DefaultValuedStrAttr<StrAttr, "">:$recv_key,
     DefaultValuedAttr<I64Attr, "1000000">:$cost_estimate_ns,
     DefaultValuedAttr<I64Attr, "0">:$tpu_core
   );
@@ -1517,6 +1503,33 @@ def TF__InternalTestNonResourceValueSideEffects_ : TF_Op<"_InternalTestNonResour
     Arg<TF_StrTensor,"", [TF_DatasetIteratorRead, TF_DatasetIteratorWrite]>:$key
   );
   let results = (outs);
+}
+
+def TF_TPUCompileMlirAndExecuteOp : TF_Op<"TPUCompileMlirAndExecute", []> {
+  let summary = "Op that compiles a computation in MLIR into a TPU program, and loads and executes it on a TPU device.";
+
+  let description = [{
+For the internal use of the TPU compiler.
+
+'mlir_module' is a serialized MLIR module with a `main` function that contains
+target computation.
+'metadata' is a serialized TPUCompileMetadataProto describing the shapes and
+types of the inputs to the computation, as well as a mapping onto the TPU pod
+topology.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+    DefaultValuedStrAttr<StrAttr, "">:$mlir_module,
+    StrAttr:$metadata
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
 }
 
 #endif // TF_OPS

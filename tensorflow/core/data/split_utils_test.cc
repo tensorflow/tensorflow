@@ -57,26 +57,27 @@ Status CheckOutput(SplitProvider* split_provider,
 
 TEST(IndexSplitProviderTest, Empty) {
   IndexSplitProvider split_provider(0);
-  TF_EXPECT_OK(
-      CheckOutput(&split_provider, CreateTensors<int64>(TensorShape({}), {})));
+  TF_EXPECT_OK(CheckOutput(&split_provider,
+                           CreateTensors<int64_t>(TensorShape({}), {})));
 }
 
 TEST(IndexSplitProviderTest, One) {
   IndexSplitProvider split_provider(1);
   TF_EXPECT_OK(CheckOutput(&split_provider,
-                           CreateTensors<int64>(TensorShape({}), {{0}})));
+                           CreateTensors<int64_t>(TensorShape({}), {{0}})));
 }
 
 TEST(IndexSplitProviderTest, Three) {
   IndexSplitProvider split_provider(3);
-  TF_EXPECT_OK(CheckOutput(
-      &split_provider, CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}})));
+  TF_EXPECT_OK(
+      CheckOutput(&split_provider,
+                  CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}})));
 }
 
 TEST(IndexSplitProviderTest, SaveAndRestore) {
   IndexSplitProvider split_provider(4);
   std::vector<Tensor> expected =
-      CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}, {3}});
+      CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}, {3}});
   for (int i = 0; i < expected.size(); ++i) {
     TF_ASSERT_OK(SaveAndRestore(&split_provider));
     Tensor split;
@@ -95,35 +96,35 @@ TEST(IndexSplitProviderTest, SaveAndRestore) {
 TEST(ShardingSplitProviderTest, TwoWayShardZero) {
   auto base = std::make_shared<IndexSplitProvider>(4);
   ShardingSplitProvider split_provider(2, 0, base);
-  TF_EXPECT_OK(CheckOutput(&split_provider,
-                           CreateTensors<int64>(TensorShape({}), {{0}, {2}})));
+  TF_EXPECT_OK(CheckOutput(
+      &split_provider, CreateTensors<int64_t>(TensorShape({}), {{0}, {2}})));
 }
 
 TEST(ShardingSplitProviderTest, TwoWayShardOne) {
   auto base = std::make_shared<IndexSplitProvider>(4);
   ShardingSplitProvider split_provider(2, 1, base);
-  TF_EXPECT_OK(CheckOutput(&split_provider,
-                           CreateTensors<int64>(TensorShape({}), {{1}, {3}})));
+  TF_EXPECT_OK(CheckOutput(
+      &split_provider, CreateTensors<int64_t>(TensorShape({}), {{1}, {3}})));
 }
 
 TEST(ShardingSplitProviderTest, ThreeWayShardOne) {
   auto base = std::make_shared<IndexSplitProvider>(6);
   ShardingSplitProvider split_provider(3, 1, base);
-  TF_EXPECT_OK(CheckOutput(&split_provider,
-                           CreateTensors<int64>(TensorShape({}), {{1}, {4}})));
+  TF_EXPECT_OK(CheckOutput(
+      &split_provider, CreateTensors<int64_t>(TensorShape({}), {{1}, {4}})));
 }
 
 TEST(ShardingSplitProviderTest, Empty) {
   auto base = std::make_shared<IndexSplitProvider>(1);
   ShardingSplitProvider split_provider(2, 1, base);
-  TF_EXPECT_OK(
-      CheckOutput(&split_provider, CreateTensors<int64>(TensorShape({}), {})));
+  TF_EXPECT_OK(CheckOutput(&split_provider,
+                           CreateTensors<int64_t>(TensorShape({}), {})));
 }
 
 TEST(ShardingSplitProviderTest, SaveAndRestore) {
   auto base = std::make_shared<IndexSplitProvider>(6);
   std::vector<Tensor> expected =
-      CreateTensors<int64>(TensorShape({}), {{1}, {4}});
+      CreateTensors<int64_t>(TensorShape({}), {{1}, {4}});
   ShardingSplitProvider split_provider(3, 1, base);
   for (int i = 0; i < expected.size(); ++i) {
     TF_ASSERT_OK(SaveAndRestore(&split_provider));

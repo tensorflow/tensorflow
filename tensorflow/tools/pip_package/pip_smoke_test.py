@@ -18,10 +18,6 @@ This script runs bazel queries to see what python files are required by the
 tests and ensures they are in the pip package superset.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import subprocess
 
@@ -35,6 +31,9 @@ PIP_PACKAGE_QUERY_EXPRESSION = (
 BUILD_DENYLIST = [
     "tensorflow/lite",
     "tensorflow/compiler/mlir/lite",
+    "tensorflow/compiler/mlir/tfrt",
+    "tensorflow/core/runtime_fallback",
+    "tensorflow/core/tfrt",
     "tensorflow/python/kernel_tests/signal",
     "tensorflow/examples",
     "tensorflow/tools/android",

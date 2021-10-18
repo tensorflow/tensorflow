@@ -39,6 +39,9 @@ class ModuleOp;
 namespace tensorflow {
 
 struct TfrtFunctionCompileOptions : public TfrtCompileOptions {
+  // Currently only SavedModel API inference uses the tpu_fuse_ops option
+  TfrtFunctionCompileOptions() { tpu_fuse_ops = false; }
+
   // If true, use ServingCoreSelector to pick TPU core. Otherwise, obtain core
   // location from assigned device name.
   // Currently we don't use core_selector for training use cases.

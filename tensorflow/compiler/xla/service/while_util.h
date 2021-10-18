@@ -109,7 +109,7 @@ class WhileUtil {
   // `while_conditional` that access elements in the parameter tuple. Assumes
   // `while_conditional` is the conditional computation of the while loop in
   // question.
-  static absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>
+  static absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>>
   GetGTEsMapForWhileConditional(const HloComputation& while_conditional);
 };
 }  // namespace xla

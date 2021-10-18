@@ -47,8 +47,8 @@ struct AllocRecord {
       : alloc_bytes(a_btyes), alloc_micros(a_micros) {}
   AllocRecord() : AllocRecord(0, 0) {}
 
-  int64 alloc_bytes;
-  int64 alloc_micros;
+  int64_t alloc_bytes;
+  int64_t alloc_micros;
 };
 
 class TrackingAllocator : public Allocator {
@@ -64,7 +64,7 @@ class TrackingAllocator : public Allocator {
   bool TracksAllocationSizes() const override;
   size_t RequestedSize(const void* ptr) const override;
   size_t AllocatedSize(const void* ptr) const override;
-  int64 AllocationId(const void* ptr) const override;
+  int64_t AllocationId(const void* ptr) const override;
   absl::optional<AllocatorStats> GetStats() override;
   bool ClearStats() override;
 
@@ -121,10 +121,10 @@ class TrackingAllocator : public Allocator {
   struct Chunk {
     size_t requested_size;
     size_t allocated_size;
-    int64 allocation_id;
+    int64_t allocation_id;
   };
   std::unordered_map<const void*, Chunk> in_use_ TF_GUARDED_BY(mu_);
-  int64 next_allocation_id_ TF_GUARDED_BY(mu_);
+  int64_t next_allocation_id_ TF_GUARDED_BY(mu_);
 };
 
 }  // end namespace tensorflow

@@ -550,7 +550,7 @@ class TfrtCpuExecutable final : public PjRtExecutable {
 
   int num_partitions() const override { return num_partitions_; }
 
-  int64 SizeOfGeneratedCodeInBytes() const override {
+  int64_t SizeOfGeneratedCodeInBytes() const override {
     return cpu_executable_->SizeOfGeneratedCodeInBytes();
   }
 

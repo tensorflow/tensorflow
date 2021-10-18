@@ -80,7 +80,7 @@ Node* Ones(Graph* const g, const int n) {
 
 Node* SparseIndices(Graph* const g, const int sparse_features_per_group) {
   Tensor data(DT_INT64, TensorShape({sparse_features_per_group}));
-  test::FillFn<int64>(&data, [&](const int i) { return i; });
+  test::FillFn<int64_t>(&data, [&](const int i) { return i; });
   return test::graph::Constant(g, data);
 }
 
@@ -88,7 +88,7 @@ Node* SparseExampleIndices(Graph* const g, const int sparse_features_per_group,
                            const int num_examples) {
   const int x_size = num_examples * 4;
   Tensor data(DT_INT64, TensorShape({x_size}));
-  test::FillFn<int64>(&data, [&](const int i) { return i / 4; });
+  test::FillFn<int64_t>(&data, [&](const int i) { return i / 4; });
   return test::graph::Constant(g, data);
 }
 
@@ -96,7 +96,7 @@ Node* SparseFeatureIndices(Graph* const g, const int sparse_features_per_group,
                            const int num_examples) {
   const int x_size = num_examples * 4;
   Tensor data(DT_INT64, TensorShape({x_size}));
-  test::FillFn<int64>(
+  test::FillFn<int64_t>(
       &data, [&](const int i) { return i % sparse_features_per_group; });
   return test::graph::Constant(g, data);
 }

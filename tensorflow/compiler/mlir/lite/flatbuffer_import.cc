@@ -38,7 +38,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Endian.h"
@@ -46,6 +45,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -307,25 +307,12 @@ bool IsBasicLSTMOp(tflite::BuiltinOptionsUnion op_union) {
 }
 
 // Gets the MLIR op name with the dialect name for the flatbuffer operator.
-StatusOr<std::string> GetMlirOpName(const tflite::OperatorT& op,
-                                    const tflite::OperatorCodeT& op_code) {
+std::string GetMlirOpName(const tflite::OperatorT& op,
+                          const tflite::OperatorCodeT& op_code) {
   if (IsBasicLSTMOp(op.builtin_options)) {
     return std::string("tfl.basic_lstm");
   }
-
-  auto builtin_code = tflite::GetBuiltinCode(&op_code);
-  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    return std::string("tfl.custom");
-  }
-  if (builtin_code == tflite::BuiltinOperator_IF) {
-    return std::string("tf.If");
-  }
-  if (builtin_code == tflite::BuiltinOperator_WHILE) {
-    return std::string("tfl.while");
-  }
-
-  llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
-  return llvm::Twine("tfl.", op_name.lower()).str();
+  return mlir::GetMlirOpNameFromOpCode(op_code);
 }
 
 // The buffers in TFLite flatbuffers have their contents stored as a vector of
@@ -399,7 +386,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
         values.emplace_back(semantics, int_repr);
       }
 
-      return DenseElementsAttr::get(shaped_type, values);
+      return mlir::ElementsAttr(DenseElementsAttr::get(shaped_type, values));
     }
     case 32: {
       assert(bytes_len % 4 == 0);
@@ -415,7 +402,8 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
                                             llvm::support::unaligned>(data);
         values.push_back(absl::bit_cast<float>(bit_repr));
       }
-      return DenseElementsAttr::get(shaped_type, ArrayRef<float>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<float>(values)));
     }
     case 64: {
       assert(bytes_len % 8 == 0);
@@ -431,7 +419,8 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
                                             llvm::support::unaligned>(data);
         values.push_back(absl::bit_cast<double>(bit_repr));
       }
-      return DenseElementsAttr::get(shaped_type, ArrayRef<double>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<double>(values)));
     }
   }
   return errors::InvalidArgument("unsupported bit width", elem_type.getWidth());
@@ -459,22 +448,27 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
       for (auto b : buffer) {
         values.emplace_back(b != 0);
       }
-      return DenseElementsAttr::get(shaped_type, ArrayRef<bool>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<bool>(values)));
     }
     case 8: {
-      return DenseElementsAttr::get(shaped_type, ArrayRef<uint8_t>(buffer));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<uint8_t>(buffer)));
     }
     case 16: {
       auto values = ReadAsLittleEndian<uint16_t>(buffer);
-      return DenseElementsAttr::get(shaped_type, ArrayRef<uint16_t>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<uint16_t>(values)));
     }
     case 32: {
       auto values = ReadAsLittleEndian<uint32_t>(buffer);
-      return DenseElementsAttr::get(shaped_type, ArrayRef<uint32_t>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<uint32_t>(values)));
     }
     case 64: {
       auto values = ReadAsLittleEndian<uint64_t>(buffer);
-      return DenseElementsAttr::get(shaped_type, ArrayRef<uint64_t>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<uint64_t>(values)));
     }
     default:
       return errors::Unimplemented("Cannot handle bit width ", bit_width);
@@ -698,36 +692,64 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   return op.getOperation();
 }
 
-llvm::SmallVector<mlir::NamedAttribute, 4> ConvertSubgraphIdxsToFunctionAttrs(
-    tflite::BuiltinOptionsUnion options,
-    const std::vector<std::string>& func_names, Builder builder) {
+StatusOr<llvm::SmallVector<mlir::NamedAttribute, 4>>
+ConvertSubgraphIdxsToFunctionAttrs(tflite::BuiltinOptionsUnion options,
+                                   const std::vector<std::string>& func_names,
+                                   Builder builder) {
   if (auto* opts = options.AsCallOnceOptions()) {
     uint32_t init_idx = opts->init_subgraph_index;
+    if (init_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     init_idx);
+    }
     auto init_attr = builder.getStringAttr(func_names.at(init_idx));
 
-    return {builder.getNamedAttr("session_init_function", init_attr)};
+    return llvm::SmallVector<mlir::NamedAttribute, 4>{
+        builder.getNamedAttr("session_init_function", init_attr)};
   }
   if (auto* opts = options.AsIfOptions()) {
     uint32_t then_idx = opts->then_subgraph_index;
-    auto then_attr = builder.getSymbolRefAttr(func_names.at(then_idx));
+    if (then_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     then_idx);
+    }
+    auto then_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(then_idx));
     uint32_t else_idx = opts->else_subgraph_index;
-    auto else_attr = builder.getSymbolRefAttr(func_names.at(else_idx));
+    if (else_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     else_idx);
+    }
+    auto else_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(else_idx));
 
-    return {builder.getNamedAttr("then_branch", then_attr),
-            builder.getNamedAttr("else_branch", else_attr),
-            // TODO(b/139667752): Analyze statelessness correctly
-            builder.getNamedAttr("is_stateless", builder.getBoolAttr(false))};
+    return llvm::SmallVector<mlir::NamedAttribute, 4>{
+        builder.getNamedAttr("then_branch", then_attr),
+        builder.getNamedAttr("else_branch", else_attr),
+        // TODO(b/139667752): Analyze statelessness correctly
+        builder.getNamedAttr("is_stateless", builder.getBoolAttr(false))};
   }
   if (auto* opts = options.AsWhileOptions()) {
     uint32_t cond_idx = opts->cond_subgraph_index;
-    auto cond_attr = builder.getSymbolRefAttr(func_names.at(cond_idx));
+    if (cond_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     cond_idx);
+    }
+    auto cond_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(cond_idx));
     uint32_t body_idx = opts->body_subgraph_index;
-    auto body_attr = builder.getSymbolRefAttr(func_names.at(body_idx));
+    if (body_idx >= func_names.size()) {
+      return errors::InvalidArgument("subgraph with index not found: ",
+                                     body_idx);
+    }
+    auto body_attr =
+        mlir::SymbolRefAttr::get(builder.getContext(), func_names.at(body_idx));
 
-    return {builder.getNamedAttr("cond", cond_attr),
-            builder.getNamedAttr("body", body_attr)};
+    return llvm::SmallVector<mlir::NamedAttribute, 4>{
+        builder.getNamedAttr("cond", cond_attr),
+        builder.getNamedAttr("body", body_attr)};
   }
-  return {};
+  return llvm::SmallVector<mlir::NamedAttribute, 4>{};
 }
 
 Status AddOpIntermediatesForLstm(
@@ -773,7 +795,7 @@ StatusOr<Operation*> ConvertOp(
 
   const tflite::OperatorCodeT& op_code = *op_codes.at(op.opcode_index);
 
-  TF_ASSIGN_OR_RETURN(const std::string op_name, GetMlirOpName(op, op_code));
+  const std::string op_name = GetMlirOpName(op, op_code);
 
   OperationState op_state(loc, op_name);
 
@@ -863,7 +885,8 @@ StatusOr<Operation*> ConvertOp(
       if (shape_ty != nullptr && shape_ty.hasRank() && shape_ty.getRank() > 1) {
         llvm::SmallVector<mlir::Attribute, 4> shape;
         int32_t dim_size = 0;
-        for (const auto& dim : llvm::enumerate(shape_attr.getIntValues())) {
+        for (const auto& dim :
+             llvm::enumerate(shape_attr.getValues<llvm::APInt>())) {
           const int64_t size = dim.value().getSExtValue();
           shape.push_back(
               builder.getI32IntegerAttr(static_cast<int32_t>(size)));
@@ -893,8 +916,9 @@ StatusOr<Operation*> ConvertOp(
 
   // Handle the conversion from subgraph index to functions for If and While. We
   // will add CallOps in the region to call the functions later for While.
-  auto function_ref_attrs = ConvertSubgraphIdxsToFunctionAttrs(
-      op.builtin_options, func_names, builder);
+  TF_ASSIGN_OR_RETURN(auto function_ref_attrs,
+                      ConvertSubgraphIdxsToFunctionAttrs(op.builtin_options,
+                                                         func_names, builder));
   op_state.addAttributes(function_ref_attrs);
 
   return builder.createOperation(op_state);
@@ -1370,9 +1394,9 @@ StatusOr<FuncOp> ConvertSubgraph(
 // have them, so we generate a name for subgraphs that are missing one here.
 // Note: in TFLite, the first subgraph is the entry point, and in MLIR that
 // represents TFLite, this entry point must be called "main"
-// TODO(b/131175224,b/132239787) Support multiple entry points
-std::string SubgraphName(unsigned index, const tflite::SubGraphT& subgraph) {
-  if (index == 0) {
+std::string SubgraphName(bool set_implicit_main_func, unsigned index,
+                         const tflite::SubGraphT& subgraph) {
+  if (index == 0 && set_implicit_main_func) {
     return "main";
   }
   if (subgraph.name.empty()) {
@@ -1417,9 +1441,10 @@ OwningModuleRef tflite::FlatBufferToMlir(
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally) {
-  context->loadDialect<
-      mlir::StandardOpsDialect, mlir::quant::QuantizationDialect,
-      mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect>();
+  context->loadDialect<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+                       mlir::quant::QuantizationDialect,
+                       mlir::TFL::TensorFlowLiteDialect,
+                       mlir::TF::TensorFlowDialect>();
 
   auto model_ptr =
       FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());
@@ -1446,24 +1471,38 @@ OwningModuleRef tflite::FlatBufferToMlir(
                     builder.getStringAttr(model->description));
   }
 
-  // TODO(b/184697652): Update to handle multiple entry points.
-  tflite::SignatureDefT* signature_def = nullptr;
   if (!model->signature_defs.empty()) {
-    signature_def = model->signature_defs[0].get();
+    module->setAttr("tf_saved_model.semantics",
+                    mlir::UnitAttr::get(builder.getContext()));
   }
 
+  absl::flat_hash_map<uint32_t, tflite::SignatureDefT*>
+      subgraph_to_signature_map;
+  for (int i = 0; i < model->signature_defs.size(); i++) {
+    auto* signature_def = model->signature_defs[i].get();
+    const uint32_t subgraph_index = signature_def->subgraph_index;
+    subgraph_to_signature_map[subgraph_index] = signature_def;
+  }
+
+  const bool set_implicit_main_func = subgraph_to_signature_map.size() <= 1;
   for (auto e : llvm::enumerate(model->subgraphs)) {
     auto& subgraph = e.value();
-    std::string name = SubgraphName(e.index(), *subgraph);
+    std::string name =
+        SubgraphName(set_implicit_main_func, e.index(), *subgraph);
+    uint32_t subgraph_index = static_cast<uint32_t>(e.index());
     auto func_or_error = ConvertSubgraph(
         *subgraph, name, model->operator_codes, func_names, model->buffers,
         base_loc, builder,
-        // TODO(b/131175224,b/132239787) Support multiple entry points
-        /*is_entry_point=*/e.index() == 0,
+        /*is_entry_point=*/
+        set_implicit_main_func
+            ? e.index() == 0
+            : subgraph_to_signature_map.contains(subgraph_index),
         /*use_external_constant=*/use_external_constant, ordered_input_arrays,
         ordered_output_arrays,
         experimental_prune_unreachable_nodes_unconditionally,
-        e.index() == 0 ? signature_def : nullptr);
+        subgraph_to_signature_map.contains(subgraph_index)
+            ? subgraph_to_signature_map.at(subgraph_index)
+            : nullptr);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
                  << subgraph->name << ": "

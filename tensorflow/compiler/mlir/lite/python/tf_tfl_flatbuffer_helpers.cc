@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
+#include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 using stream_executor::port::StatusOr;
@@ -47,6 +48,8 @@ using stream_executor::port::StatusOr;
 namespace tensorflow {
 namespace internal {
 namespace {
+
+using ::mlir::TFL::ReducedPrecisionSupport;
 
 // Op def string for TFLite_Detection_PostProcess Op.
 const char kDetectionPostProcessOp[] =
@@ -258,6 +261,8 @@ Status PopulateQuantizationSpecs(
   // not used by MLIR passes.
   if (toco_flags.post_training_quantize()) {
     quant_specs->weight_quantization = true;
+    quant_specs->disable_per_channel =
+        toco_flags.disable_per_channel_quantization();
     if (toco_flags.quantize_to_float16()) {
       quant_specs->inference_type = tensorflow::DT_HALF;
       quant_specs->inference_input_type = tensorflow::DT_HALF;
@@ -265,6 +270,24 @@ Status PopulateQuantizationSpecs(
       quant_specs->inference_type = tensorflow::DT_QINT8;
       quant_specs->inference_input_type = tensorflow::DT_QINT8;
     }
+  }
+
+  // Add information about half-precision support if fp16 quantization applies.
+  // TODO(b/195945955): Add e2e test for this.
+  if (toco_flags.quantize_to_float16() || toco_flags.allow_bfloat16()) {
+    ReducedPrecisionSupport mask = ReducedPrecisionSupport::None;
+    if (toco_flags.quantize_to_float16()) {
+      mask |= ReducedPrecisionSupport::Float16Inference;
+    }
+    if (toco_flags.allow_bfloat16()) {
+      mask |= ReducedPrecisionSupport::Bfloat16Inference;
+    }
+    if (toco_flags.accumulation_type() == toco::IODataType::FLOAT16) {
+      mask |= ReducedPrecisionSupport::Float16Accumulation;
+    } else {
+      mask |= ReducedPrecisionSupport::Float32Accumulation;
+    }
+    quant_specs->support_mask = mask;
   }
 
   // Other flags.
@@ -299,15 +322,6 @@ Status ConvertMLIRToTFLiteFlatBuffer(
     mlir::OwningModuleRef module, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
     llvm::Optional<tensorflow::Session*> session) {
-  bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
-  bool emit_select_tf_ops = toco_flags.enable_select_tf_ops();
-  bool emit_custom_ops = toco_flags.allow_custom_ops();
-  bool allow_all_select_tf_ops = toco_flags.allow_all_select_tf_ops();
-
-  const std::unordered_set<std::string> select_user_tf_ops(
-      toco_flags.select_user_tf_ops().begin(),
-      toco_flags.select_user_tf_ops().end());
-
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         module.get(),
@@ -331,10 +345,8 @@ Status ConvertMLIRToTFLiteFlatBuffer(
   pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
-      module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, allow_all_select_tf_ops,
-      select_user_tf_ops, pass_config.quant_specs, saved_model_tags, result,
-      &pm);
+      module.get(), /*export_to_mlir=*/false, toco_flags,
+      pass_config.quant_specs, saved_model_tags, result, &pm);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.

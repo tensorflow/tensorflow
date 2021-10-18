@@ -17,10 +17,6 @@
 This is primarily used by generate_examples.py. See it or
 `make_report_table` for more details on usage.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import html
 import json
 import re

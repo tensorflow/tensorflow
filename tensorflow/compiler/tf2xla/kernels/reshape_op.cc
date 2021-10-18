@@ -45,7 +45,7 @@ class ReshapeOp : public XlaOpKernel {
                                         sizes_shape.DebugString()));
     const int64_t num_dims = sizes_shape.num_elements();
 
-    std::vector<int64> shape_input;
+    std::vector<int64_t> shape_input;
     OP_REQUIRES_OK(ctx,
                    ctx->ConstantInputAsIntVector(
                        1, &shape_input, xla::ValueInferenceMode::kUpperBound));

@@ -49,11 +49,11 @@ bool HloDomainMap::InSameDomain(const HloInstruction* instruction1,
   return domain_id1 >= 0 && domain_id1 == domain_id2;
 }
 
-int64 HloDomainMap::GetDomainId(const HloInstruction* instruction) const {
+int64_t HloDomainMap::GetDomainId(const HloInstruction* instruction) const {
   return FindOrDefault(instruction_to_domain_, instruction, -1);
 }
 
-int64 HloDomainMap::GetDomainMetadataId(
+int64_t HloDomainMap::GetDomainMetadataId(
     const HloInstruction* instruction) const {
   return FindOrDie(domain_metadata_id_, instruction);
 }
@@ -109,7 +109,7 @@ Status HloDomainMap::PopulateDomainMetadataMap() {
   auto equal = [](const DomainMetadata* a, const DomainMetadata* b) {
     return a->Matches(*b);
   };
-  absl::flat_hash_map<const DomainMetadata*, int64, decltype(hash),
+  absl::flat_hash_map<const DomainMetadata*, int64_t, decltype(hash),
                       decltype(equal)>
       domain_metadata(1024, hash, equal);
 

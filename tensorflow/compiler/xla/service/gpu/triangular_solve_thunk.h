@@ -60,11 +60,11 @@ class TriangularSolveThunk : public Thunk {
   const BufferAllocation::Slice b_buffer_;
 
   const PrimitiveType type_;
-  const int64 batch_size_;
-  const int64 m_;
-  const int64 n_;
-  const int64 a_batch_stride_;
-  const int64 b_batch_stride_;
+  const int64_t batch_size_;
+  const int64_t m_;
+  const int64_t n_;
+  const int64_t a_batch_stride_;
+  const int64_t b_batch_stride_;
 };
 
 }  // namespace gpu

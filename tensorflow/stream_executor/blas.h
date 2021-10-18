@@ -171,7 +171,7 @@ std::ostream &operator<<(std::ostream &os, DataType ty);
 
 // Opaque identifier for an "algorithm" used by a blas routine.  This functions
 // as a hint to the blas library.
-typedef int64 AlgorithmType;
+typedef int64_t AlgorithmType;
 constexpr AlgorithmType kDefaultAlgorithm = -1;
 constexpr AlgorithmType kDefaultBlasGemm = -2;
 constexpr AlgorithmType kDefaultBlasGemv = -3;
@@ -250,16 +250,16 @@ struct BlasLtMatmulPlanParams {
   Epilogue epilogue;
   Transpose transa;
   Transpose transb;
-  uint64 m;
-  uint64 n;
-  uint64 k;
-  int64 lda;
-  int64 ldb;
-  int64 ldc;
+  uint64_t m;
+  uint64_t n;
+  uint64_t k;
+  int64_t lda;
+  int64_t ldb;
+  int64_t ldc;
   int batch_count = 1;
-  int64 stride_a = 0;
-  int64 stride_b = 0;
-  int64 stride_c = 0;
+  int64_t stride_a = 0;
+  int64_t stride_b = 0;
+  int64_t stride_c = 0;
 };
 
 // BLAS support interface -- this can be derived from a GPU executor when the
@@ -278,76 +278,76 @@ class BlasSupport {
   // result <- |Re x(1)| + |Im x(1)| + |Re  x(2)| + |Im  x(2)|+ ... + |Re  x(n)|
   // + |Im x(n)|.
   // Note that Im x(i) = 0 for real types float/double.
-  virtual bool DoBlasAsum(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasAsum(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<float> &x, int incx,
                           DeviceMemory<float> *result) = 0;
-  virtual bool DoBlasAsum(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasAsum(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<double> &x, int incx,
                           DeviceMemory<double> *result) = 0;
-  virtual bool DoBlasAsum(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasAsum(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<float> *result) = 0;
-  virtual bool DoBlasAsum(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasAsum(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<double> *result) = 0;
 
   // Performs a BLAS y <- ax+y operation.
-  virtual bool DoBlasAxpy(Stream *stream, uint64 elem_count, float alpha,
+  virtual bool DoBlasAxpy(Stream *stream, uint64_t elem_count, float alpha,
                           const DeviceMemory<float> &x, int incx,
                           DeviceMemory<float> *y, int incy) = 0;
-  virtual bool DoBlasAxpy(Stream *stream, uint64 elem_count, double alpha,
+  virtual bool DoBlasAxpy(Stream *stream, uint64_t elem_count, double alpha,
                           const DeviceMemory<double> &x, int incx,
                           DeviceMemory<double> *y, int incy) = 0;
-  virtual bool DoBlasAxpy(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasAxpy(Stream *stream, uint64_t elem_count,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<std::complex<float>> *y, int incy) = 0;
-  virtual bool DoBlasAxpy(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasAxpy(Stream *stream, uint64_t elem_count,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<std::complex<double>> *y, int incy) = 0;
 
   // Copies vector to another vector: y <- x.
-  virtual bool DoBlasCopy(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasCopy(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<float> &x, int incx,
                           DeviceMemory<float> *y, int incy) = 0;
-  virtual bool DoBlasCopy(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasCopy(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<double> &x, int incx,
                           DeviceMemory<double> *y, int incy) = 0;
-  virtual bool DoBlasCopy(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasCopy(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<std::complex<float>> *y, int incy) = 0;
-  virtual bool DoBlasCopy(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasCopy(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<std::complex<double>> *y, int incy) = 0;
 
   // Performs a BLAS dot product result <- x . y.
-  virtual bool DoBlasDot(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasDot(Stream *stream, uint64_t elem_count,
                          const DeviceMemory<float> &x, int incx,
                          const DeviceMemory<float> &y, int incy,
                          DeviceMemory<float> *result) = 0;
-  virtual bool DoBlasDot(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasDot(Stream *stream, uint64_t elem_count,
                          const DeviceMemory<double> &x, int incx,
                          const DeviceMemory<double> &y, int incy,
                          DeviceMemory<double> *result) = 0;
 
   // Performs a BLAS dot product result <- conj(x) . y for complex types.
-  virtual bool DoBlasDotc(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasDotc(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *result) = 0;
-  virtual bool DoBlasDotc(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasDotc(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *result) = 0;
 
   // Performs a BLAS dot product result <- x . y for complex types. Note that
   // x is unconjugated in this routine.
-  virtual bool DoBlasDotu(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasDotu(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *result) = 0;
-  virtual bool DoBlasDotu(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasDotu(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *result) = 0;
@@ -355,35 +355,35 @@ class BlasSupport {
   // Computes the Euclidean norm of a vector: result <- ||x||.
   // See the following link for more information of Euclidean norm:
   // http://en.wikipedia.org/wiki/Norm_(mathematics)#Euclidean_norm
-  virtual bool DoBlasNrm2(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasNrm2(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<float> &x, int incx,
                           DeviceMemory<float> *result) = 0;
-  virtual bool DoBlasNrm2(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasNrm2(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<double> &x, int incx,
                           DeviceMemory<double> *result) = 0;
-  virtual bool DoBlasNrm2(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasNrm2(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<float> *result) = 0;
-  virtual bool DoBlasNrm2(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasNrm2(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<double> *result) = 0;
 
   // Performs rotation of points in the plane:
   // x(i) = c*x(i) + s*y(i)
   // y(i) = c*y(i) - s*x(i).
-  virtual bool DoBlasRot(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasRot(Stream *stream, uint64_t elem_count,
                          DeviceMemory<float> *x, int incx,
                          DeviceMemory<float> *y, int incy, float c,
                          float s) = 0;
-  virtual bool DoBlasRot(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasRot(Stream *stream, uint64_t elem_count,
                          DeviceMemory<double> *x, int incx,
                          DeviceMemory<double> *y, int incy, double c,
                          double s) = 0;
-  virtual bool DoBlasRot(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasRot(Stream *stream, uint64_t elem_count,
                          DeviceMemory<std::complex<float>> *x, int incx,
                          DeviceMemory<std::complex<float>> *y, int incy,
                          float c, float s) = 0;
-  virtual bool DoBlasRot(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasRot(Stream *stream, uint64_t elem_count,
                          DeviceMemory<std::complex<double>> *x, int incx,
                          DeviceMemory<std::complex<double>> *y, int incy,
                          double c, double s) = 0;
@@ -423,11 +423,11 @@ class BlasSupport {
   // for i=1 to n, where H is a modified Givens transformation matrix whose
   // values are stored in the param[1] through param[4] array.
   // For more information please Google this routine.
-  virtual bool DoBlasRotm(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasRotm(Stream *stream, uint64_t elem_count,
                           DeviceMemory<float> *x, int incx,
                           DeviceMemory<float> *y, int incy,
                           const DeviceMemory<float> &param) = 0;
-  virtual bool DoBlasRotm(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasRotm(Stream *stream, uint64_t elem_count,
                           DeviceMemory<double> *x, int incx,
                           DeviceMemory<double> *y, int incy,
                           const DeviceMemory<double> &param) = 0;
@@ -451,60 +451,60 @@ class BlasSupport {
                            DeviceMemory<double> *param) = 0;
 
   // Computes the product of a vector by a scalar: x <- a*x.
-  virtual bool DoBlasScal(Stream *stream, uint64 elem_count, float alpha,
+  virtual bool DoBlasScal(Stream *stream, uint64_t elem_count, float alpha,
                           DeviceMemory<float> *x, int incx) = 0;
-  virtual bool DoBlasScal(Stream *stream, uint64 elem_count, double alpha,
+  virtual bool DoBlasScal(Stream *stream, uint64_t elem_count, double alpha,
                           DeviceMemory<double> *x, int incx) = 0;
-  virtual bool DoBlasScal(Stream *stream, uint64 elem_count, float alpha,
+  virtual bool DoBlasScal(Stream *stream, uint64_t elem_count, float alpha,
                           DeviceMemory<std::complex<float>> *x, int incx) = 0;
-  virtual bool DoBlasScal(Stream *stream, uint64 elem_count, double alpha,
+  virtual bool DoBlasScal(Stream *stream, uint64_t elem_count, double alpha,
                           DeviceMemory<std::complex<double>> *x, int incx) = 0;
-  virtual bool DoBlasScal(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasScal(Stream *stream, uint64_t elem_count,
                           std::complex<float> alpha,
                           DeviceMemory<std::complex<float>> *x, int incx) = 0;
-  virtual bool DoBlasScal(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasScal(Stream *stream, uint64_t elem_count,
                           std::complex<double> alpha,
                           DeviceMemory<std::complex<double>> *x, int incx) = 0;
 
   // Swaps a vector with another vector.
-  virtual bool DoBlasSwap(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasSwap(Stream *stream, uint64_t elem_count,
                           DeviceMemory<float> *x, int incx,
                           DeviceMemory<float> *y, int incy) = 0;
-  virtual bool DoBlasSwap(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasSwap(Stream *stream, uint64_t elem_count,
                           DeviceMemory<double> *x, int incx,
                           DeviceMemory<double> *y, int incy) = 0;
-  virtual bool DoBlasSwap(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasSwap(Stream *stream, uint64_t elem_count,
                           DeviceMemory<std::complex<float>> *x, int incx,
                           DeviceMemory<std::complex<float>> *y, int incy) = 0;
-  virtual bool DoBlasSwap(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasSwap(Stream *stream, uint64_t elem_count,
                           DeviceMemory<std::complex<double>> *x, int incx,
                           DeviceMemory<std::complex<double>> *y, int incy) = 0;
 
   // Finds the index of the element with maximum absolute value.
-  virtual bool DoBlasIamax(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasIamax(Stream *stream, uint64_t elem_count,
                            const DeviceMemory<float> &x, int incx,
                            DeviceMemory<int> *result) = 0;
-  virtual bool DoBlasIamax(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasIamax(Stream *stream, uint64_t elem_count,
                            const DeviceMemory<double> &x, int incx,
                            DeviceMemory<int> *result) = 0;
-  virtual bool DoBlasIamax(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasIamax(Stream *stream, uint64_t elem_count,
                            const DeviceMemory<std::complex<float>> &x, int incx,
                            DeviceMemory<int> *result) = 0;
-  virtual bool DoBlasIamax(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasIamax(Stream *stream, uint64_t elem_count,
                            const DeviceMemory<std::complex<double>> &x,
                            int incx, DeviceMemory<int> *result) = 0;
 
   // Finds the index of the element with minimum absolute value.
-  virtual bool DoBlasIamin(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasIamin(Stream *stream, uint64_t elem_count,
                            const DeviceMemory<float> &x, int incx,
                            DeviceMemory<int> *result) = 0;
-  virtual bool DoBlasIamin(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasIamin(Stream *stream, uint64_t elem_count,
                            const DeviceMemory<double> &x, int incx,
                            DeviceMemory<int> *result) = 0;
-  virtual bool DoBlasIamin(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasIamin(Stream *stream, uint64_t elem_count,
                            const DeviceMemory<std::complex<float>> &x, int incx,
                            DeviceMemory<int> *result) = 0;
-  virtual bool DoBlasIamin(Stream *stream, uint64 elem_count,
+  virtual bool DoBlasIamin(Stream *stream, uint64_t elem_count,
                            const DeviceMemory<std::complex<double>> &x,
                            int incx, DeviceMemory<int> *result) = 0;
 
@@ -520,25 +520,25 @@ class BlasSupport {
   // sub-diagonals and ku super-diagonals; x is a vector with
   // n(trans==kNoTranspose)/m(otherwise) elements;
   // y is a vector with m(trans==kNoTranspose)/n(otherwise) elements.
-  virtual bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,
-                          uint64 n, uint64 kl, uint64 ku, float alpha,
+  virtual bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64_t m,
+                          uint64_t n, uint64 kl, uint64 ku, float alpha,
                           const DeviceMemory<float> &a, int lda,
                           const DeviceMemory<float> &x, int incx, float beta,
                           DeviceMemory<float> *y, int incy) = 0;
-  virtual bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,
-                          uint64 n, uint64 kl, uint64 ku, double alpha,
+  virtual bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64_t m,
+                          uint64_t n, uint64 kl, uint64 ku, double alpha,
                           const DeviceMemory<double> &a, int lda,
                           const DeviceMemory<double> &x, int incx, double beta,
                           DeviceMemory<double> *y, int incy) = 0;
-  virtual bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,
-                          uint64 n, uint64 kl, uint64 ku,
+  virtual bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64_t m,
+                          uint64_t n, uint64 kl, uint64 ku,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) = 0;
-  virtual bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,
-                          uint64 n, uint64 kl, uint64 ku,
+  virtual bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64_t m,
+                          uint64_t n, uint64 kl, uint64 ku,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           const DeviceMemory<std::complex<double>> &x, int incx,
@@ -556,45 +556,46 @@ class BlasSupport {
   // alpha and beta are scalars; a is an m-by-n general matrix; x is a vector
   // with n(trans==kNoTranspose)/m(otherwise) elements;
   // y is a vector with m(trans==kNoTranspose)/n(otherwise) elements.
-  virtual bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
-                          uint64 n, float alpha, const DeviceMemory<float> &a,
+  virtual bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m,
+                          uint64_t n, float alpha, const DeviceMemory<float> &a,
                           int lda, const DeviceMemory<float> &x, int incx,
                           float beta, DeviceMemory<float> *y, int incy) = 0;
-  virtual bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
-                          uint64 n, double alpha, const DeviceMemory<double> &a,
-                          int lda, const DeviceMemory<double> &x, int incx,
-                          double beta, DeviceMemory<double> *y, int incy) = 0;
-  virtual bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
-                          uint64 n, std::complex<float> alpha,
+  virtual bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m,
+                          uint64_t n, double alpha,
+                          const DeviceMemory<double> &a, int lda,
+                          const DeviceMemory<double> &x, int incx, double beta,
+                          DeviceMemory<double> *y, int incy) = 0;
+  virtual bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m,
+                          uint64_t n, std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) = 0;
-  virtual bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
-                          uint64 n, std::complex<double> alpha,
+  virtual bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m,
+                          uint64_t n, std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *y, int incy) = 0;
 
   virtual bool DoBlasGemvWithProfiling(
-      Stream *stream, blas::Transpose trans, uint64 m, uint64 n, float alpha,
+      Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, float alpha,
       const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &x,
       int incx, float beta, DeviceMemory<float> *y, int incy,
       ProfileResult *output_profile_result) = 0;
   virtual bool DoBlasGemvWithProfiling(
-      Stream *stream, blas::Transpose trans, uint64 m, uint64 n, double alpha,
+      Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, double alpha,
       const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &x,
       int incx, double beta, DeviceMemory<double> *y, int incy,
       ProfileResult *output_profile_result) = 0;
   virtual bool DoBlasGemvWithProfiling(
-      Stream *stream, blas::Transpose trans, uint64 m, uint64 n,
+      Stream *stream, blas::Transpose trans, uint64_t m, uint64 n,
       std::complex<float> alpha, const DeviceMemory<std::complex<float>> &a,
       int lda, const DeviceMemory<std::complex<float>> &x, int incx,
       std::complex<float> beta, DeviceMemory<std::complex<float>> *y, int incy,
       ProfileResult *output_profile_result) = 0;
   virtual bool DoBlasGemvWithProfiling(
-      Stream *stream, blas::Transpose trans, uint64 m, uint64 n,
+      Stream *stream, blas::Transpose trans, uint64_t m, uint64 n,
       std::complex<double> alpha, const DeviceMemory<std::complex<double>> &a,
       int lda, const DeviceMemory<std::complex<double>> &x, int incx,
       std::complex<double> beta, DeviceMemory<std::complex<double>> *y,
@@ -606,11 +607,11 @@ class BlasSupport {
   //
   // alpha is a scalar; x is an m-element vector; y is an n-element vector; a is
   // an m-by-n general matrix.
-  virtual bool DoBlasGer(Stream *stream, uint64 m, uint64 n, float alpha,
+  virtual bool DoBlasGer(Stream *stream, uint64_t m, uint64 n, float alpha,
                          const DeviceMemory<float> &x, int incx,
                          const DeviceMemory<float> &y, int incy,
                          DeviceMemory<float> *a, int lda) = 0;
-  virtual bool DoBlasGer(Stream *stream, uint64 m, uint64 n, double alpha,
+  virtual bool DoBlasGer(Stream *stream, uint64_t m, uint64 n, double alpha,
                          const DeviceMemory<double> &x, int incx,
                          const DeviceMemory<double> &y, int incy,
                          DeviceMemory<double> *a, int lda) = 0;
@@ -621,12 +622,12 @@ class BlasSupport {
   //
   // alpha is a scalar; x is an m-element vector; y is an n-element vector; a is
   // an m-by-n general matrix.
-  virtual bool DoBlasGerc(Stream *stream, uint64 m, uint64 n,
+  virtual bool DoBlasGerc(Stream *stream, uint64_t m, uint64 n,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *a, int lda) = 0;
-  virtual bool DoBlasGerc(Stream *stream, uint64 m, uint64 n,
+  virtual bool DoBlasGerc(Stream *stream, uint64_t m, uint64 n,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           const DeviceMemory<std::complex<double>> &y, int incy,
@@ -638,12 +639,12 @@ class BlasSupport {
   //
   // alpha is a scalar; x is an m-element vector; y is an n-element vector; a is
   // an m-by-n general matrix.
-  virtual bool DoBlasGeru(Stream *stream, uint64 m, uint64 n,
+  virtual bool DoBlasGeru(Stream *stream, uint64_t m, uint64 n,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *a, int lda) = 0;
-  virtual bool DoBlasGeru(Stream *stream, uint64 m, uint64 n,
+  virtual bool DoBlasGeru(Stream *stream, uint64_t m, uint64 n,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           const DeviceMemory<std::complex<double>> &y, int incy,
@@ -655,14 +656,14 @@ class BlasSupport {
   //
   // alpha and beta are scalars; a is an n-by-n Hermitian band matrix, with k
   // super-diagonals; x and y are n-element vectors.
-  virtual bool DoBlasHbmv(Stream *stream, blas::UpperLower uplo, uint64 n,
-                          uint64 k, std::complex<float> alpha,
+  virtual bool DoBlasHbmv(Stream *stream, blas::UpperLower uplo, uint64_t n,
+                          uint64_t k, std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) = 0;
-  virtual bool DoBlasHbmv(Stream *stream, blas::UpperLower uplo, uint64 n,
-                          uint64 k, std::complex<double> alpha,
+  virtual bool DoBlasHbmv(Stream *stream, blas::UpperLower uplo, uint64_t n,
+                          uint64_t k, std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           std::complex<double> beta,
@@ -674,13 +675,13 @@ class BlasSupport {
   //
   // alpha and beta are scalars; a is an n-by-n Hermitian matrix; x and y are
   // n-element vectors.
-  virtual bool DoBlasHemv(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasHemv(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) = 0;
-  virtual bool DoBlasHemv(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasHemv(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           const DeviceMemory<std::complex<double>> &x, int incx,
@@ -693,11 +694,11 @@ class BlasSupport {
   //
   // alpha is a scalar; x is an n-element vector; a is an n-by-n Hermitian
   // matrix.
-  virtual bool DoBlasHer(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasHer(Stream *stream, blas::UpperLower uplo, uint64_t n,
                          float alpha,
                          const DeviceMemory<std::complex<float>> &x, int incx,
                          DeviceMemory<std::complex<float>> *a, int lda) = 0;
-  virtual bool DoBlasHer(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasHer(Stream *stream, blas::UpperLower uplo, uint64_t n,
                          double alpha,
                          const DeviceMemory<std::complex<double>> &x, int incx,
                          DeviceMemory<std::complex<double>> *a, int lda) = 0;
@@ -708,12 +709,12 @@ class BlasSupport {
   //
   // alpha is a scalar; x and y are n-element vectors; a is an n-by-n Hermitian
   // matrix.
-  virtual bool DoBlasHer2(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasHer2(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *a, int lda) = 0;
-  virtual bool DoBlasHer2(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasHer2(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           const DeviceMemory<std::complex<double>> &y, int incy,
@@ -725,13 +726,13 @@ class BlasSupport {
   //
   // alpha and beta are scalars; a is an n-by-n Hermitian matrix, supplied in
   // packed form; x and y are n-element vectors.
-  virtual bool DoBlasHpmv(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasHpmv(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &ap,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) = 0;
-  virtual bool DoBlasHpmv(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasHpmv(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &ap,
                           const DeviceMemory<std::complex<double>> &x, int incx,
@@ -744,11 +745,11 @@ class BlasSupport {
   //
   // alpha is a scalar; x is an n-element vector; a is an n-by-n Hermitian
   // matrix, supplied in packed form.
-  virtual bool DoBlasHpr(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasHpr(Stream *stream, blas::UpperLower uplo, uint64_t n,
                          float alpha,
                          const DeviceMemory<std::complex<float>> &x, int incx,
                          DeviceMemory<std::complex<float>> *ap) = 0;
-  virtual bool DoBlasHpr(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasHpr(Stream *stream, blas::UpperLower uplo, uint64_t n,
                          double alpha,
                          const DeviceMemory<std::complex<double>> &x, int incx,
                          DeviceMemory<std::complex<double>> *ap) = 0;
@@ -759,12 +760,12 @@ class BlasSupport {
   //
   // alpha is a scalar; x and y are n-element vectors; a is an n-by-n Hermitian
   // matrix, supplied in packed form.
-  virtual bool DoBlasHpr2(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasHpr2(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *ap) = 0;
-  virtual bool DoBlasHpr2(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasHpr2(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           const DeviceMemory<std::complex<double>> &y, int incy,
@@ -776,14 +777,15 @@ class BlasSupport {
   //
   // alpha and beta are scalars; a is an n-by-n symmetric band matrix, with k
   // super-diagonals; x and y are n-element vectors.
-  virtual bool DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64 n,
-                          uint64 k, float alpha, const DeviceMemory<float> &a,
+  virtual bool DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64_t n,
+                          uint64_t k, float alpha, const DeviceMemory<float> &a,
                           int lda, const DeviceMemory<float> &x, int incx,
                           float beta, DeviceMemory<float> *y, int incy) = 0;
-  virtual bool DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64 n,
-                          uint64 k, double alpha, const DeviceMemory<double> &a,
-                          int lda, const DeviceMemory<double> &x, int incx,
-                          double beta, DeviceMemory<double> *y, int incy) = 0;
+  virtual bool DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64_t n,
+                          uint64_t k, double alpha,
+                          const DeviceMemory<double> &a, int lda,
+                          const DeviceMemory<double> &x, int incx, double beta,
+                          DeviceMemory<double> *y, int incy) = 0;
 
   // Computes a matrix-vector product using a symmetric packed matrix.
   //
@@ -791,11 +793,11 @@ class BlasSupport {
   //
   // alpha and beta are scalars; a is an n-by-n symmetric matrix, supplied in
   // packed form; x and y are n-element vectors.
-  virtual bool DoBlasSpmv(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasSpmv(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           float alpha, const DeviceMemory<float> &ap,
                           const DeviceMemory<float> &x, int incx, float beta,
                           DeviceMemory<float> *y, int incy) = 0;
-  virtual bool DoBlasSpmv(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasSpmv(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           double alpha, const DeviceMemory<double> &ap,
                           const DeviceMemory<double> &x, int incx, double beta,
                           DeviceMemory<double> *y, int incy) = 0;
@@ -806,10 +808,10 @@ class BlasSupport {
   //
   // alpha is a scalar; x is an n-element vector; a is an n-by-n symmetric
   // matrix, supplied in packed form.
-  virtual bool DoBlasSpr(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasSpr(Stream *stream, blas::UpperLower uplo, uint64_t n,
                          float alpha, const DeviceMemory<float> &x, int incx,
                          DeviceMemory<float> *ap) = 0;
-  virtual bool DoBlasSpr(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasSpr(Stream *stream, blas::UpperLower uplo, uint64_t n,
                          double alpha, const DeviceMemory<double> &x, int incx,
                          DeviceMemory<double> *ap) = 0;
 
@@ -819,11 +821,11 @@ class BlasSupport {
   //
   // alpha is a scalar; x and y are n-element vectors; a is an n-by-n symmetric
   // matrix, supplied in packed form.
-  virtual bool DoBlasSpr2(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasSpr2(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           float alpha, const DeviceMemory<float> &x, int incx,
                           const DeviceMemory<float> &y, int incy,
                           DeviceMemory<float> *ap) = 0;
-  virtual bool DoBlasSpr2(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasSpr2(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           double alpha, const DeviceMemory<double> &x, int incx,
                           const DeviceMemory<double> &y, int incy,
                           DeviceMemory<double> *ap) = 0;
@@ -834,11 +836,11 @@ class BlasSupport {
   //
   // alpha and beta are scalars; a is an n-by-n symmetric matrix; x and y are
   // n-element vectors.
-  virtual bool DoBlasSymv(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasSymv(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           float alpha, const DeviceMemory<float> &a, int lda,
                           const DeviceMemory<float> &x, int incx, float beta,
                           DeviceMemory<float> *y, int incy) = 0;
-  virtual bool DoBlasSymv(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasSymv(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           double alpha, const DeviceMemory<double> &a, int lda,
                           const DeviceMemory<double> &x, int incx, double beta,
                           DeviceMemory<double> *y, int incy) = 0;
@@ -849,10 +851,10 @@ class BlasSupport {
   //
   // alpha is a scalar; x is an n-element vector; a is an n-by-n symmetric
   // matrix.
-  virtual bool DoBlasSyr(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasSyr(Stream *stream, blas::UpperLower uplo, uint64_t n,
                          float alpha, const DeviceMemory<float> &x, int incx,
                          DeviceMemory<float> *a, int lda) = 0;
-  virtual bool DoBlasSyr(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasSyr(Stream *stream, blas::UpperLower uplo, uint64_t n,
                          double alpha, const DeviceMemory<double> &x, int incx,
                          DeviceMemory<double> *a, int lda) = 0;
 
@@ -862,11 +864,11 @@ class BlasSupport {
   //
   // alpha is a scalar; x and y are n-element vectors; a is an n-by-n symmetric
   // matrix.
-  virtual bool DoBlasSyr2(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasSyr2(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           float alpha, const DeviceMemory<float> &x, int incx,
                           const DeviceMemory<float> &y, int incy,
                           DeviceMemory<float> *a, int lda) = 0;
-  virtual bool DoBlasSyr2(Stream *stream, blas::UpperLower uplo, uint64 n,
+  virtual bool DoBlasSyr2(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           double alpha, const DeviceMemory<double> &x, int incx,
                           const DeviceMemory<double> &y, int incy,
                           DeviceMemory<double> *a, int lda) = 0;
@@ -882,23 +884,23 @@ class BlasSupport {
   // a is an n-by-n unit, or non-unit, upper or lower triangular band matrix,
   // with k+1 diagonals; x is a n-element vector.
   virtual bool DoBlasTbmv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          uint64 k, const DeviceMemory<float> &a, int lda,
-                          DeviceMemory<float> *x, int incx) = 0;
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, uint64_t k, const DeviceMemory<float> &a,
+                          int lda, DeviceMemory<float> *x, int incx) = 0;
   virtual bool DoBlasTbmv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          uint64 k, const DeviceMemory<double> &a, int lda,
-                          DeviceMemory<double> *x, int incx) = 0;
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, uint64_t k, const DeviceMemory<double> &a,
+                          int lda, DeviceMemory<double> *x, int incx) = 0;
   virtual bool DoBlasTbmv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          uint64 k, const DeviceMemory<std::complex<float>> &a,
-                          int lda, DeviceMemory<std::complex<float>> *x,
-                          int incx) = 0;
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, uint64_t k,
+                          const DeviceMemory<std::complex<float>> &a, int lda,
+                          DeviceMemory<std::complex<float>> *x, int incx) = 0;
   virtual bool DoBlasTbmv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          uint64 k, const DeviceMemory<std::complex<double>> &a,
-                          int lda, DeviceMemory<std::complex<double>> *x,
-                          int incx) = 0;
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, uint64_t k,
+                          const DeviceMemory<std::complex<double>> &a, int lda,
+                          DeviceMemory<std::complex<double>> *x, int incx) = 0;
 
   // Solves a system of linear equations whose coefficients are in a triangular
   // band matrix as below:
@@ -912,23 +914,23 @@ class BlasSupport {
   // b and x are n-element vectors; a is an n-by-n unit, or non-unit, upper or
   // lower triangular band matrix, with k+1 diagonals.
   virtual bool DoBlasTbsv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          uint64 k, const DeviceMemory<float> &a, int lda,
-                          DeviceMemory<float> *x, int incx) = 0;
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, uint64_t k, const DeviceMemory<float> &a,
+                          int lda, DeviceMemory<float> *x, int incx) = 0;
   virtual bool DoBlasTbsv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          uint64 k, const DeviceMemory<double> &a, int lda,
-                          DeviceMemory<double> *x, int incx) = 0;
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, uint64_t k, const DeviceMemory<double> &a,
+                          int lda, DeviceMemory<double> *x, int incx) = 0;
   virtual bool DoBlasTbsv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          uint64 k, const DeviceMemory<std::complex<float>> &a,
-                          int lda, DeviceMemory<std::complex<float>> *x,
-                          int incx) = 0;
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, uint64_t k,
+                          const DeviceMemory<std::complex<float>> &a, int lda,
+                          DeviceMemory<std::complex<float>> *x, int incx) = 0;
   virtual bool DoBlasTbsv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          uint64 k, const DeviceMemory<std::complex<double>> &a,
-                          int lda, DeviceMemory<std::complex<double>> *x,
-                          int incx) = 0;
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, uint64_t k,
+                          const DeviceMemory<std::complex<double>> &a, int lda,
+                          DeviceMemory<std::complex<double>> *x, int incx) = 0;
 
   // Computes a matrix-vector product using a triangular packed matrix.
   //
@@ -941,19 +943,21 @@ class BlasSupport {
   // a is an n-by-n unit, or non-unit, upper or lower triangular matrix,
   // supplied in packed form; x is a n-element vector.
   virtual bool DoBlasTpmv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          const DeviceMemory<float> &ap, DeviceMemory<float> *x,
-                          int incx) = 0;
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, const DeviceMemory<float> &ap,
+                          DeviceMemory<float> *x, int incx) = 0;
   virtual bool DoBlasTpmv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          const DeviceMemory<double> &ap,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, const DeviceMemory<double> &ap,
                           DeviceMemory<double> *x, int incx) = 0;
   virtual bool DoBlasTpmv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n,
                           const DeviceMemory<std::complex<float>> &ap,
                           DeviceMemory<std::complex<float>> *x, int incx) = 0;
   virtual bool DoBlasTpmv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n,
                           const DeviceMemory<std::complex<double>> &ap,
                           DeviceMemory<std::complex<double>> *x, int incx) = 0;
 
@@ -969,19 +973,21 @@ class BlasSupport {
   // b and x are n-element vectors; a is an n-by-n unit, or non-unit, upper or
   // lower triangular matrix, supplied in packed form.
   virtual bool DoBlasTpsv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          const DeviceMemory<float> &ap, DeviceMemory<float> *x,
-                          int incx) = 0;
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, const DeviceMemory<float> &ap,
+                          DeviceMemory<float> *x, int incx) = 0;
   virtual bool DoBlasTpsv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          const DeviceMemory<double> &ap,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, const DeviceMemory<double> &ap,
                           DeviceMemory<double> *x, int incx) = 0;
   virtual bool DoBlasTpsv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n,
                           const DeviceMemory<std::complex<float>> &ap,
                           DeviceMemory<std::complex<float>> *x, int incx) = 0;
   virtual bool DoBlasTpsv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n,
                           const DeviceMemory<std::complex<double>> &ap,
                           DeviceMemory<std::complex<double>> *x, int incx) = 0;
 
@@ -996,19 +1002,21 @@ class BlasSupport {
   // a is an n-by-n unit, or non-unit, upper or lower triangular matrix; x is a
   // n-element vector.
   virtual bool DoBlasTrmv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          const DeviceMemory<float> &a, int lda,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *x, int incx) = 0;
   virtual bool DoBlasTrmv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          const DeviceMemory<double> &a, int lda,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *x, int incx) = 0;
   virtual bool DoBlasTrmv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *x, int incx) = 0;
   virtual bool DoBlasTrmv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *x, int incx) = 0;
 
@@ -1024,19 +1032,21 @@ class BlasSupport {
   // b and x are n-element vectors; a is an n-by-n unit, or non-unit, upper or
   // lower triangular matrix.
   virtual bool DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          const DeviceMemory<float> &a, int lda,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *x, int incx) = 0;
   virtual bool DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
-                          const DeviceMemory<double> &a, int lda,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n, const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *x, int incx) = 0;
   virtual bool DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *x, int incx) = 0;
   virtual bool DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, blas::Diagonal diag, uint64 n,
+                          blas::Transpose trans, blas::Diagonal diag,
+                          uint64_t n,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *x, int incx) = 0;
 
@@ -1055,40 +1065,42 @@ class BlasSupport {
   // Alpha/beta type matches `dtype`, unless `dtype` is `Eigen::half`, in that
   // case the expected alpha/beta type is `float`.
   virtual port::Status DoBlasGemm(Stream *stream, blas::Transpose transa,
-                                  blas::Transpose transb, uint64 m, uint64 n,
-                                  uint64 k, DataType dtype, const void *alpha,
+                                  blas::Transpose transb, uint64_t m, uint64 n,
+                                  uint64_t k, DataType dtype, const void *alpha,
                                   const DeviceMemoryBase &a, int lda,
                                   const DeviceMemoryBase &b, int ldb,
                                   const void *beta, DeviceMemoryBase *c,
                                   int ldc) = 0;
 
   virtual bool DoBlasGemmWithProfiling(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, float alpha, const DeviceMemory<Eigen::half> &a,
-      int lda, const DeviceMemory<Eigen::half> &b, int ldb, float beta,
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, float alpha,
+      const DeviceMemory<Eigen::half> &a, int lda,
+      const DeviceMemory<Eigen::half> &b, int ldb, float beta,
       DeviceMemory<Eigen::half> *c, int ldc,
       ProfileResult *output_profile_result) = 0;
   virtual bool DoBlasGemmWithProfiling(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
-      const DeviceMemory<float> &b, int ldb, float beta, DeviceMemory<float> *c,
-      int ldc, ProfileResult *output_profile_result) = 0;
-  virtual bool DoBlasGemmWithProfiling(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
-      const DeviceMemory<double> &b, int ldb, double beta,
-      DeviceMemory<double> *c, int ldc,
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, float alpha,
+      const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &b,
+      int ldb, float beta, DeviceMemory<float> *c, int ldc,
       ProfileResult *output_profile_result) = 0;
   virtual bool DoBlasGemmWithProfiling(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, std::complex<float> alpha,
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, double alpha,
+      const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &b,
+      int ldb, double beta, DeviceMemory<double> *c, int ldc,
+      ProfileResult *output_profile_result) = 0;
+  virtual bool DoBlasGemmWithProfiling(
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, std::complex<float> alpha,
       const DeviceMemory<std::complex<float>> &a, int lda,
       const DeviceMemory<std::complex<float>> &b, int ldb,
       std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
       ProfileResult *output_profile_result) = 0;
   virtual bool DoBlasGemmWithProfiling(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, std::complex<double> alpha,
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, std::complex<double> alpha,
       const DeviceMemory<std::complex<double>> &a, int lda,
       const DeviceMemory<std::complex<double>> &b, int ldb,
       std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
@@ -1110,20 +1122,21 @@ class BlasSupport {
   // choosing the best algorithm among many (some of which may fail) without
   // creating a new Stream for each attempt.
   virtual port::Status DoBlasGemmWithAlgorithm(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, const void *alpha, const DeviceMemoryBase &a,
-      DataType type_a, int lda, const DeviceMemoryBase &b, DataType type_b,
-      int ldb, const void *beta, DeviceMemoryBase *c, DataType type_c, int ldc,
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, const void *alpha,
+      const DeviceMemoryBase &a, DataType type_a, int lda,
+      const DeviceMemoryBase &b, DataType type_b, int ldb, const void *beta,
+      DeviceMemoryBase *c, DataType type_c, int ldc,
       ComputationType computation_type, AlgorithmType algorithm,
       ProfileResult *output_profile_result) = 0;
 
   virtual port::Status DoBlasGemmStridedBatchedWithAlgorithm(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, const void *alpha, const DeviceMemoryBase &a,
-      DataType type_a, int lda, int64_t stride_a, const DeviceMemoryBase &b,
-      DataType type_b, int ldb, int64_t stride_b, const void *beta,
-      DeviceMemoryBase *c, DataType type_c, int ldc, int64_t stride_c,
-      int batch_count, ComputationType computation_type,
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, const void *alpha,
+      const DeviceMemoryBase &a, DataType type_a, int lda, int64_t stride_a,
+      const DeviceMemoryBase &b, DataType type_b, int ldb, int64_t stride_b,
+      const void *beta, DeviceMemoryBase *c, DataType type_c, int ldc,
+      int64_t stride_c, int batch_count, ComputationType computation_type,
       AlgorithmType algorithm, ProfileResult *output_profile_result) = 0;
 
   // Computes a batch of matrix-matrix product with general matrices.
@@ -1131,37 +1144,37 @@ class BlasSupport {
   // The batched GEMM computes matrix product for each input/output in a, b,
   // and c, which contain batch_count DeviceMemory objects.
   virtual bool DoBlasGemmBatched(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, float alpha,
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, float alpha,
       const port::ArraySlice<DeviceMemory<Eigen::half> *> &a, int lda,
       const port::ArraySlice<DeviceMemory<Eigen::half> *> &b, int ldb,
       float beta, const port::ArraySlice<DeviceMemory<Eigen::half> *> &c,
       int ldc, int batch_count, ScratchAllocator *scratch_allocator) = 0;
   virtual bool DoBlasGemmBatched(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, float alpha,
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, float alpha,
       const port::ArraySlice<DeviceMemory<float> *> &a, int lda,
       const port::ArraySlice<DeviceMemory<float> *> &b, int ldb, float beta,
       const port::ArraySlice<DeviceMemory<float> *> &c, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator) = 0;
   virtual bool DoBlasGemmBatched(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, double alpha,
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, double alpha,
       const port::ArraySlice<DeviceMemory<double> *> &a, int lda,
       const port::ArraySlice<DeviceMemory<double> *> &b, int ldb, double beta,
       const port::ArraySlice<DeviceMemory<double> *> &c, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator) = 0;
   virtual bool DoBlasGemmBatched(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, std::complex<float> alpha,
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, std::complex<float> alpha,
       const port::ArraySlice<DeviceMemory<std::complex<float>> *> &a, int lda,
       const port::ArraySlice<DeviceMemory<std::complex<float>> *> &b, int ldb,
       std::complex<float> beta,
       const port::ArraySlice<DeviceMemory<std::complex<float>> *> &c, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator) = 0;
   virtual bool DoBlasGemmBatched(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, std::complex<double> alpha,
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, std::complex<double> alpha,
       const port::ArraySlice<DeviceMemory<std::complex<double>> *> &a, int lda,
       const port::ArraySlice<DeviceMemory<std::complex<double>> *> &b, int ldb,
       std::complex<double> beta,
@@ -1170,8 +1183,8 @@ class BlasSupport {
 
   // Batched gemm with strides instead of pointer arrays.
   virtual port::Status DoBlasGemmStridedBatched(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, DataType dtype, const void *alpha,
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, DataType dtype, const void *alpha,
       const DeviceMemoryBase &a, int lda, int64_t stride_a,
       const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,
       DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count) = 0;
@@ -1185,14 +1198,14 @@ class BlasSupport {
   // alpha and beta are scalars; a is a Hermitian matrix; b and c are m-by-n
   // matrices.
   virtual bool DoBlasHemm(Stream *stream, blas::Side side,
-                          blas::UpperLower uplo, uint64 m, uint64 n,
+                          blas::UpperLower uplo, uint64_t m, uint64 n,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           const DeviceMemory<std::complex<float>> &b, int ldb,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *c, int ldc) = 0;
   virtual bool DoBlasHemm(Stream *stream, blas::Side side,
-                          blas::UpperLower uplo, uint64 m, uint64 n,
+                          blas::UpperLower uplo, uint64_t m, uint64 n,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           const DeviceMemory<std::complex<double>> &b, int ldb,
@@ -1208,13 +1221,13 @@ class BlasSupport {
   // alpha and beta are scalars; c is a n-by-n Hermitian matrix; a is an n-by-k
   // matrix in the first case and a k-by-n matrix in the second case.
   virtual bool DoBlasHerk(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, uint64 n, uint64 k,
+                          blas::Transpose trans, uint64_t n, uint64 k,
                           float alpha,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           float beta, DeviceMemory<std::complex<float>> *c,
                           int ldc) = 0;
   virtual bool DoBlasHerk(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, uint64 n, uint64 k,
+                          blas::Transpose trans, uint64_t n, uint64 k,
                           double alpha,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           double beta, DeviceMemory<std::complex<double>> *c,
@@ -1229,14 +1242,14 @@ class BlasSupport {
   // alpha and beta are scalars; c is a n-by-n Hermitian matrix; a and b are
   // n-by-k matrices in the first case and k-by-n matrices in the second case.
   virtual bool DoBlasHer2k(Stream *stream, blas::UpperLower uplo,
-                           blas::Transpose trans, uint64 n, uint64 k,
+                           blas::Transpose trans, uint64_t n, uint64 k,
                            std::complex<float> alpha,
                            const DeviceMemory<std::complex<float>> &a, int lda,
                            const DeviceMemory<std::complex<float>> &b, int ldb,
                            float beta, DeviceMemory<std::complex<float>> *c,
                            int ldc) = 0;
   virtual bool DoBlasHer2k(Stream *stream, blas::UpperLower uplo,
-                           blas::Transpose trans, uint64 n, uint64 k,
+                           blas::Transpose trans, uint64_t n, uint64 k,
                            std::complex<double> alpha,
                            const DeviceMemory<std::complex<double>> &a, int lda,
                            const DeviceMemory<std::complex<double>> &b, int ldb,
@@ -1252,24 +1265,24 @@ class BlasSupport {
   // alpha and beta are scalars; a is a symmetric matrix; b and c are m-by-n
   // matrices.
   virtual bool DoBlasSymm(Stream *stream, blas::Side side,
-                          blas::UpperLower uplo, uint64 m, uint64 n,
+                          blas::UpperLower uplo, uint64_t m, uint64 n,
                           float alpha, const DeviceMemory<float> &a, int lda,
                           const DeviceMemory<float> &b, int ldb, float beta,
                           DeviceMemory<float> *c, int ldc) = 0;
   virtual bool DoBlasSymm(Stream *stream, blas::Side side,
-                          blas::UpperLower uplo, uint64 m, uint64 n,
+                          blas::UpperLower uplo, uint64_t m, uint64 n,
                           double alpha, const DeviceMemory<double> &a, int lda,
                           const DeviceMemory<double> &b, int ldb, double beta,
                           DeviceMemory<double> *c, int ldc) = 0;
   virtual bool DoBlasSymm(Stream *stream, blas::Side side,
-                          blas::UpperLower uplo, uint64 m, uint64 n,
+                          blas::UpperLower uplo, uint64_t m, uint64 n,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           const DeviceMemory<std::complex<float>> &b, int ldb,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *c, int ldc) = 0;
   virtual bool DoBlasSymm(Stream *stream, blas::Side side,
-                          blas::UpperLower uplo, uint64 m, uint64 n,
+                          blas::UpperLower uplo, uint64_t m, uint64 n,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           const DeviceMemory<std::complex<double>> &b, int ldb,
@@ -1285,21 +1298,21 @@ class BlasSupport {
   // alpha and beta are scalars; c is a n-by-n symmetric matrix; a is an n-by-k
   // matrix in the first case and a k-by-n matrix in the second case.
   virtual bool DoBlasSyrk(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, uint64 n, uint64 k,
+                          blas::Transpose trans, uint64_t n, uint64 k,
                           float alpha, const DeviceMemory<float> &a, int lda,
                           float beta, DeviceMemory<float> *c, int ldc) = 0;
   virtual bool DoBlasSyrk(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, uint64 n, uint64 k,
+                          blas::Transpose trans, uint64_t n, uint64 k,
                           double alpha, const DeviceMemory<double> &a, int lda,
                           double beta, DeviceMemory<double> *c, int ldc) = 0;
   virtual bool DoBlasSyrk(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, uint64 n, uint64 k,
+                          blas::Transpose trans, uint64_t n, uint64 k,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *c, int ldc) = 0;
   virtual bool DoBlasSyrk(Stream *stream, blas::UpperLower uplo,
-                          blas::Transpose trans, uint64 n, uint64 k,
+                          blas::Transpose trans, uint64_t n, uint64 k,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           std::complex<double> beta,
@@ -1314,24 +1327,24 @@ class BlasSupport {
   // alpha and beta are scalars; c is a n-by-n symmetric matrix; a and b are
   // n-by-k matrices in the first case and k-by-n matrices in the second case.
   virtual bool DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,
-                           blas::Transpose trans, uint64 n, uint64 k,
+                           blas::Transpose trans, uint64_t n, uint64 k,
                            float alpha, const DeviceMemory<float> &a, int lda,
                            const DeviceMemory<float> &b, int ldb, float beta,
                            DeviceMemory<float> *c, int ldc) = 0;
   virtual bool DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,
-                           blas::Transpose trans, uint64 n, uint64 k,
+                           blas::Transpose trans, uint64_t n, uint64 k,
                            double alpha, const DeviceMemory<double> &a, int lda,
                            const DeviceMemory<double> &b, int ldb, double beta,
                            DeviceMemory<double> *c, int ldc) = 0;
   virtual bool DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,
-                           blas::Transpose trans, uint64 n, uint64 k,
+                           blas::Transpose trans, uint64_t n, uint64 k,
                            std::complex<float> alpha,
                            const DeviceMemory<std::complex<float>> &a, int lda,
                            const DeviceMemory<std::complex<float>> &b, int ldb,
                            std::complex<float> beta,
                            DeviceMemory<std::complex<float>> *c, int ldc) = 0;
   virtual bool DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,
-                           blas::Transpose trans, uint64 n, uint64 k,
+                           blas::Transpose trans, uint64_t n, uint64 k,
                            std::complex<double> alpha,
                            const DeviceMemory<std::complex<double>> &a, int lda,
                            const DeviceMemory<std::complex<double>> &b, int ldb,
@@ -1349,23 +1362,23 @@ class BlasSupport {
   // op(a) = conj(a').
   virtual bool DoBlasTrmm(Stream *stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
-                          blas::Diagonal diag, uint64 m, uint64 n, float alpha,
-                          const DeviceMemory<float> &a, int lda,
+                          blas::Diagonal diag, uint64_t m, uint64 n,
+                          float alpha, const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *b, int ldb) = 0;
   virtual bool DoBlasTrmm(Stream *stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
-                          blas::Diagonal diag, uint64 m, uint64 n, double alpha,
-                          const DeviceMemory<double> &a, int lda,
+                          blas::Diagonal diag, uint64_t m, uint64 n,
+                          double alpha, const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *b, int ldb) = 0;
   virtual bool DoBlasTrmm(Stream *stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
-                          blas::Diagonal diag, uint64 m, uint64 n,
+                          blas::Diagonal diag, uint64_t m, uint64 n,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *b, int ldb) = 0;
   virtual bool DoBlasTrmm(Stream *stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
-                          blas::Diagonal diag, uint64 m, uint64 n,
+                          blas::Diagonal diag, uint64_t m, uint64 n,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *b, int ldb) = 0;
@@ -1381,23 +1394,23 @@ class BlasSupport {
   // or op(a) = conj(a').
   virtual bool DoBlasTrsm(Stream *stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
-                          blas::Diagonal diag, uint64 m, uint64 n, float alpha,
-                          const DeviceMemory<float> &a, int lda,
+                          blas::Diagonal diag, uint64_t m, uint64 n,
+                          float alpha, const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *b, int ldb) = 0;
   virtual bool DoBlasTrsm(Stream *stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
-                          blas::Diagonal diag, uint64 m, uint64 n, double alpha,
-                          const DeviceMemory<double> &a, int lda,
+                          blas::Diagonal diag, uint64_t m, uint64 n,
+                          double alpha, const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *b, int ldb) = 0;
   virtual bool DoBlasTrsm(Stream *stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
-                          blas::Diagonal diag, uint64 m, uint64 n,
+                          blas::Diagonal diag, uint64_t m, uint64 n,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *b, int ldb) = 0;
   virtual bool DoBlasTrsm(Stream *stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
-                          blas::Diagonal diag, uint64 m, uint64 n,
+                          blas::Diagonal diag, uint64_t m, uint64 n,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *b, int ldb) = 0;
@@ -1479,91 +1492,91 @@ class BlasSupport {
 // Macro used to quickly declare overrides for abstract virtuals in the
 // BlasSupport base class.
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES                  \
-  bool DoBlasAsum(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasAsum(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<float> &x, int incx,                      \
                   DeviceMemory<float> *result) override;                       \
-  bool DoBlasAsum(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasAsum(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<double> &x, int incx,                     \
                   DeviceMemory<double> *result) override;                      \
-  bool DoBlasAsum(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasAsum(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   DeviceMemory<float> *result) override;                       \
-  bool DoBlasAsum(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasAsum(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   DeviceMemory<double> *result) override;                      \
-  bool DoBlasAxpy(Stream *stream, uint64 elem_count, float alpha,              \
+  bool DoBlasAxpy(Stream *stream, uint64_t elem_count, float alpha,            \
                   const DeviceMemory<float> &x, int incx,                      \
                   DeviceMemory<float> *y, int incy) override;                  \
-  bool DoBlasAxpy(Stream *stream, uint64 elem_count, double alpha,             \
+  bool DoBlasAxpy(Stream *stream, uint64_t elem_count, double alpha,           \
                   const DeviceMemory<double> &x, int incx,                     \
                   DeviceMemory<double> *y, int incy) override;                 \
-  bool DoBlasAxpy(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasAxpy(Stream *stream, uint64_t elem_count,                         \
                   std::complex<float> alpha,                                   \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   DeviceMemory<std::complex<float>> *y, int incy) override;    \
-  bool DoBlasAxpy(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasAxpy(Stream *stream, uint64_t elem_count,                         \
                   std::complex<double> alpha,                                  \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   DeviceMemory<std::complex<double>> *y, int incy) override;   \
-  bool DoBlasCopy(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasCopy(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<float> &x, int incx,                      \
                   DeviceMemory<float> *y, int incy) override;                  \
-  bool DoBlasCopy(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasCopy(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<double> &x, int incx,                     \
                   DeviceMemory<double> *y, int incy) override;                 \
-  bool DoBlasCopy(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasCopy(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   DeviceMemory<std::complex<float>> *y, int incy) override;    \
-  bool DoBlasCopy(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasCopy(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   DeviceMemory<std::complex<double>> *y, int incy) override;   \
-  bool DoBlasDot(Stream *stream, uint64 elem_count,                            \
+  bool DoBlasDot(Stream *stream, uint64_t elem_count,                          \
                  const DeviceMemory<float> &x, int incx,                       \
                  const DeviceMemory<float> &y, int incy,                       \
                  DeviceMemory<float> *result) override;                        \
-  bool DoBlasDot(Stream *stream, uint64 elem_count,                            \
+  bool DoBlasDot(Stream *stream, uint64_t elem_count,                          \
                  const DeviceMemory<double> &x, int incx,                      \
                  const DeviceMemory<double> &y, int incy,                      \
                  DeviceMemory<double> *result) override;                       \
-  bool DoBlasDotc(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasDotc(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   const DeviceMemory<std::complex<float>> &y, int incy,        \
                   DeviceMemory<std::complex<float>> *result) override;         \
-  bool DoBlasDotc(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasDotc(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   const DeviceMemory<std::complex<double>> &y, int incy,       \
                   DeviceMemory<std::complex<double>> *result) override;        \
-  bool DoBlasDotu(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasDotu(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   const DeviceMemory<std::complex<float>> &y, int incy,        \
                   DeviceMemory<std::complex<float>> *result) override;         \
-  bool DoBlasDotu(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasDotu(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   const DeviceMemory<std::complex<double>> &y, int incy,       \
                   DeviceMemory<std::complex<double>> *result) override;        \
-  bool DoBlasNrm2(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasNrm2(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<float> &x, int incx,                      \
                   DeviceMemory<float> *result) override;                       \
-  bool DoBlasNrm2(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasNrm2(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<double> &x, int incx,                     \
                   DeviceMemory<double> *result) override;                      \
-  bool DoBlasNrm2(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasNrm2(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   DeviceMemory<float> *result) override;                       \
-  bool DoBlasNrm2(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasNrm2(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   DeviceMemory<double> *result) override;                      \
-  bool DoBlasRot(Stream *stream, uint64 elem_count, DeviceMemory<float> *x,    \
+  bool DoBlasRot(Stream *stream, uint64_t elem_count, DeviceMemory<float> *x,  \
                  int incx, DeviceMemory<float> *y, int incy, float c, float s) \
       override;                                                                \
-  bool DoBlasRot(Stream *stream, uint64 elem_count, DeviceMemory<double> *x,   \
+  bool DoBlasRot(Stream *stream, uint64_t elem_count, DeviceMemory<double> *x, \
                  int incx, DeviceMemory<double> *y, int incy, double c,        \
                  double s) override;                                           \
-  bool DoBlasRot(Stream *stream, uint64 elem_count,                            \
+  bool DoBlasRot(Stream *stream, uint64_t elem_count,                          \
                  DeviceMemory<std::complex<float>> *x, int incx,               \
                  DeviceMemory<std::complex<float>> *y, int incy, float c,      \
                  float s) override;                                            \
-  bool DoBlasRot(Stream *stream, uint64 elem_count,                            \
+  bool DoBlasRot(Stream *stream, uint64_t elem_count,                          \
                  DeviceMemory<std::complex<double>> *x, int incx,              \
                  DeviceMemory<std::complex<double>> *y, int incy, double c,    \
                  double s) override;                                           \
@@ -1581,12 +1594,12 @@ class BlasSupport {
                   DeviceMemory<std::complex<double>> *b,                       \
                   DeviceMemory<double> *c,                                     \
                   DeviceMemory<std::complex<double>> *s) override;             \
-  bool DoBlasRotm(Stream *stream, uint64 elem_count, DeviceMemory<float> *x,   \
+  bool DoBlasRotm(Stream *stream, uint64_t elem_count, DeviceMemory<float> *x, \
                   int incx, DeviceMemory<float> *y, int incy,                  \
                   const DeviceMemory<float> &param) override;                  \
-  bool DoBlasRotm(Stream *stream, uint64 elem_count, DeviceMemory<double> *x,  \
-                  int incx, DeviceMemory<double> *y, int incy,                 \
-                  const DeviceMemory<double> &param) override;                 \
+  bool DoBlasRotm(Stream *stream, uint64_t elem_count,                         \
+                  DeviceMemory<double> *x, int incx, DeviceMemory<double> *y,  \
+                  int incy, const DeviceMemory<double> &param) override;       \
   bool DoBlasRotmg(Stream *stream, DeviceMemory<float> *d1,                    \
                    DeviceMemory<float> *d2, DeviceMemory<float> *x1,           \
                    const DeviceMemory<float> &y1, DeviceMemory<float> *param)  \
@@ -1595,401 +1608,405 @@ class BlasSupport {
                    DeviceMemory<double> *d2, DeviceMemory<double> *x1,         \
                    const DeviceMemory<double> &y1,                             \
                    DeviceMemory<double> *param) override;                      \
-  bool DoBlasScal(Stream *stream, uint64 elem_count, float alpha,              \
+  bool DoBlasScal(Stream *stream, uint64_t elem_count, float alpha,            \
                   DeviceMemory<float> *x, int incx) override;                  \
-  bool DoBlasScal(Stream *stream, uint64 elem_count, double alpha,             \
+  bool DoBlasScal(Stream *stream, uint64_t elem_count, double alpha,           \
                   DeviceMemory<double> *x, int incx) override;                 \
-  bool DoBlasScal(Stream *stream, uint64 elem_count, float alpha,              \
+  bool DoBlasScal(Stream *stream, uint64_t elem_count, float alpha,            \
                   DeviceMemory<std::complex<float>> *x, int incx) override;    \
-  bool DoBlasScal(Stream *stream, uint64 elem_count, double alpha,             \
+  bool DoBlasScal(Stream *stream, uint64_t elem_count, double alpha,           \
                   DeviceMemory<std::complex<double>> *x, int incx) override;   \
-  bool DoBlasScal(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasScal(Stream *stream, uint64_t elem_count,                         \
                   std::complex<float> alpha,                                   \
                   DeviceMemory<std::complex<float>> *x, int incx) override;    \
-  bool DoBlasScal(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasScal(Stream *stream, uint64_t elem_count,                         \
                   std::complex<double> alpha,                                  \
                   DeviceMemory<std::complex<double>> *x, int incx) override;   \
-  bool DoBlasSwap(Stream *stream, uint64 elem_count, DeviceMemory<float> *x,   \
+  bool DoBlasSwap(Stream *stream, uint64_t elem_count, DeviceMemory<float> *x, \
                   int incx, DeviceMemory<float> *y, int incy) override;        \
-  bool DoBlasSwap(Stream *stream, uint64 elem_count, DeviceMemory<double> *x,  \
-                  int incx, DeviceMemory<double> *y, int incy) override;       \
-  bool DoBlasSwap(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasSwap(Stream *stream, uint64_t elem_count,                         \
+                  DeviceMemory<double> *x, int incx, DeviceMemory<double> *y,  \
+                  int incy) override;                                          \
+  bool DoBlasSwap(Stream *stream, uint64_t elem_count,                         \
                   DeviceMemory<std::complex<float>> *x, int incx,              \
                   DeviceMemory<std::complex<float>> *y, int incy) override;    \
-  bool DoBlasSwap(Stream *stream, uint64 elem_count,                           \
+  bool DoBlasSwap(Stream *stream, uint64_t elem_count,                         \
                   DeviceMemory<std::complex<double>> *x, int incx,             \
                   DeviceMemory<std::complex<double>> *y, int incy) override;   \
-  bool DoBlasIamax(Stream *stream, uint64 elem_count,                          \
+  bool DoBlasIamax(Stream *stream, uint64_t elem_count,                        \
                    const DeviceMemory<float> &x, int incx,                     \
                    DeviceMemory<int> *result) override;                        \
-  bool DoBlasIamax(Stream *stream, uint64 elem_count,                          \
+  bool DoBlasIamax(Stream *stream, uint64_t elem_count,                        \
                    const DeviceMemory<double> &x, int incx,                    \
                    DeviceMemory<int> *result) override;                        \
-  bool DoBlasIamax(Stream *stream, uint64 elem_count,                          \
+  bool DoBlasIamax(Stream *stream, uint64_t elem_count,                        \
                    const DeviceMemory<std::complex<float>> &x, int incx,       \
                    DeviceMemory<int> *result) override;                        \
-  bool DoBlasIamax(Stream *stream, uint64 elem_count,                          \
+  bool DoBlasIamax(Stream *stream, uint64_t elem_count,                        \
                    const DeviceMemory<std::complex<double>> &x, int incx,      \
                    DeviceMemory<int> *result) override;                        \
-  bool DoBlasIamin(Stream *stream, uint64 elem_count,                          \
+  bool DoBlasIamin(Stream *stream, uint64_t elem_count,                        \
                    const DeviceMemory<float> &x, int incx,                     \
                    DeviceMemory<int> *result) override;                        \
-  bool DoBlasIamin(Stream *stream, uint64 elem_count,                          \
+  bool DoBlasIamin(Stream *stream, uint64_t elem_count,                        \
                    const DeviceMemory<double> &x, int incx,                    \
                    DeviceMemory<int> *result) override;                        \
-  bool DoBlasIamin(Stream *stream, uint64 elem_count,                          \
+  bool DoBlasIamin(Stream *stream, uint64_t elem_count,                        \
                    const DeviceMemory<std::complex<float>> &x, int incx,       \
                    DeviceMemory<int> *result) override;                        \
-  bool DoBlasIamin(Stream *stream, uint64 elem_count,                          \
+  bool DoBlasIamin(Stream *stream, uint64_t elem_count,                        \
                    const DeviceMemory<std::complex<double>> &x, int incx,      \
                    DeviceMemory<int> *result) override;                        \
-  bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m, uint64 n,   \
-                  uint64 kl, uint64 ku, float alpha,                           \
+  bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, \
+                  uint64_t kl, uint64 ku, float alpha,                         \
                   const DeviceMemory<float> &a, int lda,                       \
                   const DeviceMemory<float> &x, int incx, float beta,          \
                   DeviceMemory<float> *y, int incy) override;                  \
-  bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m, uint64 n,   \
-                  uint64 kl, uint64 ku, double alpha,                          \
+  bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, \
+                  uint64_t kl, uint64 ku, double alpha,                        \
                   const DeviceMemory<double> &a, int lda,                      \
                   const DeviceMemory<double> &x, int incx, double beta,        \
                   DeviceMemory<double> *y, int incy) override;                 \
-  bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m, uint64 n,   \
-                  uint64 kl, uint64 ku, std::complex<float> alpha,             \
+  bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, \
+                  uint64_t kl, uint64 ku, std::complex<float> alpha,           \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   std::complex<float> beta,                                    \
                   DeviceMemory<std::complex<float>> *y, int incy) override;    \
-  bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m, uint64 n,   \
-                  uint64 kl, uint64 ku, std::complex<double> alpha,            \
+  bool DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, \
+                  uint64_t kl, uint64 ku, std::complex<double> alpha,          \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   std::complex<double> beta,                                   \
                   DeviceMemory<std::complex<double>> *y, int incy) override;   \
-  bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m, uint64 n,   \
+  bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, \
                   float alpha, const DeviceMemory<float> &a, int lda,          \
                   const DeviceMemory<float> &x, int incx, float beta,          \
                   DeviceMemory<float> *y, int incy) override;                  \
-  bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m, uint64 n,   \
+  bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, \
                   double alpha, const DeviceMemory<double> &a, int lda,        \
                   const DeviceMemory<double> &x, int incx, double beta,        \
                   DeviceMemory<double> *y, int incy) override;                 \
-  bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m, uint64 n,   \
+  bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, \
                   std::complex<float> alpha,                                   \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   std::complex<float> beta,                                    \
                   DeviceMemory<std::complex<float>> *y, int incy) override;    \
-  bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m, uint64 n,   \
+  bool DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m, uint64 n, \
                   std::complex<double> alpha,                                  \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   std::complex<double> beta,                                   \
                   DeviceMemory<std::complex<double>> *y, int incy) override;   \
   bool DoBlasGemvWithProfiling(                                                \
-      Stream *stream, blas::Transpose trans, uint64 m, uint64 n, float alpha,  \
-      const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &x,     \
-      int incx, float beta, DeviceMemory<float> *y, int incy,                  \
+      Stream *stream, blas::Transpose trans, uint64_t m, uint64 n,             \
+      float alpha, const DeviceMemory<float> &a, int lda,                      \
+      const DeviceMemory<float> &x, int incx, float beta,                      \
+      DeviceMemory<float> *y, int incy,                                        \
       blas::ProfileResult *output_profile_result) override;                    \
   bool DoBlasGemvWithProfiling(                                                \
-      Stream *stream, blas::Transpose trans, uint64 m, uint64 n, double alpha, \
-      const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &x,   \
-      int incx, double beta, DeviceMemory<double> *y, int incy,                \
+      Stream *stream, blas::Transpose trans, uint64_t m, uint64 n,             \
+      double alpha, const DeviceMemory<double> &a, int lda,                    \
+      const DeviceMemory<double> &x, int incx, double beta,                    \
+      DeviceMemory<double> *y, int incy,                                       \
       blas::ProfileResult *output_profile_result) override;                    \
   bool DoBlasGemvWithProfiling(                                                \
-      Stream *stream, blas::Transpose trans, uint64 m, uint64 n,               \
+      Stream *stream, blas::Transpose trans, uint64_t m, uint64 n,             \
       std::complex<float> alpha, const DeviceMemory<std::complex<float>> &a,   \
       int lda, const DeviceMemory<std::complex<float>> &x, int incx,           \
       std::complex<float> beta, DeviceMemory<std::complex<float>> *y,          \
       int incy, blas::ProfileResult *output_profile_result) override;          \
   bool DoBlasGemvWithProfiling(                                                \
-      Stream *stream, blas::Transpose trans, uint64 m, uint64 n,               \
+      Stream *stream, blas::Transpose trans, uint64_t m, uint64 n,             \
       std::complex<double> alpha, const DeviceMemory<std::complex<double>> &a, \
       int lda, const DeviceMemory<std::complex<double>> &x, int incx,          \
       std::complex<double> beta, DeviceMemory<std::complex<double>> *y,        \
       int incy, blas::ProfileResult *output_profile_result) override;          \
-  bool DoBlasGer(Stream *stream, uint64 m, uint64 n, float alpha,              \
+  bool DoBlasGer(Stream *stream, uint64_t m, uint64 n, float alpha,            \
                  const DeviceMemory<float> &x, int incx,                       \
                  const DeviceMemory<float> &y, int incy,                       \
                  DeviceMemory<float> *a, int lda) override;                    \
-  bool DoBlasGer(Stream *stream, uint64 m, uint64 n, double alpha,             \
+  bool DoBlasGer(Stream *stream, uint64_t m, uint64 n, double alpha,           \
                  const DeviceMemory<double> &x, int incx,                      \
                  const DeviceMemory<double> &y, int incy,                      \
                  DeviceMemory<double> *a, int lda) override;                   \
-  bool DoBlasGerc(Stream *stream, uint64 m, uint64 n,                          \
+  bool DoBlasGerc(Stream *stream, uint64_t m, uint64 n,                        \
                   std::complex<float> alpha,                                   \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   const DeviceMemory<std::complex<float>> &y, int incy,        \
                   DeviceMemory<std::complex<float>> *a, int lda) override;     \
-  bool DoBlasGerc(Stream *stream, uint64 m, uint64 n,                          \
+  bool DoBlasGerc(Stream *stream, uint64_t m, uint64 n,                        \
                   std::complex<double> alpha,                                  \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   const DeviceMemory<std::complex<double>> &y, int incy,       \
                   DeviceMemory<std::complex<double>> *a, int lda) override;    \
-  bool DoBlasGeru(Stream *stream, uint64 m, uint64 n,                          \
+  bool DoBlasGeru(Stream *stream, uint64_t m, uint64 n,                        \
                   std::complex<float> alpha,                                   \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   const DeviceMemory<std::complex<float>> &y, int incy,        \
                   DeviceMemory<std::complex<float>> *a, int lda) override;     \
-  bool DoBlasGeru(Stream *stream, uint64 m, uint64 n,                          \
+  bool DoBlasGeru(Stream *stream, uint64_t m, uint64 n,                        \
                   std::complex<double> alpha,                                  \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   const DeviceMemory<std::complex<double>> &y, int incy,       \
                   DeviceMemory<std::complex<double>> *a, int lda) override;    \
-  bool DoBlasHbmv(Stream *stream, blas::UpperLower uplo, uint64 n, uint64 k,   \
+  bool DoBlasHbmv(Stream *stream, blas::UpperLower uplo, uint64_t n, uint64 k, \
                   std::complex<float> alpha,                                   \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   std::complex<float> beta,                                    \
                   DeviceMemory<std::complex<float>> *y, int incy) override;    \
-  bool DoBlasHbmv(Stream *stream, blas::UpperLower uplo, uint64 n, uint64 k,   \
+  bool DoBlasHbmv(Stream *stream, blas::UpperLower uplo, uint64_t n, uint64 k, \
                   std::complex<double> alpha,                                  \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   std::complex<double> beta,                                   \
                   DeviceMemory<std::complex<double>> *y, int incy) override;   \
-  bool DoBlasHemv(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasHemv(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   std::complex<float> alpha,                                   \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   std::complex<float> beta,                                    \
                   DeviceMemory<std::complex<float>> *y, int incy) override;    \
-  bool DoBlasHemv(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasHemv(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   std::complex<double> alpha,                                  \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   std::complex<double> beta,                                   \
                   DeviceMemory<std::complex<double>> *y, int incy) override;   \
-  bool DoBlasHer(Stream *stream, blas::UpperLower uplo, uint64 n, float alpha, \
-                 const DeviceMemory<std::complex<float>> &x, int incx,         \
-                 DeviceMemory<std::complex<float>> *a, int lda) override;      \
-  bool DoBlasHer(Stream *stream, blas::UpperLower uplo, uint64 n,              \
+  bool DoBlasHer(Stream *stream, blas::UpperLower uplo, uint64_t n,            \
+                 float alpha, const DeviceMemory<std::complex<float>> &x,      \
+                 int incx, DeviceMemory<std::complex<float>> *a, int lda)      \
+      override;                                                                \
+  bool DoBlasHer(Stream *stream, blas::UpperLower uplo, uint64_t n,            \
                  double alpha, const DeviceMemory<std::complex<double>> &x,    \
                  int incx, DeviceMemory<std::complex<double>> *a, int lda)     \
       override;                                                                \
-  bool DoBlasHer2(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasHer2(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   std::complex<float> alpha,                                   \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   const DeviceMemory<std::complex<float>> &y, int incy,        \
                   DeviceMemory<std::complex<float>> *a, int lda) override;     \
-  bool DoBlasHer2(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasHer2(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   std::complex<double> alpha,                                  \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   const DeviceMemory<std::complex<double>> &y, int incy,       \
                   DeviceMemory<std::complex<double>> *a, int lda) override;    \
-  bool DoBlasHpmv(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasHpmv(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   std::complex<float> alpha,                                   \
                   const DeviceMemory<std::complex<float>> &ap,                 \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   std::complex<float> beta,                                    \
                   DeviceMemory<std::complex<float>> *y, int incy) override;    \
-  bool DoBlasHpmv(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasHpmv(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   std::complex<double> alpha,                                  \
                   const DeviceMemory<std::complex<double>> &ap,                \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   std::complex<double> beta,                                   \
                   DeviceMemory<std::complex<double>> *y, int incy) override;   \
-  bool DoBlasHpr(Stream *stream, blas::UpperLower uplo, uint64 n, float alpha, \
-                 const DeviceMemory<std::complex<float>> &x, int incx,         \
-                 DeviceMemory<std::complex<float>> *ap) override;              \
-  bool DoBlasHpr(Stream *stream, blas::UpperLower uplo, uint64 n,              \
+  bool DoBlasHpr(Stream *stream, blas::UpperLower uplo, uint64_t n,            \
+                 float alpha, const DeviceMemory<std::complex<float>> &x,      \
+                 int incx, DeviceMemory<std::complex<float>> *ap) override;    \
+  bool DoBlasHpr(Stream *stream, blas::UpperLower uplo, uint64_t n,            \
                  double alpha, const DeviceMemory<std::complex<double>> &x,    \
                  int incx, DeviceMemory<std::complex<double>> *ap) override;   \
-  bool DoBlasHpr2(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasHpr2(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   std::complex<float> alpha,                                   \
                   const DeviceMemory<std::complex<float>> &x, int incx,        \
                   const DeviceMemory<std::complex<float>> &y, int incy,        \
                   DeviceMemory<std::complex<float>> *ap) override;             \
-  bool DoBlasHpr2(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasHpr2(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   std::complex<double> alpha,                                  \
                   const DeviceMemory<std::complex<double>> &x, int incx,       \
                   const DeviceMemory<std::complex<double>> &y, int incy,       \
                   DeviceMemory<std::complex<double>> *ap) override;            \
-  bool DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64 n, uint64 k,   \
+  bool DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64_t n, uint64 k, \
                   float alpha, const DeviceMemory<float> &a, int lda,          \
                   const DeviceMemory<float> &x, int incx, float beta,          \
                   DeviceMemory<float> *y, int incy) override;                  \
-  bool DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64 n, uint64 k,   \
+  bool DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64_t n, uint64 k, \
                   double alpha, const DeviceMemory<double> &a, int lda,        \
                   const DeviceMemory<double> &x, int incx, double beta,        \
                   DeviceMemory<double> *y, int incy) override;                 \
-  bool DoBlasSpmv(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasSpmv(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   float alpha, const DeviceMemory<float> &ap,                  \
                   const DeviceMemory<float> &x, int incx, float beta,          \
                   DeviceMemory<float> *y, int incy) override;                  \
-  bool DoBlasSpmv(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasSpmv(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   double alpha, const DeviceMemory<double> &ap,                \
                   const DeviceMemory<double> &x, int incx, double beta,        \
                   DeviceMemory<double> *y, int incy) override;                 \
-  bool DoBlasSpr(Stream *stream, blas::UpperLower uplo, uint64 n, float alpha, \
-                 const DeviceMemory<float> &x, int incx,                       \
+  bool DoBlasSpr(Stream *stream, blas::UpperLower uplo, uint64_t n,            \
+                 float alpha, const DeviceMemory<float> &x, int incx,          \
                  DeviceMemory<float> *ap) override;                            \
-  bool DoBlasSpr(Stream *stream, blas::UpperLower uplo, uint64 n,              \
+  bool DoBlasSpr(Stream *stream, blas::UpperLower uplo, uint64_t n,            \
                  double alpha, const DeviceMemory<double> &x, int incx,        \
                  DeviceMemory<double> *ap) override;                           \
-  bool DoBlasSpr2(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasSpr2(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   float alpha, const DeviceMemory<float> &x, int incx,         \
                   const DeviceMemory<float> &y, int incy,                      \
                   DeviceMemory<float> *ap) override;                           \
-  bool DoBlasSpr2(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasSpr2(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   double alpha, const DeviceMemory<double> &x, int incx,       \
                   const DeviceMemory<double> &y, int incy,                     \
                   DeviceMemory<double> *ap) override;                          \
-  bool DoBlasSymv(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasSymv(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   float alpha, const DeviceMemory<float> &a, int lda,          \
                   const DeviceMemory<float> &x, int incx, float beta,          \
                   DeviceMemory<float> *y, int incy) override;                  \
-  bool DoBlasSymv(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasSymv(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   double alpha, const DeviceMemory<double> &a, int lda,        \
                   const DeviceMemory<double> &x, int incx, double beta,        \
                   DeviceMemory<double> *y, int incy) override;                 \
-  bool DoBlasSyr(Stream *stream, blas::UpperLower uplo, uint64 n, float alpha, \
-                 const DeviceMemory<float> &x, int incx,                       \
+  bool DoBlasSyr(Stream *stream, blas::UpperLower uplo, uint64_t n,            \
+                 float alpha, const DeviceMemory<float> &x, int incx,          \
                  DeviceMemory<float> *a, int lda) override;                    \
-  bool DoBlasSyr(Stream *stream, blas::UpperLower uplo, uint64 n,              \
+  bool DoBlasSyr(Stream *stream, blas::UpperLower uplo, uint64_t n,            \
                  double alpha, const DeviceMemory<double> &x, int incx,        \
                  DeviceMemory<double> *a, int lda) override;                   \
-  bool DoBlasSyr2(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasSyr2(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   float alpha, const DeviceMemory<float> &x, int incx,         \
                   const DeviceMemory<float> &y, int incy,                      \
                   DeviceMemory<float> *a, int lda) override;                   \
-  bool DoBlasSyr2(Stream *stream, blas::UpperLower uplo, uint64 n,             \
+  bool DoBlasSyr2(Stream *stream, blas::UpperLower uplo, uint64_t n,           \
                   double alpha, const DeviceMemory<double> &x, int incx,       \
                   const DeviceMemory<double> &y, int incy,                     \
                   DeviceMemory<double> *a, int lda) override;                  \
   bool DoBlasTbmv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
-                  uint64 k, const DeviceMemory<float> &a, int lda,             \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
+                  uint64_t k, const DeviceMemory<float> &a, int lda,           \
                   DeviceMemory<float> *x, int incx) override;                  \
   bool DoBlasTbmv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
-                  uint64 k, const DeviceMemory<double> &a, int lda,            \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
+                  uint64_t k, const DeviceMemory<double> &a, int lda,          \
                   DeviceMemory<double> *x, int incx) override;                 \
   bool DoBlasTbmv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
-                  uint64 k, const DeviceMemory<std::complex<float>> &a,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
+                  uint64_t k, const DeviceMemory<std::complex<float>> &a,      \
                   int lda, DeviceMemory<std::complex<float>> *x, int incx)     \
       override;                                                                \
   bool DoBlasTbmv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
-                  uint64 k, const DeviceMemory<std::complex<double>> &a,       \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
+                  uint64_t k, const DeviceMemory<std::complex<double>> &a,     \
                   int lda, DeviceMemory<std::complex<double>> *x, int incx)    \
       override;                                                                \
   bool DoBlasTbsv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
-                  uint64 k, const DeviceMemory<float> &a, int lda,             \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
+                  uint64_t k, const DeviceMemory<float> &a, int lda,           \
                   DeviceMemory<float> *x, int incx) override;                  \
   bool DoBlasTbsv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
-                  uint64 k, const DeviceMemory<double> &a, int lda,            \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
+                  uint64_t k, const DeviceMemory<double> &a, int lda,          \
                   DeviceMemory<double> *x, int incx) override;                 \
   bool DoBlasTbsv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
-                  uint64 k, const DeviceMemory<std::complex<float>> &a,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
+                  uint64_t k, const DeviceMemory<std::complex<float>> &a,      \
                   int lda, DeviceMemory<std::complex<float>> *x, int incx)     \
       override;                                                                \
   bool DoBlasTbsv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
-                  uint64 k, const DeviceMemory<std::complex<double>> &a,       \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
+                  uint64_t k, const DeviceMemory<std::complex<double>> &a,     \
                   int lda, DeviceMemory<std::complex<double>> *x, int incx)    \
       override;                                                                \
   bool DoBlasTpmv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<float> &ap, DeviceMemory<float> *x,       \
                   int incx) override;                                          \
   bool DoBlasTpmv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<double> &ap, DeviceMemory<double> *x,     \
                   int incx) override;                                          \
   bool DoBlasTpmv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<std::complex<float>> &ap,                 \
                   DeviceMemory<std::complex<float>> *x, int incx) override;    \
   bool DoBlasTpmv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<std::complex<double>> &ap,                \
                   DeviceMemory<std::complex<double>> *x, int incx) override;   \
   bool DoBlasTpsv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<float> &ap, DeviceMemory<float> *x,       \
                   int incx) override;                                          \
   bool DoBlasTpsv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<double> &ap, DeviceMemory<double> *x,     \
                   int incx) override;                                          \
   bool DoBlasTpsv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<std::complex<float>> &ap,                 \
                   DeviceMemory<std::complex<float>> *x, int incx) override;    \
   bool DoBlasTpsv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<std::complex<double>> &ap,                \
                   DeviceMemory<std::complex<double>> *x, int incx) override;   \
   bool DoBlasTrmv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<float> &a, int lda,                       \
                   DeviceMemory<float> *x, int incx) override;                  \
   bool DoBlasTrmv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<double> &a, int lda,                      \
                   DeviceMemory<double> *x, int incx) override;                 \
   bool DoBlasTrmv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
                   DeviceMemory<std::complex<float>> *x, int incx) override;    \
   bool DoBlasTrmv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   DeviceMemory<std::complex<double>> *x, int incx) override;   \
   bool DoBlasTrsv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<float> &a, int lda,                       \
                   DeviceMemory<float> *x, int incx) override;                  \
   bool DoBlasTrsv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<double> &a, int lda,                      \
                   DeviceMemory<double> *x, int incx) override;                 \
   bool DoBlasTrsv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
                   DeviceMemory<std::complex<float>> *x, int incx) override;    \
   bool DoBlasTrsv(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
+                  blas::Transpose trans, blas::Diagonal diag, uint64_t n,      \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   DeviceMemory<std::complex<double>> *x, int incx) override;   \
   port::Status DoBlasGemm(                                                     \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, blas::DataType dtype, const void *alpha,   \
+      uint64_t m, uint64 n, uint64 k, blas::DataType dtype, const void *alpha, \
       const DeviceMemoryBase &a, int lda, const DeviceMemoryBase &b, int ldb,  \
       const void *beta, DeviceMemoryBase *c, int ldc) override;                \
   bool DoBlasGemmWithProfiling(                                                \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, float alpha,                               \
+      uint64_t m, uint64 n, uint64 k, float alpha,                             \
       const DeviceMemory<Eigen::half> &a, int lda,                             \
       const DeviceMemory<Eigen::half> &b, int ldb, float beta,                 \
       DeviceMemory<Eigen::half> *c, int ldc,                                   \
       blas::ProfileResult *output_profile_result) override;                    \
   bool DoBlasGemmWithProfiling(                                                \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, float alpha, const DeviceMemory<float> &a, \
-      int lda, const DeviceMemory<float> &b, int ldb, float beta,              \
-      DeviceMemory<float> *c, int ldc,                                         \
+      uint64_t m, uint64 n, uint64 k, float alpha,                             \
+      const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &b,     \
+      int ldb, float beta, DeviceMemory<float> *c, int ldc,                    \
       blas::ProfileResult *output_profile_result) override;                    \
   bool DoBlasGemmWithProfiling(                                                \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, double alpha,                              \
+      uint64_t m, uint64 n, uint64 k, double alpha,                            \
       const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &b,   \
       int ldb, double beta, DeviceMemory<double> *c, int ldc,                  \
       blas::ProfileResult *output_profile_result) override;                    \
   bool DoBlasGemmWithProfiling(                                                \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, std::complex<float> alpha,                 \
+      uint64_t m, uint64 n, uint64 k, std::complex<float> alpha,               \
       const DeviceMemory<std::complex<float>> &a, int lda,                     \
       const DeviceMemory<std::complex<float>> &b, int ldb,                     \
       std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc, \
       blas::ProfileResult *output_profile_result) override;                    \
   bool DoBlasGemmWithProfiling(                                                \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, std::complex<double> alpha,                \
+      uint64_t m, uint64 n, uint64 k, std::complex<double> alpha,              \
       const DeviceMemory<std::complex<double>> &a, int lda,                    \
       const DeviceMemory<std::complex<double>> &b, int ldb,                    \
       std::complex<double> beta, DeviceMemory<std::complex<double>> *c,        \
@@ -1998,7 +2015,7 @@ class BlasSupport {
       override;                                                                \
   port::Status DoBlasGemmWithAlgorithm(                                        \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, const void *alpha,                         \
+      uint64_t m, uint64 n, uint64 k, const void *alpha,                       \
       const DeviceMemoryBase &a, blas::DataType type_a, int lda,               \
       const DeviceMemoryBase &b, blas::DataType type_b, int ldb,               \
       const void *beta, DeviceMemoryBase *c, blas::DataType type_c, int ldc,   \
@@ -2006,28 +2023,28 @@ class BlasSupport {
       blas::ProfileResult *output_profile_result) override;                    \
   bool DoBlasGemmBatched(                                                      \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, float alpha,                               \
+      uint64_t m, uint64 n, uint64 k, float alpha,                             \
       const port::ArraySlice<DeviceMemory<Eigen::half> *> &a, int lda,         \
       const port::ArraySlice<DeviceMemory<Eigen::half> *> &b, int ldb,         \
       float beta, const port::ArraySlice<DeviceMemory<Eigen::half> *> &c,      \
       int ldc, int batch_count, ScratchAllocator *scratch_allocator) override; \
   bool DoBlasGemmBatched(                                                      \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, float alpha,                               \
+      uint64_t m, uint64 n, uint64 k, float alpha,                             \
       const port::ArraySlice<DeviceMemory<float> *> &a, int lda,               \
       const port::ArraySlice<DeviceMemory<float> *> &b, int ldb, float beta,   \
       const port::ArraySlice<DeviceMemory<float> *> &c, int ldc,               \
       int batch_count, ScratchAllocator *scratch_allocator) override;          \
   bool DoBlasGemmBatched(                                                      \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, double alpha,                              \
+      uint64_t m, uint64 n, uint64 k, double alpha,                            \
       const port::ArraySlice<DeviceMemory<double> *> &a, int lda,              \
       const port::ArraySlice<DeviceMemory<double> *> &b, int ldb, double beta, \
       const port::ArraySlice<DeviceMemory<double> *> &c, int ldc,              \
       int batch_count, ScratchAllocator *scratch_allocator) override;          \
   bool DoBlasGemmBatched(                                                      \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, std::complex<float> alpha,                 \
+      uint64_t m, uint64 n, uint64 k, std::complex<float> alpha,               \
       const port::ArraySlice<DeviceMemory<std::complex<float>> *> &a, int lda, \
       const port::ArraySlice<DeviceMemory<std::complex<float>> *> &b, int ldb, \
       std::complex<float> beta,                                                \
@@ -2035,7 +2052,7 @@ class BlasSupport {
       int batch_count, ScratchAllocator *scratch_allocator) override;          \
   bool DoBlasGemmBatched(                                                      \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, std::complex<double> alpha,                \
+      uint64_t m, uint64 n, uint64 k, std::complex<double> alpha,              \
       const port::ArraySlice<DeviceMemory<std::complex<double>> *> &a,         \
       int lda,                                                                 \
       const port::ArraySlice<DeviceMemory<std::complex<double>> *> &b,         \
@@ -2044,153 +2061,153 @@ class BlasSupport {
       int ldc, int batch_count, ScratchAllocator *scratch_allocator) override; \
   port::Status DoBlasGemmStridedBatched(                                       \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, blas::DataType dtype, const void *alpha,   \
-      const DeviceMemoryBase &a, int lda, int64 stride_a,                      \
-      const DeviceMemoryBase &b, int ldb, int64 stride_b, const void *beta,    \
-      DeviceMemoryBase *c, int ldc, int64 stride_c, int batch_count);          \
+      uint64_t m, uint64 n, uint64 k, blas::DataType dtype, const void *alpha, \
+      const DeviceMemoryBase &a, int lda, int64_t stride_a,                    \
+      const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,  \
+      DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count);        \
   port::Status DoBlasGemmStridedBatchedWithAlgorithm(                          \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64 m, uint64 n, uint64 k, const void *alpha,                         \
+      uint64_t m, uint64 n, uint64 k, const void *alpha,                       \
       const DeviceMemoryBase &a, blas::DataType type_a, int lda,               \
-      int64 stride_a, const DeviceMemoryBase &b, blas::DataType type_b,        \
-      int ldb, int64 stride_b, const void *beta, DeviceMemoryBase *c,          \
-      blas::DataType type_c, int ldc, int64 stride_c, int batch_count,         \
+      int64_t stride_a, const DeviceMemoryBase &b, blas::DataType type_b,      \
+      int ldb, int64_t stride_b, const void *beta, DeviceMemoryBase *c,        \
+      blas::DataType type_c, int ldc, int64_t stride_c, int batch_count,       \
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,   \
       blas::ProfileResult *output_profile_result) override;                    \
   bool DoBlasHemm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  uint64 m, uint64 n, std::complex<float> alpha,               \
+                  uint64_t m, uint64 n, std::complex<float> alpha,             \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
                   const DeviceMemory<std::complex<float>> &b, int ldb,         \
                   std::complex<float> beta,                                    \
                   DeviceMemory<std::complex<float>> *c, int ldc) override;     \
   bool DoBlasHemm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  uint64 m, uint64 n, std::complex<double> alpha,              \
+                  uint64_t m, uint64 n, std::complex<double> alpha,            \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   const DeviceMemory<std::complex<double>> &b, int ldb,        \
                   std::complex<double> beta,                                   \
                   DeviceMemory<std::complex<double>> *c, int ldc) override;    \
   bool DoBlasHerk(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, uint64 n, uint64 k, float alpha,      \
+                  blas::Transpose trans, uint64_t n, uint64 k, float alpha,    \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
                   float beta, DeviceMemory<std::complex<float>> *c, int ldc)   \
       override;                                                                \
   bool DoBlasHerk(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, uint64 n, uint64 k, double alpha,     \
+                  blas::Transpose trans, uint64_t n, uint64 k, double alpha,   \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   double beta, DeviceMemory<std::complex<double>> *c, int ldc) \
       override;                                                                \
   bool DoBlasHer2k(                                                            \
-      Stream *stream, blas::UpperLower uplo, blas::Transpose trans, uint64 n,  \
-      uint64 k, std::complex<float> alpha,                                     \
+      Stream *stream, blas::UpperLower uplo, blas::Transpose trans,            \
+      uint64_t n, uint64_t k, std::complex<float> alpha,                       \
       const DeviceMemory<std::complex<float>> &a, int lda,                     \
       const DeviceMemory<std::complex<float>> &b, int ldb, float beta,         \
       DeviceMemory<std::complex<float>> *c, int ldc) override;                 \
   bool DoBlasHer2k(                                                            \
-      Stream *stream, blas::UpperLower uplo, blas::Transpose trans, uint64 n,  \
-      uint64 k, std::complex<double> alpha,                                    \
+      Stream *stream, blas::UpperLower uplo, blas::Transpose trans,            \
+      uint64_t n, uint64_t k, std::complex<double> alpha,                      \
       const DeviceMemory<std::complex<double>> &a, int lda,                    \
       const DeviceMemory<std::complex<double>> &b, int ldb, double beta,       \
       DeviceMemory<std::complex<double>> *c, int ldc) override;                \
   bool DoBlasSymm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  uint64 m, uint64 n, float alpha,                             \
+                  uint64_t m, uint64 n, float alpha,                           \
                   const DeviceMemory<float> &a, int lda,                       \
                   const DeviceMemory<float> &b, int ldb, float beta,           \
                   DeviceMemory<float> *c, int ldc) override;                   \
   bool DoBlasSymm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  uint64 m, uint64 n, double alpha,                            \
+                  uint64_t m, uint64 n, double alpha,                          \
                   const DeviceMemory<double> &a, int lda,                      \
                   const DeviceMemory<double> &b, int ldb, double beta,         \
                   DeviceMemory<double> *c, int ldc) override;                  \
   bool DoBlasSymm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  uint64 m, uint64 n, std::complex<float> alpha,               \
+                  uint64_t m, uint64 n, std::complex<float> alpha,             \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
                   const DeviceMemory<std::complex<float>> &b, int ldb,         \
                   std::complex<float> beta,                                    \
                   DeviceMemory<std::complex<float>> *c, int ldc) override;     \
   bool DoBlasSymm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  uint64 m, uint64 n, std::complex<double> alpha,              \
+                  uint64_t m, uint64 n, std::complex<double> alpha,            \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   const DeviceMemory<std::complex<double>> &b, int ldb,        \
                   std::complex<double> beta,                                   \
                   DeviceMemory<std::complex<double>> *c, int ldc) override;    \
   bool DoBlasSyrk(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, uint64 n, uint64 k, float alpha,      \
+                  blas::Transpose trans, uint64_t n, uint64 k, float alpha,    \
                   const DeviceMemory<float> &a, int lda, float beta,           \
                   DeviceMemory<float> *c, int ldc) override;                   \
   bool DoBlasSyrk(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, uint64 n, uint64 k, double alpha,     \
+                  blas::Transpose trans, uint64_t n, uint64 k, double alpha,   \
                   const DeviceMemory<double> &a, int lda, double beta,         \
                   DeviceMemory<double> *c, int ldc) override;                  \
   bool DoBlasSyrk(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, uint64 n, uint64 k,                   \
+                  blas::Transpose trans, uint64_t n, uint64 k,                 \
                   std::complex<float> alpha,                                   \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
                   std::complex<float> beta,                                    \
                   DeviceMemory<std::complex<float>> *c, int ldc) override;     \
   bool DoBlasSyrk(Stream *stream, blas::UpperLower uplo,                       \
-                  blas::Transpose trans, uint64 n, uint64 k,                   \
+                  blas::Transpose trans, uint64_t n, uint64 k,                 \
                   std::complex<double> alpha,                                  \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   std::complex<double> beta,                                   \
                   DeviceMemory<std::complex<double>> *c, int ldc) override;    \
   bool DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,                      \
-                   blas::Transpose trans, uint64 n, uint64 k, float alpha,     \
+                   blas::Transpose trans, uint64_t n, uint64 k, float alpha,   \
                    const DeviceMemory<float> &a, int lda,                      \
                    const DeviceMemory<float> &b, int ldb, float beta,          \
                    DeviceMemory<float> *c, int ldc) override;                  \
   bool DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,                      \
-                   blas::Transpose trans, uint64 n, uint64 k, double alpha,    \
+                   blas::Transpose trans, uint64_t n, uint64 k, double alpha,  \
                    const DeviceMemory<double> &a, int lda,                     \
                    const DeviceMemory<double> &b, int ldb, double beta,        \
                    DeviceMemory<double> *c, int ldc) override;                 \
   bool DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,                      \
-                   blas::Transpose trans, uint64 n, uint64 k,                  \
+                   blas::Transpose trans, uint64_t n, uint64 k,                \
                    std::complex<float> alpha,                                  \
                    const DeviceMemory<std::complex<float>> &a, int lda,        \
                    const DeviceMemory<std::complex<float>> &b, int ldb,        \
                    std::complex<float> beta,                                   \
                    DeviceMemory<std::complex<float>> *c, int ldc) override;    \
   bool DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,                      \
-                   blas::Transpose trans, uint64 n, uint64 k,                  \
+                   blas::Transpose trans, uint64_t n, uint64 k,                \
                    std::complex<double> alpha,                                 \
                    const DeviceMemory<std::complex<double>> &a, int lda,       \
                    const DeviceMemory<std::complex<double>> &b, int ldb,       \
                    std::complex<double> beta,                                  \
                    DeviceMemory<std::complex<double>> *c, int ldc) override;   \
   bool DoBlasTrmm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  blas::Transpose transa, blas::Diagonal diag, uint64 m,       \
-                  uint64 n, float alpha, const DeviceMemory<float> &a,         \
+                  blas::Transpose transa, blas::Diagonal diag, uint64_t m,     \
+                  uint64_t n, float alpha, const DeviceMemory<float> &a,       \
                   int lda, DeviceMemory<float> *b, int ldb) override;          \
   bool DoBlasTrmm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  blas::Transpose transa, blas::Diagonal diag, uint64 m,       \
-                  uint64 n, double alpha, const DeviceMemory<double> &a,       \
+                  blas::Transpose transa, blas::Diagonal diag, uint64_t m,     \
+                  uint64_t n, double alpha, const DeviceMemory<double> &a,     \
                   int lda, DeviceMemory<double> *b, int ldb) override;         \
   bool DoBlasTrmm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  blas::Transpose transa, blas::Diagonal diag, uint64 m,       \
-                  uint64 n, std::complex<float> alpha,                         \
+                  blas::Transpose transa, blas::Diagonal diag, uint64_t m,     \
+                  uint64_t n, std::complex<float> alpha,                       \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
                   DeviceMemory<std::complex<float>> *b, int ldb) override;     \
   bool DoBlasTrmm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  blas::Transpose transa, blas::Diagonal diag, uint64 m,       \
-                  uint64 n, std::complex<double> alpha,                        \
+                  blas::Transpose transa, blas::Diagonal diag, uint64_t m,     \
+                  uint64_t n, std::complex<double> alpha,                      \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   DeviceMemory<std::complex<double>> *b, int ldb) override;    \
   bool DoBlasTrsm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  blas::Transpose transa, blas::Diagonal diag, uint64 m,       \
-                  uint64 n, float alpha, const DeviceMemory<float> &a,         \
+                  blas::Transpose transa, blas::Diagonal diag, uint64_t m,     \
+                  uint64_t n, float alpha, const DeviceMemory<float> &a,       \
                   int lda, DeviceMemory<float> *b, int ldb) override;          \
   bool DoBlasTrsm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  blas::Transpose transa, blas::Diagonal diag, uint64 m,       \
-                  uint64 n, double alpha, const DeviceMemory<double> &a,       \
+                  blas::Transpose transa, blas::Diagonal diag, uint64_t m,     \
+                  uint64_t n, double alpha, const DeviceMemory<double> &a,     \
                   int lda, DeviceMemory<double> *b, int ldb) override;         \
   bool DoBlasTrsm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  blas::Transpose transa, blas::Diagonal diag, uint64 m,       \
-                  uint64 n, std::complex<float> alpha,                         \
+                  blas::Transpose transa, blas::Diagonal diag, uint64_t m,     \
+                  uint64_t n, std::complex<float> alpha,                       \
                   const DeviceMemory<std::complex<float>> &a, int lda,         \
                   DeviceMemory<std::complex<float>> *b, int ldb) override;     \
   bool DoBlasTrsm(Stream *stream, blas::Side side, blas::UpperLower uplo,      \
-                  blas::Transpose transa, blas::Diagonal diag, uint64 m,       \
-                  uint64 n, std::complex<double> alpha,                        \
+                  blas::Transpose transa, blas::Diagonal diag, uint64_t m,     \
+                  uint64_t n, std::complex<double> alpha,                      \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   DeviceMemory<std::complex<double>> *b, int ldb) override;    \
   port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>                     \

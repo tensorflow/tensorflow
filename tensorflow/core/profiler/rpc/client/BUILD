@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/core/profiler/builds:build_config.bzl",
@@ -78,7 +78,7 @@ cc_library(
     ],
 )
 
-# Linked to pywrap_tensorflow to avoid ODR violation due to tf_grpc_cc_dependency().
+# Linked to pywrap_tensorflow to avoid ODR violation due to tf_grpc_cc_dependencies().
 cc_library(
     name = "profiler_client_impl",
     srcs = [
@@ -88,15 +88,14 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_analysis_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )
 

@@ -234,9 +234,8 @@ TEST(CAPI, LibraryLoadFunctions) {
 void TestEncodeDecode(int line, const std::vector<string>& data) {
   const int64_t n = data.size();
   Status status;
-  for (const std::vector<tensorflow::int64>& dims :
-       std::vector<std::vector<tensorflow::int64>>{
-           {n}, {1, n}, {n, 1}, {n / 2, 2}}) {
+  for (const std::vector<int64_t>& dims :
+       std::vector<std::vector<int64_t>>{{n}, {1, n}, {n, 1}, {n / 2, 2}}) {
     // Create C++ Tensor
     Tensor src(tensorflow::DT_STRING, TensorShape(dims));
     for (int64_t i = 0; i < src.NumElements(); ++i) {
@@ -2261,7 +2260,7 @@ TEST_F(CApiAttributesTest, ShapeList) {
 }
 
 TEST_F(CApiAttributesTest, TensorShapeProto) {
-  const tensorflow::int64 pts[] = {2, 4, -1, 8};
+  const int64_t pts[] = {2, 4, -1, 8};
   tensorflow::TensorShapeProto proto;
   tensorflow::PartialTensorShape(pts).AsProto(&proto);
   string bytes;
@@ -2286,11 +2285,11 @@ TEST_F(CApiAttributesTest, TensorShapeProtoList) {
   string bytes1, bytes2;
   tensorflow::TensorShapeProto proto;
 
-  const tensorflow::int64 pts1[] = {2, 4, -1, 8};
+  const int64_t pts1[] = {2, 4, -1, 8};
   tensorflow::PartialTensorShape(pts1).AsProto(&proto);
   proto.SerializeToString(&bytes1);
 
-  const tensorflow::int64 pts2[] = {1, 3, 5, 7};
+  const int64_t pts2[] = {1, 3, 5, 7};
   tensorflow::PartialTensorShape(pts2).AsProto(&proto);
   proto.SerializeToString(&bytes2);
 
@@ -2445,6 +2444,24 @@ TEST_F(CApiAttributesTest, EmptyList) {
   auto oper = TF_FinishOperation(desc, s_);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
   EXPECT_TF_META("v", 0, TF_ATTR_INT, -1);
+}
+
+TEST_F(CApiAttributesTest, Names) {
+  auto desc = init("string");
+  TF_SetAttrString(desc, "v", "bunny", 5);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TF_META("v", -1, TF_ATTR_STRING, 5);
+
+  ASSERT_EQ(1, TF_OperationGetNumAttrs(oper));
+  ASSERT_EQ(1, TF_OperationGetAttrNameLength(oper, 0));
+
+  std::unique_ptr<char[]> value(new char[1]);
+
+  TF_OperationGetAttrName(oper, 0, value.get(), s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ("v", string(static_cast<const char*>(value.get()), 1));
 }
 
 TEST_F(CApiAttributesTest, Errors) {

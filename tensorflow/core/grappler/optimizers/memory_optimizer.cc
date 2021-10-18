@@ -970,7 +970,7 @@ static bool IsSwappable(MutableGraphView::InputPort input) {
 
 struct MemInfo {
   MutableGraphView::OutputPort port;
-  int64 memory_used;
+  int64_t memory_used;
   std::vector<MutableGraphView::InputPort> uses_left;
   double fitness;
 

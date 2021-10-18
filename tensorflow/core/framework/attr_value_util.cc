@@ -43,7 +43,7 @@ constexpr int kMaxTensorNestDepth = 100;
 
 // Return the size of the tensor represented by this TensorProto. If shape is
 // not fully defined return -1.
-int64 TensorByteSize(const TensorProto& t) {
+int64_t TensorByteSize(const TensorProto& t) {
   // num_elements returns -1 if shape is not fully defined.
   int64_t num_elems = TensorShape(t.tensor_shape()).num_elements();
   return num_elems < 0 ? -1 : num_elems * DataTypeSize(t.dtype());

@@ -36,20 +36,21 @@ using gtl::MutableArraySlice;
 RangeSampler::~RangeSampler() {}
 
 void RangeSampler::SampleBatch(random::SimplePhilox* rnd, bool unique,
-                               gtl::MutableArraySlice<int64> batch) const {
+                               gtl::MutableArraySlice<int64_t> batch) const {
   SampleBatchGetExpectedCount(
       rnd, unique, batch, gtl::MutableArraySlice<float>(),
-      gtl::ArraySlice<int64>(), gtl::MutableArraySlice<float>());
+      gtl::ArraySlice<int64_t>(), gtl::MutableArraySlice<float>());
 }
 
 void RangeSampler::SampleBatchGetExpectedCount(
-    random::SimplePhilox* rnd, bool unique, gtl::MutableArraySlice<int64> batch,
+    random::SimplePhilox* rnd, bool unique,
+    gtl::MutableArraySlice<int64_t> batch,
     gtl::MutableArraySlice<float> batch_expected_count,
-    gtl::ArraySlice<int64> extras,
+    gtl::ArraySlice<int64_t> extras,
     gtl::MutableArraySlice<float> extras_expected_count) const {
   SampleBatchGetExpectedCountAvoid(rnd, unique, batch, batch_expected_count,
                                    extras, extras_expected_count,
-                                   gtl::ArraySlice<int64>());
+                                   gtl::ArraySlice<int64_t>());
 }
 
 namespace {
@@ -76,16 +77,16 @@ static float ExpectedCountHelper(float p, int batch_size, int num_tries) {
 }  // namespace
 
 void RangeSampler::SampleBatchGetExpectedCountAvoid(
-    random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64> batch,
-    MutableArraySlice<float> batch_expected_count, ArraySlice<int64> extras,
+    random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64_t> batch,
+    MutableArraySlice<float> batch_expected_count, ArraySlice<int64_t> extras,
     MutableArraySlice<float> extras_expected_count,
-    ArraySlice<int64> avoided_values) const {
+    ArraySlice<int64_t> avoided_values) const {
   const int batch_size = batch.size();
   int num_tries;
 
   if (unique) {
-    CHECK_LE(static_cast<int64>(batch_size + avoided_values.size()), range_);
-    std::unordered_set<int64> used(batch_size);
+    CHECK_LE(static_cast<int64_t>(batch_size + avoided_values.size()), range_);
+    std::unordered_set<int64_t> used(batch_size);
     used.insert(avoided_values.begin(), avoided_values.end());
     int num_picked = 0;
     num_tries = 0;
@@ -123,10 +124,10 @@ void RangeSampler::SampleBatchGetExpectedCountAvoid(
 AllSampler::AllSampler(int64_t range) : RangeSampler(range) {}
 
 void AllSampler::SampleBatchGetExpectedCountAvoid(
-    random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64> batch,
-    MutableArraySlice<float> batch_expected_count, ArraySlice<int64> extras,
+    random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64_t> batch,
+    MutableArraySlice<float> batch_expected_count, ArraySlice<int64_t> extras,
     MutableArraySlice<float> extras_expected_count,
-    ArraySlice<int64> avoided_values) const {
+    ArraySlice<int64_t> avoided_values) const {
   const int batch_size = batch.size();
   CHECK_EQ(range_, batch_size);
   for (int i = 0; i < batch_size; i++) {
@@ -148,7 +149,7 @@ void AllSampler::SampleBatchGetExpectedCountAvoid(
 UniformSampler::UniformSampler(int64_t range)
     : RangeSampler(range), inv_range_(1.0 / range) {}
 
-int64 UniformSampler::Sample(random::SimplePhilox* rnd) const {
+int64_t UniformSampler::Sample(random::SimplePhilox* rnd) const {
   return rnd->Uniform64(range_);
 }
 
@@ -157,9 +158,9 @@ float UniformSampler::Probability(int64_t value) const { return inv_range_; }
 LogUniformSampler::LogUniformSampler(int64_t range)
     : RangeSampler(range), log_range_(log1p(range)) {}
 
-int64 LogUniformSampler::Sample(random::SimplePhilox* rnd) const {
+int64_t LogUniformSampler::Sample(random::SimplePhilox* rnd) const {
   const int64_t value =
-      static_cast<int64>(exp(rnd->RandDouble() * log_range_)) - 1;
+      static_cast<int64_t>(exp(rnd->RandDouble() * log_range_)) - 1;
   DCHECK_GE(value, 0);
   // Mathematically, value should be <= range_, but might not be due to some
   // floating point roundoff, so we mod by range_.  In practice this case
@@ -182,7 +183,7 @@ ThreadUnsafeUnigramSampler::ThreadUnsafeUnigramSampler(int64_t range)
   CHECK_LT(range, kint32max);
 }
 
-int64 ThreadUnsafeUnigramSampler::Sample(random::SimplePhilox* rnd) const {
+int64_t ThreadUnsafeUnigramSampler::Sample(random::SimplePhilox* rnd) const {
   return picker_.Pick(rnd);
 }
 
@@ -190,7 +191,7 @@ float ThreadUnsafeUnigramSampler::Probability(int64_t value) const {
   return static_cast<float>(picker_.get_weight(value)) / picker_.total_weight();
 }
 
-void ThreadUnsafeUnigramSampler::Update(ArraySlice<int64> values) {
+void ThreadUnsafeUnigramSampler::Update(ArraySlice<int64_t> values) {
   int num_updates = std::min(static_cast<int>(values.size()),
                              kint32max - picker_.total_weight());
   for (int i = 0; i < num_updates; i++) {
@@ -205,7 +206,7 @@ UnigramSampler::UnigramSampler(int64_t range)
   CHECK_LT(range, kint32max);
 }
 
-int64 UnigramSampler::Sample(random::SimplePhilox* rnd) const {
+int64_t UnigramSampler::Sample(random::SimplePhilox* rnd) const {
   tf_shared_lock lock(mu_);
   return unsafe_sampler_.Sample(rnd);
 }
@@ -217,17 +218,17 @@ float UnigramSampler::Probability(int64_t value) const {
 
 // Overriding at a high level results in far fewer lock acquisitions.
 void UnigramSampler::SampleBatchGetExpectedCountAvoid(
-    random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64> batch,
-    MutableArraySlice<float> batch_expected_count, ArraySlice<int64> extras,
+    random::SimplePhilox* rnd, bool unique, MutableArraySlice<int64_t> batch,
+    MutableArraySlice<float> batch_expected_count, ArraySlice<int64_t> extras,
     MutableArraySlice<float> extras_expected_count,
-    ArraySlice<int64> avoided_values) const {
+    ArraySlice<int64_t> avoided_values) const {
   tf_shared_lock lock(mu_);
   unsafe_sampler_.SampleBatchGetExpectedCountAvoid(
       rnd, unique, batch, batch_expected_count, extras, extras_expected_count,
       avoided_values);
 }
 
-void UnigramSampler::Update(ArraySlice<int64> values) {
+void UnigramSampler::Update(ArraySlice<int64_t> values) {
   mutex_lock lock(mu_);
   unsafe_sampler_.Update(values);
 }
@@ -271,7 +272,7 @@ float FixedUnigramSampler::Probability(int64_t value) const {
   return weights_.at(value) / total_weight_;
 }
 
-int64 FixedUnigramSampler::Sample(random::SimplePhilox* rnd) const {
+int64_t FixedUnigramSampler::Sample(random::SimplePhilox* rnd) const {
   return dist_sampler_->Sample(rnd);
 }
 

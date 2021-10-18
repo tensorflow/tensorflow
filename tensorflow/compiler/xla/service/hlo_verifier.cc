@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
@@ -82,8 +83,8 @@ Status CheckParameterCount(const HloInstruction* calling_instruction,
   return Status::OK();
 }
 
-int64 GetSubgroupSize(HloCollectiveInstruction* hlo,
-                      CollectiveOpGroupMode group_mode) {
+int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
+                        CollectiveOpGroupMode group_mode) {
   const HloModuleConfig& config = hlo->GetModule()->config();
   // empty replica groups imply all replicas form a single group.
   int64_t replica_subgroup_size =
@@ -234,7 +235,7 @@ static Status CheckReplicaGroups(HloInstruction* hlo,
                                  CollectiveOpGroupMode group_mode,
                                  bool uniform_replica_group_size = true) {
   if (!hlo->replica_groups().empty()) {
-    absl::flat_hash_set<int64> replicas_seen;
+    absl::flat_hash_set<int64_t> replicas_seen;
     for (const ReplicaGroup& g : hlo->replica_groups()) {
       if (g.replica_ids().empty()) {
         return InternalError(
@@ -306,7 +307,7 @@ static Status CheckReplicaGroups(HloInstruction* hlo,
 }
 
 static Status CheckCommonAllGatherInvariants(HloInstruction* hlo,
-                                             int64* computed_shard_count) {
+                                             int64_t* computed_shard_count) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
   CHECK_NE(computed_shard_count, nullptr) << "Expected a shard count as input";
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
@@ -615,8 +616,8 @@ Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
   const int64_t limit = group_mode == CollectiveOpGroupMode::kCrossReplica
                             ? config.replica_count()
                             : config.num_partitions();
-  absl::flat_hash_map<int64, std::vector<int64>> seen_source_to_targets;
-  absl::flat_hash_map<int64, std::vector<int64>> seen_target_to_sources;
+  absl::flat_hash_map<int64_t, std::vector<int64_t>> seen_source_to_targets;
+  absl::flat_hash_map<int64_t, std::vector<int64_t>> seen_target_to_sources;
   int allowed_seen_count = 1;
   if (hlo->operand_count() == 4) {
     if (hlo->operand(0)->shape().IsArray()) {
@@ -1012,7 +1013,7 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
   return allow_mixed_precision_
              ? Status::OK()
              : SameElementTypesForOperandsAndToApplyParameters(
-                   *reduce, reduce->operands().size() - 1);
+                   *reduce, reduce->operand_count());
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
@@ -1212,7 +1213,7 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
   }
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
-  std::vector<int64> map_dims(max_operand_rank);
+  std::vector<int64_t> map_dims(max_operand_rank);
   std::iota(map_dims.begin(), map_dims.end(), 0);
 
   TF_RETURN_IF_ERROR(CheckShape(
@@ -1223,7 +1224,7 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
   return allow_mixed_precision_
              ? Status::OK()
              : SameElementTypesForOperandsAndToApplyParameters(
-                   *map, map->operands().size());
+                   *map, map->operand_count());
 }
 
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
@@ -1240,8 +1241,8 @@ Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
 
   return allow_mixed_precision_
              ? Status::OK()
-             : SameElementTypesForOperandsAndToApplyParameters(*reduce_window,
-                                                               1);
+             : SameElementTypesForOperandsAndToApplyParameters(
+                   *reduce_window, reduce_window->operand_count());
 }
 
 Status ShapeVerifier::HandleSelectAndScatter(HloInstruction* instruction) {
@@ -1882,8 +1883,8 @@ Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
 
 // Checks various invariants of channel instructions (send/recv and
 // collectives).
-Status VerifyChannels(const HloModule& module, absl::string_view pass_name) {
-  absl::flat_hash_map<int64, std::vector<const HloInstruction*>>
+Status VerifyChannels(const HloModule& module) {
+  absl::flat_hash_map<int64_t, std::vector<const HloInstruction*>>
       channel_instructions;
 
   // Send/Recv instruction must have a single user: the corresponding
@@ -1944,13 +1945,11 @@ Status VerifyChannels(const HloModule& module, absl::string_view pass_name) {
       if (sendrecv->is_host_transfer()) {
         TF_RET_CHECK(instructions.size() == 2)
             << "channel " << pair.first
-            << " is used for multiple host send/recv instructions "
-            << " for pass " << pass_name;
+            << " is used for multiple host send/recv instructions";
       } else {
         TF_RET_CHECK(instructions.size() == opcodes.size())
             << "channel " << pair.first
-            << " is used for multiple send/recv instructions "
-            << " for pass " << pass_name;
+            << " is used for multiple send/recv instructions";
       }
     } else {
       for (const HloInstruction* instr : instructions) {
@@ -2164,6 +2163,11 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  Status HandleBitcastConvert(HloInstruction* c) override {
+    // Shape verifier will check all we need.
+    return Status::OK();
+  }
+
   Status HandleWhile(HloInstruction* xla_while) override {
     auto* while_cond = xla_while->while_condition();
     auto* while_body = xla_while->while_body();
@@ -2280,46 +2284,54 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 }  // namespace
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
-  TF_RET_CHECK(!module->name().empty());
+  auto status_or_changed = [&]() -> StatusOr<bool> {
+    TF_RET_CHECK(!module->name().empty());
 
-  if (module->entry_computation()->IsFusionComputation()) {
-    return InvalidArgument(
-        "Module entry computation cannot be a fusion computation");
+    if (module->entry_computation()->IsFusionComputation()) {
+      return InvalidArgument(
+          "Module entry computation cannot be a fusion computation");
+    }
+
+    TF_RETURN_IF_ERROR(VerifyHloStructure(module));
+    TF_RETURN_IF_ERROR(VerifyAsynchronousInstructionPairs(*module));
+    TF_RETURN_IF_ERROR(VerifyChannels(*module));
+
+    std::unique_ptr<ShapeVerifier> shape_verifier =
+        target_metadata_->GetVerifier();
+    InstructionVerifier instruction_verifier(
+        instruction_can_change_layout_func_);
+    for (auto* computation : module->computations()) {
+      TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
+      TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
+    }
+
+    TF_RETURN_IF_ERROR(shape_verifier->VerifyEntryComputationLayout(*module));
+    TF_RETURN_IF_ERROR(VerifyEntryAndExitShapes(*module));
+
+    // If the module has a schedule, it must be valid.
+    if (module->has_schedule()) {
+      TF_RETURN_IF_ERROR(module->schedule().Verify());
+    }
+
+    TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
+        *module, [this](const Shape& shape) -> int64_t {
+          if (target_metadata_->IsLayoutSensitive()) {
+            return target_metadata_->ShapeSize(shape);
+          } else {
+            return 0;
+          }
+        }));
+
+    TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
+    TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));
+    return false;
+  }();
+  if (status_or_changed.ok()) {
+    return status_or_changed.ValueOrDie();
   }
-
-  TF_RETURN_IF_ERROR(VerifyHloStructure(module));
-  TF_RETURN_IF_ERROR(VerifyAsynchronousInstructionPairs(*module));
-  TF_RETURN_IF_ERROR(VerifyChannels(*module, pass_name_));
-
-  std::unique_ptr<ShapeVerifier> shape_verifier =
-      target_metadata_->GetVerifier();
-  InstructionVerifier instruction_verifier(instruction_can_change_layout_func_);
-  for (auto* computation : module->computations()) {
-    TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
-    TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
-  }
-
-  TF_RETURN_IF_ERROR(shape_verifier->VerifyEntryComputationLayout(*module));
-  TF_RETURN_IF_ERROR(VerifyEntryAndExitShapes(*module));
-
-  // If the module has a schedule, it must be valid.
-  if (module->has_schedule()) {
-    TF_RETURN_IF_ERROR(module->schedule().Verify());
-  }
-
-  TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
-      *module, [this](const Shape& shape) -> int64 {
-        if (target_metadata_->IsLayoutSensitive()) {
-          return target_metadata_->ShapeSize(shape);
-        } else {
-          return 0;
-        }
-      }));
-
-  TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
-  TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));
-
-  return false;
+  return Status(status_or_changed.status().code(),
+                absl::StrCat("during context [", context_, "]: ",
+                             status_or_changed.status().error_message()));
 }
 
 }  // namespace xla

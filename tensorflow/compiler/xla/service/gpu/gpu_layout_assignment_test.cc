@@ -92,7 +92,7 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
 // Returns a list shapes with all the possible layouts of this shape, including
 // a shape with no layout.
 std::vector<Shape> AllLayoutsOf(const Shape& s) {
-  std::vector<int64> layout_vec(s.dimensions_size());
+  std::vector<int64_t> layout_vec(s.dimensions_size());
   std::iota(layout_vec.begin(), layout_vec.end(), 0);
 
   std::vector<Shape> shapes;
@@ -142,7 +142,7 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
       auto* feature_index =
           builder.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<int64>(kFeatureIndex)));
+              LiteralUtil::CreateR0<int64_t>(kFeatureIndex)));
 
       auto* batchnorm = builder.AddInstruction(HloInstruction::CreateCustomCall(
           shape,
@@ -211,7 +211,7 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
       auto* feature_index =
           builder.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<int64>(kFeatureIndex)));
+              LiteralUtil::CreateR0<int64_t>(kFeatureIndex)));
 
       auto* batchnorm = builder.AddInstruction(HloInstruction::CreateCustomCall(
           batchnorm_shape, {operand, scale, offset, epsilon, feature_index},
@@ -288,7 +288,7 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
             HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
         auto* feature_index =
             builder.AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0<int64>(kFeatureIndex)));
+                LiteralUtil::CreateR0<int64_t>(kFeatureIndex)));
 
         auto* batchnorm =
             builder.AddInstruction(HloInstruction::CreateCustomCall(

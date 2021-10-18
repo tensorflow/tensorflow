@@ -73,7 +73,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     mutable mutex mu;
     CollGroupParams group TF_GUARDED_BY(mu);
     Status status TF_GUARDED_BY(mu);
-    std::unordered_map<string, int64> incarnations_by_device_name
+    std::unordered_map<string, int64_t> incarnations_by_device_name
         TF_GUARDED_BY(mu);
     std::vector<CollGroupParams*> pending_params TF_GUARDED_BY(mu);
     std::vector<StatusCallback> pending_done TF_GUARDED_BY(mu);
@@ -95,6 +95,9 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
 
   // Cancels the group if it's still pending.
   void CancelGroup(int32 group_key) TF_LOCKS_EXCLUDED(group_mu_);
+
+  // Lookup and populate parameters from an already initialized group.
+  Status LookupAndPopulateGroupParams(CollGroupParams* group_params);
 
   // Used to complete/verify CollInstance.
   struct InstanceRec;
@@ -168,10 +171,6 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // populates *localities, else returns an error.
   Status GetLocalDeviceLocalities(const CollectiveParams& cp,
                                   std::vector<DeviceLocality>* localities);
-
-  // Sets CollTaskParams.is_local and CollectiveParams.default_rank.
-  // Precondition: cp->device_names is fully populated and in final order.
-  void CompleteTaskIsLocal(const string& task_name, CollectiveParams* cp);
 
   // Sets cp->instance_default_rank according to location of device in
   // current ordering of cp->instance.device_names.

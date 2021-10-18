@@ -144,7 +144,7 @@ Status EmitCompareLoopBody(
 
 Status EmitTiledCompareLoop(
     const IrArray::Index& tiled_keys_index, int64_t dimension_to_sort,
-    int64_t dimension_to_sort_bound, absl::Span<const int64> xor_masks,
+    int64_t dimension_to_sort_bound, absl::Span<const int64_t> xor_masks,
     const std::vector<IrArray>& params,
     const std::vector<llvm::Value*>& param_shmem_buffers, int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
@@ -293,7 +293,7 @@ Status EmitTiledCompareLoop(
 
 Status EmitSortInPlace(
     int64_t dimension_to_sort, const std::vector<IrArray>& values_arrays,
-    absl::string_view name, absl::Span<const int64> xor_masks,
+    absl::string_view name, absl::Span<const int64_t> xor_masks,
     llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
     int64_t num_iterations_in_sort_dim, const int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback) {
@@ -309,8 +309,8 @@ Status EmitSortInPlace(
   const Shape& keys_shape = values_arrays[0].GetShape();
   int64_t rank = keys_shape.rank();
   int64_t dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
-  std::vector<int64> dimensions_in_iteration_order(rank);
-  std::vector<int64> iteration_order_to_logical_order(rank);
+  std::vector<int64_t> dimensions_in_iteration_order(rank);
+  std::vector<int64_t> iteration_order_to_logical_order(rank);
   int64_t dim = 0;
   for (int64_t dimension : LayoutUtil::MinorToMajor(keys_shape)) {
     if (dimension != dimension_to_sort) {
@@ -342,11 +342,11 @@ Status EmitSortInPlace(
       [&](const IrArray::Index& tiles_index) -> Status {
     // Naive C++ code for the inner compare loop:
     //
-    // for (int64 i = 0; i < dimension_to_sort_bound; ++i) {
-    //   int64 j = i ^ xor_mask;
+    // for (int64_t i = 0; i < dimension_to_sort_bound; ++i) {
+    //   int64_t j = i ^ xor_mask;
     //   /* emitted in EmitCompareLoopBody() */
     //   if (i < j && j < dimension_to_sort_bound) {
-    //     int64 min_key = std::min(keys[i], keys[j]);
+    //     int64_t min_key = std::min(keys[i], keys[j]);
     //     keys[j] = std::max(keys[i], keys[j]);
     //     keys[i] = min_key;
     //   }

@@ -383,11 +383,11 @@ void CompareReplicaGroups(absl::Span<const ReplicaGroup> groups_before,
     // Somewhat verbose way to compare the replica_ids, because EqualsProto
     // is not available in the open-source build.
     auto group_before = groups_before[i];
-    std::vector<int64> ids_before(group_before.replica_ids().begin(),
-                                  group_before.replica_ids().end());
+    std::vector<int64_t> ids_before(group_before.replica_ids().begin(),
+                                    group_before.replica_ids().end());
     auto group_after = groups_after[i];
-    std::vector<int64> ids_after(group_after.replica_ids().begin(),
-                                 group_after.replica_ids().end());
+    std::vector<int64_t> ids_after(group_after.replica_ids().begin(),
+                                   group_after.replica_ids().end());
     EXPECT_EQ(ids_before, ids_after);
   }
 }

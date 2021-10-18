@@ -95,7 +95,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOpt::Level opt_level);
 
-  int64 SizeOfGeneratedCodeInBytes() const {
+  int64_t SizeOfGeneratedCodeInBytes() const {
     return size_of_generated_code_in_bytes_;
   }
 
@@ -116,7 +116,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   ObjLayerT object_layer_;
   CompileLayerT compile_layer_;
   llvm::orc::JITDylib* main_jit_dylib_;
-  int64 size_of_generated_code_in_bytes_ = 0;
+  int64_t size_of_generated_code_in_bytes_ = 0;
 
   // Non owning pointer to a JIT event listener that registers the JIT events
   // with an attached GDB.

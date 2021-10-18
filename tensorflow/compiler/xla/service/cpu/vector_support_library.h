@@ -228,12 +228,12 @@ class VectorSupportLibrary {
   llvm::Value* GetZeroScalar();
 
   llvm::IRBuilder<>* b() const { return b_; }
-  int64 vector_size() const { return vector_size_; }
+  int64_t vector_size() const { return vector_size_; }
   llvm::Type* vector_type() const { return vector_type_; }
   llvm::Type* vector_pointer_type() const { return vector_pointer_type_; }
   llvm::Type* scalar_type() const { return scalar_type_; }
   llvm::Type* scalar_pointer_type() const { return scalar_pointer_type_; }
-  int64 scalar_byte_size() const {
+  int64_t scalar_byte_size() const {
     return primitive_util::BitWidth(primitive_type_) / 8;
   }
 
@@ -283,7 +283,7 @@ class VectorSupportLibrary {
     return scalar_value;
   }
 
-  int64 vector_size_;
+  int64_t vector_size_;
   PrimitiveType primitive_type_;
   llvm::IRBuilder<>* b_;
   llvm::Type* vector_type_;

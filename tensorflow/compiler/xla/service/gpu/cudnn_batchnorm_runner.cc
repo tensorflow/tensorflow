@@ -69,7 +69,7 @@ struct DnnBatchDescriptors {
 
 DnnBatchDescriptors MakeBatchNormDescriptors(const Shape& shape,
                                              int64_t feature_index) {
-  std::vector<int64> logical_to_physical =
+  std::vector<int64_t> logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(shape.layout());
 
   auto physical_dim_size = [&](int64_t physical_dim) {
@@ -191,19 +191,24 @@ template <typename ElemType>
 void RunCudnnBatchNormBackwardImpl(CudnnBatchNormBackwardParams* params,
                                    se::Stream* stream) {
   se::DeviceMemory<float> null_device_ptr(nullptr);
+  se::DeviceMemory<ElemType> null_elem_device_ptr(nullptr);
   auto output_grad_data = se::DeviceMemory<ElemType>(params->output_grad_data);
   stream->ThenBatchNormalizationBackward(
       se::DeviceMemory<ElemType>(params->grad_output),     //
       se::DeviceMemory<ElemType>(params->common.operand),  //
       params->common.scale,                                //
+      /*offset=*/null_device_ptr,                          //
       params->mean,                                        //
       params->inv_stddev,                                  //
+      /*y=*/null_elem_device_ptr,                          //
       params->common.operand_desc,                         //
       params->common.scale_offset_desc,                    //
       params->common.epsilon,                              //
+      se::dnn::ActivationMode::kNone,                      //
       &output_grad_data,                                   //
       &params->output_grad_scale,                          //
       &params->output_grad_offset,                         //
+      /*side_input_backprop=*/&null_elem_device_ptr,       //
       /*reserve_space_allocator=*/nullptr,                 //
       /*workspace_allocator=*/nullptr);
 }

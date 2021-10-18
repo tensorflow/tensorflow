@@ -100,7 +100,7 @@ class BoundaryVisitor {
 };
 
 template <class OpCollection>
-int64 CountNonLeafOps(const OpCollection& ops) {
+int64_t CountNonLeafOps(const OpCollection& ops) {
   absl::flat_hash_set<HloInstruction*> op_set;
   for (auto op : ops) {
     if (!op_set.contains(op) && op->opcode() != HloOpcode::kConstant) {
@@ -114,7 +114,7 @@ int64 CountNonLeafOps(const OpCollection& ops) {
 // instructions.  Use different integers to classify different levels
 // of reuses This is used as a placeholder only, assuming all
 // instructions can be fused to enable data reuses
-int64 ReusesCarriedBy(HloOpcode op, HloOpcode user) {
+int64_t ReusesCarriedBy(HloOpcode op, HloOpcode user) {
   // Reuses in some way work like forces that pull instructions
   // towards each other. We use a number 0-10 to classify how strong the force
   // is between a pair of operations. Given a group of instructions that can be
@@ -307,11 +307,11 @@ Status CopyInOrOutOfConditional(
 
 // Identify converts to be hoisted/rematerialized out of the branch
 // computations.
-absl::flat_hash_set<int64> FindSpecialConverts(HloInstruction* old_root,
-                                               int branch_count,
-                                               HloInstruction* conditional,
-                                               bool is_layout_sensitive) {
-  absl::flat_hash_set<int64> kspecial_convert;
+absl::flat_hash_set<int64_t> FindSpecialConverts(HloInstruction* old_root,
+                                                 int branch_count,
+                                                 HloInstruction* conditional,
+                                                 bool is_layout_sensitive) {
+  absl::flat_hash_set<int64_t> kspecial_convert;
   for (int64_t operand_num = 0; operand_num < old_root->operand_count();
        ++operand_num) {
     if (old_root->operand(operand_num)->opcode() != HloOpcode::kConvert) {
@@ -423,7 +423,7 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
   };
 
   // Captures tuple indices refering to converts to be rematerialized/hoisted.
-  absl::flat_hash_set<int64> kspecial_convert = FindSpecialConverts(
+  absl::flat_hash_set<int64_t> kspecial_convert = FindSpecialConverts(
       old_root, branch_count, conditional, is_layout_sensitive);
 
   // Exit if we cannot find any converts to be hoisted.
@@ -436,7 +436,7 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
 
   for (int branch = 0; branch < branch_count; branch++) {
     old_root = conditional->branch_computation(branch)->root_instruction();
-    absl::flat_hash_map<HloInstruction*, int64> map_inst_to_tuple_index;
+    absl::flat_hash_map<HloInstruction*, int64_t> map_inst_to_tuple_index;
     std::vector<HloInstruction*> new_operands(old_root->operand_count());
     absl::flat_hash_set<HloInstruction*> to_hoist_set;
 
@@ -822,19 +822,19 @@ class GroupConnectedBoundaries {
   // the cost model in the context of auto/manual tuning. The flipped array is
   // used to save which entries in the configuration have been changed in the
   // search/tuning process.
-  std::vector<std::vector<int64>>& move_config_;
-  std::vector<std::vector<int64>>& reuse_config_;
-  std::vector<int64>& search_config_vec_;
-  int64* search_config_;
-  int64 search_subscript_;
-  absl::flat_hash_map<const int64*, int64> flipped_;
+  std::vector<std::vector<int64_t>>& move_config_;
+  std::vector<std::vector<int64_t>>& reuse_config_;
+  std::vector<int64_t>& search_config_vec_;
+  int64_t* search_config_;
+  int64_t search_subscript_;
+  absl::flat_hash_map<const int64_t*, int64_t> flipped_;
 
   // The FlipMutation function serves to implement the search of alternative
   // cost models by deciding whether to flip a given configuration, saved in
   // the loc parameter. The non_zero parameter provides the new value to use
   // to flip a zero. The msg parameter is only used for debugging purpposes.
-  int64 FlipMutation(int64* loc, const int64_t non_zero,
-                     const std::string& msg) {
+  int64_t FlipMutation(int64_t* loc, const int64_t non_zero,
+                       const std::string& msg) {
     if (search_config_ == 0 || ContainsKey(flipped_, loc)) {
       VLOG(2) << "Configured not to search or loc is already flipped.";
       return *loc;
@@ -888,9 +888,9 @@ class GroupConnectedBoundaries {
   explicit GroupConnectedBoundaries(
       HloInstruction* conditional, bool is_layout_sensitive,
       absl::flat_hash_map<HloInstruction*, int>& visited_count,
-      std::vector<std::vector<int64>>* move_config,
-      std::vector<std::vector<int64>>* reuse_config,
-      std::vector<int64>* search_config)
+      std::vector<std::vector<int64_t>>* move_config,
+      std::vector<std::vector<int64_t>>* reuse_config,
+      std::vector<int64_t>* search_config)
       : conditional_(conditional),
         conditional_parent_(conditional->parent()),
         is_layout_sensitive_(is_layout_sensitive),
@@ -909,8 +909,8 @@ class GroupConnectedBoundaries {
   // Returns estimation of potential reuses carried by a given pair of
   // instructions. Use different integers to classify different levels
   // of reuses. Assume all instructions can be fused to enable data reuses.
-  int64 ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
-    std::vector<int64>& curconfig =
+  int64_t ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
+    std::vector<int64_t>& curconfig =
         reuse_config_[static_cast<uint32>(op->opcode())];
     // Flip the reuse configuration if tuning the cost model.
     // When flipping, use -10 if flipping to the default reuse model. Other
@@ -960,7 +960,7 @@ class GroupConnectedBoundaries {
     }
 
     // Use configuration given from outside (e.g., by autotuner).
-    std::vector<int64>& curconfig = move_config_[static_cast<uint32>(opcode)];
+    std::vector<int64_t>& curconfig = move_config_[static_cast<uint32>(opcode)];
     auto col = (curconfig.size() == 1) ? 0
                : (instruction->operand_count() > 0)
                    ? static_cast<uint32>(instruction->operand(0)->opcode())
@@ -978,7 +978,7 @@ class GroupConnectedBoundaries {
     return (config != 0);
   }
 
-  int64 ReusesBeforeBoundary(HloInstruction* user) {
+  int64_t ReusesBeforeBoundary(HloInstruction* user) {
     int64_t reuses = 0;
     for (auto op : user->operands()) {
       // The operand must be an instruction that is not going to be moved (if
@@ -1006,7 +1006,7 @@ class GroupConnectedBoundaries {
     return reuses;
   }
 
-  int64 ReusesAfterBoundary(HloInstruction* user) {
+  int64_t ReusesAfterBoundary(HloInstruction* user) {
     CHECK(user != nullptr);
     auto all_users = user->users();
     // For now, assume that if an instruction has multiple-consumers, it
@@ -1047,8 +1047,8 @@ class GroupConnectedBoundaries {
     return 0;
   }
 
-  int64 BenefitForMovingBoundaries(const std::vector<Boundary>& boundaries,
-                                   bool perform_reuse_analysis = true) {
+  int64_t BenefitForMovingBoundaries(const std::vector<Boundary>& boundaries,
+                                     bool perform_reuse_analysis = true) {
     int64_t reuses_before = 0, reuses_after = 0;
     if (boundaries.size() == 1) {
       if (boundaries[0].IsOutsideBranch() &&
@@ -1078,7 +1078,7 @@ class GroupConnectedBoundaries {
     // copy = copy(cond)
     //
     // We can fold the two copies thus reducing computation.
-    auto get_copy_folding_benefit = [&](HloInstruction* hlo) -> int64 {
+    auto get_copy_folding_benefit = [&](HloInstruction* hlo) -> int64_t {
       if (hlo->opcode() != HloOpcode::kCopy) {
         return 0;
       }
@@ -1576,13 +1576,13 @@ void ConditionalCodeMotion::SetDefaultMoveConfig() {
   move_config_.reserve(row);
   for (int64_t opcode = 0; opcode < row; ++opcode) {
     // To save whether an instruction is preferred to be moved.
-    std::vector<int64> reuse_vec(col, 0);
+    std::vector<int64_t> reuse_vec(col, 0);
     for (uint32 j = 0; j < col; ++j) {
       reuse_vec[j] = ReusesCarriedBy(static_cast<HloOpcode>(opcode),
                                      static_cast<HloOpcode>(j));
     }
     reuse_config_.push_back(reuse_vec);
-    std::vector<int64> move_vec;
+    std::vector<int64_t> move_vec;
     switch (tuning_option) {
       case TuningOption::kTuneTransformationDecision:
         // Tuning transformation decision --- start with all yes.

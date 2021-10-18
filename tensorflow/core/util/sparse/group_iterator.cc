@@ -52,8 +52,8 @@ GroupIterable::IteratorStep GroupIterable::IteratorStep::operator++(
   return lhs;
 }
 
-std::vector<int64> Group::group() const {
-  std::vector<int64> g;
+std::vector<int64_t> Group::group() const {
+  std::vector<int64_t> g;
   const auto& ix_t = iter_->ix_matrix_;
   for (const int d : iter_->group_dims_) {
     g.push_back(ix_t(loc_, d));
@@ -61,9 +61,9 @@ std::vector<int64> Group::group() const {
   return g;
 }
 
-TTypes<int64>::UnalignedConstMatrix Group::indices() const {
-  return TTypes<int64>::UnalignedConstMatrix(&(iter_->ix_matrix_(loc_, 0)),
-                                             next_loc_ - loc_, iter_->dims_);
+TTypes<int64_t>::UnalignedConstMatrix Group::indices() const {
+  return TTypes<int64_t>::UnalignedConstMatrix(&(iter_->ix_matrix_(loc_, 0)),
+                                               next_loc_ - loc_, iter_->dims_);
 }
 
 }  // namespace sparse

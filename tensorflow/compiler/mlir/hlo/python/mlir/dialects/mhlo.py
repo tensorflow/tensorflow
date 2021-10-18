@@ -20,6 +20,5 @@ from ._mhlo_ops_gen import *
 
 
 def register_mhlo_dialect(context, load=True):
-  from .._cext_loader import load_extension
-  ext = load_extension("_mlirHlo")
-  ext.register_mhlo_dialect(context, load=load)
+  from .._mlir_libs import _mlirHlo
+  _mlirHlo.register_mhlo_dialect(context, load=load)

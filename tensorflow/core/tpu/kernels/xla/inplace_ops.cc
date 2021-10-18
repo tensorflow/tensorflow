@@ -122,7 +122,7 @@ class InplaceAddOp : public XlaOpKernel {
       padded_indices.push_back(XlaHelpers::Zero(builder, index_type));
     }
 
-    std::vector<int64> sizes;
+    std::vector<int64_t> sizes;
     sizes.push_back(1);
     for (int i = 1; i < x_shape.dims(); i++) {
       sizes.push_back(x_shape.dim_size(i));

@@ -106,7 +106,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     // The following code is equivalent to:
     // eye = np.eye(kH * kW * D).reshape([kH, kW, D, kH * kW * kD])
     int64_t kernel_size = 1;
-    std::vector<int64> kernel_shape(num_dims, 1);
+    std::vector<int64_t> kernel_shape(num_dims, 1);
     for (int i = 0; i < num_spatial_dims; ++i) {
       int input_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
       kernel_shape[i] = ksizes_[input_dim];
@@ -124,10 +124,10 @@ class ExtractImagePatchesOp : public XlaOpKernel {
                      kernel_shape);
 
     xla::ConvolutionDimensionNumbers dims;
-    std::vector<int64> window_strides(num_spatial_dims);
-    std::vector<int64> lhs_dilation(num_spatial_dims, 1);
-    std::vector<int64> rhs_dilation(num_spatial_dims);
-    std::vector<std::pair<int64, int64>> padding(num_spatial_dims);
+    std::vector<int64_t> window_strides(num_spatial_dims);
+    std::vector<int64_t> lhs_dilation(num_spatial_dims, 1);
+    std::vector<int64_t> rhs_dilation(num_spatial_dims);
+    std::vector<std::pair<int64_t, int64_t>> padding(num_spatial_dims);
 
     dims.set_input_batch_dimension(batch_dim);
     dims.set_output_batch_dimension(batch_dim);
@@ -157,7 +157,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
                                 lhs_dilation, rhs_dilation, dims, depth);
     // Feature group convolution, will end up with the kernel_size change more
     // rapidly than the depth. Reshape, transpose and reshape to reorder them.
-    std::vector<int64> conv_dims =
+    std::vector<int64_t> conv_dims =
         xla::SpanToVector(builder->GetShape(conv).ValueOrDie().dimensions());
     conv_dims.back() = depth;
     conv_dims.push_back(kernel_size);

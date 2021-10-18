@@ -204,7 +204,7 @@ class AdjustContrastOpV2 : public XlaOpKernel {
         reduce, XlaHelpers::FloatLiteral(b, accumulation_type, height * width));
     output = XlaHelpers::ConvertElementType(output, type);
 
-    std::vector<int64> broadcast_dims(input_shape.dims() - 2);
+    std::vector<int64_t> broadcast_dims(input_shape.dims() - 2);
     std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
     broadcast_dims.back() = channel_dim;
     output =
@@ -331,8 +331,8 @@ class AdjustHueOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("AdjustHue"), AdjustHueOp);
 
 struct WhileCondFn {
-  const int64 num_boxes;
-  const int64 output_size;
+  const int64_t num_boxes;
+  const int64_t output_size;
 
   explicit WhileCondFn(int64_t num_boxes, int64_t output_size)
       : num_boxes(num_boxes), output_size(output_size) {}
@@ -354,7 +354,7 @@ struct WhileCondFn {
 // to ensure that suppressed boxes cannot themselves suppress other
 // boxes.
 struct SuppressBodyFn {
-  const int64 num_boxes;
+  const int64_t num_boxes;
 
   explicit SuppressBodyFn(int64_t num_boxes) : num_boxes(num_boxes) {}
 

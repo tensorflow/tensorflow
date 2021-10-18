@@ -142,7 +142,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, VectorDot) {
                                         this->error_spec_);
 }
 
-std::vector<int64> MinorToMajorForIsRowMajor(bool row_major) {
+std::vector<int64_t> MinorToMajorForIsRowMajor(bool row_major) {
   return {row_major ? 1 : 0, row_major ? 0 : 1};
 }
 
@@ -1199,7 +1199,7 @@ XLA_TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
 }
 
 using EinsumParamType =
-    std::tuple<std::vector<int64>, std::vector<int64>, string>;
+    std::tuple<std::vector<int64_t>, std::vector<int64_t>, string>;
 class EinsumTest : public DotOperationTest,
                    public ::testing::WithParamInterface<EinsumParamType> {};
 XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
@@ -1222,7 +1222,7 @@ XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
 }
 
 std::vector<EinsumParamType> GetEinsumTestCases() {
-  using v = std::vector<int64>;
+  using v = std::vector<int64_t>;
   using p = EinsumParamType;
   std::vector<p> test_cases = {
       p{v{5, 6}, v{6, 7}, "mk,kn->mn"},
@@ -1287,8 +1287,8 @@ std::vector<EinsumParamType> GetEinsumTestCases() {
 INSTANTIATE_TEST_SUITE_P(Einsum, EinsumTest,
                          ::testing::ValuesIn(GetEinsumTestCases()));
 
-using BatchDotParamType =
-    std::tuple<std::vector<int64>, std::vector<int64>, std::vector<int64>>;
+using BatchDotParamType = std::tuple<std::vector<int64_t>, std::vector<int64_t>,
+                                     std::vector<int64_t>>;
 class BatchDotTest : public DotOperationTest,
                      public ::testing::WithParamInterface<BatchDotParamType> {};
 XLA_TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
@@ -1308,7 +1308,7 @@ XLA_TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
 }
 
 std::vector<BatchDotParamType> GetBatchDotTestCases() {
-  using v = std::vector<int64>;
+  using v = std::vector<int64_t>;
   using p = BatchDotParamType;
   std::vector<p> test_cases = {
       p{v{5, 6}, v{6, 7}, v{5, 7}},

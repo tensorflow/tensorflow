@@ -694,6 +694,65 @@ while tf.random.uniform(()) > 0.5:
   x = tf.constant((1, 2, 3))  # Error -- inconsistent shapes: (), (3,)
 ```
 
+### Consistency of control flow types
+
+In AutoGraph, one can write Python control flow like `for i in range(10)`, as
+well as TensorFlow control flow like `for i in tf.range(10)`.
+
+However, one could also write (illegal) programs which start as Python control
+flow, then turn into TensorFlow control flow. In such cases, an error will be
+raised.
+
+Below are a few examples, along with recommendations.
+
+#### Python loop, TF-dependent break or return
+
+Example:
+
+```
+for i in range(10):
+  if tf.greater(i, 3):
+    break  # error - TF break inside Python loop
+```
+
+The solution in this case is to change the loop type to a TF loop:
+
+```
+for i in tf.range(10):
+  if tf.greater(i, 3):
+    break  # works
+```
+
+#### Python loop that turns into a TensorFlow loop
+
+Example:
+
+```
+i = 10
+while i > 0:
+  i = tf.math.subtract(i, 1)  # error - loop would turn into a TF loop
+```
+
+The solution in this case is to make sure the loop type starts as a TF loop,
+typically by making sure the condition is always a Tensor:
+
+```
+i = tf.constant(10)  # works
+while i > 0:
+  i = tf.math.subtract(i, 1)
+```
+
+#### TensorFlow loops never turn into Python loops
+
+Note that this is a legal case, as TensorFlow implicitly converts all Python
+values to Tensor:
+
+```
+i = tf.constant(10)
+while i > 0:
+  i = 0  # this is ok, will be auto-converted to Tensor
+```
+
 ### Access to source code
 
 Key point: AutoGraph can only handle functions whose source code can be

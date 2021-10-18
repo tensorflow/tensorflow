@@ -76,7 +76,7 @@ class PropagatorState {
     const NodeItem& get_node_item() const { return *node_item; }
 
     bool get_is_dead() const { return is_dead; }
-    int64 get_iter_num() const;
+    int64_t get_iter_num() const;
   };
 
   // A drop-in replacement for std::deque<TaggedNode>.  We typically don't
@@ -131,7 +131,8 @@ class PropagatorState {
           counts(*pending_counts) {  // Initialize with copy of *pending_counts
     }
 
-    const int64 iter_num;  // The index of this iteration in the enclosing loop.
+    const int64_t
+        iter_num;  // The index of this iteration in the enclosing loop.
 
     // One copy per iteration. For iteration k, i-th node's j-th input is in
     // input_tensors[k][immutable_state_.nodes[i].input_start + j]. An entry is
@@ -246,7 +247,7 @@ class PropagatorState {
     int num_pending_inputs = 0;
 
     // The highest iteration number we have reached so far in this frame.
-    int64 iteration_count TF_GUARDED_BY(mu) = 0;
+    int64_t iteration_count TF_GUARDED_BY(mu) = 0;
 
     // The number of outstanding iterations.
     int num_outstanding_iterations TF_GUARDED_BY(mu) = 1;
@@ -493,7 +494,7 @@ class PropagatorState {
   void DumpIterationState(const FrameState* frame, IterationState* iteration);
 
   const ImmutableExecutorState& immutable_state_;
-  const int64 step_id_;
+  const int64_t step_id_;
   const bool vlog_;
 
   mutex mu_;
@@ -512,7 +513,7 @@ class PropagatorState {
   TF_DISALLOW_COPY_AND_ASSIGN(PropagatorState);
 };
 
-inline int64 PropagatorState::TaggedNode::get_iter_num() const {
+inline int64_t PropagatorState::TaggedNode::get_iter_num() const {
   return input_iter->iter_num;
 }
 

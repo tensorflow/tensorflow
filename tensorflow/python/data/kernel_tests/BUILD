@@ -26,7 +26,7 @@ tf_py_test(
 
 tf_py_test(
     name = "batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["batch_test.py"],
     shard_count = 4,
     deps = [
@@ -335,6 +335,7 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
@@ -591,7 +592,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "multi_device_iterator_test",
-    size = "small",
+    size = "medium",
     srcs = ["multi_device_iterator_test.py"],
     shard_count = 2,
     tags = [
@@ -839,7 +840,7 @@ tf_py_test(
 
 tf_py_test(
     name = "shuffle_test",
-    size = "small",
+    size = "medium",
     srcs = ["shuffle_test.py"],
     shard_count = 4,
     deps = [
@@ -852,6 +853,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:random_seed",
+        "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//third_party/py/numpy",
@@ -977,6 +979,8 @@ tf_py_test(
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:errors",
     ],
 )
 

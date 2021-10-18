@@ -58,7 +58,7 @@ class Barrier : public ResourceBase {
         value_component_types_(value_component_types),
         value_component_shapes_(value_component_shapes),
         name_(name),
-        input_index_(std::numeric_limits<int64>::min()) {
+        input_index_(std::numeric_limits<int64_t>::min()) {
     DataTypeVector queue_component_types;
     std::vector<TensorShape> queue_component_shapes;
 
@@ -142,7 +142,7 @@ class Barrier : public ResourceBase {
       // This probably won't happen before the heat death of the
       // universe, but who knows?  Moore's law FTW.
       OP_REQUIRES_ASYNC(
-          ctx, input_index_ != std::numeric_limits<int64>::max(),
+          ctx, input_index_ != std::numeric_limits<int64_t>::max(),
           errors::Internal(
               "Barrier has had ", input_index_,
               " insertions and can no longer keep track of new ones."),
@@ -345,7 +345,7 @@ class Barrier : public ResourceBase {
                                             &allocate_index_tensor));
 
       Tensor index_tensor(DT_INT64, TensorShape({}));
-      allocate_index_tensor.scalar<int64>()() = input_index_;
+      allocate_index_tensor.scalar<int64_t>()() = input_index_;
       element.push_back(allocate_index_tensor);
 
       // The rest of the element stores uninitialized Tensors with
@@ -428,7 +428,7 @@ class Barrier : public ResourceBase {
   const DataTypeVector value_component_types_;
   const std::vector<TensorShape>& value_component_shapes_;
   const string name_;
-  int64 input_index_ TF_GUARDED_BY(mu_);
+  int64_t input_index_ TF_GUARDED_BY(mu_);
   std::unordered_map<string, TensorTuple> incomplete_ TF_GUARDED_BY(mu_);
   PriorityQueue* ready_queue_;
 
@@ -617,7 +617,7 @@ class TakeManyOp : public BarrierOpKernel {
   }
 
  private:
-  int64 timeout_;
+  int64_t timeout_;
   bool allow_small_batch_;
   TF_DISALLOW_COPY_AND_ASSIGN(TakeManyOp);
 };

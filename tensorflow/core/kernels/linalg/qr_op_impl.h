@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/linalg/eye_functor.h"
 #include "tensorflow/core/kernels/linalg/matrix_band_part_op.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -80,7 +80,7 @@ class QrOp : public LinearAlgebraOp<Scalar> {
     }
   }
 
-  int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
+  int64_t GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
     double m = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double n = static_cast<double>(input_matrix_shapes[0].dim_size(1));
     double max_size = std::max(m, n);
@@ -90,7 +90,7 @@ class QrOp : public LinearAlgebraOp<Scalar> {
     // TODO(jpoulson): Increase the cost if full_matrices is true in a manner
     // that reflects the algorithm used for the expansion.
     return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64>(cost);
+                                                  : static_cast<int64_t>(cost);
   }
 
   using Matrix = typename Base::Matrix;
@@ -171,7 +171,7 @@ class QrOpGpu : public AsyncOpKernel {
     }
 
     // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    std::unique_ptr<GpuSolver> solver(new GpuSolver(context));
 
     // Allocate temporaries.
     Tensor input_transposed;
@@ -285,8 +285,8 @@ class QrOpGpu : public AsyncOpKernel {
     }
 
     // Asynchronously check return status from cuSolver kernels.
-    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(done));
+    GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                   std::move(done));
   }
 
  private:

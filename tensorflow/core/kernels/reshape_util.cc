@@ -40,13 +40,13 @@ template <>
 struct ReshapeSparseTensorFunctor<CPUDevice> {
   Status operator()(OpKernelContext *context, const TensorShape &input_shape,
                     const TensorShape &output_shape,
-                    typename TTypes<int64>::ConstMatrix input_indices,
-                    typename TTypes<int64>::Matrix output_indices) const {
+                    typename TTypes<int64_t>::ConstMatrix input_indices,
+                    typename TTypes<int64_t>::Matrix output_indices) const {
     (void)context;  // Unused (only used in GPU implementation)
     const int64_t input_rank = input_shape.dims();
     const int64_t output_rank = output_shape.dims();
     const int64_t nnz = input_indices.dimension(0);
-    gtl::InlinedVector<int64, 8> input_strides(input_rank);
+    gtl::InlinedVector<int64_t, 8> input_strides(input_rank);
     if (input_rank > 0) {
       input_strides[input_rank - 1] = 1;
       for (int d = input_rank - 2; d >= 0; --d) {
@@ -54,7 +54,7 @@ struct ReshapeSparseTensorFunctor<CPUDevice> {
       }
     }
 
-    gtl::InlinedVector<int64, 8> output_strides(output_rank);
+    gtl::InlinedVector<int64_t, 8> output_strides(output_rank);
     if (output_rank > 0) {
       output_strides[output_rank - 1] = 1;
       for (int d = output_rank - 2; d >= 0; --d) {
@@ -99,7 +99,7 @@ void ReshapeSparseTensor(OpKernelContext *context,
                   target_shape_in.shape().DebugString()));
 
   const int64_t output_rank = target_shape_in.NumElements();
-  const TensorShape input_shape(input_shape_in.vec<int64>());
+  const TensorShape input_shape(input_shape_in.vec<int64_t>());
   const int64_t dense_size = input_shape.num_elements();
   const int64_t nnz = input_indices_in.shape().dim_size(0);
 
@@ -108,7 +108,7 @@ void ReshapeSparseTensor(OpKernelContext *context,
   TensorShape output_shape;
   int64_t product = 1;
   int unknown_index = -1;
-  auto target_shape = target_shape_in.vec<int64>();
+  auto target_shape = target_shape_in.vec<int64_t>();
   for (int d = 0; d < output_rank; ++d) {
     const int64_t size = target_shape(d);
     if (size == -1) {
@@ -163,7 +163,7 @@ void ReshapeSparseTensor(OpKernelContext *context,
   OP_REQUIRES_OK(context, context->allocate_output(output_shape_idx,
                                                    TensorShape({output_rank}),
                                                    &result_shape));
-  auto output_shape_vec = result_shape->vec<int64>();
+  auto output_shape_vec = result_shape->vec<int64_t>();
   for (int j = 0; j < output_shape.dims(); ++j) {
     output_shape_vec(j) = output_shape.dim_size(j);
   }
@@ -182,8 +182,8 @@ void ReshapeSparseTensor(OpKernelContext *context,
             output_shape.DebugString(), ") is empty"));
     OP_REQUIRES_OK(context, functor::ReshapeSparseTensorFunctor<Device>()(
                                 context, input_shape, output_shape,
-                                input_indices_in.matrix<int64>(),
-                                result_indices->matrix<int64>()));
+                                input_indices_in.matrix<int64_t>(),
+                                result_indices->matrix<int64_t>()));
   }
 }
 

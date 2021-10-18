@@ -57,11 +57,11 @@ OpSharding Tile1D(const Shape& tile_shape, int64_t num_tiles) {
   result.set_type(OpSharding::OTHER);
 
   CHECK_EQ(tile_shape.rank(), 1);
-  std::vector<int64> dimensions(1, num_tiles);
+  std::vector<int64_t> dimensions(1, num_tiles);
   *result.mutable_tile_shape() = tile_shape.ToProto();
   auto& tile_dimension =
       (*result.mutable_tile_shape()->mutable_dimensions())[0];
-  tile_dimension = CeilOfRatio(static_cast<int64>(tile_dimension), num_tiles);
+  tile_dimension = CeilOfRatio(static_cast<int64_t>(tile_dimension), num_tiles);
   result.add_tile_assignment_dimensions(num_tiles);
   for (int64_t i = 0; i < num_tiles; ++i) {
     result.add_tile_assignment_devices(i);

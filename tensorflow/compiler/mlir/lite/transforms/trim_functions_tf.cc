@@ -95,7 +95,7 @@ bool TrimFunctionsPass::TrimModule() {
       // tensorflow function in MLIR TF import using an entry_point attr.
       if (!llvm::is_contained(trim_funcs_allowlist_, "main") &&
           func.getName() == trim_funcs_allowlist_[0]) {
-        func.setName("main");
+        func.setName(StringAttr::get(func.getContext(), "main"));
       }
     } else {
       funcs_to_trim.push_back(func);

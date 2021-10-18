@@ -39,6 +39,10 @@ def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 def CastValueToI64: NativeCodeCall<
   "CastValueToI64($0.getLoc(), $1, &$_builder)">;
 
+def CastValueToElementType: NativeCodeCall<
+  "$_builder.create<ConvertOp>($0.getLoc(), $1, "
+  "getElementTypeOrSelf($2.getType()))">;
+
 // Here, $0 is an ElementsAttr with exactly one element of type integer. $1 is
 // the corresponding value of ranked tensor type whose axis is referred in $0.
 def GetHLOAxisFromTFAxis : NativeCodeCall<
@@ -55,6 +59,19 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
 def CastElementsToI64Elements : NativeCodeCall<
   "hlo::ConvertElementsAttr("
     "$0.cast<ElementsAttr>(), $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
+
+//===----------------------------------------------------------------------===//
+// ApproximateEqual op pattern.
+//===----------------------------------------------------------------------===//
+
+// TODO(kramerb): Assert that $x and $y have the same shape.
+def : Pat<(TF_ApproximateEqualOp:$result $x, $y, $tolerance),
+          (HLOClient_BroadcastCompareOp
+           (HLO_AbsOp:$abs (HLO_SubOp $x, $y)),
+           (CastValueToElementType $result, (HLO_ConstOp $tolerance), $abs),
+           (NullDenseIntElementsAttr),
+           HLO_COMPARISON_DIRECTION_LT,
+           (HLO_DEFAULT_COMPARISON_TYPE))>;
 
 //===----------------------------------------------------------------------===//
 // Assert op pattern.
@@ -82,7 +99,9 @@ foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
                          [TF_LeftShiftOp, HLOClient_BroadcastShiftLeftOp],
                          [TF_MaximumOp, HLOClient_BroadcastMaxOp],
                          [TF_MinimumOp, HLOClient_BroadcastMinOp],
+                         [TF_ModOp, HLOClient_BroadcastRemOp],
                          [TF_MulOp, HLOClient_BroadcastMulOp],
+                         [TF_NextAfterOp, HLOClient_BroadcastNextAfterOp],
                          [TF_PolygammaOp, HLOClient_BroadcastPolygammaOp],
                          [TF_PowOp, HLOClient_BroadcastPowOp],
                          [TF_RealDivOp, HLOClient_BroadcastDivOp],
@@ -548,8 +567,8 @@ def : Pattern<
 // Slice op patterns.
 //===----------------------------------------------------------------------===//
 
-def CastToI64AndUnpackTensor: NativeCodeCall<
-  "UnpackTensorAlongZeroDim($0.getLoc(), CastValueToI64($0.getLoc(), $1, &$_builder), &$_builder).output()">;
+def UnpackStartingIndices: NativeCodeCall<
+  "UnpackTensorAlongZeroDim($0.getLoc(), $1, &$_builder).output()">;
 
 def CanBeTranslatedToDynamicSlice : Constraint<CPred<
   "CanBeTranslatedToDynamicSlice($0, $1, $2.cast<DenseIntElementsAttr>())">>;
@@ -561,7 +580,7 @@ def TFSliceSizes2HLOSliceSizes : NativeCodeCall<
 def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
            (ConstantLikeMatcher AnyAttr:$slice_sizes)),
           (HLO_DynamicSliceOp $input,
-           (CastToI64AndUnpackTensor $op, $starting_indices),
+           (UnpackStartingIndices $op, $starting_indices),
            (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
           [(CanBeTranslatedToDynamicSlice $input, $starting_indices,
             $slice_sizes)]>;
@@ -791,6 +810,16 @@ def HasValidDotDims : Constraint<CPred<"HasValidDotDims($0)">>;
 def HasValidPrecisionConfig : Constraint<CPred<"HasValidPrecisionConfig($0)">>;
 
 //===----------------------------------------------------------------------===//
+// XlaDotOp op.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_XlaDotOp $lhs, $rhs, $dimension_numbers, $precision_config),
+          (HLO_DotGeneralOp $lhs, $rhs,
+                            (ToDotDimNumsAttr $dimension_numbers),
+                            (ToPrecisionConfigsAttr $precision_config)),
+          [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
+
+//===----------------------------------------------------------------------===//
 // XlaDotV2Op op.
 //===----------------------------------------------------------------------===//
 
@@ -799,3 +828,10 @@ def : Pat<(TF_XlaDotV2Op $lhs, $rhs, $dimension_numbers, $precision_config),
                             (ToDotDimNumsAttr $dimension_numbers),
                             (ToPrecisionConfigsAttr $precision_config)),
           [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
+
+//===----------------------------------------------------------------------===//
+// XlaEisumOp op.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_XlaEinsumOp $lhs, $rhs, $equation),
+          (HLO_EinsumOp $lhs, $rhs, $equation)>;

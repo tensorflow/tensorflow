@@ -298,7 +298,7 @@ StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStreamWrapper(
   return return_value;
 }
 
-int64 Executable::SizeOfGeneratedCodeInBytes() const { return -1; }
+int64_t Executable::SizeOfGeneratedCodeInBytes() const { return -1; }
 
 void Executable::MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
                                            ExecutionOutput& result) {

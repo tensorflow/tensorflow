@@ -28,12 +28,12 @@ struct SpaceToBatchController {
   bool enable_propagations_on_window_dilations;
   bool enable_propagations_on_trivial_window_dilations;
   bool disable_starting_on_small_chains;
-  int64 limit_on_batch_size;
-  int64 dimension_from_end_to_convert = 1;
+  int64_t limit_on_batch_size;
+  int64_t dimension_from_end_to_convert = 1;
   // We choose the new batch size to be number_of_splits times that of the old
   // batch so that space-to-batch propagation through several convolutional
   // layers is consistent.
-  int64 number_of_splits = 8;
+  int64_t number_of_splits = 8;
 };
 
 // A pass which rewrites convolutions such that space dimension is turned into

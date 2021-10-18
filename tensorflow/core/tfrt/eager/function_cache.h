@@ -44,17 +44,19 @@ namespace tf {
 class FunctionState : public ReferenceCounted<FunctionState> {
  public:
   static RCReference<FunctionState> CreateFunctionState(
-      TfrtDataTypeSlice arg_types, BefBuffer bef_buffer,
-      RCReference<BEFFile> bef_file, CoreRuntimeOp fn,
+      TfrtDataTypeSlice arg_types, tensorflow::DataTypeSlice ret_types,
+      BefBuffer bef_buffer, RCReference<BEFFile> bef_file, CoreRuntimeOp fn,
       std::unique_ptr<tensorflow::tfd::OpKernelRunnerTable> runner_table) {
-    return TakeRef(new FunctionState(arg_types, std::move(bef_buffer),
-                                     std::move(bef_file), std::move(fn),
-                                     std::move(runner_table)));
+    return TakeRef(new FunctionState(arg_types, ret_types,
+                                     std::move(bef_buffer), std::move(bef_file),
+                                     std::move(fn), std::move(runner_table)));
   }
 
   const CoreRuntimeOp& GetFunc() const { return fn_; }
 
   const TfrtDataTypeVector& GetArgTypes() { return arg_types_; }
+
+  const tensorflow::DataTypeVector& GetRetTypes() { return ret_types_; }
 
   tensorflow::tfd::OpKernelRunnerTable* GetRunnerTable() {
     return runner_table_.get();
@@ -62,16 +64,18 @@ class FunctionState : public ReferenceCounted<FunctionState> {
 
  private:
   FunctionState(
-      TfrtDataTypeSlice arg_types, BefBuffer bef_buffer,
-      RCReference<BEFFile> bef_file, CoreRuntimeOp fn,
+      TfrtDataTypeSlice arg_types, tensorflow::DataTypeSlice ret_types,
+      BefBuffer bef_buffer, RCReference<BEFFile> bef_file, CoreRuntimeOp fn,
       std::unique_ptr<tensorflow::tfd::OpKernelRunnerTable> runner_table)
       : arg_types_(arg_types.begin(), arg_types.end()),
+        ret_types_(ret_types.begin(), ret_types.end()),
         bef_buffer_(std::move(bef_buffer)),
         bef_file_(std::move(bef_file)),
         fn_(std::move(fn)),
         runner_table_(std::move(runner_table)) {}
 
   TfrtDataTypeVector arg_types_;
+  tensorflow::DataTypeVector ret_types_;
   BefBuffer bef_buffer_;
   RCReference<BEFFile> bef_file_;
   const CoreRuntimeOp fn_;

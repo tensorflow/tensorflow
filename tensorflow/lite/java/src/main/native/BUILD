@@ -2,8 +2,6 @@
 # Java Native Interface (JNI) library intended for implementing the
 # TensorFlow Lite Java API using the TensorFlow Lite CC library.
 
-# LINT.IfChange
-
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite")
 
@@ -22,9 +20,9 @@ alias_with_tflite(
 cc_library_with_tflite(
     name = "native_experimental_framework_only",
     srcs = [
-        "nativeinterpreterwrapperexperimental_jni.cc",
+        ":native_experimental_only_srcs",
     ],
-    hdrs = ["jni_utils.h"],
+    hdrs = [":native_hdrs"],
     tflite_deps = [
         ":native_stable_framework_only",
         "//tensorflow/lite/core/shims:framework_experimental",
@@ -35,17 +33,36 @@ cc_library_with_tflite(
     alwayslink = 1,
 )
 
+filegroup(
+    name = "native_experimental_only_srcs",
+    srcs = [
+        "nativeinterpreterwrapperexperimental_jni.cc",
+    ],
+)
+
+filegroup(
+    name = "native_hdrs",
+    srcs = ["jni_utils.h"],
+)
+
 # Native code needed for TF Lite Java API, excluding experimental APIs;
 # but only the framework code, no ops.
-cc_library_with_tflite(
-    name = "native_stable_framework_only",
+filegroup(
+    name = "native_stable_srcs",
     srcs = [
         "jni_utils.cc",
         "nativeinterpreterwrapper_jni.cc",
+        "nativesignaturerunner_jni.cc",
         "tensor_jni.cc",
         "tensorflow_lite_jni.cc",
+        "xnnpackdelegate_jni.cc",
     ],
-    hdrs = ["jni_utils.h"],
+)
+
+cc_library_with_tflite(
+    name = "native_stable_framework_only",
+    srcs = [":native_stable_srcs"],
+    hdrs = [":native_hdrs"],
     copts = tflite_copts(),
     linkopts = [
         "-lm",
@@ -118,5 +135,3 @@ exports_files(
         "version_script.lds",
     ],
 )
-
-# LINT.ThenChange(//tensorflow/lite/java/src/main/native/BUILD.oss)

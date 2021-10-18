@@ -66,6 +66,8 @@ namespace wrap {
 #endif
 
 // clang-format off
+// IMPORTANT: if you add a new HIP API to this list, please notify
+// the rocm-profiler developers to track the API traces.
 #define HIP_ROUTINE_EACH(__macro)                   \
   __macro(hipDeviceCanAccessPeer)                   \
   __macro(hipDeviceEnablePeerAccess)                \
@@ -104,9 +106,12 @@ namespace wrap {
   __macro(hipMemcpyHtoD)                            \
   __macro(hipMemcpyHtoDAsync)                       \
   __macro(hipMemset)                                \
-  __macro(hipMemsetD32)                             \
   __macro(hipMemsetD8)                              \
+  __macro(hipMemsetD16)                             \
+  __macro(hipMemsetD32)                             \
   __macro(hipMemsetAsync)                           \
+  __macro(hipMemsetD8Async)                         \
+  __macro(hipMemsetD16Async)                        \
   __macro(hipMemsetD32Async)                        \
   __macro(hipModuleGetFunction)                     \
   __macro(hipModuleGetGlobal)                       \
@@ -117,7 +122,7 @@ namespace wrap {
   __macro(hipSetDevice)                             \
   __macro(hipStreamAddCallback)                     \
   __macro(hipStreamCreateWithFlags)                 \
-  __macro(hipStreamCreateWithPriority)		    \
+  __macro(hipStreamCreateWithPriority)              \
   __macro(hipStreamDestroy)                         \
   __macro(hipStreamQuery)                           \
   __macro(hipStreamSynchronize)                     \

@@ -136,7 +136,7 @@ class RematerializationTestBase : public HloTestBase {
   }
 
   // Return the byte size of the top-level buffer of the given shape.
-  static int64 ByteSizeOf(const Shape& shape) {
+  static int64_t ByteSizeOf(const Shape& shape) {
     return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
   }
 

@@ -19,10 +19,6 @@ See the [Summaries and
 TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard) guide.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from google.protobuf import json_format as _json_format
 
 # exports Summary, SummaryDescription, Event, TaggedRunMetadata, SessionLog

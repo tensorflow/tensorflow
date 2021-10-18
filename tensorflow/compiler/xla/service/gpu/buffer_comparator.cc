@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
-#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -600,7 +600,7 @@ ret;
 template <typename ElementT>
 using ComparisonKernelT =
     se::TypedKernel<se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>,
-                    float, uint64, se::DeviceMemory<uint64>>;
+                    float, uint64, se::DeviceMemory<uint64_t>>;
 
 // Compares two buffers on the GPU.
 //
@@ -614,8 +614,8 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
                                     absl::string_view kernel_name) {
   se::StreamExecutor* executor = stream->parent();
 
-  se::ScopedDeviceMemory<uint64> out_param =
-      executor->AllocateOwnedScalar<uint64>();
+  se::ScopedDeviceMemory<uint64_t> out_param =
+      executor->AllocateOwnedScalar<uint64_t>();
 
   stream->ThenMemZero(out_param.ptr(), sizeof(uint64));
   if (lhs.size() != rhs.size()) {
@@ -629,9 +629,9 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
 
   absl::Span<const uint8> compiled_ptx = {};
   StatusOr<absl::Span<const uint8>> compiled_ptx_or =
-      se::CompileGpuAsmOrGetCached(executor->device_ordinal(),
-                                   buffer_compare_ptx,
-                                   PtxOptsFromConfig(config));
+      se::CompileGpuAsmOrGetCached(
+          executor->device_ordinal(), buffer_compare_ptx,
+          PtxOptsFromDebugOptions(config.debug_options()));
   if (compiled_ptx_or.ok()) {
     compiled_ptx = compiled_ptx_or.ConsumeValueOrDie();
   } else {
@@ -650,7 +650,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
       std::unique_ptr<ComparisonKernelT<ElementT>> comparison_kernel,
       (executor->CreateTypedKernel<se::DeviceMemory<ElementT>,
                                    se::DeviceMemory<ElementT>, float, uint64,
-                                   se::DeviceMemory<uint64>>(
+                                   se::DeviceMemory<uint64_t>>(
           kernel_name, buffer_compare_ptx, compiled_ptx)));
 
   GpuDeviceInfo gpu_device_info;

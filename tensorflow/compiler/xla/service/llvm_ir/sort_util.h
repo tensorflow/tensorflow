@@ -36,7 +36,7 @@ using EmitCallToNestedComputationCallback =
 // 'xor_masks' contains only powers of 2, or values 2^k - 1 (k > 0).
 Status EmitSortInPlace(
     int64_t dimension_to_sort, const std::vector<IrArray>& values_arrays,
-    absl::string_view name, absl::Span<const int64> xor_masks,
+    absl::string_view name, absl::Span<const int64_t> xor_masks,
     llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
     int64_t num_iterations_in_sort_dim, int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback);

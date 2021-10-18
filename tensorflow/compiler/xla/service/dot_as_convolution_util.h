@@ -43,12 +43,12 @@ struct DotConvolutionDimsInfo {
   // operand or the output doesn't have the logical dimension, it is set to
   // -1.
   struct DimNums {
-    int64 lhs;
-    int64 rhs;
-    int64 output;
+    int64_t lhs;
+    int64_t rhs;
+    int64_t output;
     // The corresponding spatial dimension in the convolution's config. Set to
     // -1 if it's not mapped to a spatial dimension.
-    int64 spatial_dim;
+    int64_t spatial_dim;
   };
   std::vector<DimNums> batch_dims;
   std::vector<DimNums> contracting_dims;

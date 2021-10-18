@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/util/determinism_test_util.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -558,6 +559,18 @@ INSTANTIATE_TEST_SUITE_P(Test, GetOptimizationsTest,
                                            GetOptimizationTestCase2(),
                                            GetOptimizationTestCase3(),
                                            GetOptimizationTestCase4()));
+
+TEST(DeterministicOpsTest, GetOptimizations) {
+  test::DeterministicOpsScope det_scope;
+  Options options;
+  // options.deterministic should be ignored when deterministic ops are enabled.
+  options.set_deterministic(false);
+  absl::flat_hash_set<tstring> actual_enabled, actual_disabled, actual_default;
+  GetOptimizations(options, &actual_enabled, &actual_disabled, &actual_default);
+  EXPECT_THAT(std::vector<string>(actual_enabled.begin(), actual_enabled.end()),
+              ::testing::UnorderedElementsAreArray({"make_deterministic"}));
+  EXPECT_EQ(actual_disabled.size(), 0);
+}
 
 struct SelectOptimizationsTestCase {
   absl::flat_hash_set<string> experiments;

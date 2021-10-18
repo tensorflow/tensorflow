@@ -116,8 +116,8 @@ func @inline_bcasted_shape_operands(%a : tensor<?xindex>, %b : tensor<?xindex>,
 // CHECK-LABEL: @move_shape_of_into_assuming
 // CHECK-SAME: (%[[ARG0:.*]]: !shape.witness, %[[ARG1:.*]]: tensor<?x32xf32>)
 func @move_shape_of_into_assuming(%arg0 : !shape.witness,
-    %arg1 : tensor<?x32xf32>) -> tensor<3xindex> {
-  // CHECK:     %[[ASSUMING_RESULTS:.*]]:3 = shape.assuming %[[ARG0]] -> (tensor<?x32xf32>, tensor<?x32xf32>, tensor<3xindex>) {
+    %arg1 : tensor<?x32xf32>) -> tensor<2xindex> {
+  // CHECK:     %[[ASSUMING_RESULTS:.*]]:3 = shape.assuming %[[ARG0]] -> (tensor<?x32xf32>, tensor<?x32xf32>, tensor<2xindex>) {
   // CHECK:       %[[DUMMY_TENSOR:.*]] = "dummy.tensor"() : () -> tensor<?x32xf32>
   // CHECK:       %[[SHAPE:.*]] = shape.shape_of %[[DUMMY_TENSOR]]
   // CHECK:       shape.assuming_yield %[[ARG1]], %[[DUMMY_TENSOR]], %[[SHAPE]]
@@ -128,9 +128,9 @@ func @move_shape_of_into_assuming(%arg0 : !shape.witness,
     %1 = "dummy.tensor"() : () -> tensor<?x32xf32>
     shape.assuming_yield %arg1, %1 : tensor<?x32xf32>, tensor<?x32xf32>
   }
-  %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<3xindex>
+  %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<2xindex>
   "use"(%0#0, %0#1) : (tensor<?x32xf32>, tensor<?x32xf32>) -> ()
-  return %2 : tensor<3xindex>
+  return %2 : tensor<2xindex>
 }
 
 // -----
@@ -159,7 +159,7 @@ func @move_cstr_broadcastable_into_assuming(%arg0 : !shape.witness,
 
 // CHECK-LABEL: @not_move_shape_of_into_assuming
 func @not_move_shape_of_into_assuming(%arg0 : !shape.witness,
-    %arg1 : tensor<?x32xf32>, %arg2 : tensor<?x32xf32>) -> tensor<3xindex> {
+    %arg1 : tensor<?x32xf32>, %arg2 : tensor<?x32xf32>) -> tensor<2xindex> {
   // CHECK:      shape.assuming
   // CHECK-SAME: {
   // CHECK-NOT:    shape_of
@@ -170,8 +170,8 @@ func @not_move_shape_of_into_assuming(%arg0 : !shape.witness,
     shape.assuming_yield %arg1, %arg2 : tensor<?x32xf32>, tensor<?x32xf32>
   }
   "some.other.op"() : () -> ()
-  %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<3xindex>
-  return %2 : tensor<3xindex>
+  %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<2xindex>
+  return %2 : tensor<2xindex>
 }
 
 // -----
@@ -415,4 +415,60 @@ func @redundant_cstr_broadcastable(%arg0: tensor<?xindex>,
     shape.assuming_yield
   }
   return
+}
+
+// -----
+
+// CHECK-LABEL: @move_assuming_all_over_assuming_region
+// CHECK-SAME:  %[[ARG0:.*]]: tensor<?xindex>, %[[ARG1:.*]]: tensor<?xindex>, %[[ARG2:.*]]: tensor<?xindex>, %[[ARG3:.*]]: tensor<?xindex>, %[[ARG4:.*]]: tensor<?xindex>
+func @move_assuming_all_over_assuming_region(%arg0: tensor<?xindex>,
+    %arg1 : tensor<?xindex>, %arg2 : tensor<?xindex>, %arg3 : tensor<?xindex>,
+    %arg4 : tensor<?xindex>) {
+  // CHECK-DAG: %[[CSTR0:.*]] = shape.cstr_broadcastable %[[ARG0]], %[[ARG1]]
+  // CHECK-DAG: %[[CSTR1:.*]] = shape.cstr_broadcastable %[[ARG1]], %[[ARG2]]
+  // CHECK-DAG: %[[CSTR_ALL01:.*]] = shape.assuming_all %[[CSTR0]], %[[CSTR1]]
+  // CHECK-DAG: %[[CSTR2:.*]] = shape.cstr_broadcastable %[[ARG2]], %[[ARG3]]
+  // CHECK-DAG: %[[CSTR3:.*]] = shape.cstr_broadcastable %[[ARG3]], %[[ARG4]]
+  // CHECK-DAG: %[[CSTR_ALL23:.*]] = shape.assuming_all %[[CSTR2]], %[[CSTR3]]
+  // CHECK-DAG: %[[CSTR_ALL0123:.*]] = shape.assuming_all %[[CSTR_ALL01]], %[[CSTR_ALL23]]
+  // CHECK:     shape.assuming %[[CSTR_ALL0123]] {
+  // CHECK:       "some.op"()
+  // CHECK:       "some.op"()
+  // CHECK:     }
+  // CHECK:     return
+  %0 = shape.cstr_broadcastable %arg0, %arg1 : tensor<?xindex>, tensor<?xindex>
+  %1 = shape.cstr_broadcastable %arg1, %arg2 : tensor<?xindex>, tensor<?xindex>
+  %2 = shape.assuming_all %0, %1
+  shape.assuming %2 -> () {
+    "some.op"() : () -> ()
+  }
+  %3 = shape.cstr_broadcastable %arg2, %arg3 : tensor<?xindex>, tensor<?xindex>
+  %4 = shape.cstr_broadcastable %arg3, %arg4 : tensor<?xindex>, tensor<?xindex>
+  %5 = shape.assuming_all %3, %4
+  shape.assuming %5 -> () {
+    "some.op"() : () -> ()
+  }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @bcast_select_scalar_pred
+// CHECK-SAME:  %[[PRED:.*]]: tensor<i1>, %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>, %[[SHAPE:.*]]: tensor<2xindex>
+func @bcast_select_scalar_pred(%pred : tensor<i1>, %arg0 : tensor<?x?xf32>,
+    %arg1 : tensor<?x?xf32>, %shape : tensor<2xindex>) -> tensor<?x?xf32> {
+  // CHECK:      %[[BCASTED_PRED:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[PRED]], %[[SHAPE]])
+  // CHECK-SAME:   broadcast_dimensions = dense<>
+  // CHECK:      %[[BCASTED_LHS:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[LHS]], %[[SHAPE]])
+  // CHECK-SAME:   broadcast_dimensions = dense<[0, 1]>
+  // CHECK:      %[[BCASTED_RHS:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[RHS]], %[[SHAPE]])
+  // CHECK-SAME:   broadcast_dimensions = dense<[0, 1]>
+  // CHECK:      %[[RESULT:.*]] = "mhlo.select"(%[[BCASTED_PRED]], %[[BCASTED_LHS]], %[[BCASTED_RHS]])
+  // CHECK:      return %[[RESULT]]
+  %0 = "mhlo.select"(%pred, %arg0, %arg1)
+      : (tensor<i1>, tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  %1 = "mhlo.dynamic_broadcast_in_dim"(%0, %shape)
+      { broadcast_dimensions = dense<[0, 1]> : tensor<2xi64> }
+      : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  return %1 : tensor<?x?xf32>
 }

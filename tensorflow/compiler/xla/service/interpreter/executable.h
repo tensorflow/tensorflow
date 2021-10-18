@@ -48,7 +48,7 @@ class InterpreterExecutable : public InterpreterExecutableBase {
       std::unique_ptr<HloEvaluator> evaluator,
       absl::optional<DynamicDimensionInference> dynamic_dymension_inference);
 
-  static int64 ShapeSizeBytes(const Shape& shape);
+  static int64_t ShapeSizeBytes(const Shape& shape);
 
  protected:
   StatusOr<Literal> Evaluate(const ServiceExecutableRunOptions* run_options,

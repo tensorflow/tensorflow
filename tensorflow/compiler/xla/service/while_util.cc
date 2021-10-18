@@ -315,10 +315,10 @@ static Shape MakeLoopStateShapeWithLayout(
   return result;
 }
 
-/*static*/ absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>
+/*static*/ absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>>
 WhileUtil::GetGTEsMapForWhileConditional(
     const HloComputation& while_conditional) {
-  absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>> result;
+  absl::flat_hash_map<int64_t, absl::InlinedVector<HloInstruction*, 1>> result;
   for (HloInstruction* user :
        while_conditional.parameter_instruction(0)->users()) {
     if (user->opcode() == HloOpcode::kGetTupleElement) {

@@ -64,7 +64,7 @@ void SaveTensors(
     const Tensor& tensor_shapes_and_slices_t = context->input(2);
     OP_REQUIRES(
         context,
-        tensor_shapes_and_slices_t.NumElements() == static_cast<int64>(N),
+        tensor_shapes_and_slices_t.NumElements() == static_cast<int64_t>(N),
         errors::InvalidArgument("Expected ", N,
                                 " elements for the tensor "
                                 "shapes and slices but got ",

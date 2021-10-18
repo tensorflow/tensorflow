@@ -1,6 +1,6 @@
 # Description:
 #   AST-based python refactoring.
-load("@//third_party/pasta:build_defs.bzl", "copy_srcs")
+load("//:build_defs.bzl", "copy_srcs")
 
 licenses(["notice"])  # Apache2
 

@@ -335,9 +335,9 @@ class DecodeImageV2Op : public OpKernel {
     const int width = static_cast<int>(decode.width);
     const int height = static_cast<int>(decode.height);
     const int64_t total_size =
-        static_cast<int64>(width) * static_cast<int64>(height);
-    if (width != static_cast<int64>(decode.width) || width <= 0 ||
-        width >= (1LL << 27) || height != static_cast<int64>(decode.height) ||
+        static_cast<int64_t>(width) * static_cast<int64_t>(height);
+    if (width != static_cast<int64_t>(decode.width) || width <= 0 ||
+        width >= (1LL << 27) || height != static_cast<int64_t>(decode.height) ||
         height <= 0 || height >= (1LL << 27) || total_size >= (1LL << 29)) {
       png::CommonFreeDecode(&decode);
       OP_REQUIRES(context, false,
@@ -578,8 +578,8 @@ class DecodeImageV2Op : public OpKernel {
     // so rounding down to something that's still ridiculously big.
     OP_REQUIRES(
         context,
-        (static_cast<int64>(width) * std::abs(static_cast<int64>(height))) <
-            static_cast<int64>(std::numeric_limits<int32_t>::max() / 8),
+        (static_cast<int64_t>(width) * std::abs(static_cast<int64_t>(height))) <
+            static_cast<int64_t>(std::numeric_limits<int32_t>::max() / 8),
         errors::InvalidArgument(
             "Total possible pixel bytes must be less than 2^30"));
 
@@ -598,7 +598,7 @@ class DecodeImageV2Op : public OpKernel {
             "they differ by ",
             size_diff));
 
-    const int64_t last_pixel_offset = static_cast<int64>(header_size) +
+    const int64_t last_pixel_offset = static_cast<int64_t>(header_size) +
                                       (abs_height - 1) * row_size +
                                       (width - 1) * img_channels;
 

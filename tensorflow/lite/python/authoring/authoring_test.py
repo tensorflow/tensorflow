@@ -82,8 +82,27 @@ class TFLiteAuthoringTest(tf.test.TestCase):
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
-  def test_compatibility_error(self):
+  def test_compatibility_error_generic(self):
     @authoring.compatible
+    @tf.function
+    def f():
+      dataset = tf.data.Dataset.range(3)
+      dataset = dataset.shuffle(3, reshuffle_each_iteration=True)
+      return dataset
+
+    f()
+    log_messages = f.get_compatibility_log()
+    self.assertIn(
+        "COMPATIBILITY ERROR: failed to legalize operation 'tf.RangeDataset' "
+        "that was explicitly marked illegal", log_messages)
+
+  def test_compatibility_error_custom(self):
+    target_spec = tf.lite.TargetSpec()
+    target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    @authoring.compatible(converter_target_spec=target_spec)
     @tf.function
     def f():
       dataset = tf.data.Dataset.range(3)
@@ -221,8 +240,6 @@ class TFLiteAuthoringTest(tf.test.TestCase):
         "DummySeedGenerator"
     ]
     @authoring.compatible(converter_target_spec=target_spec)
-
-    @authoring.compatible(converter_target_spec=target_spec)
     @tf.function
     def f():
       dataset = tf.data.Dataset.range(3)
@@ -238,7 +255,13 @@ class TFLiteAuthoringTest(tf.test.TestCase):
         log_messages)
 
   def test_allow_custom_ops(self):
-    @authoring.compatible(converter_allow_custom_ops=True)
+    target_spec = tf.lite.TargetSpec()
+    target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    @authoring.compatible(
+        converter_allow_custom_ops=True, converter_target_spec=target_spec)
     @tf.function
     def f():
       dataset = tf.data.Dataset.range(3)
@@ -248,6 +271,49 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     f()
     log_messages = f.get_compatibility_log()
     self.assertEmpty(log_messages)
+
+  def test_non_gpu_compatible(self):
+    target_spec = tf.lite.TargetSpec()
+    target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    target_spec.experimental_supported_backends = ["GPU"]
+
+    @authoring.compatible(converter_target_spec=target_spec)
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[4, 4], dtype=tf.float32)])
+    def func(x):
+      return tf.cosh(x) + tf.slice(x, [1, 1], [1, 1])
+
+    func(tf.ones(shape=(4, 4), dtype=tf.float32))
+    log_messages = func.get_compatibility_log()
+    self.assertIn(
+        "'tfl.slice' op is not GPU compatible: SLICE supports for 3 or 4"
+        " dimensional tensors only, but node has 2 dimensional tensors.",
+        log_messages)
+    self.assertIn(
+        "COMPATIBILITY WARNING: op 'tf.Cosh, tfl.slice' aren't compatible with "
+        "TensorFlow Lite GPU delegate. "
+        "https://www.tensorflow.org/lite/performance/gpu", log_messages)
+
+  def test_gpu_compatible(self):
+    target_spec = tf.lite.TargetSpec()
+    target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+    ]
+    target_spec.experimental_supported_backends = ["GPU"]
+
+    @authoring.compatible(converter_target_spec=target_spec)
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[4, 4], dtype=tf.float32)])
+    def func(x):
+      return tf.cos(x)
+
+    func(tf.ones(shape=(4, 4), dtype=tf.float32))
+    log_messages = func.get_compatibility_log()
+    self.assertEmpty(log_messages)
+
 
 if __name__ == "__main__":
   tf.test.main()

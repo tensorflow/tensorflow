@@ -141,6 +141,11 @@ class Pooling3DOp : public UnaryOp<T> {
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 5 dimensions"));
+    bool non_negative =
+        std::all_of(ksize_.begin(), ksize_.end(), [](int k) { return k > 0; });
+    OP_REQUIRES(context, non_negative,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "have non-negative dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window stride field must "
@@ -167,17 +172,17 @@ class Pooling3DOp : public UnaryOp<T> {
     const int64_t in_batch = GetTensorDim(tensor_in, data_format_, 'N');
 
     // Dimension order for these arrays is: x, y, z.
-    std::array<int64, 3> input_size{
+    std::array<int64_t, 3> input_size{
         {GetTensorDim(tensor_in, data_format_, '2'),
          GetTensorDim(tensor_in, data_format_, '1'),
          GetTensorDim(tensor_in, data_format_, '0')}};
-    std::array<int64, 3> window{{GetTensorDim(ksize_, data_format_, '2'),
-                                 GetTensorDim(ksize_, data_format_, '1'),
-                                 GetTensorDim(ksize_, data_format_, '0')}};
-    std::array<int64, 3> stride{{GetTensorDim(stride_, data_format_, '2'),
-                                 GetTensorDim(stride_, data_format_, '1'),
-                                 GetTensorDim(stride_, data_format_, '0')}};
-    std::array<int64, 3> padding, out;
+    std::array<int64_t, 3> window{{GetTensorDim(ksize_, data_format_, '2'),
+                                   GetTensorDim(ksize_, data_format_, '1'),
+                                   GetTensorDim(ksize_, data_format_, '0')}};
+    std::array<int64_t, 3> stride{{GetTensorDim(stride_, data_format_, '2'),
+                                   GetTensorDim(stride_, data_format_, '1'),
+                                   GetTensorDim(stride_, data_format_, '0')}};
+    std::array<int64_t, 3> padding, out;
 
     OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
                                             padding_, &out, &padding));
@@ -219,9 +224,9 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
       // The same procedure is repeated for every spatial dimension in the
       // nested loops below.
       int pindex, psize;
-      std::array<int64, 3> input_size{{tensor_in.dim_size(3),
-                                       tensor_in.dim_size(2),
-                                       tensor_in.dim_size(1)}};
+      std::array<int64_t, 3> input_size{{tensor_in.dim_size(3),
+                                         tensor_in.dim_size(2),
+                                         tensor_in.dim_size(1)}};
       OP_REQUIRES_OK(context,
                      GetBroadcastSize(p, input_size[0], window[0], stride[0],
                                       padding[0], &pindex, &psize));
@@ -347,20 +352,33 @@ class MaxPooling3dGradOp : public OpKernel {
     Tensor* input_backprop;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, output_shape, &input_backprop));
-    std::array<int64, 3> input_size{
+    std::array<int64_t, 3> input_size{
         {GetTensorDim(output_shape, data_format_, '2'),
          GetTensorDim(output_shape, data_format_, '1'),
          GetTensorDim(output_shape, data_format_, '0')}};
-    std::array<int64, 3> window{{GetTensorDim(ksize_, data_format_, '2'),
-                                 GetTensorDim(ksize_, data_format_, '1'),
-                                 GetTensorDim(ksize_, data_format_, '0')}};
-    std::array<int64, 3> stride{{GetTensorDim(stride_, data_format_, '2'),
-                                 GetTensorDim(stride_, data_format_, '1'),
-                                 GetTensorDim(stride_, data_format_, '0')}};
-    std::array<int64, 3> out, padding;
+    std::array<int64_t, 3> window{{GetTensorDim(ksize_, data_format_, '2'),
+                                   GetTensorDim(ksize_, data_format_, '1'),
+                                   GetTensorDim(ksize_, data_format_, '0')}};
+    std::array<int64_t, 3> stride{{GetTensorDim(stride_, data_format_, '2'),
+                                   GetTensorDim(stride_, data_format_, '1'),
+                                   GetTensorDim(stride_, data_format_, '0')}};
+    std::array<int64_t, 3> out, padding;
 
     OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
                                             padding_, &out, &padding));
+
+    const int64_t depth = GetTensorDim(tensor_in, data_format_, 'C');
+    const int64_t in_batch = GetTensorDim(tensor_in, data_format_, 'N');
+    TensorShape out_shape = ShapeFromFormat(data_format_, in_batch,
+                                            {{out[2], out[1], out[0]}}, depth);
+    OP_REQUIRES(
+        context, tensor_out.shape() == out_shape,
+        errors::InvalidArgument("Expected orig_output shape to be ", out_shape,
+                                ", but got ", tensor_out.shape()));
+    OP_REQUIRES(context, out_backprop.shape() == out_shape,
+                errors::InvalidArgument("Expected grad shape to be ", out_shape,
+                                        ", but got ", out_backprop.shape()));
+
     LaunchMaxPooling3dGradOp<Device, T>::launch(
         context, tensor_in, tensor_out, out_backprop, window, stride, out,
         padding, data_format_, input_backprop);
@@ -397,9 +415,9 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
             tensor_in_shape.dim_size(4), " and ", out_backprop.dim_size(4)));
 
     output->flat<T>().setZero();
-    std::array<int64, 3> input_size = {{tensor_in_shape.dim_size(3),
-                                        tensor_in_shape.dim_size(2),
-                                        tensor_in_shape.dim_size(1)}};
+    std::array<int64_t, 3> input_size = {{tensor_in_shape.dim_size(3),
+                                          tensor_in_shape.dim_size(2),
+                                          tensor_in_shape.dim_size(1)}};
     for (int64_t p = 0; p < out_backprop.dim_size(3); ++p) {
       // Calculate broadcast size for planes/rows/cols. For SAME padding,
       // current index could be in the padding area, and
@@ -520,17 +538,17 @@ class AvgPooling3dGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
     // Dimension order for these arrays is x, y, z.
-    std::array<int64, 3> input_size{
+    std::array<int64_t, 3> input_size{
         {GetTensorDim(output_shape, data_format_, '2'),
          GetTensorDim(output_shape, data_format_, '1'),
          GetTensorDim(output_shape, data_format_, '0')}};
-    std::array<int64, 3> window{{GetTensorDim(ksize_, data_format_, '2'),
-                                 GetTensorDim(ksize_, data_format_, '1'),
-                                 GetTensorDim(ksize_, data_format_, '0')}};
-    std::array<int64, 3> stride{{GetTensorDim(stride_, data_format_, '2'),
-                                 GetTensorDim(stride_, data_format_, '1'),
-                                 GetTensorDim(stride_, data_format_, '0')}};
-    std::array<int64, 3> padding, out;
+    std::array<int64_t, 3> window{{GetTensorDim(ksize_, data_format_, '2'),
+                                   GetTensorDim(ksize_, data_format_, '1'),
+                                   GetTensorDim(ksize_, data_format_, '0')}};
+    std::array<int64_t, 3> stride{{GetTensorDim(stride_, data_format_, '2'),
+                                   GetTensorDim(stride_, data_format_, '1'),
+                                   GetTensorDim(stride_, data_format_, '0')}};
+    std::array<int64_t, 3> padding, out;
 
     OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
                                             padding_, &out, &padding));
@@ -707,6 +725,14 @@ class MaxPooling3dGradGradOp : public OpKernel {
     Pool3dParameters params{context,  ksize_,       stride_,
                             padding_, data_format_, tensor_in.shape()};
     if (!context->status().ok()) return;  // params is invalid
+    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected orig_output shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", tensor_out.shape()));
+    OP_REQUIRES(
+        context, out_grad_backprop.shape() == tensor_in.shape(),
+        errors::InvalidArgument("Expected grad shape to be ", tensor_in.shape(),
+                                ", but got ", out_grad_backprop.shape()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(

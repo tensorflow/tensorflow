@@ -117,7 +117,7 @@ bool AllUsersAreF32ToBF16Converts(const HloInstruction* hlo) {
 
 Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
     HloInstruction* hlo) {
-  std::vector<int64> bf16_to_f32_operands;
+  std::vector<int64_t> bf16_to_f32_operands;
   bool has_other_f32_operands = false;
   for (int64_t i = 0; i < hlo->operands().size(); ++i) {
     auto operand = hlo->operand(i);

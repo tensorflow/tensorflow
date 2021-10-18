@@ -14,11 +14,6 @@
 # ==============================================================================
 """Mid level API for TPU Embeddings."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-
 import functools
 from typing import Any, Dict, Callable, Iterable, List, Optional, Text, Tuple, Union
 
@@ -186,7 +181,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     for _ in tf.range(num_steps):
       embedding_features, tpu_features = next(dataset_iterator)
       embedding.enqueue(embedding_features, training=True)
-      strategy.run(tpu_step, args=(embedding_features, ))
+      strategy.run(tpu_step, args=(tpu_features, ))
 
   @tf.function
   def evalution_step(dataset_iterator, num_steps):
@@ -198,7 +193,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     for _ in tf.range(num_steps):
       embedding_features, tpu_features = next(dataset_iterator)
       embedding.enqueue(embedding_features, training=False)
-      strategy.run(tpu_step, args=(embedding_features, ))
+      strategy.run(tpu_step, args=(tpu_features, ))
   ```
 
   NOTE: The calls to `enqueue` have `training` set to `True` when
@@ -364,6 +359,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     Raises:
       ValueError: If per_replica_batch_size is None and object was created in a
         TPUStrategy scope.
+      RuntimeError: If tpu embedding is already initialized on TPU.
     """
     if self._built:
       return
@@ -373,7 +369,14 @@ class TPUEmbedding(tracking.AutoTrackable):
         raise ValueError(
             "When calling TpuShardedVariable.build under TpuStrategy you must "
             "specify a per_replica_batch_size argument.")
-
+      # If the tpu embedding is already initialized on TPU, raise runtime error.
+      # Below logic is not added in `initialize_system_for_tpu_embedding`
+      # because doing exception control flow in graph mode is difficult.
+      if tpu_ops.is_tpu_embedding_initialized():
+        raise RuntimeError(
+            "TPU is already initialized for embeddings. This may be caused by "
+            "using multiple TPUEmbedding instances in a TPU scope which is "
+            "unsupported")
       self._batch_size = per_replica_batch_size
 
       self._config_proto = self._create_config_proto()
@@ -610,7 +613,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       embedding_features, tpu_features = next(dataset_iterator)
       embedding.enqueue(embedding_features, training=True)
-      strategy.run(tpu_step, args=(embedding_features, ))
+      strategy.run(tpu_step, args=(tpu_features, ))
 
     training_step()
     ```
@@ -707,7 +710,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       embedding_features, tpu_features = next(dataset_iterator)
       embedding.enqueue(embedding_features, training=True)
-      strategy.run(tpu_step, args=(embedding_features, ))
+      strategy.run(tpu_step, args=(tpu_features, ))
 
     training_step()
     ```
@@ -1166,7 +1169,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       embedding_features, tpu_features = next(dataset_iterator)
       embedding.enqueue(embedding_features, training=True)
-      strategy.run(tpu_step, args=(embedding_features,))
+      strategy.run(tpu_step, args=(tpu_features,))
 
     training_step()
     ```

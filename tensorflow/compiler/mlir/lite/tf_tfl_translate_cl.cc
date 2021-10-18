@@ -145,3 +145,21 @@ opt<bool> guarantee_all_funcs_one_use(
     llvm::cl::desc(
         "Whether to clone functions to ensure each function has a single use."),
     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> import_hlo("import-hlo",
+                     llvm::cl::desc("Whether the input file is hlo file."),
+                     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<HloImportType> hlo_import_type(
+    "hlo-import-type", llvm::cl::desc("The file type of the hlo."),
+    llvm::cl::values(clEnumVal(proto, "Import hlo in proto binary format"),
+                     clEnumVal(hlotxt, "Import hlo in hlotxt format"),
+                     clEnumVal(mlir_text, "Import hlo in mlir_text format")));
+
+// NOLINTNEXTLINE
+opt<bool> enable_hlo_to_tf_conversion(
+    "enable-hlo-to-tf-conversion",
+    llvm::cl::desc("Whether to enable the hlo to tf ops conversion."),
+    llvm::cl::init(false));

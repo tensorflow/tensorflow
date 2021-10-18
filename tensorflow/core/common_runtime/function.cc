@@ -1009,7 +1009,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   CopyGraph(*fbody->graph, g.get());
 
   PruneFunctionBody(fbody->fdef, g.get());
-  optimizer_.Optimize(this, env(), device(), &g, /*shape_map=*/nullptr);
+  optimizer_.Optimize(this, env(), device(), &g, GraphOptimizer::Options());
   TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device()->device_type()),
                                        device()->name(), g.get()));
 

@@ -33,7 +33,7 @@ class RaggedGatherOpTest : public ::tensorflow::OpsTestBase {
   template <typename VALUE_TYPE, typename INDEX_TYPE>
   void BuildRaggedGatherGraph(
       const TensorShape& indices_shape, const std::vector<INDEX_TYPE>& indices,
-      const std::vector<std::vector<int64>>& params_nested_splits,
+      const std::vector<std::vector<int64_t>>& params_nested_splits,
       const TensorShape& params_dense_values_shape,
       const gtl::ArraySlice<VALUE_TYPE> params_dense_values) {
     const auto& value_dtype = DataTypeToEnum<VALUE_TYPE>::v();
@@ -53,7 +53,7 @@ class RaggedGatherOpTest : public ::tensorflow::OpsTestBase {
     TF_ASSERT_OK(InitOp());
     for (const auto& splits : params_nested_splits) {
       int64_t splits_size = splits.size();
-      AddInputFromArray<int64>(TensorShape({splits_size}), splits);
+      AddInputFromArray<int64_t>(TensorShape({splits_size}), splits);
     }
     AddInputFromArray<VALUE_TYPE>(params_dense_values_shape,
                                   params_dense_values);
@@ -76,8 +76,8 @@ TEST_F(RaggedGatherOpTest, RaggedGather) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[.4, .5, .6, .7], [.1, .2, .3], [], [.8, .9]]
-  test::ExpectTensorEqual<int64>(*GetOutput(0),
-                                 test::AsTensor<int64>({0, 4, 4, 7, 9}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(0),
+                                   test::AsTensor<int64_t>({0, 4, 4, 7, 9}));
   test::ExpectTensorNear<float>(
       *GetOutput(1),
       test::AsTensor<float>({.4, .5, .6, .7, .1, .2, .3, .8, .9}), 0.1);
@@ -98,10 +98,10 @@ TEST_F(RaggedGatherOpTest, RaggedGather_3DParams) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[], [[.1, 2], [.3]], [[]], [], [[.4, .5], [.6, .7, .8]]]
-  test::ExpectTensorEqual<int64>(*GetOutput(0),
-                                 test::AsTensor<int64>({0, 0, 2, 3, 3, 5}));
-  test::ExpectTensorEqual<int64>(*GetOutput(1),
-                                 test::AsTensor<int64>({0, 2, 3, 3, 5, 8}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(0),
+                                   test::AsTensor<int64_t>({0, 0, 2, 3, 3, 5}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(1),
+                                   test::AsTensor<int64_t>({0, 2, 3, 3, 5, 8}));
   test::ExpectTensorNear<float>(
       *GetOutput(2), test::AsTensor<float>({.1, .2, .3, .4, .5, .6, .7, .8}),
       0.1);
@@ -125,10 +125,10 @@ TEST_F(RaggedGatherOpTest, RaggedGather_4DParams) {
   //            [[[1, 2], [3, 4], [5, 6]], [[7, 8]]],
   //            [[]],
   //            []]
-  test::ExpectTensorEqual<int64>(*GetOutput(0),
-                                 test::AsTensor<int64>({0, 0, 2, 3, 3}));
-  test::ExpectTensorEqual<int64>(*GetOutput(1),
-                                 test::AsTensor<int64>({0, 3, 4, 4}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(0),
+                                   test::AsTensor<int64_t>({0, 0, 2, 3, 3}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(1),
+                                   test::AsTensor<int64_t>({0, 3, 4, 4}));
   test::ExpectTensorEqual<int32>(
       *GetOutput(2),
       test::AsTensor<int32>({1, 2, 3, 4, 5, 6, 7, 8}, TensorShape({4, 2})));
@@ -149,10 +149,10 @@ TEST_F(RaggedGatherOpTest, RaggedGather_2DIndices) {
 
   // Expected: [ [ [.4, .5, .6, .7], [.1, .2, .3] ],
   //             [ [],               [.8, .9]     ] ]
-  test::ExpectTensorEqual<int64>(*GetOutput(0),
-                                 test::AsTensor<int64>({0, 2, 4}));
-  test::ExpectTensorEqual<int64>(*GetOutput(1),
-                                 test::AsTensor<int64>({0, 4, 4, 7, 9}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(0),
+                                   test::AsTensor<int64_t>({0, 2, 4}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(1),
+                                   test::AsTensor<int64_t>({0, 4, 4, 7, 9}));
   test::ExpectTensorNear<float>(
       *GetOutput(2),
       test::AsTensor<float>({.4, .5, .6, .7, .1, .2, .3, .8, .9}), 0.1);

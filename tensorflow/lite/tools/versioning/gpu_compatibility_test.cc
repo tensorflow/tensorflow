@@ -47,8 +47,6 @@ absl::Status CheckGpuDelegateCompatibility(const tflite::Model* model) {
 
 }  // namespace
 
-// TODO(b/189917229): Add more tests
-//
 // FYI, CheckGpuDelegateCompatibility() will be validated by
 // third_party/tensorflow/lite/delegates/gpu/common:model_builder_test
 

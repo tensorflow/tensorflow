@@ -79,7 +79,7 @@ StatusOr<Literal> TextLiteralReader::ReadAllLines() {
   result.PopulateWithValue<float>(fill);
   std::vector<absl::string_view> pieces;
   std::vector<absl::string_view> coordinates;
-  std::vector<int64> coordinate_values;
+  std::vector<int64_t> coordinate_values;
   string line;
   while (buf.ReadLine(&line).ok()) {
     pieces = absl::StrSplit(line, ':');

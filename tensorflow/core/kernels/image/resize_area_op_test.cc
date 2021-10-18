@@ -128,7 +128,7 @@ class ResizeAreaOpTest : public OpsTestBase {
                                   : (j + 1 > in_x1 ? in_x1 - j : 1.0);
               for (int64_t c = 0; c < channels; ++c) {
 #define BOUND(val, limit) \
-  std::min(((limit)-int64{1}), (std::max(int64{0}, (val))))
+  std::min(((limit)-int64_t{1}), (std::max(int64_t{0}, (val))))
                 sum_data(c) +=
                     static_cast<float>(input_data(b, BOUND(i, in_height),
                                                   BOUND(j, in_width), c)) *

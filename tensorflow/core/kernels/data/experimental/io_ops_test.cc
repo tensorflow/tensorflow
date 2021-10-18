@@ -146,10 +146,10 @@ std::vector<GetNextTestCase<SaveDatasetV2Params>> GetNextTestCases() {
   return {{/*dataset_params=*/
            SaveDatasetV2Params1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {2}, {4}, {6}, {8}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {2}, {4}, {6}, {8}})},
           {/*dataset_params=*/SaveDatasetV2Params2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}, {3}, {4}})}};
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}, {3}, {4}})}};
 }
 
 class ParameterizedGetNextTest : public SaveDatasetV2OpTest,
@@ -241,11 +241,11 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/SaveDatasetV2Params1(),
            /*breakpoints=*/{0, 2, 4, 6, 8},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {2}, {4}, {6}, {8}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {2}, {4}, {6}, {8}})},
           {/*dataset_params=*/SaveDatasetV2Params2(),
            /*breakpoints=*/{0, 2, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}, {3}, {4}})}};
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}, {3}, {4}})}};
 }
 
 class ParameterizedIteratorSaveAndRestoreTest

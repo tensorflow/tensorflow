@@ -232,7 +232,7 @@ struct TopKFunctor<CPUDevice, T> {
     const double total_cost = sort_cost + copy_cost;
     const int64_t final_cost = (total_cost >= static_cast<double>(kint64max))
                                    ? kint64max
-                                   : static_cast<int64>(total_cost);
+                                   : static_cast<int64_t>(total_cost);
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, num_rows,
           final_cost, SortIndices);
@@ -259,13 +259,13 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                  \
-  template <>                                                                \
-  Status TopKFunctor<GPUDevice, T>::Compute(                                 \
-      OpKernelContext* context, bool sorted, int k,                          \
-      const typename TTypes<T, 2>::ConstTensor& input, const int64 num_rows, \
-      const int64 num_cols, typename TTypes<T, 2>::Tensor values,            \
-      typename TTypes<int, 2>::Tensor indices);                              \
+#define DECLARE_GPU_SPEC(T)                                                    \
+  template <>                                                                  \
+  Status TopKFunctor<GPUDevice, T>::Compute(                                   \
+      OpKernelContext* context, bool sorted, int k,                            \
+      const typename TTypes<T, 2>::ConstTensor& input, const int64_t num_rows, \
+      const int64_t num_cols, typename TTypes<T, 2>::Tensor values,            \
+      typename TTypes<int, 2>::Tensor indices);                                \
   extern template struct functor::TopKFunctor<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for conv."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
@@ -77,6 +73,19 @@ def make_conv_tests(options):
           "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
           "dilations": [[1, 1, 1, 1]],
           "padding": ["SAME", "VALID"],
+          "data_format": ["NHWC"],
+          "constant_filter": [True],
+          "channel_multiplier": [2],
+          "fully_quantize": [False],
+          "quant_16x8": [False],
+          "dynamic_range_quantize": [True]
+      },
+      {
+          "input_shape": [[1, 3, 4, 3]],
+          "filter_shape": [[1, 1]],
+          "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+          "dilations": [[1, 1, 1, 1]],
+          "padding": [[[0, 0], [1, 1], [1, 1], [0, 0]]],
           "data_format": ["NHWC"],
           "constant_filter": [True],
           "channel_multiplier": [2],

@@ -56,7 +56,7 @@ class SnappyInputBuffer : public InputStreamInterface {
   //   If reading from file failed.
   Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
 
-  int64 Tell() const override;
+  int64_t Tell() const override;
 
   Status Reset() override;
 
@@ -93,7 +93,7 @@ class SnappyInputBuffer : public InputStreamInterface {
   Status ReadCompressedBlockLength(uint32* length);
 
   RandomAccessFile* file_;         // Not owned
-  int64 file_pos_ = 0;             // Next position to read from in `file_`
+  int64_t file_pos_ = 0;           // Next position to read from in `file_`
   size_t input_buffer_capacity_;   // Size of `input_buffer_`.
                                    // Must be at least as big as the size of
                                    // the largest compressed block.
@@ -120,7 +120,7 @@ class SnappyInputBuffer : public InputStreamInterface {
   size_t avail_out_ = 0;
 
   // Number of *uncompressed* bytes that have been read from this stream.
-  int64 bytes_read_;
+  int64_t bytes_read_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SnappyInputBuffer);
 };

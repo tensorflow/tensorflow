@@ -632,6 +632,11 @@ TF_CAPI_EXPORT void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx,
                                                      unsigned char enable,
                                                      TF_Status* status);
 
+// Enables running eager ops as function.
+TF_CAPI_EXPORT void TFE_ContextSetRunEagerOpAsFunction(TFE_Context* ctx,
+                                                       unsigned char enable,
+                                                       TF_Status* status);
+
 // Returns the device type of the operation that produced `h`.
 TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
     TFE_TensorHandle* h, TF_Status* status);
@@ -639,6 +644,12 @@ TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
 // Returns the device ID of the operation that produced `h`.
 TF_CAPI_EXPORT extern int TFE_TensorHandleDeviceID(TFE_TensorHandle* h,
                                                    TF_Status* status);
+
+// Returns the status for the tensor handle. In TFRT, a tensor handle can carry
+// error info if error happens. If so, status will be set with the error info.
+// If not, status will be set as OK.
+TF_CAPI_EXPORT extern void TFE_TensorHandleGetStatus(TFE_TensorHandle* h,
+                                                     TF_Status* status);
 
 // Get a comma-separated list of op names executed in graph functions dispatched
 // to `ctx`. This feature is currently only enabled for TFRT debug builds, for

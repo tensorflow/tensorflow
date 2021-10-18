@@ -148,8 +148,8 @@ TEST_P(AutotuneSetting, AutotuneBufferSizesTest) {
             autotune);
 }
 
-class MultipleNodes : public ::testing::TestWithParam<std::tuple<bool, int64>> {
-};
+class MultipleNodes
+    : public ::testing::TestWithParam<std::tuple<bool, int64_t>> {};
 
 TEST_P(MultipleNodes, AutotuneBufferSizesTest) {
   const bool legacy_autotune = std::get<0>(GetParam());
@@ -158,9 +158,9 @@ TEST_P(MultipleNodes, AutotuneBufferSizesTest) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  NodeDef *start_val = graph_utils::AddScalarConstNode<int64>(0, &graph);
-  NodeDef *stop_val = graph_utils::AddScalarConstNode<int64>(10, &graph);
-  NodeDef *step_val = graph_utils::AddScalarConstNode<int64>(1, &graph);
+  NodeDef *start_val = graph_utils::AddScalarConstNode<int64_t>(0, &graph);
+  NodeDef *stop_val = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
+  NodeDef *step_val = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
   std::vector<string> range_inputs(3);
   range_inputs[0] = start_val->name();
@@ -170,7 +170,8 @@ TEST_P(MultipleNodes, AutotuneBufferSizesTest) {
   NodeDef *range_node = graph_utils::AddNode("range", "RangeDataset",
                                              range_inputs, range_attrs, &graph);
 
-  NodeDef *parallelism_val = graph_utils::AddScalarConstNode<int64>(1, &graph);
+  NodeDef *parallelism_val =
+      graph_utils::AddScalarConstNode<int64_t>(1, &graph);
   std::vector<string> map_inputs1(2);
   map_inputs1[0] = range_node->name();
   map_inputs1[1] = parallelism_val->name();
@@ -185,7 +186,7 @@ TEST_P(MultipleNodes, AutotuneBufferSizesTest) {
                                             map_inputs1, map_attrs, &graph);
 
   NodeDef *buffer_size_val =
-      graph_utils::AddScalarConstNode<int64>(initial_buffer_size, &graph);
+      graph_utils::AddScalarConstNode<int64_t>(initial_buffer_size, &graph);
   std::vector<string> prefetch_inputs(2);
   prefetch_inputs[0] = map_node1->name();
   prefetch_inputs[1] = buffer_size_val->name();

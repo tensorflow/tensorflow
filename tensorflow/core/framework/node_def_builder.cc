@@ -140,7 +140,7 @@ void NodeDefBuilder::ListInput(const OpDef::ArgDef* input_arg,
   }
 
   if (!input_arg->number_attr().empty()) {
-    Attr(input_arg->number_attr(), static_cast<int64>(src_list.size()));
+    Attr(input_arg->number_attr(), static_cast<int64_t>(src_list.size()));
     if (input_arg->type() != DT_INVALID) {
       const DataType expected = MaybeAddRef(input_arg, input_arg->type());
       for (const auto& node_out : src_list) {
@@ -311,7 +311,7 @@ ATTR(gtl::ArraySlice<const char*>)
 ATTR(gtl::ArraySlice<string>)
 ATTR(gtl::ArraySlice<tstring>)
 ATTR(gtl::ArraySlice<int32>)
-ATTR(gtl::ArraySlice<int64>)
+ATTR(gtl::ArraySlice<int64_t>)
 ATTR(gtl::ArraySlice<float>)
 ATTR(gtl::ArraySlice<bool>)
 ATTR(const std::vector<bool>&)

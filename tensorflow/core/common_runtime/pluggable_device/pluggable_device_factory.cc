@@ -37,7 +37,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-int64 MinSystemMemory(int64_t available_memory) {
+int64_t MinSystemMemory(int64_t available_memory) {
   // We use the following heuristic for now:
   //
   // If the available_memory is < 2GiB, we allocate 225MiB to system memory,
@@ -53,8 +53,8 @@ int64 MinSystemMemory(int64_t available_memory) {
   } else {
     // max(300 MiB, kMinSystemMemoryFraction * available_memory)
     min_system_memory = std::max(
-        int64{314572800},
-        static_cast<int64>(available_memory * kMinSystemMemoryFraction));
+        int64_t{314572800},
+        static_cast<int64_t>(available_memory * kMinSystemMemoryFraction));
   }
 #if defined(__GNUC__) && defined(__OPTIMIZE__)
 // Do nothing
@@ -77,7 +77,7 @@ int64 MinSystemMemory(int64_t available_memory) {
 Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
                                       const GPUOptions& device_options,
                                       PlatformDeviceId platform_device_id,
-                                      int64* memory_limit) {
+                                      int64_t* memory_limit) {
   int64_t total_memory = 0;
   int64_t available_memory = 0;
   se::Platform* platform = PluggableDeviceMachineManager(platform_name);
@@ -187,7 +187,7 @@ Status PluggableDeviceFactory::CreateDevices(
   const auto& virtual_devices = device_options.experimental().virtual_devices();
   if (!virtual_devices.empty())
     VLOG(2) << "Pluggable device does not support virtual device setting yet";
-  std::vector<int64> memory_limit_bytes;
+  std::vector<int64_t> memory_limit_bytes;
   for (int i = 0; i < num_tf_devices; ++i) {
     const PlatformDeviceId platform_device_id = visible_device_order[i];
     int64_t single_virtual_device_memory_limit = 0;

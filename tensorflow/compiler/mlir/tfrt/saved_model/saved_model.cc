@@ -55,7 +55,7 @@ ProcessTensorSpec(mlir::TensorType type) {
     return std::make_pair(dtype, tensorflow::PartialTensorShape());
 
   auto shape = type.getShape();
-  llvm::SmallVector<tensorflow::int64, 4> dims;
+  llvm::SmallVector<int64_t, 4> dims;
   dims.assign(shape.begin(), shape.end());
   return std::make_pair(dtype, tensorflow::PartialTensorShape(dims));
 }

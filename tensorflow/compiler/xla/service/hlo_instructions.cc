@@ -170,7 +170,7 @@ HloBatchNormGradInstruction::CloneWithNewOperandsImpl(
 
 HloFftInstruction::HloFftInstruction(const Shape& shape,
                                      HloInstruction* operand, FftType fft_type,
-                                     absl::Span<const int64> fft_length)
+                                     absl::Span<const int64_t> fft_length)
     : HloInstruction(HloOpcode::kFft, shape), fft_type_(fft_type) {
   fft_length_.assign(fft_length.begin(), fft_length.end());
   AppendOperand(operand);
@@ -421,11 +421,11 @@ HloCholeskyInstruction::CloneWithNewOperandsImpl(
 
 HloChannelInstruction::HloChannelInstruction(
     HloOpcode opcode, const Shape& shape,
-    const absl::optional<int64>& channel_id)
+    const absl::optional<int64_t>& channel_id)
     : HloInstruction(opcode, shape), channel_id_(channel_id) {}
 
 void HloChannelInstruction::set_channel_id(
-    const absl::optional<int64>& channel_id) {
+    const absl::optional<int64_t>& channel_id) {
   channel_id_ = channel_id;
 }
 
@@ -576,7 +576,7 @@ HloCollectiveInstruction::HloCollectiveInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id)
+    const absl::optional<int64_t>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
       replica_groups_(SpanToVector(replica_groups)),
       constrain_layout_(constrain_layout) {
@@ -624,7 +624,7 @@ HloAllGatherInstruction::HloAllGatherInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands, int64_t all_gather_dimension,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id, bool use_global_device_ids)
+    const absl::optional<int64_t>& channel_id, bool use_global_device_ids)
     : HloCollectiveInstruction(opcode, shape, operands, replica_groups,
                                constrain_layout, channel_id),
       all_gather_dimension_(all_gather_dimension),
@@ -673,7 +673,7 @@ HloAllReduceInstructionBase::HloAllReduceInstructionBase(
     absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id, bool use_global_device_ids)
+    const absl::optional<int64_t>& channel_id, bool use_global_device_ids)
     : HloCollectiveInstruction(opcode, shape, operands, replica_groups,
                                constrain_layout, channel_id),
       use_global_device_ids_(use_global_device_ids) {
@@ -734,7 +734,7 @@ HloReduceScatterInstruction::HloReduceScatterInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id, bool use_global_device_ids,
+    const absl::optional<int64_t>& channel_id, bool use_global_device_ids,
     int64_t scatter_dimension)
     : HloAllReduceInstructionBase(
           HloOpcode::kReduceScatter, shape, operands, reduce_computation,
@@ -778,8 +778,8 @@ HloReduceScatterInstruction::CloneWithNewOperandsImpl(
 HloAllToAllInstruction::HloAllToAllInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id,
-    const absl::optional<int64>& split_dimension)
+    const absl::optional<int64_t>& channel_id,
+    const absl::optional<int64_t>& split_dimension)
     : HloCollectiveInstruction(HloOpcode::kAllToAll, shape, operands,
                                replica_groups, constrain_layout, channel_id),
       split_dimension_(split_dimension) {}
@@ -823,8 +823,8 @@ bool HloAllToAllInstruction::IdenticalSlowPathIgnoringChannelIdValues(
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
     HloOpcode opcode, const Shape& shape, HloInstruction* operand,
-    const std::vector<std::pair<int64, int64>>& source_target_pairs,
-    const absl::optional<int64>& channel_id)
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const absl::optional<int64_t>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
       source_target_pairs_(source_target_pairs) {
   AppendOperand(operand);
@@ -897,12 +897,12 @@ bool HloCollectivePermuteInstruction::IdenticalSlowPathIgnoringChannelIdValues(
              other, eq_computations) &&
          absl::c_equal(
              source_target_pairs(), casted_other.source_target_pairs(),
-             [](const std::pair<int64, int64>& a,
-                const std::pair<int64, int64>& b) { return a == b; }) &&
+             [](const std::pair<int64_t, int64_t>& a,
+                const std::pair<int64_t, int64_t>& b) { return a == b; }) &&
          absl::c_equal(
              dynamic_slice_sizes_list(),
              casted_other.dynamic_slice_sizes_list(),
-             [](const std::vector<int64>& a, const std::vector<int64>& b) {
+             [](const std::vector<int64_t>& a, const std::vector<int64_t>& b) {
                return absl::c_equal(a, b);
              });
 }
@@ -922,9 +922,9 @@ HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
   }
 }
 
-HloReverseInstruction::HloReverseInstruction(const Shape& shape,
-                                             HloInstruction* operand,
-                                             absl::Span<const int64> dimensions)
+HloReverseInstruction::HloReverseInstruction(
+    const Shape& shape, HloInstruction* operand,
+    absl::Span<const int64_t> dimensions)
     : HloInstruction(HloOpcode::kReverse, shape),
       dimensions_(dimensions.begin(), dimensions.end()) {
   AppendOperand(operand);
@@ -1000,7 +1000,7 @@ HloConcatenateInstruction::CloneWithNewOperandsImpl(
 
 HloReduceInstruction::HloReduceInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> args,
-    absl::Span<const int64> dimensions_to_reduce,
+    absl::Span<const int64_t> dimensions_to_reduce,
     HloComputation* reduce_computation)
     : HloInstruction(HloOpcode::kReduce, shape),
       dimensions_(dimensions_to_reduce.begin(), dimensions_to_reduce.end()) {
@@ -1097,14 +1097,14 @@ std::unique_ptr<HloInstruction> HloSortInstruction::CloneWithNewOperandsImpl(
 
 HloTransposeInstruction::HloTransposeInstruction(
     const Shape& shape, HloInstruction* operand,
-    absl::Span<const int64> dimensions)
+    absl::Span<const int64_t> dimensions)
     : HloInstruction(HloOpcode::kTranspose, shape),
       dimensions_(dimensions.begin(), dimensions.end()) {
   AppendOperand(operand);
 }
 
 bool HloTransposeInstruction::IsRank2Transpose() const {
-  return dimensions() == std::vector<int64>({1, 0}) &&
+  return dimensions() == std::vector<int64_t>({1, 0}) &&
          shape().dimensions_size() == 2 &&
          std::equal(shape().dimensions().begin(), shape().dimensions().end(),
                     operand(0)->shape().dimensions().rbegin());
@@ -1142,7 +1142,7 @@ HloTransposeInstruction::CloneWithNewOperandsImpl(
 
 HloBroadcastInstruction::HloBroadcastInstruction(
     const Shape& shape, HloInstruction* operand,
-    absl::Span<const int64> broadcast_dimension)
+    absl::Span<const int64_t> broadcast_dimension)
     : HloInstruction(HloOpcode::kBroadcast, shape),
       dimensions_(broadcast_dimension.begin(), broadcast_dimension.end()) {
   AppendOperand(operand);
@@ -1260,7 +1260,7 @@ HloInstructionProto HloMapInstruction::ToProto() const {
 }
 
 bool HloMapInstruction::IsElementwiseImpl(
-    const absl::optional<int64>& operand_idx) const {
+    const absl::optional<int64_t>& operand_idx) const {
   if (!dimensions().empty()) {
     // Check that the map is executed in elementwise compatible dimensions.
     if (dimensions().size() != shape().dimensions_size()) {
@@ -1295,11 +1295,10 @@ std::unique_ptr<HloInstruction> HloMapInstruction::CloneWithNewOperandsImpl(
   return absl::make_unique<HloMapInstruction>(shape, new_operands, to_apply());
 }
 
-HloSliceInstruction::HloSliceInstruction(const Shape& shape,
-                                         HloInstruction* operand,
-                                         absl::Span<const int64> start_indices,
-                                         absl::Span<const int64> limit_indices,
-                                         absl::Span<const int64> strides)
+HloSliceInstruction::HloSliceInstruction(
+    const Shape& shape, HloInstruction* operand,
+    absl::Span<const int64_t> start_indices,
+    absl::Span<const int64_t> limit_indices, absl::Span<const int64_t> strides)
     : HloInstruction(HloOpcode::kSlice, shape),
       slice_starts_(start_indices.begin(), start_indices.end()),
       slice_limits_(limit_indices.begin(), limit_indices.end()),
@@ -1309,7 +1308,7 @@ HloSliceInstruction::HloSliceInstruction(const Shape& shape,
   // no strides, assume all strides are 1.
   // TODO(b/63317920): remove this code.
   if (slice_strides_.empty()) {
-    slice_strides_ = std::vector<int64>(start_indices.size(), 1LL);
+    slice_strides_ = std::vector<int64_t>(start_indices.size(), 1LL);
   }
 }
 
@@ -1377,7 +1376,7 @@ HloInstructionProto HloConstantInstruction::ToProto() const {
 }
 
 bool HloConstantInstruction::IsElementwiseImpl(
-    const absl::optional<int64>& operand_idx) const {
+    const absl::optional<int64_t>& operand_idx) const {
   return true;
 }
 
@@ -1546,7 +1545,7 @@ HloInstructionProto HloFusionInstruction::ToProto() const {
 }
 
 bool HloFusionInstruction::IsElementwiseImpl(
-    const absl::optional<int64>& operand_idx) const {
+    const absl::optional<int64_t>& operand_idx) const {
   if (!operand_idx.has_value()) {
     for (auto* fused : fused_instructions()) {
       if (fused->opcode() != HloOpcode::kParameter && !fused->IsElementwise()) {
@@ -1767,7 +1766,7 @@ HloFusionInstruction::fused_instructions() {
   return fused_instructions_computation()->instructions();
 }
 
-int64 HloFusionInstruction::fused_instruction_count() const {
+int64_t HloFusionInstruction::fused_instruction_count() const {
   return fused_instructions_computation()->instruction_count();
 }
 
@@ -2021,7 +2020,7 @@ std::vector<string> HloRngInstruction::ExtraAttributesToStringImpl(
 }
 
 bool HloRngInstruction::IsElementwiseImpl(
-    const absl::optional<int64>& operand_idx) const {
+    const absl::optional<int64_t>& operand_idx) const {
   return true;
 }
 
@@ -2809,7 +2808,7 @@ std::unique_ptr<HloInstruction> HloPadInstruction::CloneWithNewOperandsImpl(
 
 HloDynamicSliceInstruction::HloDynamicSliceInstruction(
     const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
-    absl::Span<const int64> slice_sizes)
+    absl::Span<const int64_t> slice_sizes)
     : HloDynamicIndexInstruction(HloOpcode::kDynamicSlice, shape),
       dynamic_slice_sizes_(slice_sizes.begin(), slice_sizes.end()) {
   AppendOperand(operand);
@@ -2819,7 +2818,7 @@ HloDynamicSliceInstruction::HloDynamicSliceInstruction(
 HloDynamicSliceInstruction::HloDynamicSliceInstruction(
     const Shape& shape, HloInstruction* operand,
     absl::Span<HloInstruction* const> start_indices,
-    absl::Span<const int64> slice_sizes)
+    absl::Span<const int64_t> slice_sizes)
     : HloDynamicIndexInstruction(HloOpcode::kDynamicSlice, shape),
       dynamic_slice_sizes_(slice_sizes.begin(), slice_sizes.end()) {
   AppendOperand(operand);
@@ -2887,7 +2886,7 @@ HloDynamicSliceInstruction::CloneWithNewOperandsImpl(
 HloGatherInstruction::HloGatherInstruction(
     const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
     const GatherDimensionNumbers& gather_dim_numbers,
-    absl::Span<const int64> slice_sizes, bool indices_are_sorted)
+    absl::Span<const int64_t> slice_sizes, bool indices_are_sorted)
     : HloInstruction(HloOpcode::kGather, shape),
       indices_are_sorted_(indices_are_sorted) {
   AppendOperand(operand);
@@ -2917,9 +2916,9 @@ HloGatherInstruction::HloGatherInstruction(
 }
 
 /* static */ GatherDimensionNumbers HloGatherInstruction::MakeGatherDimNumbers(
-    absl::Span<const int64> offset_dims,
-    absl::Span<const int64> collapsed_slice_dims,
-    absl::Span<const int64> start_index_map, int64_t index_vector_dim) {
+    absl::Span<const int64_t> offset_dims,
+    absl::Span<const int64_t> collapsed_slice_dims,
+    absl::Span<const int64_t> start_index_map, int64_t index_vector_dim) {
   GatherDimensionNumbers gather_dim_numbers;
   for (int64_t output_window_dim : offset_dims) {
     gather_dim_numbers.add_offset_dims(output_window_dim);
@@ -3017,9 +3016,9 @@ HloScatterInstruction::HloScatterInstruction(
 
 /* static */ ScatterDimensionNumbers
 HloScatterInstruction::MakeScatterDimNumbers(
-    absl::Span<const int64> update_window_dims,
-    absl::Span<const int64> inserted_window_dims,
-    absl::Span<const int64> scatter_dims_to_operand_dims,
+    absl::Span<const int64_t> update_window_dims,
+    absl::Span<const int64_t> inserted_window_dims,
+    absl::Span<const int64_t> scatter_dims_to_operand_dims,
     int64_t index_vector_dim) {
   ScatterDimensionNumbers scatter_dim_numbers;
   for (int64_t update_window_dim : update_window_dims) {

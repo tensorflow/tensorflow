@@ -31,7 +31,7 @@ DepthwiseConv3x3::DepthwiseConv3x3(const OperationDef& definition,
                                    const GpuInfo& gpu_info)
     : GPUOperation(definition), local_mem_uploads_(local_mem_uploads) {
   work_group_size_ = int3(8, 4, 1);
-  code_ = GenerateDepthwiseConvCode(definition_, weights_are_buffer,
+  code_ = GenerateDepthwiseConvCode(gpu_info, definition_, weights_are_buffer,
                                     local_mem_uploads_);
 
   if (definition_.precision == CalculationsPrecision::F16 &&
@@ -53,8 +53,8 @@ DepthwiseConv3x3& DepthwiseConv3x3::operator=(DepthwiseConv3x3&& operation) {
 }
 
 std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
-    const OperationDef& op_def, bool weights_are_buffer,
-    bool local_mem_uploads) {
+    const GpuInfo& gpu_info, const OperationDef& op_def,
+    bool weights_are_buffer, bool local_mem_uploads) {
   auto src_desc = op_def.src_tensors[0];
   src_desc.SetAddressMode(AddressMode::kZero);
   AddSrcTensor("src_tensor", src_desc);
@@ -66,7 +66,7 @@ std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
                             src_tensor_type == TensorStorageType::IMAGE_BUFFER;
 
   std::string c;
-  if (local_mem_uploads) {
+  if (local_mem_uploads && gpu_info.IsApiOpenCl()) {
     c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
   }
   c += "MAIN_FUNCTION($0) {\n";
@@ -93,10 +93,18 @@ std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
   }
   if (local_mem_uploads) {
     c += "  __local FLT4 f[10];\n";
-    c += "  event_t e = async_work_group_copy(f, args.weights.GetPtr() + S * "
-         "10, 10, 0);\n";
-    c += "  wait_group_events(1, &e);\n";
-  } else if (weights_are_buffer) {
+    if (gpu_info.IsApiOpenCl() && gpu_info.IsPowerVR()) {
+      c += "  event_t e = async_work_group_copy(f, args.weights.GetPtr() + S * "
+           "10, 10, 0);\n";
+      c += "  wait_group_events(1, &e);\n";
+    } else {
+      c += "  int local_id = LOCAL_ID_1 * 8 + LOCAL_ID_0;\n";
+      c += "  if (local_id < 10) {\n";
+      c += "    f[local_id] = args.weights.Read(S * 10 + local_id);\n";
+      c += "  }\n";
+      c += "  LOCAL_MEM_BARRIER;\n";
+    }
+  } else if (weights_are_buffer && gpu_info.SupportsPointersInKernels()) {
     c += "  __global FLT4* f = args.weights.GetPtr() + S * 10;\n";
   }
   c += "  FLT4 s0;\n";
@@ -143,7 +151,8 @@ std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
     c += "  y1 = clamp(y1, 0, args.dst_tensor.Height() - 1);\n";
     c += "  y2 = clamp(y2, 0, args.dst_tensor.Height() - 1);\n";
     c += "  y3 = clamp(y3, 0, args.dst_tensor.Height() - 1);\n";
-    if (src_tensor_type == TensorStorageType::BUFFER) {
+    if (src_tensor_type == TensorStorageType::BUFFER &&
+        gpu_info.SupportsPointersInKernels()) {
       c += "  __global FLT4* src_loc = "
            "args.src_tensor.GetPtrWithSliceOffset(S);\n";
     }
@@ -157,19 +166,25 @@ std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
     yc[3] = "y3";
   }
   if (local_mem_uploads || weights_are_buffer) {
-    W[0] = "f[0]";
-    W[1] = "f[1]";
-    W[2] = "f[2]";
-    W[3] = "f[3]";
-    W[4] = "f[4]";
-    W[5] = "f[5]";
-    W[6] = "f[6]";
-    W[7] = "f[7]";
-    W[8] = "f[8]";
-    bias = "f[9]";
+    const bool use_direct_buffer =
+        !local_mem_uploads && !gpu_info.SupportsPointersInKernels();
+    const std::string fetch_start =
+        use_direct_buffer ? "args.weights.Read(S * 10 + " : "f[";
+    const std::string fetch_end = use_direct_buffer ? ")" : "]";
+    W[0] = fetch_start + "0" + fetch_end;
+    W[1] = fetch_start + "1" + fetch_end;
+    W[2] = fetch_start + "2" + fetch_end;
+    W[3] = fetch_start + "3" + fetch_end;
+    W[4] = fetch_start + "4" + fetch_end;
+    W[5] = fetch_start + "5" + fetch_end;
+    W[6] = fetch_start + "6" + fetch_end;
+    W[7] = fetch_start + "7" + fetch_end;
+    W[8] = fetch_start + "8" + fetch_end;
+    bias = fetch_start + "9" + fetch_end;
   }
   auto read_4x_line = [&](int y) {
-    if (src_tensor_type == TensorStorageType::BUFFER) {
+    if (src_tensor_type == TensorStorageType::BUFFER &&
+        gpu_info.SupportsPointersInKernels()) {
       const std::string y_in = "y" + std::to_string(y) + "_in";
       c += "    s0 = src_loc[args.src_tensor.GetWHOffset(" + xc[0] + ", " +
            yc[y] + ")] * INIT_FLT(x0_in && " + y_in + ");\n";
@@ -179,7 +194,8 @@ std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
            yc[y] + ")] * INIT_FLT(x2_in && " + y_in + ");\n";
       c += "    s3 = src_loc[args.src_tensor.GetWHOffset(" + xc[3] + ", " +
            yc[y] + ")] * INIT_FLT(x3_in && " + y_in + ");\n";
-    } else if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+    } else if (src_tensor_type == TensorStorageType::IMAGE_BUFFER ||
+               src_tensor_type == TensorStorageType::BUFFER) {
       const std::string y_in = "y" + std::to_string(y) + "_in";
       c += "    s0 = args.src_tensor.Read(" + xc[0] + ", " + yc[y] +
            ", S) * INIT_FLT(x0_in && " + y_in + ");\n";

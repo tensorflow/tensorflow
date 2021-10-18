@@ -101,6 +101,31 @@ bool MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
   for (const HloComputation* computation : module.MakeNonfusionComputations()) {
     CHECK(schedule.is_computation_scheduled(computation));
     const HloInstructionSequence& sequence = schedule.sequence(computation);
+    // Conservatively don't modify the schedule if any instruction has a control
+    // successor or predecessor on a constant op. Computations with these
+    // dependencies should be very rare anyway.
+    bool contains_constant_successor_or_predecessors = false;
+    for (HloInstruction* instruction : sequence.instructions()) {
+      if (instruction->opcode() == HloOpcode::kConstant) {
+        contains_constant_successor_or_predecessors |=
+            !instruction->control_predecessors().empty();
+        contains_constant_successor_or_predecessors |=
+            !instruction->control_successors().empty();
+      } else {
+        auto is_constant = [](const HloInstruction* inst) {
+          return inst->opcode() == HloOpcode::kConstant;
+        };
+        contains_constant_successor_or_predecessors |=
+            absl::c_find_if(instruction->control_predecessors(), is_constant) !=
+            instruction->control_predecessors().end();
+        contains_constant_successor_or_predecessors |=
+            absl::c_find_if(instruction->control_successors(), is_constant) !=
+            instruction->control_successors().end();
+      }
+    }
+    if (contains_constant_successor_or_predecessors) {
+      continue;
+    }
     HloInstructionSequence new_sequence;
 
     for (HloInstruction* instruction : sequence.instructions()) {

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for nested structure coding."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import typing
 import warnings
@@ -209,6 +205,7 @@ class NestedStructureTest(test.TestCase):
           type_spec_value {
             type_spec_class: RAGGED_TENSOR_SPEC
             type_spec_class_name: 'RaggedTensorSpec'
+            num_flat_components: 3
             type_state {
               tuple_value {
                 # spec._shape
@@ -247,6 +244,7 @@ class NestedStructureTest(test.TestCase):
           type_spec_value {
             type_spec_class: SPARSE_TENSOR_SPEC
             type_spec_class_name: 'SparseTensorSpec'
+            num_flat_components: 3
             type_state {
               tuple_value {
                 # spec._shape
@@ -289,6 +287,7 @@ class NestedStructureTest(test.TestCase):
         type_spec_value {
           type_spec_class: EXTENSION_TYPE_SPEC
           type_spec_class_name: "tf.nested_structure_coder_test.Zoo.Spec"
+          num_flat_components: 1
           type_state {
             tuple_value {
               values {

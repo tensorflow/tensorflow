@@ -189,7 +189,7 @@ REGISTER_OP("TensorListPopBack")
         const shape_inference::ShapeAndType& list_shape_type =
             (*handle_data)[0];
         if (list_shape_type.type.type_id() != TFT_ARRAY) {
-          return errors::InvalidArgument("Input agument must be a list.");
+          return errors::InvalidArgument("Input argument must be a list.");
         }
         if (list_shape_type.dtype != element_dtype) {
           return errors::InvalidArgument(

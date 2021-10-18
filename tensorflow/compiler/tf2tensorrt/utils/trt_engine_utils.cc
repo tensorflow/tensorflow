@@ -37,9 +37,24 @@ namespace tensorrt {
 using absl::StrCat;
 
 ExecutionContext ExecutionContext::Create(nvinfer1::ICudaEngine* cuda_engine) {
+  bool has_int32_output = false;
+  for (int i = 0; i < cuda_engine->getNbBindings(); i++) {
+    if (!cuda_engine->bindingIsInput(i) &&
+        cuda_engine->getBindingDataType(i) == nvinfer1::DataType::kINT32) {
+      has_int32_output = true;
+      break;
+    }
+  }
+  if (!IS_TRT_VERSION_GE(8, 0, 0, 0) && has_int32_output) {
+    // TODO(nvbugs/3390469): Remove this workaround when the bug is fixed.
+    nvinfer1::IExecutionContext* execution_context =
+        cuda_engine->createExecutionContext();
+    return ExecutionContext(execution_context, true);
+  }
+
   nvinfer1::IExecutionContext* execution_context =
       cuda_engine->createExecutionContextWithoutDeviceMemory();
-  return ExecutionContext(execution_context);
+  return ExecutionContext(execution_context, false);
 }
 
 Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,

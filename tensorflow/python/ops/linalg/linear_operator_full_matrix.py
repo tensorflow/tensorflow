@@ -14,10 +14,6 @@
 # ==============================================================================
 """`LinearOperator` that wraps a [batch] matrix."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -173,14 +169,12 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
 
     dtype = matrix.dtype
     if dtype not in allowed_dtypes:
-      raise TypeError(
-          "Argument matrix must have dtype in %s.  Found: %s"
-          % (allowed_dtypes, dtype))
+      raise TypeError(f"Argument `matrix` must have dtype in {allowed_dtypes}. "
+                      f"Received: {dtype}.")
 
     if matrix.shape.ndims is not None and matrix.shape.ndims < 2:
-      raise ValueError(
-          "Argument matrix must have at least 2 dimensions.  Found: %s"
-          % matrix)
+      raise ValueError(f"Argument `matrix` must have at least 2 dimensions. "
+                       f"Received: {matrix}.")
 
   def _shape(self):
     return self._matrix.shape

@@ -32,6 +32,7 @@ py_strict_library(
         ":loader",
         ":main_op",
         ":method_name_updater",
+        ":registration",
         ":save",
         ":signature_constants",
         ":signature_def_utils",
@@ -337,6 +338,7 @@ py_strict_library(
         ":function_serialization",
         ":nested_structure_coder",
         ":pywrap_saved_model",
+        ":registration",
         ":revived_types",
         ":save_context",
         ":save_options",
@@ -358,6 +360,7 @@ py_strict_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:versions",
@@ -370,6 +373,7 @@ py_strict_library(
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:graph_view",
+        "//tensorflow/python/training/tracking:trackable_utils",
         "//tensorflow/python/training/tracking:util",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -407,6 +411,7 @@ py_library(
         ":loader",
         ":nested_structure_coder",
         ":pywrap_saved_model",
+        ":registration",
         ":revived_types",
         ":utils",
         "//tensorflow/core:protos_all_py",
@@ -417,6 +422,7 @@ py_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:handle_data_util",
+        "//tensorflow/python:lib",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_util",
@@ -513,6 +519,42 @@ tf_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/training/tracking",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_strict_library(
+    name = "registration",
+    srcs = [
+        "registration.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/util",
+    ],
+)
+
+tf_py_test(
+    name = "registration_test",
+    srcs = ["registration_test.py"],
+    deps = [
+        ":registration",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/training/tracking:base",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "registration_saving_test",
+    srcs = ["registration_saving_test.py"],
+    deps = [
+        ":registration",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/training/tracking",
         "@absl_py//absl/testing:parameterized",
@@ -715,5 +757,15 @@ tf_py_test(
     deps = [
         ":pywrap_saved_model",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+tf_py_test(
+    name = "keras_injection_test",
+    size = "small",
+    srcs = ["keras_injection_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
     ],
 )

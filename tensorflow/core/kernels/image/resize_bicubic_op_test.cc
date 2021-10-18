@@ -83,14 +83,14 @@ class ResizeBicubicOpTest : public OpsTestBase {
   }
 
   // Used in the baseline implementation
-  inline int64 Bound(int64_t val, int64_t limit) {
-    return std::min(limit - 1, std::max(int64{0}, val));
+  inline int64_t Bound(int64_t val, int64_t limit) {
+    return std::min(limit - 1, std::max(int64_t{0}, val));
   }
 
   // Used in the baseline implementation
   inline void GetWeightsAndIndices(float scale, int64_t out_loc, int64_t limit,
                                    std::array<float, 4>* weights,
-                                   std::array<int64, 4>* indices) {
+                                   std::array<int64_t, 4>* indices) {
     const int64_t in_loc = scale * out_loc;
     const float delta = scale * out_loc - in_loc;
     const int64_t offset = lrintf(delta * kTableSize);
@@ -131,12 +131,12 @@ class ResizeBicubicOpTest : public OpsTestBase {
     for (int64_t b = 0; b < batch_size; ++b) {
       for (int64_t y = 0; y < out_height; ++y) {
         std::array<float, 4> y_weights;
-        std::array<int64, 4> y_indices;
+        std::array<int64_t, 4> y_indices;
         GetWeightsAndIndices(height_scale, y, in_height, &y_weights,
                              &y_indices);
         for (int64_t x = 0; x < out_width; ++x) {
           std::array<float, 4> x_weights;
-          std::array<int64, 4> x_indices;
+          std::array<int64_t, 4> x_indices;
           GetWeightsAndIndices(width_scale, x, in_width, &x_weights,
                                &x_indices);
           for (int64_t c = 0; c < channels; ++c) {
@@ -269,15 +269,15 @@ static Graph* ResizeBicubic(int batch_size, int size, int channels,
   return g;
 }
 
-#define BM_ResizeBicubicDev(BATCH, SIZE, CHANNELS)                           \
-  static void BM_ResizeBicubic##_##BATCH##_##SIZE##_##CHANNELS(              \
-      ::testing::benchmark::State& state) {                                  \
-    test::Benchmark("cpu", ResizeBicubic(BATCH, SIZE, CHANNELS),             \
-                    /*old_benchmark_api*/ false)                             \
-        .Run(state);                                                         \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * BATCH * \
-                            SIZE * SIZE * CHANNELS);                         \
-  }                                                                          \
+#define BM_ResizeBicubicDev(BATCH, SIZE, CHANNELS)                             \
+  static void BM_ResizeBicubic##_##BATCH##_##SIZE##_##CHANNELS(                \
+      ::testing::benchmark::State& state) {                                    \
+    test::Benchmark("cpu", ResizeBicubic(BATCH, SIZE, CHANNELS),               \
+                    /*old_benchmark_api*/ false)                               \
+        .Run(state);                                                           \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * BATCH * \
+                            SIZE * SIZE * CHANNELS);                           \
+  }                                                                            \
   BENCHMARK(BM_ResizeBicubic##_##BATCH##_##SIZE##_##CHANNELS);
 
 BM_ResizeBicubicDev(8, 32, 3);
@@ -293,15 +293,15 @@ BM_ResizeBicubicDev(32, 128, 3);
 BM_ResizeBicubicDev(32, 512, 3);
 BM_ResizeBicubicDev(32, 1024, 3);
 
-#define BM_ResizeBicubicExpand(BATCH, SIZE, CHANNELS)                        \
-  static void BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS(        \
-      ::testing::benchmark::State& state) {                                  \
-    test::Benchmark("cpu", ResizeBicubic(BATCH, SIZE, CHANNELS, 8, 8),       \
-                    /*old_benchmark_api*/ false)                             \
-        .Run(state);                                                         \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * BATCH * \
-                            SIZE * SIZE * CHANNELS * 8 * 8);                 \
-  }                                                                          \
+#define BM_ResizeBicubicExpand(BATCH, SIZE, CHANNELS)                          \
+  static void BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS(          \
+      ::testing::benchmark::State& state) {                                    \
+    test::Benchmark("cpu", ResizeBicubic(BATCH, SIZE, CHANNELS, 8, 8),         \
+                    /*old_benchmark_api*/ false)                               \
+        .Run(state);                                                           \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * BATCH * \
+                            SIZE * SIZE * CHANNELS * 8 * 8);                   \
+  }                                                                            \
   BENCHMARK(BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS);
 
 BM_ResizeBicubicExpand(12, 48, 1);

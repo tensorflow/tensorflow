@@ -133,7 +133,7 @@ class HloDataflowAnalysis {
   HloValue& GetValue(HloValue::Id value_id);
 
   // Returns the total number of HloValues.
-  int64 value_count() const { return values_.size(); }
+  int64_t value_count() const { return values_.size(); }
 
   // Returns a vector of all HloValues stabily sorted by HloValue::Id.
   const std::vector<HloValue*>& values() const { return values_vector_; }
@@ -237,7 +237,6 @@ class HloDataflowAnalysis {
   bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);
   bool UpdateAllGatherStartValueSet(HloInstruction* all_gather_start);
   bool UpdateAllGatherDoneValueSet(HloInstruction* all_gather_done);
-  bool UpdateAllReduceStartValueSet(HloInstruction* all_reduce_start);
   bool UpdateAllReduceDoneValueSet(HloInstruction* all_reduce_done);
   bool UpdateCollectivePermuteStartValueSet(
       HloInstruction* collective_permute_start);

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -138,7 +139,7 @@ std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx) {
   return inputs;
 }
 
-Status LockVariables(absl::Span<VariableInfo> variables) {
+Status LockVariables(absl::Span<VariableInfo*> variables) {
   std::vector<int> lock_order(variables.size());
   std::iota(lock_order.begin(), lock_order.end(), 0);
 
@@ -148,17 +149,17 @@ Status LockVariables(absl::Span<VariableInfo> variables) {
   // since we're sorting by pointer value the sort is pretty non-deterministic
   // anyway so we don't bother using std::stable_sort for now.
   absl::c_sort(lock_order, [&](int a, int b) {
-    if (variables[a].var() && variables[b].var()) {
-      return variables[a].var()->mu() < variables[b].var()->mu();
+    if (variables[a]->var() && variables[b]->var()) {
+      return variables[a]->var()->mu() < variables[b]->var()->mu();
     }
 
     // Move all the empty VariableInfo instances to the end.
-    return variables[a].var() != nullptr;
+    return variables[a]->var() != nullptr;
   });
 
   mutex* prev = nullptr;
   for (int i : lock_order) {
-    Var* variable = variables[i].var();
+    Var* variable = variables[i]->var();
     if (variable == nullptr) {
       // All empty VariableInfo instances are at the end of the order
       // so we're done.
@@ -176,11 +177,20 @@ Status LockVariables(absl::Span<VariableInfo> variables) {
     VLOG(4) << "Acquiring lock for variable "
             << reinterpret_cast<void*>(variable);
     mu->lock();
-    variables[i].set_lock_held();
+    variables[i]->set_lock_held();
     prev = mu;
   }
   VLOG(4) << "Finished acquiring variable locks.";
   return Status::OK();
+}
+
+Status LockVariables(absl::Span<VariableInfo> variables) {
+  std::vector<VariableInfo*> variable_ptrs;
+  variable_ptrs.reserve(variables.size());
+  for (auto& var : variables) {
+    variable_ptrs.push_back(&var);
+  }
+  return LockVariables(absl::MakeSpan(variable_ptrs));
 }
 
 Status SnapshotResourceVariables(OpKernelContext* ctx,
@@ -239,22 +249,23 @@ XlaComputationLaunchContext::PopulateInputs(
   std::vector<xla::ExecutionInput> arguments;
   arguments.reserve(compilation_result->xla_input_shapes.size());
 
-  xla::TransferManager* transfer_manager =
-      client_->backend().transfer_manager();
   for (int i = 0, end = compilation_result->xla_input_shapes.size(); i < end;
        ++i) {
     int arg_num = compilation_result->input_mapping[i];
     CHECK_GE(arg_num, missing_ctx_input_prefix);
-    const xla::Shape& shape = compilation_result->xla_input_shapes[i];
-    const xla::Shape& device_shape =
-        transfer_manager->HostShapeToDeviceShape(shape);
+    const xla::Shape& device_shape = compilation_result->xla_input_shapes[i];
+    const xla::Shape& host_shape =
+        xla::ShapeUtil::DeviceShapeToHostShape(device_shape);
 
     bool is_resource_variable = resource_vars.count(arg_num);
     bool is_updated_resource_variable =
         is_resource_variable &&
         absl::c_any_of(compilation_result->resource_updates,
                        [&](const XlaCompiler::ResourceUpdate& update) {
-                         return update.input_index == i && update.modified;
+                         // XlaCompiler records `arg_num` (instead of kernel
+                         // parameters) in `resource_updates`.
+                         return update.input_index == arg_num &&
+                                update.modified;
                        });
 
     const Tensor* t = is_resource_variable
@@ -278,23 +289,12 @@ XlaComputationLaunchContext::PopulateInputs(
           ctx->op_device_context()->stream());
     }
 
-    arguments.emplace_back(device_shape, shape);
+    arguments.emplace_back(device_shape, host_shape);
     xla::ExecutionInput& execution_input = arguments.back();
-    if (xla::Shape::Equal().MinorToMajorOnlyInLayout()(shape, device_shape)) {
-      se::DeviceMemoryBase dmem = XlaTensor::DeviceMemoryFromTensor(*t);
-      PopulateExecutionInputBuffer(execution_input, xla::ShapeIndex{}, dmem,
-                                   donate_buffer, device_ordinal_,
-                                   xla_allocator_);
-    } else {
-      XlaTensor* xla_tensor = XlaTensor::FromTensor(t);
-      CHECK(xla_tensor && xla_tensor->has_shaped_buffer());
-      xla_tensor->shaped_buffer().buffers().ForEachMutableElement(
-          [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
-            PopulateExecutionInputBuffer(execution_input, index, *buffer,
-                                         donate_buffer, device_ordinal_,
-                                         xla_allocator_);
-          });
-    }
+    se::DeviceMemoryBase dmem = XlaTensor::DeviceMemoryFromTensor(*t);
+    PopulateExecutionInputBuffer(execution_input, xla::ShapeIndex{}, dmem,
+                                 donate_buffer, device_ordinal_,
+                                 xla_allocator_);
   }
   return std::move(arguments);
 }

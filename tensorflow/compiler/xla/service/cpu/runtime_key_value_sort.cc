@@ -28,8 +28,8 @@ limitations under the License.
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
     int64_t a, int64_t b, int64_t c, char** values, int32_t values_count,
     tensorflow::int32* values_primitive_type_size_in_bytes, bool is_stable,
-    char* run_options, tensorflow::int64* prof_counters,
-    void (*less_than)(char*, char*, char**, char**, tensorflow::int64*)) {
+    char* run_options, int64_t* prof_counters,
+    void (*less_than)(char*, char*, char**, char**, int64_t*)) {
   // 'values' and 'values_primitive_type_size_in_bytes' are managed by the JIT
   // code, so msan can't tell they are initialized.
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(values, values_count * sizeof(char*));
@@ -49,7 +49,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
   int64_t num_iteration_elements = a * c;
   int64_t sort_dimension_offset = c;
 
-  std::unique_ptr<tensorflow::int64[]> indices(new tensorflow::int64[sort_dimension_elements]);
+  std::unique_ptr<int64_t[]> indices(new int64_t[sort_dimension_elements]);
   std::unique_ptr<char*[]> comparison_values(new char*[2 * values_count]);
   std::iota(indices.get(), indices.get() + sort_dimension_elements, 0);
   std::unique_ptr<std::string[]> reordered_values(

@@ -95,8 +95,8 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
                    GetWindowedOutputSize(in_cols, ksize_cols_eff, stride_cols,
                                          padding_, &out_cols, &pad_cols));
 
-    const std::vector<int64> out_sizes = {batch, out_rows, out_cols,
-                                          ksize_rows * ksize_cols * depth};
+    const std::vector<int64_t> out_sizes = {batch, out_rows, out_cols,
+                                            ksize_rows * ksize_cols * depth};
     TensorShape out_shape(out_sizes);
 
     Tensor* output = nullptr;

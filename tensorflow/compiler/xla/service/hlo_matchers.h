@@ -54,7 +54,7 @@ class HloParameterMatcher : public HloMatcher {
                        ::testing::MatchResultListener* listener) const override;
 
  private:
-  int64 parameter_number_;
+  int64_t parameter_number_;
 };
 
 // Custom matcher for comparisons, which accepts a comparison direction.
@@ -85,7 +85,7 @@ class HloGetTupleElementMatcher : public HloMatcher {
                        ::testing::MatchResultListener* listener) const override;
 
  private:
-  int64 tuple_index_;
+  int64_t tuple_index_;
 };
 
 // Custom matcher for custom-call instructions, which accepts a matcher for its
@@ -169,8 +169,8 @@ class HloDotWithContractingDimsMatcher : public HloMatcher {
   void DescribeTo(std::ostream* os) const override;
 
  private:
-  int64 lhs_contracting_dim_;
-  int64 rhs_contracting_dim_;
+  int64_t lhs_contracting_dim_;
+  int64_t rhs_contracting_dim_;
 };
 
 // Custom matcher for asynchronous copy (CopyStart/CopyDone pair) with specified
@@ -190,8 +190,8 @@ class HloAsyncCopyMatcher : public HloMatcher {
   void DescribeTo(std::ostream* os) const override;
 
  private:
-  int64 to_space_;
-  int64 from_space_;
+  int64_t to_space_;
+  int64_t from_space_;
 };
 
 class HloConstantMatcher : public HloMatcher {
@@ -205,6 +205,21 @@ class HloConstantMatcher : public HloMatcher {
 
  private:
   Literal literal_;
+};
+
+class HloReplicaGroupsMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloReplicaGroupsMatcher(
+      std::vector<std::vector<int64_t>> replica_groups)
+      : replica_groups_(std::move(replica_groups)) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  std::vector<std::vector<int64_t>> replica_groups_;
 };
 
 // HloInstruction* matchers for opcode and operands. Example:
@@ -500,6 +515,12 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Constant(
     Literal value) {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloConstantMatcher(std::move(value)));
+}
+
+inline ::testing::Matcher<const ::xla::HloInstruction*> ReplicaGroups(
+    std::vector<std::vector<int64_t>> replica_groups) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloReplicaGroupsMatcher(std::move(replica_groups)));
 }
 
 #undef HLO_MATCHER

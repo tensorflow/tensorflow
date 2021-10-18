@@ -165,7 +165,7 @@ class ExpandDimsOp : public OpKernel {
     }
 
     // Compute new shape with an additional dimension.
-    absl::InlinedVector<int64, 8> output_shape_vec(input_dims + 1);
+    absl::InlinedVector<int64_t, 8> output_shape_vec(input_dims + 1);
     for (int64_t i = 0; i < dim; ++i) {
       output_shape_vec[i] = input_shape.dim_size(i);
     }
@@ -204,7 +204,7 @@ class SqueezeOp : public OpKernel {
 
     auto existing_dims = ctx->input(0).shape().dim_sizes();
     const int existing_dims_size = static_cast<int>(existing_dims.size());
-    std::vector<int64> new_shape;
+    std::vector<int64_t> new_shape;
 
     std::unordered_set<int32> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());

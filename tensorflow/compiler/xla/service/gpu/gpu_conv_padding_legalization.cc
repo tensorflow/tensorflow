@@ -91,10 +91,10 @@ HloInstruction* MaybePaddedAndSlicedInput(
     //
     // For each dimension, initialize the start index to 0 and the limit index
     // to the size of that dimension.
-    std::vector<int64> start_indices(input->shape().dimensions_size(), 0);
-    std::vector<int64> limit_indices(input->shape().dimensions().begin(),
-                                     input->shape().dimensions().end());
-    std::vector<int64> strides(input->shape().dimensions_size(), 1);
+    std::vector<int64_t> start_indices(input->shape().dimensions_size(), 0);
+    std::vector<int64_t> limit_indices(input->shape().dimensions().begin(),
+                                       input->shape().dimensions().end());
+    std::vector<int64_t> strides(input->shape().dimensions_size(), 1);
     for (size_t i = 0; i < conv_dnums.input_spatial_dimensions().size(); ++i) {
       int64_t dim = conv_dnums.input_spatial_dimensions(i);
       // If dimension "dim" has negative padding, increase the start index or
@@ -348,12 +348,13 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   // Slice the new backward convolution.
   //
   // Initialize start_indices and limit_indices as no slicing.
-  std::vector<int64> start_indices(new_backward_conv->shape().dimensions_size(),
-                                   0LL);
-  std::vector<int64> limit_indices(
+  std::vector<int64_t> start_indices(
+      new_backward_conv->shape().dimensions_size(), 0LL);
+  std::vector<int64_t> limit_indices(
       new_backward_conv->shape().dimensions().begin(),
       new_backward_conv->shape().dimensions().end());
-  std::vector<int64> strides(new_backward_conv->shape().dimensions_size(), 1LL);
+  std::vector<int64_t> strides(new_backward_conv->shape().dimensions_size(),
+                               1LL);
   for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {
     int64_t padding_low = backward_conv->window().dimensions(i).padding_low();
     int64_t padding_high = backward_conv->window().dimensions(i).padding_high();

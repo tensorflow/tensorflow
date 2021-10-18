@@ -48,8 +48,8 @@ class AutoShardRewriter {
   tensorflow::RewriterConfig::CustomGraphOptimizer GetRewriteConfig() const;
 
   const AutoShardPolicy auto_shard_policy_;
-  const int64 num_workers_;
-  const int64 worker_index_;
+  const int64_t num_workers_;
+  const int64_t worker_index_;
 };
 
 // Maps a worker to its index, given a list of workers. For example, suppose
@@ -82,7 +82,7 @@ class WorkerIndexResolver {
 
   // Returns the worker index for the worker at `worker_address`. Returns a
   // NotFound error if the worker is not registered.
-  StatusOr<int64> GetWorkerIndex(absl::string_view worker_address) const;
+  StatusOr<int64_t> GetWorkerIndex(absl::string_view worker_address) const;
 
  private:
   std::vector<std::string> worker_addresses_;

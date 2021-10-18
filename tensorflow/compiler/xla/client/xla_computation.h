@@ -61,7 +61,7 @@ class XlaComputation {
   XlaComputation(const int64_t unique_id) : unique_id_(unique_id) {}
   friend class XlaBuilder;
 
-  int64 unique_id_;
+  int64_t unique_id_;
   HloModuleProto proto_;
 };
 

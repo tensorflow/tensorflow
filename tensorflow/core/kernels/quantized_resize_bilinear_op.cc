@@ -37,8 +37,8 @@ namespace {
 // Compute the interpolation indices only once.
 template <typename T_SCALE>
 struct InterpolationCache {
-  std::vector<int64> lower;  // Lower source index used in the interpolation
-  std::vector<int64> upper;  // Upper source index used in the interpolation
+  std::vector<int64_t> lower;  // Lower source index used in the interpolation
+  std::vector<int64_t> upper;  // Upper source index used in the interpolation
   // 1-D linear interpolation scale (see:
   // https://en.wikipedia.org/wiki/Bilinear_interpolation)
   std::vector<float> lerp;
@@ -61,9 +61,9 @@ inline void ComputeInterpolationWeights(
     const float in = scaler(i, scale);
     const float in_f = std::floor(in);
     interpolation->lower[i] =
-        std::max(static_cast<int64>(in_f), static_cast<int64>(0));
+        std::max(static_cast<int64_t>(in_f), static_cast<int64_t>(0));
     interpolation->upper[i] =
-        std::min(static_cast<int64>(std::ceil(in)), in_size - 1);
+        std::min(static_cast<int64_t>(std::ceil(in)), in_size - 1);
     interpolation->lower[i] =
         std::min(interpolation->lower[i], interpolation->upper[i]);
     interpolation->lerp[i] = in - in_f;
@@ -373,7 +373,7 @@ inline void OutputLerp32x4x1(const InterpolationCache<int32>& xs,
 
 #else
   for (int x = x_start; x < x_start + 4; ++x) {
-    OutputLerpForChannels<RESOLUTION, qint32, int32, int64>(
+    OutputLerpForChannels<RESOLUTION, qint32, int32, int64_t>(
         xs, x, ys_ilerp, 1, min, max, ys_input_lower_ptr, ys_input_upper_ptr,
         output_y_ptr);
   }
@@ -458,7 +458,7 @@ inline void OutputLerp32x4x3(const InterpolationCache<int32>& xs,
 
 #else
   for (int x = x_start; x < x_start + 4; ++x) {
-    OutputLerpForChannels<RESOLUTION, qint32, int32, int64>(
+    OutputLerpForChannels<RESOLUTION, qint32, int32, int64_t>(
         xs, x, ys_ilerp, 3, min, max, ys_input_lower_ptr, ys_input_upper_ptr,
         output_y_ptr);
   }
@@ -581,7 +581,7 @@ void ResizeImage<qint32>(typename TTypes<qint32, 4>::ConstTensor images,
         }
       }
       for (; x < out_width; ++x) {
-        OutputLerpForChannels<RESOLUTION, qint32, int32, int64>(
+        OutputLerpForChannels<RESOLUTION, qint32, int32, int64_t>(
             xs, x, ys_ilerp, channels, in_min, in_max, ys_input_lower_ptr,
             ys_input_upper_ptr, output_y_ptr);
       }

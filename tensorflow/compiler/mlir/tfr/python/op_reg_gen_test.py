@@ -18,10 +18,6 @@
 # pylint: disable=invalid-name
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 
 from tensorflow.compiler.mlir.python.mlir_wrapper import filecheck_wrapper as fw

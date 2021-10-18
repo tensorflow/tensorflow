@@ -33,7 +33,7 @@ XPlaneBuilder::XPlaneBuilder(XPlane* plane)
   for (auto& id_and_metadata : *plane->mutable_event_metadata()) {
     auto& metadata = id_and_metadata.second;
     last_event_metadata_id_ =
-        std::max<int64>(last_event_metadata_id_, metadata.id());
+        std::max<int64_t>(last_event_metadata_id_, metadata.id());
     if (!metadata.name().empty()) {
       event_metadata_by_name_.try_emplace(metadata.name(), &metadata);
     }
@@ -41,7 +41,7 @@ XPlaneBuilder::XPlaneBuilder(XPlane* plane)
   for (auto& id_and_metadata : *plane->mutable_stat_metadata()) {
     auto& metadata = id_and_metadata.second;
     last_stat_metadata_id_ =
-        std::max<int64>(last_stat_metadata_id_, metadata.id());
+        std::max<int64_t>(last_stat_metadata_id_, metadata.id());
     if (!metadata.name().empty()) {
       stat_metadata_by_name_.try_emplace(metadata.name(), &metadata);
     }

@@ -46,13 +46,13 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
-#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
 
@@ -222,7 +222,7 @@ class SegmentReductionOp : public OpKernel {
 //     small. When to use the tiled version or the untiled version depends on
 //     many factors including data alignments, ratio of calculation to memory
 //     traffic and obviously, the problem sizes.
-template <class T, class Index, class SegmentReductionFunctor>
+template <class T, class Index, class SegmentReductionFunctor, bool IsMean>
 class SegmentReductionGPUOp : public AsyncOpKernel {
  public:
   explicit SegmentReductionGPUOp(OpKernelConstruction* context)
@@ -296,10 +296,22 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       OP_REQUIRES_OK_ASYNC(
           context, context->allocate_output(0, output_shape, &output), done);
 
+      bool use_deterministic_kernels =
+#if defined(PLATFORM_WINDOWS)
+          // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows
+          // CI build error.
+          false;
+#else
+          UseDeterministicSegmentReductions() ||
+          (!SegmentReductionFunctor::atomic_reduction_is_associative &&
+           OpDeterminismRequired());
+#endif
+
       // The determinism check is here, rather than inside the functor (as it is
       // for the unsorted segment reduction ops) because the done callback
       // (required for OP_REQUIRES_ASYNC) is not available inside the functor.
       bool determinism_requirement_met =
+          use_deterministic_kernels ||
           SegmentReductionFunctor::atomic_reduction_is_associative ||
           !OpDeterminismRequired() ||
           DisableSegmentReductionOpDeterminismExceptions();
@@ -314,8 +326,8 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       auto data_ptr = input.template flat<T>().data();
       auto segment_flat = segment_ids.flat<Index>();
       functor_(context, context->eigen_device<GPUDevice>(), output_rows,
-               segment_ids.shape(), segment_flat, input.NumElements(), data_ptr,
-               output_flat);
+               segment_ids.shape(), IsMean, segment_flat, input.NumElements(),
+               data_ptr, output_flat);
 
       done();
     };
@@ -415,9 +427,9 @@ class UnsortedSegmentReductionOp : public OpKernel {
                    internal::ValidateUnsortedSegmentReduction(
                        this, context, data, segment_ids, num_segments));
     const auto segment_flat = segment_ids.flat<Index>();
-    const int64_t output_rows = internal::SubtleMustCopy(static_cast<int64>(
+    const int64_t output_rows = internal::SubtleMustCopy(static_cast<int64_t>(
         num_segments.dtype() == DT_INT32 ? num_segments.scalar<int32>()()
-                                         : num_segments.scalar<int64>()()));
+                                         : num_segments.scalar<int64_t>()()));
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("Input num_segments == ", output_rows,
                                         " must not be negative."));
@@ -624,7 +636,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
   }
 
   template <typename Tin, typename Tindex, EnableIfNotBfloat16OrHalf<Tin> = 0>
-  int64 Reduce(
+  int64_t Reduce(
       const typename TTypes<Tin>::ConstMatrix& input_flat,
       const typename TTypes<Tindex>::ConstVec& indices_vec, int64_t start,
       int64_t num, Eigen::TensorChippingOp<0, typename TTypes<Tin>::Matrix> out,
@@ -634,7 +646,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
   }
 
   template <typename Tin, typename Tindex, EnableIfBfloat16OrHalf<Tin> = 0>
-  int64 Reduce(
+  int64_t Reduce(
       const typename TTypes<Tin>::ConstMatrix& input_flat,
       const typename TTypes<Tindex>::ConstVec& indices_vec, int64_t start,
       int64_t num, Eigen::TensorChippingOp<0, typename TTypes<Tin>::Matrix> out,
@@ -647,7 +659,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
   }
 
   template <typename Tin, typename Tindex, typename Tout>
-  int64 ReduceImpl(
+  int64_t ReduceImpl(
       const typename TTypes<Tin>::ConstMatrix& input_flat,
       const typename TTypes<Tindex>::ConstVec& indices_vec, int64_t start,
       int64_t num,
@@ -847,7 +859,7 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
       SegmentId num_segments =
           internal::SubtleMustCopy(num_segments_t.dtype() == DT_INT32
                                        ? num_segments_t.scalar<int32>()()
-                                       : num_segments_t.scalar<int64>()());
+                                       : num_segments_t.scalar<int64_t>()());
       *last_segment_id_host.mutable_data() = num_segments - 1;
       create_and_check_output();
     } else {

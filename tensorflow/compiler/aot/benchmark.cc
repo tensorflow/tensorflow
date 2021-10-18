@@ -46,7 +46,7 @@ static double NowMicros() {
 
 void DumpStatsToStdout(const Stats& stats) {
   // Compute stats.
-  std::vector<int64> sorted_us(stats.per_iter_us);
+  std::vector<int64_t> sorted_us(stats.per_iter_us);
   std::sort(sorted_us.begin(), sorted_us.end());
   const size_t count_us = sorted_us.size();
   double sum_us = 0;

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Converts a model's graph def into a tflite model with MLIR-based conversion."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import tempfile
 
@@ -227,6 +223,41 @@ def mlir_convert_saved_model(saved_model_dir,
         tags_str,
         exported_names_str,
         saved_model_dir,
+        output_file.name,
+    )
+    exit_code = os.system(cmd)
+    log = (
+        cmd + "exited with code %d" % exit_code + "\n------------------\n" +
+        stdout_file.read())
+    return (None if exit_code != 0 else output_file.read()), log
+
+
+def mlir_convert_jax(input_file_name, is_hlotxt_format, additional_flags=""):
+  """Convert a jax model file into a tflite model with MLIR-based conversion.
+
+  Args:
+    input_file_name: Jax hlo proto file.
+    is_hlotxt_format: Whether the input proto is in hlotxt format.
+    additional_flags: A string of additional command line flags to be passed to
+      MLIR converter.
+
+  Returns:
+    output tflite model, log_txt from conversion
+    or None, log_txt if it did not convert properly.
+  """
+  bin_path = resource_loader.get_path_to_datafile(
+      "../../../../compiler/mlir/lite/tf_tfl_translate")
+  hlo_import_type_str = "proto"
+  if is_hlotxt_format:
+    hlo_import_type_str = "hlotxt"
+  with tempfile.NamedTemporaryFile() as output_file, \
+       tempfile.NamedTemporaryFile("w+") as stdout_file:
+    cmd = ("%s --import-hlo --enable-hlo-to-tf-conversion "
+           "--hlo-import-type=%s" + additional_flags + " %s --o=%s")
+    cmd = cmd % (
+        bin_path,
+        hlo_import_type_str,
+        input_file_name,
         output_file.name,
     )
     exit_code = os.system(cmd)

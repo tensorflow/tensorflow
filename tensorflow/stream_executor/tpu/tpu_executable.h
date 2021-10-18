@@ -58,7 +58,7 @@ class TpuExecutable : public xla::TpuExecutableInterface {
     LOG(FATAL) << "HostShapeToDeviceShape unimplemented";
   }
 
-  int64 ShapeSize(const Shape& shape) override {
+  int64_t ShapeSize(const Shape& shape) override {
     LOG(FATAL) << "ShapeSize unimplemented";
   }
 

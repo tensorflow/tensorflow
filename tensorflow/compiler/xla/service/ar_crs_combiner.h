@@ -92,7 +92,7 @@ class ArCrsCombiner : public HloModulePass {
     HloInstruction* ar;
     HloInstruction* crs;
     // The length of the path from AR to CRS in the HLO graph.
-    int64 distance;
+    int64_t distance;
 
     ArCrsPair(HloInstruction* all_reduce, HloInstruction* cross_replica_sum,
               int64_t dist)
@@ -143,7 +143,7 @@ class ArCrsCombiner : public HloModulePass {
   // value.
   bool TupleElementsComputeSameValue(
       HloInstruction* tuple_shaped_instruction, int64_t i1, int64_t i2,
-      absl::flat_hash_map<int64, int64>* visited_pairs);
+      absl::flat_hash_map<int64_t, int64_t>* visited_pairs);
 
   // Returns whether the instructions i1 and i2 can be shown to evaluate to the
   // same value. Handling WHILE requires recursion, which may cause us to visit
@@ -151,7 +151,7 @@ class ArCrsCombiner : public HloModulePass {
   // visited instruction pairs.
   bool InstructionsComputeSameValue(
       HloInstruction* i1, HloInstruction* i2,
-      absl::flat_hash_map<int64, int64>* visited_pairs);
+      absl::flat_hash_map<int64_t, int64_t>* visited_pairs);
 
   // Populates all_reduce_map_.
   void GroupAllReducesById(HloModule* module);
@@ -181,12 +181,12 @@ class ArCrsCombiner : public HloModulePass {
   bool spmd_partition_;
 
   // Map from all-reduce ids to the AR/CRS pairs.
-  absl::flat_hash_map<int64, std::vector<ArCrsPair>> all_reduce_map_;
+  absl::flat_hash_map<int64_t, std::vector<ArCrsPair>> all_reduce_map_;
 
   // Map from a CRS instruction to the all-reduce ID of the AR paired with the
   // CRS. Sometimes, several ARs in the code could be paired with the same CRS.
   // We use this map to pick a single AR/CRS path to rewrite.
-  absl::flat_hash_map<HloInstruction*, int64> crs_reserved_map_;
+  absl::flat_hash_map<HloInstruction*, int64_t> crs_reserved_map_;
 
   std::unique_ptr<CallGraph> call_graph_;
 };

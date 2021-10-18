@@ -37,9 +37,9 @@ class FuzzEncodeJpeg : public FuzzSession {
     double hw_ratio = height / width;
     int64_t remaining_bytes = size - 5;
     int64_t pixels = remaining_bytes / channels;
-    height = static_cast<int64>(floor(sqrt(hw_ratio * pixels)));
+    height = static_cast<int64_t>(floor(sqrt(hw_ratio * pixels)));
     if (height == 0) return;
-    width = static_cast<int64>(floor(pixels / height));
+    width = static_cast<int64_t>(floor(pixels / height));
     if (width == 0) return;
     size_t actual_pixels = height * width * channels;
     if (actual_pixels == 0) return;

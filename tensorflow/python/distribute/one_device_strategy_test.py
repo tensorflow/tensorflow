@@ -14,9 +14,6 @@
 # ==============================================================================
 """Tests for class OneDeviceStrategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations

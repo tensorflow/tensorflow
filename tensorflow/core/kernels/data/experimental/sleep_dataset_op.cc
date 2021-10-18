@@ -29,8 +29,8 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     int64_t sleep_microseconds;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "sleep_microseconds",
-                                                   &sleep_microseconds));
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "sleep_microseconds",
+                                                     &sleep_microseconds));
 
     OP_REQUIRES(ctx, sleep_microseconds >= 0,
                 errors::InvalidArgument("`sleep_microseconds` must be >= 0"));
@@ -66,7 +66,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "SleepDatasetOp::Dataset"; }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64_t Cardinality() const override { return input_->Cardinality(); }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
@@ -166,7 +166,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
 
     const DatasetBase* const input_;
     // TODO(b/117612213): Investigate autotuning for this value.
-    const int64 sleep_microseconds_;
+    const int64_t sleep_microseconds_;
   };
 };
 

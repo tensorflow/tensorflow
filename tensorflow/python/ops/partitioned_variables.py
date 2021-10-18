@@ -48,10 +48,6 @@ y = embedding_lookup(vs, ids, partition_strategy="div")
 z = matmul(x, concat(slice_dim, vs))
 ```
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 from tensorflow.python.framework import dtypes
@@ -103,7 +99,9 @@ def variable_axis_size_partitioner(
   """
   if max_shard_bytes < 1 or bytes_per_string_element < 1:
     raise ValueError(
-        "Both max_shard_bytes and bytes_per_string_element must be positive.")
+        "Both max_shard_bytes and bytes_per_string_element must be positive. "
+        f"Currently, max_shard_bytes is {max_shard_bytes} and"
+        f"bytes_per_string_element is {bytes_per_string_element}")
   if max_shards and max_shards < 1:
     raise ValueError(
         "max_shards must be positive.")
@@ -123,11 +121,11 @@ def variable_axis_size_partitioner(
         a `DType`.
     """
     if not isinstance(shape, tensor_shape.TensorShape):
-      raise ValueError("shape is not a TensorShape: %s" % shape)
+      raise ValueError(f"shape is not a TensorShape: {shape}")
     if not shape.is_fully_defined():
-      raise ValueError("shape is not fully defined: %s" % shape)
+      raise ValueError(f"shape is not fully defined: {shape}")
     if not isinstance(dtype, dtypes.DType):
-      raise ValueError("dtype is not a DType: %s" % dtype)
+      raise ValueError(f"dtype is not a DType: {dtype}")
 
     if dtype.base_dtype == dtypes.string:
       element_size = bytes_per_string_element
@@ -200,8 +198,9 @@ def min_max_variable_partitioner(max_partitions=1, axis=0,
       ValueError: If axis to partition along does not exist for the variable.
     """
     if axis >= len(shape):
-      raise ValueError("Can not partition variable along axis %d when shape is "
-                       "only %s" % (axis, shape))
+      raise ValueError(
+          f"Cannot partition variable along axis {axis} when shape is "
+          f"only {shape}")
     if dtype.base_dtype == dtypes.string:
       bytes_per_element = bytes_per_string_element
     else:
@@ -221,6 +220,42 @@ def min_max_variable_partitioner(max_partitions=1, axis=0,
 @tf_export(v1=["fixed_size_partitioner"])
 def fixed_size_partitioner(num_shards, axis=0):
   """Partitioner to specify a fixed number of shards along given axis.
+
+  @compatibility(TF2)
+  This API is deprecated in TF2. In TF2, partitioner is no longer part of
+  the variable declaration via `tf.Variable`.
+  [ParameterServer Training]
+  (https://www.tensorflow.org/tutorials/distribute/parameter_server_training)
+  handles partitioning of variables. The corresponding TF2 partitioner class of
+  `fixed_size_partitioner` is
+  `tf.distribute.experimental.partitioners.FixedShardsPartitioner`.
+
+  Check the [migration guide]
+  (https://www.tensorflow.org/guide/migrate#2_use_python_objects_to_track_variables_and_losses)
+  on the differences in treatment of variables and losses between TF1 and TF2.
+
+  Before:
+
+    ```
+    x = tf.compat.v1.get_variable(
+      "x", shape=(2,), partitioner=tf.compat.v1.fixed_size_partitioner(2)
+    )
+    ```
+  After:
+
+    ```
+    partitioner = (
+        tf.distribute.experimental.partitioners.FixedShardsPartitioner(
+            num_shards=2)
+    )
+    strategy = tf.distribute.experimental.ParameterServerStrategy(
+                   cluster_resolver=cluster_resolver,
+                   variable_partitioner=partitioner)
+
+    with strategy.scope():
+      x = tf.Variable([1.0, 2.0])
+    ```
+  @end_compatibility
 
   Args:
     num_shards: `int`, number of shards to partition variable.
@@ -286,12 +321,12 @@ def create_partitioned_variables(
     ValueError: If any of the arguments is malformed.
   """
   if len(shape) != len(slicing):
-    raise ValueError("The 'shape' and 'slicing' of a partitioned Variable "
-                     "must have the length: shape: %s, slicing: %s" %
-                     (shape, slicing))
+    raise ValueError(
+        "The 'shape' and 'slicing' of a partitioned Variable "
+        f"must have the length: shape: {shape}, slicing: {slicing}")
   if len(shape) < 1:
     raise ValueError("A partitioned Variable must have rank at least 1: "
-                     "shape: %s" % shape)
+                     f"shape: {shape}")
 
   # Legacy: we are provided the slicing directly, so just pass it to
   # the partitioner.

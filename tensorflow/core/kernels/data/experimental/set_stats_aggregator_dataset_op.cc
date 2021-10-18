@@ -136,7 +136,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
       return "SetStatsAggregatorDatasetOp::Dataset";
     }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64_t Cardinality() const override { return input_->Cardinality(); }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {

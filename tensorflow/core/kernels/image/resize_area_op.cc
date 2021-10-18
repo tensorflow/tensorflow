@@ -35,8 +35,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 namespace {
 struct CachedInterpolation {
-  int64 start;
-  int64 end;
+  int64_t start;
+  int64_t end;
   float start_scale;
   float end_minus_one_scale;
   bool needs_bounding;
@@ -191,7 +191,7 @@ class ResizeAreaOp : public OpKernel {
     }
   }
 
-  template <int64 kKnownNumChannels>
+  template <int64_t kKnownNumChannels>
   void ComputeLoop(const ImageResizerState& st,
                    const std::vector<CachedInterpolation>& x_interps,
                    typename TTypes<T, 4>::ConstTensor input_data) {
@@ -275,8 +275,8 @@ class ResizeAreaOp : public OpKernel {
   }
 
  private:
-  static EIGEN_ALWAYS_INLINE int64 Bound(int64_t val, int64_t limit) {
-    return std::min(limit - 1, std::max(int64{0}, val));
+  static EIGEN_ALWAYS_INLINE int64_t Bound(int64_t val, int64_t limit) {
+    return std::min(limit - 1, std::max(int64_t{0}, val));
   }
 
   bool align_corners_;

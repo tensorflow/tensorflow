@@ -246,8 +246,8 @@ XLA_TEST_F(ComputeConstantTest, Layout) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
 
-    std::vector<std::vector<int64>> layouts = {{0, 1}, {1, 0}};
-    for (const std::vector<int64>& layout : layouts) {
+    std::vector<std::vector<int64_t>> layouts = {{0, 1}, {1, 0}};
+    for (const std::vector<int64_t>& layout : layouts) {
       auto layout_proto = LayoutUtil::MakeLayout(layout);
       TF_ASSERT_OK_AND_ASSIGN(
           auto computed, ComputeConstantLiteral(

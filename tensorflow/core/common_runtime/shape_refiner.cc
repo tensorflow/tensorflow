@@ -422,7 +422,7 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(
 }
 
 Status ShapeRefiner::EvaluateConstantIntScalarEdge(
-    const Node* node, int dst_idx, bool* evaluated, int64* result,
+    const Node* node, int dst_idx, bool* evaluated, int64_t* result,
     shape_inference::InferenceContext* outer_context) {
   Tensor scalar;
   TF_RETURN_IF_ERROR(EvaluateConstantTensorForEdge(node, dst_idx, evaluated,
@@ -441,7 +441,7 @@ Status ShapeRefiner::EvaluateConstantIntScalarEdge(
             "EvaluateConstantIntScalarEdge called on non-integer edge: ",
             scalar.dtype());
       }
-      *result = scalar.scalar<int64>()();
+      *result = scalar.scalar<int64_t>()();
     }
   }
   return Status::OK();
@@ -457,6 +457,11 @@ Status ShapeRefiner::ConstantPartialShape(
   if (src_context == nullptr) return errors::Internal("Missing src context");
   ShapeHandle src_shape = src_context->output(input_edge->src_output());
 
+  // All shapes are expected to be 1D integer tensors with the exception of the
+  // sentinel that represents an unknown shape (scalar/rank 0 tensor with -1 as
+  // value). Handle the special case first before considering the more general
+  // rank 1 case.
+
   if (src_context->Value(src_context->Rank(src_shape)) == 0) {
     Tensor t;
     bool evaluated = false;
@@ -471,7 +476,7 @@ Status ShapeRefiner::ConstantPartialShape(
       if (t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) {
         *result = target_context->UnknownShape();
         return Status::OK();
-      } else if (t.dtype() == DT_INT64 && t.scalar<int64>()() == -1) {
+      } else if (t.dtype() == DT_INT64 && t.scalar<int64_t>()() == -1) {
         *result = target_context->UnknownShape();
         return Status::OK();
       }
@@ -635,7 +640,7 @@ Status ShapeRefiner::PartialStridedSliceShape(
 
   int64_t end;
   if (end_mask == 1) {
-    end = std::numeric_limits<int64>::max();
+    end = std::numeric_limits<int64_t>::max();
   } else {
     TF_RETURN_IF_ERROR(EvaluateConstantIntScalarEdge(slice_node, 2, &evaluated,
                                                      &end, outer_context));

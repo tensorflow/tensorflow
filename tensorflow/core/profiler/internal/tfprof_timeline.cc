@@ -92,7 +92,7 @@ void ChromeTraceFormatter::EmitFlowEnd(const string& name, int64_t ts,
 void ChromeTraceFormatter::EmitCounter(
     const string& category, const string& name, int64_t pid, int64_t ts,
     const string& device, int64_t bytes,
-    const std::map<int64, std::vector<string>>& tensor_mem) {
+    const std::map<int64_t, std::vector<string>>& tensor_mem) {
   Json::Value event = CreateEvent("C", category, "Allocated Bytes", pid, 0, ts);
   Json::Value args(Json::objectValue);
   args["Allocator Bytes in Use"] = Json::Int64(bytes);
@@ -153,7 +153,7 @@ void MemoryTracker::TrackNode(int64_t step, const GraphNode* node) {
 
   Device& dev = devices_[node->node->canonical_device()];
 
-  std::map<int64, int64> allocs;
+  std::map<int64_t, int64_t> allocs;
   for (const auto& alloc : node->node->allocations(step)) {
     allocs[alloc.alloc_micros()] += alloc.alloc_bytes();
     dev.tracked_allocations[alloc.alloc_micros()] += alloc.alloc_bytes();
@@ -162,7 +162,8 @@ void MemoryTracker::TrackNode(int64_t step, const GraphNode* node) {
   allocs[0] += node->node->accelerator_persistent_bytes();
 
   int64_t last = 0;
-  std::map<int64, int64>& aggregate_allocs = dev.tensor_allocs[node->name()];
+  std::map<int64_t, int64_t>& aggregate_allocs =
+      dev.tensor_allocs[node->name()];
   for (auto it = allocs.begin(); it != allocs.end(); ++it) {
     last += it->second;
     aggregate_allocs[it->first] = last;
@@ -288,7 +289,7 @@ void Timeline::GenerateGraphTimeline(const std::vector<GraphNode*>& gnodes) {
       if (ts - last_point < 100) continue;
       last_point = ts;
 
-      std::map<int64, std::vector<string>> tensor_mem;
+      std::map<int64_t, std::vector<string>> tensor_mem;
       for (const auto& tensor_alloc_it : dev.second.tensor_allocs) {
         const auto& tensor_alloc = tensor_alloc_it.second;
         auto it = tensor_alloc.lower_bound(ts);
@@ -311,13 +312,13 @@ void Timeline::GenerateGraphTimeline(const std::vector<GraphNode*>& gnodes) {
 }
 
 void Timeline::GenerateScopeTimeline(const ScopeNode* node) {
-  std::set<int64> visited_depth;
+  std::set<int64_t> visited_depth;
   EmitTreeNode(node, 0, node->proto().total_exec_micros(), 0, &visited_depth);
   OutputTimeline();
 }
 
 void Timeline::GenerateCodeTimeline(const CodeNode* node) {
-  std::set<int64> visited_depth;
+  std::set<int64_t> visited_depth;
   EmitTreeNode(node, 0, node->proto().total_exec_micros(), 0, &visited_depth);
   OutputTimeline();
 }
@@ -368,7 +369,7 @@ void Timeline::AllocateLanes() {
       }
       if (l < 0) {
         l = p->lanes.size();
-        std::map<int64, int64> nlane;
+        std::map<int64_t, int64_t> nlane;
         nlane[start_time] = end_time;
         p->lanes.push_back(nlane);
       } else {
@@ -380,7 +381,7 @@ void Timeline::AllocateLanes() {
   }
 }
 
-int64 Timeline::AllocatePID() {
+int64_t Timeline::AllocatePID() {
   int64_t cur_pid = next_pid_;
   next_pid_ += 1;
   return cur_pid;

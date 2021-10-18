@@ -31,9 +31,9 @@ namespace tensorflow {
 namespace sparse {
 namespace {
 
-Eigen::Tensor<int64, 2, Eigen::RowMajor, Eigen::DenseIndex>
+Eigen::Tensor<int64_t, 2, Eigen::RowMajor, Eigen::DenseIndex>
 GetSimpleIndexTensor(int N, const int NDIM) {
-  Eigen::Tensor<int64, 2, Eigen::RowMajor, Eigen::DenseIndex> ix(N, NDIM);
+  Eigen::Tensor<int64_t, 2, Eigen::RowMajor, Eigen::DenseIndex> ix(N, NDIM);
   ix(0, 0) = 0;
   ix(0, 1) = 0;
   ix(0, 2) = 0;
@@ -60,33 +60,33 @@ TEST(SparseTensorTest, DimComparatorSorts) {
   int64_t N = 5;
   const int NDIM = 3;
   auto ix = GetSimpleIndexTensor(N, NDIM);
-  TTypes<int64>::Matrix map(ix.data(), N, NDIM);
+  TTypes<int64_t>::Matrix map(ix.data(), N, NDIM);
 
-  std::vector<int64> sorting(N);
+  std::vector<int64_t> sorting(N);
   for (std::size_t n = 0; n < N; ++n) sorting[n] = n;
 
   // new order should be: {0, 4, 3, 2, 1}
-  std::vector<int64> order{0, 1, 2};
-  std::vector<int64> shape{N, N, N};
+  std::vector<int64_t> order{0, 1, 2};
+  std::vector<int64_t> shape{N, N, N};
   DimComparator sorter(map, order, shape);
   std::sort(sorting.begin(), sorting.end(), sorter);
-  EXPECT_EQ(sorting, std::vector<int64>({0, 4, 3, 2, 1}));
+  EXPECT_EQ(sorting, std::vector<int64_t>({0, 4, 3, 2, 1}));
 
   FixedDimComparator<3> sorter_fixed(map, order, shape);
   std::sort(sorting.begin(), sorting.end(), sorter_fixed);
-  EXPECT_EQ(sorting, std::vector<int64>({0, 4, 3, 2, 1}));
+  EXPECT_EQ(sorting, std::vector<int64_t>({0, 4, 3, 2, 1}));
 
   // new order should be: {0, 3, 2, 1, 4}
-  std::vector<int64> order1{2, 0, 1};
+  std::vector<int64_t> order1{2, 0, 1};
   DimComparator sorter1(map, order1, shape);
   for (std::size_t n = 0; n < N; ++n) sorting[n] = n;
   std::sort(sorting.begin(), sorting.end(), sorter1);
-  EXPECT_EQ(sorting, std::vector<int64>({0, 3, 2, 1, 4}));
+  EXPECT_EQ(sorting, std::vector<int64_t>({0, 3, 2, 1, 4}));
 
   FixedDimComparator<3> sorter1_fixed(map, order1, shape);
   for (std::size_t n = 0; n < N; ++n) sorting[n] = n;
   std::sort(sorting.begin(), sorting.end(), sorter1_fixed);
-  EXPECT_EQ(sorting, std::vector<int64>({0, 3, 2, 1, 4}));
+  EXPECT_EQ(sorting, std::vector<int64_t>({0, 3, 2, 1, 4}));
 }
 
 TEST(SparseTensorTest, SparseTensorInvalidIndicesType) {
@@ -180,13 +180,13 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N}));
 
-  auto ix_t = ix.matrix<int64>();
+  auto ix_t = ix.matrix<int64_t>();
   auto vals_t = vals.vec<tstring>();
   vals_t = vals_c;
   ix_t = ix_c;
 
   TensorShape shape({10, 10, 10});
-  std::vector<int64> order{0, 1, 2};
+  std::vector<int64_t> order{0, 1, 2};
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
   Status st_indices_valid = st.IndicesValid();
@@ -231,14 +231,14 @@ TEST(SparseTensorTest, EmptySparseTensorAllowed) {
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N}));
 
-  std::vector<int64> shape{10, 10, 10};
-  std::vector<int64> order{0, 1, 2};
+  std::vector<int64_t> shape{10, 10, 10};
+  std::vector<int64_t> order{0, 1, 2};
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
   TF_EXPECT_OK(st.IndicesValid());
   EXPECT_EQ(st.order(), order);
 
-  std::vector<int64> new_order{1, 0, 2};
+  std::vector<int64_t> new_order{1, 0, 2};
   st.Reorder<tstring>(new_order);
   TF_EXPECT_OK(st.IndicesValid());
   EXPECT_EQ(st.order(), new_order);
@@ -254,10 +254,10 @@ TEST(SparseTensorTest, SortingWorksCorrectly) {
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, &st));
 
-  auto ix_t = ix.matrix<int64>();
+  auto ix_t = ix.matrix<int64_t>();
 
   for (int n = 0; n < 100; ++n) {
-    ix_t = ix_t.random(Eigen::internal::UniformRandomGenerator<int64>(n + 1));
+    ix_t = ix_t.random(Eigen::internal::UniformRandomGenerator<int64_t>(n + 1));
     ix_t = ix_t.abs() % 1000;
     st.Reorder<tstring>({0, 1, 2, 3});
     TF_EXPECT_OK(st.IndicesValid());
@@ -277,7 +277,7 @@ TEST(SparseTensorTest, ValidateIndicesFindsInvalid) {
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N}));
 
-  Eigen::Tensor<int64, 2, Eigen::RowMajor> ix_orig(N, NDIM);
+  Eigen::Tensor<int64_t, 2, Eigen::RowMajor> ix_orig(N, NDIM);
   ix_orig(0, 0) = 0;
   ix_orig(0, 1) = 0;
   ix_orig(0, 2) = 0;
@@ -286,11 +286,11 @@ TEST(SparseTensorTest, ValidateIndicesFindsInvalid) {
   ix_orig(1, 1) = 0;
   ix_orig(1, 2) = 0;
 
-  auto ix_t = ix.matrix<int64>();
+  auto ix_t = ix.matrix<int64_t>();
   ix_t = ix_orig;
 
   TensorShape shape({10, 10, 10});
-  std::vector<int64> order{0, 1, 2};
+  std::vector<int64_t> order{0, 1, 2};
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
@@ -323,10 +323,10 @@ TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
 
   auto ix_t = GetSimpleIndexTensor(N, NDIM);
 
-  ix.matrix<int64>() = ix_t;
+  ix.matrix<int64_t>() = ix_t;
 
   TensorShape shape({10, 10, 10});
-  std::vector<int64> order{0, 1, 2};
+  std::vector<int64_t> order{0, 1, 2};
 
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
@@ -336,7 +336,7 @@ TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
   TF_EXPECT_OK(st.IndicesValid());
 
   ix_t(0, 0) = 11;
-  ix.matrix<int64>() = ix_t;
+  ix.matrix<int64_t>() = ix_t;
   st.Reorder<tstring>(order);
   Status st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
@@ -345,7 +345,7 @@ TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
             st_indices_valid.error_message().substr(13));
 
   ix_t(0, 0) = -1;
-  ix.matrix<int64>() = ix_t;
+  ix.matrix<int64_t>() = ix_t;
   st.Reorder<tstring>(order);
   st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
@@ -353,7 +353,7 @@ TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
             st_indices_valid.error_message().substr(13));
 
   ix_t(0, 0) = 0;
-  ix.matrix<int64>() = ix_t;
+  ix.matrix<int64_t>() = ix_t;
   st.Reorder<tstring>(order);
   TF_EXPECT_OK(st.IndicesValid());
 }
@@ -368,7 +368,7 @@ TEST(SparseTensorTest, SparseTensorToDenseTensor) {
   auto ix_t = GetSimpleIndexTensor(N, NDIM);
   auto vals_t = vals.vec<tstring>();
 
-  ix.matrix<int64>() = ix_t;
+  ix.matrix<int64_t>() = ix_t;
 
   vals_t(0) = "hi0";
   vals_t(1) = "hi1";
@@ -377,7 +377,7 @@ TEST(SparseTensorTest, SparseTensorToDenseTensor) {
   vals_t(4) = "hi4";
 
   TensorShape shape({4, 4, 5});
-  std::vector<int64> order{0, 1, 2};
+  std::vector<int64_t> order{0, 1, 2};
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
@@ -408,7 +408,7 @@ TEST(SparseTensorTest, SparseTensorToLargerDenseTensor) {
   auto ix_t = GetSimpleIndexTensor(N, NDIM);
   auto vals_t = vals.vec<tstring>();
 
-  ix.matrix<int64>() = ix_t;
+  ix.matrix<int64_t>() = ix_t;
 
   vals_t(0) = "hi0";
   vals_t(1) = "hi1";
@@ -417,7 +417,7 @@ TEST(SparseTensorTest, SparseTensorToLargerDenseTensor) {
   vals_t(4) = "hi4";
 
   TensorShape shape({4, 4, 5});
-  std::vector<int64> order{0, 1, 2};
+  std::vector<int64_t> order{0, 1, 2};
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
@@ -448,7 +448,7 @@ TEST(SparseTensorTest, SparseTensorGroup) {
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_INT32, TensorShape({N}));
 
-  auto ix_t = ix.matrix<int64>();
+  auto ix_t = ix.matrix<int64_t>();
   auto vals_t = vals.vec<int32>();
 
   ix_t = GetSimpleIndexTensor(N, NDIM);
@@ -460,14 +460,14 @@ TEST(SparseTensorTest, SparseTensorGroup) {
   vals_t(4) = 5;  // associated with ix (002)
 
   TensorShape shape({10, 10, 10});
-  std::vector<int64> order{0, 1, 2};
+  std::vector<int64_t> order{0, 1, 2};
 
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
   st.Reorder<int32>(order);
 
-  std::vector<std::vector<int64> > groups;
-  std::vector<TTypes<int64>::UnalignedConstMatrix> grouped_indices;
+  std::vector<std::vector<int64_t> > groups;
+  std::vector<TTypes<int64_t>::UnalignedConstMatrix> grouped_indices;
   std::vector<TTypes<int32>::UnalignedVec> grouped_values;
 
   // Group by index 0
@@ -486,11 +486,11 @@ TEST(SparseTensorTest, SparseTensorGroup) {
 
   // Group by dimension 0, we have groups: 0--, 2--, 3--
   EXPECT_EQ(groups.size(), 3);
-  EXPECT_EQ(groups[0], std::vector<int64>({0}));
-  EXPECT_EQ(groups[1], std::vector<int64>({2}));
-  EXPECT_EQ(groups[2], std::vector<int64>({3}));
+  EXPECT_EQ(groups[0], std::vector<int64_t>({0}));
+  EXPECT_EQ(groups[1], std::vector<int64_t>({2}));
+  EXPECT_EQ(groups[2], std::vector<int64_t>({3}));
 
-  std::vector<Eigen::Tensor<int64, 2, Eigen::RowMajor> > expected_indices;
+  std::vector<Eigen::Tensor<int64_t, 2, Eigen::RowMajor> > expected_indices;
   std::vector<Eigen::Tensor<int32, 1, Eigen::RowMajor> > expected_vals;
 
   // First group: 000, 002, 010
@@ -543,13 +543,13 @@ TEST(SparseTensorTest, Concat) {
 
   auto ix_c = GetSimpleIndexTensor(N, NDIM);
 
-  auto ix_t = ix.matrix<int64>();
+  auto ix_t = ix.matrix<int64_t>();
   auto vals_t = vals.vec<tstring>();
 
   ix_t = ix_c;
 
   TensorShape shape({10, 10, 10});
-  std::vector<int64> order{0, 1, 2};
+  std::vector<int64_t> order{0, 1, 2};
 
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
@@ -559,12 +559,12 @@ TEST(SparseTensorTest, Concat) {
 
   SparseTensor concatted = SparseTensor::Concat<tstring>({st, st, st, st});
   EXPECT_EQ(concatted.order(), st.order());
-  gtl::InlinedVector<int64, 8> expected_shape{40, 10, 10};
+  gtl::InlinedVector<int64_t, 8> expected_shape{40, 10, 10};
   EXPECT_EQ(concatted.shape(), expected_shape);
   EXPECT_EQ(concatted.num_entries(), 4 * N);
   TF_EXPECT_OK(concatted.IndicesValid());
 
-  auto conc_ix_t = concatted.indices().matrix<int64>();
+  auto conc_ix_t = concatted.indices().matrix<int64_t>();
   auto conc_vals_t = concatted.values().vec<tstring>();
 
   for (int n = 0; n < 4; ++n) {
@@ -586,7 +586,7 @@ TEST(SparseTensorTest, Concat) {
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, {0, 2, 1},
                                     &st_ooo));  // non-primary ix OOO
   SparseTensor conc_ooo = SparseTensor::Concat<tstring>({st, st, st, st_ooo});
-  std::vector<int64> expected_ooo{-1, -1, -1};
+  std::vector<int64_t> expected_ooo{-1, -1, -1};
   EXPECT_EQ(conc_ooo.order(), expected_ooo);
   EXPECT_EQ(conc_ooo.shape(), expected_shape);
   EXPECT_EQ(conc_ooo.num_entries(), 4 * N);
@@ -617,48 +617,48 @@ TEST(SparseTensorTest, Split) {
   Tensor ids(DT_INT64, TensorShape({N, DIM}));
   Tensor vals(DT_INT64, TensorShape({N}));
 
-  ids.matrix<int64>()(0, 0) = 0;
-  ids.matrix<int64>()(0, 1) = 0;
-  ids.matrix<int64>()(1, 0) = 1;
-  ids.matrix<int64>()(1, 1) = 1;
-  ids.matrix<int64>()(2, 0) = 1;
-  ids.matrix<int64>()(2, 1) = 2;
-  ids.matrix<int64>()(3, 0) = 3;
-  ids.matrix<int64>()(3, 1) = 0;
+  ids.matrix<int64_t>()(0, 0) = 0;
+  ids.matrix<int64_t>()(0, 1) = 0;
+  ids.matrix<int64_t>()(1, 0) = 1;
+  ids.matrix<int64_t>()(1, 1) = 1;
+  ids.matrix<int64_t>()(2, 0) = 1;
+  ids.matrix<int64_t>()(2, 1) = 2;
+  ids.matrix<int64_t>()(3, 0) = 3;
+  ids.matrix<int64_t>()(3, 1) = 0;
 
-  vals.vec<int64>()(0) = 1;
-  vals.vec<int64>()(1) = 2;
-  vals.vec<int64>()(2) = 3;
-  vals.vec<int64>()(3) = 4;
+  vals.vec<int64_t>()(0) = 1;
+  vals.vec<int64_t>()(1) = 2;
+  vals.vec<int64_t>()(2) = 3;
+  vals.vec<int64_t>()(3) = 4;
 
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ids, vals, TensorShape({4, 3}), &st));
 
   std::vector<SparseTensor> st_list;
-  TF_ASSERT_OK(SparseTensor::Split<int64>(st, 0, 2, &st_list));
+  TF_ASSERT_OK(SparseTensor::Split<int64_t>(st, 0, 2, &st_list));
 
   EXPECT_EQ(st_list.size(), 2);
-  auto expected_shape = gtl::InlinedVector<int64, 8>{2, 3};
+  auto expected_shape = gtl::InlinedVector<int64_t, 8>{2, 3};
 
   EXPECT_EQ(st_list[0].shape(), expected_shape);
   EXPECT_EQ(st_list[0].values().NumElements(), 3);
-  EXPECT_EQ(st_list[0].values().vec<int64>()(0), 1);
-  EXPECT_EQ(st_list[0].values().vec<int64>()(1), 2);
-  EXPECT_EQ(st_list[0].values().vec<int64>()(2), 3);
+  EXPECT_EQ(st_list[0].values().vec<int64_t>()(0), 1);
+  EXPECT_EQ(st_list[0].values().vec<int64_t>()(1), 2);
+  EXPECT_EQ(st_list[0].values().vec<int64_t>()(2), 3);
   EXPECT_EQ(st_list[0].indices().NumElements(), 6);
-  EXPECT_EQ(st_list[0].indices().matrix<int64>()(0, 0), 0);
-  EXPECT_EQ(st_list[0].indices().matrix<int64>()(0, 1), 0);
-  EXPECT_EQ(st_list[0].indices().matrix<int64>()(1, 0), 1);
-  EXPECT_EQ(st_list[0].indices().matrix<int64>()(1, 1), 1);
-  EXPECT_EQ(st_list[0].indices().matrix<int64>()(2, 0), 1);
-  EXPECT_EQ(st_list[0].indices().matrix<int64>()(2, 1), 2);
+  EXPECT_EQ(st_list[0].indices().matrix<int64_t>()(0, 0), 0);
+  EXPECT_EQ(st_list[0].indices().matrix<int64_t>()(0, 1), 0);
+  EXPECT_EQ(st_list[0].indices().matrix<int64_t>()(1, 0), 1);
+  EXPECT_EQ(st_list[0].indices().matrix<int64_t>()(1, 1), 1);
+  EXPECT_EQ(st_list[0].indices().matrix<int64_t>()(2, 0), 1);
+  EXPECT_EQ(st_list[0].indices().matrix<int64_t>()(2, 1), 2);
 
   EXPECT_EQ(st_list[1].shape(), expected_shape);
   EXPECT_EQ(st_list[1].values().NumElements(), 1);
-  EXPECT_EQ(st_list[1].values().vec<int64>()(0), 4);
+  EXPECT_EQ(st_list[1].values().vec<int64_t>()(0), 4);
   EXPECT_EQ(st_list[1].indices().NumElements(), 2);
-  EXPECT_EQ(st_list[1].indices().matrix<int64>()(0, 0), 1);
-  EXPECT_EQ(st_list[1].indices().matrix<int64>()(0, 1), 0);
+  EXPECT_EQ(st_list[1].indices().matrix<int64_t>()(0, 0), 1);
+  EXPECT_EQ(st_list[1].indices().matrix<int64_t>()(0, 1), 0);
 }
 
 TEST(SparseTensorTest, Slice) {
@@ -668,42 +668,42 @@ TEST(SparseTensorTest, Slice) {
   Tensor ids(DT_INT64, TensorShape({N, DIM}));
   Tensor vals(DT_INT64, TensorShape({N}));
 
-  ids.matrix<int64>()(0, 0) = 0;
-  ids.matrix<int64>()(0, 1) = 0;
-  ids.matrix<int64>()(1, 0) = 1;
-  ids.matrix<int64>()(1, 1) = 1;
-  ids.matrix<int64>()(2, 0) = 1;
-  ids.matrix<int64>()(2, 1) = 2;
-  ids.matrix<int64>()(3, 0) = 3;
-  ids.matrix<int64>()(3, 1) = 0;
+  ids.matrix<int64_t>()(0, 0) = 0;
+  ids.matrix<int64_t>()(0, 1) = 0;
+  ids.matrix<int64_t>()(1, 0) = 1;
+  ids.matrix<int64_t>()(1, 1) = 1;
+  ids.matrix<int64_t>()(2, 0) = 1;
+  ids.matrix<int64_t>()(2, 1) = 2;
+  ids.matrix<int64_t>()(3, 0) = 3;
+  ids.matrix<int64_t>()(3, 1) = 0;
 
-  vals.vec<int64>()(0) = 1;
-  vals.vec<int64>()(1) = 2;
-  vals.vec<int64>()(2) = 3;
-  vals.vec<int64>()(3) = 4;
+  vals.vec<int64_t>()(0) = 1;
+  vals.vec<int64_t>()(1) = 2;
+  vals.vec<int64_t>()(2) = 3;
+  vals.vec<int64_t>()(3) = 4;
 
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ids, vals, TensorShape({4, 3}), &st));
 
-  std::vector<int64> start(2, 0);
-  std::vector<int64> size(2);
+  std::vector<int64_t> start(2, 0);
+  std::vector<int64_t> size(2);
   size[0] = 2;
   size[1] = 3;
 
-  SparseTensor slice = SparseTensor::Slice<int64>(st, start, size);
+  SparseTensor slice = SparseTensor::Slice<int64_t>(st, start, size);
 
   EXPECT_EQ(TensorShape(slice.shape()), TensorShape({2, 3}));
   EXPECT_EQ(slice.values().NumElements(), 3);
-  EXPECT_EQ(slice.values().vec<int64>()(0), 1);
-  EXPECT_EQ(slice.values().vec<int64>()(1), 2);
-  EXPECT_EQ(slice.values().vec<int64>()(2), 3);
+  EXPECT_EQ(slice.values().vec<int64_t>()(0), 1);
+  EXPECT_EQ(slice.values().vec<int64_t>()(1), 2);
+  EXPECT_EQ(slice.values().vec<int64_t>()(2), 3);
   EXPECT_EQ(slice.indices().NumElements(), 6);
-  EXPECT_EQ(slice.indices().matrix<int64>()(0, 0), 0);
-  EXPECT_EQ(slice.indices().matrix<int64>()(0, 1), 0);
-  EXPECT_EQ(slice.indices().matrix<int64>()(1, 0), 1);
-  EXPECT_EQ(slice.indices().matrix<int64>()(1, 1), 1);
-  EXPECT_EQ(slice.indices().matrix<int64>()(2, 0), 1);
-  EXPECT_EQ(slice.indices().matrix<int64>()(2, 1), 2);
+  EXPECT_EQ(slice.indices().matrix<int64_t>()(0, 0), 0);
+  EXPECT_EQ(slice.indices().matrix<int64_t>()(0, 1), 0);
+  EXPECT_EQ(slice.indices().matrix<int64_t>()(1, 0), 1);
+  EXPECT_EQ(slice.indices().matrix<int64_t>()(1, 1), 1);
+  EXPECT_EQ(slice.indices().matrix<int64_t>()(2, 0), 1);
+  EXPECT_EQ(slice.indices().matrix<int64_t>()(2, 1), 2);
 }
 
 TEST(SparseTensorTest, SliceReducesOutputDimension) {
@@ -711,21 +711,21 @@ TEST(SparseTensorTest, SliceReducesOutputDimension) {
   const int num_columns = 2;
 
   Tensor ids(DT_INT64, TensorShape({num_rows, num_columns}));
-  ids.matrix<int64>()(0, 0) = 0;
-  ids.matrix<int64>()(0, 1) = 0;
-  ids.matrix<int64>()(1, 0) = 1;
-  ids.matrix<int64>()(1, 1) = 1;
+  ids.matrix<int64_t>()(0, 0) = 0;
+  ids.matrix<int64_t>()(0, 1) = 0;
+  ids.matrix<int64_t>()(1, 0) = 1;
+  ids.matrix<int64_t>()(1, 1) = 1;
 
   Tensor vals(DT_INT64, TensorShape({2}));
-  vals.vec<int64>()(0) = 1;
-  vals.vec<int64>()(1) = 2;
+  vals.vec<int64_t>()(0) = 1;
+  vals.vec<int64_t>()(1) = 2;
 
   SparseTensor st;
   TF_ASSERT_OK(SparseTensor::Create(ids, vals,
                                     TensorShape({num_rows, num_columns}), &st));
 
   SparseTensor slice =
-      SparseTensor::Slice<int64>(st, {num_rows + 1, 1}, {1, num_columns});
+      SparseTensor::Slice<int64_t>(st, {num_rows + 1, 1}, {1, num_columns});
   EXPECT_EQ(TensorShape(slice.shape()), TensorShape({0, 1}));
 }
 
@@ -749,23 +749,23 @@ static void BM_SparseReorderFloat(::testing::benchmark::State& state) {
   int NDIM32 = state.range(1);
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
-  const int64_t NDIM = static_cast<int64>(NDIM32);
-  const int64_t N = static_cast<int64>(N32);
+  const int64_t NDIM = static_cast<int64_t>(NDIM32);
+  const int64_t N = static_cast<int64_t>(N32);
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_FLOAT, TensorShape({N}));
   TensorShape shape;
-  std::vector<int64> order;
+  std::vector<int64_t> order;
   for (int d = 0; d < NDIM32; ++d) {
     shape.AddDim(1000);
     order.push_back(d);
   }
-  std::vector<int64> reorder;
+  std::vector<int64_t> reorder;
   reorder.push_back(1);
   reorder.push_back(0);
   for (int d = 2; d < NDIM32; ++d) {
     reorder.push_back(d);
   }
-  auto ix_t = ix.matrix<int64>();
+  auto ix_t = ix.matrix<int64_t>();
 
   for (auto s : state) {
     state.PauseTiming();
@@ -787,13 +787,13 @@ static void BM_SparseReorderString(::testing::benchmark::State& state) {
   int NDIM32 = state.range(1);
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
-  const int64_t NDIM = static_cast<int64>(NDIM32);
-  const int64_t N = static_cast<int64>(N32);
+  const int64_t NDIM = static_cast<int64_t>(NDIM32);
+  const int64_t N = static_cast<int64_t>(N32);
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N}));
   TensorShape shape;
-  std::vector<int64> order;
-  auto ix_t = ix.matrix<int64>();
+  std::vector<int64_t> order;
+  auto ix_t = ix.matrix<int64_t>();
   auto vals_t = vals.vec<tstring>();
   for (int i = 0; i < N32; ++i) {
     int len = rnd.Rand32() % 1000;
@@ -803,7 +803,7 @@ static void BM_SparseReorderString(::testing::benchmark::State& state) {
     shape.AddDim(1000);
     order.push_back(d);
   }
-  std::vector<int64> reorder;
+  std::vector<int64_t> reorder;
   reorder.push_back(1);
   reorder.push_back(0);
   for (int d = 2; d < NDIM32; ++d) {

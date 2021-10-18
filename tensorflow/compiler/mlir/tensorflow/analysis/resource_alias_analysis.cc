@@ -96,7 +96,8 @@ class BacktrackAnalysis {
   using InfoT = BacktrackAnalysisInfo;
 
   // Constructs the analysis by analyzing the given module.
-  explicit BacktrackAnalysis(ModuleOp module);
+  BacktrackAnalysis(ModuleOp module,
+                    SymbolTableCollection& symbol_table_collection);
 
   // Returns backtracking analysis for the given region.
   const InfoT& GetAnalysisForRegion(Region& region) const {
@@ -148,10 +149,13 @@ class BacktrackAnalysis {
 
  private:
   llvm::SmallDenseMap<Region*, InfoT> info_map_;
+  SymbolTableCollection& symbol_table_collection_;
 };
 
 // Analyzes all regions attached to all operations in the module.
-BacktrackAnalysis::BacktrackAnalysis(ModuleOp module) {
+BacktrackAnalysis::BacktrackAnalysis(
+    ModuleOp module, SymbolTableCollection& symbol_table_collection)
+    : symbol_table_collection_(symbol_table_collection) {
   const CallGraph call_graph(module);
 
   // Visit functions bottom up when doing the analysis. Note that SCC iterator
@@ -196,7 +200,8 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
     } else if (isa<IdentityNOp, IdentityOp>(op)) {
       value = op->getOperand(res_index);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-      FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
+      FuncOp func =
+          dyn_cast<FuncOp>(call.resolveCallable(&symbol_table_collection_));
       if (!func) break;
       // Check if the function being called has been analyzed. if not,
       // we cannot backtrack the value further.
@@ -275,7 +280,8 @@ void IncrementResourceTypeId(int64_t& resource_type_id) {
 
 // Constructs the analysis info by analyzing the given function.
 ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
-    FuncOp func_op, const BacktrackAnalysis& backtrack_analysis) {
+    FuncOp func_op, const BacktrackAnalysis& backtrack_analysis,
+    SymbolTableCollection& symbol_table_collection) {
   // This function populates resource_value_to_ids_ and id_to_resource_values_.
 
   // See `ResourceAliasAnalysisInfo` class for ID semantics.
@@ -307,9 +313,9 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
         return func_op.getArgAttr(arg.getArgNumber(), kResourceArgUniqueIdAttr);
       });
   if (has_arg_unique_id_attrs) {
-    // Resource arguments have ID's attached (via `kResourceArgUniqueIdAttr`)
-    // that represent different resources. Map those ID's to the internal
-    // instance ID's used by this pass.
+    // Resource arguments have IDs attached (via `kResourceArgUniqueIdAttr`)
+    // that represent different resources. Map those IDs to the internal
+    // instance IDs used by this pass.
     llvm::SmallDenseMap<int64_t, int64_t> attr_id_to_internal_id;
     for (auto arg : filter_resources(func_op.getArguments())) {
       auto id_attr = func_op.getArgAttrOfType<IntegerAttr>(
@@ -326,7 +332,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
   } else {
     // No `kResourceArgUniqueIdAttr` attribute is present, so all resource
     // arguments must correspond to different resources and we can assign unique
-    // ID's.
+    // IDs.
     assign_unique_id_to_all(func_op.getArguments());
   }
 
@@ -375,7 +381,8 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
     } else if (llvm::isa<CaseRegionOp, IfRegionOp>(op)) {
       AnalyzeRegionCaseOrIfOp(op, backtrack_analysis);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-      FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
+      FuncOp func = dyn_cast_or_null<FuncOp>(
+          call.resolveCallable(&symbol_table_collection));
       if (!func) {
         assign_unknown_id_to_all(op->getResults());
         return WalkResult::advance();
@@ -390,7 +397,9 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
           AddValueUniqueIDMapping(result, kUnknownResourceId);
         }
       }
-    } else if (isa<tf_device::LaunchOp, tf_device::ClusterOp>(op)) {
+    } else if (isa<tf_device::LaunchOp, tf_device::ClusterOp,
+                   tf_executor::IslandOp, tf_executor::GraphOp>(op) &&
+               op->getNumRegions() == 1) {
       Region& region = op->getRegion(0);
       const auto& body_info = backtrack_analysis.GetAnalysisForRegion(region);
       for (auto result : filter_resources(op->getResults())) {
@@ -426,7 +435,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
   });
 }
 
-// Propagates the resource ID's from an input operand to a result. Returns true
+// Propagates the resource IDs from an input operand to a result. Returns true
 // if the mapping changed.
 bool ResourceAliasAnalysisInfo::PropagateInputToOutput(const Value& operand,
                                                        const OpResult& result) {
@@ -464,7 +473,7 @@ bool ResourceAliasAnalysisInfo::PropagateInputToOutput(const Value& operand,
 //
 void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
     Operation* while_op, const BacktrackAnalysisInfo& body_info) {
-  // Seed the resource ID's for the results using either the resource ID of the
+  // Seed the resource IDs for the results using either the resource ID of the
   // passthrough arg, or unknown. We need to perform further analysis if we
   // find a passthrough arg which is not the same as corresponding the result #.
   llvm::SmallVector<Optional<int>, 4> passthrough_args(
@@ -488,13 +497,13 @@ void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
   // We found a result that is not unknown and whose passthrough operand index
   // is not the same as the result index, which means there is "crosstalk"
   // between 2 or more operands. In that case, we do an iterative propagation
-  // of resource ID's till the results converge.
+  // of resource IDs till the results converge.
   bool change = true;
   while (change) {
     change = false;
     for (auto result : filter_resources(while_op->getResults())) {
       if (IsUnknownResource(result)) continue;
-      // If this result has a valid passthrough arg, propagate resource ID's
+      // If this result has a valid passthrough arg, propagate resource IDs
       // from the result of the passthrough arg
       int result_index = result.getResultNumber();
       int passthru_index = passthrough_args[result_index].getValue();
@@ -607,12 +616,16 @@ llvm::SmallSetVector<Value, 8> ResourceAliasAnalysisInfo::GetResourceAliases(
 //===----------------------------------------------------------------------===//
 
 ResourceAliasAnalysis::ResourceAliasAnalysis(ModuleOp module) {
+  // Create symbol table for module.
+  SymbolTableCollection symbol_table_collection;
+  symbol_table_collection.getSymbolTable(module);
   // Analyze all regions for backtracking info.
-  detail::BacktrackAnalysis backtrack_analysis(module);
+  detail::BacktrackAnalysis backtrack_analysis(module, symbol_table_collection);
 
   // Analyze each function.
   for (auto func : module.getOps<FuncOp>())
-    this->info_map_.try_emplace(func, func, backtrack_analysis);
+    this->info_map_.try_emplace(func, func, backtrack_analysis,
+                                symbol_table_collection);
 }
 
 }  // namespace TF

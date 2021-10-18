@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -59,7 +60,7 @@ class HloModuleConfig {
   // invoke the main program, and finally invoke the unsharding program before
   // they are used in full-shape.
   struct ShardableValueUpdatePair {
-    int64 input_parameter_number;
+    int64_t input_parameter_number;
     ShapeIndex parameter_shape_index;
     ShapeIndex output_shape_index;
   };
@@ -127,12 +128,12 @@ class HloModuleConfig {
   void set_replica_count(int64_t replica_count) {
     replica_count_ = replica_count;
   }
-  int64 replica_count() const { return replica_count_; }
+  int64_t replica_count() const { return replica_count_; }
 
   void set_num_partitions(int64_t num_partitions) {
     num_partitions_ = num_partitions;
   }
-  int64 num_partitions() const { return num_partitions_; }
+  int64_t num_partitions() const { return num_partitions_; }
 
   const std::vector<bool> param_requires_broadcast_via_collectives() const {
     return param_requires_broadcast_via_collectives_;
@@ -177,7 +178,7 @@ class HloModuleConfig {
       const int intra_op_parallelism_threads) {
     intra_op_parallelism_threads_ = intra_op_parallelism_threads;
   }
-  int64 intra_op_parallelism_threads() const {
+  int64_t intra_op_parallelism_threads() const {
     return intra_op_parallelism_threads_;
   }
 
@@ -234,17 +235,19 @@ class HloModuleConfig {
     return &fusion_config_;
   }
 
-  const std::vector<std::vector<int64>>& dot_config() const {
+  const std::vector<std::vector<int64_t>>& dot_config() const {
     return dot_config_;
   }
 
-  std::vector<std::vector<int64>>* mutable_dot_config() { return &dot_config_; }
+  std::vector<std::vector<int64_t>>* mutable_dot_config() {
+    return &dot_config_;
+  }
 
-  const std::vector<std::vector<std::vector<int64>>>& layout_config() const {
+  const std::vector<std::vector<std::vector<int64_t>>>& layout_config() const {
     return layout_config_;
   }
 
-  std::vector<std::vector<std::vector<int64>>>* mutable_layout_config() {
+  std::vector<std::vector<std::vector<int64_t>>>* mutable_layout_config() {
     return &layout_config_;
   }
 
@@ -256,8 +259,33 @@ class HloModuleConfig {
     return &phase_ordering_config_;
   }
 
+  const absl::flat_hash_map<std::string, std::string>& flag_config() const {
+    return flag_config_;
+  }
+
+  absl::flat_hash_map<std::string, std::string>* mutable_flag_config() {
+    return &flag_config_;
+  }
+
   const int phase_index() const { return phase_index_; }
   void set_phase_index(const int phase_index) { phase_index_ = phase_index; }
+
+  void set_allow_spmd_sharding_propagation_to_output(
+      bool allow_spmd_sharding_propagation_to_output) {
+    allow_spmd_sharding_propagation_to_output_ =
+        allow_spmd_sharding_propagation_to_output;
+  }
+  bool allow_spmd_sharding_propagation_to_output() const {
+    return allow_spmd_sharding_propagation_to_output_;
+  }
+
+  const std::vector<uint64_t>& memory_space_assignment_config() const {
+    return memory_space_assignment_config_;
+  }
+
+  std::vector<uint64_t>* mutable_memory_space_assignment_config() {
+    return &memory_space_assignment_config_;
+  }
 
  private:
   // If you add new members, be sure to update compilation_cache_key.
@@ -271,10 +299,10 @@ class HloModuleConfig {
   int32 launch_id_ = 0;
 
   // The number of replicas (data parallelism) to compile this binary for.
-  int64 replica_count_ = 1;
+  int64_t replica_count_ = 1;
 
   // The number of partitions (model parallelism) to compile this binary for.
-  int64 num_partitions_ = 1;
+  int64_t num_partitions_ = 1;
 
   // Whether to broadcast args across all replicas. One entry per arg.
   std::vector<bool> param_requires_broadcast_via_collectives_;
@@ -289,7 +317,7 @@ class HloModuleConfig {
 
   // The target maximum parallelism at which to partition HLOs for parallel
   // execution on the CPU backend.
-  int64 intra_op_parallelism_threads_ = -1;
+  int64_t intra_op_parallelism_threads_ = -1;
 
   string device_type_;
 
@@ -317,11 +345,16 @@ class HloModuleConfig {
   // Custom dot canonicalization configuration, where dot_config_[v] control
   // how to convert dot operation v (sorted topologically and by computation) to
   // convolution.
-  std::vector<std::vector<int64>> dot_config_;
+  std::vector<std::vector<int64_t>> dot_config_;
 
   // Layout configuration, where layout_config_[v][i] controls the layout
   // decision i of operation v.
-  std::vector<std::vector<std::vector<int64>>> layout_config_;
+  std::vector<std::vector<std::vector<int64_t>>> layout_config_;
+
+  // Memory Space Assignment configuration, where
+  // memory_space_assignment_config_ controls the order of buffer intervals
+  // of this hlo module.
+  std::vector<uint64_t> memory_space_assignment_config_;
 
   // Phase ordering configuration, where phase_ordering_config[v][i] controls
   // whether a specific pass with index i (e.g. 0 = DCE, 1 = CSE, etc.) is
@@ -332,6 +365,19 @@ class HloModuleConfig {
   // This is the variable that stores state to allow us to use the same
   // config across functions during compilation.
   int phase_index_ = 0;
+
+  // Flag configuration to use instead of global flags. This allows multiple
+  // HLO modules to be compiled in parallel with different flag values.
+  absl::flat_hash_map<std::string, std::string> flag_config_;
+
+  // Allows sharding propagation to propagate to the outputs. This changes the
+  // output shape of the computation (which is undesirable), but it can be used
+  // to allow to run partial compilation to determine what would be the output
+  // sharding of a computation if XLA would be allowed to propagate the sharding
+  // which can be used by higher level framework as a way to query intermediate
+  // sharding of operations when multiple computation would be chained and
+  // merged together.
+  bool allow_spmd_sharding_propagation_to_output_ = false;
 };
 
 }  // namespace xla

@@ -93,8 +93,8 @@ class FractionalAvgPoolOp : public OpKernel {
     }
 
     // Generate pooling sequence.
-    std::vector<int64> row_cum_seq;
-    std::vector<int64> col_cum_seq;
+    std::vector<int64_t> row_cum_seq;
+    std::vector<int64_t> col_cum_seq;
     GuardedPhiloxRandom generator;
     generator.Init(seed_, seed2_);
     row_cum_seq = GeneratePoolingSequence(input_size[1], output_size[1],
@@ -110,15 +110,15 @@ class FractionalAvgPoolOp : public OpKernel {
                                              output_size[2], output_size[3]}),
                                 &output_tensor));
     Tensor* output_row_seq_tensor = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(
-                       1, TensorShape({static_cast<int64>(row_cum_seq.size())}),
-                       &output_row_seq_tensor));
+    OP_REQUIRES_OK(
+        context, context->allocate_output(
+                     1, TensorShape({static_cast<int64_t>(row_cum_seq.size())}),
+                     &output_row_seq_tensor));
     Tensor* output_col_seq_tensor = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(
-                       2, TensorShape({static_cast<int64>(col_cum_seq.size())}),
-                       &output_col_seq_tensor));
+    OP_REQUIRES_OK(
+        context, context->allocate_output(
+                     2, TensorShape({static_cast<int64_t>(col_cum_seq.size())}),
+                     &output_col_seq_tensor));
 
     ConstEigenMatrixMap in_mat(tensor_in.flat<T>().data(), input_size[3],
                                input_size[2] * input_size[1] * input_size[0]);
@@ -132,8 +132,8 @@ class FractionalAvgPoolOp : public OpKernel {
     out_mat.setZero();
     out_count.setZero();
 
-    auto output_row_seq_flat = output_row_seq_tensor->flat<int64>();
-    auto output_col_seq_flat = output_col_seq_tensor->flat<int64>();
+    auto output_row_seq_flat = output_row_seq_tensor->flat<int64_t>();
+    auto output_col_seq_flat = output_col_seq_tensor->flat<int64_t>();
 
     // Set output tensors.
     for (int i = 0; i < row_cum_seq.size(); ++i) {
@@ -186,8 +186,8 @@ class FractionalAvgPoolOp : public OpKernel {
 
  private:
   bool deterministic_;
-  int64 seed_;
-  int64 seed2_;
+  int64_t seed_;
+  int64_t seed2_;
   std::vector<float> pooling_ratio_;
   bool pseudo_random_;
   bool overlapping_;
@@ -199,7 +199,7 @@ class FractionalAvgPoolOp : public OpKernel {
       FractionalAvgPoolOp<type>)
 
 REGISTER_FRACTIONALAVGPOOL(int32);
-REGISTER_FRACTIONALAVGPOOL(int64);
+REGISTER_FRACTIONALAVGPOOL(int64_t);
 REGISTER_FRACTIONALAVGPOOL(float);
 REGISTER_FRACTIONALAVGPOOL(double);
 
@@ -263,9 +263,9 @@ class FractionalAvgPoolGradOp : public OpKernel {
                                         out_cols + 1, " elements, but got ",
                                         col_seq_tensor.NumElements()));
 
-    auto row_seq_tensor_flat = row_seq_tensor.flat<int64>();
-    auto col_seq_tensor_flat = col_seq_tensor.flat<int64>();
-    auto orig_input_tensor_shape_flat = orig_input_tensor_shape.flat<int64>();
+    auto row_seq_tensor_flat = row_seq_tensor.flat<int64_t>();
+    auto col_seq_tensor_flat = col_seq_tensor.flat<int64_t>();
+    auto orig_input_tensor_shape_flat = orig_input_tensor_shape.flat<int64_t>();
 
     const int64_t in_batch = orig_input_tensor_shape_flat(0);
     const int64_t in_rows = orig_input_tensor_shape_flat(1);
@@ -366,7 +366,7 @@ class FractionalAvgPoolGradOp : public OpKernel {
                           FractionalAvgPoolGradOp<type>)
 
 REGISTER_FRACTIONALAVGPOOLGRAD(int32);
-REGISTER_FRACTIONALAVGPOOLGRAD(int64);
+REGISTER_FRACTIONALAVGPOOLGRAD(int64_t);
 REGISTER_FRACTIONALAVGPOOLGRAD(float);
 REGISTER_FRACTIONALAVGPOOLGRAD(double);
 

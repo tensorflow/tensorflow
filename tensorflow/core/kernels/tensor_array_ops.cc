@@ -334,7 +334,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
       TF_RETURN_IF_ERROR(tensor::MakeShape(ctx->input(2), &shape_to_prepend));
       auto ta_element_shape = tensor_array->ElemShape();
       if (!ta_element_shape.unknown_rank()) {
-        std::vector<int64> dims;
+        std::vector<int64_t> dims;
         for (auto dim : shape_to_prepend) {
           dims.push_back(dim.size);
         }
@@ -342,7 +342,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
           dims.push_back(dim.size);
         }
         TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
-            gtl::ArraySlice<int64>(dims), &element_shape));
+            gtl::ArraySlice<int64_t>(dims), &element_shape));
       }
     } else {
       element_shape = tensor_array->ElemShape();
@@ -861,10 +861,11 @@ class TensorArrayConcatOp : public OpKernel {
     OP_REQUIRES_OK(ctx, s);
 
     Tensor* lengths_tensor = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(
-                            1, TensorShape({static_cast<int64>(values.size())}),
-                            &lengths_tensor));
-    auto lengths_tensor_t = lengths_tensor->vec<int64>();
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(
+                       1, TensorShape({static_cast<int64_t>(values.size())}),
+                       &lengths_tensor));
+    auto lengths_tensor_t = lengths_tensor->vec<int64_t>();
 
     TensorShape output_shape;
     TensorShape output_shape_except0;
@@ -1238,8 +1239,8 @@ class TensorArraySplitOp : public OpKernel {
                     "Expected lengths to have < max int32 entries"));
 
     int32_t num_tensors = static_cast<int32>(tensor_lengths->NumElements());
-    auto tensor_lengths_t = tensor_lengths->vec<int64>();
-    std::vector<int64> cumulative_lengths;
+    auto tensor_lengths_t = tensor_lengths->vec<int64_t>();
+    std::vector<int64_t> cumulative_lengths;
     cumulative_lengths.reserve(num_tensors);
     int64_t total_length = 0;
     for (int i = 0; i < num_tensors; ++i) {

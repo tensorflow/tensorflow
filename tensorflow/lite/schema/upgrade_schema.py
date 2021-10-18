@@ -22,10 +22,6 @@ bazel run tensorflow/lite/schema/upgrade_schema -- in.bin out.json
 bazel run tensorflow/lite/schema/upgrade_schema -- in.json out.bin
 bazel run tensorflow/lite/schema/upgrade_schema -- in.tflite out.tflite
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import contextlib
 import json

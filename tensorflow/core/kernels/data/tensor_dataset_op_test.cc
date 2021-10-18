@@ -46,8 +46,9 @@ class TensorDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{TensorDatasetOp::kToutput_types, output_dtypes_},
-                    {TensorDatasetOp::kOutputShapes, output_shapes_}};
+    *attr_vector = {{"Toutput_types", output_dtypes_},
+                    {"output_shapes", output_shapes_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 
@@ -78,8 +79,8 @@ class TensorDatasetParams : public DatasetParams {
 class TensorDatasetOpTest : public DatasetOpsTestBase {};
 
 std::vector<Tensor> PlainTensors() {
-  return {CreateTensor<int64>(TensorShape({}), {1}),
-          CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
+  return {CreateTensor<int64_t>(TensorShape({}), {1}),
+          CreateTensor<int64_t>(TensorShape({1, 3}), {1, 2, 3}),
           CreateTensor<double>(TensorShape({}), {37.0}),
           CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})};
 }
@@ -99,7 +100,7 @@ TensorDatasetParams NestedTensorDatasetParams() {
            CreateTensor<Variant>(
                TensorShape({}),
                {CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})}),
-           CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})},
+           CreateTensor<int64_t>(TensorShape({1, 3}), {1, 2, 3})},
           /*node_name=*/kNodeName};
 }
 
@@ -114,7 +115,7 @@ std::vector<GetNextTestCase<TensorDatasetParams>> GetNextTestCases() {
             CreateTensor<Variant>(
                 TensorShape({}),
                 {CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})}),
-            CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})}}};
+            CreateTensor<int64_t>(TensorShape({1, 3}), {1, 2, 3})}}};
 }
 
 class ParameterizedGetNextTest : public TensorDatasetOpTest,
@@ -217,7 +218,7 @@ IteratorSaveAndRestoreTestCases() {
             CreateTensor<Variant>(
                 TensorShape({}),
                 {CreateTensor<tstring>(TensorShape({1, 2}), {"a", "b"})}),
-            CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})}}};
+            CreateTensor<int64_t>(TensorShape({1, 3}), {1, 2, 3})}}};
 }
 
 class ParameterizedIteratorSaveAndRestoreTest
@@ -287,7 +288,7 @@ TEST_F(TensorDatasetOpTest, Splitting) {
       params, /*expected_outputs=*/PlainTensors()));
   TF_EXPECT_OK(CheckSplitProviderShardedIteration(
       params, /*num_shards=*/3, /*shard_index=*/2,
-      /*expected_outputs=*/CreateTensors<int64>(TensorShape({}), {})));
+      /*expected_outputs=*/CreateTensors<int64_t>(TensorShape({}), {})));
   TF_EXPECT_OK(CheckSplitProviderShardedIteration(
       params, /*num_shards=*/3, /*shard_index=*/0,
       /*expected_outputs=*/PlainTensors()));

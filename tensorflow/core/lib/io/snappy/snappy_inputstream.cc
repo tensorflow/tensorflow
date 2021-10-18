@@ -141,7 +141,7 @@ size_t SnappyInputStream::ReadBytesFromCache(size_t bytes_to_read,
   return can_read_bytes;
 }
 
-int64 SnappyInputStream::Tell() const { return bytes_read_; }
+int64_t SnappyInputStream::Tell() const { return bytes_read_; }
 
 Status SnappyInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());

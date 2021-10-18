@@ -92,7 +92,7 @@ class ConcatBaseOp : public OpKernel {
           internal::SubtleMustCopy(concat_dim_tensor.scalar<int32>()());
     } else {
       concat_dim =
-          internal::SubtleMustCopy(concat_dim_tensor.scalar<int64>()());
+          internal::SubtleMustCopy(concat_dim_tensor.scalar<int64_t>()());
     }
 
     const int N = values_input_end_index_ - values_input_start_index_;

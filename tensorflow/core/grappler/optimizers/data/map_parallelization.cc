@@ -45,7 +45,7 @@ NodeDef MakeParallelMap(const string& name, MutableGraphView* graph) {
                                       &parallel_map);
   parallel_map.set_op(kParallelMapDataset);
   auto* num_parallel_calls = graph_utils::AddScalarConstNode(
-      static_cast<int64>(data::model::kAutotune), graph);
+      static_cast<int64_t>(data::model::kAutotune), graph);
   parallel_map.add_input(num_parallel_calls->name());
   AddNodeAttr("deterministic", "true", &parallel_map);
 

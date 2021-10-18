@@ -877,9 +877,9 @@ struct ApplyAdam<GPUDevice, T> {
       return;
     }  // No work load.
     GpuLaunchConfig config = GetGpuLaunchConfig(data_dim, d);
-    eigen_assert(static_cast<int64>(grad.dimension(0)) +
-                     static_cast<int64>(config.block_count) *
-                         static_cast<int64>(config.thread_per_block) <
+    eigen_assert(static_cast<int64_t>(grad.dimension(0)) +
+                     static_cast<int64_t>(config.block_count) *
+                         static_cast<int64_t>(config.thread_per_block) <
                  std::numeric_limits<int32>::max());
 
     TF_CHECK_OK(GpuLaunchKernel(

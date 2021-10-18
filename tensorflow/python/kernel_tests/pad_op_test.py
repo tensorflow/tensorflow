@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.nn_ops.Pad."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -224,7 +220,9 @@ class PadOpTest(test.TestCase):
   def testInvalid(self):
     with self.cached_session():
       x = [[1, 2, 3], [4, 5, 6]]
-      with self.assertRaisesRegex(ValueError, "Unknown padding mode"):
+      with self.assertRaisesRegex(
+          ValueError,
+          "Value of argument `mode` expected to be .* Received `mode` = WEIRD"):
         self.evaluate(array_ops.pad(x, [[1, 0], [2, 1]], mode="weird"))
 
   def testPaddingTypes(self):

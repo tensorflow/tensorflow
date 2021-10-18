@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -47,18 +48,9 @@ constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kUseSpmdAttr[] = "use_spmd_for_xla_partitioning";
 
 struct TPUShardingIdentificationPass
-    : public PassWrapper<TPUShardingIdentificationPass,
-                         OperationPass<ModuleOp>> {
-  StringRef getArgument() const final {
-    return "tf-tpu-sharding-identification";
-  }
-
-  StringRef getDescription() const final {
-    return "Identifies and handles inputs/outputs of TPU computation that is "
-           "sharded across logical cores.";
-  }
-
-  void runOnOperation() override;
+    : public TF::TPUShardingIdentificationPassBase<
+          TPUShardingIdentificationPass> {
+  void runOnOperation() final;
 };
 
 // Returns XLA sharding from TPUPartitionedInput op connected to a
@@ -67,16 +59,24 @@ struct TPUShardingIdentificationPass
 // a `tf_device.cluster_func`.
 llvm::Optional<llvm::StringRef> GetXlaShardingFromOperand(Value value) {
   Value value_to_visit = value;
-  if (auto read_var = llvm::dyn_cast_or_null<TF::ReadVariableOp>(
-          value_to_visit.getDefiningOp()))
+  if (auto read_var = value_to_visit.getDefiningOp<TF::ReadVariableOp>())
     value_to_visit = read_var.resource();
 
   if (auto partitioned_input =
-          llvm::dyn_cast_or_null<TF::TPUPartitionedInputOp>(
-              value_to_visit.getDefiningOp()))
+          value_to_visit.getDefiningOp<TF::TPUPartitionedInputOp>())
     return partitioned_input._XlaSharding();
 
   return llvm::None;
+}
+
+// Given a `tf_device.cluster_func` operand value return true iff it a device
+// variable that should default to MAXIMAL sharding. Device variables that are
+// per-replica or distributed default to MAXIMAL sharding, which corresponds to
+// arguments of the `tf_device.replicate`. Otherwise the variable is broadcast,
+// which corresponds to edges that are implicitly captured by the `replicate`.
+bool IsMaximalVariable(Value value) {
+  auto read_var = value.getDefiningOp<TF::ReadVariableOp>();
+  return read_var && read_var->getParentOfType<tf_device::ReplicateOp>();
 }
 
 // Returns XLA sharding from a XlaSharding op connected to an argument value. If
@@ -163,10 +163,11 @@ void IdentifyXlaShardingForComputationInputs(
       continue;
     }
 
-    if (use_spmd) {
+    if (use_spmd && !IsMaximalVariable(operand)) {
       // If XLA SPMD is enabled, host variables or non-variable per-replica
       // inputs should take on replicate sharding, unless another sharding is
-      // set via a TPUPartitionedInput op.
+      // set via a TPUPartitionedInput op. Exclude device variables, which
+      // should take maximal sharding.
       sharding_for_args.push_back(kReplicateSharding);
       continue;
     }
@@ -195,8 +196,7 @@ llvm::Optional<llvm::StringRef> GetXlaShardingFromResult(Value value) {
 
   if (auto assign_var = llvm::dyn_cast<TF::AssignVariableOp>(user))
     if (auto partitioned_input =
-            llvm::dyn_cast_or_null<TF::TPUPartitionedInputOp>(
-                assign_var.resource().getDefiningOp()))
+            assign_var.resource().getDefiningOp<TF::TPUPartitionedInputOp>())
       return partitioned_input._XlaSharding();
 
   return llvm::None;
@@ -378,8 +378,6 @@ void TPUShardingIdentificationPass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUShardingIdentificationPass() {
   return std::make_unique<TPUShardingIdentificationPass>();
 }
-
-static PassRegistration<TPUShardingIdentificationPass> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

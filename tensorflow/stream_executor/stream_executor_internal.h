@@ -150,10 +150,10 @@ class TimerInterface {
   virtual ~TimerInterface() {}
 
   // Returns the number of microseconds elapsed in a completed timer.
-  virtual uint64 Microseconds() const = 0;
+  virtual uint64_t Microseconds() const = 0;
 
   // Returns the number of nanoseconds elapsed in a completed timer.
-  virtual uint64 Nanoseconds() const = 0;
+  virtual uint64_t Nanoseconds() const = 0;
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(TimerInterface);
@@ -195,54 +195,55 @@ class StreamExecutorInterface {
 
   // Releases any state associated with the kernel.
   virtual void UnloadKernel(const KernelBase *kernel) {}
-  virtual DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) = 0;
-  DeviceMemoryBase Allocate(uint64 size) {
+  virtual DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) = 0;
+  DeviceMemoryBase Allocate(uint64_t size) {
     return Allocate(size, /*memory_space=*/0);
   }
-  virtual void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset,
-                             uint64 size) = 0;
+  virtual void *GetSubBuffer(DeviceMemoryBase *parent, uint64_t offset,
+                             uint64_t size) = 0;
   virtual void Deallocate(DeviceMemoryBase *mem) = 0;
   // Allocates unified memory space of the given size, if supported.
   // See
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-unified-memory-programming-hd
   // for more details on unified memory.
-  virtual void *UnifiedMemoryAllocate(uint64 size) { return nullptr; }
+  virtual void *UnifiedMemoryAllocate(uint64_t size) { return nullptr; }
 
   // Deallocates unified memory space previously allocated with
   // UnifiedMemoryAllocate.
   virtual void UnifiedMemoryDeallocate(void *mem) {}
-  virtual void *HostMemoryAllocate(uint64 size) = 0;
+  virtual void *HostMemoryAllocate(uint64_t size) = 0;
   virtual void HostMemoryDeallocate(void *mem) = 0;
-  virtual bool HostMemoryRegister(void *mem, uint64 size) = 0;
+  virtual bool HostMemoryRegister(void *mem, uint64_t size) = 0;
   virtual bool HostMemoryUnregister(void *mem) = 0;
   virtual bool SynchronizeAllActivity() = 0;
   virtual port::Status SynchronousMemZero(DeviceMemoryBase *location,
-                                          uint64 size) = 0;
+                                          uint64_t size) = 0;
   virtual port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                         uint64 size) = 0;
+                                         uint64_t size) = 0;
   virtual port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                         const void *host_src, uint64 size) = 0;
+                                         const void *host_src,
+                                         uint64_t size) = 0;
   virtual port::Status SynchronousMemcpy(void *host_dst,
                                          const DeviceMemoryBase &gpu_src,
-                                         uint64 size) = 0;
+                                         uint64_t size) = 0;
   virtual port::Status SynchronousMemcpyDeviceToDevice(
       DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src,
-      uint64 size) = 0;
+      uint64_t size) = 0;
   virtual port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
-                               uint64 size) = 0;
+                               uint64_t size) = 0;
   virtual port::Status Memset(Stream *stream, DeviceMemoryBase *location,
-                              uint8 pattern, uint64 size) {
+                              uint8 pattern, uint64_t size) {
     return port::InternalError("Not implemented");
   }
   virtual port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
-                                uint32 pattern, uint64 size) = 0;
+                                uint32 pattern, uint64_t size) = 0;
   virtual bool Memcpy(Stream *stream, void *host_dst,
-                      const DeviceMemoryBase &gpu_src, uint64 size) = 0;
+                      const DeviceMemoryBase &gpu_src, uint64_t size) = 0;
   virtual bool Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst,
-                      const void *host_src, uint64 size) = 0;
+                      const void *host_src, uint64_t size) = 0;
   virtual bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *gpu_dst,
                                     const DeviceMemoryBase &gpu_src,
-                                    uint64 size) = 0;
+                                    uint64_t size) = 0;
   virtual bool HostCallback(Stream *stream, std::function<void()> callback);
   virtual bool HostCallback(Stream *stream,
                             std::function<port::Status()> callback) = 0;
@@ -267,9 +268,9 @@ class StreamExecutorInterface {
   virtual port::Status EnablePeerAccessTo(StreamExecutorInterface *other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface *other) = 0;
 
-  virtual int64 GetDeviceLoad() { return -1; }
+  virtual int64_t GetDeviceLoad() { return -1; }
 
-  virtual bool DeviceMemoryUsage(int64 *free, int64 *total) const {
+  virtual bool DeviceMemoryUsage(int64_t *free, int64_t *total) const {
     return false;
   }
 

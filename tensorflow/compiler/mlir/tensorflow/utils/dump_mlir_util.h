@@ -81,9 +81,7 @@ std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
 // is dumped to the crash analysis system. Note, environment var
 // `MLIR_CRASH_REPRODUCER_DIRECTORY` can be used to override
 // kCrashReproducerCrashAnalysis settings.
-void SetCrashReproducer(
-    mlir::PassManager& pm,
-    llvm::StringRef dir_path = kCrashReproducerCrashAnalysis);
+void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path = "");
 
 // This applies both the PassManagerCLOptions provided by MLIR along with any
 // tensorflow specific options.

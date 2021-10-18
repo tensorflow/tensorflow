@@ -71,6 +71,15 @@ class ParallelConcatUpdate : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     auto value = ctx->input(0);
+    // Value should be at least rank 1. Also the 0th dimension should be
+    // at least loc_.
+    OP_REQUIRES(ctx, value.dims() >= 1,
+                errors::InvalidArgument("value should be at least rank 1."));
+    OP_REQUIRES(
+        ctx, value.dim_size(0) > loc_,
+        errors::InvalidArgument("0th dimension of value = ", value.dim_size(0),
+                                " is less than loc_=", loc_));
+
     auto update = ctx->input(1);
 
     OP_REQUIRES(
@@ -428,7 +437,7 @@ REGISTER_EMPTY(double, CPU)
 REGISTER_EMPTY(Eigen::half, CPU)
 REGISTER_EMPTY(tstring, CPU)
 REGISTER_EMPTY(int32, CPU)
-REGISTER_EMPTY(int64, CPU)
+REGISTER_EMPTY(int64_t, CPU)
 REGISTER_EMPTY(bool, CPU)
 REGISTER_EMPTY(uint8, CPU)
 
@@ -456,7 +465,7 @@ REGISTER_KERNEL_BUILDER(
 REGISTER(float);
 REGISTER(double);
 REGISTER(Eigen::half);
-REGISTER(int64);
+REGISTER(int64_t);
 
 REGISTER_KERNEL_BUILDER(Name("InplaceUpdate")
                             .Device(DEVICE_GPU)
@@ -492,7 +501,7 @@ REGISTER_KERNEL_BUILDER(Name("DeepCopy")
 REGISTER_EMPTY(float, GPU);
 REGISTER_EMPTY(double, GPU);
 REGISTER_EMPTY(Eigen::half, GPU);
-REGISTER_EMPTY(int64, GPU);
+REGISTER_EMPTY(int64_t, GPU);
 REGISTER_EMPTY(int32, GPU);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

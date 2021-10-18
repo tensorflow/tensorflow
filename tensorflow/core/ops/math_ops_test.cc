@@ -237,7 +237,7 @@ TEST(MathOpsTest, Select_ShapeFn) {
     LOG(INFO) << "Inference got " << s;
     return s;
   };
-  auto shape_proto = [](std::initializer_list<int64> dim_sizes) {
+  auto shape_proto = [](std::initializer_list<int64_t> dim_sizes) {
     TensorShapeProto p;
     for (auto i : dim_sizes) p.add_dim()->set_size(i);
     return p;

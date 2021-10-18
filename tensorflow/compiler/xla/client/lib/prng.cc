@@ -150,11 +150,11 @@ std::pair<ThreeFry2x32State, XlaOp> GetThreeFryInputsAndUpdatedState(
     }
     input_u64 =
         input_u64 + (Iota(builder, u64_shape, i) *
-                     ConstantR0<uint64>(builder, trailing_dims_product));
+                     ConstantR0<uint64_t>(builder, trailing_dims_product));
     trailing_dims_product *= shape.dimensions(i);
   }
-  XlaOp new_state =
-      initial_state + ConstantR0<uint64>(builder, ShapeUtil::ElementsIn(shape));
+  XlaOp new_state = initial_state +
+                    ConstantR0<uint64_t>(builder, ShapeUtil::ElementsIn(shape));
   return std::make_pair(Uint64ToUint32s(input_u64), new_state);
 }
 
@@ -162,8 +162,8 @@ std::pair<ThreeFry2x32State, XlaOp> GetThreeFryInputsAndUpdatedState(
 struct SplitShapePair {
   Shape half_shape;
   Shape concat_shape;
-  int64 split_dim;
-  int64 new_concat_dim;
+  int64_t split_dim;
+  int64_t new_concat_dim;
 };
 
 // Split the shape on a dimension > 1 into two halves.
@@ -193,13 +193,13 @@ SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
     }
   }
   CHECK_GE(pair.split_dim, 0);
-  std::vector<int64> half_shape_dims;
-  std::vector<int64> concat_shape_dims;
+  std::vector<int64_t> half_shape_dims;
+  std::vector<int64_t> concat_shape_dims;
   for (int64_t i = 0; i < shape.rank(); ++i) {
     if (i == pair.split_dim) {
       // Create a new trivial dim for the later concat, which is more friendly
       // to sharding propagation.
-      half_shape_dims.push_back(CeilOfRatio<int64>(shape.dimensions(i), 2));
+      half_shape_dims.push_back(CeilOfRatio<int64_t>(shape.dimensions(i), 2));
       half_shape_dims.push_back(1);
       concat_shape_dims.push_back(half_shape_dims[i]);
       concat_shape_dims.push_back(2);
@@ -226,15 +226,15 @@ XlaOp CombineShapePair(absl::Span<const XlaOp> pair,
   XlaOp result = ConcatInDim(builder, pair, shape_pair.new_concat_dim);
   const int64_t pre_split_size =
       original_shape.dimensions(shape_pair.split_dim);
-  std::vector<int64> reshape_dims(original_shape.dimensions().begin(),
-                                  original_shape.dimensions().end());
+  std::vector<int64_t> reshape_dims(original_shape.dimensions().begin(),
+                                    original_shape.dimensions().end());
   reshape_dims[shape_pair.split_dim] =
-      RoundUpToNearest<int64>(pre_split_size, 2);
+      RoundUpToNearest<int64_t>(pre_split_size, 2);
   result = Reshape(result, reshape_dims);
   if (reshape_dims[shape_pair.split_dim] != pre_split_size) {
-    result = Slice(result, std::vector<int64>(original_shape.rank(), 0),
+    result = Slice(result, std::vector<int64_t>(original_shape.rank(), 0),
                    original_shape.dimensions(),
-                   std::vector<int64>(original_shape.rank(), 1));
+                   std::vector<int64_t>(original_shape.rank(), 1));
   }
   return result;
 }
@@ -283,10 +283,10 @@ Philox4x32State Philox4x32(Philox4x32State state, Philox4x32Key key) {
   // Compute the high and low words from multiplying two 32-bit integers.
   auto mul_hi_low = [](XlaOp x, uint32 k) {
     auto product =
-        ConvertElementType(x, U64) * ConstantR0<uint64>(x.builder(), k);
+        ConvertElementType(x, U64) * ConstantR0<uint64_t>(x.builder(), k);
     auto low = ConvertElementType(product, U32);
-    auto high =
-        ConvertElementType(product >> ConstantR0<uint64>(x.builder(), 32), U32);
+    auto high = ConvertElementType(
+        product >> ConstantR0<uint64_t>(x.builder(), 32), U32);
     return HighLowPair{high, low};
   };
 
@@ -339,11 +339,11 @@ std::pair<Philox4x32State, Philox4x32Key> ScramblePhiloxKey(Philox4x32Key key) {
 // dimensions prepended to its shape.
 std::array<XlaOp, 2> Uint128AddUint64(
     const std::array<XlaOp, 2>& u128, XlaOp u64,
-    absl::Span<const int64> broadcast_sizes = {}) {
+    absl::Span<const int64_t> broadcast_sizes = {}) {
   auto u128_low = u128[0];
   auto u128_high = u128[1];
   XlaOp new_u128_low = u128_low + u64;
-  XlaOp one = ConstantR0<uint64>(u128[0].builder(), 1);
+  XlaOp one = ConstantR0<uint64_t>(u128[0].builder(), 1);
   XlaOp new_u128_high = Select(Lt(new_u128_low, u128_low),
                                Broadcast(u128_high + one, broadcast_sizes),
                                Broadcast(u128_high, broadcast_sizes));
@@ -381,8 +381,8 @@ std::pair<Philox4x32State, XlaOp> GetPhiloxInputsAndUpdatedState(
   XlaOp iota = Iota(builder, U64, n);
   auto state_u128 = Uint32sToUint128(state);
   auto inputs = Uint128ToUint32s(Uint128AddUint64(state_u128, iota, {n}));
-  XlaOp new_state =
-      Uint128ToOp(Uint128AddUint64(state_u128, ConstantR0<uint64>(builder, n)));
+  XlaOp new_state = Uint128ToOp(
+      Uint128AddUint64(state_u128, ConstantR0<uint64_t>(builder, n)));
   return std::make_pair(inputs, new_state);
 }
 
@@ -393,7 +393,7 @@ std::pair<Philox4x32State, XlaOp> GeneratePhiloxBits(int64_t num_elems,
                                                      Philox4x32Key key) {
   Philox4x32State state;
   state = Uint128ToUint32s(Uint128FromOp(initial_state));
-  const int64_t num_vector4 = CeilOfRatio<int64>(num_elems, 4);
+  const int64_t num_vector4 = CeilOfRatio<int64_t>(num_elems, 4);
   Philox4x32State inputs;
   XlaOp new_state;
   std::tie(inputs, new_state) =
@@ -625,14 +625,14 @@ RngOutput NormalFloatingPointDistribution(XlaOp key, XlaOp initial_state,
 
   // Separate the bits into two groups to perform the Box-Muller transform.
   XlaOp bits_0 = Slice(bits_state.value,
-                       std::vector<int64>(shape_pair.half_shape.rank(), 0),
+                       std::vector<int64_t>(shape_pair.half_shape.rank(), 0),
                        shape_pair.half_shape.dimensions(),
-                       std::vector<int64>(shape_pair.half_shape.rank(), 1));
-  std::vector<int64> bits_1_starts(shape_pair.half_shape.rank(), 0);
+                       std::vector<int64_t>(shape_pair.half_shape.rank(), 1));
+  std::vector<int64_t> bits_1_starts(shape_pair.half_shape.rank(), 0);
   bits_1_starts[shape_pair.new_concat_dim] = 1;
   XlaOp bits_1 = Slice(bits_state.value, bits_1_starts,
                        shape_pair.concat_shape.dimensions(),
-                       std::vector<int64>(shape_pair.half_shape.rank(), 1));
+                       std::vector<int64_t>(shape_pair.half_shape.rank(), 1));
   std::tie(bits_0, bits_1) = BoxMullerTransform(bits_0, bits_1);
 
   // Put the numbers in the two groups back to form the requested shape.

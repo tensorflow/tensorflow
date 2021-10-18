@@ -66,8 +66,8 @@ const float* GetCoeffsTable(const bool use_keys_cubic) {
   }
 }
 
-inline int64 Bound(int64_t val, int64_t limit) {
-  return std::min(limit - 1, std::max(int64{0}, val));
+inline int64_t Bound(int64_t val, int64_t limit) {
+  return std::min(limit - 1, std::max(int64_t{0}, val));
 }
 
 struct WeightsAndIndices {
@@ -75,10 +75,10 @@ struct WeightsAndIndices {
   float weight_1;
   float weight_2;
   float weight_3;
-  int64 index_0;
-  int64 index_1;
-  int64 index_2;
-  int64 index_3;
+  int64_t index_0;
+  int64_t index_1;
+  int64_t index_2;
+  int64_t index_3;
 
   int advance;  // advance value.
 };
@@ -171,7 +171,7 @@ class CachedInterpolationCalculator {
     // We use 2 hands and walk through, copying from one to another where
     // we already have values.
     // Invariant, new_indices_hand <= cached_values_hand
-    const std::array<int64, 4> new_x_indices{{x_0, x_1, x_2, x_3}};
+    const std::array<int64_t, 4> new_x_indices{{x_0, x_1, x_2, x_3}};
     int cached_values_hand = 0;
     int new_indices_hand = 0;
     while (cached_values_hand < 4) {
@@ -203,7 +203,7 @@ class CachedInterpolationCalculator {
   }
 
  private:
-  int64 indexes_[4];
+  int64_t indexes_[4];
 };
 
 static void ComputeXWeightsAndIndices(const ImageResizerState& resizer_state,

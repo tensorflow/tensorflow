@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Momentum for TensorFlow."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
@@ -41,6 +37,80 @@ class MomentumOptimizer(optimizer.Optimizer):
   the gradient is an `IndexedSlices`, typically because of `tf.gather` or an
   embedding) only updates variable slices and corresponding `accumulation` terms
   when that part of the variable was used in the forward pass.
+
+  @compatibility(TF2)
+  tf.compat.v1.train.MomentumOptimizer is compatible with eager mode and
+  `tf.function`.
+  When eager execution is enabled, `learning_rate`,`momentum`, can each be a
+  callable that takes no arguments and returns the actual value to use. This
+  can be useful for changing these values across different invocations of
+  optimizer functions.
+
+  To switch to native TF2 style, please directly use
+  [`tf.keras.optimizers.SGD`]
+  (https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/SGD)
+  with the `momentum` argument.
+
+  #### Structural mapping to native TF2
+
+  Before:
+
+  ```python
+  optimizer = tf.compat.v1.train.MomentumOptimizer(
+    learning_rate=learning_rate,
+    momentum=momentum,
+    use_nesterov=use_nesterov)
+  ```
+
+  After:
+
+  ```python
+  optimizer = tf.keras.optimizers.SGD(
+    learning_rate=learning_rate,
+    momentum=momentum,
+    nesterov=use_nesterov)
+  ```
+
+  #### How to map arguments
+  | TF1 Arg Name       | TF2 Arg Name   | Note                             |
+  | ------------------ | -------------  | -------------------------------  |
+  | `learning_rate`    | `learning_rate`| Be careful of setting           |
+  : : : learning_rate tensor value computed from the global step.          :
+  : : : In TF1 this was usually meant to imply a dynamic learning rate and :
+  : : : would recompute in each step. In TF2 (eager + function) it will    :
+  : : : treat it as a scalar value that only gets computed once instead of :
+  : : : a symbolic placeholder to be computed each time.                   :
+  | `momentum`         | `momentum`     | -                                |
+  | `use_locking`      | -              | Not applicable in TF2.           |
+  | `use_nesterov`     | `nesterov`     | -                                |
+
+  #### Before & after usage example
+  Before:
+
+  ```python
+  x = tf.Variable([1,2,3], dtype=tf.float32)
+  grad = tf.constant([0.1, 0.2, 0.3])
+  optimizer = tf.compat.v1.train.MomentumOptimizer(
+    learning_rate=0.001,
+    momentum=0.9,
+    use_nesterov=False)
+  optimizer.apply_gradients(zip([grad], [x]))
+  ```
+
+  After:
+
+  ```python
+  x = tf.Variable([1,2,3], dtype=tf.float32)
+  grad = tf.constant([0.1, 0.2, 0.3])
+  optimizer = tf.keras.optimizers.SGD(
+    learning_rate=0.001,
+    momentum=0.9,
+    nesterov=False)
+  optimizer.apply_gradients(zip([grad], [x]))
+  ```
+
+  @end_compatibility
+
   """
 
   def __init__(self, learning_rate, momentum,
@@ -70,12 +140,7 @@ class MomentumOptimizer(optimizer.Optimizer):
         (http://proceedings.mlr.press/v28/sutskever13.html)
         ([pdf](http://proceedings.mlr.press/v28/sutskever13.pdf))
 
-    @compatibility(eager)
-    When eager execution is enabled, `learning_rate` and `momentum` can each be
-    a callable that takes no arguments and returns the actual value to use. This
-    can be useful for changing these values across different invocations of
-    optimizer functions.
-    @end_compatibility
+
     """
     super(MomentumOptimizer, self).__init__(use_locking, name)
     self._learning_rate = learning_rate

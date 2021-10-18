@@ -63,7 +63,7 @@ bool OpInvalidatesCache(const HloInstruction* hlo) {
 // Counts the number of "real" users of 'hlo'. When 'hlo' has a fusion node as
 // user, we consider the users of the fusion parameter corresponding to 'hlo' as
 // the real users.
-int64 UserCount(const HloInstruction* hlo) {
+int64_t UserCount(const HloInstruction* hlo) {
   int64_t cnt = 0;
   for (HloInstruction* user : hlo->users()) {
     if (user->opcode() == HloOpcode::kFusion) {
@@ -98,7 +98,7 @@ bool FusionNodeIndexingEvaluation::MaxCodeDuplicationTooHigh() const {
   return false;
 }
 
-int64 FusionNodeIndexingEvaluation::EvaluateEmittedInstructions(
+int64_t FusionNodeIndexingEvaluation::EvaluateEmittedInstructions(
     const HloInstruction* producer) const {
   int64_t total = 0;
   for (const auto* user : indexing_users_.at(producer)) {

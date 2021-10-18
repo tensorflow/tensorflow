@@ -53,7 +53,7 @@ void ConcatCPUImpl(
   auto worker_threads = d->tensorflow_cpu_worker_threads();
   int num_threads = std::min(4, worker_threads->num_threads);
   num_threads = static_cast<int>(
-      std::min<int64>(num_threads, estimated_total_cost / 16384));
+      std::min<int64_t>(num_threads, estimated_total_cost / 16384));
   // Single threaded mode.
   // TODO(dga):  Deduplicate this code w.r.t. sharded code below.
   if (num_threads == 0) {

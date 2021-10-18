@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -2368,7 +2369,7 @@ versions {
 
   // Helper method for checking nodes dependency.
   void ValidateDependencyChain(
-      const std::unordered_map<string, int64>& start_times,
+      const std::unordered_map<string, int64_t>& start_times,
       const std::vector<string>& nodes_in_dependency_order) {
     int64_t prev_node_time = -1;
     for (const auto& node : nodes_in_dependency_order) {
@@ -2436,12 +2437,13 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   EXPECT_EQ(1, stepstats.dev_stats().size());
 
   // Create a map of op name -> start and end times (micros).
-  std::map<string, std::pair<int64, int64>> start_end_times;
+  std::map<string, std::pair<int64_t, int64_t>> start_end_times;
   for (const auto& device_step_stats : stepstats.dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
       int64_t start = stats.all_start_micros();
       int64_t end = start + stats.all_end_rel_micros();
-      start_end_times[stats.node_name()] = std::pair<int64, int64>(start, end);
+      start_end_times[stats.node_name()] =
+          std::pair<int64_t, int64_t>(start, end);
 
       // Make sure that the output properties are correct for
       // MatMul and RandomUniform operations.
@@ -2462,10 +2464,10 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   }
 
   // The base start_time is the time to compute RandomUniforms
-  int64_t cur_time = static_cast<int64>(5000005);
+  int64_t cur_time = static_cast<int64_t>(5000005);
   // The increment is the execution time of one matmul. See
   // CreateGrapplerItemWithMatmulChain for details.
-  int64_t increment = static_cast<int64>(2000000);
+  int64_t increment = static_cast<int64_t>(2000000);
   auto op_names = {"ab", "abc", "abcd", "abcde"};
   for (const auto& op_name : op_names) {
     int64_t actual_start = start_end_times[op_name].first;
@@ -2585,6 +2587,38 @@ TEST_F(VirtualSchedulerTest, MemoryUsageForStreamingOps) {
   // should be zero.
   EXPECT_EQ(cpu_state_0.memory_usage, 0);
   EXPECT_EQ(cpu_state_1.memory_usage, 0);
+}
+
+TEST_F(VirtualSchedulerTest, MemoryUsageWithExecutionCount) {
+  // Init.
+  CreateGrapplerItemWithAddN();
+  auto& graph = grappler_item_->graph;
+  // Repeat execution for each node.
+  for (auto& node : *graph.mutable_node()) {
+    (*node.mutable_attr())[kExecutionCount].set_i(10000);
+  }
+
+  InitScheduler();
+
+  // Run the scheduler.
+  auto ops_executed = RunScheduler("");
+
+  const auto* device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state_0 = device_states->at(kCPU0);
+  // All tensors are of the same size, 10 x 10 x 10 x 10.
+  int64_t one_input_node_size = 4 * 10 * 10 * 10 * 10;
+  const std::vector<string> expected_names = {"x", "y", "z", "w", "add"};
+  // Max memory usage does not rely on the number of executions.
+  EXPECT_EQ(expected_names.size() * one_input_node_size,
+            cpu_state_0.max_memory_usage);
+  // After the graph is executed, at the end, memory usage for the device
+  // should be zero.
+  EXPECT_EQ(cpu_state_0.memory_usage, 0);
+
+  Costs c = scheduler_->Summary();
+  EXPECT_EQ(64, c.persistent_memory);
+  EXPECT_EQ(200000, c.temporary_memory);
+  EXPECT_EQ(200064, c.max_memory);
 }
 
 TEST_F(VirtualSchedulerTest, UnnecessaryFeedNodes) {
@@ -2748,7 +2782,7 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   int64_t exit_start_micro;
   int64_t exit_1_start_micro;
 
-  std::unordered_map<string, int64> start_times;
+  std::unordered_map<string, int64_t> start_times;
   for (const auto& device_step_stats : metadata.step_stats().dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
       start_times[stats.node_name()] = stats.all_start_micros();

@@ -121,7 +121,7 @@ Status GetTensorArrayShape(const XlaResource* resource,
 // relevant slice of 'operand'.
 xla::XlaOp DynamicAddSlice(xla::XlaBuilder* builder, const xla::XlaOp& operand,
                            const xla::XlaOp& update,
-                           absl::Span<const int64> update_dims,
+                           absl::Span<const int64_t> update_dims,
                            absl::Span<const xla::XlaOp> start_indices,
                            DataType dtype) {
   xla::XlaOp current = xla::DynamicSlice(operand, start_indices, update_dims);
@@ -273,7 +273,8 @@ class TensorArrayReadOp : public XlaOpKernel {
     xla::XlaOp read = xla::DynamicSlice(ta, start_indices, slice_shape);
 
     // Remove the leading '1' dimension.
-    std::vector<int64> value_shape(slice_shape.begin() + 1, slice_shape.end());
+    std::vector<int64_t> value_shape(slice_shape.begin() + 1,
+                                     slice_shape.end());
     ctx->SetOutput(0, xla::Reshape(read, value_shape));
   }
 
@@ -312,7 +313,7 @@ class TensorArrayGatherOp : public XlaOpKernel {
 
     // Look for the case where the gather takes a simple slice from the
     // tensor array (0, 1, 2, 3, 4, ..., N)
-    std::vector<int64> const_indices;
+    std::vector<int64_t> const_indices;
     Status status = ctx->ConstantInputAsIntVector(1, &const_indices);
     if (status.ok()) {
       bool gather_is_dense_slice = true;
@@ -324,9 +325,9 @@ class TensorArrayGatherOp : public XlaOpKernel {
       }
 
       if (gather_is_dense_slice) {
-        std::vector<int64> begin(ta_shape.dims(), 0);
-        std::vector<int64> strides(ta_shape.dims(), 1);
-        std::vector<int64> end(ta_shape.dims(), 1);
+        std::vector<int64_t> begin(ta_shape.dims(), 0);
+        std::vector<int64_t> strides(ta_shape.dims(), 1);
+        std::vector<int64_t> end(ta_shape.dims(), 1);
         end[0] = const_indices.size();
         for (auto i = 1; i < ta_shape.dims(); i++) {
           end[i] = ta_shape.dim_size(i);
@@ -383,7 +384,7 @@ class TensorArrayScatterOp : public XlaOpKernel {
     // Look for the case where the scatter is for each sub-tensor in order. The
     // tensor array implementation allows for this to be a straight addition.
     bool scatter_all_elements_in_order = false;
-    std::vector<int64> const_indices;
+    std::vector<int64_t> const_indices;
     Status status = ctx->ConstantInputAsIntVector(1, &const_indices);
     if (status.ok() && num_indices == value_shape.dim_size(0)) {
       scatter_all_elements_in_order = true;
@@ -405,10 +406,10 @@ class TensorArrayScatterOp : public XlaOpKernel {
       auto slice_dims = value_shape.dim_sizes();
       slice_dims[0] = 1LL;
 
-      std::vector<int64> value_starts(value_shape.dims(), 0);
+      std::vector<int64_t> value_starts(value_shape.dims(), 0);
       auto value_ends = value_shape.dim_sizes();
 
-      std::vector<int64> value_strides(value_shape.dims(), 1);
+      std::vector<int64_t> value_strides(value_shape.dims(), 1);
 
       // For every (index, value) pair, update the corresponding TensorArray
       // storage.
@@ -459,12 +460,12 @@ class TensorArrayConcatOp : public XlaOpKernel {
     xla::XlaOp ta = resource->value();
 
     auto ta_dims = ta_shape.dim_sizes();
-    std::vector<int64> shape(ta_dims.begin() + 1, ta_dims.end());
+    std::vector<int64_t> shape(ta_dims.begin() + 1, ta_dims.end());
     shape[0] *= ta_shape.dim_size(0);
     ctx->SetOutput(0, xla::Reshape(ta, shape));
 
     Tensor lengths(DT_INT64, {ta_dims[0]});
-    auto lengths_vec = lengths.vec<int64>();
+    auto lengths_vec = lengths.vec<int64_t>();
     for (int i = 0; i < ta_dims[0]; ++i) {
       lengths_vec(i) = ta_dims[1];
     }
@@ -486,7 +487,7 @@ class TensorArraySplitOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    std::vector<int64> lengths;
+    std::vector<int64_t> lengths;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &lengths));
 
     int64_t length = 0;

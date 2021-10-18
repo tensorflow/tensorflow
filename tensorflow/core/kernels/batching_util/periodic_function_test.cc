@@ -151,7 +151,7 @@ TEST(PeriodicFunctionTest, MinInterval) {
 
 class PeriodicFunctionWithFakeClockEnvTest : public ::testing::Test {
  protected:
-  const int64 kPeriodMicros = 50;
+  const int64_t kPeriodMicros = 50;
   PeriodicFunctionWithFakeClockEnvTest()
       : fake_clock_env_(Env::Default()),
         counter_(0),

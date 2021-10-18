@@ -50,7 +50,7 @@ class SnappyInputStream : public InputStreamInterface {
   Status ReadNBytes(int64_t bytes_to_read, absl::Cord* result) override;
 #endif
 
-  int64 Tell() const override;
+  int64_t Tell() const override;
 
   Status Reset() override;
 
@@ -67,7 +67,7 @@ class SnappyInputStream : public InputStreamInterface {
   const bool owns_input_stream_;
 
   // Specifies the number of decompressed bytes currently read.
-  int64 bytes_read_;
+  int64_t bytes_read_;
 
   // output_buffer_ contains decompressed data not yet read by the client.
   std::unique_ptr<char[]> output_buffer_;

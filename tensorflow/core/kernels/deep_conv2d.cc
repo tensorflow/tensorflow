@@ -45,9 +45,10 @@ namespace tensorflow {
 // start of the DeepConv2D call, based on convolution parameters.
 
 // Approximate cost models for direct and deep convolutions.
-static int64 GetDeepConvCost(int input_tile_rows, int input_tile_cols,
-                             int out_tile_rows, int out_tile_cols, int in_depth,
-                             int out_depth, int out_rows, int out_cols) {
+static int64_t GetDeepConvCost(int input_tile_rows, int input_tile_cols,
+                               int out_tile_rows, int out_tile_cols,
+                               int in_depth, int out_depth, int out_rows,
+                               int out_cols) {
   // Input transform cost.
   const int64_t input_tile_spatial_size = input_tile_rows * input_tile_cols;
   const int64_t input_transform_cost =
@@ -71,8 +72,8 @@ static int64 GetDeepConvCost(int input_tile_rows, int input_tile_cols,
          (input_transform_cost + product_cost + output_transform_cost);
 }
 
-static int64 GetDirectConvCost(int filter_rows, int filter_cols, int in_depth,
-                               int out_depth, int out_rows, int out_cols) {
+static int64_t GetDirectConvCost(int filter_rows, int filter_cols, int in_depth,
+                                 int out_depth, int out_rows, int out_cols) {
   return filter_rows * filter_cols * in_depth * out_depth * out_rows * out_cols;
 }
 
@@ -298,11 +299,11 @@ struct TransformFilterRange {
 
     // Compute number of filter shards.
     const int64_t residual_row =
-        std::max(int64{0}, args.filter_rows - base_filter_rows);
+        std::max(int64_t{0}, args.filter_rows - base_filter_rows);
     const int64_t shard_rows = 1 + (residual_row + 2 - 1) / 2;
 
     const int64_t residual_col =
-        std::max(int64{0}, args.filter_cols - base_filter_cols);
+        std::max(int64_t{0}, args.filter_cols - base_filter_cols);
     const int64_t shard_cols = 1 + (residual_col + 2 - 1) / 2;
 
     // Compute strides to be used for input and output IO.
@@ -423,7 +424,7 @@ struct TransformFilters {
 
     // Remove fixed cost and divide by per-filter cost.
     const int64_t num_filters_cache =
-        std::max(int64{1},
+        std::max(int64_t{1},
                  (cache_size - filter_transform_matrix_size) / per_filter_cost);
     const int64_t num_filters_transform =
         std::min(out_depth, num_filters_cache);
@@ -504,11 +505,11 @@ struct TransformFilters {
 template <typename T>
 class GemmFilterPacker {
  public:
-  typedef Eigen::internal::const_blas_data_mapper<T, int64, Eigen::RowMajor>
+  typedef Eigen::internal::const_blas_data_mapper<T, int64_t, Eigen::RowMajor>
       LhsMapper;
   typedef Eigen::internal::gebp_traits<T, T> Traits;
   Eigen::internal::gemm_pack_lhs<
-      T, int64, LhsMapper, Traits::mr, Traits::LhsProgress,
+      T, int64_t, LhsMapper, Traits::mr, Traits::LhsProgress,
       typename Traits::LhsPacket4Packing, Eigen::RowMajor>
       pack_lhs;
 
@@ -522,8 +523,8 @@ class GemmFilterPacker {
   void Run() { pack_lhs(lhs_block_, lhs_mapper_, depth_, rows_); }
 
  private:
-  const int64 rows_;
-  const int64 depth_;
+  const int64_t rows_;
+  const int64_t depth_;
   T* lhs_block_;
   LhsMapper lhs_mapper_;
 };
@@ -583,16 +584,16 @@ struct PackFilters {
 template <typename T>
 class GemmState {
  public:
-  typedef Eigen::internal::const_blas_data_mapper<T, int64, Eigen::ColMajor>
+  typedef Eigen::internal::const_blas_data_mapper<T, int64_t, Eigen::ColMajor>
       RhsMapper;
-  typedef Eigen::internal::blas_data_mapper<T, int64, Eigen::ColMajor>
+  typedef Eigen::internal::blas_data_mapper<T, int64_t, Eigen::ColMajor>
       OutputMapper;
   typedef Eigen::internal::gebp_traits<T, T> Traits;
 
-  Eigen::internal::gemm_pack_rhs<T, int64, RhsMapper, Traits::nr,
+  Eigen::internal::gemm_pack_rhs<T, int64_t, RhsMapper, Traits::nr,
                                  Eigen::ColMajor>
       pack_rhs;
-  Eigen::internal::gebp_kernel<T, T, int64, OutputMapper, Traits::mr,
+  Eigen::internal::gebp_kernel<T, T, int64_t, OutputMapper, Traits::mr,
                                Traits::nr, false, false>
       gebp;
 
@@ -617,10 +618,10 @@ class GemmState {
   }
 
  private:
-  const int64 rows_;
-  const int64 cols_;
-  const int64 depth_;
-  const int64 out_buffer_size_;
+  const int64_t rows_;
+  const int64_t cols_;
+  const int64_t depth_;
+  const int64_t out_buffer_size_;
   const T* lhs_block_;
   T* rhs_block_;
   T* out_buffer_;
@@ -867,9 +868,9 @@ struct Conv2DState {
         packed_tile_buffer(packed_tile_buffer),
         gemm_output_buffer(gemm_output_buffer) {}
 
-  const int64 tile_spatial_size;
-  const int64 filter_shards_row;
-  const int64 filter_shards_col;
+  const int64_t tile_spatial_size;
+  const int64_t filter_shards_row;
+  const int64_t filter_shards_col;
   const T* input;
   const T* tile_transform_matrix;
   const T* output_transform_matrix;
@@ -967,11 +968,11 @@ struct DeepConv2D<CPUDevice, T> {
     const int64_t base_filter_rows = transform->filter_shape().rows;
 
     const int64_t filter_residual_row =
-        std::max(int64{0}, args.filter_rows - base_filter_rows);
+        std::max(int64_t{0}, args.filter_rows - base_filter_rows);
     const int64_t filter_shards_row = 1 + (filter_residual_row + 2 - 1) / 2;
 
     const int64_t filter_residual_col =
-        std::max(int64{0}, args.filter_cols - base_filter_rows);
+        std::max(int64_t{0}, args.filter_cols - base_filter_rows);
     const int64_t filter_shards_col = 1 + (filter_residual_col + 2 - 1) / 2;
 
     // Allocate buffer for transformed filters.

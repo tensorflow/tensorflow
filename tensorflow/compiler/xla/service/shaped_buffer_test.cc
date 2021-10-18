@@ -91,7 +91,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
   }
 
  private:
-  std::set<std::pair</*device_ordinal*/ int64, void*>> allocations_;
+  std::set<std::pair</*device_ordinal*/ int64_t, void*>> allocations_;
 };
 
 TEST(ScopedShapedBufferTest, TestMoveAssignmentOperator) {

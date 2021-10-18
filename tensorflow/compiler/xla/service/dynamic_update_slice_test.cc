@@ -172,7 +172,7 @@ ENTRY main {
   Literal indices =
       Literal::CreateFromShape(ShapeUtil::MakeShape(S32, {8, 2, 4}));
   indices
-      .Populate<int>([&](absl::Span<const int64> indices) -> int {
+      .Populate<int>([&](absl::Span<const int64_t> indices) -> int {
         auto i = indices[2] + indices[1] * 4 + indices[0] * 2 * 4;
         switch (indices[2]) {
           case 0:

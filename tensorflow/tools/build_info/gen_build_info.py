@@ -14,10 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 """Generates a Python module containing information about the build."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 
 import six
@@ -80,10 +76,6 @@ def write_build_info(filename, key_value_list):
 # limitations under the License.
 # ==============================================================================
 \"\"\"Auto-generated module providing information about the build.\"\"\"
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 build_info = collections.OrderedDict(%s)

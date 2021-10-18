@@ -24,10 +24,6 @@ by jax2tf. Hence, we need to maintain backwards compatibility for these
 operators. Please reach out to the JAX team if you want to make changes.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import constant_op
@@ -512,8 +508,12 @@ sharding = gen_xla_ops.xla_sharding
 
 @ops.RegisterGradient("XlaSharding")
 def _sharding_grad(op, grad):
+  """Gradient for XlaSharding op."""
   sharding_attr = op.get_attr("sharding")
-  grad_sharding = gen_xla_ops.xla_sharding(grad, sharding=sharding_attr)
+  grad_sharding = gen_xla_ops.xla_sharding(
+      grad,
+      sharding=sharding_attr,
+      unspecified_dims=op.get_attr("unspecified_dims"))
   # pylint: disable=protected-access
   grad_sharding.op._set_attr("_XlaSharding",
                              attr_value_pb2.AttrValue(s=sharding_attr))
@@ -529,14 +529,19 @@ def _spmd_full_to_shard_shape_grad(op, grad):
   s2f = gen_xla_ops.xla_spmd_shard_to_full_shape(
       grad,
       manual_sharding=op.get_attr("manual_sharding"),
-      full_shape=op.inputs[0].shape.as_list())
+      full_shape=op.inputs[0].shape.as_list(),
+      dim=op.get_attr("dim"),
+      unspecified_dims=op.get_attr("unspecified_dims"))
   return [s2f]
 
 
 @ops.RegisterGradient("XlaSpmdShardToFullShape")
 def _spmd_shard_to_full_shape_grad(op, grad):
   f2s = gen_xla_ops.xla_spmd_full_to_shard_shape(
-      grad, manual_sharding=op.get_attr("manual_sharding"))
+      grad,
+      manual_sharding=op.get_attr("manual_sharding"),
+      dim=op.get_attr("dim"),
+      unspecified_dims=op.get_attr("unspecified_dims"))
   return [f2s]
 
 

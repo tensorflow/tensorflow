@@ -40,7 +40,7 @@ namespace tensorflow {
 
 class Stack : public ResourceBase {
  public:
-  static std::atomic<int64> stack_counter;
+  static std::atomic<int64_t> stack_counter;
 
   struct TensorAndAllocation {
     Tensor tensor;
@@ -151,7 +151,7 @@ Status GetStack(OpKernelContext* ctx, Stack** stack) {
   }
 }
 
-std::atomic<int64> Stack::stack_counter{0};
+std::atomic<int64_t> Stack::stack_counter{0};
 
 // StackOp
 

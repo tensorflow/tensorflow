@@ -87,19 +87,15 @@ REGISTER_COMPLEX_CPU_UNSORTED_KERNELS_ALL(complex128);
 // sum is the only op that supports all input types currently
 #define REGISTER_REAL_GPU_UNSORTED_KERNELS(type, index_type)                   \
   REGISTER_GPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentMax", type, index_type,  \
-                                      functor::Lowest<type>,                   \
-                                      functor::AtomicMaxOpGpu<type>);          \
+                                      functor::Lowest<type>, functor::Max);    \
   REGISTER_GPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentMin", type, index_type,  \
-                                      functor::Highest<type>,                  \
-                                      functor::AtomicMinOpGpu<type>);          \
+                                      functor::Highest<type>, functor::Min);   \
   REGISTER_GPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentProd", type, index_type, \
-                                      functor::One<type>,                      \
-                                      functor::AtomicProdOpGpu<type>);
+                                      functor::One<type>, functor::Prod);
 
 #define REGISTER_SUM_GPU_UNSORTED_KERNELS(type, index_type)                   \
   REGISTER_GPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentSum", type, index_type, \
-                                      functor::Zero<type>,                    \
-                                      functor::AtomicSumOpGpu<type>);
+                                      functor::Zero<type>, functor::Sum);
 
 #define REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL(type) \
   REGISTER_REAL_GPU_UNSORTED_KERNELS(type, int32)

@@ -979,8 +979,7 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   auto binary_programs_fb_vec = builder->CreateVector(binary_programs_fb);
 
   std::vector<flatbuffers::Offset<data::TensorDescWithId>> tensors_fb;
-  auto tensors = inference.tensor_reserver_.GetTensorDescs();
-  for (const auto& tensor : tensors) {
+  for (const auto& tensor : inference.tensors_descs_) {
     auto tensor_fb = Encode(tensor.second, tensor.first, builder);
     tensors_fb.push_back(tensor_fb);
   }
@@ -1008,12 +1007,6 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   data::InferenceContextBuilder inf_builder(*builder);
   inf_builder.add_driver_version(driver_version);
   inf_builder.add_binary_programs(binary_programs_fb_vec);
-  inf_builder.add_need_flush(inference.need_flush_);
-  inf_builder.add_flush_periodically(inference.flush_periodically_);
-  inf_builder.add_flush_period(inference.flush_period_);
-  inf_builder.add_need_manual_release(inference.need_manual_release_);
-  inf_builder.add_precision(ToFB(inference.precision_));
-  inf_builder.add_storage_type(tflite::gpu::ToFB(inference.storage_type_));
   inf_builder.add_nodes(nodes_fb_vec);
   inf_builder.add_tensors(tensors_fb_vec);
   inf_builder.add_const_tensors(const_tensors_fb_vec);
@@ -1036,12 +1029,6 @@ absl::Status Decode(const CLContext& context, const CLDevice& device,
         "OpenCL driver changed, model respresentation invalid, must be "
         "regenerated.");
   }
-  inference->need_flush_ = fb_inference->need_flush();
-  inference->flush_periodically_ = fb_inference->flush_periodically();
-  inference->flush_period_ = fb_inference->flush_period();
-  inference->need_manual_release_ = fb_inference->need_manual_release();
-  inference->precision_ = ToEnum(fb_inference->precision());
-  inference->storage_type_ = tflite::gpu::ToEnum(fb_inference->storage_type());
 
   for (auto binary_program_fb : *fb_inference->binary_programs()) {
     RETURN_IF_ERROR(program_cache->AddProgramBinary(
@@ -1058,13 +1045,11 @@ absl::Status Decode(const CLContext& context, const CLDevice& device,
     counter++;
   }
 
-  std::vector<std::pair<ValueId, TensorDescriptor>> tensors;
   for (const auto& tensor_fb : *fb_inference->tensors()) {
     TensorDescriptor desc;
     Decode(tensor_fb->desc(), &desc);
-    tensors.push_back({tensor_fb->id(), std::move(desc)});
+    inference->tensors_descs_[tensor_fb->id()] = std::move(desc);
   }
-  inference->tensor_reserver_.Add(tensors);
   for (const auto& tensor_fb : *fb_inference->const_tensors()) {
     TensorDescriptor desc;
     Decode(tensor_fb->desc(), &desc);

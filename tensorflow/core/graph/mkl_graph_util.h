@@ -196,31 +196,67 @@ static inline void BF16UnsupportedWarning() {
 }
 
 // Check whether opname with type T is registered as MKL operator
-// that can accept input tensors in MKL layout.
+// that will go through name change or layout change pass.
 //
 // @input: name of the op
 // @input: T datatype to be used for checking op
-// @return: true if opname is registered as Mkl-layout dependent op;
-// false otherwise
-static inline bool IsMklLayoutDependentOp(const string& op_name, DataType T) {
-  string kernel = KernelsRegisteredForOp(op_name);
+// @return: true if opname is registered as MKL op that will go through name
+// change or layout change pass; false otherwise
+static inline bool IsMklOp(const string& op_name, DataType T,
+                           bool is_native_op) {
+  string label = is_native_op ? kMklNameChangeOpLabelPattern
+                              : kMklLayoutDependentOpLabelPattern;
+  string registered_kernels_key = op_name + label + std::to_string(T);
+  thread_local static auto* registered_kernels_map =
+      new absl::flat_hash_map<string, bool>();
+  auto kernel_element = registered_kernels_map->find(registered_kernels_key);
+  bool kernel_registered = false;
 
-  // Restrict regular ops to FLOAT and BFLOAT16
-  if (kernel.find(kMklLayoutDependentOpLabelPattern) != string::npos) {
-    if (T == DT_FLOAT) return true;
-    if (T == DT_BFLOAT16) {
-      if (IsBF16SupportedByOneDNNOnThisCPU()) {
-        return true;
-      } else {
-        // Restrict bfloat16 ops to platforms with at least AVX512 support, fall
-        // back to Eigen implementation otherwise.
-        BF16UnsupportedWarning();
-        return false;
+  if (kernel_element == registered_kernels_map->end()) {
+    string registered_kernels = KernelsRegisteredForOp(op_name);
+    // String returned by KernelsRegisteredForOp looks like below:
+    //
+    // Op = _MklMatMul, kernels =
+    // device='CPU'; label='MklNameChangeOp'; T in [DT_COMPLEX128]
+    // device='CPU'; label='MklNameChangeOp'; T in [DT_COMPLEX64]
+    // device='CPU'; label='MklNameChangeOp'; T in [DT_DOUBLE]
+    // device='CPU'; label='MklNameChangeOp'; T in [DT_FLOAT]
+
+    if (is_native_op &&
+        registered_kernels.find(kMklQuantizedOpLabelPattern) != string::npos) {
+      // Restrict quantized ops to QUINT8, QINT8 and DT_QINT32
+      kernel_registered = (T == DT_QUINT8 || T == DT_QINT8 || T == DT_QINT32);
+    }
+
+    // Now we just construct a search string to match what we are looking for.
+    string search_string =
+        label + string("; T in [") + DataType_Name(T) + string("]");
+
+    if (registered_kernels.find(search_string) != string::npos) {
+      kernel_registered = is_native_op
+                              ? (T == DT_COMPLEX128 || T == DT_COMPLEX64 ||
+                                 T == DT_DOUBLE || T == DT_FLOAT)
+                              : T == DT_FLOAT;
+      if (!kernel_registered) {
+        if (T == DT_BFLOAT16) {
+          if (IsBF16SupportedByOneDNNOnThisCPU()) {
+            kernel_registered = true;
+          } else {
+            // Restrict bfloat16 ops to platforms with at least AVX512 support,
+            // fall back to Eigen implementation otherwise.
+            BF16UnsupportedWarning();
+            kernel_registered = false;
+          }
+        }
       }
     }
-    return false;
+    registered_kernels_map->insert(
+        std::make_pair(registered_kernels_key, kernel_registered));
+  } else {
+    // Kernel is visited at least once. Return stored registration result.
+    kernel_registered = kernel_element->second;
   }
-  return false;
+  return kernel_registered;
 }
 
 // TODO(mdfaijul): QuantizedConv2D is registered with input: QUINT8
@@ -228,64 +264,9 @@ static inline bool IsMklLayoutDependentOp(const string& op_name, DataType T) {
 // and then it is replaced by an actual kernel.
 static inline bool IsMklQuantizedOp(const string& op_name, DataType Tinput,
                                     DataType Tfilter) {
-  string kernel = KernelsRegisteredForOp(op_name);
-
   // Restrict quantized ops to QUINT8 and QINT8 for now
-  if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
+  if (IsMklOp(op_name, Tinput, kMklQuantizedOpLabelPattern)) {
     return (Tfilter == DT_QINT8);
-  }
-  return false;
-}
-
-// Check whether opname with type T is registered as an MKL operator that
-// will go through name change.
-//
-// @input: name of the op
-// @input: T datatype to be used for checking op
-// @return: true if opname is registered as MKL op that will go through name
-// change; false otherwise
-static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
-  string kernel = KernelsRegisteredForOp(op_name);
-  // String returned by KernelsRegisteredForOp looks like below:
-  //
-  // Op = _MklMatMul, kernels =
-  // device='CPU'; label='MklNameChangeOp'; T in [DT_COMPLEX128]
-  // device='CPU'; label='MklNameChangeOp'; T in [DT_COMPLEX64]
-  // device='CPU'; label='MklNameChangeOp'; T in [DT_DOUBLE]
-  // device='CPU'; label='MklNameChangeOp'; T in [DT_FLOAT]
-
-  if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
-    // Restrict quantized ops to QUINT8, QINT8 and DT_QINT32
-    return (T == DT_QUINT8 || T == DT_QINT8 || T == DT_QINT32);
-  }
-
-  // Now we just construct a search string to match what we are looking for.
-  string search_string = kMklNameChangeOpLabelPattern;
-  search_string += string(";") + string(" T in [");
-  search_string += DataType_Name(T) + string("]");
-
-  // Temporarily replacing earlier check by adding a type-specific check so
-  // that we can selectively decide which type is supported by MKL operators.
-  // That way kernel registration does not decide which operators we support.
-  // We are using this change to temporarily disable BFLOAT16 support. Once
-  // we want to enable it, we will go back to earlier check.
-  bool isTypeAllowed = false;
-  if (kernel.find(search_string) != string::npos) {
-    isTypeAllowed = (T == DT_COMPLEX128 || T == DT_COMPLEX64 ||
-                     T == DT_DOUBLE || T == DT_FLOAT);
-    if (!isTypeAllowed) {
-      if (T == DT_BFLOAT16) {
-        if (IsBF16SupportedByOneDNNOnThisCPU()) {
-          isTypeAllowed = true;
-        } else {
-          // Restrict bfloat16 ops to platforms with at least AVX512 support,
-          // fall back to Eigen implementation otherwise.
-          BF16UnsupportedWarning();
-          isTypeAllowed = false;
-        }
-      }
-    }
-    return isTypeAllowed;
   }
   return false;
 }
@@ -294,7 +275,7 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
 // will either understand input tensors in MKL layout or will go through name
 // rewrite that some operators go through.
 static inline bool IsMklOp(const string& op_name, DataType T) {
-  return IsMklLayoutDependentOp(op_name, T) || IsMklNameChangeOp(op_name, T);
+  return IsMklOp(op_name, T, true) || IsMklOp(op_name, T, false);
 }
 
 static inline bool IsMklOp(const Node* n) {

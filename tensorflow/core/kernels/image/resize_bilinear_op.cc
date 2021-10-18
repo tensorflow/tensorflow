@@ -79,8 +79,8 @@ class ResizeBilinearOp : public OpKernel {
 namespace {
 // Compute the interpolation indices only once.
 struct CachedInterpolation {
-  int64 lower;  // Lower source index used in the interpolation
-  int64 upper;  // Upper source index used in the interpolation
+  int64_t lower;  // Lower source index used in the interpolation
+  int64_t upper;  // Upper source index used in the interpolation
   // 1-D linear interpolation scale (see:
   // https://en.wikipedia.org/wiki/Bilinear_interpolation)
   float lerp;
@@ -98,9 +98,9 @@ inline void compute_interpolation_weights(const Scaler scaler,
     const float in = scaler(i, scale);
     const float in_f = std::floor(in);
     interpolation[i].lower =
-        std::max(static_cast<int64>(in_f), static_cast<int64>(0));
+        std::max(static_cast<int64_t>(in_f), static_cast<int64_t>(0));
     interpolation[i].upper =
-        std::min(static_cast<int64>(std::ceil(in)), in_size - 1);
+        std::min(static_cast<int64_t>(std::ceil(in)), in_size - 1);
     interpolation[i].lerp = in - in_f;
   }
 }

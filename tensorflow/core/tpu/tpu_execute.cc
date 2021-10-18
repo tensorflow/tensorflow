@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -57,6 +58,7 @@ namespace {
 
 using ::tensorflow::tpu::TpuNodeContext;
 
+// These are placeholders for absl flags.
 static bool tpu_cancellation_terminates_process = false;
 static bool tpu_cancellation_closes_chips = true;
 
@@ -115,7 +117,7 @@ xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) {
   return device_shape;
 }
 
-int64 ShapeSizeCompact(const xla::Shape& shape) {
+int64_t ShapeSizeCompact(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
   int64_t size =
@@ -124,7 +126,7 @@ int64 ShapeSizeCompact(const xla::Shape& shape) {
   return size;
 }
 
-int64 ShapeSizeCompactRaw(const xla::Shape& shape) {
+int64_t ShapeSizeCompactRaw(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
   int64_t size =

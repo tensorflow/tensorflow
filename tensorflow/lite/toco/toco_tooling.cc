@@ -486,7 +486,8 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
           toco_flags.force_select_tf_ops() || toco_flags.enable_select_tf_ops();
       params.allow_custom_ops = allow_custom_ops;
       params.allow_dynamic_tensors = toco_flags.allow_dynamic_tensors();
-
+      params.disable_per_channel =
+          toco_flags.disable_per_channel_quantization();
       if (toco_flags.post_training_quantize()) {
         if (toco_flags.quantize_to_float16()) {
           params.quantize_weights = tflite::QuantizedBufferType::FLOAT16;

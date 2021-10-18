@@ -32,11 +32,11 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
+using ::int64_t;
 using mlir::IntegerType;
 using mlir::MemRefType;
 using mlir::RankedTensorType;
 using mlir::VectorType;
-using tensorflow::int64;
 using xla::PrimitiveType;
 using xla::ShapeUtil;
 
@@ -108,13 +108,15 @@ Shape TypeToShape(mlir::Type type) {
         << "lowering should have been handled by primitive type lowering for "
         << debugString(type);
   } else if (auto v = type.dyn_cast<mlir::VectorType>()) {
-    llvm::SmallVector<int64, 4> span(v.getShape().begin(), v.getShape().end());
+    llvm::SmallVector<int64_t, 4> span(v.getShape().begin(),
+                                       v.getShape().end());
     mlir::Type element_type = v.getElementType();
     PrimitiveType primitive_type = TypeToPrimitiveType(element_type);
     if (primitive_type != PrimitiveType::PRIMITIVE_TYPE_INVALID)
       return ShapeUtil::MakeShape(primitive_type, span);
   } else if (auto m = type.dyn_cast<mlir::MemRefType>()) {
-    llvm::SmallVector<int64, 6> span(m.getShape().begin(), m.getShape().end());
+    llvm::SmallVector<int64_t, 6> span(m.getShape().begin(),
+                                       m.getShape().end());
     mlir::Type element_type = m.getElementType();
     // Treat a memref of a vector as if it was a memref of primitive type with
     // the vector dimensions at the end.
@@ -142,7 +144,7 @@ Shape TypeToShape(mlir::Type type) {
       std::stable_sort(strides_with_indices.begin(),
                        strides_with_indices.end());
 
-      llvm::SmallVector<int64, 4> minor_to_major;
+      llvm::SmallVector<int64_t, 4> minor_to_major;
       int64_t stride = 1;
       for (const auto& pr : strides_with_indices) {
         minor_to_major.push_back(pr.second);
@@ -154,15 +156,16 @@ Shape TypeToShape(mlir::Type type) {
         stride *= m.getShape()[pr.second];
       }
 
-      llvm::SmallVector<int64, 4> dimensions(m.getShape().begin(),
-                                             m.getShape().end());
+      llvm::SmallVector<int64_t, 4> dimensions(m.getShape().begin(),
+                                               m.getShape().end());
       return ::xla::ShapeUtil::MakeShapeWithLayout(primitive_type, dimensions,
                                                    minor_to_major);
     }
   } else if (auto t = type.dyn_cast<mlir::RankedTensorType>()) {
     // TODO(jpienaar): This is only handling the base case with primitive
     // element type.
-    llvm::SmallVector<int64, 4> span(t.getShape().begin(), t.getShape().end());
+    llvm::SmallVector<int64_t, 4> span(t.getShape().begin(),
+                                       t.getShape().end());
     // Only fully static shapes are supported.
     // TODO(b/115638799): Update once xla::Shape can support dynamic shapes.
     if (std::find(t.getShape().begin(), t.getShape().end(), -1) !=

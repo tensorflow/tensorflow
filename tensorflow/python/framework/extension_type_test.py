@@ -15,11 +15,14 @@
 """Tests for tf.framework.extension_type."""
 
 import contextlib
+import copy
+import pickle
 import tempfile
 import typing
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -28,9 +31,13 @@ from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import extension_type_field
 from tensorflow.python.framework import immutable_dict
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.saving import save as keras_save
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -46,10 +53,14 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
 
+POSITIONAL_OR_KEYWORD = tf_inspect.Parameter.POSITIONAL_OR_KEYWORD
+KEYWORD_ONLY = tf_inspect.Parameter.KEYWORD_ONLY
+
+
 class MaskedTensorV1(extension_type.ExtensionType):
   """Example subclass of ExtensionType, used for testing."""
   values: ops.Tensor
-  mask: tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)
+  mask: ops.Tensor
 
 
 class MaskedTensorV2(extension_type.ExtensionType):
@@ -62,7 +73,7 @@ class MaskedTensorV2(extension_type.ExtensionType):
   __name__ = 'tf.test.MaskedTensorV2'
 
   values: ops.Tensor
-  mask: tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)
+  mask: ops.Tensor
 
   def __repr__(self):
     if hasattr(self.values, 'numpy') and hasattr(self.mask, 'numpy'):
@@ -108,6 +119,44 @@ def _masked_array_repr(values, mask):
   return '[%s]' % ', '.join(items)
 
 
+class MaskedTensorV3(extension_type.BatchableExtensionType):
+  """Example subclass of ExtensionType, used for testing.
+
+  This version adds Keras required properties to MaskedTensor and its Spec
+  class, to test Keras integration.
+  """
+  __name__ = 'tf.test.MaskedTensorV3.Spec'
+
+  values: typing.Union[ops.Tensor, ragged_tensor.RaggedTensor]
+  mask: typing.Union[ops.Tensor, ragged_tensor.RaggedTensor]
+
+  def __init__(self, values, mask):
+    if isinstance(values, ragged_tensor.RaggedTensor):
+      assert isinstance(mask, ragged_tensor.RaggedTensor)
+      assert mask.dtype == dtypes.bool
+    else:
+      values = ops.convert_to_tensor(values)
+      mask = ops.convert_to_tensor(mask, dtypes.bool)
+    self.values = values
+    self.mask = mask
+
+  # Required by assert_input_compatibility in keras/engine/input_spec.py
+  @property
+  def shape(self):
+    return self.values.shape
+
+  @property
+  def dtype(self):
+    return self.values.dtype
+
+  class Spec:
+
+    # Required by KerasTensor.shape in keras/engine/keras_tensor.py
+    @property
+    def _shape(self):
+      return self.values._shape
+
+
 class ForwardRefA(extension_type.ExtensionType):
   x: typing.Tuple[typing.Union['ForwardRefA', 'ForwardRefB'], ...]
   y: 'ForwardRefB'
@@ -116,6 +165,11 @@ class ForwardRefA(extension_type.ExtensionType):
 class ForwardRefB(extension_type.ExtensionType):
   z: 'ForwardRefB'
   n: ops.Tensor
+
+
+class ExtensionTypeWithTensorDefault(extension_type.ExtensionType):
+  x: ops.Tensor = 5
+  y: ops.Tensor = ['a', 'b', 'c']
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -136,14 +190,20 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     mt2 = extension_type.pack(mt1)
 
     for mt in [mt1, mt2]:
-      with self.assertRaisesRegex(AttributeError,
-                                  "cannot assign to field 'score'"):
+      with self.assertRaisesRegex(
+          AttributeError,
+          'Cannot mutate attribute `score` outside the custom constructor of ExtensionType'
+      ):
         mt.score = 12
-      with self.assertRaisesRegex(AttributeError,
-                                  "cannot assign to field 'values'"):
+      with self.assertRaisesRegex(
+          AttributeError,
+          'Cannot mutate attribute `values` outside the custom constructor of ExtensionType'
+      ):
         mt.values = constant_op.constant([4, 3, 2, 1])
-      with self.assertRaisesRegex(AttributeError,
-                                  "cannot delete field 'values'"):
+      with self.assertRaisesRegex(
+          AttributeError,
+          'Cannot mutate attribute `values` outside the custom constructor of ExtensionType'
+      ):
         del mt.values
 
   def testClassAndStaticMethod(self):
@@ -174,29 +234,53 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     class MyType(extension_type.ExtensionType):
       x: ops.Tensor
-      y: tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)
+      y: ops.Tensor
       z: typing.Tuple[typing.Union[int, str], ...] = [1, 'two', 3]
 
     expected_parameters = [
-        tf_inspect.Parameter('self',
-                             tf_inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        tf_inspect.Parameter(
-            'x',
-            tf_inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            annotation=ops.Tensor),
-        tf_inspect.Parameter(
-            'y',
-            tf_inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            annotation=tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)),
+        tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('x', POSITIONAL_OR_KEYWORD, annotation=ops.Tensor),
+        tf_inspect.Parameter('y', POSITIONAL_OR_KEYWORD, annotation=ops.Tensor),
         tf_inspect.Parameter(
             'z',
-            tf_inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            POSITIONAL_OR_KEYWORD,
             annotation=typing.Tuple[typing.Union[int, str], ...],
             default=(1, 'two', 3)),
     ]
     expected_sig = tf_inspect.Signature(
         expected_parameters, return_annotation=MyType)
     self.assertEqual(expected_sig, tf_inspect.signature(MyType.__init__))
+
+  def testConstructorSignatureWithKeywordOnlyArgs(self):
+
+    class MyType(extension_type.ExtensionType):
+      a: int
+      b: str = 'Hello world'
+      c: ops.Tensor
+
+    expected_parameters = [
+        tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('a', POSITIONAL_OR_KEYWORD, annotation=int),
+        tf_inspect.Parameter(
+            'b', POSITIONAL_OR_KEYWORD, annotation=str, default='Hello world'),
+        tf_inspect.Parameter('c', KEYWORD_ONLY, annotation=ops.Tensor),
+    ]
+    expected_sig = tf_inspect.Signature(
+        expected_parameters, return_annotation=MyType)
+    self.assertEqual(expected_sig, tf_inspect.signature(MyType.__init__))
+
+  def testConstructorSignatureWithDefaultForTensorField(self):
+    a = ExtensionTypeWithTensorDefault()
+
+    # Check that the default values were *not* converted to Tensors:
+    sig = tf_inspect.signature(ExtensionTypeWithTensorDefault.__init__)
+    self.assertIsInstance(sig.parameters['x'].default, int)
+    self.assertIsInstance(sig.parameters['y'].default, list)
+
+    # The following would fail with "RuntimeError: Attempting to capture an
+    # EagerTensor without building a function" if we converted the default
+    # value to a Tensor when we built the type.
+    self.assertAllEqual(a.x + constant_op.constant(3), 8)
 
   def testEmptyType(self):
 
@@ -205,7 +289,8 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     self.assertEmpty(EmptyType._tf_extension_type_fields())
     x = EmptyType()
-    self.assertEqual(repr(x), 'EmptyType()')
+    self.assertEqual(
+        repr(x), 'ExtensionTypeTest.testEmptyType.<locals>.EmptyType()')
 
   def testCustomConstrutor(self):
 
@@ -229,7 +314,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     y: typing.Optional[str] = None
     children: typing.Tuple['ExtensionTypeTest.Node', ...] = ()
 
-  def testCustomConstructorWithDefaultValues(self):
+  def testConstructorWithDefaultValues(self):
     a = ExtensionTypeTest.Node(5)
     self.assertAllEqual(a.x, 5)
     self.assertIsNone(a.y)
@@ -245,18 +330,6 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertIsNone(c.y)
     self.assertEqual(c.children, (a, b))
 
-  def testCustomConstructorNondefaultCanotFollowDefault(self):
-    with self.assertRaisesRegex(
-        ValueError, "Field without default 'd' follows field with default 'c'"):
-
-      class MyType(extension_type.ExtensionType):
-        a: int
-        b: str = 'Hello world'
-        c: typing.Optional[ops.Tensor] = None
-        d: ops.Tensor
-
-      del MyType
-
   def testCustomConstrutorCantMutateNestedValues(self):
 
     class Foo(extension_type.ExtensionType):
@@ -268,7 +341,10 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       def __init__(self, foo):
         foo.x = 33  # This raises an exception
 
-    with self.assertRaisesRegex(AttributeError, "cannot assign to field 'x'"):
+    with self.assertRaisesRegex(
+        AttributeError,
+        'Cannot mutate attribute `x` outside the custom constructor of ExtensionType'
+    ):
       Bar(Foo(12))
 
   def testCustomValidate(self):
@@ -712,8 +788,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(fields[0].value_type, ops.Tensor)
       self.assertEqual(fields[0].default, fields[0].NO_DEFAULT)
       self.assertEqual(fields[1].name, 'mask')
-      self.assertEqual(fields[1].value_type,
-                       tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool))
+      self.assertEqual(fields[1].value_type, ops.Tensor)
       self.assertEqual(fields[1].default, fields[0].NO_DEFAULT)
 
   def testHasExtensionTypeField(self):
@@ -740,17 +815,14 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Check the signature.
     expected_parameters = [
-        tf_inspect.Parameter('self',
-                             tf_inspect.Parameter.POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
         tf_inspect.Parameter(
             'x',
-            tf_inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            POSITIONAL_OR_KEYWORD,
             annotation=typing.Tuple[typing.Union['ForwardRefA', 'ForwardRefB'],
                                     ...]),
         tf_inspect.Parameter(
-            'y',
-            tf_inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            annotation='ForwardRefB'),
+            'y', POSITIONAL_OR_KEYWORD, annotation='ForwardRefB'),
     ]
     expected_sig = tf_inspect.Signature(
         expected_parameters, return_annotation=A)
@@ -779,6 +851,30 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
       class MyType2(extension_type.ExtensionType):  # pylint: disable=unused-variable
         xyz: typing.Union[typing.Tuple[complex, ...], int]
+
+  def testCantUseReservedName(self):
+    with self.assertRaisesRegex(
+        ValueError, 'The field annotations for MyType1 are invalid. '
+        "Field '_to_components' is reserved"):
+
+      class MyType1(extension_type.ExtensionType):  # pylint: disable=unused-variable
+        _to_components: int
+
+    with self.assertRaisesRegex(
+        ValueError, 'The field annotations for MyType2 are invalid. '
+        "Field '_tf_extension_type_foo' is reserved"):
+
+      class MyType2(extension_type.ExtensionType):  # pylint: disable=unused-variable
+        _tf_extension_type_foo: int
+
+    with self.assertRaisesRegex(
+        ValueError, 'The field annotations for MyType3 are invalid. '
+        "Field 'is_compatible_with' is reserved"):
+
+      class MyType3(extension_type.ExtensionType):  # pylint: disable=unused-variable
+
+        def is_compatible_with(self, other):
+          return False
 
   def testExtensionTypeBaseClassHasNoSpec(self):
     self.assertFalse(hasattr(extension_type.ExtensionType, 'Spec'))
@@ -843,6 +939,139 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         'ExtensionTypes must have a __name__ field in order to be packed.'):
       extension_type.pack(mt4)
 
+  def testSubclassing(self):
+
+    class Instrument(extension_type.ExtensionType):
+      name: ops.Tensor
+      weight: ops.Tensor
+      needs_case: bool
+
+    class StringInstrument(Instrument):
+      num_strings: int  # Add a new field
+      needs_case: bool = True  # Override default value.
+
+    class Violin(StringInstrument):
+      maker: ops.Tensor
+      num_strings: int = 4  # Override default value.
+      name: str = 'violin'  # Override field type and default value.
+
+    self.assertEqual(
+        list(
+            tf_inspect.signature(
+                StringInstrument.__init__).parameters.values()), [
+                    tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
+                    tf_inspect.Parameter(
+                        'name', POSITIONAL_OR_KEYWORD, annotation=ops.Tensor),
+                    tf_inspect.Parameter(
+                        'weight', POSITIONAL_OR_KEYWORD, annotation=ops.Tensor),
+                    tf_inspect.Parameter(
+                        'needs_case',
+                        POSITIONAL_OR_KEYWORD,
+                        annotation=bool,
+                        default=True),
+                    tf_inspect.Parameter(
+                        'num_strings', KEYWORD_ONLY, annotation=int),
+                ])
+    self.assertEqual(
+        list(tf_inspect.signature(Violin.__init__).parameters.values()), [
+            tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
+            tf_inspect.Parameter(
+                'name', POSITIONAL_OR_KEYWORD, annotation=str,
+                default='violin'),
+            tf_inspect.Parameter('weight', KEYWORD_ONLY, annotation=ops.Tensor),
+            tf_inspect.Parameter(
+                'needs_case', KEYWORD_ONLY, annotation=bool, default=True),
+            tf_inspect.Parameter(
+                'num_strings', KEYWORD_ONLY, annotation=int, default=4),
+            tf_inspect.Parameter('maker', KEYWORD_ONLY, annotation=ops.Tensor),
+        ])
+
+    violin = Violin(weight=28, maker='Amati')
+    self.assertAllEqual(violin.name, 'violin')
+    self.assertAllEqual(violin.weight, 28)
+    self.assertAllEqual(violin.needs_case, True)
+    self.assertAllEqual(violin.num_strings, 4)
+    self.assertAllEqual(violin.maker, 'Amati')
+
+
+# integration test to test compatibility with high level api like Dataset
+# and Keras
+class ExtensionTypeIntegrationTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_v2_only
+  def testDataset(self):
+    mt = MaskedTensorV3([[1], [2], [3]], [[True], [False], [True]])
+    ds = dataset_ops.DatasetV2.from_tensors(mt)
+    self.assertEqual(next(iter(ds)), mt)
+
+  @test_util.run_v2_only
+  def testDatasetBatch(self):
+    xs = MaskedTensorV3([[1], [2], [3]], [[True], [False], [True]])
+    x0 = MaskedTensorV3(xs.values[0], xs.mask[0])
+
+    ds = dataset_ops.DatasetV2.from_tensors(xs)
+    self.assertEqual(next(iter(ds)), xs)
+    ds = ds.unbatch()
+    self.assertEqual(next(iter(ds)), x0)
+
+    ds = dataset_ops.DatasetV2.from_tensor_slices(xs)
+    self.assertEqual(next(iter(ds)), x0)
+    ds = ds.batch(3, drop_remainder=True)
+    self.assertEqual(next(iter(ds)), xs)
+
+  @test_util.run_v2_only
+  def testDatasetBatchRagged(self):
+    xs = MaskedTensorV3(
+        ragged_factory_ops.constant([[1], [2, 3], [4]]),
+        ragged_factory_ops.constant([[True], [False], [True]]))
+    x0 = MaskedTensorV3(xs.values[0], xs.mask[0])
+
+    ds = dataset_ops.DatasetV2.from_tensors(xs)
+    self.assertEqual(next(iter(ds)), xs)
+    ds = ds.unbatch()
+    self.assertEqual(next(iter(ds)), x0)
+
+    ds = dataset_ops.DatasetV2.from_tensor_slices(xs)
+    self.assertEqual(next(iter(ds)), x0)
+    ds = ds.batch(3, drop_remainder=True)
+    self.assertEqual(next(iter(ds)), xs)
+
+  # TODO(edloper): Move this test to Keras.
+  @test_util.run_v2_only
+  def testKerasModel(self):
+    mt_spec = MaskedTensorV3.Spec(
+        tensor_spec.TensorSpec(shape=[None, 1], dtype=dtypes.int32),
+        tensor_spec.TensorSpec(shape=[None, 1], dtype=dtypes.bool),
+    )
+    model_input = input_layer.Input(type_spec=mt_spec)
+    model_output = array_ops.identity(model_input, name='output')
+    model = training.Model(inputs=model_input, outputs=model_output)
+    mt = MaskedTensorV3([[1], [2], [3]], [[True], [False], [True]])
+    self.assertEqual(model(mt), mt)
+    ds = dataset_ops.DatasetV2.from_tensors(mt)
+    self.assertEqual(model.predict(ds), mt)
+
+    with self.subTest('keras save'):
+      path = self.create_tempdir().full_path
+      model.save(path)
+      loaded_model = keras_save.load_model(path)
+      self.assertEqual(loaded_model.input.type_spec, mt_spec)
+      self.assertEqual(loaded_model(mt), mt)
+
+      loaded_fn = load.load(path)
+      self.assertEqual(loaded_fn(mt), mt)
+      with self.assertRaisesRegex(
+          ValueError,
+          'Could not find matching concrete function to call '
+          'loaded from the SavedModel',
+      ):
+        loaded_fn(MaskedTensorV3([1, 2, 3], [True, False, True]))
+
+      # The serving_fn use flatten signature
+      serving_fn = loaded_fn.signatures['serving_default']
+      self.assertEqual(
+          serving_fn(args_0=mt.values, args_0_1=mt.mask)['tf.identity'], mt)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class ExtensionTypeSpecTest(test_util.TensorFlowTestCase,
@@ -862,15 +1091,14 @@ class ExtensionTypeSpecTest(test_util.TensorFlowTestCase,
 
     class MyType(extension_type.ExtensionType):
       x: ops.Tensor
-      y: tensor_spec.TensorSpec(shape=None, dtype=dtypes.bool)
+      y: ops.Tensor
       z: typing.Tuple[typing.Union[int, str], ...] = [1, 'two', 3]
 
     expected_parameters = [
-        tf_inspect.Parameter('self',
-                             tf_inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        tf_inspect.Parameter('x', tf_inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        tf_inspect.Parameter('y', tf_inspect.Parameter.POSITIONAL_OR_KEYWORD),
-        tf_inspect.Parameter('z', tf_inspect.Parameter.POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('self', POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('x', POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('y', POSITIONAL_OR_KEYWORD),
+        tf_inspect.Parameter('z', POSITIONAL_OR_KEYWORD),
     ]
     expected_sig = tf_inspect.Signature(
         expected_parameters, return_annotation=MyType.Spec)
@@ -879,13 +1107,17 @@ class ExtensionTypeSpecTest(test_util.TensorFlowTestCase,
   def testSpecAttributesAreImmutable(self):
     mt = MaskedTensorV1([1, 2, 3, 4], [True, True, False, True])
     mt_spec = MaskedTensorV1.Spec.from_value(mt)
-    with self.assertRaisesRegex(AttributeError,
-                                "cannot assign to field 'score'"):
+    with self.assertRaisesRegex(
+        AttributeError, 'Cannot mutate attribute `score` '
+        'outside the custom constructor of ExtensionTypeSpec'):
       mt_spec.score = 12
-    with self.assertRaisesRegex(AttributeError,
-                                "cannot assign to field 'values'"):
+    with self.assertRaisesRegex(
+        AttributeError, 'Cannot mutate attribute `values` '
+        'outside the custom constructor of ExtensionTypeSpec'):
       mt_spec.values = constant_op.constant([4, 3, 2, 1])
-    with self.assertRaisesRegex(AttributeError, "cannot delete field 'values'"):
+    with self.assertRaisesRegex(
+        AttributeError, 'Cannot mutate attribute `values` '
+        'outside the custom constructor of ExtensionTypeSpec'):
       del mt_spec.values
 
   def testSpecFromValue(self):
@@ -967,6 +1199,84 @@ class ExtensionTypeSpecTest(test_util.TensorFlowTestCase,
                       tensor_spec.TensorSpec([3], dtypes.int32),
                       tensor_spec.TensorSpec([], dtypes.float32)))
 
+  def testCopyAndPickle(self):
+    values_spec = tensor_spec.TensorSpec([4], dtypes.float32)
+    mask_spec = tensor_spec.TensorSpec([4], dtypes.bool)
+    mt_spec = MaskedTensorV1.Spec(values_spec, mask_spec)
+    self.assertEqual(copy.copy(mt_spec), mt_spec)
+    self.assertEqual(copy.deepcopy(mt_spec), mt_spec)
+    self.assertEqual(pickle.loads(pickle.dumps(mt_spec)), mt_spec)
+
+  def testCustomizeSpecTest(self):
+
+    class WeightedTensor(extension_type.ExtensionType):
+      """ExtensionType with a customized TypeSpec.
+
+      * Custom constructor.
+      * Custom __validate__.
+      * Add properties (shape, dtype, weight_dtype).
+      * Add method (with_shape).
+      """
+      values: ops.Tensor
+      weight: ops.Tensor  # scalar
+
+      shape = property(lambda self: self.shape)
+      dtype = property(lambda self: self.dtype)
+      weight_dtype = property(lambda self: self.weight.dtype)
+
+      def __validate__(self):
+        self.weight.shape.assert_has_rank(0)
+
+      class Spec:
+
+        def __init__(self, shape, dtype, weight_dtype=dtypes.float32):
+          self.values = tensor_spec.TensorSpec(shape, dtype)
+          self.weight = tensor_spec.TensorSpec([], weight_dtype)
+
+        def __validate__(self):
+          self.weight.shape.assert_has_rank(0)
+
+        shape = property(lambda self: self.values.shape)
+        dtype = property(lambda self: self.values.dtype)
+        weight_dtype = property(lambda self: self.weight.dtype)
+
+        def with_shape(self, shape):
+          return WeightedTensor.Spec(shape, self.dtype, self.weight_dtype)
+
+    wt = WeightedTensor([1, 2], 0.3)
+    wt_spec = WeightedTensor.Spec.from_value(wt)
+    self.assertEqual(wt_spec.shape, tensor_shape.TensorShape([2]))
+    self.assertEqual(wt_spec.dtype, dtypes.int32)
+
+    self.assertEqual(wt_spec, WeightedTensor.Spec([2], dtypes.int32))
+
+    wt2 = WeightedTensor([[1, 2], [3, 4]], 0.5)
+    wt2_spec = WeightedTensor.Spec.from_value(wt2)
+    self.assertEqual(wt_spec.with_shape([2, 2]), wt2_spec)
+
+  def testNestedSpecMustBeAClass(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        r'BrokenExtensionType\.Spec must be a nested class; got 12.'):
+
+      class BrokenExtensionType(extension_type.ExtensionType):
+
+        Spec = 12  # pylint: disable=invalid-name
+
+      del BrokenExtensionType
+
+  def testNestedSpecMayNotHaveBaseClasses(self):
+    with self.assertRaisesRegex(
+        ValueError, r'BrokenExtensionType\.Spec must be directly subclassed '
+        'from tf.TypeSpec.'):
+
+      class BrokenExtensionType(extension_type.ExtensionType):
+
+        class Spec(type_spec.BatchableTypeSpec):
+          pass
+
+      del BrokenExtensionType
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
@@ -987,12 +1297,12 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
     extension_type.AnonymousExtensionType(**fields)
 
   @parameterized.parameters([
-      [dict(x=[1, 2, 3]), 'Unsupported field value'],
-      [dict(x=set([1, 2])), 'Unsupported field value'],
-      [dict(x=(1, dict([(2, [])]))), 'Unsupported field value'],
+      [dict(x=[1, 2, 3]), 'unsupported `value` argument'],
+      [dict(x=set([1, 2])), 'unsupported `value` argument'],
+      [dict(x=(1, dict([(2, [])]))), 'unsupported `value` argument'],
       [
           dict(_tf_extension_type_xyz=5),
-          "The field name '_tf_extension_type_xyz' is reserved"
+          'Reserved field name .*_tf_extension_type_xyz.*'
       ],
   ])
   def testConstructionErrors(self, fields, error):
@@ -1021,9 +1331,9 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
 
   def testAttributeAccessorsAreImmutable(self):
     s = extension_type.AnonymousExtensionType(x=12, y={'x': 55})
-    with self.assertRaisesRegex(AttributeError, "cannot assign to field 'x'"):
+    with self.assertRaisesRegex(AttributeError, 'Cannot set attribute `x`'):
       s.x = 22
-    with self.assertRaisesRegex(AttributeError, "cannot delete field 'y'"):
+    with self.assertRaisesRegex(AttributeError, 'Cannot delete attribute `y`'):
       del s.y
     with self.assertRaisesRegex(TypeError, 'does not support item assignment'):
       s.y['x'] = 66
@@ -1053,13 +1363,7 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
       [
           lambda: extension_type.AnonymousExtensionType(
               values=(1, 2, 3), mask=None), MaskedTensorV2,
-          'mask: expected a tf.bool Tensor, got None'
-      ],
-      [
-          lambda: extension_type.AnonymousExtensionType(
-              values=constant_op.constant([[1, 2], [3, 4]]),
-              mask=ragged_factory_ops.constant([[1, 2], [3]])), MaskedTensorV2,
-          'mask: expected a tf.bool Tensor'
+          'mask: expected a Tensor, got None'
       ],
       [
           lambda: extension_type.AnonymousExtensionType(
@@ -1070,12 +1374,15 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
       [
           lambda: extension_type.AnonymousExtensionType(
               values=constant_op.constant([1, 2, 3])), ops.Tensor,
-          'Expected `new_type` to be a subclass of tf.ExtensionType'
+          'reinterpret expects `new_type` to be a subclass of '
+          'tf.ExtensionType; '
+          'got .*.Tensor.*'
       ],
       [
           lambda: constant_op.constant([1, 2, 3]),
           extension_type.AnonymousExtensionType,
-          'Expected `value` to be a tf.ExtensionType'
+          'reinterpret expects `value` to be a tf.ExtensionType instance; '
+          'got.*.Tensor.*'
       ],
   ])
   def testReinterpretErrors(self, value, new_type, error):
@@ -1150,11 +1457,11 @@ def replace_tensors_with_placeholders(value):
 
 @contextlib.contextmanager
 def temporarily_add_dispatch(op, typ, fn):
-  n = len(op._tf_dispatchers)
+  n = len(op._tf_fallback_dispatchers)
   dispatch.dispatch_for_types(op, typ)(fn)
   yield
-  assert len(op._tf_dispatchers) == n + 1
-  del op._tf_dispatchers[-1]
+  assert len(op._tf_fallback_dispatchers) == n + 1
+  del op._tf_fallback_dispatchers[-1]
 
 
 @contextlib.contextmanager

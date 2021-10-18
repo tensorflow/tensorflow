@@ -353,7 +353,9 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   VLOG(1) << "Called TRTOptimization Pass " << name_
           << " on a grappler item with id=" << item.id;
   TF_ASSIGN_OR_RETURN(bool do_function_conversion, ShouldConvertFunction(item));
-  if (minimum_segment_size_ == -1 ||
+  // Optimizing the main graph(identified with `item.id == "tf_graph"`) with
+  // `minimim_segment_size == -1` indicates skipping main graph conversion.
+  if ((minimum_segment_size_ == -1 && item.id == "tf_graph") ||
       (item.id != "tf_graph" && !do_function_conversion)) {
     VLOG(1) << "Not optimizing this grappler item: " << item.id;
     *optimized_graph = item.graph;
@@ -410,6 +412,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
         tensorflow::down_cast<const grappler::GrapplerFunctionItem&>(item);
     TF_RETURN_IF_ERROR(
         UpdateFunctionSpecificConversionParams(cp, func_item.func_attr()));
+    assert(cp.minimum_segment_size > 0);
   }
 
   auto status = ConvertAfterShapes(cp);

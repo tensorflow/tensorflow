@@ -50,7 +50,7 @@ class TreeReductionRewriter : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  int64 reduce_window_size_;
+  int64_t reduce_window_size_;
 };
 
 }  // end namespace xla

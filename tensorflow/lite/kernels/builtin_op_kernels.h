@@ -117,6 +117,7 @@ TfLiteRegistration* Register_PADV2();
 TfLiteRegistration* Register_POW();
 TfLiteRegistration* Register_PRELU();
 TfLiteRegistration* Register_QUANTIZE();
+TfLiteRegistration* Register_RANDOM_STANDARD_NORMAL();
 TfLiteRegistration* Register_RANGE();
 TfLiteRegistration* Register_RANK();
 TfLiteRegistration* Register_READ_VARIABLE();

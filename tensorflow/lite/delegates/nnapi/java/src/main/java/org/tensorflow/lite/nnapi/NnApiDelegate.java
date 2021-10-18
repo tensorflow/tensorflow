@@ -129,6 +129,11 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
       return this;
     }
 
+    public Options setNnApiSupportLibraryHandle(long handle) {
+      this.nnApiSupportLibraryHandle = handle;
+      return this;
+    }
+
     private int executionPreference = EXECUTION_PREFERENCE_UNDEFINED;
     private String acceleratorName = null;
     private String cacheDir = null;
@@ -136,6 +141,7 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
     private Integer maxDelegatedPartitions = null;
     private Boolean useNnapiCpu = null;
     private Boolean allowFp16 = null;
+    private long nnApiSupportLibraryHandle = 0;
   }
 
   public NnApiDelegate(Options options) {
@@ -152,7 +158,8 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
             /*disallowCpuValue=*/ options.useNnapiCpu != null
                 ? !options.useNnapiCpu.booleanValue()
                 : true,
-            options.allowFp16 != null ? options.allowFp16 : false);
+            options.allowFp16 != null ? options.allowFp16 : false,
+            options.nnApiSupportLibraryHandle);
   }
 
   public NnApiDelegate() {
@@ -218,7 +225,8 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
       int maxDelegatedPartitions,
       boolean overrideDisallowCpu,
       boolean disallowCpuValue,
-      boolean allowFp16);
+      boolean allowFp16,
+      long nnApiSupportLibraryHandle);
 
   private static native void deleteDelegate(long delegateHandle);
 

@@ -15,11 +15,8 @@
 """Loader implementation for SavedModel with hermetic, language-neutral exports.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
+import sys
 
 from google.protobuf import message
 from google.protobuf import text_format
@@ -59,7 +56,7 @@ def parse_saved_model_with_debug_info(export_dir):
   """
   saved_model = _parse_saved_model(export_dir)
 
-  debug_info_path = os.path.join(
+  debug_info_path = file_io.join(
       saved_model_utils.get_debug_dir(export_dir),
       constants.DEBUG_INFO_FILENAME_PB)
   debug_info = graph_debug_info_pb2.GraphDebugInfo()
@@ -68,7 +65,7 @@ def parse_saved_model_with_debug_info(export_dir):
       try:
         debug_info.ParseFromString(debug_file.read())
       except message.DecodeError as e:
-        raise IOError("Cannot parse file %s: %s." % (debug_info_path, str(e)))
+        raise IOError(f"Cannot parse file {debug_info_path}: {e}.")
 
   return (saved_model, debug_info)
 
@@ -88,11 +85,11 @@ def parse_saved_model(export_dir):
     IOError: If the file does not exist, or cannot be successfully parsed.
   """
   # Build the path to the SavedModel in pbtxt format.
-  path_to_pbtxt = os.path.join(
+  path_to_pbtxt = file_io.join(
       compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
   # Build the path to the SavedModel in pb format.
-  path_to_pb = os.path.join(
+  path_to_pb = file_io.join(
       compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
 
@@ -105,7 +102,7 @@ def parse_saved_model(export_dir):
       saved_model.ParseFromString(file_content)
       return saved_model
     except message.DecodeError as e:
-      raise IOError("Cannot parse file %s: %s." % (path_to_pb, str(e)))
+      raise IOError(f"Cannot parse file {path_to_pb}: {str(e)}.")
   elif file_io.file_exists(path_to_pbtxt):
     with file_io.FileIO(path_to_pbtxt, "rb") as f:
       file_content = f.read()
@@ -113,12 +110,12 @@ def parse_saved_model(export_dir):
       text_format.Merge(file_content.decode("utf-8"), saved_model)
       return saved_model
     except text_format.ParseError as e:
-      raise IOError("Cannot parse file %s: %s." % (path_to_pbtxt, str(e)))
+      raise IOError(f"Cannot parse file {path_to_pbtxt}: {str(e)}.")
   else:
     raise IOError(
-        "SavedModel file does not exist at: %s%s{%s|%s}" %
-        (export_dir, os.path.sep, constants.SAVED_MODEL_FILENAME_PBTXT,
-         constants.SAVED_MODEL_FILENAME_PB))
+        f"SavedModel file does not exist at: {export_dir}{os.path.sep}"
+        f"{{{constants.SAVED_MODEL_FILENAME_PBTXT}|"
+        f"{constants.SAVED_MODEL_FILENAME_PB}}}")
 
 
 # TODO(b/120594573): Make this symbol also available as private, so that
@@ -155,14 +152,14 @@ def get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
       asset_protos.append(asset_proto)
 
   # Location of the assets for SavedModel.
-  assets_directory = os.path.join(
+  assets_directory = file_io.join(
       compat.as_bytes(export_dir), compat.as_bytes(constants.ASSETS_DIRECTORY))
   # Process each asset and add it to the asset tensor dictionary.
   for asset_proto in asset_protos:
     tensor_name = asset_proto.tensor_info.name
     if import_scope:
       tensor_name = "%s/%s" % (import_scope, tensor_name)
-    asset_tensor_dict[tensor_name] = os.path.join(
+    asset_tensor_dict[tensor_name] = file_io.join(
         compat.as_bytes(assets_directory),
         compat.as_bytes(asset_proto.filename))
 
@@ -193,7 +190,7 @@ def _get_main_op_tensor(
     init_op_list = collection_def[init_op_key].node_list.value
     if len(init_op_list) != 1:
       raise RuntimeError("Expected exactly one SavedModel init op. "
-                         "Found: {}".format(init_op_list))
+                         f"Found {len(init_op_list)}: {init_op_list}.")
     init_op = ops.get_collection(init_op_key)[0]
   return init_op
 
@@ -249,8 +246,8 @@ def maybe_saved_model_directory(export_dir):
   Returns:
     True if the export directory contains SavedModel files, False otherwise.
   """
-  txt_path = os.path.join(export_dir, constants.SAVED_MODEL_FILENAME_PBTXT)
-  pb_path = os.path.join(export_dir, constants.SAVED_MODEL_FILENAME_PB)
+  txt_path = file_io.join(export_dir, constants.SAVED_MODEL_FILENAME_PBTXT)
+  pb_path = file_io.join(export_dir, constants.SAVED_MODEL_FILENAME_PB)
   return file_io.file_exists(txt_path) or file_io.file_exists(pb_path)
 
 
@@ -398,10 +395,10 @@ class SavedModelLoader(object):
 
     if not found_match:
       raise RuntimeError(
-          "MetaGraphDef associated with tags " + str(tags).strip("[]") +
-          " could not be found in SavedModel. To inspect available tag-sets in"
-          " the SavedModel, please use the SavedModel CLI: `saved_model_cli`"
-          "\navailable_tags: " + str(available_tags))
+          f"MetaGraphDef associated with tags {str(tags).strip('[]')} "
+          "could not be found in SavedModel, with available tags "
+          f"'{available_tags}'. To inspect available tag-sets in"
+          " the SavedModel, please use the SavedModel CLI: `saved_model_cli`.")
     return meta_graph_def_to_load
 
   def load_graph(self, graph, tags, import_scope=None, **saver_kwargs):
@@ -424,6 +421,9 @@ class SavedModelLoader(object):
           `tf.import_graph_def` (may be `None`).
     """
     meta_graph_def = self.get_meta_graph_def_from_tags(tags)
+    if sys.byteorder == "big":
+      saved_model_utils.swap_function_tensor_content(meta_graph_def, "little",
+                                                     "big")
     with graph.as_default():
       return tf_saver._import_meta_graph_with_return_elements(  # pylint: disable=protected-access
           meta_graph_def, import_scope=import_scope, **saver_kwargs)
@@ -455,8 +455,8 @@ class SavedModelLoader(object):
       else:
         raise ValueError(
             "No tf.train.Saver object was passed to the function "
-            "SavedModelLoader.restore_variables. Since there are variables in "
-            "the graph, a saver is required.")
+            "`SavedModelLoader.restore_variables`. Since there are variables in"
+            " the graph, a saver is required.")
 
   def run_init_ops(self, sess, tags, import_scope=None):
     """Run initialization ops defined in the `MetaGraphDef`.

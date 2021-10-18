@@ -52,6 +52,9 @@ TEST(ConvertXPlaneToOpStats, PerfEnv) {
 
   XPlaneBuilder device_plane(
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                GetStatTypeStr(StatType::kDevVendor)),
+                            kDeviceVendorNvidia);
   device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata("clock_rate"),
                             kClockRateKHz);
   device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata("core_count"),
@@ -80,8 +83,14 @@ TEST(ConvertXPlaneToOpStats, RunEnvironment) {
   XSpace space;
   XPlaneBuilder device_plane1(
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
+  device_plane1.AddStatValue(*device_plane1.GetOrCreateStatMetadata(
+                                 GetStatTypeStr(StatType::kDevVendor)),
+                             kDeviceVendorNvidia);
   XPlaneBuilder device_plane2(
       GetOrCreateGpuXPlane(&space, /*device_ordinal=*/1));
+  device_plane2.AddStatValue(*device_plane2.GetOrCreateStatMetadata(
+                                 GetStatTypeStr(StatType::kDevVendor)),
+                             kDeviceVendorNvidia);
 
   GroupTfEvents(&space);
   OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());

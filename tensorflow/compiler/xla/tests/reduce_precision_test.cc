@@ -486,9 +486,9 @@ XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionFloat) {
 
 XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionDouble) {
   int operation_index = GetParam();
-  DoIt<double, uint64>(f64_exponent_sizes[operation_index],
-                       f64_mantissa_sizes[operation_index], f64_test_values,
-                       operation_index);
+  DoIt<double, uint64_t>(f64_exponent_sizes[operation_index],
+                         f64_mantissa_sizes[operation_index], f64_test_values,
+                         operation_index);
 }
 
 template <typename Fp, typename Uint, int kNumTestcases, int kNumInputs>

@@ -68,17 +68,10 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   static bool AlwaysRewrite(EagerOperation* op) { return true; }
 
   // Check if kernel is registered for a particular op.
-  bool FastCheckIfKernelRegistered(std::string op_name, DataType dt);
-
-  // This is called by FastCheckIfKernelRegistered once per unique op name
-  // and data type.
-  bool SlowCheckIfKernelRegistered(std::string op_name, DataType dt);
+  bool IsKernelRegistered(string op_name, DataType dt);
 
   // Helper function to insert mkl_eager_ops to Map
   void InsertMKLEagerOps(MklEagerOp op);
-
-  // Map used by FastCheckIfKernelRegistered.
-  std::unordered_map<std::string, bool> registered_kernels_map_;
 };
 
 REGISTER_REWRITE(EagerOpRewriteRegistry::POST_PLACEMENT, 10000,
@@ -86,7 +79,7 @@ REGISTER_REWRITE(EagerOpRewriteRegistry::POST_PLACEMENT, 10000,
 
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
-    : EagerOpRewrite(name, file, line), registered_kernels_map_() {
+    : EagerOpRewrite(name, file, line) {
   InsertMKLEagerOps({"AvgPool", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"AvgPoolGrad", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"AvgPool3D", AlwaysRewrite, CreateGenericMklOp});
@@ -188,7 +181,7 @@ bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
     return false;
   }
   // Check if we have registered MKL kernel for this op.
-  bool kernel_found = FastCheckIfKernelRegistered(op->Name(), data_type);
+  bool kernel_found = IsKernelRegistered(op->Name(), data_type);
   if (!kernel_found) {
     return false;
   }
@@ -205,37 +198,15 @@ bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
   return false;
 }
 
-bool MklEagerOpRewrite::FastCheckIfKernelRegistered(std::string op_name,
-                                                    DataType dt) {
-  // Check for kernel registration only once per op name and data type
-  // for performance reasons.
-  string registered_kernels_key = op_name + std::to_string(dt);
-  auto kernel_element = registered_kernels_map_.find(registered_kernels_key);
-  bool kernel_registered = false;
-  if (kernel_element == registered_kernels_map_.end()) {
-    // Kernel registration is not verified even once yet.
-    // So verify and store registration.
-    kernel_registered = SlowCheckIfKernelRegistered(op_name, dt);
-    registered_kernels_map_.insert(
-        std::make_pair(registered_kernels_key, kernel_registered));
-  } else {
-    // Kernel is visited at least once. Return stored registration result.
-    kernel_registered = kernel_element->second;
-  }
-
-  return kernel_registered;
-}
-
-bool MklEagerOpRewrite::SlowCheckIfKernelRegistered(string op_name,
-                                                    DataType dt) {
+bool MklEagerOpRewrite::IsKernelRegistered(string op_name, DataType dt) {
   // Find if the eager op_name exists in mkl_eager_ops_ list.
   auto element = mkl_eager_ops_.find(op_name);
   if (element != mkl_eager_ops_.end()) {
     // Eager Op exists. So verify registry and return registered or not.
-    return (mkl_op_registry::IsMklNameChangeOp(
-                mkl_op_registry::GetMklNativeOpName(op_name), dt) ||
-            mkl_op_registry::IsMklNameChangeOp(
-                mkl_op_registry::GetMklOpName(op_name), dt));
+    return (mkl_op_registry::IsMklOp(
+                mkl_op_registry::GetMklNativeOpName(op_name), dt, true) ||
+            mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(op_name), dt,
+                                     true));
   } else {
     return false;
   }

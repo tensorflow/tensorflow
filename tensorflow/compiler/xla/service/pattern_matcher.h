@@ -190,14 +190,14 @@ enum {
 //
 // you'd do:
 //
-//  Foo::DescribeTo(std::ostream* os, int64 indent) {
+//  Foo::DescribeTo(std::ostream* os, int64_t indent) {
 //    *os << "foo:";
 //    Indent(os, indent)  // Create a newline at the *current* indent level.
 //    *os << " - ";
 //    bar.DescribeTo(os, indent + 3);  // + 3 because strlen(" * ") == 3.
 //  }
 //
-//  Bar::DescribeTo(std::ostream* os, int64 indent) { *os << "bar"; }
+//  Bar::DescribeTo(std::ostream* os, int64_t indent) { *os << "bar"; }
 //
 // Notice that Bar::DescribeTo() does not call Indent; the indenting is
 // performed by Foo.  This convention allows the caller to decide whether a
@@ -739,7 +739,7 @@ class ShapePatternElementTypeImpl {
 // list of dimensions.
 class ShapePatternDimsImpl {
  public:
-  explicit ShapePatternDimsImpl(absl::Span<const int64> dims)
+  explicit ShapePatternDimsImpl(absl::Span<const int64_t> dims)
       : dims_(dims.begin(), dims.end()) {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
@@ -756,7 +756,7 @@ class ShapePatternDimsImpl {
   }
 
  private:
-  absl::InlinedVector<int64, 8> dims_;
+  absl::InlinedVector<int64_t, 8> dims_;
 };
 
 // A ShapePattern implementation that matches only if the shape is scalar.
@@ -859,7 +859,7 @@ class ShapePatternRankImpl {
   }
 
  private:
-  int64 rank_;
+  int64_t rank_;
 };
 
 // A ShapePattern implementation that matches only if the shape has a layout
@@ -1013,7 +1013,7 @@ class ShapePattern {
     return AppendImpl(ShapePatternElementTypeImpl(element_type));
   }
 
-  constexpr auto WithDims(absl::Span<const int64> dims) const {
+  constexpr auto WithDims(absl::Span<const int64_t> dims) const {
     return AppendImpl(ShapePatternDimsImpl(dims));
   }
 
@@ -1184,9 +1184,9 @@ class HloInstructionIsImpl {
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     if (inst != inst_) {
       EXPLAIN << "HloInstruction " << std::hex << std::nouppercase
-              << std::showbase << reinterpret_cast<uint64>(inst) << " is not "
-              << reinterpret_cast<uint64>(inst_) << " (" << InstToString(inst_)
-              << ")";
+              << std::showbase << reinterpret_cast<uint64_t>(inst) << " is not "
+              << reinterpret_cast<uint64_t>(inst_) << " ("
+              << InstToString(inst_) << ")";
       return false;
     }
     return true;
@@ -1194,7 +1194,7 @@ class HloInstructionIsImpl {
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "which is " << std::hex << std::nouppercase << std::showbase
-        << reinterpret_cast<uint64>(inst_) << " (" << InstToString(inst_)
+        << reinterpret_cast<uint64_t>(inst_) << " (" << InstToString(inst_)
         << ")";
   }
 
@@ -1296,7 +1296,7 @@ class HloInstructionPatternNumOperandsImpl {
   }
 
  private:
-  int64 num_operands_;
+  int64_t num_operands_;
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
@@ -1373,7 +1373,7 @@ class HloInstructionPatternOperandImpl {
     return true;
   }
 
-  int64 operand_index_;
+  int64_t operand_index_;
   HloInstructionPattern<OperandType, OperandImpl> operand_;
 };
 
@@ -1608,7 +1608,7 @@ class HloInstructionPatternTupleIndexImpl {
     return true;
   }
 
-  int64 tuple_index_;
+  int64_t tuple_index_;
 };
 
 class HloInstructionPatternParameterNumImpl {
@@ -1640,7 +1640,7 @@ class HloInstructionPatternParameterNumImpl {
     return true;
   }
 
-  int64 parameter_num_;
+  int64_t parameter_num_;
 };
 
 // Superclass that contains common code used by Op::WithOneUse() and
@@ -1923,7 +1923,7 @@ class HloInstructionPattern {
   // effectivley checking shape-compatible-to, not shape-equal-to.  Perhaps this
   // function should be called WithShapeCompatibleTo, but the short name is
   // nice, and there's no ambiguity because there's no layout in the args!
-  constexpr auto WithShape(PrimitiveType ty, absl::Span<const int64> dims) {
+  constexpr auto WithShape(PrimitiveType ty, absl::Span<const int64_t> dims) {
     return WithShape(Shape().WithElementType(ty).WithDims(dims));
   }
 
@@ -2337,7 +2337,7 @@ inline auto NonConstant(HloInstructionType** matched_inst) {
   return Op(matched_inst).IsNonConstant();
 }
 
-// Add overloads for GetTupleElement which take a int64 specifying which tuple
+// Add overloads for GetTupleElement which take a int64_t specifying which tuple
 // element is selected.
 template <typename Arg>
 inline auto GetTupleElement(Arg&& arg, int64_t tuple_index) {
@@ -2356,7 +2356,7 @@ inline auto GetTupleElement(HloInstructionType** matched_inst, Arg&& arg,
       .WithTupleIndex(tuple_index);
 }
 
-// Add overloads for Parameter which take an int64 specifying the parameter
+// Add overloads for Parameter which take an int64_t specifying the parameter
 // number.
 inline auto Parameter(int64_t parameter_num) {
   return Op().WithOpcode(HloOpcode::kParameter).WithParameterNum(parameter_num);

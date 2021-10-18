@@ -35,8 +35,8 @@ using AllReduceKey =
                /*replica_groups*/ std::vector<std::vector<int64_t>>>;
 
 absl::optional<AllReduceKey> GetAllReduceKey(
-    const HloInstruction* instruction,
-    const HloDomainMap* domain_map = nullptr);
+    const HloInstruction* instruction, const HloDomainMap* domain_map = nullptr,
+    bool ignore_replica_groups = false);
 
 }  // namespace xla
 

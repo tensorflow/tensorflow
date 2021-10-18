@@ -56,10 +56,11 @@ void createTFtoTOSALegalizationPipeline(
   pm.addPass(mlir::createSymbolDCEPass());
 }
 
-static mlir::PassPipelineRegistration<TOSATFLegalizationPipelineOptions>
-    tf_tosa_pipeline("tf-to-tosa-pipeline",
-                     "TensorFlow to TOSA legalization pipeline",
-                     createTFtoTOSALegalizationPipeline);
+void registerTFtoTOSALegalizationPipeline() {
+  mlir::PassPipelineRegistration<TOSATFLegalizationPipelineOptions>(
+      "tf-to-tosa-pipeline", "TensorFlow to TOSA legalization pipeline",
+      createTFtoTOSALegalizationPipeline);
+}
 
 }  // namespace tosa
 }  // namespace mlir

@@ -25,7 +25,7 @@ namespace tensorflow {
 // in b/111604096 and cl/171681867), so we use signed int here. We choose int64
 // instead of int32 because `VarHandleOp` doesn't support int32 on GPU, and
 // because of the "int32 problem".
-using StateElementType = int64;
+using StateElementType = int64_t;
 static constexpr DataType STATE_ELEMENT_DTYPE = DT_INT64;
 static constexpr DataType ALGORITHM_DTYPE = STATE_ELEMENT_DTYPE;
 

@@ -36,11 +36,11 @@ TEST_F(InstructionFusionTest,
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0(5.0f)));
-  HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(F32, {}), HloOpcode::kExp, const0));
+  HloInstruction* log1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kLog, const0));
   HloInstruction* broadcast2 =
       builder.AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::MakeShape(F32, {1}), exp1, {}));
+          ShapeUtil::MakeShape(F32, {1}), log1, {}));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -638,6 +638,33 @@ TEST_F(InstructionFusionTest, GpuIsExpensiveBroadcastS32) {
 
   EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*div));
   EXPECT_FALSE(GpuInstructionFusion::IsExpensive(*rem));
+}
+
+TEST_F(InstructionFusionTest, FloatingPointExpIsCheap) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  Add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+  ENTRY TestComputation {
+    zero = f32[] constant(0)
+    p0 = f32[100] parameter(0)
+    recip = f32[100] exponential(p0)
+    sum1 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    sum2 = f32[] reduce(recip, zero), dimensions={0}, to_apply=Add
+    ROOT root = (f32[], f32[]) tuple(sum1, sum2)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::Fusion(), op::Fusion()))
+      << module->ToString();
 }
 
 }  // namespace gpu

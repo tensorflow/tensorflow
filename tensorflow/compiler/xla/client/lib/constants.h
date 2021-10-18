@@ -67,7 +67,7 @@ XlaOp ConstantR0WithType(XlaBuilder* builder, PrimitiveType type, T value) {
     case U32:
       return ConstantR0<uint32>(builder, static_cast<uint32>(value));
     case U64:
-      return ConstantR0<uint64>(builder, static_cast<uint64>(value));
+      return ConstantR0<uint64_t>(builder, static_cast<uint64_t>(value));
     case S8:
       return ConstantR0<int8>(builder, static_cast<int8>(value));
     case S16:
@@ -75,7 +75,7 @@ XlaOp ConstantR0WithType(XlaBuilder* builder, PrimitiveType type, T value) {
     case S32:
       return ConstantR0<int32>(builder, static_cast<int32>(value));
     case S64:
-      return ConstantR0<int64>(builder, static_cast<int64>(value));
+      return ConstantR0<int64_t>(builder, static_cast<int64_t>(value));
     default:
       return builder->ReportError(
           InvalidArgument("Invalid type for ConstantR0WithType (%s).",

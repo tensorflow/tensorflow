@@ -560,7 +560,7 @@ INSTANTIATE_TEST_SUITE_P(IndirectUseTestInstantiation, IndirectUseTest,
 class CompressingRematerializationTest : public RematerializationTestBase {
  protected:
   // A special shape size function, which pads the most minor dimension to 64.
-  static int64 ShapeSizePadMinorTo64(const Shape& shape) {
+  static int64_t ShapeSizePadMinorTo64(const Shape& shape) {
     if (shape.IsTuple()) {
       // Size of a tuple is 4 bytes.
       return 4;
@@ -572,7 +572,7 @@ class CompressingRematerializationTest : public RematerializationTestBase {
     for (int64_t i = 0; i < descending_shape.rank(); ++i) {
       int64_t dim = descending_shape.dimensions(i);
       if (i == descending_shape.rank() - 1) {
-        dim = RoundUpToNearest<int64>(dim, 64);
+        dim = RoundUpToNearest<int64_t>(dim, 64);
       }
       size *= dim;
     }

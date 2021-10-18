@@ -50,4 +50,11 @@ extern llvm::cl::opt<bool> import_saved_model_object_graph;
 extern llvm::cl::opt<bool> import_saved_model_signature_defs;
 extern llvm::cl::opt<std::string> saved_model_tags;
 extern llvm::cl::opt<std::string> saved_model_exported_names;
+
+// Import HLO.
+enum HloImportType { proto, hlotxt, mlir_text };
+
+extern llvm::cl::opt<bool> import_hlo;
+extern llvm::cl::opt<HloImportType> hlo_import_type;
+extern llvm::cl::opt<bool> enable_hlo_to_tf_conversion;
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_TRANSLATE_CL_H_

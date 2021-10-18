@@ -357,7 +357,7 @@ void CostModel::RecordAllocationId(const Node* node, int output_slot,
   output_port_alloc_ids_[id][output_slot] = alloc_id;
 }
 
-int64 CostModel::AllocationId(const Node* node, int slot) const {
+int64_t CostModel::AllocationId(const Node* node, int slot) const {
   const int id = Id(node);
   if (id < 0 || static_cast<size_t>(id) >= output_port_alloc_ids_.size() ||
       output_port_alloc_ids_[id].size() <= static_cast<size_t>(slot)) {
@@ -390,7 +390,7 @@ Microseconds CostModel::CopyTimeEstimate(Bytes b, double network_latency_millis,
   const double bytes_per_usec = estimated_gbps * 1000.0 / 8;
   const double min_micros = network_latency_millis * 1000.0;
   return Microseconds(
-      static_cast<int64>(copy_bytes / bytes_per_usec + min_micros));
+      static_cast<int64_t>(copy_bytes / bytes_per_usec + min_micros));
 }
 
 Microseconds CostModel::ComputationTimeEstimate(int64_t math_ops) {

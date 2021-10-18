@@ -827,7 +827,7 @@ void ProcessTensorFlowSplitVOperator(Model* model,
       << "size_splits must be int32, int64";
   CHECK_EQ(size_shape.dimensions_count(), 1) << "size_splits must be 1-D";
 
-  std::vector<int64> size_splits_vector;
+  std::vector<int64_t> size_splits_vector;
   if (size_array.data_type == ArrayDataType::kInt32) {
     for (const auto each_size :
          size_array.GetBuffer<ArrayDataType::kInt32>().data) {
@@ -1890,7 +1890,7 @@ void ProcessSparseToDenseOperator(Model* model, SparseToDenseOperator* op) {
     *output_array.mutable_shape()->mutable_dims() =
         output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
   } else {
-    const std::vector<int64>& output_shape_data =
+    const std::vector<int64_t>& output_shape_data =
         output_shape_array.GetBuffer<ArrayDataType::kInt64>().data;
     // explicitly cast elements to int in order to avoid MSVC warnings about
     // narrowing conversion.

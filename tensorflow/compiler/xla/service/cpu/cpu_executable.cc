@@ -52,6 +52,15 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
+static std::string ModuleUniqueName(absl::string_view module_name,
+                                    const HloModule* module) {
+  std::string unique_id;
+  if (module != nullptr) {
+    unique_id = absl::StrCat("module.", module->unique_id(), ".");
+  }
+  return absl::StrCat(unique_id, module_name);
+}
+
 CpuExecutable::CpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<const BufferAssignment> assignment,
@@ -66,8 +75,9 @@ CpuExecutable::CpuExecutable(
   if (assignment_) {
     buffer_assignment_.reset(new BufferAssignmentProto(assignment_->ToProto()));
   }
-  XlaDebugInfoManager::Get()->RegisterModule(module_name_, shared_module(),
-                                             buffer_assignment_);
+  XlaDebugInfoManager::Get()->RegisterModule(
+      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
+      buffer_assignment_);
 
   // Resolve symbols in the constructor rather than at execution time to avoid
   // races because FindSymbol is not thread safe.
@@ -85,8 +95,9 @@ CpuExecutable::CpuExecutable(
 }
 
 CpuExecutable::~CpuExecutable() {
-  XlaDebugInfoManager::Get()->UnregisterModule(module_name_, shared_module(),
-                                               buffer_assignment_);
+  XlaDebugInfoManager::Get()->UnregisterModule(
+      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
+      buffer_assignment_);
 }
 
 static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
@@ -152,19 +163,6 @@ Status CpuExecutable::ExecuteComputeFunction(
     const ExecutableRunOptions* run_options,
     absl::Span<MaybeOwningDeviceMemory const> buffers,
     HloExecutionProfile* hlo_execution_profile) {
-  // The calling convention for JITed functions is:
-  //
-  //  void function(void* result, const void* run_options, void** args_array,
-  //                void** buffer_table)
-  //
-  // result: Points at the result.
-  // run_options: the ExecutableRunOptions object.
-  // args_array: null
-  // buffer_table: An array of pointers, containing pointers to temporary
-  //   buffers required by the executable adn pointers to entry computation
-  //   parameters.
-  //
-
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
   XlaDebugInfoManager::Get()->OnModuleStart(module_name_);
@@ -174,39 +172,38 @@ Status CpuExecutable::ExecuteComputeFunction(
   size_t profile_counters_size =
       hlo_execution_profile ? hlo_execution_profile->profile_counters().size()
                             : 0;
-  int64* profile_counters =
+  int64_t* profile_counters =
       hlo_execution_profile
           ? hlo_execution_profile->mutable_profile_counters()->data()
           : nullptr;
 
-  // Call the computation function following the calling convention.
+  // Call the computation function following the calling convention. See the
+  // definition of 'ComputeFunctionType' for the details of the calling
+  // convention of JITed functions.
   std::vector<void*> buffer_pointers;
   for (auto& buffer : buffers) {
     buffer_pointers.push_back(
         const_cast<void*>(buffer.AsDeviceMemoryBase().opaque()));
   }
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                      assignment_->GetUniqueTopLevelOutputSlice());
-  void* result_buffer = buffer_pointers[result_slice.index()];
-  if (VLOG_IS_ON(3)) {
-    VLOG(3) << "Executing compute function:";
-    VLOG(3) << absl::StrFormat(
-        "  func(void* result, void* params[null], void* buffer_table[%u], "
-        "uint64 profile_counters[%u])",
-        buffer_pointers.size(), profile_counters_size);
-    VLOG(3) << absl::StrFormat("    result = %p", result_buffer);
-    auto ptr_printer = [](string* out, const void* p) {
-      absl::StrAppend(out, absl::StrFormat("%p", p));
-    };
-    VLOG(3) << "    params = nullptr";
-    VLOG(3) << absl::StrFormat(
-        "    buffer_table = [%s]",
-        absl::StrJoin(buffer_pointers, ", ", ptr_printer));
-    VLOG(3) << absl::StrFormat("    profile_counters = %p", profile_counters);
-  }
 
-  compute_function_(result_buffer, run_options, nullptr, buffer_pointers.data(),
-                    profile_counters);
+  VLOG(3) << "Executing compute function:";
+  VLOG(3) << absl::StrFormat("  Number of buffer table entries: %u",
+                             buffer_pointers.size());
+  auto ptr_printer = [](string* out, const void* p) {
+    absl::StrAppend(out, absl::StrFormat("%p", p));
+  };
+  VLOG(3) << absl::StrFormat("  Buffer table: [%s]",
+                             absl::StrJoin(buffer_pointers, ", ", ptr_printer));
+  VLOG(3) << absl::StrFormat("  Number of profile counters: %u",
+                             profile_counters_size);
+  VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
+
+  XlaCustomCallStatus status;
+  // For the entry computation (like all global computations), all inputs and
+  // outputs are in the buffer table, and both the result pointer and args array
+  // pointers are unused (so we set them to 'nullptr').
+  compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
+                    &status, profile_counters);
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -220,6 +217,12 @@ Status CpuExecutable::ExecuteComputeFunction(
           hlo_execution_profile->total_cycles_executed(
               *module().entry_computation()));
     }
+  }
+
+  absl::optional<absl::string_view> error_message =
+      CustomCallStatusGetMessage(&status);
+  if (error_message) {
+    return InternalError("CustomCall failed: %s", *error_message);
   }
 
   return Status::OK();
@@ -378,14 +381,12 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     std::shared_ptr<std::vector<MaybeOwningDeviceMemory>> task_buffers;
     HloExecutionProfile* hlo_execution_profile;
 
-    void operator()() {
-      // Failing a CHECK here is not great, but I don't see an obvious way to
-      // return a failed Status asynchronously.
-      TF_CHECK_OK(executable->ExecuteComputeFunction(
-          &run_options.run_options(), *task_buffers, hlo_execution_profile));
+    Status operator()() {
+      return executable->ExecuteComputeFunction(
+          &run_options.run_options(), *task_buffers, hlo_execution_profile);
     }
   };
-  host_stream->EnqueueTask(
+  host_stream->EnqueueTaskWithStatus(
       AsyncRunTask{this, *run_options,
                    std::make_shared<std::vector<MaybeOwningDeviceMemory>>(
                        std::move(buffers)),
@@ -395,7 +396,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   return std::move(result);
 }
 
-/*static*/ int64 CpuExecutable::ShapeSizeBytes(const Shape& shape) {
+/*static*/ int64_t CpuExecutable::ShapeSizeBytes(const Shape& shape) {
   // On the cpu, opaques are pointers.
   if (shape.IsOpaque()) {
     return sizeof(void*);
@@ -413,7 +414,7 @@ const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
       module().entry_computation()->root_instruction());
 }
 
-int64 CpuExecutable::SizeOfGeneratedCodeInBytes() const {
+int64_t CpuExecutable::SizeOfGeneratedCodeInBytes() const {
   return jit_->SizeOfGeneratedCodeInBytes();
 }
 

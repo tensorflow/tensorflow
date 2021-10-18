@@ -90,7 +90,7 @@ class DatasetIterator
 
   Status status() const override { return status_; }
 
-  int64 total_size() const override {
+  int64_t total_size() const override {
     int64_t size = dataset_->Cardinality();
     if (size < 0) {
       return 0;
@@ -121,7 +121,6 @@ std::unique_ptr<InitializerSerializer> MakeDatasetInitializerSerializer(
         data::SerializationContext::Params params;
         params.resource_mgr = resource_manager;
         params.device_name = device_name;
-        params.serialize_data_tensors = true;
         data::SerializationContext serialization_ctx(params);
         Node* dataset_node;
         TF_RETURN_IF_ERROR(

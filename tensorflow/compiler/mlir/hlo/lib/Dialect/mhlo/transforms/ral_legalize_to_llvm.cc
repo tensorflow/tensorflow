@@ -18,9 +18,13 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/disc_ral_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
@@ -342,9 +346,8 @@ LogicalResult DispatchOpToLLVMPattern::matchAndRewrite(
   // the third argument is the args for target function
   callOpOperands.push_back(packedArgs);
 
-  rewriter.create<LLVM::CallOp>(loc, llvm::None,
-                                rewriter.getSymbolRefAttr(dispatch_func),
-                                callOpOperands);
+  rewriter.create<LLVM::CallOp>(
+      loc, llvm::None, mlir::SymbolRefAttr::get(dispatch_func), callOpOperands);
 
   SmallVector<Value, 1> results;
   llvm::transform(resultPtrs, std::back_inserter(results), [&](Value v) {
@@ -476,7 +479,7 @@ LogicalResult ConvertLaunchFuncOpToRalCallPattern::matchAndRewrite(
       rewriter, symbol_table_, op, name_buffer.str(), binary_attr.getValue());
 
   // Make sure the trailing zero is included in the constant.
-  auto kernel_name = launch_op.getKernelName();
+  auto kernel_name = launch_op.getKernelName().getValue();
   SmallString<128> kernel_name_buffer(kernel_name);
   kernel_name_buffer.push_back('\0');
 
@@ -539,7 +542,10 @@ class RalToLLVMPass : public RalToLLVMPassBase<RalToLLVMPass> {
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
+    arith::populateArithmeticExpandOpsPatterns(patterns);
     populateStdExpandOpsPatterns(patterns);
+    arith::populateArithmeticToLLVMConversionPatterns(type_converter, patterns);
+    populateMathToLLVMConversionPatterns(type_converter, patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
     populateDiscRalToLLVMConversionPatterns(&type_converter, &symbol_table,
                                             &patterns);
@@ -547,8 +553,9 @@ class RalToLLVMPass : public RalToLLVMPassBase<RalToLLVMPass> {
     // Set target.
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addIllegalDialect<StandardOpsDialect, gpu::GPUDialect,
-                             disc_ral::RalDialect, math::MathDialect>();
+    target.addIllegalDialect<arith::ArithmeticDialect, StandardOpsDialect,
+                             gpu::GPUDialect, disc_ral::RalDialect,
+                             math::MathDialect>();
     target.addIllegalOp<UnrealizedConversionCastOp>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();

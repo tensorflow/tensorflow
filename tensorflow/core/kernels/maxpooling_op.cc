@@ -71,7 +71,7 @@ static void SpatialMaxPoolWithArgMaxHelper(
             "SpatialMaxPoolWithArgMaxHelper requires include_batch_in_index "
             "to be True when input_backprop != nullptr"));
     OP_REQUIRES(
-        context, (std::is_same<Targmax, int64>::value),
+        context, (std::is_same<Targmax, int64_t>::value),
         errors::Internal("SpatialMaxPoolWithArgMaxHelper requires Targmax "
                          "to be int64 when input_backprop != nullptr"));
   }
@@ -178,7 +178,7 @@ static void SpatialMaxPoolWithArgMaxHelper(
 
     if (input_backprop != nullptr) {
       auto input_backprop_flat = input_backprop->flat<T>();
-      auto out_arg_max_flat = output_arg_max->flat<int64>();
+      auto out_arg_max_flat = output_arg_max->flat<int64_t>();
       auto out_backprop_flat = out_backprop.flat<T>();
 
       // Initialize output to 0.
@@ -284,7 +284,7 @@ class MaxPoolingGradOp : public OpKernel {
                                 {1}, DataTypeToEnum<T>::v(), tensor_out.shape(),
                                 &tensor_out_dup));
     Tensor tensor_out_arg_max;
-    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<int64>::v(),
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<int64_t>::v(),
                                                    tensor_out.shape(),
                                                    &tensor_out_arg_max));
     std::vector<int32> ksize = ksize_;
@@ -325,12 +325,20 @@ class MaxPoolingGradOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
+    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected orig_output shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", tensor_out.shape()));
+    OP_REQUIRES(context, out_backprop.shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected grad shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", out_backprop.shape()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, output_shape, &output));
 
-    SpatialMaxPoolWithArgMaxHelper<CPUDevice, T, int64>(
+    SpatialMaxPoolWithArgMaxHelper<CPUDevice, T, int64_t>(
         context, &tensor_out_dup, &tensor_out_arg_max, output, tensor_in,
         out_backprop, params, true);
   }
@@ -339,7 +347,7 @@ class MaxPoolingGradOp : public OpKernel {
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
-  std::vector<int64> explicit_paddings_;
+  std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
 };
 
@@ -440,7 +448,7 @@ class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
-  std::vector<int64> explicit_paddings_;
+  std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
   bool propagate_nans_;
 };
@@ -538,6 +546,18 @@ class MaxPoolingGradGradOp : public OpKernel {
                           /*explicit_paddings=*/{},
                           FORMAT_NHWC,
                           tensor_in.shape()};
+    if (!context->status().ok()) {
+      return;
+    }
+    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected orig_output shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", tensor_out.shape()));
+    OP_REQUIRES(
+        context, out_grad_backprop.shape() == tensor_in.shape(),
+        errors::InvalidArgument("Expected grad shape to be ", tensor_in.shape(),
+                                ", but got ", out_grad_backprop.shape()));
+
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {2}, 0, tensor_out.shape(), &output));
@@ -742,6 +762,17 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
                           /*explicit_paddings=*/{},
                           data_format_,
                           tensor_in.shape()};
+    if (!context->status().ok()) {
+      return;
+    }
+    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected orig_output shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", tensor_out.shape()));
+    OP_REQUIRES(
+        context, out_grad_backprop.shape() == tensor_in.shape(),
+        errors::InvalidArgument("Expected grad shape to be ", tensor_in.shape(),
+                                ", but got ", out_grad_backprop.shape()));
 
     functor::MaxPoolGradBackwardNoMask<T>()(
         data_format_, tensor_in.flat<T>().data(), tensor_out.flat<T>().data(),
@@ -1011,7 +1042,7 @@ struct LaunchMaxPoolingGradWithArgmax<CPUDevice, T> {
 
       {
         auto grad_out_flat = grad_out->flat<T>();
-        auto argmax_flat = argmax.flat<int64>();
+        auto argmax_flat = argmax.flat<int64_t>();
         auto grad_in_flat = grad_in.flat<T>();
 
         const int64_t output_start = start * output_size_per_batch;
@@ -1096,6 +1127,14 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
+    OP_REQUIRES(context, grad_in.shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected grad shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", grad_in.shape()));
+    OP_REQUIRES(context, argmax.shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected argmax shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", argmax.shape()));
 
     TensorShape out_shape({params.tensor_in_batch, params.tensor_in_rows,
                            params.tensor_in_cols, params.depth});
@@ -1156,6 +1195,14 @@ class MaxPoolingGradGradWithArgmaxOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
+    OP_REQUIRES(
+        context, grad_in.shape() == tensor_in.shape(),
+        errors::InvalidArgument("Expected grad shape to be ", tensor_in.shape(),
+                                ", but got ", grad_in.shape()));
+    OP_REQUIRES(context, argmax.shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected argmax shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", argmax.shape()));
 
     TensorShape out_shape({params.tensor_in_batch, params.out_height,
                            params.out_width, params.depth});
@@ -1270,7 +1317,7 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
-  std::vector<int64> explicit_paddings_;
+  std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
   bool propagate_nans_;
 };
@@ -1367,7 +1414,7 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
-  std::vector<int64> explicit_paddings_;
+  std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
   bool propagate_nans_;
 };
@@ -1391,7 +1438,7 @@ struct LaunchMaxPoolingNoMask<Eigen::GpuDevice, T> {
 };
 
 template <typename T>
-struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T, int64> {
+struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T, int64_t> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output, Tensor* argmax,
                      bool propagate_nans, bool include_batch_in_index) {
@@ -1401,7 +1448,7 @@ struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T, int64> {
         params.out_width, params.window_rows, params.window_cols,
         params.row_stride, params.col_stride, params.pad_top, params.pad_left,
         output->flat<T>().data(),
-        reinterpret_cast<int64*>(argmax->flat<int64>().data()),
+        reinterpret_cast<int64_t*>(argmax->flat<int64_t>().data()),
         context->eigen_gpu_device(), propagate_nans, include_batch_in_index);
     if (!status) {
       context->SetStatus(
@@ -1424,9 +1471,9 @@ struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {
         params.tensor_in_rows * params.tensor_in_cols * params.depth;
     bool status = functor::MaxPoolBackwardWithArgmax<T>()(
         output_size, input_size, grad_in.flat<T>().data(),
-        reinterpret_cast<const int64*>(argmax.flat<int64>().data()), top_offset,
-        bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device(),
-        include_batch_in_index);
+        reinterpret_cast<const int64_t*>(argmax.flat<int64_t>().data()),
+        top_offset, bottom_offset, grad_out->flat<T>().data(),
+        context->eigen_gpu_device(), include_batch_in_index);
     if (!status) {
       context->SetStatus(
           errors::Internal("Failed launching MaxPoolBackwardWithArgmax"));
@@ -1449,9 +1496,9 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
         params.out_width * params.out_height * params.depth;
     bool status = functor::MaxPoolGradBackwardWithArgmax<T>()(
         output_size, input_size, grad_in.flat<T>().data(),
-        reinterpret_cast<const int64*>(argmax.flat<int64>().data()), top_offset,
-        bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device(),
-        include_batch_in_index);
+        reinterpret_cast<const int64_t*>(argmax.flat<int64_t>().data()),
+        top_offset, bottom_offset, grad_out->flat<T>().data(),
+        context->eigen_gpu_device(), include_batch_in_index);
     if (!status) {
       context->SetStatus(
           errors::Internal("Failed launching MaxPoolGradBackwardWithArgmax"));
@@ -1482,13 +1529,13 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
                           MaxPoolingGradGradOp<D##Device, T>)            \
   REGISTER_KERNEL_BUILDER(Name("MaxPoolWithArgmax")                      \
                               .Device(DEVICE_##D)                        \
-                              .TypeConstraint<int64>("Targmax")          \
+                              .TypeConstraint<int64_t>("Targmax")        \
                               .TypeConstraint<T>("T"),                   \
                           MaxPoolingWithArgmaxOp<D##Device, T, int64>);  \
   REGISTER_KERNEL_BUILDER(Name("MaxPoolGradWithArgmax")                  \
                               .Device(DEVICE_##D)                        \
                               .TypeConstraint<T>("T")                    \
-                              .TypeConstraint<int64>("Targmax"),         \
+                              .TypeConstraint<int64_t>("Targmax"),       \
                           MaxPoolingGradWithArgmaxOp<D##Device, T>);
 
 // Below kernels implemented only for CPU device.
@@ -1537,32 +1584,32 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
 // default Eigen implementation so we are using the custom kernel as the
 // default. However, you can explicitly invoke the eigen version using
 // kernel_label_map.
-#define REGISTER_GPU_ONLY_POOL_KERNELS(T)                        \
-  REGISTER_KERNEL_BUILDER(Name("MaxPool")                        \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<T>("T")            \
-                              .Label("eigen_tensor"),            \
-                          MaxPoolingOp<GPUDevice, T>);           \
-  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                      \
-                              .Device(DEVICE_GPU)                \
-                              .HostMemory("ksize")               \
-                              .HostMemory("strides")             \
-                              .TypeConstraint<T>("T")            \
-                              .Label("eigen_tensor"),            \
-                          MaxPoolingV2Op<GPUDevice, T>);         \
-  REGISTER_KERNEL_BUILDER(                                       \
-      Name("MaxPool").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
-      MaxPoolingNoMaskOp<GPUDevice, T>);                         \
-  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                      \
-                              .Device(DEVICE_GPU)                \
-                              .HostMemory("ksize")               \
-                              .HostMemory("strides")             \
-                              .TypeConstraint<T>("T"),           \
-                          MaxPoolingNoMaskV2Op<GPUDevice, T>);   \
-  REGISTER_KERNEL_BUILDER(Name("MaxPoolGradGradWithArgmax")      \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<T>("T")            \
-                              .TypeConstraint<int64>("Targmax"), \
+#define REGISTER_GPU_ONLY_POOL_KERNELS(T)                          \
+  REGISTER_KERNEL_BUILDER(Name("MaxPool")                          \
+                              .Device(DEVICE_GPU)                  \
+                              .TypeConstraint<T>("T")              \
+                              .Label("eigen_tensor"),              \
+                          MaxPoolingOp<GPUDevice, T>);             \
+  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                        \
+                              .Device(DEVICE_GPU)                  \
+                              .HostMemory("ksize")                 \
+                              .HostMemory("strides")               \
+                              .TypeConstraint<T>("T")              \
+                              .Label("eigen_tensor"),              \
+                          MaxPoolingV2Op<GPUDevice, T>);           \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("MaxPool").Device(DEVICE_GPU).TypeConstraint<T>("T"),   \
+      MaxPoolingNoMaskOp<GPUDevice, T>);                           \
+  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                        \
+                              .Device(DEVICE_GPU)                  \
+                              .HostMemory("ksize")                 \
+                              .HostMemory("strides")               \
+                              .TypeConstraint<T>("T"),             \
+                          MaxPoolingNoMaskV2Op<GPUDevice, T>);     \
+  REGISTER_KERNEL_BUILDER(Name("MaxPoolGradGradWithArgmax")        \
+                              .Device(DEVICE_GPU)                  \
+                              .TypeConstraint<T>("T")              \
+                              .TypeConstraint<int64_t>("Targmax"), \
                           MaxPoolingGradGradWithArgmaxOp<GPUDevice, T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_ONLY_POOL_KERNELS);
 

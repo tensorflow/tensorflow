@@ -46,8 +46,8 @@ TEST(RecentRequestIds, Unordered) {
   RecentRequestIds recent_request_ids(6);
 
   // Some unordered numbers to insert into request_id_set.
-  std::vector<int64> numbers = {53754,  23351,  164101, 7476,
-                                162432, 130761, 164102};
+  std::vector<int64_t> numbers = {53754,  23351,  164101, 7476,
+                                  162432, 130761, 164102};
 
   // Insert numbers[0..6) and check that all previously inserted numbers remain
   // in the set.

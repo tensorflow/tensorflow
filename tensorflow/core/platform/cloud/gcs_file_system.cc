@@ -118,14 +118,15 @@ constexpr char kWriteRequestTimeout[] = "GCS_WRITE_REQUEST_TIMEOUT_SECS";
 // The environment variable to configure an additional header to send with
 // all requests to GCS (format HEADERNAME:HEADERCONTENT)
 constexpr char kAdditionalRequestHeader[] = "GCS_ADDITIONAL_REQUEST_HEADER";
-// The environment variable to configure the throttle (format: <int64>)
+// The environment variable to configure the throttle (format: <int64_t>)
 constexpr char kThrottleRate[] = "GCS_THROTTLE_TOKEN_RATE";
-// The environment variable to configure the token bucket size (format: <int64>)
+// The environment variable to configure the token bucket size (format:
+// <int64_t>)
 constexpr char kThrottleBucket[] = "GCS_THROTTLE_BUCKET_SIZE";
 // The environment variable that controls the number of tokens per request.
-// (format: <int64>)
+// (format: <int64_t>)
 constexpr char kTokensPerRequest[] = "GCS_TOKENS_PER_REQUEST";
-// The environment variable to configure the initial tokens (format: <int64>)
+// The environment variable to configure the initial tokens (format: <int64_t>)
 constexpr char kInitialTokens[] = "GCS_INITIAL_TOKENS";
 
 // The environment variable to customize which GCS bucket locations are allowed,
@@ -232,7 +233,7 @@ Status GetStringValue(const Json::Value& parent, const char* name,
 
 /// Reads a long JSON value with the given name from a parent JSON value.
 Status GetInt64Value(const Json::Value& parent, const char* name,
-                     int64* result) {
+                     int64_t* result) {
   Json::Value result_value;
   TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
   if (result_value.isNumeric()) {
@@ -408,7 +409,7 @@ typedef std::function<Status(const string& session_uri, uint64 file_size,
 
 // Function object declaration with params needed to poll upload status.
 typedef std::function<Status(const string& fname, const string& bucket,
-                             const string& object, int64* generation)>
+                             const string& object, int64_t* generation)>
     GenerationGetter;
 
 /// \brief GCS-based implementation of a writeable file.
@@ -531,7 +532,7 @@ class GcsWritableFile : public WritableFile {
     return status;
   }
 
-  Status Tell(int64* position) override {
+  Status Tell(int64_t* position) override {
     *position = outfile_.tellp();
     if (*position == -1) {
       return errors::Internal("tellp on the internal temporary file failed");
@@ -598,9 +599,9 @@ class GcsWritableFile : public WritableFile {
     if (upload_status.code() == errors::Code::NOT_FOUND) {
       // GCS docs recommend retrying the whole upload. We're relying on the
       // RetryingFileSystem to retry the Sync() call.
-      return errors::Unavailable(
-          strings::StrCat("Upload to gs://", bucket_, "/", object_,
-                          " failed, caused by: ", upload_status.ToString()));
+      return errors::Unavailable(strings::StrCat(
+          "Upload to gs://", bucket_, "/", object_,
+          " failed, caused by: ", upload_status.error_message()));
     }
     if (upload_status.ok()) {
       if (should_compose) {
@@ -1199,7 +1200,7 @@ Status GcsFileSystem::RequestUploadSessionStatus(const string& session_uri,
                                         "' could not be parsed.");
     }
 
-    std::vector<int64> range_parts;
+    std::vector<int64_t> range_parts;
     for (const std::string& range_str : range_strs) {
       int64_t tmp;
       if (strings::safe_strto64(range_str, &tmp)) {
@@ -2014,8 +2015,8 @@ Status GcsFileSystem::IsDirectory(const string& fname,
 
 Status GcsFileSystem::DeleteRecursively(const string& dirname,
                                         TransactionToken* token,
-                                        int64* undeleted_files,
-                                        int64* undeleted_dirs) {
+                                        int64_t* undeleted_files,
+                                        int64_t* undeleted_dirs) {
   if (!undeleted_files || !undeleted_dirs) {
     return errors::Internal(
         "'undeleted_files' and 'undeleted_dirs' cannot be nullptr.");

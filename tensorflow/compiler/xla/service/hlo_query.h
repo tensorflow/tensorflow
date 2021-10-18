@@ -27,6 +27,9 @@ namespace xla {
 // Helper interface for making queries about the HLO IR.
 namespace hlo_query {
 
+// Returns whether the given opcode is a collective communications operation.
+bool IsCollectiveCommunicationOp(HloOpcode op);
+
 // Returns whether the instruction provided is a constant rank-0 float32, and
 // if so, places the constant value into out.
 // Precondition: out != nullptr
@@ -86,7 +89,7 @@ inline bool ContainsLayoutConstrainedAllReduce(const HloModule& module) {
 
 // Returns the next available channel id that can be used in the given module
 // (for HloChannelInstructions).
-int64 NextChannelId(const HloModule& module);
+int64_t NextChannelId(const HloModule& module);
 
 // Returns whether the module contains host send/recv with X64 data type.
 // This function is called after X64Rewriter, so X64 host transfers are already

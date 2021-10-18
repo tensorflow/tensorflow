@@ -34,42 +34,43 @@ namespace tensorflow {
 // Generate "count" random positive integers (not including zero) with sum
 // "sum". Technique based on one from https://math.stackexchange.com/a/1276225
 // but simplified (especially for zero-based indexing).
-static std::vector<int64> GenerateRandomIntsWithSum(int64_t sum, int count) {
+static std::vector<int64_t> GenerateRandomIntsWithSum(int64_t sum, int count) {
   CHECK_GE(count, 1);
   CHECK_GE(sum, count);
-  std::vector<int64> temp(count);
+  std::vector<int64_t> temp(count);
   for (int i = 0; i + 1 < count; ++i) {
     temp[i] = lrand48() % (sum - count);
   }
   temp[count - 1] = sum - count;
   std::sort(temp.begin(), std::prev(temp.end()));
-  std::vector<int64> result(count);
+  std::vector<int64_t> result(count);
   std::adjacent_difference(temp.begin(), temp.end(), result.begin());
   for (int i = 0; i < count; ++i) {
     ++result[i];
   }
   CHECK(std::all_of(result.begin(), result.end(),
                     [sum](int64_t x) { return x >= 1 && x <= sum; }));
-  CHECK_EQ(std::accumulate(result.begin(), result.end(), static_cast<int64>(0)),
-           sum);
+  CHECK_EQ(
+      std::accumulate(result.begin(), result.end(), static_cast<int64_t>(0)),
+      sum);
   CHECK_EQ(result.size(), count);
   return result;
 }
 
-static Graph* MakeGraph(int split_dim, const std::vector<int64>& size_splits,
-                        std::initializer_list<int64> total_size) {
+static Graph* MakeGraph(int split_dim, const std::vector<int64_t>& size_splits,
+                        std::initializer_list<int64_t> total_size) {
   Graph* g = new Graph(OpRegistry::Global());
   TensorShape in_shape(total_size);
   Tensor in(DataTypeToEnum<float>::value, in_shape);
   in.flat<float>().setRandom();
   Tensor split_dim_tensor = test::AsScalar<int32>(split_dim);
-  Tensor size_splits_tensor = test::AsTensor<int64>(size_splits);
+  Tensor size_splits_tensor = test::AsTensor<int64_t>(size_splits);
   Node* splitv;
   TF_CHECK_OK(NodeBuilder(g->NewName("splitv"), "SplitV")
                   .Input(test::graph::Constant(g, in))
                   .Input(test::graph::Constant(g, size_splits_tensor))
                   .Input(test::graph::Constant(g, split_dim_tensor))
-                  .Attr("num_split", static_cast<int64>(size_splits.size()))
+                  .Attr("num_split", static_cast<int64_t>(size_splits.size()))
                   .Finalize(g, &splitv));
   return g;
 }
@@ -84,7 +85,7 @@ static Graph* MakeGraph(int split_dim, const std::vector<int64>& size_splits,
                        GenerateRandomIntsWithSum(total_size, num_split),     \
                        {total_size});                                        \
     test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);       \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) *         \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *       \
                             total_size);                                     \
   }                                                                          \
   BENCHMARK(BM_SplitV_1d_##num_split##_##total_size)->UseRealTime();
@@ -92,7 +93,7 @@ static Graph* MakeGraph(int split_dim, const std::vector<int64>& size_splits,
 #define BM_SPLITV_2D(split_dim, num_split, dim0, dim1)                         \
   static void BM_SplitV_2d_##split_dim##_##num_split##dim0##dim1(              \
       ::testing::benchmark::State& state) {                                    \
-    std::vector<int64> total_size_vec{dim0, dim1};                             \
+    std::vector<int64_t> total_size_vec{dim0, dim1};                           \
     auto label = strings::Printf("2-D %d chunks in dim %d totaling (%d * %d)", \
                                  num_split, split_dim, dim0, dim1);            \
     state.SetLabel(label);                                                     \
@@ -101,28 +102,28 @@ static Graph* MakeGraph(int split_dim, const std::vector<int64>& size_splits,
         GenerateRandomIntsWithSum(total_size_vec[split_dim], num_split),       \
         {dim0, dim1});                                                         \
     test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);         \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * dim0 *    \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * dim0 *  \
                             dim1);                                             \
   }                                                                            \
   BENCHMARK(BM_SplitV_2d_##split_dim##_##num_split##dim0##dim1)->UseRealTime();
 
-#define BM_SPLITV_3D(split_dim, num_split, dim0, dim1, dim2)                \
-  static void BM_SplitV_3d_##split_dim##_##num_split##dim0##dim1##dim2(     \
-      ::testing::benchmark::State& state) {                                 \
-    std::vector<int64> total_size_vec{dim0, dim1, dim2};                    \
-    auto label =                                                            \
-        strings::Printf("3-D %d chunks in dim %d totaling (%d * %d * %d)",  \
-                        num_split, split_dim, dim0, dim1, dim2);            \
-    state.SetLabel(label);                                                  \
-    auto g = MakeGraph(                                                     \
-        split_dim,                                                          \
-        GenerateRandomIntsWithSum(total_size_vec[split_dim], num_split),    \
-        {dim0, dim1, dim2});                                                \
-    test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);      \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * dim0 * \
-                            dim1 * dim2);                                   \
-  }                                                                         \
-  BENCHMARK(BM_SplitV_3d_##split_dim##_##num_split##dim0##dim1##dim2)       \
+#define BM_SPLITV_3D(split_dim, num_split, dim0, dim1, dim2)                  \
+  static void BM_SplitV_3d_##split_dim##_##num_split##dim0##dim1##dim2(       \
+      ::testing::benchmark::State& state) {                                   \
+    std::vector<int64_t> total_size_vec{dim0, dim1, dim2};                    \
+    auto label =                                                              \
+        strings::Printf("3-D %d chunks in dim %d totaling (%d * %d * %d)",    \
+                        num_split, split_dim, dim0, dim1, dim2);              \
+    state.SetLabel(label);                                                    \
+    auto g = MakeGraph(                                                       \
+        split_dim,                                                            \
+        GenerateRandomIntsWithSum(total_size_vec[split_dim], num_split),      \
+        {dim0, dim1, dim2});                                                  \
+    test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);        \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * dim0 * \
+                            dim1 * dim2);                                     \
+  }                                                                           \
+  BENCHMARK(BM_SplitV_3d_##split_dim##_##num_split##dim0##dim1##dim2)         \
       ->UseRealTime();
 
 BM_SPLITV_1D(5, 20);

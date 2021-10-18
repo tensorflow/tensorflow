@@ -142,14 +142,13 @@ class NcclTestBase : public ::testing::Test {
     const string task_name = "/job:worker/replica:0/task:0";
     col_params_->group.num_devices_per_task[task_name] = num_ranks;
     for (int rank = 0; rank < num_ranks; ++rank) {
-      DeviceAttributes device;
-      device.set_name(device_names[rank % num_gpus]);
-      col_params_->group.devices.push_back(device);
-      col_params_->group.task_names.push_back(task_name);
+      CollGroupMember member;
+      member.device.set_name(device_names[rank % num_gpus]);
+      col_params_->group.members.push_back(member);
     }
     for (int rank = 0; rank < num_ranks; ++rank) {
       instances_.push_back(absl::make_unique<DeviceInstance>(
-          rank, col_params_->group.devices[rank].name(), this));
+          rank, col_params_->group.members[rank].device.name(), this));
     }
   }
 

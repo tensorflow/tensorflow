@@ -69,7 +69,7 @@ def get_python_bin(repository_ctx):
                      "python is installed and add its directory in PATH, or --define " +
                      "%s='/something/else'.\nPATH=%s" % (
                          PYTHON_BIN_PATH,
-                         get_environ("PATH", ""),
+                         get_environ(repository_ctx, "PATH"),
                      ))
     return python_bin  # unreachable
 
@@ -91,7 +91,7 @@ def get_bash_bin(repository_ctx):
                          "bash is installed and add its directory in PATH, or --define " +
                          "%s='/path/to/bash'.\nPATH=%s" % (
                              BAZEL_SH,
-                             get_environ("PATH", ""),
+                             get_environ(repository_ctx, "PATH"),
                          ))
     return bash_bin_path
 

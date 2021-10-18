@@ -81,10 +81,10 @@ class RngSupport {
   // seed: Pointer to seed data. Must not be null.
   // seed_bytes: Size of seed buffer in bytes. Must be >= 16.
   virtual bool SetSeed(Stream *stream, const uint8 *seed,
-                       uint64 seed_bytes) = 0;
+                       uint64_t seed_bytes) = 0;
 
  protected:
-  static bool CheckSeed(const uint8 *seed, uint64 seed_bytes);
+  static bool CheckSeed(const uint8 *seed, uint64_t seed_bytes);
 };
 
 }  // namespace rng

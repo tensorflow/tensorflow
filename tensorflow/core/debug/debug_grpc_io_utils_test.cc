@@ -65,7 +65,7 @@ class GrpcDebugTest : public ::testing::Test {
 
   void ClearEnabledWatchKeys() { DebugGrpcIO::ClearEnabledWatchKeys(); }
 
-  const int64 GetChannelConnectionTimeoutMicros() {
+  const int64_t GetChannelConnectionTimeoutMicros() {
     return DebugGrpcIO::channel_connection_timeout_micros_;
   }
 

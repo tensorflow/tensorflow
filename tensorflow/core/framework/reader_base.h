@@ -60,7 +60,7 @@ class ReaderBase : public ReaderInterface {
   // Produce up to num_records next key/value pairs from the current
   // work item, in the same manner of ReadLocked.
   virtual Status ReadUpToLocked(int64_t num_records, std::vector<tstring>* keys,
-                                std::vector<tstring>* values, int64* num_read,
+                                std::vector<tstring>* values, int64_t* num_read,
                                 bool* at_end);
 
   // Called when work starts / finishes.
@@ -115,21 +115,21 @@ class ReaderBase : public ReaderInterface {
 
   // Produces up to num_records.
   // In this implementation all the records come from the same work unit.
-  int64 ReadUpTo(const int64_t num_records, QueueInterface* queue,
-                 std::vector<tstring>* keys, std::vector<tstring>* value,
-                 OpKernelContext* context) override;
+  int64_t ReadUpTo(const int64_t num_records, QueueInterface* queue,
+                   std::vector<tstring>* keys, std::vector<tstring>* value,
+                   OpKernelContext* context) override;
 
   Status Reset() override;
-  int64 NumRecordsProduced() override;
-  int64 NumWorkUnitsCompleted() override;
+  int64_t NumRecordsProduced() override;
+  int64_t NumWorkUnitsCompleted() override;
   Status SerializeState(tstring* state) override;
   Status RestoreState(const tstring& state) override;
 
   mutable mutex mu_;
   const string name_;
-  int64 work_started_ = 0;
-  int64 work_finished_ = 0;
-  int64 num_records_produced_ = 0;
+  int64_t work_started_ = 0;
+  int64_t work_finished_ = 0;
+  int64_t num_records_produced_ = 0;
   tstring work_;
 };
 

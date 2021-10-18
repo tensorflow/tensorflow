@@ -52,8 +52,8 @@ RunHandlerEnvironment::RunHandlerEnvironment(
     : env_(env), thread_options_(thread_options), name_(name) {}
 
 RunHandlerEnvironment::EnvThread* RunHandlerEnvironment::CreateThread(
-    std::function<void()> f) {
-  return env_->StartThread(thread_options_, name_, [=]() {
+    std::function<void()> f, const std::string& thread_name) {
+  return env_->StartThread(thread_options_, thread_name, [=]() {
     // Set the processor flag to flush denormals to zero.
     port::ScopedFlushDenormal flush;
     // Set the processor rounding mode to ROUND TO NEAREST.
@@ -254,7 +254,7 @@ int ThreadWorkSource::TaskQueueSize(bool is_blocking) {
   }
 }
 
-int64 ThreadWorkSource::GetTracemeId() {
+int64_t ThreadWorkSource::GetTracemeId() {
   return traceme_id_.load(std::memory_order_relaxed);
 }
 
@@ -280,20 +280,20 @@ void ThreadWorkSource::SetWaiter(uint64 version, Waiter* waiter, mutex* mutex) {
   version_ = version;
 }
 
-int64 ThreadWorkSource::GetInflightTaskCount(bool is_blocking) {
-  std::atomic<int64>* counter =
+int64_t ThreadWorkSource::GetInflightTaskCount(bool is_blocking) {
+  std::atomic<int64_t>* counter =
       is_blocking ? &blocking_inflight_ : &non_blocking_inflight_;
   return counter->load(std::memory_order_relaxed);
 }
 
 void ThreadWorkSource::IncrementInflightTaskCount(bool is_blocking) {
-  std::atomic<int64>* counter =
+  std::atomic<int64_t>* counter =
       is_blocking ? &blocking_inflight_ : &non_blocking_inflight_;
   counter->fetch_add(1, std::memory_order_relaxed);
 }
 
 void ThreadWorkSource::DecrementInflightTaskCount(bool is_blocking) {
-  std::atomic<int64>* counter =
+  std::atomic<int64_t>* counter =
       is_blocking ? &blocking_inflight_ : &non_blocking_inflight_;
   counter->fetch_sub(1, std::memory_order_relaxed);
 }
@@ -366,10 +366,18 @@ void RunHandlerThreadPool::Start() {
       }
     }
     thread_data_[i].sub_thread_pool_id = sub_thread_pool_id;
-    thread_data_[i].thread.reset(
-        env_.CreateThread([this, i, num_blocking_threads]() {
-          WorkerLoop(i, i < num_blocking_threads);
-        }));
+    const bool is_blocking_thread = (i < num_blocking_threads) ? true : false;
+    // The blocking threads will handle both inter and intra op workload;
+    // non-blocking thread will handle intra op workload only; and the
+    // sub thread pool is only provided for blocking threads.
+    // Name the threads accordingly.
+    thread_data_[i].thread.reset(env_.CreateThread(
+        [this, is_blocking_thread, i, sub_thread_pool_id]() {
+          WorkerLoop(i, is_blocking_thread);
+        },
+        is_blocking_thread
+            ? strings::StrCat(name_, "_blocking_thread_", sub_thread_pool_id)
+            : strings::StrCat(name_, "_non_blocking_thread")));
   }
 }
 
@@ -377,7 +385,7 @@ void RunHandlerThreadPool::StartOneThreadForTesting() {
   cancelled_ = false;
   thread_data_[0].sub_thread_pool_id = 0;
   thread_data_[0].thread.reset(
-      env_.CreateThread([this]() { WorkerLoop(0, true); }));
+      env_.CreateThread([this]() { WorkerLoop(0, true); }, name_));
 }
 
 void RunHandlerThreadPool::AddWorkToQueue(ThreadWorkSource* tws,
@@ -728,7 +736,7 @@ class RunHandler::Impl {
   // Stores now time (in microseconds) since unix epoch when the handler is
   // requested via RunHandlerPool::Get().
   uint64 start_time_us() const { return start_time_us_; }
-  int64 step_id() const { return step_id_; }
+  int64_t step_id() const { return step_id_; }
   void ScheduleInterOpClosure(std::function<void()> fn);
   void ScheduleIntraOpClosure(std::function<void()> fn);
 
@@ -739,7 +747,7 @@ class RunHandler::Impl {
 
   internal::ThreadWorkSource* tws() { return &tws_; }
 
-  int64 priority() { return options_.priority(); }
+  int64_t priority() { return options_.priority(); }
 
  private:
   class ThreadPoolInterfaceWrapper : public thread::ThreadPoolInterface {
@@ -757,7 +765,7 @@ class RunHandler::Impl {
 
   RunHandlerPool::Impl* pool_impl_;  // NOT OWNED.
   uint64 start_time_us_;
-  int64 step_id_;
+  int64_t step_id_;
   std::unique_ptr<thread::ThreadPoolInterface> thread_pool_interface_;
   internal::ThreadWorkSource tws_;
   RunOptions::Experimental::RunHandlerPoolOptions options_;
@@ -846,6 +854,10 @@ class RunHandlerPool::Impl {
                                      "#");
             },
             profiler::TraceMeLevel::kInfo);
+        TRACESTRING(
+            strings::StrCat("RunHandlerPool::Impl::Get waiting for a handler "
+                            "with timeout in millisecond",
+                            timeout_in_ms));
         if (timeout_in_ms == 0) {
           mu_.Await(Condition(this, &Impl::has_free_handler));
         } else if (!mu_.AwaitWithDeadline(
@@ -913,10 +925,10 @@ class RunHandlerPool::Impl {
     // requests will trigger recomputation.
   }
 
-  std::vector<int64> GetActiveHandlerPrioritiesForTesting()
+  std::vector<int64_t> GetActiveHandlerPrioritiesForTesting()
       TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    std::vector<int64> ret;
+    std::vector<int64_t> ret;
     for (const auto& handler_impl : sorted_active_handlers_) {
       ret.push_back(handler_impl->priority());
     }
@@ -954,9 +966,9 @@ class RunHandlerPool::Impl {
   // Histogram of elapsed runtime of every handler (in ms).
   histogram::Histogram time_hist_ TF_GUARDED_BY(mu_);
 
-  int64 iterations_ TF_GUARDED_BY(mu_);
+  int64_t iterations_ TF_GUARDED_BY(mu_);
   mutex mu_;
-  int64 version_ TF_GUARDED_BY(mu_);
+  int64_t version_ TF_GUARDED_BY(mu_);
   const std::vector<double> sub_thread_pool_end_request_percentage_;
 };
 
@@ -1087,7 +1099,7 @@ std::unique_ptr<RunHandler> RunHandlerPool::Get(
   return impl_->Get(step_id, timeout_in_ms, options);
 }
 
-std::vector<int64> RunHandlerPool::GetActiveHandlerPrioritiesForTesting()
+std::vector<int64_t> RunHandlerPool::GetActiveHandlerPrioritiesForTesting()
     const {
   return impl_->GetActiveHandlerPrioritiesForTesting();
 }

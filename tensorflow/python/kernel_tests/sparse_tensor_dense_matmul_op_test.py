@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for sparse_ops.sparse_tensor_dense_matmul."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 import time
 

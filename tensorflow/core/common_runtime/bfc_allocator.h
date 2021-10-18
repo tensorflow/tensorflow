@@ -71,7 +71,7 @@ class BFCAllocator : public Allocator {
 
   size_t AllocatedSize(const void* ptr) const override;
 
-  int64 AllocationId(const void* ptr) const override;
+  int64_t AllocationId(const void* ptr) const override;
 
   absl::optional<AllocatorStats> GetStats() override;
 
@@ -125,7 +125,7 @@ class BFCAllocator : public Allocator {
 
   // Return the largest free chunk bytes from the largest bin in constant time.
   // The free chunks are sorted by size (and then address) in a bin.
-  int64 LargestFreeChunk() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  int64_t LargestFreeChunk() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Add TraceMe (in memory allocation and deallocation) for memory stats
   // profiling. The chunk_ptr is passed to get information such as address,
@@ -175,7 +175,7 @@ class BFCAllocator : public Allocator {
     // value greater than zero before the chunk is returned from
     // AllocateRaw, and this value is unique among values assigned by
     // the parent allocator.
-    int64 allocation_id = -1;
+    int64_t allocation_id = -1;
     void* ptr = nullptr;  // pointer to granted subbuffer.
 
     // If not kInvalidChunkHandle, the memory referred to by 'prev' is directly
@@ -599,7 +599,7 @@ class BFCAllocator : public Allocator {
 
   // Counter containing the next unique identifier to assign to a
   // newly-created chunk.
-  int64 next_allocation_id_ TF_GUARDED_BY(lock_);
+  int64_t next_allocation_id_ TF_GUARDED_BY(lock_);
 
   // Stats.
   AllocatorStats stats_ TF_GUARDED_BY(lock_);

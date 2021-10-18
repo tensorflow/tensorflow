@@ -14,10 +14,6 @@
 # ==============================================================================
 """Saves and restore variables inside traced @tf.functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -50,8 +46,7 @@ class _SingleDeviceSaver(object):
     saveable_objects = list(saveable_objects)
     for saveable in saveable_objects:
       if not isinstance(saveable, saveable_object.SaveableObject):
-        raise ValueError(
-            "Expected a list of SaveableObjects, got %s." % (saveable,))
+        raise ValueError(f"Expected a list of SaveableObjects, got {saveable}.")
     self._saveable_objects = saveable_objects
 
   def save(self, file_prefix, options=None):
@@ -159,8 +154,7 @@ class MultiDeviceSaver(object):
 
       if not is_saveable and not is_hook:
         raise ValueError(
-            "Expected a dictionary of SaveableObjects, got {}."
-            .format(saveable))
+            f"Expected a dictionary of SaveableObjects, got {saveable}.")
 
       if is_hook:
         self._before_save_callbacks.append(saveable.before_save)

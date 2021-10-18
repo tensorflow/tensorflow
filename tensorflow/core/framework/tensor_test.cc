@@ -93,7 +93,7 @@ TEST(TensorTest, DataType_Traits) {
   EXPECT_TRUE(std::is_trivial<uint16>::value);
   EXPECT_TRUE(std::is_trivial<int16>::value);
   EXPECT_TRUE(std::is_trivial<int8>::value);
-  EXPECT_TRUE(std::is_trivial<int64>::value);
+  EXPECT_TRUE(std::is_trivial<int64_t>::value);
   EXPECT_TRUE(std::is_trivial<bool>::value);
   EXPECT_FALSE(std::is_trivial<tstring>::value);
   EXPECT_FALSE(std::is_trivial<string>::value);
@@ -393,24 +393,24 @@ class TensorReshapeTest : public ::testing::Test {
   }
 
   template <typename T>
-  using ReshapeFunc = T (Tensor::*)(gtl::ArraySlice<int64>);
+  using ReshapeFunc = T (Tensor::*)(gtl::ArraySlice<int64_t>);
   template <typename T>
-  using ConstReshapeFunc = T (Tensor::*)(gtl::ArraySlice<int64>) const;
+  using ConstReshapeFunc = T (Tensor::*)(gtl::ArraySlice<int64_t>) const;
 
   template <typename T, ReshapeFunc<T> Func>
-  void TestReshape(std::initializer_list<int64> sizes) {
+  void TestReshape(std::initializer_list<int64_t> sizes) {
     T shaped = (t.*Func)(sizes);
     TestReshapeImpl(shaped, sizes);
   }
 
   template <typename T, ConstReshapeFunc<T> Func>
-  void TestReshape(std::initializer_list<int64> sizes) {
+  void TestReshape(std::initializer_list<int64_t> sizes) {
     T shaped = (static_cast<const Tensor&>(t).*Func)(sizes);
     TestReshapeImpl(shaped, sizes);
   }
 
   template <typename T>
-  void TestReshapeImpl(T shaped, std::initializer_list<int64> sizes) {
+  void TestReshapeImpl(T shaped, std::initializer_list<int64_t> sizes) {
     auto iter = sizes.begin();
     for (int i = 0; i < shaped.rank(); ++i, ++iter) {
       EXPECT_EQ(*iter, shaped.dimension(i));
@@ -997,15 +997,15 @@ TEST(Tensor_QUInt8, SimpleWithHelper) {
 }
 
 TEST(Tensor_Int64, SimpleWithHelper) {
-  Tensor t1 = test::AsTensor<int64>(
+  Tensor t1 = test::AsTensor<int64_t>(
       {0LL << 48, 1LL << 48, 2LL << 48, 3LL << 48, 4LL << 48, 5LL << 48},
       {2, 3});
   Tensor t2(t1.dtype(), t1.shape());
-  t2.flat<int64>() = t1.flat<int64>() * static_cast<int64>(2);
-  Tensor t3 = test::AsTensor<int64>(
+  t2.flat<int64_t>() = t1.flat<int64_t>() * static_cast<int64_t>(2);
+  Tensor t3 = test::AsTensor<int64_t>(
       {0LL << 48, 2LL << 48, 4LL << 48, 6LL << 48, 8LL << 48, 10LL << 48},
       {2, 3});
-  ExpectEqual<int64>(t2, t3);
+  ExpectEqual<int64_t>(t2, t3);
 }
 
 TEST(Tensor_String, SimpleWithHelper) {

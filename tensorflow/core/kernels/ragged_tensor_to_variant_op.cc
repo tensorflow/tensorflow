@@ -266,7 +266,7 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
 
 #define REGISTER_KERNELS(value_type)                  \
   REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, int32) \
-  REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, int64)
+  REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, int64_t)
 TF_CALL_POD_TYPES(REGISTER_KERNELS);
 TF_CALL_tstring(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);

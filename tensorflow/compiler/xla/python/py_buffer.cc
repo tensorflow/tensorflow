@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -133,7 +134,7 @@ PyBuffer::~PyBuffer() {
   }
 }
 
-StatusOr<int64> PyBuffer::size() {
+StatusOr<int64_t> PyBuffer::size() {
   Shape max_buffer_shape = buffer()->on_device_shape();
   if (max_buffer_shape.is_dynamic()) {
     TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
@@ -387,11 +388,11 @@ int PyBuffer_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     }
     if ((flags & PyBUF_ND) == PyBUF_ND) {
       view->ndim = shape->dimensions_size();
-      static_assert(sizeof(int64) == sizeof(Py_ssize_t),
+      static_assert(sizeof(int64_t) == sizeof(Py_ssize_t),
                     "Py_ssize_t must be 64 bits");
       if (view->ndim != 0) {
         view->shape = reinterpret_cast<Py_ssize_t*>(
-            const_cast<int64*>(shape->dimensions().data()));
+            const_cast<int64_t*>(shape->dimensions().data()));
         if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
           extra->strides = ByteStridesForShape(*shape);
           view->strides = extra->strides.data();
@@ -425,21 +426,6 @@ PyBufferProcs PyBuffer_tp_as_buffer = []() {
   procs.bf_releasebuffer = &PyBuffer_bf_releasebuffer;
   return procs;
 }();
-
-// Helpers for building Python properties
-template <typename Func>
-py::object property_readonly(Func&& get) {
-  py::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
-  return property(py::cpp_function(std::forward<Func>(get)), py::none(),
-                  py::none(), "");
-}
-
-template <typename GetFunc, typename SetFunc>
-py::object property(GetFunc&& get, SetFunc&& set) {
-  py::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
-  return property(py::cpp_function(std::forward<GetFunc>(get)),
-                  py::cpp_function(std::forward<SetFunc>(set)), py::none(), "");
-}
 
 }  // namespace
 
@@ -478,8 +464,8 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   }
   py::object base_type = py::reinterpret_borrow<py::object>(base_type_);
   base_type.attr("__module__") = m.attr("__name__");
-
   m.attr("DeviceArrayBase") = base_type;
+
   {
     py::tuple bases = py::make_tuple(base_type);
     py::str name = py::str("DeviceArray");
@@ -523,6 +509,8 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   // pybind11's casting logic. This is most likely slightly slower than
   // hand-writing bindings, but most of these methods are not performance
   // critical.
+  using jax::property;
+  using jax::property_readonly;
   type.attr("__array_priority__") =
       property_readonly([](py::object self) -> int { return 100; });
   type.attr("_device") = property(

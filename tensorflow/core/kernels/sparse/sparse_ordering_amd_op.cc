@@ -74,7 +74,7 @@ class CSROrderingAMDCPUOp : public OpKernel {
                 errors::InvalidArgument("sparse matrix must have rank 2 or 3; ",
                                         "but dense_shape has size ", rank));
 
-    auto dense_shape_vec = dense_shape.vec<int64>();
+    auto dense_shape_vec = dense_shape.vec<int64_t>();
     const int64_t num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
     const int64_t num_cols = dense_shape_vec((rank == 2) ? 1 : 2);
 

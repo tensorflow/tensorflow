@@ -40,7 +40,7 @@ struct GetElementResult {
   // A dataset element produced by a GetElement request.
   std::vector<Tensor> components;
   // The element's index within the task it came from.
-  int64 element_index;
+  int64_t element_index;
   // If true, indicates that there is no more data to read.
   bool end_of_sequence;
   // If true, indicates that there is still data, but the caller should skip

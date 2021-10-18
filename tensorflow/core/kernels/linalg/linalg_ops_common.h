@@ -96,12 +96,13 @@ class LinearAlgebraOp : public OpKernel {
   // in core/util/work_sharder.cc. Many linear algebra ops take roughly max(m,n)
   // * min(m,n)^2, where the first input matrix is m-by-n. We provide that as a
   // default implementation for convenience.
-  virtual int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const {
+  virtual int64_t GetCostPerUnit(
+      const TensorShapes& input_matrix_shapes) const {
     double m = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double n = static_cast<double>(input_matrix_shapes[0].dim_size(1));
     double cost = std::max(m, n) * std::min(m, n) * std::min(m, n);
     return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64>(cost);
+                                                  : static_cast<int64_t>(cost);
   }
 
   // Returns true if it is safe to forward (alias) input to output buffer

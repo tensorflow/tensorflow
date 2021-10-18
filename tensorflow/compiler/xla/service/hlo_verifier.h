@@ -30,7 +30,7 @@ namespace xla {
 class ShapeVerifier : public DfsHloVisitor {
  public:
   ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision,
-                std::function<int64(const Shape&)> shape_size_function)
+                std::function<int64_t(const Shape&)> shape_size_function)
       : layout_sensitive_(layout_sensitive),
         allow_mixed_precision_(allow_mixed_precision),
         shape_size_function_(shape_size_function) {}
@@ -207,18 +207,25 @@ class ShapeVerifier : public DfsHloVisitor {
   bool allow_mixed_precision_;
 
   // Returns a target-specific shape size.
-  std::function<int64(const Shape&)> shape_size_function_;
+  std::function<int64_t(const Shape&)> shape_size_function_;
 };
 
 // An interface used to encapsulate target-specific verification quirks.
 class TargetVerifierMetadata {
  public:
-  TargetVerifierMetadata(std::function<int64(const Shape&)> shape_size_function)
+  explicit TargetVerifierMetadata(
+      std::function<int64_t(const Shape&)> shape_size_function)
       : shape_size_function_(shape_size_function) {}
 
   // Returns a target-specific shape size.
-  int64 ShapeSize(const Shape& shape) const {
+  int64_t ShapeSize(const Shape& shape) const {
     return shape_size_function_(shape);
+  }
+
+  void SetShapeSize(std::function<int64_t(const Shape&)> shape_size_function) {
+    CHECK(shape_size_function_ == nullptr)
+        << "shape_size_function_ is already set";
+    shape_size_function_ = shape_size_function;
   }
 
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
@@ -233,7 +240,7 @@ class TargetVerifierMetadata {
 
  protected:
   // Returns a target-specific shape size.
-  std::function<int64(const Shape&)> shape_size_function_;
+  std::function<int64_t(const Shape&)> shape_size_function_;
 };
 
 // The default implementation of TargetVerifierMetadata, used unless the target
@@ -242,7 +249,7 @@ class DefaultVerifierMetadata : public TargetVerifierMetadata {
  public:
   DefaultVerifierMetadata(
       bool layout_sensitive, bool allow_mixed_precision,
-      std::function<int64(const Shape&)> shape_size_function)
+      std::function<int64_t(const Shape&)> shape_size_function)
       : TargetVerifierMetadata(shape_size_function),
         layout_sensitive_(layout_sensitive),
         allow_mixed_precision_(allow_mixed_precision) {}
@@ -271,20 +278,20 @@ class HloVerifier : public HloModulePass {
       bool layout_sensitive, bool allow_mixed_precision,
       std::function<bool(const HloInstruction*)>
           instruction_can_change_layout_func = {},
-      std::function<int64(const Shape&)> shape_size_func =
+      std::function<int64_t(const Shape&)> shape_size_func =
           [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); })
       : target_metadata_(absl::make_unique<DefaultVerifierMetadata>(
             layout_sensitive, allow_mixed_precision, shape_size_func)),
         instruction_can_change_layout_func_(
             std::move(instruction_can_change_layout_func)),
-        pass_name_("Unknown") {
+        context_("Unknown") {
     CHECK(instruction_can_change_layout_func_ == nullptr || layout_sensitive);
   }
 
   // Uses custom target metadata
   explicit HloVerifier(std::unique_ptr<TargetVerifierMetadata> target_metadata,
-                       absl::string_view pass_name = "Unknown")
-      : target_metadata_(std::move(target_metadata)), pass_name_(pass_name) {}
+                       absl::string_view context = "Unknown")
+      : target_metadata_(std::move(target_metadata)), context_(context) {}
 
   ~HloVerifier() override = default;
   absl::string_view name() const override { return "verifier"; }
@@ -300,7 +307,7 @@ class HloVerifier : public HloModulePass {
       instruction_can_change_layout_func_;
 
   // The hlo pass when the verifier is invoked.
-  std::string pass_name_;
+  std::string context_;
 };
 
 }  // namespace xla

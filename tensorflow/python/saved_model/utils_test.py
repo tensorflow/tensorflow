@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for SavedModel utils."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
@@ -114,7 +110,7 @@ class UtilsTest(test.TestCase):
   def testBuildTensorInfoEager(self):
     x = constant_op.constant(1, name="x")
     with context.eager_mode(), self.assertRaisesRegex(
-        RuntimeError, "build_tensor_info is not supported in Eager mode"):
+        RuntimeError, "`build_tensor_info` is not supported"):
       utils.build_tensor_info(x)
 
   @test_util.run_v1_only(

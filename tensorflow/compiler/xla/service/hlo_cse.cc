@@ -106,14 +106,15 @@ StatusOr<bool> CombineConstants(HloComputation* computation,
 
 // An instruction is considered to be equivalent to another only if they
 // share the exact same set of operands.
-int64 CseHash(const HloInstruction* instruction) {
-  int64_t hash = std::hash<int64>()(static_cast<int64>(instruction->opcode()));
+int64_t CseHash(const HloInstruction* instruction) {
+  int64_t hash =
+      std::hash<int64_t>()(static_cast<int64_t>(instruction->opcode()));
   auto c_hash = [](auto c) {
     return tensorflow::Hash64(reinterpret_cast<const char*>(c.data()),
                               c.size() * sizeof(c[0]));
   };
   auto proto_hash = [](auto proto) {
-    return std::hash<int64>{}(proto.ByteSizeLong());
+    return std::hash<int64_t>{}(proto.ByteSizeLong());
   };
   hash = tensorflow::Hash64Combine(
       hash, instruction->opcode() == HloOpcode::kGetTupleElement
@@ -124,8 +125,8 @@ int64 CseHash(const HloInstruction* instruction) {
   }
   for (auto c : instruction->called_computations()) {
     hash = tensorflow::Hash64Combine(
-        hash, std::hash<int64>()(
-                  static_cast<int64>(c->root_instruction()->opcode())));
+        hash, std::hash<int64_t>()(
+                  static_cast<int64_t>(c->root_instruction()->opcode())));
   }
   switch (instruction->opcode()) {
     case HloOpcode::kSlice:

@@ -19,15 +19,27 @@ cc_library(
 )
 
 cc_library(
+    name = "input_split_metadata",
+    srcs = ["input_split_metadata.cc"],
+    hdrs = ["input_split_metadata.h"],
+    deps = [
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "batch_input_task",
     hdrs = ["batch_input_task.h"],
     deps = [
         ":batch_scheduler_hdrs",
         ":concat_split_util",
+        ":input_split_metadata",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/util:incremental_barrier",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -38,6 +50,7 @@ tf_cc_test(
     deps = [
         ":batch_input_task",
         ":batch_resource_base",
+        ":input_split_metadata",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
@@ -123,6 +136,7 @@ cc_library(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -138,6 +152,8 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:variant",
+        "@com_google_absl//absl/utility",
     ],
     alwayslink = 1,
 )
@@ -155,8 +171,10 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/utility",
     ],
 )
 
@@ -272,6 +290,41 @@ cc_library(
 )
 
 cc_library(
+    name = "bounded_executor",
+    srcs = ["bounded_executor.cc"],
+    hdrs = ["bounded_executor.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:threadpool_interface",
+        "@com_google_absl//absl/functional:bind_front",
+    ],
+)
+
+tf_cc_test(
+    name = "bounded_executor_test",
+    size = "small",
+    srcs = ["bounded_executor_test.cc"],
+    deps = [
+        ":bounded_executor",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:threadpool_interface",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
     name = "concat_split_util",
     hdrs = ["concat_split_util.h"],
     deps = [
@@ -295,8 +348,12 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/common_runtime:cost_constants",
         "//tensorflow/core/common_runtime:cost_measurement_registry",
+        "//tensorflow/core/common_runtime:cost_util",
         "//tensorflow/core/common_runtime:request_cost",
+        "//tensorflow/core/common_runtime:request_cost_accessor",
+        "//tensorflow/core/common_runtime:request_cost_accessor_registry",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
@@ -305,5 +362,28 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_resource_base_test",
+    srcs = ["batch_resource_base_test.cc"],
+    deps = [
+        ":batch_resource_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:no_op_cost_measurement",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "input_split_metadata_test",
+    srcs = ["input_split_metadata_test.cc"],
+    deps = [
+        ":input_split_metadata",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )

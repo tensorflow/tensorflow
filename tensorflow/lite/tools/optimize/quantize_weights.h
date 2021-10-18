@@ -34,8 +34,10 @@ enum class BufferType { QUANTIZED_INT8, QUANTIZED_FLOAT16 };
 
 // This macro is for internal use for conversions requiring previous behavior.
 #ifdef TFLITE_USE_PREVIOUS_HYBRID_SCHEME
+// Use asymmetric quantized activations and per-channel quantized weights.
 constexpr bool kUseUpdatedHybridSchemeDefault = false;
 #else
+// Use symmetric quantized activations and per-channel quantized weights.
 constexpr bool kUseUpdatedHybridSchemeDefault = true;
 #endif
 
@@ -48,7 +50,8 @@ constexpr bool kUseUpdatedHybridSchemeDefault = true;
 //   tflite::Model* model = GetModel(buffer);
 TfLiteStatus QuantizeWeights(
     flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
-    BufferType quant_type = BufferType::QUANTIZED_INT8);
+    BufferType quant_type = BufferType::QUANTIZED_INT8,
+    bool use_updated_hybrid_scheme = kUseUpdatedHybridSchemeDefault);
 
 // Same as above, but only weights with greater than or equal
 // weights_min_num_elements elements will be quantized.

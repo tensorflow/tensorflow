@@ -60,7 +60,7 @@ TEST_F(QuantizedOpTest, QuantizeV2) {
 // Creates a tensor with the specified dims, using values chosen from data,
 // multiplied by (1 + index) along the axis dimension.
 template <typename T>
-std::vector<T> ScalePerSliceAlongAxis(std::vector<int64> dims, int axis,
+std::vector<T> ScalePerSliceAlongAxis(std::vector<int64_t> dims, int axis,
                                       const std::vector<T>& data) {
   uint32 seed = 123;
   std::minstd_rand rng(seed);
@@ -93,7 +93,7 @@ TEST_P(ParameterizedQuantizeOpTest, QuantizeV2Quint8Scaled) {
                    .Attr("axis", axis)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  const std::vector<int64> dims = {2, 3, 4, 5};
+  const std::vector<int64_t> dims = {2, 3, 4, 5};
   int num_slices = (axis == -1) ? 1 : dims[axis];
 
   // Each channel contains the same 8 values multiplied by (channel + 1).
@@ -174,7 +174,7 @@ TEST_P(ParameterizedQuantizeOpTest, QuantizeV2Qint8Scaled) {
                    .Attr("axis", axis)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  const std::vector<int64> dims = {2, 3, 4, 5};
+  const std::vector<int64_t> dims = {2, 3, 4, 5};
   int num_slices = (axis == -1) ? 1 : dims[axis];
 
   // Each channel contains the same 7 values multiplied by (channel + 1).
@@ -224,7 +224,7 @@ TEST_P(ParameterizedQuantizeOpTest, QuantizeV2Qint8ScaledNarrowRange) {
                    .Attr("axis", axis)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  const std::vector<int64> dims = {2, 3, 4, 5};
+  const std::vector<int64_t> dims = {2, 3, 4, 5};
   int num_slices = (axis == -1) ? 1 : dims[axis];
 
   // Each channel contains the same 7 values multiplied by (channel + 1).

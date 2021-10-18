@@ -48,7 +48,9 @@ class UnsortedSegmentSum : public XlaOpKernel {
     TensorShape indices_shape = ctx->InputShape(1);
 
     int64_t num_segments;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(2, &num_segments));
+    OP_REQUIRES_OK(ctx,
+                   ctx->ConstantInputAsIntScalar(
+                       2, &num_segments, xla::ValueInferenceMode::kUpperBound));
 
     OP_REQUIRES(ctx, data_shape.dims() >= indices_shape.dims(),
                 errors::InvalidArgument(

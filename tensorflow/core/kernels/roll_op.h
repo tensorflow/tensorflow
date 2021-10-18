@@ -37,7 +37,7 @@ struct Roll {
                   const int num_dims, const gtl::ArraySlice<int32> dim_size,
                   const T* input, T* output,
                   const gtl::ArraySlice<int32> threshold,
-                  const gtl::ArraySlice<int64> dim_range, const int64_t isd);
+                  const gtl::ArraySlice<int64_t> dim_range, const int64_t isd);
 };
 
 }  // namespace functor

@@ -104,9 +104,6 @@ class TestVisitorUtilInterrupt
   }
 };
 
-static mlir::PassRegistration<TestVisitorUtil> registration;
-static mlir::PassRegistration<TestVisitorUtilInterrupt> registration_interrupt;
-
 }  // anonymous namespace
 
 std::unique_ptr<OperationPass<FuncOp>> CreateTestVisitorUtilPass() {

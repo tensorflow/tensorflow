@@ -56,7 +56,7 @@ StatusOr<std::unique_ptr<IrEmitterNested>> IrEmitterNested::Create(
 Status IrEmitterNested::CodegenNestedComputation() {
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
-  std::vector<int64> argument_dereferenceable_bytes;
+  std::vector<int64_t> argument_dereferenceable_bytes;
   for (const HloInstruction* param :
        nested_computation_.parameter_instructions()) {
     io_hlos.push_back(param);
@@ -91,7 +91,7 @@ Status IrEmitterNested::CodegenNestedComputation() {
        ++arg_no) {
     int64_t arg_size = argument_dereferenceable_bytes[arg_no];
     if (arg_size > 0) {
-      function->addDereferenceableAttr(arg_no + 1, arg_size);
+      function->addDereferenceableParamAttr(arg_no, arg_size);
     }
   }
 

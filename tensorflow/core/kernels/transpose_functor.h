@@ -68,7 +68,7 @@ struct Transpose {
 // Implementation details.
 namespace internal {
 
-typedef gtl::InlinedVector<int64, 8> TransposeDimsVec;
+typedef gtl::InlinedVector<int64_t, 8> TransposeDimsVec;
 typedef gtl::InlinedVector<int32, 8> TransposePermsVec;
 
 // Helper function that takes a tensor shape, a permutation, combines the

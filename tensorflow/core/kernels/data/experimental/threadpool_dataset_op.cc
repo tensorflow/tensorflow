@@ -182,7 +182,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       return "ThreadPoolDatasetOp::Dataset";
     }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64_t Cardinality() const override { return input_->Cardinality(); }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
@@ -302,7 +302,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
     return "MaxIntraOpParallelismDatasetOp::Dataset";
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64_t Cardinality() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
@@ -376,7 +376,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
   };
 
   const DatasetBase* const input_;
-  const int64 max_intra_op_parallelism_;
+  const int64_t max_intra_op_parallelism_;
   const TraceMeMetadata traceme_metadata_;
 };
 
@@ -398,8 +398,8 @@ void MaxIntraOpParallelismDatasetOp::MakeDataset(OpKernelContext* ctx,
                                                  DatasetBase** output) {
   int64_t max_intra_op_parallelism;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, "max_intra_op_parallelism",
-                                            &max_intra_op_parallelism));
+                 ParseScalarArgument<int64_t>(ctx, "max_intra_op_parallelism",
+                                              &max_intra_op_parallelism));
   OP_REQUIRES(
       ctx, max_intra_op_parallelism >= 0,
       errors::InvalidArgument("`max_intra_op_parallelism` must be >= 0"));
@@ -443,7 +443,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
     return "PrivateThreadPoolDatasetOp::Dataset";
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64_t Cardinality() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
@@ -519,7 +519,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
   };
 
   const DatasetBase* const input_;
-  const int64 num_threads_;
+  const int64_t num_threads_;
   const TraceMeMetadata traceme_metadata_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 };
@@ -542,8 +542,8 @@ void PrivateThreadPoolDatasetOp::MakeDataset(OpKernelContext* ctx,
                                              DatasetBase* input,
                                              DatasetBase** output) {
   int64_t num_threads = 0;
-  OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, "num_threads", &num_threads));
+  OP_REQUIRES_OK(
+      ctx, ParseScalarArgument<int64_t>(ctx, "num_threads", &num_threads));
   OP_REQUIRES(ctx, num_threads >= 0,
               errors::InvalidArgument("`num_threads` must be >= 0"));
   *output = new Dataset(ctx, input, num_threads);

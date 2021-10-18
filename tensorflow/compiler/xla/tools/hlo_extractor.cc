@@ -105,13 +105,13 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
   HloCloneContext clone_context_;
   HloComputation::Builder builder_;
   absl::flat_hash_set<const HloInstruction*>* boundary_;
-  int64 parameter_number_ = 0;
+  int64_t parameter_number_ = 0;
 };
 
 void ComputeBoundary(const HloInstruction* root, int64_t limit,
                      absl::flat_hash_set<const HloInstruction*>* boundary) {
   std::deque<const HloInstruction*> worklist;
-  absl::flat_hash_map<const HloInstruction*, int64> visited;
+  absl::flat_hash_map<const HloInstruction*, int64_t> visited;
   worklist.push_back(root);
   visited.emplace(root, 0);
   while (!worklist.empty()) {

@@ -442,7 +442,8 @@ LogicalResult HandlePartitionedCallOp(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
         new_operands, call->getAttrs());
     new_call->setAttr(
-        "f", builder.getSymbolRefAttr(
+        "f", SymbolRefAttr::get(
+                 builder.getContext(),
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));
     for (const auto& entry : info.buffer_ret_to_size_ret) {
       (*buffer_to_size)[new_call.getResult(std::get<0>(entry))] = {
@@ -490,7 +491,8 @@ LogicalResult HandlePartitionedCallOp(
     // Signature is not modified. We do not need to keep two copies.
     info.signature_change = false;
     if (lowered_callee != callee) {
-      lowered_callee.setName(callee.getName());
+      lowered_callee.setName(
+          StringAttr::get(callee->getContext(), callee.getName()));
       callee.erase();
       SymbolTable(module).insert(lowered_callee);
     }
@@ -504,8 +506,9 @@ LogicalResult HandlePartitionedCallOp(
     }
     if (lowered_callee != callee) {
       // Add the clone with a new name.
-      lowered_callee.setName(
-          llvm::formatv("{0}_tensorlist_decomposed", callee.getName()).str());
+      lowered_callee.setName(StringAttr::get(
+          callee->getContext(),
+          llvm::formatv("{0}_tensorlist_decomposed", callee.getName()).str()));
       SymbolTable(module).insert(lowered_callee);
       callee = lowered_callee;
     }

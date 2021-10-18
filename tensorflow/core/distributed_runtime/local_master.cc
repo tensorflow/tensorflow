@@ -208,7 +208,7 @@ mutex* get_local_master_registry_lock() {
 
 struct MasterInfo {
   Master* master;
-  const int64 default_timeout_in_ms;
+  const int64_t default_timeout_in_ms;
 
   MasterInfo(Master* master, const int64_t default_timeout_in_ms)
       : master(master), default_timeout_in_ms(default_timeout_in_ms) {}

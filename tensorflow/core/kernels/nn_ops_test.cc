@@ -57,7 +57,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-static void SetConstOp(const string& name, std::initializer_list<int64> dims,
+static void SetConstOp(const string& name, std::initializer_list<int64_t> dims,
                        DataType data_type, NodeDef* node) {
   Tensor tensor(data_type, TensorShape(dims));
   for (int64_t i = 0; i < tensor.NumElements(); ++i) {
@@ -136,16 +136,16 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
     // Forward computation:
     // BATCH x OUT_ROW X OUT_COL X IN_DEPTH X PATCH_ROW X PATH_COL X OUT_DEPTH
     // We multiply by two since there are multiplications and additions.
-    num_ops = static_cast<int64>(batch * in_depth * out_depth) *
-              static_cast<int64>(filter_rows * filter_cols) *
-              static_cast<int64>(out_rows * out_cols) * 2;
+    num_ops = static_cast<int64_t>(batch * in_depth * out_depth) *
+              static_cast<int64_t>(filter_rows * filter_cols) *
+              static_cast<int64_t>(out_rows * out_cols) * 2;
   } else {
     // Backward computation:
     // BATCH x IN_ROW X IN_COL X IN_DEPTH X PATCH_ROW X PATCH_COL X OUT_DEPTH
     // We multiply by two since there are multiplications and additions.
-    num_ops = static_cast<int64>(batch * in_depth * out_depth) *
-              static_cast<int64>(filter_rows * filter_cols) *
-              static_cast<int64>(rows * cols) * 2;
+    num_ops = static_cast<int64_t>(batch * in_depth * out_depth) *
+              static_cast<int64_t>(filter_rows * filter_cols) *
+              static_cast<int64_t>(rows * cols) * 2;
   }
 
   SetConstOp("input", {batch, rows, cols, in_depth}, data_type,
@@ -546,9 +546,9 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
     // Forward computation:
     // BATCH x OUT_ROW X OUT_COL X FLTR_ROW X FLTR_COL X DEPTH_MULT X IN_DEPTH
     // We multiply by two since there are multiplications and additions.
-    num_ops = static_cast<int64>(batch * out_rows * out_cols) *
-              static_cast<int64>(filter_rows * filter_cols) *
-              static_cast<int64>(in_depth * depth_multiplier) * 2;
+    num_ops = static_cast<int64_t>(batch * out_rows * out_cols) *
+              static_cast<int64_t>(filter_rows * filter_cols) *
+              static_cast<int64_t>(in_depth * depth_multiplier) * 2;
   } else {
     // Backward computation: both input and filter backprop take the same
     // amount of computation:
@@ -557,9 +557,9 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
     // We divide by stride squared to approximate the affect of decreasing
     // number of bprop output points per bprop input point with increasing
     // stride.
-    num_ops = (static_cast<int64>(batch * rows * cols) *
-               static_cast<int64>(filter_rows * filter_cols) *
-               static_cast<int64>(in_depth * depth_multiplier) * 2) /
+    num_ops = (static_cast<int64_t>(batch * rows * cols) *
+               static_cast<int64_t>(filter_rows * filter_cols) *
+               static_cast<int64_t>(in_depth * depth_multiplier) * 2) /
               (stride * stride);
   }
 

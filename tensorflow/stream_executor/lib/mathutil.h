@@ -49,7 +49,7 @@ class MathUtil {
 // This is a branching-free, cast-to-double-free implementation.
 //
 // Casting to double is in general incorrect because of loss of precision
-// when casting an int64 into a double.
+// when casting an int64_t into a double.
 //
 // There's a bunch of 'recipes' to compute a integer ceil (or floor) on the web,
 // and most of them are incorrect.

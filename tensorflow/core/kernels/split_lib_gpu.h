@@ -48,7 +48,7 @@ struct SplitVOpGPULaunch {
 #define REGISTER_GPU_KERNEL(T)                        \
   extern template struct SplitOpGPULaunch<T>;         \
   extern template struct SplitVOpGPULaunch<T, int32>; \
-  extern template struct SplitVOpGPULaunch<T, int64>;
+  extern template struct SplitVOpGPULaunch<T, int64_t>;
 
 TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 TF_CALL_uint8(REGISTER_GPU_KERNEL);

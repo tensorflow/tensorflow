@@ -1,0 +1,27 @@
+From 1ebfdd7ba05aa861df0397caf4c910c4d6a2690f Mon Sep 17 00:00:00 2001
+From: Rahul Joshi <jurahul@google.com>
+Date: Wed, 29 Sep 2021 11:13:44 -0700
+Subject: [PATCH] Revert "[Bazel] Add support for targeting macOS arm64"
+
+This reverts commit 33e1713a00a5291e5de658d0eb0aebdbf1d3aa03.
+---
+ utils/bazel/llvm-project-overlay/llvm/config.bzl | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+index ff64df694048..55f3077bff74 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
++++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+@@ -76,8 +76,7 @@ os_defines = select({
+ # TODO: We should split out host vs. target here.
+ llvm_config_defines = os_defines + select({
+     "@bazel_tools//src/conditions:windows": native_arch_defines("X86", "x86_64-pc-win32"),
+-    "@bazel_tools//src/conditions:darwin_arm64": native_arch_defines("AArch64", "arm64-apple-darwin"),
+-    "@bazel_tools//src/conditions:darwin_x86_64": native_arch_defines("X86", "x86_64-unknown-darwin"),
++    "@bazel_tools//src/conditions:darwin": native_arch_defines("X86", "x86_64-unknown-darwin"),
+     "@bazel_tools//src/conditions:linux_aarch64": native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
+     "//conditions:default": native_arch_defines("X86", "x86_64-unknown-linux-gnu"),
+ }) + [
+-- 
+2.33.0.685.g46640cef36-goog
+

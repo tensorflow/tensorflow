@@ -408,6 +408,11 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "function_parameter_canonicalizer_hdrs",
+    textual_hdrs = ["function_parameter_canonicalizer.h"],
+)
+
 tf_python_pybind_extension(
     name = "_function_parameter_canonicalizer_binding_for_test",
     testonly = True,
@@ -690,6 +695,15 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:parsing_ops",
+    ],
+)
+
+tf_py_test(
+    name = "type_annotations_test",
+    size = "small",
+    srcs = ["type_annotations_test.py"],
+    python_version = "PY3",
+    deps = [
     ],
 )
 

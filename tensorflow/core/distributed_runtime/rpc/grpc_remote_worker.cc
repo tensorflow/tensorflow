@@ -148,8 +148,9 @@ class GrpcRemoteWorker : public WorkerInterface {
           int64_t send_start_usec = start_usec;
           // Prefer start time reported by the sender, if available.
           if (response->send_start_micros()) {
-            send_start_usec = std::max(
-                start_usec, static_cast<int64>(response->send_start_micros()));
+            send_start_usec =
+                std::max(start_usec,
+                         static_cast<int64_t>(response->send_start_micros()));
             send_start_usec = std::min(send_start_usec, end_usec - 1);
           }
           const string& key = request->buf_rendezvous_key();
@@ -225,7 +226,7 @@ class GrpcRemoteWorker : public WorkerInterface {
             // it was received.
             send_start_usec = std::max(
                 start_usec,
-                static_cast<int64>(response->metadata().send_start_micros()));
+                static_cast<int64_t>(response->metadata().send_start_micros()));
             send_start_usec = std::min(send_start_usec, end_usec - 1);
           }
           const string& key = request->rendezvous_key();
@@ -301,7 +302,7 @@ class GrpcRemoteWorker : public WorkerInterface {
 
   // Helper function for configuring max GRPC retries. Defaults to 0 (no
   // retries).
-  const int64 MaxRetries() {
+  const int64_t MaxRetries() {
     int64_t max_retries = -1;
     TF_CHECK_OK(ReadInt64FromEnvVar("GRPC_MAX_RETRIES", 0, &max_retries));
     return max_retries;

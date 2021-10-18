@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -104,13 +105,12 @@ class BiasOp : public BinaryOp<T> {
 
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input.shape()),
                 errors::InvalidArgument("Input tensor must be at least 2D: ",
-                                        input.shape().DebugString()));
+                                        input.shape()));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(bias.shape()),
-                errors::InvalidArgument("Biases must be 1D: ",
-                                        bias.shape().DebugString()));
+                errors::InvalidArgument("Biases must be 1D: ", bias.shape()));
 
     // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
-    size_t channel_dim;
+    int channel_dim;
     if (data_format_ == FORMAT_NCHW) {
       channel_dim = 1;  // NCHW always have channel dim in 1 (with 3, 4, 5
                         // dimensions data).
@@ -118,86 +118,27 @@ class BiasOp : public BinaryOp<T> {
       channel_dim = input.shape().dims() - 1;  // End of code by intel_tf.
     }
 
-    OP_REQUIRES(
-        context,
-        bias.shape().dim_size(0) == input.shape().dim_size(channel_dim),
-        errors::InvalidArgument(
-            "Must provide as many biases as the last dimension "
-            "of the input tensor: ",
-            bias.shape().DebugString(), " vs. ", input.shape().DebugString()));
+    OP_REQUIRES(context,
+                bias.shape().dim_size(0) == input.shape().dim_size(channel_dim),
+                errors::InvalidArgument(
+                    "Must provide as many biases as the last dimension "
+                    "of the input tensor: ",
+                    bias.shape(), " vs. ", input.shape()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, input.shape(), &output));
     if (input.NumElements() == 0) return;
 
-    // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
-    if (data_format_ == FORMAT_NCHW) {
-      int32_t batch, height, width, depth, channel;
-      GetBiasValueDims(input, data_format_, &batch, &height, &width, &depth,
-                       &channel);
-      switch (input.shape().dims()) {
-        case 3: {
-          Eigen::DSizes<int32, 3> three_dims(1, channel, 1);
-          Eigen::DSizes<int32, 3> broad_cast_dims(batch, 1, height);
-          const Device& d = context->eigen_device<Device>();
-          output->tensor<T, 3>().device(d) =
-              input.tensor<T, 3>() + bias.tensor<T, 1>()
-                                         .reshape(three_dims)
-                                         .broadcast(broad_cast_dims);
-        } break;
-        case 4: {
-          Eigen::DSizes<int32, 4> four_dims(1, channel, 1, 1);
-          Eigen::DSizes<int32, 4> broad_cast_dims(batch, 1, height, width);
-          const Device& d = context->eigen_device<Device>();
-          output->tensor<T, 4>().device(d) =
-              input.tensor<T, 4>() +
-              bias.tensor<T, 1>().reshape(four_dims).broadcast(broad_cast_dims);
-        } break;
-        case 5: {
-          Eigen::DSizes<int32, 5> five_dims(1, channel, 1, 1, 1);
-          Eigen::DSizes<int32, 5> broad_cast_dims(batch, 1, height, width,
-                                                  depth);
-          const Device& d = context->eigen_device<Device>();
-          output->tensor<T, 5>().device(d) =
-              input.tensor<T, 5>() +
-              bias.tensor<T, 1>().reshape(five_dims).broadcast(broad_cast_dims);
-        } break;
-        default:
-          OP_REQUIRES(context, false,
-                      errors::InvalidArgument("Only ranks up to 5 supported: ",
-                                              input.shape().DebugString()));
-      }
-      return;
-    }  // End of code by intel_tf.
-
-    switch (input.shape().dims()) {
-      case 2:
-        Compute<2>(context, input, bias, output);
-        break;
-      case 3:
-        Compute<3>(context, input, bias, output);
-        break;
-      case 4:
-        Compute<4>(context, input, bias, output);
-        break;
-      case 5:
-        Compute<5>(context, input, bias, output);
-        break;
-      default:
-        OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Only ranks up to 5 supported: ",
-                                            input.shape().DebugString()));
+    functor::Bias<Device, T> functor;
+    const Device& d = context->eigen_device<Device>();
+    if (data_format_ == FORMAT_NCHW && input.shape().dims() > 2) {
+      functor(d, input.flat_inner_outer_dims<T, 2>(1),
+              bias.flat_outer_dims<T, 2>(),
+              output->flat_inner_outer_dims<T, 2>(1));
+    } else {
+      functor(d, input.flat<T>(), bias.vec<T>(), output->flat<T>());
     }
-  }
-
-  // Add biases for an input matrix of rank Dims, by using the Bias.
-  template <int Dims>
-  void Compute(OpKernelContext* ctx, const Tensor& input, const Tensor& bias,
-               Tensor* output) {
-    functor::Bias<Device, T, Dims> functor;
-    functor(ctx->eigen_device<Device>(), input.tensor<T, Dims>(), bias.vec<T>(),
-            output->tensor<T, Dims>());
   }
 
  private:
@@ -214,7 +155,6 @@ class BiasOp : public BinaryOp<T> {
 
 TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
-
 
 template <typename Device, typename T>
 class BiasGradOp : public OpKernel {
@@ -235,7 +175,7 @@ class BiasGradOp : public OpKernel {
     OP_REQUIRES(context,
                 TensorShapeUtils::IsMatrixOrHigher(output_backprop.shape()),
                 errors::InvalidArgument("Input tensor must be at least 2D: ",
-                                        output_backprop.shape().DebugString()));
+                                        output_backprop.shape()));
 
     OP_REQUIRES(
         context,
@@ -243,16 +183,17 @@ class BiasGradOp : public OpKernel {
                         std::numeric_limits<int32>::max()),
         errors::InvalidArgument("BiasGrad requires tensor size <= int32 max"));
 
-    int32_t batch, height, width, depth, channel;
-    GetBiasValueDims(output_backprop, data_format_, &batch, &height, &width,
-                     &depth, &channel);
+    int channel_dim;
+    if (data_format_ == FORMAT_NCHW) {
+      channel_dim = 1;
+    } else {
+      channel_dim = output_backprop.shape().dims() - 1;
+    }
     Tensor* output = nullptr;
-    TensorShape output_shape{channel};
+    TensorShape output_shape{output_backprop.shape().dim_size(channel_dim)};
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
-    if (channel == 0) {
-      return;  // Nothing to do
-    } else if (output_backprop.NumElements() == 0) {
+    if (output_backprop.NumElements() == 0) {
       // Eigen often crashes by design on empty tensors, but setZero is safe
       output->template flat<T>().setZero();
     } else {
@@ -263,19 +204,18 @@ class BiasGradOp : public OpKernel {
             T, AccumT, T, Eigen::internal::scalar_sum_op<AccumT>,
             Eigen::internal::SumReducer<T>>
             redux;
-        Eigen::DSizes<Eigen::Index, 3> three_dims(batch, channel,
-                                                  height * width * depth);
-        redux(context->eigen_device<Device>(), three_dims, output_backprop,
-              output, 1);
+
+        auto flat_outer = output_backprop.flat_outer_dims<T, 3>();
+        redux(context->eigen_device<Device>(), flat_outer.dimensions(),
+              output_backprop, output, 1);
       } else {
         const functor::ReduceOuterDimensions<
             T, AccumT, T, Eigen::internal::scalar_sum_op<AccumT>>
             redux;
 
-        Eigen::DSizes<Eigen::Index, 2> two_dims(batch * height * width * depth,
-                                                channel);
-        redux(context->eigen_device<Device>(), two_dims, output_backprop,
-              output);
+        auto flat_inner = output_backprop.flat_inner_dims<T, 2>();
+        redux(context->eigen_device<Device>(), flat_inner.dimensions(),
+              output_backprop, output);
       }
     }
   }
@@ -292,7 +232,6 @@ class BiasGradOp : public OpKernel {
 
 TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
-
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
@@ -392,7 +331,7 @@ class BiasAddGradGPUConfig {
 class BiasAddParams {
  public:
   // We use a list to maintain both the shape value and the order (data format).
-  using SpatialArray = gtl::InlinedVector<int64, 4>;
+  using SpatialArray = gtl::InlinedVector<int64_t, 4>;
   BiasAddParams(const SpatialArray& in_shape, TensorFormat data_format,
                 DataType dtype, int device_id)
       : in_shape_(in_shape),
@@ -520,6 +459,12 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                                     output->NumElements() * sizeof(T));
     stream->ThenMemZero(&output_ptr, output->NumElements() * sizeof(T));
     if (output_backprop.NumElements() <= 0) return;
+    if (OpDeterminismRequired()) {
+      // ComputeWithReduceSum is the only deterministic algorithm.
+      ComputeWithReduceSum(context, output_backprop, batch, width, height,
+                           depth, channel, output);
+      return;
+    }
 
     int device_id = stream->parent()->device_ordinal();
     DataType dtype = output_backprop.dtype();

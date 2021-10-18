@@ -393,9 +393,9 @@ std::vector<int> GetPoolingOutputSize(const std::vector<int>& input,
 }
 
 // Helper functions for testing GetTensorShapeProtoFromTensorProto().
-void GetTensorProto(const DataType dtype, const std::vector<int64>& shape,
-                    const std::vector<int64> values, const bool tensor_content,
-                    TensorProto* tensor_proto) {
+void GetTensorProto(const DataType dtype, const std::vector<int64_t>& shape,
+                    const std::vector<int64_t> values,
+                    const bool tensor_content, TensorProto* tensor_proto) {
   tensor_proto->Clear();
   TensorProto temp_tensor_proto;
   temp_tensor_proto.set_dtype(dtype);
@@ -516,19 +516,19 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     return estimator_.PredictCosts(op_context);
   }
 
-  int64 CountMatMulOperations(const OpInfo& op_info,
-                              bool* found_unknown_shapes) const {
+  int64_t CountMatMulOperations(const OpInfo& op_info,
+                                bool* found_unknown_shapes) const {
     return estimator_.CountMatMulOperations(op_info, found_unknown_shapes);
   }
 
-  int64 CountBatchMatMulOperations(const OpInfo& op_info,
-                                   bool* found_unknown_shapes) const {
+  int64_t CountBatchMatMulOperations(const OpInfo& op_info,
+                                     bool* found_unknown_shapes) const {
     return estimator_.CountBatchMatMulOperations(op_info, found_unknown_shapes);
   }
 
-  int64 CountBatchMatMulOperations(const OpInfo& op_info,
-                                   BatchMatMulDimensions* batch_mat_mul,
-                                   bool* found_unknown_shapes) const {
+  int64_t CountBatchMatMulOperations(const OpInfo& op_info,
+                                     BatchMatMulDimensions* batch_mat_mul,
+                                     bool* found_unknown_shapes) const {
     return estimator_.CountBatchMatMulOperations(op_info, batch_mat_mul,
                                                  found_unknown_shapes);
   }
@@ -600,14 +600,14 @@ class OpLevelBatchMatMulCostEstimatorTest
     return op_context;
   }
 
-  int64 CountBatchMatMulOperations(const OpInfo& op_info,
-                                   bool* found_unknown_shapes) const {
+  int64_t CountBatchMatMulOperations(const OpInfo& op_info,
+                                     bool* found_unknown_shapes) const {
     return OpLevelCostEstimatorTest::CountBatchMatMulOperations(
         op_info, found_unknown_shapes);
   }
 
-  int64 CountBatchMatMulDimProduct(const OpInfo& op_info,
-                                   bool* found_unknown_shapes) const {
+  int64_t CountBatchMatMulDimProduct(const OpInfo& op_info,
+                                     bool* found_unknown_shapes) const {
     BatchMatMulDimensions batch_mat_mul;
 
     batch_mat_mul.matmul_dims.n = 0;
@@ -1301,7 +1301,7 @@ TEST_F(OpLevelCostEstimatorTest, SparseTensorDenseMatMul) {
   }
 }
 
-void ExpectTensorShape(const std::vector<int64>& expected,
+void ExpectTensorShape(const std::vector<int64_t>& expected,
                        const TensorShapeProto& tensor_shape_proto) {
   TensorShape tensor_shape_expected(expected);
   TensorShape tensor_shape(tensor_shape_proto);
@@ -1333,7 +1333,7 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
 
   // Check GetTensorShapeProtoFromTensorProto() returns correct values.
   {
-    std::vector<int64> shape_expected = {10, 20, 30, 40};
+    std::vector<int64_t> shape_expected = {10, 20, 30, 40};
     GetTensorProto(DT_INT32, {4}, shape_expected,
                    /*tensor_content=*/false, &tensor_proto);
     EXPECT_TRUE(
@@ -1342,7 +1342,7 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
   }
 
   {
-    std::vector<int64> shape_expected = {40, 20, 90, 40};
+    std::vector<int64_t> shape_expected = {40, 20, 90, 40};
     GetTensorProto(DT_INT64, {4}, shape_expected,
                    /*tensor_content=*/false, &tensor_proto);
     EXPECT_TRUE(
@@ -1351,7 +1351,7 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
   }
 
   {
-    std::vector<int64> shape_expected = {10, 20, 30, 40};
+    std::vector<int64_t> shape_expected = {10, 20, 30, 40};
     GetTensorProto(DT_INT32, {4}, shape_expected,
                    /*tensor_content=*/true, &tensor_proto);
     EXPECT_TRUE(
@@ -1360,7 +1360,7 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
   }
 
   {
-    std::vector<int64> shape_expected = {40, 20, 90, 40};
+    std::vector<int64_t> shape_expected = {40, 20, 90, 40};
     GetTensorProto(DT_INT64, {4}, shape_expected,
                    /*tensor_content=*/true, &tensor_proto);
     EXPECT_TRUE(

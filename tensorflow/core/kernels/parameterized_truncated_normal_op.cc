@@ -779,8 +779,8 @@ class StatelessParameterizedTruncatedNormal : public OpKernel {
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int32>(),
                                                       &output_shape));
     } else {
-      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int64>(),
-                                                      &output_shape));
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
+                              shape_tensor.vec<int64_t>(), &output_shape));
     }
     OP_REQUIRES(ctx, TensorShapeUtils::EndsWith(output_shape, bcast_shape),
                 errors::InvalidArgument(

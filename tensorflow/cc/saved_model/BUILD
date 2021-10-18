@@ -53,12 +53,12 @@ cc_library(
     deps = [
         ":constants",
         "//tensorflow/core:protos_all_cc",
+        ":metrics",
+        ":util",
     ] + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
-        ":metrics",
-        ":util",
         "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
         "//tensorflow/core/util/tensor_bundle",
@@ -313,9 +313,7 @@ cc_library(
         "//tensorflow:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
-    deps = [
-        "//tensorflow/core:lib",
-    ],
+    deps = if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
     alwayslink = True,
 )
 
@@ -329,7 +327,7 @@ cc_library(
     ],
     deps = if_static([
         ":metrics_impl",
-    ]) + ["//tensorflow/core:lib"],
+    ]) + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
 )
 
 tf_cc_test(
@@ -349,9 +347,8 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-    ],
+    ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
 )
 
 tf_cc_test(

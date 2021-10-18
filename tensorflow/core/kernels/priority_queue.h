@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-using PriorityTensorPair = std::pair<int64, Tensor>;
+using PriorityTensorPair = std::pair<int64_t, Tensor>;
 
 struct ComparePriorityTensorPair {
   // 0 is a higher priority than 1, -MAX_LONG is a higher priority

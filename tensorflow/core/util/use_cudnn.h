@@ -28,7 +28,7 @@ bool CudnnRnnUseAutotune();
 bool CudnnDisableConv1x1Optimization();
 bool DebugCudnnRnn();
 bool DebugCudnnRnnUseTensorOps();
-int64 DebugCudnnRnnAlgo();
+int64_t DebugCudnnRnnAlgo();
 
 // Returns true if the CuDNN depthwise convolution can be used. See cudnn
 // release note 7.6.3.

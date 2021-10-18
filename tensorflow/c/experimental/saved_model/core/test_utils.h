@@ -46,7 +46,7 @@ std::vector<DataType> DataTypeSetToVector(DataTypeSet set);
 
 // Returns a vector of shapes intended to be "interesting" test cases.
 // Currently, this returns scalar, 1D vector, 2D matrix, and a 4D tensor shapes
-std::vector<std::vector<int64>> InterestingShapes();
+std::vector<std::vector<int64_t>> InterestingShapes();
 
 // Returns a TensorHandle of `dtype` and `shape`, filled with `value`.
 // `dtype` must be an integer dtype, float, or double.
@@ -54,7 +54,7 @@ std::vector<std::vector<int64>> InterestingShapes();
 // CHECK fail. This should only be used for testing purposes.
 ImmediateTensorHandlePtr CreateTensorHandle(ImmediateExecutionContext* ctx,
                                             DataType dtype,
-                                            absl::Span<const int64> shape,
+                                            absl::Span<const int64_t> shape,
                                             int8_t value);
 
 // Fills a numeric tensor's buffer with `value`.

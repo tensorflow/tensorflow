@@ -21,8 +21,10 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
+#include "mlir/Transforms/Bufferize.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
@@ -66,15 +68,21 @@ TfCpurtExecutor::TfCpurtExecutor()
           },
           CreateMallocAllocator(), CreateMultiThreadedWorkQueue(4, 4)) {}
 
-TfCpurtExecutor::Handle TfCpurtExecutor::Compile(
-    const std::string& mlir_module, const std::string& entrypoint,
-    Specialization specialization) {
+TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
+                                                 const std::string& entrypoint,
+                                                 Specialization specialization,
+                                                 bool vectorize) {
   CompilationOptions opts;
   // Create an async task for each worker thread.
   opts.num_worker_threads = 4;
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
-  opts.register_pass_pipeline = CreateTfCpuRtPipeline;
+  opts.register_pass_pipeline = [=](mlir::OpPassManager& pm) {
+    tensorflow::TfCpuRtPipelineOptions opts;
+    opts.vectorize = vectorize;
+    tensorflow::CreateTfCpuRtPipeline(pm, opts);
+  };
   opts.specialization = specialization;
+  opts.type_converter = mlir::BufferizeTypeConverter();
 
   // Instantiate new JitExecutable from the MLIR source.
   llvm::Expected<JitExecutable> jit_executable =
@@ -213,6 +221,15 @@ using PyBindingReturnValueConverter =
     ReturnValueConverter<PyBindingConversionContext>;
 }  // namespace
 
+template <typename T>
+static bool IsAligned(const T* ptr) {
+#if EIGEN_MAX_ALIGN_BYTES == 0
+  return true;
+#else
+  return reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0;
+#endif
+}
+
 // Converts StridedMemrefType to the Python array. This struct satisfies
 // ReturnStridedMemref's concept (see cpurt.h).
 //
@@ -227,6 +244,7 @@ struct MemrefToPyArray {
   template <typename T, int rank>
   static py::array Convert(const ConversionContext&, void* memref_ptr) {
     auto* memref = static_cast<StridedMemRefType<T, rank>*>(memref_ptr);
+    assert(IsAligned(memref->data) && "returned memref must be aligned");
 
     auto memref_sizes = Sizes(memref);
     auto memref_strides = Strides(memref);
@@ -282,7 +300,7 @@ std::vector<py::array> TfCpurtExecutor::Execute(
   result_storage.reserve(num_results);
   for (int i = 0; i < num_results; ++i) result_storage.emplace_back();
 
-  RemainingResults results(&host_context_, result_storage);
+  RemainingResults results(result_storage);
 
   // Convert returned memrefs to Tensors.
   PyBindingReturnValueConverter converter(results);
@@ -296,7 +314,10 @@ std::vector<py::array> TfCpurtExecutor::Execute(
   for (auto& result : result_storage) {
     if (result->IsError())
       throw std::runtime_error(StrCat("result error: ", result->GetError()));
-    ret_values.emplace_back(result->get<py::array>());
+    py::array& result_array = result->get<py::array>();
+    TF_ANNOTATE_MEMORY_IS_INITIALIZED(result_array.data(),
+                                      result_array.nbytes());
+    ret_values.emplace_back(result_array);
   }
 
   return ret_values;
@@ -315,6 +336,7 @@ PYBIND11_MODULE(_tf_cpurt_executor, m) {
       .def("compile", &tensorflow::TfCpurtExecutor::Compile,
            py::arg("mlir_module"), py::arg("entrypoint"),
            py::arg("specialization") =
-               tensorflow::TfCpurtExecutor::Specialization::kEnabled)
+               tensorflow::TfCpurtExecutor::Specialization::kEnabled,
+           py::arg("vectorize") = false)
       .def("execute", &tensorflow::TfCpurtExecutor::Execute);
 }

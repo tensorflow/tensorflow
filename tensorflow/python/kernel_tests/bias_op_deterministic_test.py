@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for deterministic BiasAdd."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from absl.testing import parameterized
@@ -148,5 +144,5 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase,
 
 if __name__ == '__main__':
   # TODO(reedwm): Merge this file with bias_op_base.py and bias_op_test.py
-  config.enable_deterministic_ops(True)
+  config.enable_op_determinism()
   test.main()

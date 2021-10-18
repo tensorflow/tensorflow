@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 
@@ -493,9 +494,9 @@ Status ApiDefMap::LoadFile(Env* env, const string& filename) {
   Status status = LoadApiDef(contents);
   if (!status.ok()) {
     // Return failed status annotated with filename to aid in debugging.
-    return Status(status.code(),
-                  strings::StrCat("Error parsing ApiDef file ", filename, ": ",
-                                  status.error_message()));
+    return errors::CreateWithUpdatedMessage(
+        status, strings::StrCat("Error parsing ApiDef file ", filename, ": ",
+                                status.error_message()));
   }
   return Status::OK();
 }

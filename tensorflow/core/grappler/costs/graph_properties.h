@@ -157,6 +157,12 @@ class GraphProperties {
            incompatible_shape_nodes_.end();
   }
 
+  // Clear all infered properties.
+  void Clear() {
+    input_properties_.clear();
+    output_properties_.clear();
+  }
+
  private:
   // Relaxes shapes <shapes_and_types>, determined from an EnqueueV2 node, into
   // <*queue_shapes_and_types>.

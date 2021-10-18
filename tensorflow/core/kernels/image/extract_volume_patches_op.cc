@@ -121,7 +121,7 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
                    GetWindowedOutputSize(in_cols, ksize_cols, stride_cols,
                                          padding_, &out_cols, &pad_cols));
 
-    const std::vector<int64> out_sizes = {
+    const std::vector<int64_t> out_sizes = {
         batch, out_planes, out_rows, out_cols,
         ksize_planes * ksize_rows * ksize_cols * depth};
     TensorShape out_shape(out_sizes);

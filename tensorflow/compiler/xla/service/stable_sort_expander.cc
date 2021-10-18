@@ -40,7 +40,7 @@ StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
   HloComputation* computation = sort->parent();
 
   HloInstruction* expanded_sort = nullptr;
-  absl::flat_hash_set<int64> used_indices;
+  absl::flat_hash_set<int64_t> used_indices;
   int64_t iota_index = -1;
   for (const HloInstruction* operand : sort->operands()) {
     // We can only use the iota operand if it has an iota dimension which is the

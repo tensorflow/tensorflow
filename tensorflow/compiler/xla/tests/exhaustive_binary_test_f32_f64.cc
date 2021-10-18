@@ -37,7 +37,7 @@ class Exhaustive32BitOrMoreBinaryTest
   using ExhaustiveBinaryTest<T>::ConvertAndReplaceKnownIncorrectValueWith;
 
  private:
-  int64 GetInputSize() override {
+  int64_t GetInputSize() override {
     FpValues values_0;
     FpValues values_1;
     std::tie(values_0, values_1) = GetParam();

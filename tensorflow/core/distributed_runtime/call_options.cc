@@ -41,7 +41,7 @@ void CallOptions::ClearCancelCallback() {
   cancel_func_ = nullptr;
 }
 
-int64 CallOptions::GetTimeout() {
+int64_t CallOptions::GetTimeout() {
   mutex_lock l(mu_);
   return timeout_in_ms_;
 }

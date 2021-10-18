@@ -228,7 +228,7 @@ void SkipSpaces(StringPiece* str) {
 }
 }  // namespace
 
-bool safe_strto64(StringPiece str, int64* value) {
+bool safe_strto64(StringPiece str, int64_t* value) {
   SkipSpaces(&str);
 
   int64_t vlimit = kint64max;
@@ -456,14 +456,14 @@ std::string HumanReadableNum(int64_t value) {
   }
   if (value < 1000) {
     Appendf(&s, "%lld", static_cast<long long>(value));
-  } else if (value >= static_cast<int64>(1e15)) {
+  } else if (value >= static_cast<int64_t>(1e15)) {
     // Number bigger than 1E15; use that notation.
     Appendf(&s, "%0.3G", static_cast<double>(value));
   } else {
     static const char units[] = "kMBT";
     const char* unit = units;
-    while (value >= static_cast<int64>(1000000)) {
-      value /= static_cast<int64>(1000);
+    while (value >= static_cast<int64_t>(1000000)) {
+      value /= static_cast<int64_t>(1000);
       ++unit;
       CHECK(unit < units + TF_ARRAYSIZE(units));
     }
@@ -494,7 +494,7 @@ std::string HumanReadableNumBytes(int64_t num_bytes) {
 
   static const char units[] = "KMGTPE";  // int64 only goes up to E.
   const char* unit = units;
-  while (num_bytes >= static_cast<int64>(1024) * 1024) {
+  while (num_bytes >= static_cast<int64_t>(1024) * 1024) {
     num_bytes /= 1024;
     ++unit;
     CHECK(unit < units + TF_ARRAYSIZE(units));

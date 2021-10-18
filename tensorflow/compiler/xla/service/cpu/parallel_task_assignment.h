@@ -28,7 +28,7 @@ namespace cpu {
 class ParallelCostModel {
  public:
   virtual ~ParallelCostModel() = default;
-  virtual int64 GetParallelTaskCount(HloInstruction* instruction) = 0;
+  virtual int64_t GetParallelTaskCount(HloInstruction* instruction) = 0;
 };
 
 // ParallelTaskAssignment computes parallel task counts for HLOs in 'module'.
@@ -45,7 +45,7 @@ class ParallelTaskAssignment {
   ~ParallelTaskAssignment() {}
 
   // Computes and returns the target parallel task count for 'instruction'.
-  int64 GetTargetParallelTaskCount(HloInstruction* instruction);
+  int64_t GetTargetParallelTaskCount(HloInstruction* instruction);
 
  private:
   std::unique_ptr<ParallelCostModel> cost_model_;
@@ -82,7 +82,7 @@ class ParallelTaskAssigner : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  using HloToParallelTasks = std::unordered_map<const HloInstruction*, int64>;
+  using HloToParallelTasks = std::unordered_map<const HloInstruction*, int64_t>;
 
   // Assigns target parallel tasks from 'hlo_to_parallel_tasks' to HLOs in
   // 'module'.
@@ -98,7 +98,7 @@ class ParallelTaskAssigner : public HloModulePass {
   void ComputeTargetParallelTasks(HloModule* module,
                                   HloToParallelTasks* hlo_to_parallel_tasks);
 
-  int64 max_parallelism_;
+  int64_t max_parallelism_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
   const TargetMachineFeatures& target_machine_features_;
 };

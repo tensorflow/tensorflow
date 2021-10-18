@@ -60,10 +60,10 @@ XlaOp TopK(XlaOp input, int64_t k) {
              CreateScalarGtComputation({input_shape.element_type(), S32},
                                        iota_s32.builder()),
              last_dim, /*is_stable=*/true);
-    std::vector<int64> start_indices(input_shape.dimensions_size(), 0);
-    std::vector<int64> limit_indices(input_dims.begin(), input_dims.end());
+    std::vector<int64_t> start_indices(input_shape.dimensions_size(), 0);
+    std::vector<int64_t> limit_indices(input_dims.begin(), input_dims.end());
     limit_indices[last_dim] = k;
-    std::vector<int64> strides(input_shape.dimensions_size(), 1);
+    std::vector<int64_t> strides(input_shape.dimensions_size(), 1);
 
     XlaOp values = Slice(GetTupleElement(sort_result, 0), start_indices,
                          limit_indices, strides);
@@ -128,9 +128,9 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
                                          sliced_indices.builder()),
                last_dim, true);
 
-      std::vector<int64> start_indices(input_shape.dimensions_size(), 0);
-      std::vector<int64> limit_indices(input_dims.begin(), input_dims.end());
-      std::vector<int64> strides(input_shape.dimensions_size(), 1);
+      std::vector<int64_t> start_indices(input_shape.dimensions_size(), 0);
+      std::vector<int64_t> limit_indices(input_dims.begin(), input_dims.end());
+      std::vector<int64_t> strides(input_shape.dimensions_size(), 1);
       // Slice topk.
       start_indices[last_dim] = 0;
       limit_indices[last_dim] = k;
@@ -143,9 +143,9 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
 
     // Get the values and indices for the first topk so that they can
     // be passed to the while loop.
-    std::vector<int64> start_indices(input_shape.dimensions_size(), 0);
-    std::vector<int64> limit_indices(input_dims.begin(), input_dims.end());
-    std::vector<int64> strides(input_shape.dimensions_size(), 1);
+    std::vector<int64_t> start_indices(input_shape.dimensions_size(), 0);
+    std::vector<int64_t> limit_indices(input_dims.begin(), input_dims.end());
+    std::vector<int64_t> strides(input_shape.dimensions_size(), 1);
     start_indices[last_dim] = 0;
     limit_indices[last_dim] = per_partition_size;
     // Slice value and indices for the first partition.

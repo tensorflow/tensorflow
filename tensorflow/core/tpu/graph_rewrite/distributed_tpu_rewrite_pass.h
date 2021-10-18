@@ -158,19 +158,19 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
           num_guaranteed_constants_(num_guaranteed_constants),
           num_retvals_per_replica_(num_retvals_per_replica) {}
 
-    int64 NumReplicas() const { return num_replicas_; }
+    int64_t NumReplicas() const { return num_replicas_; }
 
-    int64 NumPerReplicaArgs() const { return num_per_replica_args_; }
+    int64_t NumPerReplicaArgs() const { return num_per_replica_args_; }
 
-    int64 NumDistributedArgs() const { return num_distributed_args_; }
+    int64_t NumDistributedArgs() const { return num_distributed_args_; }
 
-    int64 NumBroadcastArgs() const { return num_broadcast_args_; }
+    int64_t NumBroadcastArgs() const { return num_broadcast_args_; }
 
-    int64 NumVariables() const { return num_variables_; }
+    int64_t NumVariables() const { return num_variables_; }
 
-    int64 NumGuaranteedConstants() const { return num_guaranteed_constants_; }
+    int64_t NumGuaranteedConstants() const { return num_guaranteed_constants_; }
 
-    int64 NumRetvalsPerReplica() const { return num_retvals_per_replica_; }
+    int64_t NumRetvalsPerReplica() const { return num_retvals_per_replica_; }
 
     bool IsPerReplicaArg(int64_t index) const {
       return index < num_per_replica_args_;
@@ -203,48 +203,48 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
     }
 
     // Returns the number of inputs which has been received by the host.
-    int64 NumInputsFromHost() const {
+    int64_t NumInputsFromHost() const {
       return num_replicas_ * num_per_replica_args_ + num_distributed_args_ +
              num_broadcast_args_ + num_variables_ + num_guaranteed_constants_;
     }
 
     // Returns the number of inputs which will be sent to each replica.
-    int64 NumInputsToEachReplica() const {
+    int64_t NumInputsToEachReplica() const {
       return num_per_replica_args_ + num_distributed_args_ +
              num_broadcast_args_ + num_variables_ + num_guaranteed_constants_;
     }
 
     // Returns the total number of output values returned to the host (for all
     // replicas).
-    int64 NumOutputsToHost() const {
+    int64_t NumOutputsToHost() const {
       return num_replicas_ * num_retvals_per_replica_;
     }
 
     // Returns the position of the first per-replica argument, within the set
     // of all hosts arguments.
     // Broadcast arguments follow the distributed arguments.
-    int64 FirstBroadcastArgFromHost() const {
+    int64_t FirstBroadcastArgFromHost() const {
       return num_replicas_ * num_per_replica_args_ + num_distributed_args_;
     }
 
     // Indices of mirrored variables across replicas, which should be
     // categorized as per_replica_args.
-    const std::set<int64>& mirrored_variable_indices() const {
+    const std::set<int64_t>& mirrored_variable_indices() const {
       return mirrored_variable_indices_;
     }
-    std::set<int64>* mutable_mirrored_variable_indices() {
+    std::set<int64_t>* mutable_mirrored_variable_indices() {
       return &mirrored_variable_indices_;
     }
 
    private:
-    int64 num_replicas_ = 1;
-    int64 num_per_replica_args_ = 0;
-    int64 num_distributed_args_ = 0;
-    int64 num_broadcast_args_ = 0;
-    int64 num_variables_ = 0;
-    int64 num_guaranteed_constants_ = 0;
-    int64 num_retvals_per_replica_ = 0;
-    std::set<int64> mirrored_variable_indices_;
+    int64_t num_replicas_ = 1;
+    int64_t num_per_replica_args_ = 0;
+    int64_t num_distributed_args_ = 0;
+    int64_t num_broadcast_args_ = 0;
+    int64_t num_variables_ = 0;
+    int64_t num_guaranteed_constants_ = 0;
+    int64_t num_retvals_per_replica_ = 0;
+    std::set<int64_t> mirrored_variable_indices_;
   };
 
   // Mapping from TPUReplicate cluster name to tpu device names. Value is a
@@ -372,7 +372,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       int num_cores_per_replica, const string& compile_device,
       const xla::DeviceAssignment* xla_device_assignment,
       const std::vector<Node*>& dynamic_shape_nodes, Graph* graph,
-      Node** compile_node, int64_t autotuner_thresh, int num_tasks);
+      Node** compile_node, int64_t autotuner_thresh);
 
   // Builds a TPUCompileSucceededAssert node that verifies that compilation
   // succeeded and replaces the TPUCompilationStatus node in the graph.

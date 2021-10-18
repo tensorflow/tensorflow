@@ -91,9 +91,6 @@ class PjRtDevice {
   // process_index as the client.
   virtual int process_index() const = 0;
 
-  // Deprecated; please switch to process_index().
-  int task_id() const { return process_index(); }
-
   // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
   // which GPU when interacting with non-JAX code. In general, not guaranteed to
   // be dense, and -1 if undefined.
@@ -155,6 +152,49 @@ class PjRtExecutable;
 //
 // It is the responsibility of the client of this API to keep the PjRtClient
 // alive as long as any of the other runtime objects are alive.
+//
+// A note on the semantics of cross-device copies.
+//
+// There are two mechanisms to transfer a buffer from one device to another.
+// When both devices are on the same host (more specifically, the user program
+// ends up with pointers to both the source and destination buffers in the same
+// address space), the caller can use:
+//   dst_buffer = src_buffer->CopyToDevice(dst_device)
+//
+// When the source and destination are on different hosts, but the transfer is
+// made via native device networking (as opposed to the user program fetching
+// the buffer and sending it using its own networking code), the caller can
+// use:
+//   DstHost: dst_client->MakeCrossHostReceiveBuffers(...)
+//   DstHost: [...]
+//   DstHost: gets callback containing PjrtCrossHostRecvBuffers
+//   DstHost: sends cross-host recv serialized descriptors to SrcHost
+//   SrcHost: src_buffer->CopyToRemoteDevice(serialized_descriptors)
+//
+// Note that in the cross-host case, the dst_client may call
+// MakeCrossHostReceiveBuffers before the action that produces src_buffer has
+// been enqueued at SrcHost.
+//
+// On some platforms, device-to-device transfers consume scarce hardware
+// resources. If dst_client->MakeCrossHostReceiveBuffers immediately claimed
+// those resources, then there would be a risk of system-wide deadlock, if the
+// resources claimed by the recv prevented other transfers that are necessary
+// to generate src_buffer from acquiring enough resources to proceed.
+//
+// In order to allow clients to avoid deadlocks such as those in the preceding
+// paragraph, PjRtClient guarantees progress but not fairness with respect to
+// the order that cross-device transfers are enqueued on a given host, as
+// follows:
+//
+// The progress guarantee is that a cross-device transfer T on host A will not
+// claim scarce hardware resources until it is guaranteed that all transfers
+// enqueued on A before T have already either completed, or been assigned enough
+// resources to ensure that they can eventually complete.
+//
+// The lack of a fairness guarantee means that, if cross-device transfer T1 is
+// enqueued before transfer T2 at A, then T2 may complete before T1. T1 may be
+// delayed for an unbounded time waiting for T2 if T2 is large, even though T1
+// will eventually be able to make progress.
 class PjRtClient {
  public:
   virtual ~PjRtClient() = default;
@@ -162,9 +202,6 @@ class PjRtClient {
   // Return the process index of this client. Always 0 in single-process
   // settings.
   virtual int process_index() const = 0;
-
-  // Deprecated; please switch to process_index().
-  int task_id() const { return process_index(); }
 
   // Return the number of devices in the entire computation. In multi-headed
   // client setting, some are addressable by this client, some are not. In a
@@ -403,6 +440,9 @@ class PjRtClient {
   // received value, and an opaque string that should be transmitted to the
   // sending host and used in a call to CopyToRemoteDevice. None of the recv
   // buffers will become ready until *all* of the sends have completed.
+  //
+  // See note on semantics of cross-device copies in the class definition
+  // comment for PjRtClient.
   virtual void MakeCrossHostReceiveBuffers(
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier) = 0;
@@ -434,7 +474,7 @@ class PjRtClient {
     // entry in slice_boundaries is less than the size of the combined gather
     // dimension, the trailing data in the buffer is undefined after the receive
     // completes.
-    std::vector<int64> slice_boundaries;
+    std::vector<int64_t> slice_boundaries;
   };
   virtual void MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
@@ -568,6 +608,9 @@ class PjRtBuffer {
   // `dst_device` is sharing the same Client, and performing a d2h and h2d copy
   // if `dst_device` lives on a different Client.
   // Returns an error if the buffer is already on dst_device.
+  //
+  // See note on semantics of cross-device copies in the class definition
+  // comment for PjRtClient.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) = 0;
 
@@ -580,6 +623,9 @@ class PjRtBuffer {
   // matching call to src->CopyToRemoteDevice on a remote host for a src buffer
   // of the corresponding shape. serialized_descriptor is the string returned by
   // the callback along with the corresponding destination buffer.
+  //
+  // See note on semantics of cross-device copies in the class definition
+  // comment for PjRtClient.
   virtual Status CopyToRemoteDevice(
       absl::string_view serialized_descriptor) = 0;
   struct ScatterDetails {
@@ -597,7 +643,7 @@ class PjRtBuffer {
     // range in [0, 12].
     absl::InlinedVector<int, 3> dimensions;
     // The start and end indices of the slices.
-    std::vector<std::pair<int64, int64>> slices;
+    std::vector<std::pair<int64_t, int64_t>> slices;
   };
   virtual Status CopyToRemoteDeviceScattered(
       absl::Span<const std::string> serialized_descriptors,
@@ -655,7 +701,7 @@ class PjRtExecutable {
 
   virtual int num_partitions() const = 0;
 
-  virtual int64 SizeOfGeneratedCodeInBytes() const = 0;
+  virtual int64_t SizeOfGeneratedCodeInBytes() const = 0;
 
   virtual const DeviceAssignment& device_assignment() const = 0;
 

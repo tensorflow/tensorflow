@@ -89,7 +89,7 @@ struct UncompressFlags {
 uint8* Uncompress(const void* srcdata, int datasize,
                   const UncompressFlags& flags, int* width, int* height,
                   int* components,  // Output only: useful with autodetect
-                  int64* nwarn);
+                  int64_t* nwarn);
 
 // Version of Uncompress that allocates memory via a callback.  The callback
 // arguments are (width, height, components).  If the size is known ahead of
@@ -97,7 +97,7 @@ uint8* Uncompress(const void* srcdata, int datasize,
 // the buffer to be shaped based on the JPEG header.  The caller is responsible
 // for freeing the memory *even along error paths*.
 uint8* Uncompress(const void* srcdata, int datasize,
-                  const UncompressFlags& flags, int64* nwarn,
+                  const UncompressFlags& flags, int64_t* nwarn,
                   std::function<uint8*(int, int, int)> allocate_output);
 
 // Read jpeg header and get image information.  Returns true on success.

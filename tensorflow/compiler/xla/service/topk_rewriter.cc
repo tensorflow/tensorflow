@@ -104,7 +104,7 @@ static bool IsNanSafeGt(HloComputation* comp) {
                      match_bitcast_bf16_with_convert(1)));
 }
 
-absl::optional<int64> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
+absl::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
   HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
   if (sort == nullptr) {
     return absl::nullopt;
@@ -132,7 +132,7 @@ absl::optional<int64> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
   const bool has_batch = data->shape().rank() == 2;
 
   bool supported = true;
-  absl::optional<int64> k;
+  absl::optional<int64_t> k;
   for (HloInstruction* user : sort->users()) {
     const HloInstruction* slice = user;
     if (sort->operand_count() == 2) {
@@ -179,7 +179,7 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(HloModule* module) {
   for (HloComputation* comp : module->computations()) {
     for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
       // Check if sort is in TopK.
-      absl::optional<int64> k = SortIsInTopK(inst);
+      absl::optional<int64_t> k = SortIsInTopK(inst);
       if (!k) {
         continue;
       }

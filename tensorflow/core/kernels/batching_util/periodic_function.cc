@@ -79,7 +79,7 @@ void PeriodicFunction::RunLoop(const int64_t start) {
       // Take the max() here to guard against time going backwards which
       // sometimes happens in multiproc machines.
       const int64_t end =
-          std::max(static_cast<int64>(options_.env->NowMicros()), begin);
+          std::max(static_cast<int64_t>(options_.env->NowMicros()), begin);
 
       // The deadline is relative to when the last function started.
       const int64_t deadline = begin + interval_micros_;

@@ -78,7 +78,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
                            seeds_.second, ")::Dataset");
   }
 
-  int64 Cardinality() const override { return kInfiniteCardinality; }
+  int64_t Cardinality() const override { return kInfiniteCardinality; }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return Status::OK();
@@ -113,7 +113,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
       out_tensors->reserve(1);
       mutex_lock l(mu_);
       out_tensors->emplace_back(ctx->allocator({}), DT_INT64, TensorShape({}));
-      out_tensors->back().scalar<int64>()() = Random();
+      out_tensors->back().scalar<int64_t>()() = Random();
       *end_of_sequence = false;
       return Status::OK();
     }
@@ -151,15 +151,15 @@ class RandomDatasetOp::Dataset : public DatasetBase {
       auto out = generator_();
       return out;
     }
-    const std::pair<int64, int64> seeds_;
+    const std::pair<int64_t, int64_t> seeds_;
     mutex mu_;
     random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
         TF_GUARDED_BY(mu_);
-    int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
+    int64_t num_random_samples_ TF_GUARDED_BY(mu_) = 0;
   };
 
-  const std::pair<int64, int64> seeds_;
+  const std::pair<int64_t, int64_t> seeds_;
 };  // RandomDatasetOp::Dataset
 
 RandomDatasetOp::RandomDatasetOp(OpKernelConstruction* ctx)
@@ -167,10 +167,10 @@ RandomDatasetOp::RandomDatasetOp(OpKernelConstruction* ctx)
 
 void RandomDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   int64_t seed;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "seed", &seed));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "seed", &seed));
 
   int64_t seed2;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "seed2", &seed2));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, "seed2", &seed2));
 
   *output = new Dataset(ctx, seed, seed2);
 }

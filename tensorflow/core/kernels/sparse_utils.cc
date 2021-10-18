@@ -34,7 +34,7 @@ Tindices FindNextDenseRowStartIndex(
   // The first dense row we search.
   const Tindices orig_dense_index_begin = indices_mat(begin, 0);
   // Early exit if no next dense row index.
-  if (orig_dense_index_begin == static_cast<int64>(indices_mat(end - 1, 0))) {
+  if (orig_dense_index_begin == static_cast<int64_t>(indices_mat(end - 1, 0))) {
     return orig_sparse_index_end;
   }
 

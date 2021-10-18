@@ -38,15 +38,15 @@ namespace xla {
 // code generation.
 class HloRematerialization : public HloModulePass {
  public:
-  using ShapeSizeFunction = std::function<int64(const Shape&)>;
+  using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
 
   using CompactShapeFunction = std::function<StatusOr<Shape>(const Shape&)>;
 
   // Helper struct that communicates the before / after sizes for the
   // rematerialization process.
   struct RematerializationSizes {
-    int64 before_bytes = -1;
-    int64 after_bytes = -1;
+    int64_t before_bytes = -1;
+    int64_t after_bytes = -1;
   };
 
   // Mode in which the rematerialization algorithm should be run.
@@ -124,12 +124,13 @@ class HloRematerialization : public HloModulePass {
   // peak memory is the maximum total size of all live HLO instruction values at
   // any program point. 'order' is the order in which the HLO instructions will
   // be emitted which is used to determine lifespans of HLO values.
-  StatusOr<int64> ComputePeakMemory(const HloComputation* computation,
-                                    const HloInstructionSequence& order) const;
+  StatusOr<int64_t> ComputePeakMemory(
+      const HloComputation* computation,
+      const HloInstructionSequence& order) const;
 
   // Returns the peak memory usage of the called computations for the given
   // instruction. Zero is returned if the instruction calls no computations.
-  StatusOr<int64> CalledComputationsMemoryUsage(
+  StatusOr<int64_t> CalledComputationsMemoryUsage(
       const HloInstruction* instruction) const;
 
   // Selects an algorithm to use for HLO scheduling.
@@ -140,7 +141,7 @@ class HloRematerialization : public HloModulePass {
 
   // The threshold number of bytes to reduce memory use to via
   // rematerialization.
-  const int64 memory_limit_bytes_;
+  const int64_t memory_limit_bytes_;
 
   // Pointer to data structure which records the peak memory usage of the HLO
   // module before/after rematerialization
@@ -170,7 +171,7 @@ class HloRematerialization : public HloModulePass {
   // computations called from sequential context
   // (CallContext::kSequential). These values are updated as rematerialization
   // occurs.
-  absl::flat_hash_map<const HloComputation*, int64> computation_peak_memory_;
+  absl::flat_hash_map<const HloComputation*, int64_t> computation_peak_memory_;
 
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
 
@@ -179,7 +180,7 @@ class HloRematerialization : public HloModulePass {
   absl::flat_hash_set<const HloComputation*> rematerialized_computations_;
 
   // Count of the total instructions rematerialized.
-  int64 instructions_rematerialized_ = 0;
+  int64_t instructions_rematerialized_ = 0;
 
   // Count of the net instructions added to the HLO module by
   // rematerialization. This can be different than instructions_rematerialized_
@@ -187,7 +188,7 @@ class HloRematerialization : public HloModulePass {
   // schedule. In these cases, the rematerialization instruction replaces all
   // uses of the original instruction and the original instruction is
   // dead. Hence, no net instructions were added.
-  int64 net_instructions_added_ = 0;
+  int64_t net_instructions_added_ = 0;
 
   // Size of the largest block that has been rematerialized. This is actually an
   // upper bound (within a factor of 2) on the block size.
@@ -195,7 +196,7 @@ class HloRematerialization : public HloModulePass {
 
   RematerializationMode mode_;
 
-  int64 min_remat_size_;
+  int64_t min_remat_size_;
 };
 
 }  // namespace xla

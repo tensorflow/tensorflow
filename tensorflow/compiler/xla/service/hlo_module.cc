@@ -252,6 +252,9 @@ string HloModule::ToString(const HloPrintOptions& options) const {
   if (config_.alias_passthrough_params()) {
     s << ", alias_passthrough_params=true";
   }
+  if (config_.allow_spmd_sharding_propagation_to_output()) {
+    s << ", allow_spmd_sharding_propagation_to_output=true";
+  }
   s << "\n\n";
   const auto& computations = options.canonicalize_computations()
                                  ? MakeComputationSorted()
@@ -302,6 +305,9 @@ HloModuleProto HloModule::ToProto() const {
     }
   }
   proto.set_is_dynamic(is_dynamic_);
+  if (has_spmd_output_sharding()) {
+    *proto.mutable_spmd_output_sharding() = spmd_output_sharding().ToProto();
+  }
   return proto;
 }
 
@@ -367,8 +373,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       << ShapeUtil::HumanStringWithLayout(expected_program_shape.result())
       << ", actual: " << ShapeUtil::HumanStringWithLayout(result_shape);
 
-  absl::flat_hash_map<int64, HloComputation*> computation_map;
-  absl::flat_hash_map<HloComputation*, int64> to_proto_id;
+  absl::flat_hash_map<int64_t, HloComputation*> computation_map;
+  absl::flat_hash_map<HloComputation*, int64_t> to_proto_id;
   std::vector<std::unique_ptr<HloComputation>> computations;
   HloComputation* entry = nullptr;
   for (const HloComputationProto& computation_proto : proto.computations()) {
@@ -437,6 +443,11 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   module->set_is_dynamic(proto.is_dynamic());
 
+  if (proto.has_spmd_output_sharding()) {
+    TF_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
+                        HloSharding::FromProto(proto.spmd_output_sharding()));
+    module->set_spmd_output_sharding(hlo_sharding);
+  }
   return std::move(module);
 }
 
@@ -456,6 +467,8 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     module_config.set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
+    module_config.set_allow_spmd_sharding_propagation_to_output(
+        execution_options->allow_spmd_sharding_propagation_to_output());
     if (execution_options->has_device_assignment()) {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
                           DeviceAssignment::Deserialize(
@@ -596,7 +609,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   return call;
 }
 
-int64 HloModule::instruction_count() const {
+int64_t HloModule::instruction_count() const {
   int64_t n = 0;
   for (const auto& computation : computations_) {
     n += computation->instruction_count();
@@ -621,10 +634,14 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
 }
 
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
+  if (computations_.empty()) {
+    return {};
+  }
   // First determine all root computations by building a set of nonroot
   // computations (computations which are called by an instruction in the
   // module).
   absl::flat_hash_set<HloComputation*> nonroot_computations;
+  nonroot_computations.reserve(computations_.size() - 1);
   for (auto& computation : computations_) {
     for (auto* instruction : computation->instructions()) {
       for (HloComputation* called_computation :
@@ -639,20 +656,23 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // from two different root computations.
   absl::flat_hash_set<HloComputation*> added_computations;
   std::vector<HloComputation*> post_order;
+  added_computations.reserve(computations_.size());
+  post_order.reserve(computations_.size());
   for (auto& computation : computations_) {
-    if (!nonroot_computations.contains(computation.get())) {
-      for (HloComputation* embedded_computation :
-           computation->MakeEmbeddedComputationsList()) {
-        if (!added_computations.contains(embedded_computation)) {
-          post_order.push_back(embedded_computation);
-          added_computations.insert(embedded_computation);
-        }
-      }
-      // Root computations should only be encountered once.
-      CHECK(!added_computations.contains(computation.get()));
-      post_order.push_back(computation.get());
-      added_computations.insert(computation.get());
+    if (nonroot_computations.contains(computation.get())) {
+      continue;
     }
+    for (HloComputation* embedded_computation :
+         computation->MakeEmbeddedComputationsList()) {
+      if (!added_computations.contains(embedded_computation)) {
+        post_order.push_back(embedded_computation);
+        added_computations.insert(embedded_computation);
+      }
+    }
+    // Root computations should only be encountered once.
+    CHECK(!added_computations.contains(computation.get()));
+    post_order.push_back(computation.get());
+    added_computations.insert(computation.get());
   }
   if (post_order.size() != computations_.size()) {
     for (HloComputation* computation : post_order) {

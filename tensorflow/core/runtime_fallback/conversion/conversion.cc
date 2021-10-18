@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
+#include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tfrt/host_context/device.h"  // from @tf_runtime
 #include "tfrt/tensor/conversion_registry.h"  // from @tf_runtime
 #include "tfrt/tensor/conversion_utils.h"  // from @tf_runtime
@@ -64,7 +65,7 @@ ConvertRuntimeFallbackToKernelFallbackTensor(
   const tensorflow::Tensor *tf_tensor;
   Status s = tensor.GetTensorHandle()->Tensor(&tf_tensor);
   if (!s.ok()) {
-    return tfrt::MakeStringError(s.ToString());
+    return tfrt::MakeStatusError(s);
   }
   return KernelFallbackTensor(tensor.shape(), tensor.dtype(), *tf_tensor);
 }

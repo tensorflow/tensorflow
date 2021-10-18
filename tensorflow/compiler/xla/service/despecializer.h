@@ -40,6 +40,24 @@ class Despecializer : public HloModulePass {
   HloPassPipeline pipeline_;
 };
 
+// Pass which strips control dependencies from all instructions in the module.
+class ControlDepRemover : public HloModulePass {
+ public:
+  ControlDepRemover() = default;
+  absl::string_view name() const override { return "control-dep-remover"; }
+
+  StatusOr<bool> Run(HloModule* module) override {
+    bool changed = false;
+    for (HloComputation* computation : module->computations()) {
+      for (HloInstruction* instruction : computation->instructions()) {
+        changed |= !instruction->control_predecessors().empty();
+        TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+      }
+    }
+    return changed;
+  }
+};
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_DESPECIALIZER_H_

@@ -97,7 +97,7 @@ class Env {
                    const std::vector<string>& values);
 
   Status SetOption(const std::string& scheme, const std::string& key,
-                   const std::vector<int64>& values);
+                   const std::vector<int64_t>& values);
 
   Status SetOption(const std::string& scheme, const std::string& key,
                    const std::vector<double>& values);
@@ -265,11 +265,11 @@ class Env {
   ///  * PERMISSION_DENIED - dirname or some descendant is not writable
   ///  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
   ///                    implemented
-  Status DeleteRecursively(const std::string& dirname, int64* undeleted_files,
-                           int64* undeleted_dirs);
+  Status DeleteRecursively(const std::string& dirname, int64_t* undeleted_files,
+                           int64_t* undeleted_dirs);
 
   Status DeleteRecursively(const std::string& dirname, TransactionToken* token,
-                           int64* undeleted_files, int64* undeleted_dirs) {
+                           int64_t* undeleted_files, int64_t* undeleted_dirs) {
     return Status::OK();
   }
 

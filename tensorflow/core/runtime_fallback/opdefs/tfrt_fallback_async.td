@@ -479,4 +479,31 @@ def BatchFunctionOp : FallbackAsync_Op<"batch_function", [CoreRT_TypedAttributeT
   let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
 }
 
+def ExecuteOpWithAllocator : FallbackAsync_Op<"executeop.allocator",
+    [NoSideEffect, CoreRT_TypedAttributeTrait, TFRT_CostFunctionInterface, TFRT_AttrCostTrait]> {
+  let summary = "The Fallback ExecuteOp with custom allocator";
+  let description = [{
+    Similar to ExecuteOp but takes a custom allocator for allocating output tensors.
+  }];
+
+  let arguments = (ins
+    TFAllocatorType:$allocator,
+    Variadic<TFTensorType>:$operands,
+    StrAttr:$device,
+    ArrayAttr:$op_attrs,
+    ArrayAttr:$op_func_attrs,
+    I64Attr:$op_key,
+    StrAttr:$op_name,
+    I64Attr:$_tfrt_cost
+  );
+
+  let results = (outs
+    Variadic<TFTensorType>:$results
+  );
+
+  let verifier = [{ return tfrt::fallback_async::verify(*this); }];
+  let printer = [{ return tfrt::fallback_async::print(p, *this); }];
+  let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
+}
+
 #endif

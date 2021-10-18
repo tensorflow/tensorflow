@@ -183,11 +183,11 @@ class InitializeTableFromTextFileOp : public OpKernel {
   }
 
   mutex mu_;
-  int64 vocab_size_;
+  int64_t vocab_size_;
   char delimiter_;
-  int64 key_index_;
-  int64 value_index_;
-  int64 offset_ = 0;
+  int64_t key_index_;
+  int64_t value_index_;
+  int64_t offset_ = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InitializeTableFromTextFileOp);
 };

@@ -42,8 +42,9 @@ Operation* emitCallToPrint(Location loc, StringRef func_name, Value arg,
                            OpBuilder* b) {
   auto caller_func =
       b->getInsertionBlock()->getParent()->getParentOfType<FuncOp>();
+  auto func_name_attr = b->getStringAttr(func_name);
   auto callee_func =
-      SymbolTable::lookupNearestSymbolFrom<FuncOp>(caller_func, func_name);
+      SymbolTable::lookupNearestSymbolFrom<FuncOp>(caller_func, func_name_attr);
   if (!callee_func) {
     OpBuilder::InsertionGuard insertGuard(*b);
 
@@ -75,7 +76,7 @@ void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
     memref_type = MemRefType::get(memref_type.getShape(), element_type,
                                   memref_type.getAffineMaps(),
                                   memref_type.getMemorySpaceAsInt());
-    memref = b->create<IndexCastOp>(loc, memref, memref_type);
+    memref = b->create<arith::IndexCastOp>(loc, memref, memref_type);
   }
 
   auto unranked_type =

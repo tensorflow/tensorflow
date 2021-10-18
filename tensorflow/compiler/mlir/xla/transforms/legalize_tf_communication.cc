@@ -38,9 +38,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/side_effect_util.h"
 
 namespace mlir {
 namespace mhlo {
@@ -48,10 +50,6 @@ namespace mhlo {
 namespace {
 constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
-const char kXlaHostTransferRendezvousNameAttr[] =
-    "_xla_host_transfer_rendezvous";
-const char kXlaHostTransferOriginalTypeAttr[] =
-    "_xla_host_transfer_original_type";
 
 // A pass that legalizes TF/XLA communication ops, propagate their respective
 // tokens (for ordering), and rewrite their respective functions and control
@@ -59,19 +57,7 @@ const char kXlaHostTransferOriginalTypeAttr[] =
 // Note, this currently does not handle nested modules/functions or region based
 // ops other than certain control flow ops (`mhlo.if`, `mhlo.while`).
 class LegalizeTFCommunication
-    : public PassWrapper<LegalizeTFCommunication, OperationPass<ModuleOp>> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mhlo::MhloDialect>();
-  }
-
- public:
-  StringRef getArgument() const final {
-    return "xla-legalize-tf-communication";
-  }
-  StringRef getDescription() const final {
-    return "Legalize TF/XLA communication ops (TensorFlow dialect) to the HLO "
-           "dialect";
-  }
+    : public LegalizeTFCommunicationPassBase<LegalizeTFCommunication> {
   void runOnOperation() override;
 };
 
@@ -229,7 +215,8 @@ void SetOpSharding(Operation* op, int64_t tpu_core) {
 // TensorFlow rendezvous channel name. The TensorFlow rendezvous channel name is
 // handled differently as individual names are used per data send and receive.
 void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
-                           Type type, bool device_to_host) {
+                           Type type, bool device_to_host,
+                           StringRef host_handler_name) {
   MLIRContext* context = op->getContext();
 
   std::string formatted_key =
@@ -238,7 +225,7 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
 
   auto rendezvous_name = StringAttr::get(context, formatted_key);
   auto rendezvous_name_attr = NamedAttribute(
-      Identifier::get(kXlaHostTransferRendezvousNameAttr, context),
+      Identifier::get(xla::kXlaHostTransferRendezvousNameAttr, context),
       rendezvous_name);
 
   auto element_type = getElementTypeOrSelf(type);
@@ -246,13 +233,20 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
   const std::string& xla_element_type_str =
       ::xla::primitive_util::LowercasePrimitiveTypeName(xla_element_type);
   auto original_type = StringAttr::get(context, xla_element_type_str);
-  auto original_type_attr =
-      NamedAttribute(Identifier::get(kXlaHostTransferOriginalTypeAttr, context),
-                     original_type);
+  auto original_type_attr = NamedAttribute(
+      Identifier::get(xla::kXlaHostTransferOriginalTypeAttr, context),
+      original_type);
+
+  auto host_handler_name_value =
+      StringAttr::get(context, host_handler_name.str());
+  auto host_handler_name_attr = NamedAttribute(
+      Identifier::get(xla::kXlaHostTransferHandlerNameAttr, context),
+      host_handler_name_value);
 
   auto frontend_attributes = DictionaryAttr::get(
       context,
-      ArrayRef<NamedAttribute>{rendezvous_name_attr, original_type_attr});
+      ArrayRef<NamedAttribute>{rendezvous_name_attr, original_type_attr,
+                               host_handler_name_attr});
   op->setAttr(kFrontendAttributesAttr, frontend_attributes);
 }
 
@@ -260,7 +254,8 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
 // op sharding for the respective device will be set.
 Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
                    Value operand, StringRef key, size_t index,
-                   const Optional<int64_t>& tpu_core, Value token) {
+                   const Optional<int64_t>& tpu_core, Value token,
+                   StringRef host_handler_name) {
   // type 2 == DEVICE_TO_HOST
   auto channel_handle = ChannelHandle::get(
       /*handle=*/builder.getI64IntegerAttr(channel_id++),
@@ -270,7 +265,7 @@ Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
       /*is_host_transfer=*/builder.getBoolAttr(true));
 
   SetFrontendAttributes(send, index, key, operand.getType(),
-                        /*device_to_host=*/true);
+                        /*device_to_host=*/true, host_handler_name);
 
   if (tpu_core) SetOpSharding(send, *tpu_core);
 
@@ -281,7 +276,8 @@ Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
 // sharding for the respective device will be set.
 Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
                    Value result, StringRef key, size_t index,
-                   const Optional<int64_t>& tpu_core, Value token) {
+                   const Optional<int64_t>& tpu_core, Value token,
+                   StringRef host_handler_name) {
   // type 3 == HOST_TO_DEVICE
   auto channel_handle = ChannelHandle::get(
       /*handle=*/builder.getI64IntegerAttr(channel_id++),
@@ -294,7 +290,7 @@ Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
                              /*is_host_transfer=*/builder.getBoolAttr(true));
 
   SetFrontendAttributes(recv, index, key, result_type,
-                        /*device_to_host=*/false);
+                        /*device_to_host=*/false, host_handler_name);
 
   if (tpu_core) SetOpSharding(recv, *tpu_core);
 
@@ -327,7 +323,7 @@ Value CreateSinkToken(OpBuilder& builder, Location loc, ArrayRef<Value> tokens,
 }
 
 // Replaces `tf._XlaHostComputeMlir` with individual `mhlo.send` and `mhlo.recv`
-// ops per operand and result. Unique Channel Id's are assigned per transfer.
+// ops per operand and result. Unique Channel IDs are assigned per transfer.
 // Sink tokens are created across all `mhlo.send` ops first and then by
 // all `mhlo.recv` ops.
 Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
@@ -341,7 +337,8 @@ Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
   for (auto operand : llvm::enumerate(host_compute.inputs())) {
     auto send_token =
         CreateSendOp(builder, channel_id, loc, operand.value(),
-                     host_compute.send_key(), operand.index(), tpu_core, token);
+                     host_compute.send_key(), operand.index(), tpu_core, token,
+                     xla::kXlaHostTransferTfRendezvousHandlerName);
     send_tokens.push_back(send_token);
   }
   token = CreateSinkToken(builder, loc, send_tokens, token);
@@ -350,7 +347,8 @@ Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
   for (auto result : llvm::enumerate(host_compute.outputs())) {
     auto recv_token =
         CreateRecvOp(builder, channel_id, loc, result.value(),
-                     host_compute.recv_key(), result.index(), tpu_core, token);
+                     host_compute.recv_key(), result.index(), tpu_core, token,
+                     xla::kXlaHostTransferTfRendezvousHandlerName);
     recv_tokens.push_back(recv_token);
   }
   token = CreateSinkToken(builder, loc, recv_tokens, token);
@@ -365,7 +363,8 @@ Value RewriteSendToHostOp(OpBuilder& builder, int64_t& channel_id,
   builder.setInsertionPoint(send_to_host);
   token = CreateSendOp(builder, channel_id, send_to_host.getLoc(),
                        send_to_host.input(), send_to_host.key(),
-                       /*index=*/0, /*tpu_core=*/llvm::None, token);
+                       /*index=*/0, /*tpu_core=*/llvm::None, token,
+                       xla::kXlaHostTransferTfRendezvousHandlerName);
 
   send_to_host.erase();
   return token;
@@ -377,7 +376,8 @@ Value RewriteRecvFromHostOp(OpBuilder& builder, int64_t& channel_id,
   builder.setInsertionPoint(recv_from_host);
   token = CreateRecvOp(builder, channel_id, recv_from_host.getLoc(),
                        recv_from_host.output(), recv_from_host.key(),
-                       /*index=*/0, /*tpu_core=*/llvm::None, token);
+                       /*index=*/0, /*tpu_core=*/llvm::None, token,
+                       xla::kXlaHostTransferTfRendezvousHandlerName);
 
   recv_from_host.erase();
   return token;
@@ -863,7 +863,7 @@ void LegalizeTFCommunication::runOnOperation() {
   if (failed(GetFunctionsToRewrite(module, funcs_to_rewrite)))
     return signalPassFailure();
 
-  // Module level counter to make sure Channel Id's are unique.
+  // Module level counter to make sure Channel IDs are unique.
   int64_t channel_id = 1;
   OpBuilder builder(&getContext());
   for (const auto& func_and_name : funcs_to_rewrite) {
@@ -892,7 +892,6 @@ void LegalizeTFCommunication::runOnOperation() {
   }
 }
 
-static PassRegistration<LegalizeTFCommunication> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass() {

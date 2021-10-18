@@ -15,6 +15,9 @@ limitations under the License.
 
 // Tests the select-and-scatter XLA operation.
 
+// b/194424657: On macs, the compiler hangs when trying to compile this file
+#if !defined(__APPLE__)
+
 #include <memory>
 #include <vector>
 
@@ -39,11 +42,11 @@ namespace xla {
 namespace {
 
 struct SelectAndScatterTestParam {
-  std::vector<int64> operand_shape;
-  std::vector<int64> source_shape;
+  std::vector<int64_t> operand_shape;
+  std::vector<int64_t> source_shape;
   Padding padding_type;
-  std::vector<int64> window_dimensions;
-  std::vector<int64> window_strides;
+  std::vector<int64_t> window_dimensions;
+  std::vector<int64_t> window_strides;
 };
 
 class SelectAndScatterTest
@@ -446,6 +449,87 @@ TEST_F(SelectAndScatterTest, R4F32RefValidFixedSmall) {
   ComputeAndCompareR4<float>(&builder_, *e, {}, ErrorSpec(1e-7));
 }
 
+// Test for F32 4D array with negative padding on both ends.
+XLA_TEST_F(SelectAndScatterTest, R4NegativePaddingOnBothEnds) {
+  Array2D<float> pzo = {{7.0f, 2.0f, 5.0f, 3.0f, 10.0f, 3.0f},
+                        {3.0f, 8.0f, 9.0f, 3.0f, 4.00f, 2.0f},
+                        {1.0f, 5.0f, 7.0f, 5.0f, 6.00f, 1.0f},
+                        {0.0f, 6.0f, 2.0f, 7.0f, 2.00f, 8.0f}};
+  Array2D<float> pzs = {{2.0f, 6.0f}, {3.0f, 1.0f}};
+  Array2D<float> pze = {{0.0f, 0.0f, 0.0f, 0.0f, 6.0f, 0.0f},
+                        {0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f},
+                        {0.0f, 0.0f, 3.0f, 0.0f, 0.0f, 0.0f},
+                        {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}};
+  Array4D<float> o(4, 6, 4, 4);
+  o.FillWithPZ(pzo);
+  auto operand = ConstantR4FromArray4D(&builder_, o);
+  Array4D<float> e(4, 6, 4, 4);
+  e.FillWithPZ(pze);
+  Array4D<float> s(2, 2, 4, 4);
+  s.FillWithPZ(pzs);
+  auto source = ConstantR4FromArray4D(&builder_, s);
+  s.FillWithPZ(pzs);
+  SelectAndScatterWithGeneralPadding(
+      operand, ge_f32_, {2, 2, 1, 1}, {2, 2, 1, 1},
+      {{0, 0}, {-1, -1}, {0, 0}, {0, 0}}, source,
+      ConstantR0<float>(&builder_, 0.0f), add_f32_);
+  ComputeAndCompareR4<float>(&builder_, e, {}, ErrorSpec(1e-7));
+}
+
+// Test for F32 4D array with positive low padding and negative high padding.
+XLA_TEST_F(SelectAndScatterTest, R4PositivePaddingLowAndNegativePaddingHigh) {
+  Array2D<float> pzo = {{7.0f, 2.0f, 5.0f, 3.0f, 10.0f, 3.0f},
+                        {3.0f, 8.0f, 9.0f, 3.0f, 4.00f, 2.0f},
+                        {1.0f, 5.0f, 7.0f, 5.0f, 6.00f, 1.0f},
+                        {0.0f, 6.0f, 2.0f, 7.0f, 2.00f, 8.0f}};
+  Array2D<float> pzs = {{2.0f, 6.0f, 4.0f}, {3.0f, 1.0f, 5.0f}};
+  Array2D<float> pze = {{2.0f, 0.0f, 0.0f, 0.0f, 4.0f, 0.0f},
+                        {0.0f, 0.0f, 6.0f, 0.0f, 0.0f, 0.0f},
+                        {3.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},
+                        {0.0f, 0.0f, 0.0f, 5.0f, 0.0f, 0.0f}};
+  Array4D<float> o(4, 6, 4, 4);
+  o.FillWithPZ(pzo);
+  auto operand = ConstantR4FromArray4D(&builder_, o);
+  Array4D<float> e(4, 6, 4, 4);
+  e.FillWithPZ(pze);
+  Array4D<float> s(2, 3, 4, 4);
+  s.FillWithPZ(pzs);
+  auto source = ConstantR4FromArray4D(&builder_, s);
+  s.FillWithPZ(pzs);
+  SelectAndScatterWithGeneralPadding(
+      operand, ge_f32_, {2, 2, 1, 1}, {2, 2, 1, 1},
+      {{0, 0}, {1, -1}, {0, 0}, {0, 0}}, source,
+      ConstantR0<float>(&builder_, 0.0f), add_f32_);
+  ComputeAndCompareR4<float>(&builder_, e, {}, ErrorSpec(1e-7));
+}
+
+// Test for F32 4D array with negative low padding and positive high padding.
+XLA_TEST_F(SelectAndScatterTest, R4NegativePaddingLowAndPositivePaddingHigh) {
+  Array2D<float> pzo = {{7.0f, 2.0f, 5.0f, 3.0f, 10.0f, 3.0f},
+                        {3.0f, 8.0f, 9.0f, 3.0f, 4.00f, 2.0f},
+                        {1.0f, 5.0f, 7.0f, 5.0f, 6.00f, 1.0f},
+                        {0.0f, 6.0f, 2.0f, 7.0f, 2.00f, 8.0f}};
+  Array2D<float> pzs = {{2.0f, 6.0f, 4.0f}, {3.0f, 1.0f, 5.0f}};
+  Array2D<float> pze = {{0.0f, 0.0f, 0.0f, 0.0f, 6.0f, 4.0f},
+                        {0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f},
+                        {0.0f, 0.0f, 3.0f, 0.0f, 0.0f, 0.0f},
+                        {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 5.0f}};
+  Array4D<float> o(4, 6, 4, 4);
+  o.FillWithPZ(pzo);
+  auto operand = ConstantR4FromArray4D(&builder_, o);
+  Array4D<float> e(4, 6, 4, 4);
+  e.FillWithPZ(pze);
+  Array4D<float> s(2, 3, 4, 4);
+  s.FillWithPZ(pzs);
+  auto source = ConstantR4FromArray4D(&builder_, s);
+  s.FillWithPZ(pzs);
+  SelectAndScatterWithGeneralPadding(
+      operand, ge_f32_, {2, 2, 1, 1}, {2, 2, 1, 1},
+      {{0, 0}, {-1, 1}, {0, 0}, {0, 0}}, source,
+      ConstantR0<float>(&builder_, 0.0f), add_f32_);
+  ComputeAndCompareR4<float>(&builder_, e, {}, ErrorSpec(1e-7));
+}
+
 XLA_TEST_F(SelectAndScatterTest, R1F32OverlappingWindowMaxScatter) {
   const auto operand = ConstantR1<float>(&builder_, {1, 2, 3, 100, 3, 2, 1});
   const auto source = ConstantR1<float>(&builder_, {34, 42, 53, 19});
@@ -470,3 +554,5 @@ XLA_TEST_F(SelectAndScatterTest, R1F32OverlappingWindowMinScatter) {
 
 }  // namespace
 }  // namespace xla
+
+#endif  // !defined(__APPLE__)

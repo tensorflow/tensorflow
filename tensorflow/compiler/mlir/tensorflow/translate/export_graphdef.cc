@@ -175,7 +175,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
-    node_def->set_name(name.str());
+    node_def->set_name(std::string(ParseTensorName(name.str()).node()));
   else
     node_def->set_name(
         std::string(op_to_name_.GetUniqueName(func.getName().str())));
@@ -235,7 +235,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     FuncOp function, Value operand, unsigned index, llvm::StringRef name) {
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
-    node_def->set_name(name.str());
+    node_def->set_name(std::string(ParseTensorName(name.str()).node()));
   else
     node_def->set_name(
         std::string(op_to_name_.GetUniqueName(function.getName().str())));
@@ -566,7 +566,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       if (IsLegacyCallInstruction(&inner_op)) {
         TF_RETURN_IF_ERROR(convert_called_function(
             inner_op.getAttrOfType<mlir::SymbolRefAttr>("f")
-                .getLeafReference()));
+                .getLeafReference()
+                .getValue()));
       }
 
       TF_RETURN_IF_ERROR(exporter.AddInstructionNode(&inner_op));

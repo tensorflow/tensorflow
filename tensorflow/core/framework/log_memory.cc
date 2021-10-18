@@ -79,7 +79,7 @@ void LogMemory::RecordRawAllocation(const string& operation,
   MemoryLogRawAllocation allocation;
   allocation.set_step_id(step_id);
   allocation.set_operation(operation);
-  allocation.set_num_bytes(static_cast<int64>(num_bytes));
+  allocation.set_num_bytes(static_cast<int64_t>(num_bytes));
   allocation.set_ptr(reinterpret_cast<uintptr_t>(ptr));
   allocation.set_allocation_id(allocator->AllocationId(ptr));
   allocation.set_allocator_name(allocator->Name());

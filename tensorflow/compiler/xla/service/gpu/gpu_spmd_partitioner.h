@@ -30,7 +30,7 @@ class GpuSpmdPartitioningVisitor : public spmd::SpmdPartitioningVisitor {
   GpuSpmdPartitioningVisitor(
       HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
       const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
-      int64* next_channel_id, spmd::SpmdLogger* logger,
+      int64_t* next_channel_id, spmd::SpmdLogger* logger,
       spmd::SpmdPartitionerOptions options, spmd::SpmdPartitioner* partitioner)
       : spmd::SpmdPartitioningVisitor(computation, num_partitions, num_replicas,
                                       collective_ops_creator, next_channel_id,
@@ -49,7 +49,7 @@ class GpuSpmdPartitioner : public spmd::SpmdPartitioner {
   std::unique_ptr<spmd::SpmdPartitioningVisitor> CreateVisitor(
       HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
       const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
-      int64* next_channel_id, spmd::SpmdLogger* logger,
+      int64_t* next_channel_id, spmd::SpmdLogger* logger,
       spmd::SpmdPartitionerOptions options) override;
 
   Status PreprocessSharding(HloModule* module) override;

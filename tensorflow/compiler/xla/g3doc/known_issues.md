@@ -3,6 +3,20 @@
 Compilation with XLA can greatly improve the performance of your programs, but
 the TensorFlow interop has a number of known sharp corners.
 
+## `tf.Variable` on a different device
+
+*Error message*: INVALID_ARGUMENT: Trying to access resource <Variable> (defined
+@ <Loc>) located in device CPU:0 from device GPU:0`
+
+XLA cluster runs on exactly one device, and it can not read or write to
+`tf.Variable` located on a different device. Usually this error message
+indicates that the variable was not placed on the right device to begin with.
+The error message should precisely specify the location of the offending
+variable.
+
+NOTE: `tf.Variable` of type `int32` are always placed on a host, and can not be
+placed on a GPU. As a workaround, `int64` can be used.
+
 ## TensorArray TF/XLA interconversion is not supported
 
 *Error message*: `Support for TensorList crossing the XLA/TF boundary is not
@@ -45,17 +59,3 @@ XLA currently ignores TF seeds to random operations. This affects stateful TF
 random operations, such as `tf.random.normal`, or `tf.nn.dropout`. XLA will
 behave as if the compilation was seeded with a new unique seed at each run. This
 limitation does not apply to stateless random ops.
-
-## TensorFlow Asserts are ignored
-
-Assertions created using `tf.Assert` and similar functions are noops when
-compiled to XLA. While proper assertion support is in principle possible, it
-might make certain optimizations impossible (mainly fusing the buffer on which
-the assertion is performed).
-
-## Non-deterministic output
-
-On CPU and GPU the output may be non-deterministic (same as TF proper).
-
-*Workaround*: To enforce determinism, set the `TF_DETERMINISTIC_OPS` environment
-variable to `1` (same as for TF).

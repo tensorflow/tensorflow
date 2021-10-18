@@ -16,13 +16,13 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 cpurt = tf_cpurt.TfCpurtExecutor()
 
 
-class TfStridedSliceTest(googletest.TestCase):
+class TfStridedSliceTest(test.TestCase):
 
   def test_strided_slice_1d_to_0d(self):
     mlir_function = """
@@ -50,4 +50,4 @@ class TfStridedSliceTest(googletest.TestCase):
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

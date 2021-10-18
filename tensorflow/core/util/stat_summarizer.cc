@@ -229,7 +229,7 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
 
 void StatSummarizer::PrintOutputs() const {
   std::priority_queue<
-      std::pair<int64, const std::pair<const std::string, Detail>*>>
+      std::pair<int64_t, const std::pair<const std::string, Detail>*>>
       timings;
   for (const auto& entry : stats_calculator_->GetDetails()) {
     timings.emplace(-entry.second.start_us.avg(), &entry);

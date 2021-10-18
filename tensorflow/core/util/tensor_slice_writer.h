@@ -46,7 +46,7 @@ class TensorSliceWriter {
    public:
     virtual ~Builder() {}
     virtual void Add(StringPiece key, StringPiece value) = 0;
-    virtual Status Finish(int64* file_size) = 0;
+    virtual Status Finish(int64_t* file_size) = 0;
   };
   typedef std::function<Status(const string&, Builder**)> CreateBuilderFunction;
 

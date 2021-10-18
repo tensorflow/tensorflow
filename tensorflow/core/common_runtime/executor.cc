@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/entry.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
@@ -81,7 +83,7 @@ static const Tensor* const kEmptyTensor = new Tensor;
 
 // Helper routines for collecting step stats.
 namespace nodestats {
-inline int64 NowInNsec() { return EnvTime::NowNanos(); }
+inline int64_t NowInNsec() { return EnvTime::NowNanos(); }
 
 void SetScheduled(NodeExecStatsInterface* stats, int64_t micros) {
   if (!stats) return;
@@ -237,7 +239,7 @@ class ExecutorImpl : public Executor {
 //   * `TaggedNode front() const`
 //   * `void pop_front()`
 //   * `bool empty() const`
-// * A type `TaggedNodeSeq`, representing a list of nodes to be schedules, with
+// * A type `TaggedNodeSeq`, representing a list of nodes to be scheduled, with
 //   public members (having the same meanings as in an
 //   `std::vector<TaggedNode>`):
 //   * `size_t size() const`
@@ -343,8 +345,10 @@ class ExecutorState {
   // true if LogMemory::IsEnabled(). Used to check memory enabled cheaply.
   const bool log_memory_;
 
-  int64 step_id_;
-  int64 start_time_usecs_ = 0;
+  int64_t step_id_;
+  int64_t start_time_usecs_ = 0;
+  // The deadline for the session to complete by. Empty if unspecified.
+  absl::optional<absl::Time> deadline_;
 
   // Not owned.
   RendezvousInterface* rendezvous_;
@@ -382,7 +386,7 @@ class ExecutorState {
 
   // Available via OpKernelContext to every OpKernel invocation.
   mutex num_deferred_ops_mu_;
-  int64 num_deferred_ops_ TF_GUARDED_BY(num_deferred_ops_mu_) = 0;
+  int64_t num_deferred_ops_ TF_GUARDED_BY(num_deferred_ops_mu_) = 0;
   bool finish_when_deferred_ops_done_ TF_GUARDED_BY(num_deferred_ops_mu_) =
       false;
 
@@ -398,6 +402,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
       start_time_usecs_(args.start_time_usecs),
+      deadline_(args.deadline),
       rendezvous_(args.rendezvous),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
@@ -700,6 +705,7 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
     params.device = device;
   }
   params.start_time_usecs = start_time_usecs_;
+  params.deadline = deadline_;
   params.log_memory = log_memory_;
   params.rendezvous = rendezvous_;
   params.collective_executor = collective_executor_;
@@ -987,10 +993,11 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
       if (stats_collector_) {
         string err = stats_collector_->ReportAllocsOnResourceExhausted(
             s.error_message());
-        s = Status(s.code(), strings::StrCat(s.error_message(), err));
+        s = errors::CreateWithUpdatedMessage(
+            s, strings::StrCat(s.error_message(), err));
       } else {
-        s = Status(
-            s.code(),
+        s = errors::CreateWithUpdatedMessage(
+            s,
             strings::StrCat(
                 s.error_message(),
                 "\nHint: If you want to see a list of allocated tensors when "

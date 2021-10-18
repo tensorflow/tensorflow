@@ -44,9 +44,9 @@ namespace sparse {
 // the values in IX in particular columns (dimensions) of interest.
 class DimComparator {
  public:
-  typedef typename gtl::ArraySlice<int64> VarDimArray;
+  typedef typename gtl::ArraySlice<int64_t> VarDimArray;
 
-  DimComparator(const TTypes<int64>::Matrix& ix, const VarDimArray& order,
+  DimComparator(const TTypes<int64_t>::Matrix& ix, const VarDimArray& order,
                 const VarDimArray& shape)
       : ix_(ix), order_(order), dims_(shape.size()) {
     DCHECK_GT(order.size(), size_t{0}) << "Must order using at least one index";
@@ -69,8 +69,8 @@ class DimComparator {
   // Compares two indices taken from corresponding index matrices, using the
   // standard, row-major (or lexicographic) order.  Useful for cases that need
   // to distinguish between all three orderings (<, ==, >).
-  inline static int cmp(const TTypes<int64>::ConstMatrix& a_idx,
-                        const TTypes<int64>::ConstMatrix& b_idx,
+  inline static int cmp(const TTypes<int64_t>::ConstMatrix& a_idx,
+                        const TTypes<int64_t>::ConstMatrix& b_idx,
                         const int64_t a_row, const int64_t b_row,
                         const int dims) {
     for (int d = 0; d < dims; ++d) {
@@ -86,17 +86,17 @@ class DimComparator {
   }
 
  protected:
-  const TTypes<int64>::Matrix ix_;
+  const TTypes<int64_t>::Matrix ix_;
   const VarDimArray order_;
   const int dims_;
-  const std::vector<int64>* ix_order_;
+  const std::vector<int64_t>* ix_order_;
 };
 
 template <int ORDER_DIM>
 class FixedDimComparator : DimComparator {
  public:
-  FixedDimComparator(const TTypes<int64>::Matrix& ix, const VarDimArray& order,
-                     const VarDimArray& shape)
+  FixedDimComparator(const TTypes<int64_t>::Matrix& ix,
+                     const VarDimArray& order, const VarDimArray& shape)
       : DimComparator(ix, order, shape) {
     DCHECK_EQ(order.size(), ORDER_DIM);
   }

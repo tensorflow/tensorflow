@@ -382,8 +382,7 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
 // precision is too bad (e.g. for input (-18 + 18j) / (1e-6 - 1e-j), Eigen
 // kernels return (18000000 + 0.3410605192j), but the imaginary part should be
 // close to 0.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TESTS(DivNoNan,
                        /*test_name=*/Complex64, std::complex<float>,
                        std::complex<float>, baseline_div_no_nan,
@@ -816,6 +815,33 @@ GENERATE_DEFAULT_TESTS(MulNoNan,
                        std::complex<double>, baseline_mul_no_nan,
                        test::OpsTestConfig())
 
+/// Test `tf.NextAfter`.
+
+template <typename T>
+T baseline_nextafter(T from, T to) {
+  T res = std::nextafter(from, to);
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+  // The Eigen GPU kernel returns the next normal value if ftz is set.
+  if (!std::isnormal(res)) {
+    if (res < 0 && res > -1) {                // NOLINT
+      return -std::numeric_limits<T>::min();  // NOLINT
+    }
+    if (res > 0 && res < 1) {                // NOLINT
+      return std::numeric_limits<T>::min();  // NOLINT
+    }
+  }
+#endif
+  return res;
+}
+
+GENERATE_DEFAULT_TESTS(NextAfter, /*test_name=*/Float, float, float,
+                       baseline_nextafter,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TESTS(NextAfter, /*test_name=*/Double, double, double,
+                       std::nextafter,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+
 /// Test `tf.NotEqual`.
 
 template <typename T>
@@ -1234,8 +1260,7 @@ GENERATE_DEFAULT_TESTS(Xdivy, /*test_name=*/Double, double, double,
 
 // The following tests don't work with Eigen kernels if the Eigen kernels are
 // compiled with nvcc.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TESTS(Xdivy, /*test_name=*/Complex64, std::complex<float>,
                        std::complex<float>, baseline_xdivy,
                        test::OpsTestConfig().ATol(1e-11).RTol(1e-2))

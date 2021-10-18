@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for identity."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
@@ -55,7 +51,6 @@ def make_identity_tests(options):
     # Reshape when input has shape. However, currently TOCO can't distinguish
     # between missing shape and scalar shape. As a result, when input has scalar
     # shape, this conversion still fails.
-    # TODO(b/129197312), remove the walk-around code once the bug is fixed.
     inputs_doubled = [input_tensor * 2.0 for input_tensor in input_tensors]
     if parameters["op_to_use"] == "identity":
       identity_outputs = [tf.identity(inputs_doubled[0])]

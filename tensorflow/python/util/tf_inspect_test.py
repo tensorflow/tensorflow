@@ -15,10 +15,6 @@
 """Unit tests for tf_inspect."""
 
 # pylint: disable=unused-import
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import inspect
 
@@ -130,10 +126,7 @@ class TfInspectTest(test.TestCase):
 
     partial_func = functools.partial(func, m=0)
 
-    exception_message = (r"Some arguments \['n'\] do not have default value, "
-                         "but they are positioned after those with default "
-                         "values. This can not be expressed with ArgSpec.")
-    with self.assertRaisesRegex(ValueError, exception_message):
+    with self.assertRaisesRegex(ValueError, 'keyword-only arguments'):
       tf_inspect.getargspec(partial_func)
 
   def testGetArgSpecOnPartialInvalidArgspec(self):
@@ -144,10 +137,7 @@ class TfInspectTest(test.TestCase):
 
     partial_func = functools.partial(func, n=7)
 
-    exception_message = (r"Some arguments \['l'\] do not have default value, "
-                         "but they are positioned after those with default "
-                         "values. This can not be expressed with ArgSpec.")
-    with self.assertRaisesRegex(ValueError, exception_message):
+    with self.assertRaisesRegex(ValueError, 'keyword-only arguments'):
       tf_inspect.getargspec(partial_func)
 
   def testGetArgSpecOnPartialValidArgspec(self):

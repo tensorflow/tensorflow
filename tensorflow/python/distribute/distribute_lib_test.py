@@ -14,10 +14,6 @@
 # ==============================================================================
 """Test DistributionStrategy, ReplicaContext, and supporting APIs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.autograph.core import converter_testing

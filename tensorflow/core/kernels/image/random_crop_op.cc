@@ -44,7 +44,7 @@ class RandomCropOp : public OpKernel {
                 errors::InvalidArgument("shape_t must have two elements",
                                         shape_t.shape().DebugString()));
 
-    auto shape_vec = shape_t.vec<int64>();
+    auto shape_vec = shape_t.vec<int64_t>();
     const int32_t target_height = shape_vec(0);
     const int32_t target_width = shape_vec(1);
 

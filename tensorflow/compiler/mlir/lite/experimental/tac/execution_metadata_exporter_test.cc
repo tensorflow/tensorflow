@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -104,7 +105,8 @@ func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>, %ar
 })";
   const std::string kExpectedFB = CreateRuntimeMetadata();
   mlir::DialectRegistry registry;
-  registry.insert<mlir::TFL::TensorFlowLiteDialect, mlir::StandardOpsDialect>();
+  registry.insert<mlir::TFL::TensorFlowLiteDialect,
+                  mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect>();
   mlir::MLIRContext context(registry);
   auto module = mlir::OwningModuleRef(mlir::parseSourceString(kMLIR, &context));
   auto module_op = module.get();

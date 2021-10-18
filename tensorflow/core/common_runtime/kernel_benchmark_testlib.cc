@@ -60,7 +60,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
   }
 
   CHECK(!old_benchmark_api) << "Expected new API only";
-  old_benchmark_api_ = false;
+
   string t = absl::AsciiStrToUpper(device);
   // Allow NewDevice to allocate a new threadpool with different number of
   // threads for each new benchmark.
@@ -149,8 +149,9 @@ string GetRendezvousKey(const Node* node) {
   string tensor_name;
   TF_CHECK_OK(GetNodeAttr(node->attrs(), "tensor_name", &tensor_name));
   uint64 send_device_incarnation;
-  TF_CHECK_OK(GetNodeAttr(node->attrs(), "send_device_incarnation",
-                          reinterpret_cast<int64*>(&send_device_incarnation)));
+  TF_CHECK_OK(
+      GetNodeAttr(node->attrs(), "send_device_incarnation",
+                  reinterpret_cast<int64_t*>(&send_device_incarnation)));
   return Rendezvous::CreateKey(send_device, send_device_incarnation,
                                recv_device, tensor_name, FrameAndIter(0, 0));
 }
@@ -158,8 +159,6 @@ string GetRendezvousKey(const Node* node) {
 void Benchmark::RunWithRendezvousArgs(
     const std::vector<std::pair<string, Tensor>>& inputs,
     const std::vector<string>& outputs, benchmark::State& state) {
-  CHECK(!old_benchmark_api_)
-      << "This method should only be called with new benchmark API";
   if (!device_ || state.max_iterations == 0) {
     return;
   }

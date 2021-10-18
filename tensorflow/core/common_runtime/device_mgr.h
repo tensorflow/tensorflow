@@ -102,7 +102,7 @@ class StaticDeviceMgr : public DeviceMgr {
 
   StringPiece CopyToBackingStore(StringPiece s);
 
-  absl::flat_hash_set<int64> device_incarnation_set_;
+  absl::flat_hash_set<int64_t> device_incarnation_set_;
   std::unordered_map<StringPiece, Device*, StringPieceHasher> device_map_;
   core::Arena name_backing_store_;  // Storage for keys in device_map_
   std::unordered_map<string, int> device_type_counts_;
@@ -156,7 +156,8 @@ class DynamicDeviceMgr : public DeviceMgr {
   std::vector<std::unique_ptr<Device>> dynamic_devices_
       TF_GUARDED_BY(devices_mu_);
 
-  absl::flat_hash_set<int64> device_incarnation_set_ TF_GUARDED_BY(devices_mu_);
+  absl::flat_hash_set<int64_t> device_incarnation_set_
+      TF_GUARDED_BY(devices_mu_);
   std::unordered_map<string, Device*> device_map_ TF_GUARDED_BY(devices_mu_);
 
   std::unordered_map<string, int> device_type_counts_

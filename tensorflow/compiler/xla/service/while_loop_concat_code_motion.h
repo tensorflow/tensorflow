@@ -70,7 +70,7 @@ class WhileLoopConcatCodeMotion : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  const int64 min_operand_count_to_optimize_;
+  const int64_t min_operand_count_to_optimize_;
 };
 }  // namespace xla
 

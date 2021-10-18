@@ -81,7 +81,7 @@ class ExecuteOnStall {
   bool joined_ TF_GUARDED_BY(mu_);
   Env* env_;
   std::function<void()> f_;
-  int64 deadline_;
+  int64_t deadline_;
   int32 poll_microseconds_;
 };
 

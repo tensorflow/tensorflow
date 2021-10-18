@@ -14,10 +14,6 @@
 # =============================================================================
 """A tool for cost analysis."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 
@@ -65,7 +61,7 @@ def get_metagraph():
               try:
                 graph_def.ParseFromString(input_data)
               except message.DecodeError:
-                raise ValueError("Invalid input file.")
+                raise ValueError(f"Invalid input file: {FLAGS.input}.")
             importer.import_graph_def(graph_def, name="")
             graph = ops.get_default_graph()
             meta_graph = saver.export_meta_graph(

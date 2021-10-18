@@ -18,10 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
@@ -112,7 +112,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                                           params);
   }
 
-  int64 Cardinality() const override {
+  int64_t Cardinality() const override {
     if (preserve_cardinality_) {
       return input_->Cardinality();
     } else {
@@ -219,6 +219,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
+      interleave_depth_ = ctx->interleave_depth();
+
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
@@ -367,6 +369,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           parallelism == -1
               ? kTraceInfoUnavailable
               : strings::Printf("%lld", static_cast<long long>(parallelism))));
+      result.push_back(std::make_pair(
+          "interleave_depth",
+          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -378,7 +383,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       Status status;
       std::vector<Tensor> return_values;
       bool end_of_input = false;
-      const int64 uid;
+      const int64_t uid;
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
@@ -604,7 +609,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                              const std::string& key, const Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          key, kErrorCode, static_cast<int64>(status.code())));
+          key, kErrorCode, static_cast<int64_t>(status.code())));
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(key, kErrorMessage, status.error_message()));
@@ -643,7 +648,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     const bool preserve_cardinality_;
     const bool autotune_;
     // Counts the number of outstanding calls.
-    int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
+    int64_t num_calls_ TF_GUARDED_BY(*mu_) = 0;
     // Controls cancellation of `input_impl_`. Must be ordered before
     // `input_impl_` so that `input_impl_` is destroyed first.
     std::unique_ptr<CancellationManager> cancellation_manager_;
@@ -660,10 +665,16 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     // Method for deregistering the cancellation callback.
     std::function<void()> deregister_fn_;
+
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree. We record the interleave depth so that it can be included in the
+    // trace metadata.
+    int64 interleave_depth_ = -1;
   };
 
   const DatasetBase* const input_;
-  const int64 num_parallel_calls_;
+  const int64_t num_parallel_calls_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
   const DeterminismPolicy deterministic_;
@@ -725,7 +736,7 @@ void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 
   if (num_parallel_calls == model::kAutotune) {
     if (GetExperiments().contains("max_parallelism")) {
-      num_parallel_calls = port::NumSchedulableCPUs();
+      num_parallel_calls = GetCpuBudget();
     } else {
       metrics::RecordTFDataAutotune(kDatasetType);
     }

@@ -137,14 +137,14 @@ class CTCLossOp : public OpKernel {
                 errors::InvalidArgument("batch_size must not be 0"));
 
     // Figure out the maximum label length to use as sparse tensor dimension.
-    auto labels_indices_t = labels_indices->matrix<int64>();
+    auto labels_indices_t = labels_indices->matrix<int64_t>();
     int64_t max_label_len = 0;
     for (int i = 0; i < labels_indices->dim_size(0); i++) {
       max_label_len = std::max(max_label_len, labels_indices_t(i, 1) + 1);
     }
 
     TensorShape labels_shape({batch_size, max_label_len});
-    std::vector<int64> order{0, 1};
+    std::vector<int64_t> order{0, 1};
     sparse::SparseTensor labels_sp;
     OP_REQUIRES_OK(
         ctx, sparse::SparseTensor::Create(*labels_indices, *labels_values,
@@ -321,8 +321,8 @@ class CTCLossOpGPU : public OpKernel {
 
     // Convert the labels_indices to labels_lengths.
     std::vector<int> labels_lengths(batch_size, 0);
-    DoHistogram<int64>(ctx, labels_indices, num_indices, batch_size,
-                       &labels_lengths);
+    DoHistogram<int64_t>(ctx, labels_indices, num_indices, batch_size,
+                         &labels_lengths);
 
     StreamExecutor* executor = ctx->op_device_context()->stream()->parent();
     se::dnn::DataType data_type = ToDataType<float>::value;

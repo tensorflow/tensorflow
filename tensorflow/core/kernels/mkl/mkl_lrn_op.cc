@@ -536,10 +536,10 @@ class MklLRNGradOp : public OpKernel {
       orig_output_tensor = MklGetInput(context, kIdxOrigOutput);
     }
 
-    const int64 batch = static_cast<int64>(input_gradient_tensor.dim_size(0));
-    const int64 rows = static_cast<int64>(input_gradient_tensor.dim_size(1));
-    const int64 cols = static_cast<int64>(input_gradient_tensor.dim_size(2));
-    const int64 depth = static_cast<int64>(input_gradient_tensor.dim_size(3));
+    const int64 batch = static_cast<int64_t>(input_gradient_tensor.dim_size(0));
+    const int64 rows = static_cast<int64_t>(input_gradient_tensor.dim_size(1));
+    const int64 cols = static_cast<int64_t>(input_gradient_tensor.dim_size(2));
+    const int64 depth = static_cast<int64_t>(input_gradient_tensor.dim_size(3));
     const auto nodes = cols * rows;
 
     auto grads_shaped =
@@ -562,8 +562,8 @@ class MklLRNGradOp : public OpKernel {
                   depth](int64 begin, int64 end) {
       for (int64 i = begin; i < end; ++i) {
         for (int64 j = 0; j < depth; ++j) {
-          int64 depth_begin = std::max<int64>(0, j - depth_radius_);
-          int64 depth_end = std::min<int64>(depth, j + depth_radius_ + 1);
+          int64 depth_begin = std::max<int64_t>(0, j - depth_radius_);
+          int64 depth_end = std::min<int64_t>(depth, j + depth_radius_ + 1);
 
           T norm(0);
           for (int64 k = depth_begin; k < depth_end; ++k) {

@@ -74,9 +74,9 @@ TEST_F(SparseToDenseTest, OneD_OneValue_int64_double) {
   MakeOp(1, DT_INT64, DT_DOUBLE);
 
   // sparse_indices
-  AddInputFromArray<int64>(TensorShape({3}), {1, 3, 4});
+  AddInputFromArray<int64_t>(TensorShape({3}), {1, 3, 4});
   // output_shape
-  AddInputFromArray<int64>(TensorShape({1}), {5});
+  AddInputFromArray<int64_t>(TensorShape({1}), {5});
   // sparse_values
   AddInputFromArray<double>(TensorShape({}), {2});
   // default_value
@@ -221,7 +221,7 @@ static void BM_SparseToDense(::testing::benchmark::State& state) {
     output_shape_t(d) = (d == IndexDim) ? N : 3;
   }
 
-  auto sparse_indices_t = sparse_indices.matrix<int64>();
+  auto sparse_indices_t = sparse_indices.matrix<int64_t>();
   for (int n = 0; n < N; ++n) {
     for (int d = 0; d < NDIM; ++d)
       sparse_indices_t(n, d) = (d == IndexDim) ? n : 0;
@@ -262,7 +262,7 @@ static void BM_SparseToDense(::testing::benchmark::State& state) {
   }
 
   // processing input, mainly
-  int64_t bytes_per_iter = static_cast<int64>((N + N * NDIM) * sizeof(float));
+  int64_t bytes_per_iter = static_cast<int64_t>((N + N * NDIM) * sizeof(float));
   state.SetBytesProcessed(bytes_per_iter * state.iterations());
 }
 

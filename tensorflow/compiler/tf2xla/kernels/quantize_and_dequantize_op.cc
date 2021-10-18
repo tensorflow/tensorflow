@@ -76,7 +76,7 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
         min_range = ReduceAll(input, xla::MaxValue(b, xla_type), *fmin);
         max_range = ReduceAll(input, xla::MinValue(b, xla_type), *fmax);
       } else {
-        std::vector<int64> dimensions_to_reduce;
+        std::vector<int64_t> dimensions_to_reduce;
         TensorShape input_shape = ctx->InputShape(0);
         int64_t input_rank = input_shape.dims();
         OP_REQUIRES(ctx, input_rank >= 1,
@@ -164,7 +164,7 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
     // explicit broadcast if the axis has a non-scalar shape.
     if (!xla::ShapeUtil::IsScalar(axis_shape)) {
       xla::Shape input_shape = b->GetShape(input).ValueOrDie();
-      absl::Span<const int64> input_dimensions = input_shape.dimensions();
+      absl::Span<const int64_t> input_dimensions = input_shape.dimensions();
       auto convert_to_input_shape = [&](const xla::XlaOp op) {
         return xla::BroadcastInDim(op, input_dimensions, {axis_});
       };
@@ -198,7 +198,7 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
   }
 
  protected:
-  int64 num_bits_ = -1;
+  int64_t num_bits_ = -1;
   int axis_;
   bool signed_input_;
   bool range_given_;

@@ -66,7 +66,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   Status Init(int device_ordinal,
               ::stream_executor::DeviceOptions device_options) override;
 
-  DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) override;
+  DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
 
   Status AllocateEvent(Event* event) override;
 
@@ -93,7 +93,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   void DeallocateTimer(Timer* timer) override;
 
-  bool DeviceMemoryUsage(int64* free, int64* total) const override;
+  bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
   void DequeueOutfeed(int32_t outfeed_queue_index, absl::Span<uint8> bytes,
                       StatusCallback done);
@@ -120,28 +120,28 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   bool Memcpy(Stream* stream, void* host_dst,
               const ::stream_executor::DeviceMemoryBase& device_src,
-              uint64 size) override;
+              uint64_t size) override;
 
   bool Memcpy(Stream* stream, ::stream_executor::DeviceMemoryBase* device_dst,
-              const void* host_src, uint64 size) override;
+              const void* host_src, uint64_t size) override;
 
   bool MemcpyDeviceToDevice(Stream* stream,
                             ::stream_executor::DeviceMemoryBase* gpu_dst,
                             const ::stream_executor::DeviceMemoryBase& host_src,
-                            uint64 size) override;
+                            uint64_t size) override;
 
   void SyncAndForgetFailedStreams();
   bool SynchronizeAllActivity() override;
 
   Status SynchronousMemcpy(::stream_executor::DeviceMemoryBase* device_dst,
-                           const void* host_src, uint64 size) override;
+                           const void* host_src, uint64_t size) override;
   Status SynchronousMemcpy(
       void* host_dst, const ::stream_executor::DeviceMemoryBase& device_src,
-      uint64 size) override;
+      uint64_t size) override;
   Status SynchronousMemcpyDeviceToDevice(
       ::stream_executor::DeviceMemoryBase* device_dst,
       const ::stream_executor::DeviceMemoryBase& device_src,
-      uint64 size) override;
+      uint64_t size) override;
 
   int PlatformDeviceCount() override;
 
@@ -183,16 +183,16 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
     LOG(FATAL) << "Not yet implemented";
   }
 
-  void* GetSubBuffer(DeviceMemoryBase* parent, uint64 offset,
-                     uint64 size) override {
+  void* GetSubBuffer(DeviceMemoryBase* parent, uint64_t offset,
+                     uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
   Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                 uint64 size) override {
+                 uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
   Status Memset32(Stream* stream, DeviceMemoryBase* location, uint32 pattern,
-                  uint64 size) override {
+                  uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
   Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
@@ -202,23 +202,24 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
     LOG(FATAL) << "not yet implemented";
   }
 
-  void* HostMemoryAllocate(uint64 size) override {
+  void* HostMemoryAllocate(uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
   void HostMemoryDeallocate(void* mem) override {
     LOG(FATAL) << "not yet implemented";
   }
-  bool HostMemoryRegister(void* mem, uint64 size) override {
+  bool HostMemoryRegister(void* mem, uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
   bool HostMemoryUnregister(void* mem) override {
     LOG(FATAL) << "not yet implemented";
   }
-  Status SynchronousMemZero(DeviceMemoryBase* location, uint64 size) override {
+  Status SynchronousMemZero(DeviceMemoryBase* location,
+                            uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
   Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                           uint64 size) override {
+                           uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
 

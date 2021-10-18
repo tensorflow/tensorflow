@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace tensorflow {
 
@@ -49,7 +50,7 @@ NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
     DCHECK_EQ(reinterpret_cast<const protobuf::Message*>(&original)
                   ->GetDescriptor()
                   ->field_count(),
-              6)
+              7)
         << "The NodeDef format has changed, and the attr-stripping code may "
            "need to be updated.";
   }
@@ -63,6 +64,9 @@ NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
   // is safe to drop other attrs from the NodeDef.
   AddNodeAttr("dtype", ctx->output_type(0), &ret);
   MergeDebugInfo(original, &ret);
+  if (original.has_experimental_type()) {
+    *ret.mutable_experimental_type() = original.experimental_type();
+  }
   return ret;
 }
 
@@ -72,7 +76,7 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx, StripTensorDataFromNodeDef(ctx), false),
       tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
-  ScopedMemoryDebugAnnotation op_annotation(name_view().data());
+  profiler::ScopedMemoryDebugAnnotation op_annotation(name_view().data());
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
   OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
                           *proto, AllocatorAttributes(), &tensor_));
@@ -114,7 +118,7 @@ REGISTER_KERNEL(GPU, qint16);
 REGISTER_KERNEL(GPU, quint16);
 REGISTER_KERNEL(GPU, uint32);
 REGISTER_KERNEL(GPU, qint32);
-REGISTER_KERNEL(GPU, int64);
+REGISTER_KERNEL(GPU, int64_t);
 REGISTER_KERNEL(GPU, uint64);
 REGISTER_KERNEL(GPU, complex64);
 REGISTER_KERNEL(GPU, complex128);
@@ -175,18 +179,18 @@ class FillOp : public OpKernel {
   }
 };
 
-#define REGISTER_KERNEL(D, TYPE)                                   \
-  REGISTER_KERNEL_BUILDER(Name("Fill")                             \
-                              .Device(DEVICE_##D)                  \
-                              .TypeConstraint<TYPE>("T")           \
-                              .TypeConstraint<int32>("index_type") \
-                              .HostMemory("dims"),                 \
-                          FillOp<D##Device, TYPE, int32>);         \
-  REGISTER_KERNEL_BUILDER(Name("Fill")                             \
-                              .Device(DEVICE_##D)                  \
-                              .TypeConstraint<TYPE>("T")           \
-                              .TypeConstraint<int64>("index_type") \
-                              .HostMemory("dims"),                 \
+#define REGISTER_KERNEL(D, TYPE)                                     \
+  REGISTER_KERNEL_BUILDER(Name("Fill")                               \
+                              .Device(DEVICE_##D)                    \
+                              .TypeConstraint<TYPE>("T")             \
+                              .TypeConstraint<int32>("index_type")   \
+                              .HostMemory("dims"),                   \
+                          FillOp<D##Device, TYPE, int32>);           \
+  REGISTER_KERNEL_BUILDER(Name("Fill")                               \
+                              .Device(DEVICE_##D)                    \
+                              .TypeConstraint<TYPE>("T")             \
+                              .TypeConstraint<int64_t>("index_type") \
+                              .HostMemory("dims"),                   \
                           FillOp<D##Device, TYPE, int64>);
 
 #define REGISTER_CPU_KERNEL(TYPE) REGISTER_KERNEL(CPU, TYPE)
@@ -212,7 +216,7 @@ REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
-REGISTER_KERNEL(GPU, int64);
+REGISTER_KERNEL(GPU, int64_t);
 REGISTER_KERNEL(GPU, bool);
 // Currently we do not support filling strings on GPU
 
@@ -281,7 +285,7 @@ REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
-REGISTER_KERNEL(int64, GPU);
+REGISTER_KERNEL(int64_t, GPU);
 #endif
 
 REGISTER_KERNEL(bfloat16, GPU);
@@ -329,7 +333,7 @@ REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
-REGISTER_KERNEL(int64, GPU);
+REGISTER_KERNEL(int64_t, GPU);
 #endif
 REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(complex64, GPU);

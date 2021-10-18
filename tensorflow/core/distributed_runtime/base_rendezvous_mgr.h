@@ -94,7 +94,7 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
 
  private:
   // Maps step_id to rendezvous.
-  typedef absl::flat_hash_map<int64, BaseRemoteRendezvous*> Table;
+  typedef absl::flat_hash_map<int64_t, BaseRemoteRendezvous*> Table;
 
   // Not owned.
   const WorkerEnv* const worker_env_;
@@ -169,7 +169,7 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   ~BaseRemoteRendezvous() override;
 
   const WorkerEnv* const env_;  // Not owned.
-  const int64 step_id_;
+  const int64_t step_id_;
 
  private:
   Rendezvous* local_;  // Owns a Ref on this object.

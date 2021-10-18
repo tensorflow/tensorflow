@@ -32,7 +32,7 @@ using test::function::NDef;
 
 // If the user manually sets intra op parallelism, we don't insert the op.
 class IntraOpAlreadySetTest
-    : public ::testing::TestWithParam<std::tuple<string, int64>> {};
+    : public ::testing::TestWithParam<std::tuple<string, int64_t>> {};
 
 TEST_P(IntraOpAlreadySetTest, IntraOpParallelism) {
   const string op = std::get<0>(GetParam());
@@ -41,9 +41,9 @@ TEST_P(IntraOpAlreadySetTest, IntraOpParallelism) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  NodeDef *start_val = graph_utils::AddScalarConstNode<int64>(0, &graph);
-  NodeDef *stop_val = graph_utils::AddScalarConstNode<int64>(10, &graph);
-  NodeDef *step_val = graph_utils::AddScalarConstNode<int64>(1, &graph);
+  NodeDef *start_val = graph_utils::AddScalarConstNode<int64_t>(0, &graph);
+  NodeDef *stop_val = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
+  NodeDef *step_val = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
   std::vector<string> range_inputs(3);
   range_inputs[0] = start_val->name();
   range_inputs[1] = stop_val->name();
@@ -53,7 +53,7 @@ TEST_P(IntraOpAlreadySetTest, IntraOpParallelism) {
                                              range_inputs, range_attrs, &graph);
 
   NodeDef *parallelism_val =
-      graph_utils::AddScalarConstNode<int64>(value, &graph);
+      graph_utils::AddScalarConstNode<int64_t>(value, &graph);
   std::vector<string> parallelism_inputs(2);
   parallelism_inputs[0] = range_node->name();
   parallelism_inputs[1] = parallelism_val->name();

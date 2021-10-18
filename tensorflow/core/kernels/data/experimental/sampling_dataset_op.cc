@@ -192,7 +192,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     }
 
     mutex mu_;
-    std::pair<int64, int64> seeds_ TF_GUARDED_BY(mu_);
+    std::pair<int64_t, int64_t> seeds_ TF_GUARDED_BY(mu_);
 
    private:
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
@@ -211,11 +211,11 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
         TF_GUARDED_BY(mu_);
-    int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
+    int64_t num_random_samples_ TF_GUARDED_BY(mu_) = 0;
   };
 
   const float rate_;
-  const std::pair<int64, int64> seeds_;
+  const std::pair<int64_t, int64_t> seeds_;
   const DatasetBase* const input_;
 };  // SamplingDatasetOp::Dataset
 
@@ -229,8 +229,8 @@ void SamplingDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   int64_t seed;
   int64_t seed2;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<float>(ctx, kRate, &rate));
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed, &seed));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed2, &seed2));
 
   *output = new Dataset(ctx, rate, seed, seed2, input);
 }

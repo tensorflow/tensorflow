@@ -131,7 +131,7 @@ class InitializableLookupTable : public LookupInterface {
 
     // Returns the total number of elements that the iterator will produce.
     // It might return -1 in case of error.
-    virtual int64 total_size() const = 0;
+    virtual int64_t total_size() const = 0;
 
    private:
     TF_DISALLOW_COPY_AND_ASSIGN(InitTableIterator);
@@ -182,7 +182,7 @@ class InitializableLookupTable : public LookupInterface {
   // Same as DoPrepare() but derived implementations might choose to skip
   // calling get_expected_num_elements if size is not needed for DoPrepare.
   virtual Status DoLazyPrepare(
-      std::function<int64(void)> get_expected_num_elements) {
+      std::function<int64_t(void)> get_expected_num_elements) {
     int64_t expected_num_elements = get_expected_num_elements();
     if (expected_num_elements < 0) {
       return errors::FailedPrecondition("Got negative expected_num_elements.");
@@ -249,7 +249,7 @@ class KeyValueTensorIterator
 
   Status status() const override { return status_; }
 
-  int64 total_size() const override {
+  int64_t total_size() const override {
     return keys_ == nullptr ? -1 : keys_->NumElements();
   }
 

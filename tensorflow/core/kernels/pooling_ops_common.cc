@@ -118,7 +118,7 @@ PoolParameters::PoolParameters(OpKernelContext* context,
                                const std::vector<int32>& ksize,
                                const std::vector<int32>& stride,
                                Padding padding,
-                               std::vector<int64> explicit_paddings,
+                               std::vector<int64_t> explicit_paddings,
                                TensorFormat data_format,
                                const TensorShape& tensor_in_shape) {
   // For maxpooling, tensor_in should have 2 spatial dimensions.
@@ -217,7 +217,7 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
                               se::dnn::PoolingMode pooling_mode,
                               const std::vector<int32>& size,
                               const std::vector<int32>& stride, Padding padding,
-                              std::vector<int64> explicit_paddings,
+                              std::vector<int64_t> explicit_paddings,
                               TensorFormat data_format, const Tensor& tensor_in,
                               const TensorShape& tensor_out_shape,
                               bool propagate_nans) {
@@ -444,7 +444,7 @@ template <typename T>
 void DnnPoolingGradOp<T>::Compute(
     OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
     const std::vector<int32>& size, const std::vector<int32>& stride,
-    Padding padding, std::vector<int64> explicit_paddings,
+    Padding padding, std::vector<int64_t> explicit_paddings,
     TensorFormat data_format, const Tensor* tensor_in, const Tensor* tensor_out,
     const Tensor& out_backprop, const TensorShape& tensor_in_shape,
     bool propagate_nans) {
@@ -465,6 +465,16 @@ void DnnPoolingGradOp<T>::Compute(
   if (!context->status().ok()) {
     return;
   }
+  if (tensor_out) {
+    OP_REQUIRES(context, tensor_out->shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected orig_output shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", tensor_out->shape()));
+  }
+  OP_REQUIRES(context, out_backprop.shape() == params.forward_output_shape(),
+              errors::InvalidArgument("Expected grad shape to be ",
+                                      params.forward_output_shape(),
+                                      ", but got ", out_backprop.shape()));
 
   TensorFormat transformed_input_data_format = data_format;
 

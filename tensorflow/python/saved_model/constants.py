@@ -18,10 +18,6 @@ The source of truth for these constants is in
 tensorflow/cc/saved_model/constants.h.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.saved_model.pywrap_saved_model import constants
 from tensorflow.python.util.tf_export import tf_export
 

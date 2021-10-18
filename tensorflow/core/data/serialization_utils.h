@@ -47,9 +47,9 @@ class VariantTensorDataReader : public IteratorStateReader {
   bool Contains(StringPiece key) const override;
   bool Contains(StringPiece name, StringPiece key) const override;
 
-  Status ReadScalar(StringPiece key, int64* val) const override;
+  Status ReadScalar(StringPiece key, int64_t* val) const override;
   Status ReadScalar(StringPiece name, StringPiece key,
-                    int64* val) const override;
+                    int64_t* val) const override;
   Status ReadScalar(StringPiece key, tstring* val) const override;
   Status ReadScalar(StringPiece name, StringPiece key,
                     tstring* val) const override;
@@ -125,14 +125,15 @@ Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
                   SerializationContext&& serialization_ctx,
                   GraphDef* graph_def);
 
-// Returns a GraphDef representation of the given dataset using the minimal
-// serialization parameters (i.e. ignoring external state, not serializing
-// data tensors, not failing if there are datasets which do not have AsGraphDef
-// implemented). Sets the `dataset_node` parameter to the dataset's
-// node name in the resulting GraphDef.
-Status AsGraphDefMinimal(OpKernelContext* ctx, const DatasetBase* input,
-                         std::vector<std::pair<string, Tensor>>* input_list,
-                         GraphDef* result, string* dataset_node);
+// Returns a GraphDef representation of the given dataset suitable for
+// optimization rewrites. It sets serialization parameters to export a minimum
+// graph with additional information for optimization (i.e. ignoring external
+// state, not serializing data tensors, not failing if there are datasets which
+// do not have AsGraphDef implemented). Sets the `dataset_node` parameter to the
+// dataset's node name in the resulting GraphDef.
+Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
+                            std::vector<std::pair<string, Tensor>>* input_list,
+                            GraphDef* result, string* dataset_node);
 
 }  // namespace data
 }  // namespace tensorflow

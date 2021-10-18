@@ -66,7 +66,7 @@ float CalculateResizeScale(int64_t in_size, int64_t out_size,
              : in_size / static_cast<float>(out_size);
 }
 
-inline std::tuple<int64, int64, float> GetReferenceWeight(
+inline std::tuple<int64_t, int64_t, float> GetReferenceWeight(
     const bool half_pixel_centers, const int64_t out_size,
     const int64_t in_size, const int step, const int index, const float scale) {
   const float in = half_pixel_centers
@@ -74,9 +74,9 @@ inline std::tuple<int64, int64, float> GetReferenceWeight(
                        : index * scale;
   const float in_f = std::floor(in);
   const int64_t lower =
-      std::max(static_cast<int64>(in_f), static_cast<int64>(0));
+      std::max(static_cast<int64_t>(in_f), static_cast<int64_t>(0));
   const int64_t upper =
-      std::min(static_cast<int64>(std::ceil(in)), in_size - 1);
+      std::min(static_cast<int64_t>(std::ceil(in)), in_size - 1);
   return std::make_tuple(lower * step, upper * step, in - in_f);
 }
 
@@ -116,9 +116,9 @@ T CalcReferenceResizedVal(const T* image_data, const bool half_pixel_centers,
                           const float height_scale, const float width_scale,
                           const float min, const float max, const int b,
                           const int64_t x, const int64_t y, const int c) {
-  const std::tuple<int64, int64, float> x_weight = GetReferenceWeight(
+  const std::tuple<int64_t, int64_t, float> x_weight = GetReferenceWeight(
       half_pixel_centers, out_width, in_width, channels, x, width_scale);
-  const std::tuple<int64, int64, float> y_weight = GetReferenceWeight(
+  const std::tuple<int64_t, int64_t, float> y_weight = GetReferenceWeight(
       half_pixel_centers, out_height, in_height, 1, y, height_scale);
 
   const int64_t in_row_size = in_width * channels;

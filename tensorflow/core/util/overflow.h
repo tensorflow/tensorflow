@@ -24,7 +24,7 @@ namespace tensorflow {
 
 // Multiply two nonnegative int64's, returning negative for overflow
 // If any of the arguments is negative, return negative too.
-inline int64 MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
+inline int64_t MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
   if (TF_PREDICT_FALSE(x < 0)) return -1;
   if (TF_PREDICT_FALSE(y < 0)) return -1;
   if (TF_PREDICT_FALSE(x == 0)) return 0;
@@ -43,7 +43,7 @@ inline int64 MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
   }
 
   // Cast back to signed. A negative value will signal an error.
-  return static_cast<int64>(uxy);
+  return static_cast<int64_t>(uxy);
 }
 
 }  // namespace tensorflow

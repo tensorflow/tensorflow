@@ -86,7 +86,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64 Cardinality() const override {
+  int64_t Cardinality() const override {
     int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
@@ -335,7 +335,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
                              const Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          CodeKey(index), static_cast<int64>(status.code())));
+          CodeKey(index), static_cast<int64_t>(status.code())));
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(index),
                                                status.error_message()));
@@ -379,9 +379,9 @@ class WindowDatasetOp::Dataset : public DatasetBase {
   };
 
   const DatasetBase* const input_;
-  const int64 window_size_;
-  const int64 window_shift_;
-  const int64 window_stride_;
+  const int64_t window_size_;
+  const int64_t window_shift_;
+  const int64_t window_stride_;
   const bool drop_remainder_;
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
@@ -394,19 +394,20 @@ WindowDatasetOp::WindowDatasetOp(OpKernelConstruction* ctx)
 void WindowDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                   DatasetBase** output) {
   int64_t window_size = 0;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSize, &window_size));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSize, &window_size));
   OP_REQUIRES(
       ctx, window_size > 0,
       errors::InvalidArgument("Window size must be greater than zero."));
 
   int64_t window_shift = 0;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kShift, &window_shift));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kShift, &window_shift));
   OP_REQUIRES(
       ctx, window_shift > 0,
       errors::InvalidArgument("Window shift must be greater than zero."));
 
   int64_t window_stride = 0;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kStride, &window_stride));
+  OP_REQUIRES_OK(ctx,
+                 ParseScalarArgument<int64_t>(ctx, kStride, &window_stride));
   OP_REQUIRES(
       ctx, window_stride > 0,
       errors::InvalidArgument("Window stride must be greater than zero."));

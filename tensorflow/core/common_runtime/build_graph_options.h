@@ -33,7 +33,7 @@ struct BuildGraphOptions {
   bool use_function_convention = false;
 
   static constexpr int64_t kNoCollectiveGraphKey = 0;
-  int64 collective_graph_key = kNoCollectiveGraphKey;
+  int64_t collective_graph_key = kNoCollectiveGraphKey;
 
   // If not `kNone`, order all CollectiveReduce operations statically and
   // deterministically.  If `kEdges`, encode dependencies as explicit control

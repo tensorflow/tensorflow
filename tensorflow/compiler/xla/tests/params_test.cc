@@ -84,7 +84,7 @@ XLA_TEST_F(ParamsTest, ConstantR1U8Param) {
       client_->TransferToServer(param0_literal).ConsumeValueOrDie();
 
   Parameter(&builder, 0,
-            ShapeUtil::MakeShape(U8, {static_cast<int64>(str.size())}),
+            ShapeUtil::MakeShape(U8, {static_cast<int64_t>(str.size())}),
             "param0");
 
   ComputeAndCompareR1U8(&builder, str, {param0_data.get()});
@@ -487,7 +487,7 @@ XLA_TEST_F(ParamsTest, R2_2x2_TryToPassReverseLayoutToParameter) {
   {
     // Reverse the layout present in original, and make that the layout of the
     // literal.
-    std::vector<int64> original_layout(
+    std::vector<int64_t> original_layout(
         original.layout().minor_to_major().begin(),
         original.layout().minor_to_major().end());
     std::reverse(original_layout.begin(), original_layout.end());

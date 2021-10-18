@@ -206,7 +206,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
                }));
 
   Tensor output(DT_INT64, TensorShape({}));
-  output.scalar<int64>()() = uid;
+  output.scalar<int64_t>()() = uid;
   ctx->set_output(0, output);
 
   Tensor program_shape_output(DT_STRING, TensorShape({num_cores_per_replica}));
@@ -251,7 +251,7 @@ void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
   core::ScopedUnref cache_unref(cache);
 
   const Tensor& keys_tensor = ctx->input(0);
-  auto flat_keys = keys_tensor.flat<int64>();
+  auto flat_keys = keys_tensor.flat<int64_t>();
   for (int64_t i = 0; i < flat_keys.size(); ++i) {
     int64_t key = flat_keys(i);
     OP_REQUIRES_OK(ctx, cache->Release(key));

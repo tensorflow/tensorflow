@@ -78,7 +78,7 @@ Status RunGemm(
     const GpuGemmConfig& gemm_config, se::DeviceMemoryBase lhs_buffer,
     se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
     se::Stream* stream, bool implements_whole_instruction,
-    absl::optional<int64> profile_index,
+    absl::optional<int64_t> profile_index,
     se::blas::ProfileResult* profile_result = nullptr,
     absl::optional<se::blas::AlgorithmType> algorithm = absl::nullopt);
 

@@ -305,15 +305,15 @@ class FileSystem {
   ///  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
   ///                    implemented
   virtual tensorflow::Status DeleteRecursively(const std::string& dirname,
-                                               int64* undeleted_files,
-                                               int64* undeleted_dirs) {
+                                               int64_t* undeleted_files,
+                                               int64_t* undeleted_dirs) {
     return DeleteRecursively(dirname, nullptr, undeleted_files, undeleted_dirs);
   }
 
   virtual tensorflow::Status DeleteRecursively(const std::string& dirname,
                                                TransactionToken* token,
-                                               int64* undeleted_files,
-                                               int64* undeleted_dirs);
+                                               int64_t* undeleted_files,
+                                               int64_t* undeleted_dirs);
 
   /// \brief Stores the size of `fname` in `*file_size`.
   virtual tensorflow::Status GetFileSize(const std::string& fname,
@@ -524,7 +524,7 @@ class FileSystem {
 
   /// \brief Set File System Configuration Option
   virtual tensorflow::Status SetOption(const std::string& name,
-                                       const std::vector<int64>& values) {
+                                       const std::vector<int64_t>& values) {
     return errors::Unimplemented("SetOption");
   }
 
@@ -653,8 +653,8 @@ class WrappedFileSystem : public FileSystem {
 
   tensorflow::Status DeleteRecursively(const std::string& dirname,
                                        TransactionToken* token,
-                                       int64* undeleted_files,
-                                       int64* undeleted_dirs) override {
+                                       int64_t* undeleted_files,
+                                       int64_t* undeleted_dirs) override {
     return fs_->DeleteRecursively(dirname, (token ? token : token_),
                                   undeleted_files, undeleted_dirs);
   }
@@ -847,7 +847,7 @@ class WritableFile {
   ///
   /// This is an optional operation, subclasses may choose to return
   /// errors::Unimplemented.
-  virtual tensorflow::Status Tell(int64* position) {
+  virtual tensorflow::Status Tell(int64_t* position) {
     *position = -1;
     return errors::Unimplemented("This filesystem does not support Tell()");
   }

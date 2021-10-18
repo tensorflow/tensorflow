@@ -31,9 +31,9 @@ struct SplitCandidate {
   SplitCandidate() {}
 
   // Index in the tensor of node_ids for the feature with idx feature_idx.
-  int64 candidate_idx = 0;
+  int64_t candidate_idx = 0;
 
-  int64 feature_id = 0;
+  int64_t feature_id = 0;
   float gain = 0.0;
   int32 threshold = 0.0;
   int32 dimension_id = 0;

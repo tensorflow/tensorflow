@@ -66,7 +66,7 @@ struct ClientGraph {
   Graph graph;
   DataTypeVector feed_types;
   DataTypeVector fetch_types;
-  int64 collective_graph_key;
+  int64_t collective_graph_key;
 };
 
 // GraphExecutionState is responsible for generating an

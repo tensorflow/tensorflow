@@ -6,7 +6,7 @@
 
 // CHECK-LABEL: @reuse_input_buffer
 func @reuse_input_buffer(%arg0: index) -> memref<?x10xf32> {
-  %cst_0 = constant 0.0 : f32
+  %cst_0 = arith.constant 0.0 : f32
 
   // CHECK: %[[IN:.*]] = memref.alloc
   // CHECK: %[[OUT:.*]] = memref.alloc
@@ -39,7 +39,7 @@ func @reuse_input_buffer(%arg0: index) -> memref<?x10xf32> {
 // Do not forward input operand with non-identity indexing map.
 // CHECK-LABEL: @non_identity_input_indexing_map
 func @non_identity_input_indexing_map(%arg0: index) -> memref<?x10xf32> {
-  %cst_0 = constant 0.0 : f32
+  %cst_0 = arith.constant 0.0 : f32
 
   // CHECK: %[[IN:.*]] = memref.alloc
   // CHECK: %[[OUT:.*]] = memref.alloc
@@ -72,7 +72,7 @@ func @non_identity_input_indexing_map(%arg0: index) -> memref<?x10xf32> {
 // Do not forward input operand with non-contiguous memory layout.
 // CHECK-LABEL: @non_contiguous_input_memref
 func @non_contiguous_input_memref(%arg0: index) -> memref<?x10xf32> {
-  %cst_0 = constant 0.0 : f32
+  %cst_0 = arith.constant 0.0 : f32
 
   // CHECK: %[[IN:.*]] = memref.alloc
   // CHECK: %[[OUT:.*]] = memref.alloc
@@ -105,7 +105,7 @@ func @non_contiguous_input_memref(%arg0: index) -> memref<?x10xf32> {
 // Forward same size with non-identiy maps.
 // CHECK-LABEL: @non_identity_same_size
 func @non_identity_same_size(%arg0: index) -> memref<?x10xf32> {
-  %cst_0 = constant 0.0 : f32
+  %cst_0 = arith.constant 0.0 : f32
 
   // CHECK: %[[IN:.*]] = memref.alloc
   // CHECK: %[[OUT:.*]] = memref.alloc
@@ -139,7 +139,7 @@ func @non_identity_same_size(%arg0: index) -> memref<?x10xf32> {
 // CHECK-LABEL: @non_identity_different_size
 func @non_identity_different_size(%arg0: index, %arg1: index)
     -> memref<?x10xf32> {
-  %cst_0 = constant 0.0 : f32
+  %cst_0 = arith.constant 0.0 : f32
 
   // CHECK: %[[IN:.*]] = memref.alloc
   // CHECK: %[[OUT:.*]] = memref.alloc
@@ -171,7 +171,7 @@ func @non_identity_different_size(%arg0: index, %arg1: index)
 // Forward different size with identiy maps.
 // CHECK-LABEL: @identity_different_size
 func @identity_different_size(%arg0: index, %arg1: index) -> memref<?x10xf32> {
-  %cst_0 = constant 0.0 : f32
+  %cst_0 = arith.constant 0.0 : f32
 
   // CHECK: %[[IN:.*]] = memref.alloc
   // CHECK: %[[OUT:.*]] = memref.alloc

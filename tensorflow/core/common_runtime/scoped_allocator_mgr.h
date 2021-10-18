@@ -51,7 +51,7 @@ class ScopedAllocatorContainer : public core::RefCounted {
 
  private:
   const ScopedAllocatorMgr* mgr_;
-  int64 step_id_;
+  int64_t step_id_;
   mutex mu_;
   struct SAField {
     int32 field_index;
@@ -103,7 +103,7 @@ class ScopedAllocatorMgr {
  private:
   std::string device_name_;
   mutex mu_;
-  std::unordered_map<int64, ScopedAllocatorContainer*> per_step_map_
+  std::unordered_map<int64_t, ScopedAllocatorContainer*> per_step_map_
       TF_GUARDED_BY(mu_);
 };
 

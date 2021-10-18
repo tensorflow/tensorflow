@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -49,8 +50,8 @@ absl::StatusOr<mlir::OwningModuleRef> ImportFlatbufferOrMlir(
 
   if (input_mlir) {
     mlir::DialectRegistry registry;
-    registry
-        .insert<mlir::TFL::TensorFlowLiteDialect, mlir::StandardOpsDialect>();
+    registry.insert<mlir::TFL::TensorFlowLiteDialect,
+                    mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect>();
     context->appendDialectRegistry(registry);
     source_mgr->AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
     return mlir::OwningModuleRef(mlir::parseSourceFile(*source_mgr, context));
@@ -83,9 +84,9 @@ absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,
     os.flush();
   } else {
     tflite::FlatbufferExportOptions options;
-    options.emit_builtin_tflite_ops = true;
-    options.emit_select_tf_ops = false;
-    options.emit_custom_ops = true;
+    options.toco_flags.set_force_select_tf_ops(false);
+    options.toco_flags.set_enable_select_tf_ops(false);
+    options.toco_flags.set_allow_custom_ops(true);
     if (!tflite::MlirToFlatBufferTranslateFunction(module, options, &result)) {
       return absl::UnknownError("Failed to export tflite file.");
     }

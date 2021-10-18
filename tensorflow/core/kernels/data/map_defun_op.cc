@@ -47,7 +47,7 @@ struct MapDefunOp::ComputeOptions {
   OpInputList args;
   const std::vector<TensorShape> arg_shapes;
   OpInputList captured_inputs;
-  const int64 batch_size;
+  const int64_t batch_size;
   std::function<void(std::function<void()>)> runner;
 
   // Output of a compute call

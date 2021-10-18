@@ -16,8 +16,8 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 cpurt = tf_cpurt.TfCpurtExecutor()
 
@@ -28,7 +28,7 @@ specializations = [
 ]
 
 
-class TfBinaryBcastTest(googletest.TestCase):
+class TfBinaryBcastTest(test.TestCase):
 
   def test_bcast_2d_1d(self):
     mlir_function = """
@@ -41,7 +41,9 @@ class TfBinaryBcastTest(googletest.TestCase):
              : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
         %2 = "tf.Mul"(%1, %arg2)
              : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
-        return %2 : tensor<?x4xf32>
+        %3 = "tf.Atan2"(%2, %arg2)
+             : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
+        return %3 : tensor<?x4xf32>
       }"""
 
     n = np.random.randint(1, 10)
@@ -54,7 +56,7 @@ class TfBinaryBcastTest(googletest.TestCase):
       compiled = cpurt.compile(mlir_function, 'test', specialize)
 
       [res] = cpurt.execute(compiled, [arg0, arg1, arg2])
-      ref = (np.log1p(arg0) - arg1) * arg2
+      ref = np.arctan2((np.log1p(arg0) - arg1) * arg2, arg2)
       np.testing.assert_allclose(res, ref, atol=1e-05)
 
   def test_bcast_2d_2d(self):
@@ -154,6 +156,25 @@ class TfBinaryBcastTest(googletest.TestCase):
 
     np.testing.assert_allclose(res, np.add(arg0, arg1), atol=0.0)
 
+  # Test that the non-broadcastable shapes error is handled at run time.
+  def test_bcast_1d_1d_error(self):
+    mlir_function = """
+      func @compute(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>)
+          -> tensor<?xf32> {
+        %0 = "tf.AddV2"(%arg0, %arg1)
+             : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+        return %0 : tensor<?xf32>
+      }"""
+
+    arg0 = np.random.uniform(0, 10.0, size=(2)).astype(np.float32)
+    arg1 = np.random.uniform(0, 10.0, size=(3)).astype(np.float32)
+
+    for specialize in specializations:
+      compiled = cpurt.compile(mlir_function, 'compute', specialize)
+
+      with self.assertRaisesRegex(Exception, 'required broadcastable shapes'):
+        cpurt.execute(compiled, [arg0, arg1])
+
   # Test that 0-ranked operands are correctly specialized.
   def test_bcast_value_rank0(self):
     mlir_function = """
@@ -185,12 +206,11 @@ class TfBinaryBcastTest(googletest.TestCase):
              : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
         return %0 : tensor<*xf32>
       }"""
-    try:
+
+    with self.assertRaisesRegex(Exception,
+                                'Cannot sink operand type: tensor<f32>'):
       cpurt.compile(mlir_function, 'compute')
-    except Exception:  # pylint: disable=broad-except
-      return
-    raise RuntimeError('Compilation should have failed')
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

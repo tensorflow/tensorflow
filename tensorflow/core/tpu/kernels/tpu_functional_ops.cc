@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 #define EIGEN_USE_THREADS
@@ -182,7 +183,7 @@ void SetXlaShardingNodeAttr(Node* xla_sharding_node, int num_cores_per_replica,
   auto sharding = absl::make_optional<xla::OpSharding>();
   sharding->set_type(xla::OpSharding::OTHER);
 
-  std::vector<int64> dims(rank, 1LL);
+  std::vector<int64_t> dims(rank, 1LL);
   dims[shard_dim] = num_cores_per_replica;
   for (auto dim : dims) {
     sharding->add_tile_assignment_dimensions(dim);
@@ -306,9 +307,9 @@ Status GetClusterName(Graph* graph, string* cluster_name) {
 // back where necessary.
 //
 // Returns the number of nodes that were removed.
-int64 RemoveDescendantNodeOfArg(Graph* graph,
-                                const std::string& node_type_to_remove,
-                                const std::set<std::string>& must_be_child_of) {
+int64_t RemoveDescendantNodeOfArg(
+    Graph* graph, const std::string& node_type_to_remove,
+    const std::set<std::string>& must_be_child_of) {
   int64_t nodes_removed = 0;
   std::vector<std::pair<const Edge*, std::vector<const Edge*>>> edges_to_remove;
 
@@ -439,7 +440,7 @@ Status ConvertEdgeShapesToTensorShapes(
   for (const auto& iter : named_input_shapes) {
     VLOG(2) << iter.first << ", rank: " << iter.second.size();
     const int64_t rank = iter.second.size();
-    std::vector<int64> dims(rank);
+    std::vector<int64_t> dims(rank);
     for (int64_t d = 0; d < rank; ++d) {
       VLOG(2) << " dim[" << d << "]: " << iter.second.at(d);
       dims[d] = iter.second.at(d);
@@ -1039,7 +1040,7 @@ Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
     Node* flatten_reshape_shape_node = nullptr;
     Tensor flattened_input_shape_tensor;
     flattened_input_shape_tensor =
-        Tensor(DT_INT32, TensorShape({static_cast<int64>(1)}));
+        Tensor(DT_INT32, TensorShape({static_cast<int64_t>(1)}));
     flattened_input_shape_tensor.flat<int>()(0) = -1;
     TF_RETURN_IF_ERROR(
         NodeBuilder(absl::StrCat(edge->src()->name(), "/flatten/Reshape/shape"),
@@ -1065,7 +1066,7 @@ Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
     Node* recover_reshape_shape_node = nullptr;
     Tensor original_input_shape_tensor(
         DT_INT32,
-        TensorShape({static_cast<int64>(tpu_input_shapes->at(edge).size())}));
+        TensorShape({static_cast<int64_t>(tpu_input_shapes->at(edge).size())}));
     original_input_shape_tensor.flat<int>()(0) = -1;
     for (int d = 1; d < tpu_input_shapes->at(edge).size(); ++d)
       original_input_shape_tensor.flat<int>()(d) =
@@ -1195,10 +1196,13 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
 
     metrics::RecordTPUXlaSpmdCoresPerReplica(num_cores_per_replica);
   });
+  OP_REQUIRES_ASYNC(
+      ctx, ordinal_selector_ != nullptr,
+      errors::Internal("The TPUOrdinalSelector is not initialized."), done);
+
   uint64 input_hash = GetInputHash(ctx);
   int64_t ordinal_selector_req_id = -1;
   // Select a TPU core.
-  absl::ReleasableMutexLock lock(&mu_);
   int32_t device_ordinal = 0;
   OP_REQUIRES_OK_ASYNC(
       ctx,
@@ -1206,6 +1210,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                         &device_ordinal),
       done);
   uint64 cache_hash = Hash64Combine(input_hash, device_ordinal);
+  absl::ReleasableMutexLock lock(&mu_);
 
   const std::vector<DeviceAndFHandle>* functions;
 
@@ -1538,8 +1543,8 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
   OpInputList arguments;
   TF_RETURN_IF_ERROR(ctx->input_list("args", &arguments));
 
-  auto* rendez = new PrivateIntraProcessRendezvous(device_mgr_);
-  opts.rendezvous = rendez;
+  PrivateIntraProcessRendezvous rendez(device_mgr_);
+  opts.rendezvous = &rendez;
 
   BlockingCounter bcount(functions.size());
   for (const DeviceAndFHandle& entry : functions) {
@@ -2033,7 +2038,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
       sharding->set_type(xla::OpSharding::OTHER);
 
       // Sets up tile_assignment_dimensions.
-      std::vector<int64> dims(rank, 1LL);
+      std::vector<int64_t> dims(rank, 1LL);
       dims[shard_dim] = num_cores_per_replica;
       for (auto dim : dims) {
         sharding->add_tile_assignment_dimensions(dim);
@@ -2544,11 +2549,10 @@ void TPUPartitionedCallOp::ExecuteRemoteFunction(
   std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
 
   profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteRemote");
-  absl::ReaderMutexLock l(&mu_);
   library_runtime_->Run(opts, handle, dummy_args, dummy_rets,
                         [dummy_rets, done, ctx](const Status& status) {
                           if (!status.ok()) {
-                            ctx->SetStatus(status);
+                            done->UpdateStatus(status);
                           }
                           delete dummy_rets;
                           done->Unref();
@@ -2571,11 +2575,10 @@ void TPUPartitionedCallOp::ExecuteLocalFunction(
   auto* rets = new std::vector<Tensor>;
 
   profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteLocal");
-  absl::ReaderMutexLock l(&mu_);
   library_runtime_->Run(opts, handle, args, rets,
                         [rets, done, ctx](const Status& status) {
                           if (!status.ok()) {
-                            ctx->SetStatus(status);
+                            done->UpdateStatus(status);
                           } else {
                             for (int i = 0; i < rets->size(); ++i) {
                               ctx->set_output(i, (*rets)[i]);
@@ -2592,7 +2595,6 @@ void TPUPartitionedCallOp::ExecuteFunctions(
   profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteFunctions");
   FunctionLibraryRuntime::Options opts;
   opts.step_container = ctx->step_container();
-  opts.cancellation_manager = ctx->cancellation_manager();
   opts.stats_collector = ctx->stats_collector();
   // TODO(akshayka): Consider selecting a runner on a per-device basis,
   // i.e., using device-specific threadpools when available.
@@ -2603,14 +2605,20 @@ void TPUPartitionedCallOp::ExecuteFunctions(
   OpInputList arguments;
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
 
+  auto* local_cm = new CancellationManager(ctx->cancellation_manager());
   auto* rendez = new PrivateIntraProcessRendezvous(device_mgr_);
+  opts.cancellation_manager = local_cm;
   opts.rendezvous = rendez;
 
   StatusCallback callback(
-      [rendez = rendez, done = std::move(done), device_ordinal = device_ordinal,
-       req_id = ordinal_selector_req_id,
+      [rendez = rendez, local_cm, done = std::move(done),
+       device_ordinal = device_ordinal, req_id = ordinal_selector_req_id, ctx,
        ordinal_selector = ordinal_selector_](const Status& status) {
+        delete local_cm;
         delete rendez;
+        if (!status.ok()) {
+          ctx->SetStatus(status);
+        }
         done();
         if (req_id >= 0) {
           ordinal_selector->DequeueFromCoreSelector(device_ordinal, req_id);

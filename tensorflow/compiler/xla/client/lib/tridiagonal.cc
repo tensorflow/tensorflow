@@ -48,10 +48,10 @@ Status CheckSecondToLastDimension(const Shape& op_shape, int64_t rank,
   return Status::OK();
 }
 
-StatusOr<int64> CheckSystemAndReturnNumEquations(XlaOp lower_diagonal,
-                                                 XlaOp main_diagonal,
-                                                 XlaOp upper_diagonal,
-                                                 XlaOp rhs) {
+StatusOr<int64_t> CheckSystemAndReturnNumEquations(XlaOp lower_diagonal,
+                                                   XlaOp main_diagonal,
+                                                   XlaOp upper_diagonal,
+                                                   XlaOp rhs) {
   XlaBuilder* builder = lower_diagonal.builder();
 
   TF_ASSIGN_OR_RETURN(Shape lower_diagonal_shape,
@@ -324,7 +324,7 @@ StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
                  /*stride=*/1, /*dimno=*/rank - 2);
 
   // TODO(belletti): Get rid of the transposes here.
-  std::vector<int64> transpose_order(rank);
+  std::vector<int64_t> transpose_order(rank);
   std::iota(transpose_order.begin(), transpose_order.end(), 0);
   transpose_order[rank - 2] = rank - 1;
   transpose_order[rank - 1] = rank - 2;

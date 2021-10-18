@@ -44,7 +44,7 @@ namespace tensorflow {
 namespace {
 
 // The test harness won't allow a mixture of fixture and non-fixture
-// tests in one file, so this is a trival fixture for tests that don't
+// tests in one file, so this is a trivial fixture for tests that don't
 // need the heavy-weight HierarchicalTreeBroadcasterTest fixture.
 class TrivialTest : public ::testing::Test {
  protected:
@@ -222,7 +222,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       // In the test we always broadcast from rank 0.
       col_params_->is_source = (rank == 0);
       col_params_->source_rank = 0;
-      string dev_name = col_params_->group.devices[rank].name();
+      string dev_name = col_params_->group.members[rank].device.name();
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(dev_name, &device_))
           << "Couldn't find device " << dev_name
           << " existing devices: " << test_env_->device_mgr->DebugString();
@@ -359,10 +359,10 @@ TEST_F(HierarchicalTreeBroadcasterInitParamsTest,
   for (int ti = 0; ti < cp->group.num_tasks; ti++) {
     string task_name = strings::StrCat("/job:worker/replica:0/task:", ti);
     for (int di = 0; di < dev_per_task[ti]; di++) {
-      DeviceAttributes device;
-      device.set_name(strings::StrCat(task_name, "/device:GPU:", di));
-      cp->group.task_names.push_back(task_name);
-      cp->group.devices.push_back(device);
+      CollGroupMember member;
+      member.device.set_name(strings::StrCat(task_name, "/device:GPU:", di));
+      member.task = task_name;
+      cp->group.members.push_back(member);
       cp->group.group_size++;
     }
   }
@@ -429,7 +429,7 @@ TEST_F(HierarchicalTreeBroadcasterInitParamsTest,
         RunTest<int32>(dtype, DEVICE_##T, W, D, L, A, F);                  \
       } break;                                                             \
       case DT_INT64: {                                                     \
-        RunTest<int64>(dtype, DEVICE_##T, W, D, L, A, F);                  \
+        RunTest<int64_t>(dtype, DEVICE_##T, W, D, L, A, F);                \
       } break;                                                             \
       default:                                                             \
         LOG(FATAL) << "Unimplemented";                                     \

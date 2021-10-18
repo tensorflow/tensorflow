@@ -59,10 +59,10 @@ class BinaryOpShared : public OpKernel {
 
     BCast bcast;
     Tensor* out = nullptr;
-    int64 out_num_elements;
+    int64_t out_num_elements;
 
-    int64 in0_num_elements;
-    int64 in1_num_elements;
+    int64_t in0_num_elements;
+    int64_t in1_num_elements;
 
     int ndims;
     bool result;

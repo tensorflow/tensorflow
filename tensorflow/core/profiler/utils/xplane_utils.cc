@@ -221,7 +221,7 @@ void SortXSpace(XSpace* space) {
 // smaller than these value.
 void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns) {
   for (XLine& line : *plane->mutable_lines()) {
-    if (line.timestamp_ns() >= static_cast<int64>(start_time_ns)) {
+    if (line.timestamp_ns() >= static_cast<int64_t>(start_time_ns)) {
       line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
     }
   }
@@ -302,7 +302,7 @@ void MergePlanes(const std::vector<const XPlane*>& src_planes,
 uint64 GetStartTimestampNs(const XPlane& plane) {
   int64_t plane_timestamp = 0;
   for (const auto& line : plane.lines()) {
-    plane_timestamp = std::min<int64>(plane_timestamp, line.timestamp_ns());
+    plane_timestamp = std::min<int64_t>(plane_timestamp, line.timestamp_ns());
   }
   return plane_timestamp;
 }

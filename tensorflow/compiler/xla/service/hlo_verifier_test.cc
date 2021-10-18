@@ -869,7 +869,7 @@ TEST_F(HloVerifierTestAllowMixedPrecision, ReduceOperandComputationMismatch) {
   ASSERT_TRUE(status.ok());
 }
 
-string ReplicaGroupsStr(std::vector<std::vector<int64>> replica_groups) {
+string ReplicaGroupsStr(std::vector<std::vector<int64_t>> replica_groups) {
   std::vector<string> replica_group_strs;
   for (const auto& g : replica_groups) {
     replica_group_strs.push_back(
@@ -878,7 +878,7 @@ string ReplicaGroupsStr(std::vector<std::vector<int64>> replica_groups) {
   return absl::StrFormat("{%s}", absl::StrJoin(replica_group_strs, ", "));
 }
 
-int64 ReplicaCount(const std::vector<std::vector<int64>>& replica_groups) {
+int64_t ReplicaCount(const std::vector<std::vector<int64_t>>& replica_groups) {
   int64_t replica_count = 0;
   for (auto group : replica_groups) {
     replica_count += group.size();
@@ -887,9 +887,10 @@ int64 ReplicaCount(const std::vector<std::vector<int64>>& replica_groups) {
 }
 
 StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
-    std::vector<std::vector<int64>> replica_groups,
-    absl::optional<int64> replica_count, absl::optional<int64> num_partitions,
-    absl::string_view other_attributes, absl::string_view template_str) {
+    std::vector<std::vector<int64_t>> replica_groups,
+    absl::optional<int64_t> replica_count,
+    absl::optional<int64_t> num_partitions, absl::string_view other_attributes,
+    absl::string_view template_str) {
   HloModuleConfig config;
   config.set_replica_count(
       replica_count.value_or(ReplicaCount(replica_groups)));
@@ -905,9 +906,9 @@ StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
 }
 
 StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
-    std::vector<std::vector<int64>> replica_groups,
-    absl::optional<int64> replica_count = absl::nullopt,
-    absl::optional<int64> num_partitions = absl::nullopt,
+    std::vector<std::vector<int64_t>> replica_groups,
+    absl::optional<int64_t> replica_count = absl::nullopt,
+    absl::optional<int64_t> num_partitions = absl::nullopt,
     absl::string_view other_attributes = "") {
   const char* kTemplate = R"(
   HloModule test
@@ -1018,7 +1019,7 @@ TEST_F(HloVerifierTest, AllReduceStartAndDone) {
   }
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
-    start = (f32[2,3], f32[2,3]) all-reduce-start(p0), to_apply=add
+    start = f32[2,3] all-reduce-start(p0), to_apply=add
     ROOT done = f32[2,3] all-reduce-done(start)
   }
   )";
@@ -1039,7 +1040,7 @@ TEST_F(HloVerifierTest, AllReduceStartAndDoneWrongType) {
   }
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
-    start = f32[2,3] all-reduce-start(p0), to_apply=add
+    start = (f32[2,3], f32[2,3]) all-reduce-start(p0), to_apply=add
     ROOT done = f32[2,3] all-reduce-done(start)
   }
   )";
@@ -1049,7 +1050,7 @@ TEST_F(HloVerifierTest, AllReduceStartAndDoneWrongType) {
   auto status = verifier().Run(module.get()).status();
   EXPECT_THAT(status.error_message(),
               HasSubstr("Expected instruction to have shape equal to "
-                        "(f32[2,3], f32[2,3])"));
+                        "f32[2,3]"));
 }
 
 TEST_F(HloVerifierTest, AllReduceStartAndMultipleDone) {
@@ -1098,9 +1099,9 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
 }
 
 StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
-    std::vector<std::vector<int64>> replica_groups,
-    absl::optional<int64> replica_count = absl::nullopt,
-    absl::optional<int64> num_partitions = absl::nullopt,
+    std::vector<std::vector<int64_t>> replica_groups,
+    absl::optional<int64_t> replica_count = absl::nullopt,
+    absl::optional<int64_t> num_partitions = absl::nullopt,
     absl::string_view other_attributes = "") {
   const char* kTemplate = R"(
   HloModule test

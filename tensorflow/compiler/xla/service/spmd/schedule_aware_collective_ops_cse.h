@@ -40,7 +40,7 @@ class ScheduleAwareCollectiveOpsCSE : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  int64 distance_threshold_;
+  int64_t distance_threshold_;
   bool for_replicas_;
 };
 

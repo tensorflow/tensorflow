@@ -190,7 +190,7 @@ func @while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) -> (!tf_res, !t
 // expected-remark@below {{Region #0, Arg #1, ID 1 : 1}}
 // expected-remark@below {{Region #0, Arg #2, ID 2 : 2}}
 func @while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) -> tensor<i1> {
-  %0 = constant dense<false> : tensor<i1>
+  %0 = arith.constant dense<false> : tensor<i1>
   return %0 : tensor<i1>
 }
 
@@ -298,7 +298,7 @@ func @while_region_aliasing(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) {
   // expected-remark@below {{Region #1, Arg #2, ID 7 : 1, 7, 8}}
   %w:3 = "tf.WhileRegion"(%arg0, %arg1, %arg2) ({
           ^bb0(%carg0: !tf_res, %carg1: !tf_res, %carg2: !tf_res):
-          %0 = constant dense<false> : tensor<i1>
+          %0 = arith.constant dense<false> : tensor<i1>
           "tf.Yield"(%0) : (tensor<i1>) -> ()
          },{
           ^bb0(%barg0: !tf_res, %barg1: !tf_res, %barg2: !tf_res):
@@ -400,5 +400,59 @@ func @known_same_resource_types_unknown_instances(%arg0: tensor<i32>) {
   %iter_handle1 = "tf.IteratorV2"() {container = "c", shared_name = "v0", output_shapes = [#tf_type.shape<>], output_types = [!tf_res]} : () -> !tf_res
   // expected-remark@below {{Result #0, ID 1 : 0, 1}}
   %iter_handle2 = "tf.IteratorV2"() {container = "c", shared_name = "v1", output_shapes = [#tf_type.shape<>], output_types = [!tf_res]} : () -> !tf_res
+  return
+}
+
+// -----
+
+!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+
+// Tests that an allocated resource is correctly propagated to island and graph
+// results.
+func @allocated_resource_propagation_island_graph() {
+  // expected-remark@below {{Result #0, ID 2 : 0, 1, 2}}
+  %graph = tf_executor.graph {
+    // CHECK: tf_executor.island
+    // expected-remark@below {{Result #0, ID 1 : 0, 1, 2}}
+    %island:2 = tf_executor.island {
+      // expected-remark@below {{Result #0, ID 0 : 0, 1, 2}}
+      %iter_handle = "tf.IteratorV2"() {container = "c", shared_name = "v0", output_shapes = [#tf_type.shape<>], output_types = [!tf_res]} : () -> !tf_res
+      tf_executor.yield %iter_handle : !tf_res
+    }
+    tf_executor.fetch %island#0 : !tf_res
+  }
+  return
+}
+
+// -----
+
+!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+
+// Tests that aliasing and non-aliasing values are correctly identified through
+// multiple islands (`%iter_handle1`, `%iter_handle2`, `%island1#0` and
+// `%island3#0` all point to the same resource here).
+func @multiple_islands() {
+  %graph = tf_executor.graph {
+    // CHECK: tf_executor.island
+    // expected-remark@below {{Result #0, ID 2 : 0, 2, 3, 4}}
+    %island1:2 = tf_executor.island {
+      // expected-remark@below {{Result #0, ID 0 : 0, 2, 3, 4}}
+      %iter_handle1 = "tf.IteratorV2"() {container = "c", shared_name = "v0", output_shapes = [#tf_type.shape<>], output_types = [!tf_res]} : () -> !tf_res
+      // expected-remark@below {{Result #0, ID 1 : 1}}
+      %seed_handle = "tf.DummySeedGenerator"() : () -> !tf_res
+      tf_executor.yield %iter_handle1 : !tf_res
+    }
+    %island2:2 = tf_executor.island {
+      %1 = "tf.IteratorGetNext"(%island1#0) : (!tf_res) -> tensor<f32>
+      tf_executor.yield %1 : tensor<f32>
+    }
+    // expected-remark@below {{Result #0, ID 4 : 0, 2, 3, 4}}
+    %island3:2 = tf_executor.island {
+      // expected-remark@below {{Result #0, ID 3 : 0, 2, 3, 4}}
+      %iter_handle2 = "tf.IteratorV2"() {container = "c", shared_name = "v0", output_shapes = [#tf_type.shape<>], output_types = [!tf_res]} : () -> !tf_res
+      tf_executor.yield %iter_handle2 : !tf_res
+    }
+    tf_executor.fetch %island2#0 : tensor<f32>
+  }
   return
 }

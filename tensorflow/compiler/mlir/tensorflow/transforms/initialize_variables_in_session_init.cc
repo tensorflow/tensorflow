@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 #include "tensorflow/core/framework/resource_var.h"
@@ -34,20 +35,12 @@ namespace tf_saved_model {
 namespace {
 
 class InitializeVariablesInSessionInitializerPass
-    : public PassWrapper<InitializeVariablesInSessionInitializerPass,
-                         OperationPass<ModuleOp>> {
+    : public InitializeVariablesInSessionInitializerPassBase<
+          InitializeVariablesInSessionInitializerPass> {
  public:
   explicit InitializeVariablesInSessionInitializerPass(
       tensorflow::Session* session)
       : session_(session) {}
-
-  StringRef getArgument() const final {
-    return "tf-saved-model-initialize-variables-in-session-init";
-  }
-
-  StringRef getDescription() const final {
-    return "Initialize variables in session initializer function.";
-  }
 
   void runOnOperation() override;
 
@@ -70,7 +63,7 @@ void InitializeVariablesInSessionInitializerPass::InitializeVariable(
   builder.setInsertionPointToStart(&session_init_func.getBlocks().front());
   auto var_handle_op_in_init = var_handle_op->clone();
   builder.insert(var_handle_op_in_init);
-  auto const_op = builder.create<mlir::ConstantOp>(
+  auto const_op = builder.create<mlir::arith::ConstantOp>(
       session_init_func.getLoc(), tensor_attr.getType(), tensor_attr);
 
   builder.create<TF::AssignVariableOp>(
@@ -101,8 +94,8 @@ FuncOp CreateSessionInitFunc(ModuleOp module) {
   SessionInitializerOp session_init_op = GetSessionInitializerOp(module);
   auto new_session_init_op =
       builder.create<tf_saved_model::SessionInitializerOp>(
-          module->getLoc(),
-          builder.getArrayAttr(builder.getSymbolRefAttr(kSessionInitFuncName)));
+          module->getLoc(), builder.getArrayAttr(SymbolRefAttr::get(
+                                builder.getContext(), kSessionInitFuncName)));
   if (session_init_op) {
     session_init_op->replaceAllUsesWith(new_session_init_op);
     session_init_op->erase();

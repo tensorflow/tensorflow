@@ -88,8 +88,11 @@ void RunHandlerThreadWorkQueue::AddTask(TaskFunction work) {
 
 void RunHandlerThreadWorkQueue::AddTask(const ExecutionContext& exec_ctx,
                                         TaskFunction work) {
-  exec_ctx.request_ctx()->GetData<RunHandler*>()->ScheduleInterOpClosure(
-      std::move(work));
+  auto* request_context = exec_ctx.request_ctx();
+  DCHECK(request_context);
+  request_context->GetData<RunHandler*>()->ScheduleInterOpClosure(
+      tensorflow::tfrt_stub::WrapWork(request_context->id(), "inter",
+                                      std::move(work)));
 }
 
 Optional<TaskFunction> RunHandlerThreadWorkQueue::AddBlockingTask(

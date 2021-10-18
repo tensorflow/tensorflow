@@ -14,10 +14,6 @@
 # ==============================================================================
 """TensorFlow Debugger (tfdbg) Utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
 from six.moves import xrange  # pylint: disable=redefined-builtin

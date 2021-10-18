@@ -32,13 +32,13 @@ LuDecompositionResult LuDecomposition(XlaOp a) {
     const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
     const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
     const int num_batch_dims = a_shape.dimensions().size() - 2;
-    const std::vector<int64> batch_dims(
+    const std::vector<int64_t> batch_dims(
         a_shape.dimensions().begin(),
         a_shape.dimensions().begin() + num_batch_dims);
 
-    std::vector<int64> pivot_dims = batch_dims;
+    std::vector<int64_t> pivot_dims = batch_dims;
     pivot_dims.push_back(std::min(m, n));
-    std::vector<int64> perm_dims = batch_dims;
+    std::vector<int64_t> perm_dims = batch_dims;
     perm_dims.push_back(m);
     Shape lu_shape = ShapeUtil::MakeTupleShape(
         {a_shape, ShapeUtil::MakeShape(S32, pivot_dims),

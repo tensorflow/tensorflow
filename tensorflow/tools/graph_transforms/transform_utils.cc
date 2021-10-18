@@ -599,7 +599,7 @@ Status TensorShapeFromString(const string& shape_string, TensorShape* result) {
     return errors::InvalidArgument("Specified shape is empty.");
   }
   std::vector<string> dims_as_str = str_util::Split(shape_string, ",");
-  std::vector<int64> dims;
+  std::vector<int64_t> dims;
   for (const string& dim : dims_as_str) {
     int64_t tmp;
     if (strings::safe_strto64(dim, &tmp)) {
@@ -657,7 +657,7 @@ Status TransformFuncContext::GetOneInt32Parameter(const string& name,
 
 Status TransformFuncContext::GetOneInt64Parameter(const string& name,
                                                   int64_t default_value,
-                                                  int64* result) const {
+                                                  int64_t* result) const {
   const int params_count = CountParameters(name);
   if (params_count == 0) {
     *result = default_value;

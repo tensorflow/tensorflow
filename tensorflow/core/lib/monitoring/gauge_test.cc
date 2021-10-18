@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace monitoring {
 namespace {
 
-auto* gauge_with_labels = Gauge<int64, 1>::New(
+auto* gauge_with_labels = Gauge<int64_t, 1>::New(
     "/tensorflow/test/gauge_with_labels", "Gauge with one label.", "MyLabel");
 
 TEST(LabeledGaugeTest, InitializedWithZero) {
@@ -43,7 +43,7 @@ TEST(LabeledGaugeTest, GetCell) {
   EXPECT_EQ(10, same_cell->value());
 }
 
-auto* gauge_without_labels = Gauge<int64, 0>::New(
+auto* gauge_without_labels = Gauge<int64_t, 0>::New(
     "/tensorflow/test/gauge_without_labels", "Gauge without any labels.");
 
 TEST(UnlabeledGaugeTest, InitializedWithZero) {
@@ -110,8 +110,8 @@ TEST(GaugeOfBoolValue, GetCell) {
 }
 
 TEST(LabeledGaugeTest, SameName) {
-  auto* same_gauge = Gauge<int64, 1>::New("/tensorflow/test/gauge_with_labels",
-                                          "Gauge with one label.", "MyLabel");
+  auto* same_gauge = Gauge<int64_t, 1>::New(
+      "/tensorflow/test/gauge_with_labels", "Gauge with one label.", "MyLabel");
   EXPECT_TRUE(gauge_with_labels->GetStatus().ok());
   EXPECT_FALSE(same_gauge->GetStatus().ok());
   delete same_gauge;

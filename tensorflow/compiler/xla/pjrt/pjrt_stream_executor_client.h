@@ -695,7 +695,7 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
     return executables_[0]->build_options().num_partitions();
   }
 
-  int64 SizeOfGeneratedCodeInBytes() const override {
+  int64_t SizeOfGeneratedCodeInBytes() const override {
     int64_t size = 0;
     for (auto& executable : executables_) {
       size += executable->executable()->SizeOfGeneratedCodeInBytes();

@@ -64,7 +64,7 @@ class Flag {
  public:
   Flag(const char* name, int32* dst, const string& usage_text,
        bool* dst_updated = nullptr);
-  Flag(const char* name, int64* dst, const string& usage_text,
+  Flag(const char* name, int64_t* dst, const string& usage_text,
        bool* dst_updated = nullptr);
   Flag(const char* name, bool* dst, const string& usage_text,
        bool* dst_updated = nullptr);
@@ -110,7 +110,7 @@ class Flag {
   int32 int32_default_for_display_;
 
   std::function<bool(int64_t)> int64_hook_;
-  int64 int64_default_for_display_;
+  int64_t int64_default_for_display_;
 
   std::function<bool(float)> float_hook_;
   float float_default_for_display_;

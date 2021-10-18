@@ -13,11 +13,13 @@ To use nightly snapshots, add the following repo to your root Gradle build
 config.
 
 ```build
-allprojects {     // should be already there
-    mavenCentral  // should be already there
-    maven {       // add this repo to use snapshots
-      name 'ossrh-snapshot'
-      url 'http://oss.sonatype.org/content/repositories/snapshots'
+allprojects {
+    repositories {      // should be already there
+        mavenCentral()  // should be already there
+        maven {         // add this repo to use snapshots
+          name 'ossrh-snapshot'
+          url 'http://oss.sonatype.org/content/repositories/snapshots'
+        }
     }
 }
 ```
@@ -140,8 +142,7 @@ This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. Note
 that this builds a "fat" AAR with several different architectures; if you don't
 need all of them, use the subset appropriate for your deployment environment.
 
-Caution: Following feature is experimental and only available at HEAD. You can
-build smaller AAR files targeting only a set of models as follows:
+You can build smaller AAR files targeting only a set of models as follows:
 
 ```sh
 bash tensorflow/lite/tools/build_aar.sh \

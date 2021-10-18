@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functions used by multiple tflite test files."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.lite.python import schema_py_generated as schema_fb
 from tensorflow.lite.python import schema_util
 from tensorflow.lite.tools import visualize

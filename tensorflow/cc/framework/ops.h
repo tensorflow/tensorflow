@@ -152,7 +152,7 @@ class Input {
     Initializer(const std::initializer_list<T>& v, const TensorShape& shape) {
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), shape);
-      if (t.NumElements() != static_cast<int64>(v.size())) {
+      if (t.NumElements() != static_cast<int64_t>(v.size())) {
         status = errors::InvalidArgument(
             "Cannot construct a tensor with ", t.NumElements(),
             " from an initializer list with ", v.size(), " elements");

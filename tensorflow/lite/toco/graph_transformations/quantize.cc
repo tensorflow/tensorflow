@@ -190,9 +190,9 @@ const MinMax& GetOrComputeMinMax(Model* model, const std::string& array_name) {
 }
 
 struct QuantizationPoints {
-  int64 min_value;
-  int64 max_value;
-  int64 central_value;
+  int64_t min_value;
+  int64_t max_value;
+  int64_t central_value;
 };
 
 template <ArrayDataType A>
@@ -413,7 +413,9 @@ bool ChooseQuantizationForOperatorOutput(
       op.type == OperatorType::kRelu || op.type == OperatorType::kRelu1 ||
       op.type == OperatorType::kRelu6 || op.type == OperatorType::kPRelu ||
       op.type == OperatorType::kUnpack || op.type == OperatorType::kSlice ||
-      op.type == OperatorType::kStridedSlice) {
+      op.type == OperatorType::kStridedSlice ||
+      op.type == OperatorType::kAveragePool ||
+      op.type == OperatorType::kMaxPool) {
     int data_input_index = 0;
     if (op.type == OperatorType::kSplit) {
       data_input_index = 1;

@@ -232,7 +232,7 @@ class ShapeRefiner {
   // by requesting the constant of value of the incoming tensor from the
   // 'outer_context'.
   Status EvaluateConstantIntScalarEdge(
-      const Node* node, int dst_idx, bool* evaluated, int64* result,
+      const Node* node, int dst_idx, bool* evaluated, int64_t* result,
       shape_inference::InferenceContext* outer_context);
 
   // This function tries to materialize as much information about the 'node''s

@@ -15,23 +15,13 @@
 # ==============================================================================
 """Utilities for collecting TFLite metrics."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import enum
 import functools
 from typing import Text
 
-from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
-
-# pylint: disable=g-import-not-at-top
-try:
-  from tensorflow.lite.python import metrics_portable as metrics
-except ImportError:
-  from tensorflow.lite.python import metrics_nonportable as metrics
-# pylint: enable=g-import-not-at-top
+from tensorflow.lite.python.metrics import converter_error_data_pb2
+from tensorflow.lite.python.metrics import metrics
 
 
 class Component(enum.Enum):
@@ -115,6 +105,10 @@ class SubComponent(enum.Enum):
   # Convert a SavedModel to TFLite model.
   CONVERT_SAVED_MODEL = SubComponentItem("CONVERT_SAVED_MODEL",
                                          Component.CONVERT_TF_TO_TFLITE_MODEL)
+
+  # Convert a Jax HLO to TFLite model.
+  CONVERT_JAX_HLO = SubComponentItem("CONVERT_JAX_HLO",
+                                     Component.CONVERT_TF_TO_TFLITE_MODEL)
 
   # Do quantization by the deprecated quantizer.
   QUANTIZE_USING_DEPRECATED_QUANTIZER = SubComponentItem(

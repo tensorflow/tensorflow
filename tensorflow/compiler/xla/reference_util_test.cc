@@ -46,8 +46,8 @@ class ReferenceUtilTest : public ::testing::Test {
     }
   }
 
-  const int64 rows_ = 2;
-  const int64 cols_ = 3;
+  const int64_t rows_ = 2;
+  const int64_t cols_ = 3;
   std::unique_ptr<Array2D<float>> matrix_;
 };
 

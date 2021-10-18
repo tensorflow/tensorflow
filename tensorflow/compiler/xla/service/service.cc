@@ -240,9 +240,10 @@ Service::ResolveAndValidateArguments(
   for (size_t i = 0; i < arguments.size(); ++i) {
     auto buffer_status = allocation_tracker_.Resolve(*arguments[i]);
     if (!buffer_status.ok()) {
-      return Status(buffer_status.status().code(),
-                    StrCat(buffer_status.status().error_message(), ", ",
-                           "failed to resolve allocation for parameter ", i));
+      return tensorflow::errors::CreateWithUpdatedMessage(
+          buffer_status.status(),
+          StrCat(buffer_status.status().error_message(), ", ",
+                 "failed to resolve allocation for parameter ", i));
     }
     auto replicated_buffers = buffer_status.ValueOrDie();
     CHECK_EQ(options_.number_of_replicas(), replicated_buffers.size());
@@ -342,7 +343,7 @@ Service::ExecuteParallelAndRegisterResult(
 
   // Device ID to stream executor, populated only with devices that are being
   // profiled.
-  std::map<int64, se::Stream*> index_to_profiled_streams;
+  std::map<int64_t, se::Stream*> index_to_profiled_streams;
 
   // Build DeviceAssignment for all cores based on the provided device handles.
   DeviceAssignment device_assignment(options_.number_of_replicas(),
@@ -424,7 +425,7 @@ Service::ExecuteParallelAndRegisterResult(
 
   if (profile != nullptr) {
     CHECK(!timers.empty());
-    std::vector<uint64> timer_nanoseconds;
+    std::vector<uint64_t> timer_nanoseconds;
     timer_nanoseconds.reserve(timers.size());
     for (auto& timer : timers) {
       timer_nanoseconds.push_back(timer->Nanoseconds());

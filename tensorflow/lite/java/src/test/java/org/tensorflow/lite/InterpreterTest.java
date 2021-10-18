@@ -101,6 +101,17 @@ public final class InterpreterTest {
   }
 
   @Test
+  public void testInterpreterWithNullOptions() throws Exception {
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER, null)) {
+      assertThat(interpreter).isNotNull();
+      assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    }
+  }
+
+  @Test
   public void testRunWithFileModel() throws Exception {
     if (!TestUtils.supportsFilePaths()) {
       System.err.println("Not testing with file model, since file paths aren't supported.");
@@ -786,7 +797,7 @@ public final class InterpreterTest {
         inputTensor = interpreter.getInputTensorFromSignature("xx", "mul_add");
         fail();
       } catch (IllegalArgumentException e) {
-        assertThat(e).hasMessageThat().contains("Invalid input tensor");
+        assertThat(e).hasMessageThat().contains("Input error: input xx not found.");
       }
 
       // Test null output name.
@@ -801,7 +812,7 @@ public final class InterpreterTest {
         outputTensor = interpreter.getOutputTensorFromSignature("yy", "mul_add");
         fail();
       } catch (IllegalArgumentException e) {
-        assertThat(e).hasMessageThat().contains("Invalid output tensor");
+        assertThat(e).hasMessageThat().contains("Input error: output yy not found.");
       }
 
       FloatBuffer output = FloatBuffer.allocate(1);

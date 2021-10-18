@@ -63,13 +63,6 @@ bool IsRecommendedForWinograd4x4To6x6(const Convolution2DAttributes& attr,
   if (gpu_info.IsAMD()) {
     min_tiles = 64;
   }
-  if (total_tiles >= min_tiles * 8) {
-    min_depth /= 4;
-    min_depth = std::max(min_depth, 8);
-  } else if (total_tiles >= min_tiles * 4) {
-    min_depth /= 2;
-    min_depth = std::max(min_depth, 8);
-  }
   const bool recommended_channels =
       src_depth >= min_depth && dst_depth >= min_depth;
   const bool recommended_hw = total_tiles >= min_tiles;
@@ -121,6 +114,7 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
       SelectWinograd4x4To36(gpu_info, attr.padding, winograd_up_def);
   winograd_up.input_ids = {static_cast<int>(inputs[0]->id)};
   winograd_up.output_ids = {-1};
+  winograd_up.name = "winograd_4x4_to_36";
 
   OperationDef conv_def;
   conv_def.precision = op_def.precision;
@@ -131,6 +125,7 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   conv.output_ids = {-2};
   conv.operation = SelectConvolutionForWinograd(attr, input_shape, gpu_info,
                                                 conv_def, hints);
+  conv.name = "convolution_winograd_4x4_6x6";
 
   OperationDef winograd_down_def;
   winograd_down_def.precision = op_def.precision;
@@ -146,17 +141,16 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   }
   winograd_down.operation =
       SelectWinograd36To4x4(gpu_info, winograd_down_def, bias_copy);
+  winograd_down.name = "winograd_36_to_4x4";
   return absl::OkStatus();
 }
 
 }  // namespace
 
-absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
-                                  const OperationDef& op_def, ModelHints hints,
-                                  const std::vector<Value*>& inputs,
-                                  const std::vector<Value*>& outputs,
-                                  const Node& node,
-                                  GPUOperationsSubgraph* gpu_subgraph) {
+absl::Status GPUOperationFromNodePart0(
+    const GpuInfo& gpu_info, const OperationDef& op_def, ModelHints hints,
+    const std::vector<Value*>& inputs, const std::vector<Value*>& outputs,
+    const Node& node, GPUOperationsSubgraph* gpu_subgraph) {
   std::unique_ptr<GPUOperation>* gpu_op =
       InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
   auto op_type = OperationTypeFromString(node.operation.type);
@@ -231,6 +225,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       conv_op.operation = SelectConvolutionWithDynamicWeights(
           attr, weights_shape, dst_shape, gpu_info, conv_def, hints,
           &conv_weights_desc);
+      conv_op.name = "mat_mul_as_convolution";
 
       int aligned_output =
           AlignByN(weights_shape.b, conv_weights_desc.GetOutputGroupSize() * 4);
@@ -249,6 +244,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       converter_op.output_ids = {-1};
       converter_op.operation =
           SelectConverterToConvWeights(conv_weights_desc, converter_def, hints);
+      converter_op.name = "mat_mul_second_tensor_to_conv_weights";
 
       OperationDef transpose_def;
       transpose_def.precision = op_def.precision;
@@ -261,6 +257,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       transpose_attr.perm = BHWC(3, 0, 1, 2);
       transpose_op.operation = absl::make_unique<GPUOperation>(
           CreateTranspose(transpose_def, transpose_attr));
+      transpose_op.name = "mat_mul_transpose_second_tensor";
       return absl::OkStatus();
     }
     case OperationType::CONCAT: {
@@ -356,6 +353,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         conv_op.operation = SelectConvolutionWithDynamicWeights(
             attr, weights_shape, output_shape, gpu_info, conv_def, hints,
             &conv_weights_desc);
+        conv_op.name = "convolution_dynamic";
 
         int aligned_output = AlignByN(
             weights_shape.b, conv_weights_desc.GetOutputGroupSize() * 4);
@@ -374,6 +372,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         converter_op.output_ids = {-1};
         converter_op.operation = SelectConverterToConvWeights(
             conv_weights_desc, converter_def, hints);
+        converter_op.name = "convolution_second_tensor_to_conv_weights";
         return absl::OkStatus();
       }
     }
@@ -400,6 +399,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         conv_op.operation = SelectConvolutionTransposedWithDynamicWeights(
             attr, gpu_info, op_def, &weights_desc);
         conv_op.output_ids = {static_cast<int>(outputs[0]->id)};
+        conv_op.name = "conv_transposed_dynamic";
 
         const int dst_depth = AlignByN(DivideRoundUp(weights_shape.o, 4),
                                        weights_desc.GetOutputGroupSize());
@@ -442,6 +442,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
         converter_op.input_ids = {static_cast<int>(inputs[1]->id)};
         converter_op.operation =
             SelectConverterToConvWeights(weights_desc, converter_def, hints);
+        converter_op.name = "conv_transposed_second_tensor_to_conv_weights";
         return absl::OkStatus();
       }
     }
@@ -639,6 +640,24 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       return SelectDefault(gpu_info, op_def, hints, inputs, outputs, node,
                            gpu_subgraph);
   }
+}
+
+absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
+                                  const OperationDef& op_def, ModelHints hints,
+                                  const std::vector<Value*>& inputs,
+                                  const std::vector<Value*>& outputs,
+                                  const Node& node,
+                                  GPUOperationsSubgraph* gpu_subgraph) {
+  RETURN_IF_ERROR(GPUOperationFromNodePart0(gpu_info, op_def, hints, inputs,
+                                            outputs, node, gpu_subgraph));
+  for (auto& gpu_op : gpu_subgraph->operations) {
+    if (gpu_op.name.empty()) {
+      gpu_op.name = node.operation.type + " " + std::to_string(node.id);
+    } else {
+      gpu_op.name += " " + std::to_string(node.id);
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

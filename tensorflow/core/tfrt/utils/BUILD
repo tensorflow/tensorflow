@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "if_oss", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -10,6 +10,7 @@ package_group(
     name = "friends",
     packages = [
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         "//tensorflow/c/eager/...",
         "//tensorflow/compiler/mlir/tfrt/...",
@@ -18,6 +19,7 @@ package_group(
         "//tensorflow/python/...",
         # copybara:uncomment "//tensorflow_serving/batching/google/...",
         # copybara:uncomment "//tensorflow_serving/servables/tensorflow/google/...",
+        # copybara:uncomment "//third_party/tf_runtime_google/...",
     ],
 )
 
@@ -31,14 +33,19 @@ cc_library(
         "utils.h",
     ],
     deps = [
+        ":statusor",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/eager:virtual_device",
+        "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tpu:virtual_device",
+        "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
+        "@tf_runtime//:core_runtime",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -160,6 +167,7 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:op_def_proto_cc",
         "//tensorflow/core/framework:versions_proto_cc",
@@ -171,6 +179,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -230,4 +239,20 @@ cc_library(
         "//tensorflow/core/platform:threadpool_interface",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "bridge_graph_analysis",
+    hdrs = ["bridge_graph_analysis.h"],
+    visibility = [
+        "//tensorflow/core/tfrt/saved_model:__pkg__",
+    ],
+    deps = if_google([
+        "//learning/brain/mlir/bridge:graph_analysis",
+        "//tensorflow/core/platform:enable_tf2_utils",
+    ]) + [
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core:core_cpu_base",
+    ],
 )

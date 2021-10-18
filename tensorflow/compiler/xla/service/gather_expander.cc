@@ -38,7 +38,7 @@ static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
     return start_indices;
   }
 
-  std::vector<int64> permutation;
+  std::vector<int64_t> permutation;
   permutation.reserve(start_indices_shape.dimensions_size());
   for (int64_t i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
     if (i != index_vector_dim) {
@@ -86,7 +86,7 @@ static StatusOr<HloInstruction*> CanonicalizeGatherIndices(
 static StatusOr<HloInstruction*> AdjustBatchDimsInAccumulator(
     const Shape& start_indices_shape, HloInstruction* accumulator,
     int64_t index_vector_dim) {
-  std::vector<int64> batch_dim_bounds;
+  std::vector<int64_t> batch_dim_bounds;
   batch_dim_bounds.reserve(start_indices_shape.dimensions_size());
   for (int64_t i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
     if (i != index_vector_dim) {
@@ -232,9 +232,9 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
 
 static HloInstruction* CreateGatherLoopAccumulatorInitValue(
     HloComputation* computation, PrimitiveType element_type,
-    absl::Span<const int64> slice_sizes, int64_t gather_loop_trip_count,
+    absl::Span<const int64_t> slice_sizes, int64_t gather_loop_trip_count,
     const GatherDimensionNumbers& dim_numbers) {
-  std::vector<int64> accumulator_state_shape_dims;
+  std::vector<int64_t> accumulator_state_shape_dims;
   accumulator_state_shape_dims.reserve(1 + slice_sizes.size());
   accumulator_state_shape_dims.push_back(gather_loop_trip_count);
   for (int64_t i = 0; i < slice_sizes.size(); i++) {
@@ -251,9 +251,9 @@ static HloInstruction* CreateGatherLoopAccumulatorInitValue(
 // are the major dimensions and the offset dimensions are the minor dimensions.
 // Fix this up with a transpose.
 static StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
-    HloInstruction* accumulator, absl::Span<const int64> offset_dims,
+    HloInstruction* accumulator, absl::Span<const int64_t> offset_dims,
     int64_t output_rank) {
-  std::vector<int64> permutation;
+  std::vector<int64_t> permutation;
   permutation.reserve(output_rank);
 
   int64_t batch_idx_counter = 0;
@@ -271,7 +271,7 @@ static StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
 }
 
 // Computes how many trips a loop implementing this gather op would take.
-static int64 GatherLoopTripCount(HloInstruction* gather_instr) {
+static int64_t GatherLoopTripCount(HloInstruction* gather_instr) {
   HloInstruction* start_indices = gather_instr->mutable_operand(1);
   const Shape& start_indices_shape = start_indices->shape();
   const GatherDimensionNumbers& dim_numbers =

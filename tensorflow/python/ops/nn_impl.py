@@ -14,10 +14,6 @@
 # =============================================================================
 """Implementation of Neural Net (NN) functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 from tensorflow.python.distribute import distribution_strategy_context as ds
@@ -26,6 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
@@ -91,8 +88,8 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
       targets.get_shape().assert_is_compatible_with(log_input.get_shape())
     except ValueError:
       raise ValueError(
-          "log_input and targets must have the same shape (%s vs %s)" %
-          (log_input.get_shape(), targets.get_shape()))
+          "`log_input` and `targets` must have the same shape, received "
+          f"({log_input.get_shape()} vs {targets.get_shape()}).")
 
     result = math_ops.exp(log_input) - log_input * targets
     if compute_full_loss:
@@ -129,8 +126,9 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
     try:
       labels.get_shape().assert_is_compatible_with(logits.get_shape())
     except ValueError:
-      raise ValueError("logits and labels must have the same shape (%s vs %s)" %
-                       (logits.get_shape(), labels.get_shape()))
+      raise ValueError("`logits` and `labels` must have the same shape, "
+                       f"received ({logits.get_shape()} vs "
+                       f"{labels.get_shape()}).")
 
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
@@ -324,8 +322,9 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
     try:
       labels.get_shape().assert_is_compatible_with(logits.get_shape())
     except ValueError:
-      raise ValueError("logits and labels must have the same shape (%s vs %s)" %
-                       (logits.get_shape(), labels.get_shape()))
+      raise ValueError("`logits` and `labels` must have the same shape, "
+                       f"received ({logits.get_shape()} vs "
+                       f"{labels.get_shape()}).")
 
     # The logistic loss formula from above is
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
@@ -459,6 +458,14 @@ def compute_average_loss(per_example_loss,
       num_replicas = ds.get_strategy().num_replicas_in_sync
       per_replica_batch_size = array_ops.shape_v2(per_example_loss)[0]
       global_batch_size = per_replica_batch_size * num_replicas
+
+    check_ops.assert_scalar_v2(
+        global_batch_size, message="global_batch_size must be scalar.")
+    check_ops.assert_integer_v2(
+        global_batch_size,
+        message="global_batch_size must be an integer.")
+    check_ops.assert_positive_v2(
+        global_batch_size, message="global_batch_size must be positive.")
 
     global_batch_size = math_ops.cast(global_batch_size, input_dtype)
     return math_ops.reduce_sum(per_example_loss) / global_batch_size
@@ -1649,9 +1656,10 @@ def fused_batch_norm(
   """
   if (not is_training or exponential_avg_factor != 1.0) and (
       (mean is None) or (variance is None)):
-    raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
-                     "is_training is False or "
-                     "exponential_avg_factor != 1.0.")
+    raise ValueError("Both `mean` and `variance` must be a 1D tensor when "
+                     "`is_training` is False or `exponential_avg_factor` != "
+                     f"1.0. Received: `mean` {mean!r} and `variance` "
+                     f"{variance!r}")
   x = ops.convert_to_tensor(x, name="input")
   scale = ops.convert_to_tensor(scale, name="scale")
   offset = ops.convert_to_tensor(offset, name="offset")

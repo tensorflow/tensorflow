@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for array_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 import time
 import unittest
@@ -50,6 +46,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.platform import test as test_lib
 
 
@@ -1368,7 +1365,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
 
   def testExceptions(self):
     with self.cached_session():
-      with self.assertRaisesRegex(ValueError, "maxlen must be scalar"):
+      with self.assertRaisesRegex(ValueError, "`maxlen` must be scalar"):
         array_ops.sequence_mask([10, 20], [10, 20])
 
   def testOneDimensionalWithMaxlen(self):
@@ -2178,6 +2175,35 @@ class TileVariantTest(test_util.TensorFlowTestCase):
                                                   [3, 4])
     self.assertAllEqual(t, tiled_tensor_0)
     self.assertAllEqual(t, tiled_tensor_1)
+
+
+class StopGradientTest(test_util.TensorFlowTestCase):
+
+  def testStopGradient(self):
+    x = array_ops.zeros(3)
+    y = array_ops.stop_gradient(x)
+    self.assertAllEqual(x, y)
+
+  def testStopGradientRaggedTensor(self):
+    x = RaggedTensor.from_row_splits(values=[1, 2, 3], row_splits=[0, 1, 1, 3])
+    y = array_ops.stop_gradient(x)
+    self.assertAllEqual(x, y)
+
+  def testStopGradientGradientTape(self):
+    x = array_ops.zeros(3)
+    with backprop.GradientTape() as tape:
+      y = array_ops.stop_gradient(x)
+
+    self.assertIsNone(tape.gradient(y, x))
+
+  def testStopGradientGradientTapeRaggedTensor(self):
+    x = RaggedTensor.from_row_splits(values=[1, 2, 3], row_splits=[0, 1, 1, 3])
+    with backprop.GradientTape() as tape:
+      y = array_ops.stop_gradient(x)
+
+    # TODO(b/202162002): Once GradientTape supports composiste tensors, use
+    # tape.gradient(y, x).
+    self.assertIsNone(tape.gradient(y.values, x.values))
 
 
 if __name__ == "__main__":

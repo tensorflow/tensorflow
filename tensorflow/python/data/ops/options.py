@@ -14,18 +14,56 @@
 # ==============================================================================
 """API for specifying `tf.data` options."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 
 from absl import logging
 
 from tensorflow.core.framework import dataset_options_pb2
+from tensorflow.core.framework import model_pb2
 from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+
+
+@tf_export("data.experimental.AutotuneAlgorithm")
+class AutotuneAlgorithm(enum.Enum):
+  """Represents the type of autotuning algorithm to use.
+
+  DEFAULT: The default behavior is implementation specific and may change over
+  time.
+
+  HILL_CLIMB: In each optimization step, this algorithm chooses the optimial
+  parameter and increases its value by 1.
+
+  GRADIENT_DESCENT: In each optimization step, this algorithm updates the
+  parameter values in the optimal direction.
+  """
+  DEFAULT = 0
+  HILL_CLIMB = 1
+  GRADIENT_DESCENT = 2
+
+  @classmethod
+  def _to_proto(cls, obj):
+    if obj == cls.DEFAULT:
+      return model_pb2.AutotuneAlgorithm.DEFAULT
+    if obj == cls.HILL_CLIMB:
+      return model_pb2.AutotuneAlgorithm.HILL_CLIMB
+    if obj == cls.GRADIENT_DESCENT:
+      return model_pb2.AutotuneAlgorithm.GRADIENT_DESCENT
+    raise ValueError(
+        f"Invalid `obj.` Supported values include `DEFAULT`, `HILL_CLIMB` and "
+        f"`GRADIENT_DESCENT`. Got {obj.name}.")
+
+  @classmethod
+  def _from_proto(cls, pb):
+    if pb == model_pb2.AutotuneAlgorithm.DEFAULT:
+      return cls.DEFAULT
+    if pb == model_pb2.AutotuneAlgorithm.HILL_CLIMB:
+      return cls.HILL_CLIMB
+    if pb == model_pb2.AutotuneAlgorithm.GRADIENT_DESCENT:
+      return cls.GRADIENT_DESCENT
+    raise ValueError(f"Invalid `pb.` Supported values include `DEFAULT`, "
+                     f"`HILL_CLIMB` and `GRADIENT_DESCENT`. Got {pb}.")
 
 
 @tf_export("data.experimental.AutoShardPolicy")
@@ -71,8 +109,10 @@ class AutoShardPolicy(enum.IntEnum):
       return dataset_options_pb2.AutoShardPolicy.AUTO
     if obj == cls.HINT:
       return dataset_options_pb2.AutoShardPolicy.HINT
-    raise ValueError("%s._to_proto() is called with undefined enum %s." %
-                     (cls.__name__, obj.name))
+    raise ValueError(
+        f"Invalid `obj.` Supported values include `OFF`, `FILE`, `DATA`,"
+        f"`AUTO`, and `HINT`. Got {obj.name}."
+    )
 
   @classmethod
   def _from_proto(cls, pb):
@@ -87,8 +127,10 @@ class AutoShardPolicy(enum.IntEnum):
       return cls.AUTO
     if pb == dataset_options_pb2.AutoShardPolicy.HINT:
       return cls.HINT
-    raise ValueError("%s._from_proto() is called with undefined enum %s." %
-                     (cls.__name__, pb))
+    raise ValueError(
+        f"Invalid `pb.` Supported values include `OFF`, `FILE`, `DATA`,"
+        f"`AUTO`, and `HINT`. Got {pb}."
+    )
 
 
 @tf_export("data.experimental.ExternalStatePolicy")
@@ -111,8 +153,9 @@ class ExternalStatePolicy(enum.Enum):
       return dataset_options_pb2.ExternalStatePolicy.POLICY_FAIL
     if obj == cls.WARN:
       return dataset_options_pb2.ExternalStatePolicy.POLICY_WARN
-    raise ValueError("%s._to_proto() is called with undefined enum %s." %
-                     (cls.__name__, obj.name))
+    raise ValueError(
+        f"Invalid `obj.` Supported values include `POLICY_IGNORE`,"
+        f"`POLICY_FAIL`, `POLICY_WARN`. Got {obj.name}.")
 
   @classmethod
   def _from_proto(cls, pb):
@@ -123,8 +166,9 @@ class ExternalStatePolicy(enum.Enum):
       return cls.FAIL
     if pb == dataset_options_pb2.ExternalStatePolicy.POLICY_WARN:
       return cls.WARN
-    raise ValueError("%s._from_proto() is called with undefined enum %s." %
-                     (cls.__name__, pb))
+    raise ValueError(
+        f"Invalid `pb.` Supported values include `POLICY_IGNORE`,"
+        f"`POLICY_FAIL`, `POLICY_WARN`. Got {pb}.")
 
 
 @tf_export("data.experimental.AutotuneOptions")
@@ -160,6 +204,12 @@ class AutotuneOptions(options_lib.OptionsBase):
       "may result in OOM. If None, defaults to half of the available RAM in "
       "bytes.")
 
+  autotune_algorithm = options_lib.create_option(
+      name="autotune_algorithm",
+      ty=AutotuneAlgorithm,
+      docstring="When autotuning is enabled (through `autotune`), determines "
+      "the algorithm to use.")
+
   def _to_proto(self):
     pb = dataset_options_pb2.AutotuneOptions()
     if self.enabled is not None:
@@ -168,6 +218,9 @@ class AutotuneOptions(options_lib.OptionsBase):
       pb.cpu_budget = self.cpu_budget
     if self.ram_budget is not None:
       pb.ram_budget = self.ram_budget
+    if self.autotune_algorithm is not None:
+      pb.autotune_algorithm = AutotuneAlgorithm._to_proto(  # pylint: disable=protected-access
+          self.autotune_algorithm)
     return pb
 
   def _from_proto(self, pb):
@@ -177,6 +230,9 @@ class AutotuneOptions(options_lib.OptionsBase):
       self.cpu_budget = pb.cpu_budget
     if pb.WhichOneof("optional_ram_budget") is not None:
       self.ram_budget = pb.ram_budget
+    if pb.WhichOneof("optional_autotune_algorithm") is not None:
+      self.autotune_algorithm = AutotuneAlgorithm._from_proto(  # pylint: disable=protected-access
+          pb.autotune_algorithm)
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""

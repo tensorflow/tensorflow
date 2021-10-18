@@ -105,7 +105,7 @@ bool HasCombinableReplicaGroup(HloInstruction* hlo, int64_t num_replicas,
       if (group.replica_ids_size() != num_partitions) {
         return false;
       }
-      std::unordered_set<int64> partition_ids;
+      std::unordered_set<int64_t> partition_ids;
       int64_t replica_id = group.replica_ids(0) / num_partitions;
       for (int64_t i = 0; i < num_partitions; ++i) {
         if (group.replica_ids(i) / num_partitions != replica_id) {
@@ -314,7 +314,7 @@ absl::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
 
 bool ArCrsCombiner::TupleElementsComputeSameValue(
     HloInstruction* tuple_shaped_instruction, int64_t i1, int64_t i2,
-    absl::flat_hash_map<int64, int64>* visited_pairs) {
+    absl::flat_hash_map<int64_t, int64_t>* visited_pairs) {
   absl::flat_hash_set<HloInstruction*> visited;
   auto tuples = GetAllTuples(tuple_shaped_instruction, &visited);
   if (!tuples) {
@@ -339,13 +339,13 @@ bool ArCrsCombiner::TestInstructionsComputeSameValue(HloInstruction* i1,
   auto module = i1->parent()->parent();
   CHECK_EQ(module, i2->parent()->parent());
   combiner.call_graph_ = CallGraph::Build(module);
-  absl::flat_hash_map<int64, int64> visited_pairs;
+  absl::flat_hash_map<int64_t, int64_t> visited_pairs;
   return combiner.InstructionsComputeSameValue(i1, i2, &visited_pairs);
 }
 
 bool ArCrsCombiner::InstructionsComputeSameValue(
     HloInstruction* i1, HloInstruction* i2,
-    absl::flat_hash_map<int64, int64>* visited_pairs) {
+    absl::flat_hash_map<int64_t, int64_t>* visited_pairs) {
   if (i1 == i2) {
     return true;
   }
@@ -411,7 +411,7 @@ void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
   // AR2 and start tracking AR1. We put the discarded ids in this set, in order
   // to skip processing of short paths when we encounter the other ARs that
   // have the same id as AR2.
-  absl::flat_hash_set<int64> discarded_ar_ids;
+  absl::flat_hash_set<int64_t> discarded_ar_ids;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       auto maybe_pair = MatchesArCrsPattern(instruction);
@@ -475,7 +475,7 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
       auto instr_i = pairs_vec[i].ar;
       auto next_0 = instr_0->users()[0];
       auto next_i = instr_i->users()[0];
-      absl::flat_hash_map<int64, int64> visited_pairs;
+      absl::flat_hash_map<int64_t, int64_t> visited_pairs;
       while (true) {
         if (!InstructionsComputeSameValue(next_0, next_i, &visited_pairs)) {
           all_reduce_map_.erase(copy_it);

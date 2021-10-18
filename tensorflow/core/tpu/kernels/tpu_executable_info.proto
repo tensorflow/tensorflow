@@ -76,8 +76,7 @@ message TPUHostTransferProto {
   TransferDirection direction = 2;
   // Channel identifier prodided by XLA client.
   string key = 3;
-  // Depth of nested loops for this transfer operation.
-  int64 nested_while_level = 4;
+  reserved 4;  // was nested_while_level
   // Shape of the data to be transferred (including layout).
   xla.ShapeProto shape = 5;
   // Address of the device buffer in HBM (byte offset).
@@ -87,6 +86,9 @@ message TPUHostTransferProto {
   // If this host transfer is a splitted X64 transfer, specifies whether this
   // transfer is for lower bits.
   bool is_lower_bits = 8;
+  // The name of host side command handler.
+  string host_handler_name = 9;
+  reserved 10;
 }
 
 message TPUHostTransferInfoProto {

@@ -51,7 +51,7 @@ class CollectiveAdapter {
   virtual Tensor TempChunk(int i) const = 0;
 
   // Bytes in chunk i
-  virtual int64 ChunkBytes(int i) const = 0;
+  virtual int64_t ChunkBytes(int i) const = 0;
 
   // Generate a CPU RAM scalar tensor of the same DataType as the
   // backing tensor with the given integer value.
@@ -75,8 +75,8 @@ class CollectiveAdapter {
   // need to pick a chunk size that preserves it.  Note than in extreme
   // cases (impractical, but possible with very small tensors) one or
   // more tail chunks can end up emptby.
-  static int64 AlignedChunkElts(int64_t elt_bytes, int64_t total_elts,
-                                int64_t num_chunks);
+  static int64_t AlignedChunkElts(int64_t elt_bytes, int64_t total_elts,
+                                  int64_t num_chunks);
 };
 
 // Create a CollectiveAdaptor wrapping 'output', specialized to its
@@ -135,7 +135,7 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   void UnblockDependencies(const CollectiveParams& col_params) override;
 
  protected:
-  const int64 step_id_;
+  const int64_t step_id_;
   const DeviceMgr* dev_mgr_;  // Not owned.
   std::unique_ptr<CollectiveRemoteAccess> remote_access_;
   // Ownership of `work_queue_` is shared between `this` and

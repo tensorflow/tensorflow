@@ -55,10 +55,10 @@ class HeapSimulator {
   // Chunk represents a contiguous piece of memory.  Each BufferValue will be
   // associated with a chunk in the assignment result.
   struct Chunk {
-    int64 offset;
-    int64 size;
+    int64_t offset;
+    int64_t size;
 
-    int64 chunk_end() const { return offset + size; }
+    int64_t chunk_end() const { return offset + size; }
 
     bool OverlapsWith(Chunk other_chunk) const;
 
@@ -73,7 +73,7 @@ class HeapSimulator {
     absl::flat_hash_map<const BufferType*, Chunk> chunk_map;
 
     // The total size in bytes of the heap, containing all assigned chunks.
-    int64 heap_size = 0;
+    int64_t heap_size = 0;
   };
   // Result represents the result of the heap simulation.
   template <typename BufferType>
@@ -83,10 +83,10 @@ class HeapSimulator {
 
     // The total size in bytes of the heaps.
     // heap_size == sum([hr.heap_size for hr in heap_results]).
-    int64 heap_size = 0;
+    int64_t heap_size = 0;
 
     // The total size in bytes of heap fragmentation.
-    int64 fragmentation_size = 0;
+    int64_t fragmentation_size = 0;
 
     // A trace of heap simulation events.
     HeapSimulatorTrace debug_trace;
@@ -112,20 +112,20 @@ class HeapSimulator {
   // Returns the minimum memory required to compute an HLO module where all
   // computations have been scheduled (represented by the given
   // schedule), assuming no fragmentation.
-  static StatusOr<int64> MinimumMemoryForModule(
+  static StatusOr<int64_t> MinimumMemoryForModule(
       const HloSchedule& schedule,
       const LogicalBuffer::SizeFunction& size_function);
 
   // Returns the minimum memory required to compute the given computation,
   // assuming no fragmentation.
-  static StatusOr<int64> MinimumMemoryForComputation(
+  static StatusOr<int64_t> MinimumMemoryForComputation(
       const HloComputation& computation, const HloInstructionSequence& sequence,
       const HloAliasAnalysis& alias_analysis,
       const LogicalBuffer::SizeFunction& size_function,
-      const absl::flat_hash_map<const HloComputation*, int64>*
+      const absl::flat_hash_map<const HloComputation*, int64_t>*
           memory_by_computation = nullptr);
 
-  static StatusOr<int64> MinimumMemoryForComputation(
+  static StatusOr<int64_t> MinimumMemoryForComputation(
       const HloComputation& computation, const HloInstructionSequence& sequence,
       const HloAliasAnalysis& alias_analysis,
       const LogicalBuffer::SizeFunction& size_function,
@@ -158,7 +158,7 @@ class HeapSimulator {
       const HloAliasAnalysis& alias_analysis,
       const BufferValue::SizeFunction& size_fn,
       const Options& options = Options(),
-      const absl::flat_hash_map<const HloComputation*, int64>*
+      const absl::flat_hash_map<const HloComputation*, int64_t>*
           memory_by_computation = nullptr);
 
   // Same as above, but runs on with a schedule that covers all nested
@@ -178,7 +178,7 @@ class HeapSimulator {
   HeapSimulator(std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
                 const BufferValue::SizeFunction& size_fn,
                 const Options& options, const HloSchedule* schedule = nullptr,
-                const absl::flat_hash_map<const HloComputation*, int64>*
+                const absl::flat_hash_map<const HloComputation*, int64_t>*
                     memory_by_computation = nullptr);
   ~HeapSimulator();
 
@@ -218,7 +218,7 @@ class HeapSimulator {
   // handle subcomputations. It would be good to unify the handling of
   // subcomputations, but it's not clear how.
   const HloSchedule* schedule_;
-  const absl::flat_hash_map<const HloComputation*, int64>*
+  const absl::flat_hash_map<const HloComputation*, int64_t>*
       memory_by_computation_;
 
   // Hold some sets for error-checking the sequence of Alloc and Free calls.
@@ -258,7 +258,7 @@ class HeapAlgorithm {
       const HloInstruction* instruction,
       // The total number of bytes allocated by instruction.
       int64_t alloc_size_by_instruction,
-      const absl::flat_hash_map<const HloComputation*, int64>&
+      const absl::flat_hash_map<const HloComputation*, int64_t>&
           memory_by_computation) {}
 
   // Free de-allocates a previously allocated buffer.
@@ -296,7 +296,7 @@ class NoFragmentationStatsHeap : public HeapAlgorithm<BufferType> {
 
   void AccountForSubcomputationMemory(
       const HloInstruction* instruction, int64_t alloc_size_by_instruction,
-      const absl::flat_hash_map<const HloComputation*, int64>&
+      const absl::flat_hash_map<const HloComputation*, int64_t>&
           memory_by_computation) override;
 
   void Free(const BufferType* buffer, int64_t size) override;
@@ -304,19 +304,19 @@ class NoFragmentationStatsHeap : public HeapAlgorithm<BufferType> {
   Result Finish() override;
 
  private:
-  int64 current_heap_size_ = 0;
-  int64 max_heap_size_ = 0;
+  int64_t current_heap_size_ = 0;
+  int64_t max_heap_size_ = 0;
 };
 
 // Node in BufferIntervalTree that stores the alloc and free times of a buffer,
 // and the chunk assigned to it.
 struct BufferIntervalTreeNode {
   // Alloc time.
-  int64 start;
+  int64_t start;
   // Free time.
-  int64 end;
+  int64_t end;
   // Maximum free time of all nodes in the subtree where this node is the root.
-  int64 subtree_end;
+  int64_t subtree_end;
   // Allocated chunk for the buffer.
   HeapSimulator::Chunk chunk;
   // Left child.
@@ -369,11 +369,11 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // BufferInterval stores a buffer's size and time interval.
   struct BufferInterval {
     const BufferType* buffer;
-    int64 size;
+    int64_t size;
     // Alloc time of the buffer.
-    int64 start;
+    int64_t start;
     // Free time of the buffer.
-    int64 end;
+    int64_t end;
 
     // Colocation buffers that need to be collocated with this one.
     std::vector<const BufferType*> colocations;
@@ -408,7 +408,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // chunk is to be committed.
   struct ChunkCandidate {
     Chunk chunk;
-    int64 heap_size;
+    int64_t heap_size;
   };
 
   // Returns the buffer intervals sorted according to buffer_interval_compare_.
@@ -443,11 +443,11 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   BufferIntervalTree interval_tree_;
 
  private:
-  int64 alignment_;
+  int64_t alignment_;
 
   // The current time represented as an integer. It increments by 1 at each
   // Alloc or Free call.
-  int64 current_time_ = 0;
+  int64_t current_time_ = 0;
 
   // Returns all transitive colocated buffers of this buffer interval. I.e., If
   // a buffer A is colocated with B and B is colocated with C, this function

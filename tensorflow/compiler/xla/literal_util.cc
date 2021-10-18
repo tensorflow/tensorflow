@@ -83,7 +83,7 @@ Literal ConvertType(LiteralSlice literal) {
 }  // namespace
 
 /* static */ Literal LiteralUtil::CreateFromDimensions(
-    PrimitiveType primitive_type, absl::Span<const int64> dimensions) {
+    PrimitiveType primitive_type, absl::Span<const int64_t> dimensions) {
   return Literal::CreateFromShape(
       ShapeUtil::MakeShape(primitive_type, dimensions));
 }
@@ -131,7 +131,7 @@ Literal ConvertType(LiteralSlice literal) {
     case U32:
       return LiteralUtil::CreateR0<uint32>(0);
     case U64:
-      return LiteralUtil::CreateR0<uint64>(0);
+      return LiteralUtil::CreateR0<uint64_t>(0);
     case S8:
       return LiteralUtil::CreateR0<int8>(0);
     case S16:
@@ -139,7 +139,7 @@ Literal ConvertType(LiteralSlice literal) {
     case S32:
       return LiteralUtil::CreateR0<int32>(0);
     case S64:
-      return LiteralUtil::CreateR0<int64>(0);
+      return LiteralUtil::CreateR0<int64_t>(0);
     case F16:
       return LiteralUtil::CreateR0<half>(static_cast<half>(0.0f));
     case BF16:
@@ -172,7 +172,7 @@ Literal ConvertType(LiteralSlice literal) {
     case U32:
       return LiteralUtil::CreateR0<uint32>(1);
     case U64:
-      return LiteralUtil::CreateR0<uint64>(1);
+      return LiteralUtil::CreateR0<uint64_t>(1);
     case S8:
       return LiteralUtil::CreateR0<int8>(1);
     case S16:
@@ -180,7 +180,7 @@ Literal ConvertType(LiteralSlice literal) {
     case S32:
       return LiteralUtil::CreateR0<int32>(1);
     case S64:
-      return LiteralUtil::CreateR0<int64>(1);
+      return LiteralUtil::CreateR0<int64_t>(1);
     case F16:
       return LiteralUtil::CreateR0<half>(static_cast<half>(1.0f));
     case BF16:
@@ -213,7 +213,8 @@ Literal ConvertType(LiteralSlice literal) {
     case U32:
       return LiteralUtil::CreateR0<uint32>(std::numeric_limits<uint32>::min());
     case U64:
-      return LiteralUtil::CreateR0<uint64>(std::numeric_limits<uint64>::min());
+      return LiteralUtil::CreateR0<uint64_t>(
+          std::numeric_limits<uint64_t>::min());
     case S8:
       return LiteralUtil::CreateR0<int8>(std::numeric_limits<int8>::min());
     case S16:
@@ -221,7 +222,8 @@ Literal ConvertType(LiteralSlice literal) {
     case S32:
       return LiteralUtil::CreateR0<int32>(std::numeric_limits<int32>::min());
     case S64:
-      return LiteralUtil::CreateR0<int64>(std::numeric_limits<int64>::min());
+      return LiteralUtil::CreateR0<int64_t>(
+          std::numeric_limits<int64_t>::min());
     case F32:
       return LiteralUtil::CreateR0<float>(
           -std::numeric_limits<float>::infinity());
@@ -258,7 +260,8 @@ Literal ConvertType(LiteralSlice literal) {
     case U32:
       return LiteralUtil::CreateR0<uint32>(std::numeric_limits<uint32>::max());
     case U64:
-      return LiteralUtil::CreateR0<uint64>(std::numeric_limits<uint64>::max());
+      return LiteralUtil::CreateR0<uint64_t>(
+          std::numeric_limits<uint64_t>::max());
     case S8:
       return LiteralUtil::CreateR0<int8>(std::numeric_limits<int8>::max());
     case S16:
@@ -266,7 +269,8 @@ Literal ConvertType(LiteralSlice literal) {
     case S32:
       return LiteralUtil::CreateR0<int32>(std::numeric_limits<int32>::max());
     case S64:
-      return LiteralUtil::CreateR0<int64>(std::numeric_limits<int64>::max());
+      return LiteralUtil::CreateR0<int64_t>(
+          std::numeric_limits<int64_t>::max());
     case F32:
       return LiteralUtil::CreateR0<float>(
           std::numeric_limits<float>::infinity());
@@ -322,13 +326,14 @@ Literal ConvertType(LiteralSlice literal) {
 /* static */ Literal LiteralUtil::CreateR1(
     const tensorflow::core::Bitmap& values) {
   Literal literal(
-      ShapeUtil::MakeShape(PRED, {static_cast<int64>(values.bits())}));
+      ShapeUtil::MakeShape(PRED, {static_cast<int64_t>(values.bits())}));
   literal.PopulateR1(values);
   return literal;
 }
 
 /* static */ Literal LiteralUtil::CreateR1U8(absl::string_view value) {
-  Literal literal(ShapeUtil::MakeShape(U8, {static_cast<int64>(value.size())}));
+  Literal literal(
+      ShapeUtil::MakeShape(U8, {static_cast<int64_t>(value.size())}));
   for (int i = 0, end = value.size(); i < end; ++i) {
     literal.Set<uint8>({i}, value[i]);
   }
@@ -343,8 +348,8 @@ Literal ConvertType(LiteralSlice literal) {
 }
 
 /* static */ Literal LiteralUtil::ReshapeSlice(
-    absl::Span<const int64> new_dimensions,
-    absl::Span<const int64> minor_to_major, const LiteralSlice& literal) {
+    absl::Span<const int64_t> new_dimensions,
+    absl::Span<const int64_t> minor_to_major, const LiteralSlice& literal) {
   int64_t new_num_elements = 1;
   for (int64_t i = 0, end = new_dimensions.size(); i < end; ++i) {
     new_num_elements *= new_dimensions[i];
@@ -363,9 +368,9 @@ Literal ConvertType(LiteralSlice literal) {
 
   // Copy data into new literal, element-by-element.
   for (int64_t i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
-    std::vector<int64> from_multi_index =
+    std::vector<int64_t> from_multi_index =
         IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
-    std::vector<int64> to_multi_index =
+    std::vector<int64_t> to_multi_index =
         IndexUtil::LinearIndexToMultidimensionalIndex(shape_with_layout, i);
     switch (literal.shape().element_type()) {
       case PRED:
@@ -385,12 +390,12 @@ Literal ConvertType(LiteralSlice literal) {
                                literal.Get<int32>(from_multi_index));
         break;
       case U64:
-        new_literal.Set<uint64>(to_multi_index,
-                                literal.Get<uint64>(from_multi_index));
+        new_literal.Set<uint64_t>(to_multi_index,
+                                  literal.Get<uint64_t>(from_multi_index));
         break;
       case S64:
-        new_literal.Set<int64>(to_multi_index,
-                               literal.Get<int64>(from_multi_index));
+        new_literal.Set<int64_t>(to_multi_index,
+                                 literal.Get<int64_t>(from_multi_index));
         break;
       case F32:
         new_literal.Set<float>(to_multi_index,
@@ -453,9 +458,10 @@ Literal ConvertType(LiteralSlice literal) {
     case F64:
       return LiteralUtil::CreateR0<double>(literal.GetFirstElement<double>());
     case S64:
-      return LiteralUtil::CreateR0<int64>(literal.GetFirstElement<int64>());
+      return LiteralUtil::CreateR0<int64_t>(literal.GetFirstElement<int64_t>());
     case U64:
-      return LiteralUtil::CreateR0<uint64>(literal.GetFirstElement<uint64>());
+      return LiteralUtil::CreateR0<uint64_t>(
+          literal.GetFirstElement<uint64_t>());
 
     case C128:
       return LiteralUtil::CreateR0<complex128>(
@@ -518,12 +524,12 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<double>(*absl::c_max_element(view));
     }
     case S64: {
-      auto view = literal.data<int64>();
-      return LiteralUtil::CreateR0<int64>(*absl::c_max_element(view));
+      auto view = literal.data<int64_t>();
+      return LiteralUtil::CreateR0<int64_t>(*absl::c_max_element(view));
     }
     case U64: {
-      auto view = literal.data<uint64>();
-      return LiteralUtil::CreateR0<uint64>(*absl::c_max_element(view));
+      auto view = literal.data<uint64_t>();
+      return LiteralUtil::CreateR0<uint64_t>(*absl::c_max_element(view));
     }
     default:
       LOG(FATAL) << "Unhandled primitive type "
@@ -573,7 +579,7 @@ Literal ConvertType(LiteralSlice literal) {
 }
 
 /* static */ string LiteralUtil::MultiIndexAsString(
-    absl::Span<const int64> multi_index) {
+    absl::Span<const int64_t> multi_index) {
   return StrCat("{", absl::StrJoin(multi_index, ","), "}");
 }
 

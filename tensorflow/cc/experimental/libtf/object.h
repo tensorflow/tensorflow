@@ -12,15 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Object hierarchy for the tensor flow C++ API.
-// Objects have attack value and a class which is another object.
-//
-// Example Usage:
-// Object runtime = GetRuntime("tfrt");
-// Object module = runtime.Get("Import")("cool_mobilenet")
-// runtime.Get("Tensor")(Tuple(5,5,5), 3.3);
-// Object test = CreateModule("test");
-// test.Set("cool_function", callable);
+/// @file object.h
+/// @brief Object hierarchy for the TensorFlow C++ API. All "objects" are
+/// derived from the `Handle` class. Instances of `Handle` are referred to as
+/// "handles". All handles have a tagged value.
+///
+/// Example Usage:
+/// Object runtime = GetRuntime("tfrt");
+/// Object module = runtime.Get("Import")("cool_mobilenet")
+/// runtime.Get("Tensor")(Tuple(5,5,5), 3.3);
+/// Object test = CreateModule("test");
+/// test.Set("cool_function", callable);
 #ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBTF_OBJECT_H_
 #define TENSORFLOW_CC_EXPERIMENTAL_LIBTF_OBJECT_H_
 
@@ -39,49 +41,75 @@ namespace libtf {
 using TaggedValue = impl::TaggedValue;
 class Handle;
 
-// Allows converting C++ primitives like float, int to handles automatically.
-// Allows callable calls and list appends to be more idiomatic.
+// Necessary forward declare.
 template <class T>
 Handle Convert(T value);
 
-// Base object class that holds all data. it is important that all derive
-// classes do not hold any additional data. that means that it is always safe to
-// slice down to this value.
+/// @brief Base Handle class that wraps TaggedValue data. All data creation and
+/// manipulation should done using Handle instances. Users should not be working
+/// with TaggedValues directly.
+
+/// The `Handle` class contains a TaggedValue in the `value_` member, which
+/// contains the underlying data. An object belonging to `Foo`, a derived class
+/// of `Handle`, can be referred to as a `Foo` handle.
+///
+/// It is important that all derived classes do not add any new data fields.
+/// This ensures that it is always safe to slice down (i.e. assign an object of
+/// a derived class to the base class) a handle to the base Handle class.
 class Handle {
  public:
+  /// Default constructor, which initializes a TaggedValue with type NONE.
   Handle() : value_(TaggedValue::None()) {}
 
  public:
+  /// Constructs a handle from a TaggedValue.
   explicit Handle(TaggedValue value) : value_(std::move(value)) {}
   // explicit Handle(TaggedValue value, Handle* class_input)
   //     : value_(std::move(value)), class_(class_input) {}
   // const Handle& type() { return *class_; }
 
  protected:
+  /// The wrapped TaggedValue.
   TaggedValue value_;
   // effectively a "weak reference" to intern'd class value.
   // types are compared by comparing pointer values here.
   // Handle* class_;  // effectively a "weak reference" to intern'd class value.
 
+  /// The Integer handle.
   friend class Integer;
+  /// The Float handle.
   friend class Float;
+  /// The String handle.
   friend class String;
+  /// The Object handle.
   friend class Object;
+  /// The List handle.
   friend class List;
+  /// The Dictionary handle.
   friend class Dictionary;
+  /// The Tuple handle.
   friend class Tuple;
+  /// The Callable handle.
   friend class Callable;
+  /// The Tensor handle.
   friend class Tensor;
+  /// Converts a Handle instance to an instance of a derived class `T`.
   template <class T>
   friend tensorflow::StatusOr<T> Cast(Handle handle);
+  /// Infrastructure for converting a TaggedValue tuple function signature to an
+  /// unpacked variable list.
   template <typename Fn, class TRET, class... ArgsOut>
   friend class UneraseCallHelper;
 };
+
+// Forward declare.
 template <class T>
 tensorflow::StatusOr<T> Cast(Handle handle);
 
+/// @brief The None class for holding TaggedValues of type NONE.
 class None final : public Handle {
  public:
+  /// Creates a handle that wraps a NONE TaggedValue.
   None() : Handle(TaggedValue::None()) {}
 
  private:
@@ -90,9 +118,12 @@ class None final : public Handle {
   friend tensorflow::StatusOr<T> Cast(Handle handle);
 };
 
+/// @brief The String class for holding TaggedValues of type STRING.
 class String final : public Handle {
  public:
+  /// Creates a handle that wraps a STRING TaggedValue.
   explicit String(const char* s) : Handle(TaggedValue(s)) {}
+  /// Returns the underlying TaggedValue string.
   const char* get() const { return value_.s(); }
 
  private:
@@ -102,17 +133,27 @@ class String final : public Handle {
   friend tensorflow::StatusOr<T> Cast(Handle handle);
 };
 
+/// @brief The `Object` class modeled after Python "objects".
+///
+/// An `Object` uses a TaggedValue dictionary to store its attributes. The
+/// "__parent__" attribute is reserved.
 class Object : public Handle {
  public:
+  /// Constructs a handle that acts as an object.
   Object() : Handle(TaggedValue::Dict()) {}
-
+  /// Retrieves the key of the object's parent.
   static const String& ParentKey();
 
-  // Get a object member attribute named `key`. Does lookup in referenced
-  // object named "__parent__" if key not found locally.
+  /// @brief Gets an object member attribute`key`.
+  ///
+  /// If the `key` is not found in the object, the object's "__parent__"
+  /// attribute is then searched.
+  ///
+  /// @tparam T The desired return type.
+  /// @param key The key to look up.
+  /// @return `StatusOr` wrapping the key's value.
   template <class T = Handle>
   tensorflow::StatusOr<T> Get(const String& key) {
-    // static String* parent_token = new String("__parent__");
     auto& dict = value_.dict();
     auto it = dict.find(key.value_);
     if (it != dict.end()) {
@@ -133,11 +174,15 @@ class Object : public Handle {
     }
     return tensorflow::errors::NotFound("Key not in dictionary.");
   }
+
+  /// Sets `key` attribute with the underlying value of `h`.
   void Set(const String& key, Handle h) {
     value_.dict()[key.value_] = std::move(h.value_);
   }
+
+  /// Removes `key` from the object's attributes.
   void Unset(const String& key) { value_.dict().erase(key.value_); }
-  // Adding dir() is in the future.
+  // TODO(b/): Adding dir() is in the future.
  private:
   // Private since it is in general unsafe.
   explicit Object(TaggedValue v) : Handle(std::move(v)) {}
@@ -145,23 +190,29 @@ class Object : public Handle {
   friend tensorflow::StatusOr<T> Cast(Handle handle);
 };
 
+/// @brief The Dictionary class for holding TaggedValues of type DICT.
 class Dictionary final : public Handle {
  public:
+  /// Constructs a handle that wraps a DICT TaggedValue.
   Dictionary() : Handle(TaggedValue::Dict()) {}
   // TODO(aselle): make this private to preserve invariant.
 
+  /// Retrieves `key` with type `T`.
   template <class T>
   tensorflow::StatusOr<T> Get(const Handle& key) {
     auto it = value_.dict().find(key.value_);
     if (it != value_.dict().end()) return Cast<T>(Handle(it->second));
     return tensorflow::errors::NotFound("Key not in dictionary.");
   }
+  /// Sets `key` with value `value`.
   void Set(const String& key, Handle value) {
     value_.dict()[key.value_] = std::move(value.value_);
   }
+  /// Sets `key` with value `value`.
   void Set(const Handle& key, Handle value) {
     value_.dict()[key.value_] = std::move(value.value_);
   }
+  /// Retrieves size of dictionary.
   size_t size() const { return value_.dict().size(); }
 
  private:
@@ -171,10 +222,14 @@ class Dictionary final : public Handle {
   friend tensorflow::StatusOr<T> Cast(Handle handle);
 };
 
+/// @brief The Integer class for holding TaggedValues of type INT.
 class Integer final : public Handle {
  public:
+  /// Creates a handle that wraps an INT TaggedValue.
   explicit Integer(Handle h) : Handle(h.value_) {}
+  /// Creates a handle that wraps an INT TaggedValue.
   explicit Integer(int64_t i) : Handle(TaggedValue(i)) {}
+  /// Retrieves the underlying integer value.
   int64_t get() const { return value_.i64().get(); }
 
  private:
@@ -184,10 +239,14 @@ class Integer final : public Handle {
   friend tensorflow::StatusOr<T> Cast(Handle handle);
 };
 
+/// @brief The Float class for holding TaggedValues of type FLOAT.
 class Float final : public Handle {
  public:
+  /// Constructs a Float handle that wraps a FLOAT TaggedValue.
   explicit Float(Handle h) : Handle(h.value_) {}
+  /// Constructs a Float handle that wraps a FLOAT TaggedValue.
   explicit Float(float i) : Handle(TaggedValue(i)) {}
+  /// Retrieves the underlying float value.
   float get() const { return value_.f32().get(); }
 
  private:
@@ -197,13 +256,16 @@ class Float final : public Handle {
   friend tensorflow::StatusOr<T> Cast(Handle handle);
 };
 
+/// @brief The Tensor class for holding TaggedValues of type TENSOR.
 class Tensor final : public Handle {
  public:
+  /// Constructs a Tensor handle from a Handle that wraps a TENSOR TaggedValue.
   explicit Tensor(Handle h) : Handle(h.value_) {}
 
-  // Copies contents of tensor into `data`.
-  //
-  // Raises error if `data` is of invalid size.
+  /// @brief Retrieves the value of the Tensor handle.
+
+  /// @param data Buffer in which to copy contents of the handle.
+  /// @throws InvalidArgument Raises error if `data` is of invalid size.
   template <class T>
   tensorflow::Status GetValue(absl::Span<T> data) const;
 
@@ -240,13 +302,16 @@ tensorflow::Status Tensor::GetValue(absl::Span<T> data) const {
   return tensorflow::Status::OK();
 }
 
+/// @brief The Tuple class for holding TaggedValues of type TUPLE.
 class Tuple : public Handle {
  public:
+  /// Constructs a Tuple handle.
   template <class... T>
   explicit Tuple(T... args) : Handle(TaggedValue::Tuple()) {
     add(args...);
   }
 
+  /// Retrieves value at index `i`.
   template <class T>
   tensorflow::StatusOr<T> Get(size_t i) {
     if (i >= value_.tuple().size())
@@ -254,6 +319,7 @@ class Tuple : public Handle {
     return Cast<T>(Handle(value_.tuple()[i]));
   }
 
+  /// Retrieves number of elements.
   size_t size() const { return value_.tuple().size(); }
 
  private:
@@ -272,10 +338,13 @@ class Tuple : public Handle {
   friend tensorflow::StatusOr<T> Cast(Handle handle);
 };
 
+/// @brief The List class for holding TaggedValues of type LIST.
 class List final : public Handle {
  public:
+  /// Constructs a List handle.
   template <class... T>
   explicit List(T... args) : Handle(TaggedValue::List()) {}
+  /// Retrieves value at index `i`.
   template <class T>
   tensorflow::StatusOr<T> Get(size_t i) {
     if (i >= size()) {
@@ -284,6 +353,7 @@ class List final : public Handle {
     return Cast<T>(Handle(value_.list()[i]));
   }
 
+  /// Sets value `h` at index `i`.
   tensorflow::Status Set(size_t i, Handle h) {
     if (i >= size()) {
       return tensorflow::errors::InvalidArgument("Out of bounds index.");
@@ -291,10 +361,13 @@ class List final : public Handle {
     value_.list()[i] = std::move(h.value_);
     return tensorflow::Status::OK();
   }
+
+  /// Appends `arg` to list.
   template <class T>
   void append(T arg) {
     value_.list().emplace_back(Convert(arg).value_);
   }
+  /// Retrieves size of list.
   size_t size() const { return value_.list().size(); }
 
  private:
@@ -304,15 +377,8 @@ class List final : public Handle {
   friend tensorflow::StatusOr<T> Cast(Handle handle);
 };
 
-// Import a module named `module`.
-Object Import(const TaggedValue& module);
-// Idea of injecting random graph def code into a callable form.
-// This return an object with members that are the signature entry points
-// to this saved model (i.e. module).
-Object ImportGraphDef(const char* runtime, const char* graphdef);
-Object CreateModule(const char* runtime, const char* name);
-
-// Store keyword argument name value pairs.
+/// @brief The `KeywordArg` class for storing keyword arguments as name value
+/// pairs.
 class KeywordArg {
  public:
   explicit KeywordArg(const char* s) : key_(String(s)), value_() {}
@@ -330,7 +396,7 @@ class KeywordArg {
   Handle value_;
 };
 
-// callable function object.
+/// @brief The Callable class for creating callables.
 class Callable final : public Handle {
  private:
   // Collect arguments for call
@@ -350,6 +416,8 @@ class Callable final : public Handle {
   }
 
  public:
+  /// @brief Calls the wrapped TaggedValue function on a variable argument
+  /// list.
   template <typename TReturn = Handle, typename... Types>
   tensorflow::StatusOr<TReturn> Call(Types... vars) {
     Dictionary kwargs = Dictionary();
@@ -372,8 +440,10 @@ class Callable final : public Handle {
 };
 
 namespace internal {
+/// @brief The Capsule class for holding pointers.
 class Capsule final : public Handle {
  public:
+  /// Statically cast the TaggedValue capsule to type `T`.
   template <class T>
   T cast() {
     return static_cast<T>(value_.capsule());
@@ -387,54 +457,77 @@ class Capsule final : public Handle {
 };
 }  // namespace internal
 
+/// @defgroup Util Functions for type conversion
+///
+/// @brief Functions for retrieving and converting Handle types.
+/// @{
+
+/// Retrieves tagged type of `T` handle.
 template <class T>
 inline TaggedValue::Type TypeToTaggedType() {}
+/// Retrieves tagged type of base class handle.
 template <>
 inline TaggedValue::Type TypeToTaggedType<Handle>() {
   return TaggedValue::Type::NONE;
 }
+/// Retrieves tagged type of None handle.
 template <>
 inline TaggedValue::Type TypeToTaggedType<None>() {
   return TaggedValue::Type::NONE;
 }
+/// Retrieves tagged type of String handle.
 template <>
 inline TaggedValue::Type TypeToTaggedType<String>() {
   return TaggedValue::Type::STRING;
 }
+/// Retrieves tagged type of Callable handle.
 template <>
 inline TaggedValue::Type TypeToTaggedType<Callable>() {
   return TaggedValue::Type::FUNC;
 }
+/// Retrieves tagged type of Integer handle.
 template <>
 inline TaggedValue::Type TypeToTaggedType<Integer>() {
   return TaggedValue::Type::INT64;
 }
+/// Retrieves tagged type of Float handle.
 template <>
 inline TaggedValue::Type TypeToTaggedType<Float>() {
   return TaggedValue::Type::FLOAT32;
 }
+/// Retrieves tagged type of Object handle.
 template <>
 inline TaggedValue::Type TypeToTaggedType<Object>() {
   return TaggedValue::Type::DICT;
 }
+/// Retrieves tagged type of Dictionary handle.
 template <>
 inline TaggedValue::Type TypeToTaggedType<Dictionary>() {
   return TaggedValue::Type::DICT;
 }
+/// Retrieves tagged type of List handle.
 template <>
 inline TaggedValue::Type TypeToTaggedType<List>() {
   return TaggedValue::Type::LIST;
 }
+/// Retrieves tagged type of Tensor handle.
 template <>
 inline TaggedValue::Type TypeToTaggedType<Tensor>() {
   return TaggedValue::Type::TENSOR;
 }
+/// Retrieves tagged type of Capsule handle.
 template <>
 inline TaggedValue::Type TypeToTaggedType<internal::Capsule>() {
   return TaggedValue::Type::CAPSULE;
 }
 // TODO(unknown): fully populate
 
+/// @brief Casts a handle to type `T`
+///
+/// @param handle The handle to cast.
+/// @tparam T The target handle type.
+/// @exception InvalidArgument Raises error if the underlying TaggedValue type
+/// of `handle` is not equivalent to `T`.
 template <class T>
 tensorflow::StatusOr<T> Cast(Handle handle) {
   if (handle.value_.type() == TypeToTaggedType<T>() ||
@@ -443,26 +536,36 @@ tensorflow::StatusOr<T> Cast(Handle handle) {
   return tensorflow::errors::InvalidArgument("Incompatible cast.");
 }
 
+// Converters for C++ primitives like float and int to handles. Allows callable
+// calls and list appends to be more idiomatic.
+
+/// Converts a C++ const char* to a String handle.
 template <>
 inline Handle Convert(const char* value) {
   return String(value);
 }
+/// Converts a C++ int32_t to an Integer handle.
 template <>
 inline Handle Convert(int32_t value) {
   return Integer(value);
 }
+/// Converts a C++ int64_t to an Integer handle.
 template <>
 inline Handle Convert(int64_t value) {
   return Integer(value);
 }
+/// Converts a C++ float to an Integer handle.
 template <>
 inline Handle Convert(float value) {
   return Float(value);
 }
+/// Converts a value with primitive type T to a Handle.
 template <class T>
 inline Handle Convert(T value) {
   return Handle(std::move(value));
 }
+
+/// @}
 
 // in the future it will be possible to make additional hard typed APIs
 // by generating code by introspecting objects.

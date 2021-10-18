@@ -232,7 +232,7 @@ StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
 
 StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
     std::function<Executable*(int64_t)> executable_provider,
-    std::function<int64(int64_t)> argument_count_provider,
+    std::function<int64_t(int64_t)> argument_count_provider,
     std::function<const Literal*(int64_t, int64_t)> argument_provider,
     int64_t num_replicas, bool run_hlo_passes) {
   HloRunner::ReplicatedExecuteOptions options;

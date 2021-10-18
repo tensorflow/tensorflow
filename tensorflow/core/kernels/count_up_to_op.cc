@@ -103,7 +103,7 @@ class ResourceCountUpToOp : public OpKernel {
       ResourceCountUpToOp<TYPE>)
 
 REGISTER(int32);
-REGISTER(int64);
+REGISTER(int64_t);
 
 #undef REGISTER
 

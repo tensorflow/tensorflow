@@ -70,7 +70,7 @@ class RunHandlerPool {
 
   // Get the priorities for active handlers. The return result is with the same
   // order of the active handler list.
-  std::vector<int64> GetActiveHandlerPrioritiesForTesting() const;
+  std::vector<int64_t> GetActiveHandlerPrioritiesForTesting() const;
 
  private:
   class Impl;
@@ -129,7 +129,8 @@ class RunHandlerEnvironment {
   RunHandlerEnvironment(Env* env, const ThreadOptions& thread_options,
                         const string& name);
 
-  EnvThread* CreateThread(std::function<void()> f);
+  EnvThread* CreateThread(std::function<void()> f,
+                          const std::string& thread_name);
 
   Task CreateTask(std::function<void()> f);
 
@@ -169,13 +170,13 @@ class ThreadWorkSource {
 
   int TaskQueueSize(bool is_blocking);
 
-  int64 GetTracemeId();
+  int64_t GetTracemeId();
 
   void SetTracemeId(int64_t value);
 
   void SetWaiter(uint64 version, Waiter* waiter, mutex* mutex);
 
-  int64 GetInflightTaskCount(bool is_blocking);
+  int64_t GetInflightTaskCount(bool is_blocking);
 
   void IncrementInflightTaskCount(bool is_blocking);
 
@@ -195,15 +196,15 @@ class ThreadWorkSource {
   int32 non_blocking_work_sharding_factor_;
   Eigen::MaxSizeVector<NonBlockingQueue*> non_blocking_work_queues_;
 
-  std::atomic<int64> blocking_inflight_;
-  std::atomic<int64> non_blocking_inflight_;
+  std::atomic<int64_t> blocking_inflight_;
+  std::atomic<int64_t> non_blocking_inflight_;
 
   Queue blocking_work_queue_;
   mutex blocking_queue_op_mu_;
   char pad_[128];
   mutex waiters_mu_;
   Waiter queue_waiters_ TF_GUARDED_BY(waiters_mu_);
-  std::atomic<int64> traceme_id_;
+  std::atomic<int64_t> traceme_id_;
 
   mutex run_handler_waiter_mu_;
   uint64 version_ TF_GUARDED_BY(run_handler_waiter_mu_);

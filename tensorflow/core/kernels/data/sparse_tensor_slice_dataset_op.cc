@@ -54,7 +54,7 @@ class Dataset : public DatasetBase {
     return "SparseTensorSliceDatasetOp::Dataset";
   }
 
-  int64 Cardinality() const override { return sparse_tensor_.shape()[0]; }
+  int64_t Cardinality() const override { return sparse_tensor_.shape()[0]; }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return Status::OK();
@@ -71,7 +71,7 @@ class Dataset : public DatasetBase {
     Node* value_node;
     TF_RETURN_IF_ERROR(b->AddTensor(sparse_tensor_.values(), &value_node));
     Node* dense_shape_node;
-    std::vector<int64> dense_shape;
+    std::vector<int64_t> dense_shape;
     dense_shape.reserve(sparse_tensor_.shape().size());
     for (int i = 0; i < sparse_tensor_.shape().size(); i++)
       dense_shape.emplace_back(sparse_tensor_.shape()[i]);
@@ -94,7 +94,7 @@ class Dataset : public DatasetBase {
           group_iterable_(params.dataset->sparse_tensor_.group({0})),
           iter_(group_iterable_.begin()) {
       for (size_t i = 0; i < dense_shape_.NumElements(); ++i) {
-        dense_shape_.vec<int64>()(i) =
+        dense_shape_.vec<int64_t>()(i) =
             params.dataset->sparse_tensor_.shape()[i + 1];
       }
     }
@@ -125,7 +125,7 @@ class Dataset : public DatasetBase {
         next_indices_ = Tensor(DT_INT64, {num_entries, rank - 1});
         next_values_ = Tensor(DataTypeToEnum<T>::value, {num_entries});
 
-        auto next_indices_t = next_indices_.matrix<int64>();
+        auto next_indices_t = next_indices_.matrix<int64_t>();
         auto next_values_t = next_values_.vec<T>();
 
         for (int64_t i = 0; i < num_entries; ++i) {
@@ -202,16 +202,16 @@ class Dataset : public DatasetBase {
     }
 
    private:
-    const int64 num_elements_;
+    const int64_t num_elements_;
 
     Tensor dense_shape_;
 
     mutex mu_;
     sparse::GroupIterable group_iterable_ TF_GUARDED_BY(mu_);
     sparse::GroupIterable::IteratorStep iter_ TF_GUARDED_BY(mu_);
-    int64 i_ TF_GUARDED_BY(mu_) = 0;
-    const int64 kNextNonEmptyUnknown = -1;
-    int64 next_non_empty_i_ TF_GUARDED_BY(mu_) = kNextNonEmptyUnknown;
+    int64_t i_ TF_GUARDED_BY(mu_) = 0;
+    const int64_t kNextNonEmptyUnknown = -1;
+    int64_t next_non_empty_i_ TF_GUARDED_BY(mu_) = kNextNonEmptyUnknown;
     Tensor next_indices_ TF_GUARDED_BY(mu_);
     Tensor next_values_ TF_GUARDED_BY(mu_);
   };
@@ -269,7 +269,7 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
     // that batches elements into rows of a SparseTensor).
     int64_t previous_batch_index = -1;
     for (int64_t i = 0; i < indices->dim_size(0); ++i) {
-      int64_t next_batch_index = indices->matrix<int64>()(i, 0);
+      int64_t next_batch_index = indices->matrix<int64_t>()(i, 0);
       OP_REQUIRES(
           ctx, next_batch_index >= previous_batch_index,
           errors::Unimplemented("The SparseTensor must be ordered in the batch "
@@ -277,11 +277,11 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
                                 "is not currently supported."));
       previous_batch_index = next_batch_index;
     }
-    gtl::InlinedVector<int64, 8> std_order(dense_shape->NumElements(), 0);
+    gtl::InlinedVector<int64_t, 8> std_order(dense_shape->NumElements(), 0);
     sparse::SparseTensor tensor;
     OP_REQUIRES_OK(
         ctx, sparse::SparseTensor::Create(
-                 *indices, *values, TensorShape(dense_shape->vec<int64>()),
+                 *indices, *values, TensorShape(dense_shape->vec<int64_t>()),
                  std_order, &tensor));
     *output = new Dataset<T>(ctx, std::move(tensor));
   }

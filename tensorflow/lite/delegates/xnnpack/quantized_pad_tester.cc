@@ -115,6 +115,12 @@ void QuantizedPadTester::Test(TfLiteDelegate* delegate) const {
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
+
+  if (Unsigned()) {
+    Test<uint8_t>(delegate_interpreter.get(), default_interpreter.get());
+  } else {
+    Test<int8_t>(delegate_interpreter.get(), default_interpreter.get());
+  }
 }
 
 std::vector<char> QuantizedPadTester::CreateTfLiteModel() const {

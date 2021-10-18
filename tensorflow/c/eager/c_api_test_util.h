@@ -140,11 +140,9 @@ tensorflow::ServerDef GetServerDef(const tensorflow::string& job_name,
 tensorflow::ServerDef GetServerDef(int num_tasks);
 
 // Create a multi-client ServerDef with the given `job_name`, add `num_tasks`
-// tasks and `num_virtual_gpus` virtual GPUs in it. Enable fetching of remote
-// devices during startup based on `fetch_remote_devices`.
+// tasks and `num_virtual_gpus` virtual GPUs in it.
 tensorflow::ServerDef GetMultiClientServerDef(const std::string& job_name,
                                               int num_tasks,
-                                              bool fetch_remote_devices = false,
                                               int num_virtual_gpus = 0);
 
 #endif  // TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_

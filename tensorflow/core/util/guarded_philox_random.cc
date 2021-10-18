@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/util/guarded_philox_random.h"
+
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/util/determinism.h"
 
 namespace tensorflow {
 
@@ -25,6 +27,11 @@ Status GuardedPhiloxRandom::Init(OpKernelConstruction* context) {
   if (!status.ok()) return status;
   status = context->GetAttr("seed2", &seed2);
   if (!status.ok()) return status;
+  if (seed == 0 && seed2 == 0 && OpDeterminismRequired()) {
+    return errors::InvalidArgument(
+        "When determinism is enabled, random ops "
+        "must have a seed specified.");
+  }
 
   // Initialize with the given seeds
   Init(seed, seed2);

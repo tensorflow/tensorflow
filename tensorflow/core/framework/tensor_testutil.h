@@ -37,7 +37,7 @@ Tensor AsScalar(const T& val) {
 // Constructs a flat tensor with 'vals'.
 template <typename T>
 Tensor AsTensor(gtl::ArraySlice<T> vals) {
-  Tensor ret(DataTypeToEnum<T>::value, {static_cast<int64>(vals.size())});
+  Tensor ret(DataTypeToEnum<T>::value, {static_cast<int64_t>(vals.size())});
   std::copy_n(vals.data(), vals.size(), ret.flat<T>().data());
   return ret;
 }

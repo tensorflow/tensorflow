@@ -60,12 +60,9 @@ ops above and associated assignment operations), tf.function traces a second
 time if it sees variables on the first call.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import threading
+import types as types_lib
 import weakref
 import six
 
@@ -77,6 +74,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -282,11 +280,13 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
           constraint=constraint)
       return
     if initial_value is None:
-      raise ValueError("initial_value must be specified.")
+      raise ValueError("`initial_value` must be a Tensor or a Python "
+                       "object convertible to a Tensor. Got None.")
     init_from_fn = callable(initial_value)
 
     if constraint is not None and not callable(constraint):
-      raise ValueError("The `constraint` argument must be a callable.")
+      raise ValueError(f"`constraint` with type {type(constraint)} must be a "
+                       "callable.")
 
     with ops.name_scope(name, "Variable", []
                         if init_from_fn else [initial_value]) as scope_name:
@@ -493,12 +493,11 @@ def _evaluate_var_is_initialized(variables):
             any_initialized = math_ops.reduce_any(components).numpy()
           if all_initialized != any_initialized:
             raise NotImplementedError(
-                ("Some but not all components of a parallel variable {} were "
-                 "initialized between their creation in a tf.function and "
-                 "the function's trace having completed. This is not yet "
-                 "supported; consider initializing either all or none of the "
-                 "components, or moving initialization out of the function."
-                ).format(repr(v)))
+                f"Some but not all components of a parallel variable {v!r} "
+                "were initialized between their creation in a tf.function and "
+                "the function's trace having completed. This is not "
+                "supported; consider initializing either all or none of the "
+                "components, or moving initialization out of the function.")
           numpy_value = all_initialized
         var_is_initialized[index] = numpy_value
   return var_is_initialized
@@ -573,7 +572,7 @@ class Function(core.GenericFunction):
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
     """
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._python_function = python_function
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function,
@@ -614,7 +613,7 @@ class Function(core.GenericFunction):
   def __setstate__(self, state):
     """Restore from pickled state."""
     self.__dict__ = state
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._key_for_call_stats = self._get_key_for_call_stats()
 
@@ -780,8 +779,11 @@ class Function(core.GenericFunction):
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
       raise ValueError(
-          "tf.function-decorated function tried to create "
-          "variables on non-first call.")
+          "tf.function only supports singleton tf.Variables created on the "
+          "first call. Make sure the tf.Variable is only created once or "
+          "created outside tf.function. See "
+          "https://www.tensorflow.org/guide/function#creating_tfvariables "
+          "for more information.")
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
@@ -1269,14 +1271,28 @@ class Function(core.GenericFunction):
     #   foo = Foo()
     #   foo.bar()  # `foo.bar` is a `Function` instance
     #
-    # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
-    # new instance of `Function` here to allow different instances each
-    # to create variables once, thereby allowing methods to be decorated with
-    # tf.function. Keeps a cache to avoid retracing the function every time the
-    # descriptor is accessed.
+    # then `instance` will be `foo` (and `owner` will be `Foo`).  For composite
+    # tensors, we can just treat `instance` as a normal parameter.  But for
+    # other types, we create a new instance of `Function` here to allow
+    # different instances each to create variables once, thereby allowing
+    # methods to be decorated with tf.function. Keeps a cache to avoid retracing
+    # the function every time the descriptor is accessed.
+    # TODO(mdan): Identify types which can just be parameters more generically.
+    #
+    # The check for instance._type_spec=None is used because certain classes
+    # (including subclasses of tf.linalg.LinearOperator) are subclasses of
+    # CompositeTensor but do not actually implement the required APIs.
+    # TODO(b/199278478): Fix those classes, then remove the check for
+    # `instance._type_spec is not None`.
+    if (isinstance(instance, composite_tensor.CompositeTensor) and
+        instance._type_spec is not None):  # pylint: disable=protected-access
+      return types_lib.MethodType(self, instance)
     if instance not in self._descriptor_cache:
       if instance is None:
         return self
+      # TODO(mdan): If the CompositeTensor path works, do the same here.
+      # It's unclear whether we need the tf-decorator, or could just call
+      # MethodType(self.clone(), instance)
       self._descriptor_cache[instance] = (
           function_lib.class_method_to_instance_method(self, instance))
     return self._descriptor_cache[instance]
@@ -1392,7 +1408,7 @@ def function(func=None,
   thought of as compile-time constants), and builds a separate `tf.Graph` for
   each set of Python arguments that it encounters.
   For more information, see the
-  [tf.function guide](https://www.tensorflow.org/guide/function?hl=en#rules_of_tracing)
+  [tf.function guide](https://www.tensorflow.org/guide/function#rules_of_tracing)
 
   Executing a `GenericFunction` will select and execute the appropriate
   `ConcreteFunction` based on the argument types and values.

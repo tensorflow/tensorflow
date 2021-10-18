@@ -282,7 +282,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   const string& Platform() { return platform_; }
 
   // Returns the number of elements in each input literal.
-  virtual int64 GetInputSize() = 0;
+  virtual int64_t GetInputSize() = 0;
 
   // Fills the literals with values to test for.
   virtual void FillInput(InputLiterals* literals) = 0;
@@ -540,7 +540,7 @@ class BitChunks {
       : public std::iterator<std::input_iterator_tag,  // iterator_category
                              uint64,                   // value_type
                              uint64,                   // difference_type
-                             const uint64*,            // pointer
+                             const uint64_t*,          // pointer
                              uint64                    // reference
                              > {
    public:
@@ -623,7 +623,7 @@ class BitChunks {
     CHECK_NE(spacing, 0) << ToString();
   }
 
-  int64 GetTotalBitChunks() const {
+  int64_t GetTotalBitChunks() const {
     if (start_ == end_) {
       return 1;
     }
@@ -660,7 +660,7 @@ class FpValues {
       : public std::iterator<std::input_iterator_tag,  // iterator_category
                              uint64,                   // value_type
                              uint64,                   // difference_type
-                             const uint64*,            // pointer
+                             const uint64_t*,          // pointer
                              uint64                    // reference
                              > {
    public:
@@ -765,7 +765,7 @@ class FpValues {
     return end.MoveToEnd();
   }
 
-  int64 GetTotalNumValues() const {
+  int64_t GetTotalNumValues() const {
     int64_t total = 1;
     absl::c_for_each(bit_chunks_, [&](const BitChunks& chunks) {
       total *= chunks.GetTotalBitChunks();
@@ -926,10 +926,10 @@ std::vector<FpValues> CreateFpValuesForBoundaryTest() {
           GetNans<T>(1000)};
 }
 
-inline std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges() {
+inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveF32Ranges() {
   // We break up the 2^32-element space into small'ish chunks to keep peak
   // memory usage low.
-  std::vector<std::pair<int64, int64>> result;
+  std::vector<std::pair<int64_t, int64_t>> result;
   const int64_t step = 1 << 25;
   for (int64_t i = 0; i < (1l << 32); i += step) {
     result.push_back({i, i + step});
@@ -1038,7 +1038,8 @@ T ReferenceMin(T x, T y) {
 // Returns a wrapper of the given build method, which build an HLO operation
 // with an empty broadcast dimension.
 inline std::function<XlaOp(XlaOp, XlaOp)> AddEmptyBroadcastDimension(
-    std::function<XlaOp(XlaOp, XlaOp, absl::Span<const int64>)> build_method) {
+    std::function<XlaOp(XlaOp, XlaOp, absl::Span<const int64_t>)>
+        build_method) {
   return [&](XlaOp src0, XlaOp src1) -> XlaOp {
     return build_method(src0, src1, {});
   };

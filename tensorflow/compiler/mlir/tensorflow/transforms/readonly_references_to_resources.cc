@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -55,18 +56,8 @@ constexpr StringRef kLocationPrefix = "loc:@";
 // heuristic method that assumes that all the users of them is Identity op,
 // fed directly.
 class ConvertReadonlyReferenceVariablesToResourceVariablesPass
-    : public PassWrapper<
-          ConvertReadonlyReferenceVariablesToResourceVariablesPass,
-          FunctionPass> {
- public:
-  StringRef getArgument() const final {
-    return "tf-readonly-references-to-resources";
-  }
-
-  StringRef getDescription() const final {
-    return "Convert readonly reference variables to resource variables.";
-  }
-
+    : public ConvertReadonlyReferenceVariablesToResourceVariablesPassBase<
+          ConvertReadonlyReferenceVariablesToResourceVariablesPass> {
   void runOnFunction() override;
 };
 
@@ -197,10 +188,6 @@ CreateConvertReadonlyReferenceVariablesToResourceVariablesPass() {
   return std::make_unique<
       ConvertReadonlyReferenceVariablesToResourceVariablesPass>();
 }
-
-static PassRegistration<
-    ConvertReadonlyReferenceVariablesToResourceVariablesPass>
-    pass;
 
 }  // namespace TF
 

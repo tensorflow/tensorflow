@@ -106,13 +106,13 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  int64 NumOperands(const HloInstruction* node) {
+  int64_t NumOperands(const HloInstruction* node) {
     auto count_iterator = count_.find(node);
     EXPECT_NE(count_.end(), count_iterator);
     return count_iterator->second.operand_count;
   }
 
-  int64 NumUsers(const HloInstruction* node) {
+  int64_t NumUsers(const HloInstruction* node) {
     auto count_iterator = count_.find(node);
     EXPECT_NE(count_.end(), count_iterator);
     return count_iterator->second.user_count;
@@ -120,8 +120,8 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
 
  private:
   struct NumOpsAndUsers {
-    int64 operand_count;
-    int64 user_count;
+    int64_t operand_count;
+    int64_t user_count;
   };
 
   // Helper function to count operands and users for the given HLO.

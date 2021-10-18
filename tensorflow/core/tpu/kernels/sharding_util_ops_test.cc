@@ -538,7 +538,7 @@ TEST_P(RankedXlaSplitNDOpTest, TestSubscriptRank) {
   const std::vector<int32> num_splits(rank, 2);
 
   Graph graph(OpRegistry::Global());
-  const TensorShape input_shape(std::vector<int64>(rank, 2));
+  const TensorShape input_shape(std::vector<int64_t>(rank, 2));
   const std::vector<int32> paddings;
   const int num_outputs = 2 << (rank - 1);
   std::vector<std::string> output_tensor_names;
@@ -550,7 +550,7 @@ TEST_P(RankedXlaSplitNDOpTest, TestSubscriptRank) {
   TF_ASSERT_OK(RunGraph(graph, output_tensor_names, /*target_tensor_names=*/{},
                         &output_tensors));
   ASSERT_EQ(output_tensors.size(), num_outputs);
-  TensorShape output_shape(std::vector<int64>(rank, 1));
+  TensorShape output_shape(std::vector<int64_t>(rank, 1));
   for (int i = 0; i < num_outputs; ++i) {
     test::ExpectTensorEqual<int32>(output_tensors[i],
                                    test::AsTensor<int32>({i}, output_shape));
@@ -808,7 +808,7 @@ Status CreateConcatTensorGraph(absl::Span<const TensorShape> input_shapes,
                          .Attr("num_concats", num_concats)
                          .Attr("paddings", paddings)
                          .Attr("T", data_type)
-                         .Attr("N", static_cast<int64>(input_shapes.size()))
+                         .Attr("N", static_cast<int64_t>(input_shapes.size()))
                          .Finalize(graph, &xla_op));
 
   output_tensor_names->push_back(absl::StrCat(xla_op->name(), ":", 0));
@@ -862,7 +862,7 @@ Status CreateConcatResourceGraph(
   TF_RETURN_IF_ERROR(builder.Attr("num_concats", num_concats)
                          .Attr("paddings", paddings)
                          .Attr("T", data_type)
-                         .Attr("N", static_cast<int64>(input_shapes.size()))
+                         .Attr("N", static_cast<int64_t>(input_shapes.size()))
                          .Finalize(graph, &xla_op));
 
   Node* read_var = nullptr;
@@ -1164,7 +1164,7 @@ TEST_P(RankedXlaConcatNDOpTest, TestSubscriptRank) {
 
   Graph graph(OpRegistry::Global());
   const int num_inputs = 2 << (rank - 1);
-  const TensorShape base_input_shape(std::vector<int64>(rank, 1));
+  const TensorShape base_input_shape(std::vector<int64_t>(rank, 1));
   const std::vector<TensorShape> input_shapes(num_inputs, base_input_shape);
   const std::vector<int32> paddings;
   std::vector<std::string> output_tensor_names;
@@ -1180,7 +1180,7 @@ TEST_P(RankedXlaConcatNDOpTest, TestSubscriptRank) {
   test::ExpectTensorEqual<int32>(
       output_tensors[0],
       test::AsTensor<int32>(expected_values,
-                            TensorShape(std::vector<int64>(rank, 2))));
+                            TensorShape(std::vector<int64_t>(rank, 2))));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1361,7 +1361,7 @@ TEST_P(RoundtripXlaSplitConcatNDTest, NoPadding) {
   const std::vector<int32> num_partitions(rank, 2);
 
   Graph graph(OpRegistry::Global());
-  const TensorShape input_shape(std::vector<int64>(rank, 4));
+  const TensorShape input_shape(std::vector<int64_t>(rank, 4));
   const std::vector<int32> paddings;
   std::vector<std::string> output_tensor_names;
   TF_ASSERT_OK(GetParam().graph_creator(input_shape, num_partitions, paddings,
@@ -1374,7 +1374,7 @@ TEST_P(RoundtripXlaSplitConcatNDTest, NoPadding) {
 
   test::ExpectTensorEqual<bool>(
       output_tensors[0],
-      Constant<bool>(true, TensorShape(std::vector<int64>(rank, 4))));
+      Constant<bool>(true, TensorShape(std::vector<int64_t>(rank, 4))));
 }
 
 TEST_P(RoundtripXlaSplitConcatNDTest, PartialPadding) {
@@ -1382,7 +1382,7 @@ TEST_P(RoundtripXlaSplitConcatNDTest, PartialPadding) {
   const std::vector<int32> num_partitions(rank, 2);
 
   Graph graph(OpRegistry::Global());
-  const TensorShape input_shape(std::vector<int64>(rank, 4));
+  const TensorShape input_shape(std::vector<int64_t>(rank, 4));
   const std::vector<int32> paddings(rank, 2);
   std::vector<std::string> output_tensor_names;
   TF_ASSERT_OK(GetParam().graph_creator(input_shape, num_partitions, paddings,
@@ -1395,7 +1395,7 @@ TEST_P(RoundtripXlaSplitConcatNDTest, PartialPadding) {
 
   test::ExpectTensorEqual<bool>(
       output_tensors[0],
-      Constant<bool>(true, TensorShape(std::vector<int64>(rank, 4))));
+      Constant<bool>(true, TensorShape(std::vector<int64_t>(rank, 4))));
 }
 
 TEST_P(RoundtripXlaSplitConcatNDTest, CompletePadding) {
@@ -1403,7 +1403,7 @@ TEST_P(RoundtripXlaSplitConcatNDTest, CompletePadding) {
   const std::vector<int32> num_partitions(rank, 2);
 
   Graph graph(OpRegistry::Global());
-  const TensorShape input_shape(std::vector<int64>(rank, 4));
+  const TensorShape input_shape(std::vector<int64_t>(rank, 4));
   const std::vector<int32> paddings(rank, 4);
   std::vector<std::string> output_tensor_names;
   TF_ASSERT_OK(GetParam().graph_creator(input_shape, num_partitions, paddings,
@@ -1416,7 +1416,7 @@ TEST_P(RoundtripXlaSplitConcatNDTest, CompletePadding) {
 
   test::ExpectTensorEqual<bool>(
       output_tensors[0],
-      Constant<bool>(true, TensorShape(std::vector<int64>(rank, 4))));
+      Constant<bool>(true, TensorShape(std::vector<int64_t>(rank, 4))));
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -801,7 +801,7 @@ void Execute_MatMul_CPU_Runtime_Error(bool async) {
     TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
     EXPECT_NE(TF_OK, TF_GetCode(status));
     EXPECT_EQ(nullptr, t);
-    const char* msg = "In[0] mismatch In[1] shape: 2 vs. 3: [2,2] [3,2]";
+    const char* msg = "Matrix size-incompatible: In[0]: [2,2], In[1]: [3,2]";
     EXPECT_TRUE(strstr(TF_Message(status), msg) != nullptr)
         << TF_Message(status);
     // Since error is not cleared, the following copy with correct device will

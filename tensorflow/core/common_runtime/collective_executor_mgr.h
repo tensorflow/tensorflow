@@ -56,7 +56,7 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   void RefreshStepIdSequenceAsync(int64_t graph_key,
                                   const StatusCallback& done) override;
 
-  int64 NextStepId(int64_t graph_key) override {
+  int64_t NextStepId(int64_t graph_key) override {
     return CollectiveExecutor::kInvalidId;
   }
 
@@ -79,7 +79,7 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
  private:
   mutex exec_mu_;
   // Map from step_id to CollectiveExecutor
-  gtl::FlatMap<int64, CollectiveExecutor*> executor_table_
+  gtl::FlatMap<int64_t, CollectiveExecutor*> executor_table_
       TF_GUARDED_BY(exec_mu_);
 };
 

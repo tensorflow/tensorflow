@@ -53,10 +53,10 @@ class TransposeOp : public XlaOpKernel {
                                         ". But input(1) is a vector of size ",
                                         perm_tensor_shape.num_elements()));
 
-    std::vector<int64> perm;
+    std::vector<int64_t> perm;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("perm", &perm));
 
-    std::vector<int64> transposed_order;
+    std::vector<int64_t> transposed_order;
     // Check whether permutation is a permutation of integers of [0 .. dims).
     absl::InlinedVector<bool, 8> bits(dims);
     bool is_identity = true;
@@ -130,7 +130,7 @@ class InvertPermutationOp : public XlaOpKernel {
         InvertPermutation<int32>(ctx);
         break;
       case DT_INT64:
-        InvertPermutation<int64>(ctx);
+        InvertPermutation<int64_t>(ctx);
         break;
       default:
         // This should never happen since we restrict this kernel to only match
@@ -160,7 +160,7 @@ class InvertPermutationOp : public XlaOpKernel {
     // constant. Right now, we always assume it is non-constant because we don't
     // check the embedded computation.
     if (tensor_or_status.ValueOrDie().has_value()) {
-      std::vector<int64> perm;
+      std::vector<int64_t> perm;
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(0, &perm));
 
       int size = perm.size();

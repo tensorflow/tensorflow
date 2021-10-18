@@ -27,8 +27,8 @@ namespace data {
 namespace model {
 namespace {
 
-int64 CountParametersOnNode(const string& node_name,
-                            const Model::ModelParameters& parameters) {
+int64_t CountParametersOnNode(const string& node_name,
+                              const Model::ModelParameters& parameters) {
   int64_t cnt = 0;
   for (const auto& pair : parameters) {
     if (pair.first == node_name) {
@@ -39,7 +39,7 @@ int64 CountParametersOnNode(const string& node_name,
 }
 
 class AsyncInterleaveManyTest
-    : public ::testing::TestWithParam<std::tuple<int64, double>> {};
+    : public ::testing::TestWithParam<std::tuple<int64_t, double>> {};
 
 TEST_P(AsyncInterleaveManyTest, Model) {
   const int64_t parallelism = std::get<0>(GetParam());
@@ -121,7 +121,7 @@ INSTANTIATE_TEST_SUITE_P(Test, AsyncInterleaveManyTest,
                                                               200)));
 
 class AsyncKnownRatioTest
-    : public ::testing::TestWithParam<std::tuple<int64, double, int64>> {};
+    : public ::testing::TestWithParam<std::tuple<int64_t, double, int64_t>> {};
 
 TEST_P(AsyncKnownRatioTest, Model) {
   const int64_t parallelism = std::get<0>(GetParam());
@@ -247,7 +247,7 @@ TEST(InterleaveManyTest, Model) {
   EXPECT_EQ(interleave_many->OutputTime(&input_times, nullptr), 300);
 }
 
-class KnownRatioTest : public ::testing::TestWithParam<int64> {};
+class KnownRatioTest : public ::testing::TestWithParam<int64_t> {};
 
 TEST_P(KnownRatioTest, Model) {
   const int64_t num_inputs_per_output = GetParam();
@@ -983,9 +983,6 @@ TEST(SaveModelTest, Model) {
   EXPECT_EQ(optimization_params.model_input_time(),
             restored_optimization_params.model_input_time());
 
-  // Check that original and restored models hold the same data.
-  EXPECT_EQ(model.collect_resource_usage(),
-            restored_model->collect_resource_usage());
   std::shared_ptr<Node> restored_root = restored_model->output();
   std::shared_ptr<Node> restored_current = restored_root;
   current = root;
@@ -1089,7 +1086,7 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values(0, 20, 40, 80, 100),
                        ::testing::Values(0, 1, 2, 4, 10, 20, 40)));
 
-class SelfProcessingTimeTest : public ::testing::TestWithParam<int64> {};
+class SelfProcessingTimeTest : public ::testing::TestWithParam<int64_t> {};
 
 TEST_P(SelfProcessingTimeTest, Model) {
   const int64_t add_times = GetParam();
@@ -1168,7 +1165,7 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
 }
 
 INSTANTIATE_TEST_SUITE_P(Test, OptimizeZeroRamBudgetTest,
-                         ::testing::Values(0, 1));
+                         ::testing::Values(0, 1, 2));
 
 TEST(RecordTimeTest, RecordTimeTest) {
   std::shared_ptr<Node> source = model::MakeSourceNode({});

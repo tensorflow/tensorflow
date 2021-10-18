@@ -482,6 +482,14 @@ class Interpreter {
   /// to disable multithreading, which is equivalent to setting num_threads
   /// to 1. If set to the value -1, the number of threads used will be
   /// implementation-defined and platform-dependent.
+  ///
+  /// As TfLite interpreter could internally apply a TfLite delegate by default
+  /// (i.e. XNNPACK), the number of threads that are available to the default
+  /// delegate *should be* set via InterpreterBuilder APIs as follows:
+  /// std::unique_ptr<tflite::Interpreter> interpreter;
+  /// tflite::InterpreterBuilder builder(tflite model, op resolver);
+  /// builder.SetNumThreads(...)
+  /// ASSERT_EQ(builder(&interpreter), kTfLiteOk);
   TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
@@ -512,7 +520,7 @@ class Interpreter {
   /// parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
   /// 'delegate' must outlive the interpreter.
-  /// Returns one of the following four status codes:
+  /// Returns one of the following status codes:
   /// 1. kTfLiteOk: Success.
   /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
   /// delegate, or the delegate parameter was null. The Interpreter has been
@@ -522,7 +530,10 @@ class Interpreter {
   /// incompatibility with the TfLite runtime, e.g., the model graph is already
   /// immutable when applying the delegate. However, the interpreter could still
   /// be invoked.
-  /// 4. kTfLiteError: Unexpected/runtime failure.
+  /// 4. kTfLiteUnresolvedOps: Delegation failed because the model has an
+  /// operator that cannot be resolved. This can happen when the op is not
+  /// registered or built with the TF Lite framework.
+  /// 5. kTfLiteError: Unexpected/runtime failure.
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
@@ -640,9 +651,9 @@ class Interpreter {
   // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
   // The runtime does NOT take ownership of the underlying memory.
   //
-  // NOTE: User needs to call AllocateTensors() after this. In case of input
-  // resizing, buffers will be checked for required data size during
-  // AllocateTensors().
+  // NOTE: User needs to call AllocateTensors() after this.
+  // Invalid/insufficient buffers will cause an error during AllocateTensors or
+  // Invoke (in case of dynamic shapes in the graph).
   //
   // Parameters should satisfy the following conditions:
   // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
@@ -662,14 +673,6 @@ class Interpreter {
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
 #ifndef DOXYGEN_SKIP
-  /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
-  /// entries. The value pointed to by `first_new_subgraph_index` will be set to
-  /// the index of the first new subgraph if `first_new_subgraph_index` is
-  /// non-null.
-  /// WARNING: This is an experimental API and subject to change.
-  void AddSubgraphs(int subgraphs_to_add,
-                    int* first_new_subgraph_index = nullptr);
-
   /// Return the number of subgraphs in the model.
   /// WARNING: This is an experimental API and subject to change.
   size_t subgraphs_size() const { return subgraphs_.size(); }
@@ -755,6 +758,9 @@ class Interpreter {
   // Returns true if delegates have been applied.
   bool HasDelegates();
 
+  // Returns true if the model has been fully delegated.
+  bool IsFullyDelegated() const;
+
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
@@ -770,6 +776,13 @@ class Interpreter {
   // Sets model metadata as a mapping of name (key) and buffer (value) strings.
   // Used by InterpreterBuilder, should be called after setting up subgraphs.
   TfLiteStatus SetMetadata(const std::map<std::string, std::string>& metadata);
+
+  /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
+  /// entries. The value pointed to by `first_new_subgraph_index` will be set to
+  /// the index of the first new subgraph if `first_new_subgraph_index` is
+  /// non-null.
+  void AddSubgraphs(int subgraphs_to_add,
+                    int* first_new_subgraph_index = nullptr);
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
@@ -825,7 +838,10 @@ class Interpreter {
   // Indicating delegates that the TFLite interpreter will apply by default.
   // An empty one means there's no delegate to be applied by default or
   // delegates have been applied and doesn't need to be applied again.
-  std::vector<TfLiteDelegatePtr> lazy_delegate_providers_;
+  using TfLiteDelegateCreator =
+      std::function<TfLiteDelegatePtr(int /*num_threads*/)>;
+  using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;
+  TfLiteDelegateCreators lazy_delegate_providers_;
 
   // List of SignatureDefs obtained from the model.
   std::vector<internal::SignatureDef> signature_defs_;

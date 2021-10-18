@@ -223,7 +223,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, cache->Lookup(uid, &entry));
 
   Tensor handle_output(DT_INT64, TensorShape({}));
-  handle_output.scalar<int64>()() = uid;
+  handle_output.scalar<int64_t>()() = uid;
   ctx->set_output(0, handle_output);
 
   xla::LocalExecutable* executable = entry->get().get_executable();
@@ -268,7 +268,7 @@ void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
   auto cache = cache_or.ConsumeValueOrDie();
 
   const Tensor& keys_tensor = ctx->input(0);
-  auto flat_keys = keys_tensor.flat<int64>();
+  auto flat_keys = keys_tensor.flat<int64_t>();
   for (int64_t i = 0; i < flat_keys.size(); ++i) {
     int64_t key = flat_keys(i);
     OP_REQUIRES_OK(ctx, cache->Release(key));

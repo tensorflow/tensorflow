@@ -63,7 +63,7 @@ class CallOptions {
   // Get and set operation timeout. Timeout value is in milliseconds.
   //
   // Default: 0. indicating there is no timeout for this call.
-  int64 GetTimeout();
+  int64_t GetTimeout();
   void SetTimeout(int64_t ms);
 
  private:
@@ -71,7 +71,7 @@ class CallOptions {
   CancelFunction cancel_func_ TF_GUARDED_BY(mu_);
 
   // RPC operation timeout in milliseconds.
-  int64 timeout_in_ms_ TF_GUARDED_BY(mu_) = 0;
+  int64_t timeout_in_ms_ TF_GUARDED_BY(mu_) = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CallOptions);
 };

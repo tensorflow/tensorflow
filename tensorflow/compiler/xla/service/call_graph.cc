@@ -38,10 +38,10 @@ string CallContextToString(CallContext context) {
   switch (context) {
     case CallContext::kNone:
       return "kNone";
-    case CallContext::kSequential:
-      return "kSequential";
-    case CallContext::kParallel:
-      return "kParallel";
+    case CallContext::kControlFlow:
+      return "kControlFlow";
+    case CallContext::kEmbedded:
+      return "kEmbedded";
     case CallContext::kBoth:
       return "kBoth";
   }
@@ -57,7 +57,7 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
-      return CallContext::kSequential;
+      return CallContext::kControlFlow;
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
@@ -69,7 +69,7 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kSort:
     case HloOpcode::kFusion:
     case HloOpcode::kCustomCall:
-      return CallContext::kParallel;
+      return CallContext::kEmbedded;
     default:
       return CallContext::kNone;
   }
@@ -112,8 +112,8 @@ void CallGraphNode::AddCallSiteForInstruction(HloInstruction* instruction) {
   CHECK_EQ(instruction->parent(), computation());
   const CallContext context = GetInstructionCallContext(instruction->opcode());
   if (!instruction->called_computations().empty()) {
-    CHECK(context == CallContext::kSequential ||
-          context == CallContext::kParallel);
+    CHECK(context == CallContext::kControlFlow ||
+          context == CallContext::kEmbedded);
     callsite_instructions_.insert({instruction, callsites_.size()});
     callsites_.push_back(
         CallSite(instruction, instruction->called_computations(), context));
@@ -202,7 +202,7 @@ void CallGraph::SetCallContexts() {
   for (const HloComputation* computation : module_->computations()) {
     CallGraphNode& node = GetNode(computation);
     if (node.callers().empty()) {
-      node.set_context(CallContext::kSequential);
+      node.set_context(CallContext::kControlFlow);
       worklist.push(&node);
     }
   }
@@ -218,10 +218,10 @@ void CallGraph::SetCallContexts() {
         // Update context of callee computation based on the callsite and its
         // current context.
         CallContext context_to_add;
-        if (callsite.context() == CallContext::kParallel) {
-          context_to_add = CallContext::kParallel;
+        if (callsite.context() == CallContext::kEmbedded) {
+          context_to_add = CallContext::kEmbedded;
         } else {
-          CHECK_EQ(callsite.context(), CallContext::kSequential);
+          CHECK_EQ(callsite.context(), CallContext::kControlFlow);
           context_to_add = node->context();
         }
         CallContext new_context =
@@ -360,7 +360,7 @@ bool CallGraph::IsFlattened() const {
     if (node.context() == CallContext::kBoth) {
       return false;
     }
-    if (node.context() == CallContext::kSequential &&
+    if (node.context() == CallContext::kControlFlow &&
         node.caller_callsites().size() > 1) {
       return false;
     }

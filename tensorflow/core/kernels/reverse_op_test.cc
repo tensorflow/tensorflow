@@ -127,7 +127,7 @@ TEST_F(ReverseOpTest, Reverse_0_float) { Reverse_0<float>(); }
 
 TEST_F(ReverseOpTest, Reverse_0_int32) { Reverse_0<int32>(); }
 
-TEST_F(ReverseOpTest, Reverse_0_int64) { Reverse_0<int64>(); }
+TEST_F(ReverseOpTest, Reverse_0_int64) { Reverse_0<int64_t>(); }
 
 TEST_F(ReverseOpTest, Reverse_0_double) { Reverse_0<double>(); }
 
@@ -147,7 +147,7 @@ TEST_F(ReverseOpTest, Reverse_234_float) { Reverse_234<float>(); }
 
 TEST_F(ReverseOpTest, Reverse_234_int32) { Reverse_234<int32>(); }
 
-TEST_F(ReverseOpTest, Reverse_234_int64) { Reverse_234<int64>(); }
+TEST_F(ReverseOpTest, Reverse_234_int64) { Reverse_234<int64_t>(); }
 
 TEST_F(ReverseOpTest, Reverse_234_double) { Reverse_234<double>(); }
 
@@ -167,7 +167,7 @@ TEST_F(ReverseOpTest, Reverse_1234_float) { Reverse_1234<float>(); }
 
 TEST_F(ReverseOpTest, Reverse_1234_int32) { Reverse_1234<int32>(); }
 
-TEST_F(ReverseOpTest, Reverse_1234_int64) { Reverse_1234<int64>(); }
+TEST_F(ReverseOpTest, Reverse_1234_int64) { Reverse_1234<int64_t>(); }
 
 TEST_F(ReverseOpTest, Reverse_1234_double) { Reverse_1234<double>(); }
 
@@ -206,7 +206,7 @@ static void RunReverseRowsBenchmark(::testing::benchmark::State& state,
                   /*old_benchmark_api*/ false)
       .Run(state);
   const int64_t num_items =
-      static_cast<int64>(state.iterations()) * shape.num_elements();
+      static_cast<int64_t>(state.iterations()) * shape.num_elements();
   state.SetItemsProcessed(num_items);
   state.SetBytesProcessed(num_items * sizeof(T));
 }

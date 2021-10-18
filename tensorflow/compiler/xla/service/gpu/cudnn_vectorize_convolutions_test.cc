@@ -103,6 +103,26 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4) {
   EXPECT_EQ(dnums.output_feature_dimension(), 3);
 }
 
+TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4UnsupportedFilterType) {
+  // This test checks that the vectorize pass correctly calls
+  // CudnnSupportsOptimizedIntegerConvolution() which should reject this
+  // convolution because its filter type is f32.
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    input = s8[10,20,30,40] parameter(0)
+    filter = f32[2,2,40,44] parameter(1)
+    ROOT result = (s8[10,20,30,44], u8[0]) custom-call(input, filter),
+                  window={size=2x2}, dim_labels=b01f_01io->b01f,
+                  custom_call_target="__cudnn$convForward",
+                  backend_config="{bar: 0}"
+  })")
+                    .ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
+  EXPECT_FALSE(changed);
+}
+
 TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4NCHW) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule TestModule

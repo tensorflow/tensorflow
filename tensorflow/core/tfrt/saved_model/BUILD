@@ -35,12 +35,14 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:saved_model",
         "//tensorflow/compiler/mlir/tfrt:tf_cpurt_kernels_alwayslink",
         "//tensorflow/compiler/mlir/tfrt:tf_cpurt_request_context",
+        "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:session_options",
         "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/platform:enable_tf2_utils",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/profiler/lib:connected_traceme",
@@ -53,10 +55,11 @@ cc_library(
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/tfrt/fallback:fallback_state",
-        "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
+        "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/tpu:tpu_resources",
         "//tensorflow/core/tfrt/utils",
+        "//tensorflow/core/tfrt/utils:bridge_graph_analysis",
         "//tensorflow/core/tfrt/utils:error_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:model_metadata",
@@ -74,12 +77,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "saved_model_fallback_only",
-    actual = ":saved_model",
-    tags = ["no_oss"],
-)
-
 cc_library(
     name = "saved_model_testutil",
     testonly = 1,
@@ -91,16 +88,10 @@ cc_library(
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
-        "//tensorflow/core/tfrt/runtime:runtime_fallback_only",
+        "//tensorflow/core/tfrt/runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
     ],
-)
-
-alias(
-    name = "saved_model_testutil_fallback_only",
-    actual = ":saved_model_testutil",
-    tags = ["no_oss"],
 )
 
 cc_library(

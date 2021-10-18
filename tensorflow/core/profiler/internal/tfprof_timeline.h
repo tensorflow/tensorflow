@@ -51,7 +51,7 @@ class ChromeTraceFormatter {
 
   void EmitCounter(const string& category, const string& name, int64_t pid,
                    int64_t ts, const string& device, int64_t bytes,
-                   const std::map<int64, std::vector<string>>& tensor_mem);
+                   const std::map<int64_t, std::vector<string>>& tensor_mem);
 
   string Format();
 
@@ -67,11 +67,11 @@ class Process {
   Process(const string& device, int64_t pid) : device(device), pid(pid) {}
 
   // Each lane is a map from start_time to end_time.
-  std::vector<std::map<int64, int64>> lanes;
+  std::vector<std::map<int64_t, int64_t>> lanes;
   // device for the time series.
   string device;
   // unique id for the time series.
-  int64 pid;
+  int64_t pid;
 };
 
 class TimeNode {
@@ -89,9 +89,9 @@ class TimeNode {
 
   Process* process;
   GraphNode* node;
-  int64 start_micros;
-  int64 exec_micros;
-  int64 tid;
+  int64_t start_micros;
+  int64_t exec_micros;
+  int64_t tid;
   std::vector<TimeNode*> next_tnodes;
 };
 
@@ -105,11 +105,11 @@ class MemoryTracker {
   class Device {
    public:
     // map from tensor name to a pair of <alloc time, bytes_in_use>.
-    std::map<string, std::map<int64, int64>> tensor_allocs;
+    std::map<string, std::map<int64_t, int64_t>> tensor_allocs;
     // ground truth memory stats. time->bytes.
-    std::map<int64, int64> allocations;
+    std::map<int64_t, int64_t> allocations;
     // tracked allocations, might miss some bytes.
-    std::map<int64, int64> tracked_allocations;
+    std::map<int64_t, int64_t> tracked_allocations;
   };
 
   void TrackNode(int64_t step, const GraphNode* node);
@@ -126,7 +126,7 @@ class Timeline {
       : step_(step), outfile_(outfile) {}
   ~Timeline() {}
 
-  int64 step() const { return step_; }
+  int64_t step() const { return step_; }
   void SetStep(int64_t step) { step_ = step; }
 
   void GenerateGraphTimeline(const std::vector<GraphNode*>& gnodes);
@@ -142,7 +142,7 @@ class Timeline {
 
   template <typename Node>
   void EmitTreeNode(const Node* node, int64_t start_time, int64_t duration,
-                    int64_t depth, std::set<int64>* visited_depth) {
+                    int64_t depth, std::set<int64_t>* visited_depth) {
     if (visited_depth->find(depth) == visited_depth->end()) {
       chrome_formatter_.EmitPID(absl::StrCat("Scope:", depth), depth);
       visited_depth->insert(depth);
@@ -174,18 +174,19 @@ class Timeline {
 
   void AllocateLanes();
 
-  int64 AllocatePID();
+  int64_t AllocatePID();
 
-  int64 step_;
+  int64_t step_;
   const string outfile_;
-  int64 next_pid_ = 0;
+  int64_t next_pid_ = 0;
   MemoryTracker mem_tracker_;
   ChromeTraceFormatter chrome_formatter_;
-  std::map<string, int64> device_pids_;
+  std::map<string, int64_t> device_pids_;
 
   std::map<string, std::unique_ptr<Process>> process_;
-  std::map<int64, std::map<int64, std::map<int64, TimeNode*>>> alloc_nodes_;
-  std::map<string, std::map<int64, std::unique_ptr<TimeNode>>> tnodes_;
+  std::map<int64_t, std::map<int64_t, std::map<int64_t, TimeNode*>>>
+      alloc_nodes_;
+  std::map<string, std::map<int64_t, std::unique_ptr<TimeNode>>> tnodes_;
 };
 
 }  // namespace tfprof

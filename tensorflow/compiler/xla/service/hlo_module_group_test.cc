@@ -172,7 +172,7 @@ ENTRY entry {
   // companion instructions remain in the same order.
   const int64_t kTrialCount = 5;
   const int64_t kDeviceCount = 10;
-  std::vector<int64> companion_order;
+  std::vector<int64_t> companion_order;
 
   for (int64_t t = 0; t < kTrialCount; ++t) {
     HloModuleGroup group(TestName());
@@ -191,7 +191,7 @@ ENTRY entry {
                             HloModuleGroupMetadata::Build(group.modules()));
     ASSERT_EQ(metadata->companion_sets().size(), 1);
 
-    std::vector<int64> module_ids;
+    std::vector<int64_t> module_ids;
     for (HloInstruction* companion : *metadata->companion_sets()[0]) {
       module_ids.push_back(metadata->GetModuleId(companion->GetModule()));
     }

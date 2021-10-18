@@ -14,10 +14,6 @@
 # ==============================================================================
 """Bring in all of the public TensorFlow interface into this module."""
 
-from __future__ import absolute_import as _absolute_import
-from __future__ import division as _division
-from __future__ import print_function as _print_function
-
 import distutils as _distutils
 import inspect as _inspect
 import os as _os
@@ -66,6 +62,13 @@ elif _tf_api_dir not in __path__:
 # reexport_tf_summary can get compat from sys.modules. Only needed if using
 # lazy loading.
 _current_module.compat.v2  # pylint: disable=pointless-statement
+
+# Load tensorflow-io-gcs-filesystem if enabled
+# pylint: disable=g-import-not-at-top
+if (_os.getenv('TF_USE_MODULAR_FILESYSTEM', '0') == 'true' or
+    _os.getenv('TF_USE_MODULAR_FILESYSTEM', '0') == '1'):
+  import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
+# pylint: enable=g-import-not-at-top
 
 # Lazy-load estimator.
 _estimator_module = "tensorflow_estimator.python.estimator.api._v1.estimator"
@@ -138,6 +141,15 @@ if hasattr(_current_module, "keras"):
   except ImportError:
     pass
 
+# Do an eager load for Keras' code so that any function/method that needs to
+# happen at load time will trigger, eg registration of optimizers in the
+# SavedModel registry.
+if hasattr(_current_module, "keras"):
+  try:
+    keras._load()
+  except ImportError:
+    pass
+
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
 # TODO(gunan): Enable setting an environment variable to define arbitrary plugin
@@ -167,13 +179,15 @@ def _running_from_pip_package():
 
 if _running_from_pip_package():
   # TODO(gunan): Add sanity checks to loaded modules here.
-  for _s in _site_packages_dirs:
-    # Load first party dynamic kernels.
-    _main_dir = _os.path.join(_s, 'tensorflow/core/kernels')
-    if _os.path.exists(_main_dir):
-      _ll.load_library(_main_dir)
 
-    # Load third party dynamic kernels.
+  # Load first party dynamic kernels.
+  _tf_dir = _os.path.dirname(_current_file_location)
+  _kernel_dir = _os.path.join(_tf_dir, 'core', 'kernels')
+  if _os.path.exists(_kernel_dir):
+    _ll.load_library(_kernel_dir)
+
+  # Load third party dynamic kernels.
+  for _s in _site_packages_dirs:
     _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
     if _os.path.exists(_plugin_dir):
       _ll.load_library(_plugin_dir)

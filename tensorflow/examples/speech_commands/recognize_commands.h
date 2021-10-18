@@ -68,10 +68,10 @@ class RecognizeCommands {
   int32 minimum_count_;
 
   // Working variables
-  std::deque<std::pair<int64, Tensor>> previous_results_;
+  std::deque<std::pair<int64_t, Tensor>> previous_results_;
   string previous_top_label_;
-  int64 labels_count_;
-  int64 previous_top_label_time_;
+  int64_t labels_count_;
+  int64_t previous_top_label_time_;
 };
 
 }  // namespace tensorflow

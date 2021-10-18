@@ -90,7 +90,7 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
   // We consider estimate the live ranges of all-gathers by comparing their
   // users' distance to the root, e.g., height.
   bool changed = false;
-  absl::flat_hash_map<const HloInstruction*, int64> height;
+  absl::flat_hash_map<const HloInstruction*, int64_t> height;
   auto ordered_hlos = comp->MakeInstructionPostOrder();
   int64_t max_height = 0;
   for (auto it = ordered_hlos.rbegin(); it != ordered_hlos.rend(); ++it) {

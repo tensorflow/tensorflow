@@ -25,7 +25,7 @@ namespace tfd {
 tfrt::ExecutionContext CreateFallbackTestExecutionContext(
     tfrt::HostContext* host, tfrt::ResourceContext* resource_context,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool) {
-  static std::atomic<int64> id{0};
+  static std::atomic<int64_t> id{0};
 
   // We should better decouple eager context and resource context. In prod code,
   // we shouldn't store eager context in resource context.

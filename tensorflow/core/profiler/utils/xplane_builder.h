@@ -133,6 +133,9 @@ class XStatsBuilder {
   static void SetStatValue(double value, XStat* stat) {
     stat->set_double_value(value);
   }
+  static void SetStatValue(const char* value, XStat* stat) {
+    stat->set_str_value(std::string(value));
+  }
   static void SetStatValue(absl::string_view value, XStat* stat) {
     stat->set_str_value(std::string(value));
   }
@@ -190,8 +193,8 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
   XEventBuilder(const XLine* line, XPlaneBuilder* plane, XEvent* event)
       : XStatsBuilder<XEvent>(event, plane), line_(line), event_(event) {}
 
-  int64 OffsetPs() const { return event_->offset_ps(); }
-  int64 MetadataId() const { return event_->metadata_id(); }
+  int64_t OffsetPs() const { return event_->offset_ps(); }
+  int64_t MetadataId() const { return event_->metadata_id(); }
 
   void SetOffsetPs(int64_t offset_ps) { event_->set_offset_ps(offset_ps); }
 
@@ -239,10 +242,10 @@ class XLineBuilder {
   // Returns the owner plane.
   XPlaneBuilder* Plane() const { return plane_; }
 
-  int64 Id() const { return line_->id(); }
+  int64_t Id() const { return line_->id(); }
   void SetId(int64_t id) { line_->set_id(id); }
 
-  int64 NumEvents() const { return line_->events_size(); }
+  int64_t NumEvents() const { return line_->events_size(); }
 
   absl::string_view Name() const { return line_->name(); }
   void SetName(absl::string_view name) { line_->set_name(std::string(name)); }
@@ -251,7 +254,7 @@ class XLineBuilder {
     if (line_->name().empty()) SetName(name);
   }
 
-  int64 TimestampNs() const { return line_->timestamp_ns(); }
+  int64_t TimestampNs() const { return line_->timestamp_ns(); }
   // This will set the line start timestamp.
   // WARNING: The offset_ps of existing events will not be altered.
   void SetTimestampNs(int64_t timestamp_ns) {
@@ -296,7 +299,7 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
  public:
   explicit XPlaneBuilder(XPlane* plane);
 
-  int64 Id() const { return plane_->id(); }
+  int64_t Id() const { return plane_->id(); }
   void SetId(int64_t id) { plane_->set_id(id); }
 
   absl::string_view Name() const { return plane_->name(); }
@@ -369,11 +372,11 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   XPlane* plane_;
 
   // Artifacts to accelerate the builders.
-  int64 last_event_metadata_id_ = 0LL;
-  int64 last_stat_metadata_id_ = 0LL;
+  int64_t last_event_metadata_id_ = 0LL;
+  int64_t last_stat_metadata_id_ = 0LL;
   absl::flat_hash_map<std::string, XEventMetadata*> event_metadata_by_name_;
   absl::flat_hash_map<std::string, XStatMetadata*> stat_metadata_by_name_;
-  absl::flat_hash_map<int64, XLine*> lines_by_id_;
+  absl::flat_hash_map<int64_t, XLine*> lines_by_id_;
 };
 
 template <typename T>

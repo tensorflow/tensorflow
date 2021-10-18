@@ -125,26 +125,25 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                         BCastArgsOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int64>("T")
+                            .TypeConstraint<int64_t>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0"),
-                        BCastArgsOp<int64>);
+                        BCastArgsOp<int64_t>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0"),
                         BCastArgsOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int64>("T")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int64_t>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0"),
-                        BCastArgsOp<int64>);
-
+                        BCastArgsOp<int64_t>);
 
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_CPU)
@@ -156,14 +155,14 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                         BCastGradArgsOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int64>("T")
+                            .TypeConstraint<int64_t>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0")
                             .HostMemory("r1"),
-                        BCastGradArgsOp<int64>);
+                        BCastGradArgsOp<int64_t>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
@@ -171,12 +170,12 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .HostMemory("r1"),
                         BCastGradArgsOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int64>("T")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int64_t>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0")
                             .HostMemory("r1"),
-                        BCastGradArgsOp<int64>);
+                        BCastGradArgsOp<int64_t>);
 
 }  // end namespace tensorflow

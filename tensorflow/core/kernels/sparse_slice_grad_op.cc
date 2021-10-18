@@ -86,9 +86,9 @@ class SparseSliceGradOp : public OpKernel {
     memset(val_grad_flat, 0, sizeof(T) * input_nnz);
 
     // Fill gradients for position where indices of input and output are same.
-    const auto input_indices_mat = input_indices->matrix<int64>();
-    const auto output_indices_mat = output_indices->matrix<int64>();
-    const auto input_start_flat = input_start->flat<int64>();
+    const auto input_indices_mat = input_indices->matrix<int64_t>();
+    const auto output_indices_mat = output_indices->matrix<int64_t>();
+    const auto input_start_flat = input_start->flat<int64_t>();
     int64_t j = 0;
     for (int64_t i = 0; i < input_nnz && j < backprop_val_grad->NumElements();
          ++i) {

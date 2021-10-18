@@ -41,7 +41,7 @@ static StatusOr<bool> PadForGemm(HloDotInstruction* dot, PrimitiveType datatype,
 
   auto pad_dim = [&](Shape& s, int dim) {
     s.set_dimensions(
-        dim, RoundUpToNearest<int64>(s.dimensions(dim), pad_to_multiple_of));
+        dim, RoundUpToNearest<int64_t>(s.dimensions(dim), pad_to_multiple_of));
   };
 
   auto pad_matrix_dims = [&pad_dim](Shape s) {
@@ -97,8 +97,8 @@ static StatusOr<bool> PadForGemm(HloDotInstruction* dot, PrimitiveType datatype,
   HloInstruction* new_dot = parent->AddInstruction(
       dot->CloneWithNewOperands(new_result_shape, {lpad, rpad}));
 
-  std::vector<int64> start_indices(result_shape.rank(), 0);
-  std::vector<int64> strides(result_shape.rank(), 1);
+  std::vector<int64_t> start_indices(result_shape.rank(), 0);
+  std::vector<int64_t> strides(result_shape.rank(), 1);
   HloInstruction* slice = parent->AddInstruction(
       HloInstruction::CreateSlice(result_shape, new_dot, start_indices,
                                   result_shape.dimensions(), strides));
@@ -131,7 +131,7 @@ bool CheckCanonical(HloDotInstruction* dot) {
     return false;
   }
 
-  std::vector<int64> canonical_batch_dims(
+  std::vector<int64_t> canonical_batch_dims(
       dimension_numbers.lhs_batch_dimensions_size());
   absl::c_iota(canonical_batch_dims, 0);
   if (!absl::c_equal(dimension_numbers.lhs_batch_dimensions(),

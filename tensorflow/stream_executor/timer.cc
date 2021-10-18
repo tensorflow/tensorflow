@@ -29,8 +29,8 @@ Timer::Timer(StreamExecutor *parent)
 
 Timer::~Timer() { parent_->DeallocateTimer(this); }
 
-uint64 Timer::Microseconds() const { return implementation_->Microseconds(); }
+uint64_t Timer::Microseconds() const { return implementation_->Microseconds(); }
 
-uint64 Timer::Nanoseconds() const { return implementation_->Nanoseconds(); }
+uint64_t Timer::Nanoseconds() const { return implementation_->Nanoseconds(); }
 
 }  // namespace stream_executor

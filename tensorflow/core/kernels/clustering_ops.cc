@@ -45,7 +45,7 @@ using RowMajorMatrix =
     Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
 using MatrixXfRowMajor = RowMajorMatrix<float>;
-using MatrixXi64RowMajor = RowMajorMatrix<int64>;
+using MatrixXi64RowMajor = RowMajorMatrix<int64_t>;
 
 // Ideally this should be computed by dividing L3 cache size by the number of
 // physical CPUs. Since there isn't a portable method to do this, we are using
@@ -58,13 +58,13 @@ const int64_t kNearestNeighborsCentersMaxBlockSize = 1024;
 const int64_t kNearestNeighborsPointsMinBlockSize = 16;
 
 // Returns the smallest multiple of a that is not smaller than b.
-int64 NextMultiple(int64_t a, int64_t b) {
+int64_t NextMultiple(int64_t a, int64_t b) {
   const int64_t remainder = b % a;
   return remainder == 0 ? b : (b + a - remainder);
 }
 
 // Returns a / b rounded up to the next higher integer.
-int64 CeilOfRatio(int64_t a, int64_t b) { return (a + b - 1) / b; }
+int64_t CeilOfRatio(int64_t a, int64_t b) { return (a + b - 1) / b; }
 
 }  // namespace
 
@@ -100,12 +100,12 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
 
     const int64_t num_points = points_tensor.dim_size(0);
     const int64_t point_dimensions = points_tensor.dim_size(1);
-    const int64_t num_to_sample = num_to_sample_tensor.scalar<int64>()();
-    const int64_t seed = seed_tensor.scalar<int64>()();
+    const int64_t num_to_sample = num_to_sample_tensor.scalar<int64_t>()();
+    const int64_t seed = seed_tensor.scalar<int64_t>()();
     const int64_t num_retries_per_sample = [&]() {
-      const int64_t value = num_retries_per_sample_tensor.scalar<int64>()();
+      const int64_t value = num_retries_per_sample_tensor.scalar<int64_t>()();
       return value >= 0 ? value
-                        : 2 + static_cast<int64>(std::log(num_to_sample));
+                        : 2 + static_cast<int64_t>(std::log(num_to_sample));
     }();
 
     OP_REQUIRES(context, num_points > 0,
@@ -130,7 +130,7 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
     Eigen::Map<MatrixXfRowMajor> sampled_points(
         output_sampled_points_tensor->matrix<float>().data(), num_to_sample,
         point_dimensions);
-    std::unordered_set<int64> sampled_indices;
+    std::unordered_set<int64_t> sampled_indices;
 
     random::PhiloxRandom random(seed);
     random::SimplePhilox rng(&random);
@@ -242,7 +242,7 @@ class KMC2ChainInitializationOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(seed_tensor.shape()),
                 InvalidArgument("Input seed should be a scalar."));
     const int64_t num_points = distances_tensor.dim_size(0);
-    const int64_t seed = seed_tensor.scalar<int64>()();
+    const int64_t seed = seed_tensor.scalar<int64_t>()();
     OP_REQUIRES(context, num_points > 0,
                 InvalidArgument("Expected distances_tensor.size() > 0."));
 
@@ -268,7 +268,7 @@ class KMC2ChainInitializationOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}),
                                             &output_sampled_index_tensor));
-    auto output = output_sampled_index_tensor->scalar<int64>();
+    auto output = output_sampled_index_tensor->scalar<int64_t>();
     // Return the last state of the Markov chain as the new center.
     output() = selected_index;
   }
@@ -315,7 +315,8 @@ class NearestNeighborsOp : public OpKernel {
         points_tensor.matrix<float>().data(), num_points, point_dimensions);
     const Eigen::Map<const MatrixXfRowMajor> centers(
         centers_tensor.matrix<float>().data(), num_centers, center_dimensions);
-    const int64_t k = std::min<int64>(num_centers, k_tensor.scalar<int64>()());
+    const int64_t k =
+        std::min<int64_t>(num_centers, k_tensor.scalar<int64_t>()());
 
     Tensor* output_nearest_center_indices_tensor;
     Tensor* output_nearest_center_distances_tensor;
@@ -329,7 +330,7 @@ class NearestNeighborsOp : public OpKernel {
     if (k == 0) return;
 
     Eigen::Map<MatrixXi64RowMajor> nearest_center_indices(
-        output_nearest_center_indices_tensor->matrix<int64>().data(),
+        output_nearest_center_indices_tensor->matrix<int64_t>().data(),
         num_points, k);
     Eigen::Map<MatrixXfRowMajor> nearest_center_distances(
         output_nearest_center_distances_tensor->matrix<float>().data(),
@@ -380,9 +381,9 @@ class NearestNeighborsOp : public OpKernel {
     const int64_t available_memory_budget =
         total_memory_budget - bytes_for_centers;
     // That memory budget is shared by all threads.
-    const int64_t rows_per_block =
-        std::max<int64>(kNearestNeighborsPointsMinBlockSize,
-                        available_memory_budget / num_threads / bytes_per_row);
+    const int64_t rows_per_block = std::max<int64_t>(
+        kNearestNeighborsPointsMinBlockSize,
+        available_memory_budget / num_threads / bytes_per_row);
     // Divide rows into almost uniformly-sized units of work that are small
     // enough for the memory budget (rows_per_block). Round up to a multiple of
     // the number of threads.
@@ -467,7 +468,7 @@ class NearestNeighborsOp : public OpKernel {
       }
     } else {
       // Select k nearest centers for each point.
-      using Center = std::pair<float, int64>;
+      using Center = std::pair<float, int64_t>;
       const int64_t num_centers = centers.rows();
       gtl::TopN<Center, std::less<Center>> selector(k);
       std::unique_ptr<std::vector<Center>> nearest_centers;
@@ -514,7 +515,7 @@ class NearestNeighborsOp : public OpKernel {
     // update the output matrices.
     MatrixXi64RowMajor block_nearest_center_indices(num_points, k);
     MatrixXfRowMajor block_nearest_center_distances(num_points, k);
-    Eigen::Matrix<int64, 1, Eigen::Dynamic> merged_indices(k);
+    Eigen::Matrix<int64_t, 1, Eigen::Dynamic> merged_indices(k);
     Eigen::Matrix<float, 1, Eigen::Dynamic> merged_distances(k);
     for (int64_t centers_start = kNearestNeighborsCentersMaxBlockSize;
          centers_start < num_centers;

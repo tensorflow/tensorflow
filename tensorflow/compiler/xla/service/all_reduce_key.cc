@@ -23,7 +23,8 @@ namespace xla {
 // Returns a key that will be equal for all-reduce instructions that are
 // compatible with each other, and hence might be combined, or different if not.
 absl::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
-                                             const HloDomainMap* domain_map) {
+                                             const HloDomainMap* domain_map,
+                                             bool ignore_replica_groups) {
   if (instruction->opcode() != HloOpcode::kAllReduce &&
       instruction->opcode() != HloOpcode::kReduceScatter) {
     return absl::nullopt;
@@ -38,11 +39,13 @@ absl::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
   const auto* ar = Cast<HloAllReduceInstructionBase>(instruction);
 
   std::vector<std::vector<int64_t>> replica_groups;
-  replica_groups.reserve(ar->replica_groups().size());
-  for (const ReplicaGroup& replica_group : ar->replica_groups()) {
-    replica_groups.push_back(
-        std::vector<int64_t>(replica_group.replica_ids().begin(),
-                             replica_group.replica_ids().end()));
+  if (!ignore_replica_groups) {
+    replica_groups.reserve(ar->replica_groups().size());
+    for (const ReplicaGroup& replica_group : ar->replica_groups()) {
+      replica_groups.push_back(
+          std::vector<int64_t>(replica_group.replica_ids().begin(),
+                               replica_group.replica_ids().end()));
+    }
   }
 
   const HloInstruction* to_apply_root = ar->to_apply()->root_instruction();

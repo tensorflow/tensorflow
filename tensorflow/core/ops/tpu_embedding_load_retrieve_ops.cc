@@ -50,6 +50,30 @@ REGISTER_OP("RetrieveTPUEmbeddingAdagradParameters")
     .SetIsStateful()
     .SetShapeFn(RetrieveOpShapeFunction());
 
+REGISTER_OP("LoadTPUEmbeddingAdagradMomentumParameters")
+    .Input("parameters: float32")
+    .Input("accumulators: float32")
+    .Input("momenta: float32")
+    .Attr("table_id: int = -1")
+    .Attr("table_name: string = \"\"")
+    .Attr("num_shards: int")
+    .Attr("shard_id: int")
+    .Attr("config: string = \"\"")
+    .SetIsStateful()
+    .SetShapeFn(LoadOpShapeFunction());
+
+REGISTER_OP("RetrieveTPUEmbeddingAdagradMomentumParameters")
+    .Output("parameters: float32")
+    .Output("accumulators: float32")
+    .Output("momenta: float32")
+    .Attr("table_id: int = -1")
+    .Attr("table_name: string = \"\"")
+    .Attr("num_shards: int")
+    .Attr("shard_id: int")
+    .Attr("config: string = \"\"")
+    .SetIsStateful()
+    .SetShapeFn(RetrieveOpShapeFunction());
+
 REGISTER_OP("LoadTPUEmbeddingStochasticGradientDescentParameters")
     .Input("parameters: float32")
     .Attr("table_id: int = -1")

@@ -40,8 +40,8 @@ namespace sparse {
 
 class SparseTensor {
  public:
-  typedef typename gtl::ArraySlice<int64> VarDimArray;
-  typedef typename gtl::InlinedVector<int64, 8> ShapeArray;
+  typedef typename gtl::ArraySlice<int64_t> VarDimArray;
+  typedef typename gtl::InlinedVector<int64_t, 8> ShapeArray;
 
   static Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
                        const VarDimArray order, SparseTensor* result);
@@ -178,12 +178,12 @@ class SparseTensor {
   // index at each dimension and the size is the size at each dimension.
   template <typename T>
   static SparseTensor Slice(const SparseTensor& tensor,
-                            const gtl::ArraySlice<int64>& start,
-                            const gtl::ArraySlice<int64>& size);
+                            const gtl::ArraySlice<int64_t>& start,
+                            const gtl::ArraySlice<int64_t>& size);
 
   // Picks out the dimensions according to `dim_indices`.
-  std::vector<int64> PickDims(gtl::ArraySlice<int64> dim_indices) const {
-    std::vector<int64> res(dim_indices.size());
+  std::vector<int64_t> PickDims(gtl::ArraySlice<int64_t> dim_indices) const {
+    std::vector<int64_t> res(dim_indices.size());
     for (size_t i = 0; i < dim_indices.size(); ++i) {
       res[i] = shape_[dim_indices[i]];
     }
@@ -273,10 +273,10 @@ inline void SparseTensor::Reorder(const VarDimArray& order) {
   DCHECK_EQ(DataTypeToEnum<T>::v(), dtype())
       << "Reorder requested with the wrong datatype";
   DCHECK_EQ(order.size(), dims_) << "Order length must be SparseTensor rank";
-  auto ix_t = ix_.matrix<int64>();
+  auto ix_t = ix_.matrix<int64_t>();
   auto vals_t = vals_.vec<T>();
 
-  std::vector<int64> reorder(num_entries());
+  std::vector<int64_t> reorder(num_entries());
   std::iota(reorder.begin(), reorder.end(), 0);
 
   // Sort to get order of indices
@@ -362,8 +362,8 @@ inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 
   auto out_t = out->flat<T>();
   auto vals_t = vals_.vec<T>();
-  auto ix_t = ix_.matrix<int64>();
-  const int64* const ix_ptr = ix_t.data();
+  auto ix_t = ix_.matrix<int64_t>();
+  const int64_t* const ix_ptr = ix_t.data();
 
   if (dims_ == 1) {
     // Fast path for sparse vectors.
@@ -391,7 +391,7 @@ inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
     return true;
   } else {
     // General path for N-dimensional sparse tensors.
-    gtl::InlinedVector<int64, 4> strides(dims_);
+    gtl::InlinedVector<int64_t, 4> strides(dims_);
     const auto& out_shape = out->shape().dim_sizes();
     if (dims_ > 0) {
       strides[dims_ - 1] = 1;
@@ -465,7 +465,7 @@ inline SparseTensor SparseTensor::Concat(
   Tensor output_ix(DT_INT64, TensorShape({num_entries, dims}));
   Tensor output_vals(DataTypeToEnum<T>::v(), TensorShape({num_entries}));
 
-  TTypes<int64>::Matrix ix_t = output_ix.matrix<int64>();
+  TTypes<int64_t>::Matrix ix_t = output_ix.matrix<int64_t>();
   typename TTypes<T>::Vec vals_t = output_vals.vec<T>();
 
   Eigen::DenseIndex offset = 0;
@@ -477,7 +477,7 @@ inline SparseTensor SparseTensor::Concat(
     if (st_num_entries > 0) {
       std::copy_n(&st.vals_.vec<T>()(0), st_num_entries, &vals_t(offset));
 
-      const auto* st_ix = &st.ix_.matrix<int64>()(0, 0);
+      const auto* st_ix = &st.ix_.matrix<int64_t>()(0, 0);
       auto* ix_out = &ix_t(offset, 0);
       for (std::size_t i = 0; i < st_num_entries * dims; ++i) {
         *ix_out++ = *st_ix++ + ((i % dims == primary_dim) ? shape_offset : 0);
@@ -502,12 +502,12 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
   output_values.reserve(num_split);
   output_shapes.reserve(num_split);
 
-  std::vector<typename TTypes<int64>::Matrix> output_indices_t;
+  std::vector<typename TTypes<int64_t>::Matrix> output_indices_t;
   std::vector<typename TTypes<T>::Vec> output_values_t;
   output_indices_t.reserve(num_split);
   output_values_t.reserve(num_split);
   auto input_values_t = input_tensor.values().vec<T>();
-  auto input_indices_t = input_tensor.indices().matrix<int64>();
+  auto input_indices_t = input_tensor.indices().matrix<int64_t>();
 
   std::vector<int> num_values(num_split, 0);
   const int num_dim = input_tensor.shape().size();
@@ -525,7 +525,7 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
 
   const int residual = split_dim_size % num_split;
   for (int i = 0; i < input_tensor.indices().dim_size(0); ++i) {
-    const int dim = input_tensor.indices().matrix<int64>()(i, split_dim);
+    const int dim = input_tensor.indices().matrix<int64_t>()(i, split_dim);
     int slice_index = GetSliceIndex(dim, split_size, residual);
     if (slice_index >= num_values.size()) {
       return errors::InvalidArgument("Slice index ", slice_index,
@@ -541,7 +541,7 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
     output_values.emplace_back(DataTypeToEnum<T>::v(),
                                TensorShape({num_values[i]}));
     output_shapes.emplace_back(input_tensor.shape());
-    output_indices_t.emplace_back(output_indices[i].matrix<int64>());
+    output_indices_t.emplace_back(output_indices[i].matrix<int64_t>());
     output_values_t.emplace_back(output_values[i].vec<T>());
     const int size = GetSliceShape(i, split_size, residual);
     output_shapes[i].set_dim(split_dim, size);
@@ -578,8 +578,8 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
 
 template <typename T>
 inline SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
-                                        const gtl::ArraySlice<int64>& start,
-                                        const gtl::ArraySlice<int64>& size) {
+                                        const gtl::ArraySlice<int64_t>& start,
+                                        const gtl::ArraySlice<int64_t>& size) {
   TensorShape output_shape(input_tensor.shape());
 
   const int dims = input_tensor.dims();
@@ -602,7 +602,7 @@ inline SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
     }
   }
 
-  auto input_indices_t = input_tensor.indices().matrix<int64>();
+  auto input_indices_t = input_tensor.indices().matrix<int64_t>();
   auto input_values_t = input_tensor.values().vec<T>();
 
   // Find the number of indices that fall inside start and size.
@@ -633,7 +633,7 @@ inline SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
   Tensor output_indices(DT_INT64, TensorShape({count, dims}));
 
   auto output_values_t = output_values.vec<T>();
-  auto output_indices_t = output_indices.matrix<int64>();
+  auto output_indices_t = output_indices.matrix<int64_t>();
 
   // Obtain the output indices that fall inside start and size.
   int index = 0;

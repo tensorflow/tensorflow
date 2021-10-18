@@ -477,10 +477,10 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
  private:
   std::vector<int32> strides_;
   Padding padding_;
-  std::vector<int64> explicit_paddings_;
+  std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
 
-  int64 stride_;  // in height/width dimension.
+  int64_t stride_;  // in height/width dimension.
 
   // For in_depth == 1 and grouped convolutions.
   LaunchConv2DOp<Device, T> launcher_;

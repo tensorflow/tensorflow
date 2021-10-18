@@ -145,7 +145,7 @@ static DeviceAttributes BuildXlaDeviceAttributes(const string& name_prefix,
 
 XlaDevice::Metadata::Metadata(
     int device_ordinal, se::Platform* platform, const DeviceType& device_type,
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     PaddedShapeFn padded_shape_fn, bool use_multiple_streams)
     : device_ordinal_(device_ordinal),
       device_type_(device_type),

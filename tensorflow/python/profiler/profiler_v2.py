@@ -30,10 +30,6 @@ profiling. Before enabling customized profiling, set the callback flag
 "profile_batches=[]" to disable automatic sampled profiling.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import threading
 

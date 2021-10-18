@@ -39,10 +39,10 @@ namespace profiler {
 // the event types, both events should have stats of the stat types specified
 // in stat_types and their values should be the same.
 struct InterThreadConnectInfo {
-  int64 parent_event_type;
-  int64 child_event_type;
-  std::vector<int64> parent_stat_types;
-  std::vector<int64> child_stat_types;
+  int64_t parent_event_type;
+  int64_t child_event_type;
+  std::vector<int64_t> parent_stat_types;
+  std::vector<int64_t> child_stat_types;
 };
 
 struct ContextInfo {
@@ -54,11 +54,12 @@ struct ContextInfo {
 struct GroupMetadata {
   std::string name;
   std::string model_id;  // inference only.
-  absl::flat_hash_set<int64> parents;
-  absl::flat_hash_set<int64> children;
+  absl::flat_hash_set<int64_t> parents;
+  absl::flat_hash_set<int64_t> children;
 };
 
-using GroupMetadataMap = absl::flat_hash_map<int64 /*group_id*/, GroupMetadata>;
+using GroupMetadataMap =
+    absl::flat_hash_map<int64_t /*group_id*/, GroupMetadata>;
 
 // A wrapper for XEvent with parent and children pointers. Through these
 // pointers, a tree of EventNode is formed.
@@ -78,7 +79,7 @@ class EventNode {
     child->parents_.push_back(this);
   }
 
-  absl::optional<int64> GetGroupId() const { return group_id_; }
+  absl::optional<int64_t> GetGroupId() const { return group_id_; }
 
   std::string GetGroupName() const;
 
@@ -138,7 +139,7 @@ class EventNode {
   XEvent* raw_event_;
   std::vector<EventNode*> parents_;
   std::vector<EventNode*> children_;
-  absl::optional<int64> group_id_;
+  absl::optional<int64_t> group_id_;
   absl::optional<ContextInfo> producer_context_;
   absl::optional<ContextInfo> consumer_context_;
   // Root event level.
@@ -149,7 +150,7 @@ class EventNode {
 };
 
 using EventNodeMap =
-    absl::flat_hash_map<int64 /*event_type*/,
+    absl::flat_hash_map<int64_t /*event_type*/,
                         std::vector<std::unique_ptr<EventNode>>>;
 
 using EventList = std::vector<EventNode*>;
@@ -239,7 +240,7 @@ class EventForest {
   std::deque<std::pair<XPlane*, XPlaneVisitor>> planes_;
   // The "step" id (actually it is "function" id that are associated with
   // the tf.data pipeline.
-  absl::flat_hash_set<int64> tf_data_step_ids_;
+  absl::flat_hash_set<int64_t> tf_data_step_ids_;
   EventList tf_loop_root_events_;
   GroupMetadataMap group_metadata_map_;
 };

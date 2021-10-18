@@ -64,7 +64,7 @@ class BatchResourceBase : public ResourceBase {
   // specialized `slice`.
   struct BatchTask : public tensorflow::serving::BatchTask {
     // A unique ID to identify this invocation of Batch.
-    int64 guid;
+    int64_t guid;
 
     Context propagated_context;
 
@@ -177,6 +177,24 @@ class BatchResourceBase : public ResourceBase {
       int max_batch_size,
       std::vector<std::unique_ptr<BatchTask>>* output_tasks);
 
+  // Splits the batch cost to each task.
+  //
+  // Inputs:
+  // 1) batch_cost_measurement, which provides the total cost and cost type;
+  // 2) processed_size, it's the batch size plus the padding amount;
+  // 3) batch, provides the batch size.
+  //
+  // Outputs:
+  // The request_cost in each batch task will be updated. This function will use
+  // two approaches to split the batch cost (if it's non-zero), thus two costs
+  // will be output.
+  // 1) smeared cost: batch cost is split proportionally to each task's size,
+  //    and paddings do not share any cost;
+  // 2) non-smeared cost: batch cost is split proportionally to each task or
+  //    padding's size. Here padding's cost is not assigned to any tasks.
+  static void SplitBatchCost(CostMeasurement* batch_cost_measurement,
+                             const int64_t processed_size, BatchT& batch);
+
  private:
   // Implementation of calling the process batch function.
   virtual void ProcessFuncBatchImpl(
@@ -223,22 +241,6 @@ class BatchResourceBase : public ResourceBase {
   // creates it.
   Status LookupOrCreateBatcherQueue(const string& queue_name,
                                     BatcherQueueT** queue);
-
-  // Splits the batch cost to each task.
-  //
-  // Inputs:
-  // 1) batch_cost_measurement, which provides the total cost and cost type;
-  // 2) processed_size, it's the batch size plus the padding amount;
-  // 3) batch, provides the batch size.
-  //
-  // Outputs:
-  // The request_cost in each batch task will be updated. This function will use
-  // two approaches to split the batch cost (if it's non-zero), thus two costs
-  // will be output. One approach splits the cost proportionally to the each
-  // task's size, but paddings do not share any cost, while the other splits the
-  // cost proportionally to each task or padding's size.
-  void SplitBatchCost(CostMeasurement* batch_cost_measurement,
-                      const int64_t processed_size, BatchT& batch) const;
 
   // True if user specified a batch processing function for this resource.
   const bool has_process_batch_function_;

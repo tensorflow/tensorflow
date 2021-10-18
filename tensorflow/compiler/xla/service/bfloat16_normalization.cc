@@ -92,7 +92,7 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
   bool changed_ = false;
 };
 
-int64 CountSubshapesWithMatchingType(const Shape& shape, PrimitiveType type) {
+int64_t CountSubshapesWithMatchingType(const Shape& shape, PrimitiveType type) {
   int64_t count = 0;
   ShapeUtil::ForEachSubshape(
       shape, [&](const Shape& subshape, const ShapeIndex& index) {
@@ -103,7 +103,7 @@ int64 CountSubshapesWithMatchingType(const Shape& shape, PrimitiveType type) {
   return count;
 }
 
-int64 ShapeLeafCount(const Shape& shape) {
+int64_t ShapeLeafCount(const Shape& shape) {
   int64_t count = 0;
   ShapeUtil::ForEachSubshape(
       shape, [&](const Shape& subshape, const ShapeIndex& index) {

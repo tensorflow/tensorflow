@@ -40,14 +40,14 @@ struct Options {
   // if neither max_iters nor max_micros is set.
   static constexpr int64_t kDefaultMicros = 3000000;
 
-  int64 max_iters = 0;   // Maximum iterations to run, ignored if <= 0.
-  int64 max_micros = 0;  // Maximum microseconds to run, ignored if <= 0.
+  int64_t max_iters = 0;   // Maximum iterations to run, ignored if <= 0.
+  int64_t max_micros = 0;  // Maximum microseconds to run, ignored if <= 0.
 };
 
 // Stats holds statistics collected during benchmarking.
 struct Stats {
-  std::vector<int64> per_iter_us;  // Per-iteration deltas in us.
-  int64 total_us;                  // Total time in us.
+  std::vector<int64_t> per_iter_us;  // Per-iteration deltas in us.
+  int64_t total_us;                  // Total time in us.
 
   Stats() : total_us(0) { per_iter_us.reserve(5000); }
 };

@@ -182,7 +182,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
     do {                                                   \
       auto lhs_flat = lhs.flat<EnumToDataType<T>::Type>(); \
       auto rhs_flat = rhs.flat<EnumToDataType<T>::Type>(); \
-      for (int64 i = 0; i < lhs.NumElements(); ++i) {      \
+      for (int64_t i = 0; i < lhs.NumElements(); ++i) {    \
         if (lhs_flat(i) != rhs_flat(i)) {                  \
           return false;                                    \
         }                                                  \
@@ -190,13 +190,13 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
       return true;                                         \
     } while (0)
 
-            HANDLE_TYPE(DT_INT32);
-            HANDLE_TYPE(DT_INT64);
-            HANDLE_TYPE(DT_STRING);
-            default:
-              DCHECK(false) << "UniqueDataset unhandled data type: "
-                            << DataTypeString(lhs.dtype());
-              return false;
+          HANDLE_TYPE(DT_INT32);
+          HANDLE_TYPE(DT_INT64);
+          HANDLE_TYPE(DT_STRING);
+          default:
+            DCHECK(false) << "UniqueDataset unhandled data type: "
+                          << DataTypeString(lhs.dtype());
+            return false;
         }
       }
     };

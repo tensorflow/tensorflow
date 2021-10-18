@@ -47,7 +47,7 @@ class ScalarComputationsTest : public ClientLibraryTestBase {
   template <typename NativeT>
   void TestCompare(NativeT lhs, NativeT rhs, bool expected,
                    const std::function<XlaOp(const XlaOp&, const XlaOp&,
-                                             absl::Span<const int64>)>& op) {
+                                             absl::Span<const int64_t>)>& op) {
     XlaBuilder builder(TestName());
     XlaOp lhs_op = ConstantR0<NativeT>(&builder, lhs);
     XlaOp rhs_op = ConstantR0<NativeT>(&builder, rhs);
@@ -58,7 +58,7 @@ class ScalarComputationsTest : public ClientLibraryTestBase {
   template <typename NativeT>
   void TestMinMax(NativeT lhs, NativeT rhs, NativeT expected,
                   const std::function<XlaOp(const XlaOp&, const XlaOp&,
-                                            absl::Span<const int64>)>& op) {
+                                            absl::Span<const int64_t>)>& op) {
     XlaBuilder builder(TestName());
     XlaOp lhs_op = ConstantR0<NativeT>(&builder, lhs);
     XlaOp rhs_op = ConstantR0<NativeT>(&builder, rhs);
@@ -118,20 +118,20 @@ XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsU8) {
 
 XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsU64) {
   XlaBuilder builder(TestName());
-  const uint64 a = static_cast<uint64>(1) << 63;
+  const uint64 a = static_cast<uint64_t>(1) << 63;
   const uint64 b = a + 1;
-  Add(ConstantR0<uint64>(&builder, a), ConstantR0<uint64>(&builder, b));
+  Add(ConstantR0<uint64_t>(&builder, a), ConstantR0<uint64_t>(&builder, b));
 
-  ComputeAndCompareR0<uint64>(&builder, a + b, {});
+  ComputeAndCompareR0<uint64_t>(&builder, a + b, {});
 }
 
 XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsS64) {
   XlaBuilder builder(TestName());
-  const int64_t a = static_cast<int64>(1) << 62;
+  const int64_t a = static_cast<int64_t>(1) << 62;
   const int64_t b = a - 1;
-  Add(ConstantR0<int64>(&builder, a), ConstantR0<int64>(&builder, b));
+  Add(ConstantR0<int64_t>(&builder, a), ConstantR0<int64_t>(&builder, b));
 
-  ComputeAndCompareR0<int64>(&builder, a + b, {});
+  ComputeAndCompareR0<int64_t>(&builder, a + b, {});
 }
 
 XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsF64) {
@@ -161,7 +161,7 @@ XLA_TEST_F(ScalarComputationsTest, CastS64ToF32) {
   ConvertElementType(a, F32);
 
   int64_t value = 3LL << 35;
-  Literal a_literal = LiteralUtil::CreateR0<int64>(value);
+  Literal a_literal = LiteralUtil::CreateR0<int64_t>(value);
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(a_literal).ConsumeValueOrDie();
   ComputeAndCompareR0<float>(&builder, static_cast<float>(value),

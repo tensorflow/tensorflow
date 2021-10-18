@@ -61,7 +61,7 @@ static LogicalResult Verify(_TfrtGetResourceOp get_resource_op) {
   if (!(indices_size == shared_name_size &&
         shared_name_size == container_size)) {
     return get_resource_op->emitError()
-           << "Length of attribute arrays do not match. indices = "
+           << "length of attribute arrays do not match. indices = "
            << indices_size << ", shared_name = " << shared_name_size
            << ", container = " << container_size;
   }

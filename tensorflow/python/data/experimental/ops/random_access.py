@@ -14,10 +14,6 @@
 # ==============================================================================
 """Python API for random indexing into a dataset."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.util import structure
 from tensorflow.python.ops import gen_experimental_dataset_ops
 
@@ -34,12 +30,17 @@ def at(dataset, index):
 
    Raises:
      UnimplementedError: If random access is not yet supported for a dataset.
+     Currently, random access is supported for the following tf.data ops:
+     `tf.data.Dataset.from_tensor_slices`, `tf.data.Dataset.shuffle`,
+     `tf.data.Dataset.batch`, `tf.data.Dataset.shard`, `tf.data.Dataset.map`,
+     and `tf.data.Dataset.range`, `tf.data.Dataset.skip`,
+     `tf.data.Dataset.repeat`.
   """
   # pylint: disable=protected-access
   return structure.from_tensor_list(
       dataset.element_spec,
       gen_experimental_dataset_ops.get_element_at_index(
-          dataset,
+          dataset._variant_tensor,
           index,
-          output_types=dataset._flat_types,
-          output_shapes=dataset._flat_shapes))
+          output_types=structure.get_flat_tensor_types(dataset.element_spec),
+          output_shapes=structure.get_flat_tensor_shapes(dataset.element_spec)))

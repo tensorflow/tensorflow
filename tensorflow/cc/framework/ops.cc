@@ -86,7 +86,7 @@ Input::Initializer::Initializer(
   }
 
   // Form the new shape.
-  TensorShape shape{static_cast<int64>(v.size())};
+  TensorShape shape{static_cast<int64_t>(v.size())};
   shape.AppendShape(TensorShape{first.tensor.shape()});
 
   Tensor t(first.tensor.dtype(), shape);

@@ -23,15 +23,31 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Pass/PassOptions.h"
 
 namespace tensorflow {
 
 class CoreRTConverter;
 
+namespace tfrt_compiler {
+
+class FallbackConverter;
+
+}
+
+struct TfrtTpuCompileOptions
+    : mlir::PassPipelineOptions<TfrtTpuCompileOptions> {
+  Option<bool> move_resource_gather_to_host{
+      *this, "move-resource-gather-to-host",
+      llvm::cl::desc("Move resource gather ops to host"),
+      llvm::cl::init(false)};
+};
+
 struct TfrtTpuExecuteOpConversionOptions {
-  bool use_core_selector;
-  bool use_bundled_transfer;
-  bool transfer_result_to_host;
+  bool use_core_selector = false;
+  bool use_bundled_transfer = false;
+  bool transfer_result_to_host = false;
+  bool use_tpu_host_allocator_for_inputs = false;
 };
 
 // Registers a set of dialects used in TFRT TPU lowering.
@@ -41,12 +57,13 @@ inline void RegisterTPUDialects(mlir::DialectRegistry *registry) {}
 inline void AddTPUTargetDialectAndPatterns(
     mlir::ConversionTarget *target, mlir::OwningRewritePatternList *patterns,
     mlir::MLIRContext *context, CoreRTConverter *corert_converter,
+    tfrt_compiler::FallbackConverter *fallback_converter,
     const TfrtTpuExecuteOpConversionOptions &tpu_exec_conv_opts,
     bool tpu_lower_to_fallback) {}
 
 // Rewrites specific TF TPU ops to equivalent TF ops in a module.
 inline mlir::LogicalResult RunTPUBackwardCompatConversion(
-    mlir::ModuleOp module) {
+    mlir::ModuleOp module, const TfrtTpuCompileOptions &options) {
   return mlir::failure();
 }
 

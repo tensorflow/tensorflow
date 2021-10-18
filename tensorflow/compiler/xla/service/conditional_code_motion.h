@@ -124,7 +124,7 @@ class ConditionalCodeMotion : public HloModulePass {
   // Make a single search configuration for changing transformation decisions:
   // flip the decisions at position n = flip_start + flip_stride * m, and
   // m = 0..max_flip.
-  // The following defines how the int64 search configuration is composed, as
+  // The following defines how the int64_t search configuration is composed, as
   // flip_start + (flip_max << kMaxPos) + (flip_stride << kStridePos).
   // Position (digit) for maximum number of flips.
   static constexpr int kMaxPos = 16;
@@ -134,7 +134,7 @@ class ConditionalCodeMotion : public HloModulePass {
   static constexpr int kStridePos = 32;
   // Bit mask for extracting the last digits of value.
   static constexpr int kValueMask = 0xffff;
-  static int64 MakeSearchConfig(int64_t start, int64_t max, int64_t stride) {
+  static int64_t MakeSearchConfig(int64_t start, int64_t max, int64_t stride) {
     const int64_t config =
         (max << kMaxPos) + (start << kStartPos) + (stride << kStridePos);
     VLOG(2) << "flip stride = " << flip_stride(config) << "\n";
@@ -150,7 +150,7 @@ class ConditionalCodeMotion : public HloModulePass {
     return (search_config >> kStridePos) & kValueMask;
   }
 
-  static int16 DecrementMaxFlip(int64* search_config) {
+  static int16 DecrementMaxFlip(int64_t* search_config) {
     const int16_t max_flip = ((*search_config) >> kMaxPos) & kValueMask;
     // Decrement flip count so we can stop if it reaches 0.
     if (max_flip > 0) {
@@ -192,14 +192,14 @@ class ConditionalCodeMotion : public HloModulePass {
   const bool is_layout_sensitive_;
   const bool pursue_full_conditional_code_motion_;
   // The following parameterizes the transformation decisions and cost model.
-  std::vector<int64> search_config_;
-  int64 search_config_index_;
+  std::vector<int64_t> search_config_;
+  int64_t search_config_index_;
   // Map each conditional to a vector of its search configurations. The key of
   // the map is the index number of the conditional in a module when traversed
   // in post order, and the value of the map is the sequence of search
   // configurations specified with the same index number for the conditional.
-  absl::flat_hash_map<int64, std::vector<int64>> search_config_map_;
-  std::vector<std::vector<int64>> move_config_, reuse_config_;
+  absl::flat_hash_map<int64_t, std::vector<int64_t>> search_config_map_;
+  std::vector<std::vector<int64_t>> move_config_, reuse_config_;
 
   StatusOr<bool> MoveInstructionOut(HloInstruction* conditional,
                                     std::vector<Boundary>& to_move_out,

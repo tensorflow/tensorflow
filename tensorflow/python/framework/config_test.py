@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests that the system configuration methods work properly."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import cluster_pb2
@@ -855,12 +851,12 @@ class DeviceTest(test.TestCase):
     # This does not test any ops are deterministic, because that is tested by
     # many kernel tests.
     try:
-      config.enable_deterministic_ops(False)
-      self.assertFalse(config.deterministic_ops_enabled())
-      config.enable_deterministic_ops(True)
-      self.assertTrue(config.deterministic_ops_enabled())
+      config.disable_op_determinism()
+      self.assertFalse(config.is_op_determinism_enabled())
+      config.enable_op_determinism()
+      self.assertTrue(config.is_op_determinism_enabled())
     finally:
-      config.enable_deterministic_ops(False)
+      config.disable_op_determinism()
 
 
 class TensorFloat32Test(test.TestCase):

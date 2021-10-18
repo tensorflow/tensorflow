@@ -31,7 +31,7 @@ StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64_t dim) {
   }
 
   // Transpose the input so C is directly followed by VECT_C.
-  std::vector<int64> permutation;
+  std::vector<int64_t> permutation;
   for (int64_t i = 0; i != input_shape.rank() - 1; ++i) {
     permutation.push_back(i);
     if (i == dim) {
@@ -40,8 +40,8 @@ StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64_t dim) {
   }
 
   // Now merge the adjacent dimensions with a reshape.
-  std::vector<int64> contracted_shape(input_shape.dimensions().begin(),
-                                      input_shape.dimensions().end() - 1);
+  std::vector<int64_t> contracted_shape(input_shape.dimensions().begin(),
+                                        input_shape.dimensions().end() - 1);
   contracted_shape[dim] *= 4;
 
   return xla::Reshape(xla::Transpose(input, permutation), contracted_shape);
@@ -59,13 +59,13 @@ StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64_t dim) {
 
   // Split the `dim` into two dimensions with a reshape. The size of the new
   // dimension is always 4.
-  std::vector<int64> expanded_shape =
+  std::vector<int64_t> expanded_shape =
       xla::SpanToVector(input_shape.dimensions());
   expanded_shape[dim] /= 4;
   expanded_shape.insert(expanded_shape.begin() + dim + 1, 4);
 
   // Move the newly created dimension to the end with a transpose.
-  std::vector<int64> permutation;
+  std::vector<int64_t> permutation;
   for (int64_t i = 0, end = expanded_shape.size(); i != end; ++i) {
     permutation.push_back(i);
     if (i == dim) {

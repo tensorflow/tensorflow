@@ -34,7 +34,7 @@ llvm::TargetTransformInfo* LLVMTargetMachineFeatures::GetTargetTransformInfoFor(
   return &it->second;
 }
 
-int64 LLVMTargetMachineFeatures::minimum_alignment_for_allocation(
+int64_t LLVMTargetMachineFeatures::minimum_alignment_for_allocation(
     int64_t size_bytes) const {
   // Assume that all pointers are aligned to at least
   // xla::cpu_function_runtime::kMinAlign.
@@ -45,8 +45,8 @@ int64 LLVMTargetMachineFeatures::minimum_alignment_for_allocation(
 
   // Allow small buffers to be underaligned, there is no vectorization benefit
   // anyways.
-  return std::min<int64>(llvm::PowerOf2Ceil(size_bytes),
-                         cpu_function_runtime::kMinAlign);
+  return std::min<int64_t>(llvm::PowerOf2Ceil(size_bytes),
+                           cpu_function_runtime::kMinAlign);
 }
 
 }  // namespace cpu

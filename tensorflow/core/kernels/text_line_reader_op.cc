@@ -87,7 +87,7 @@ class TextLineReader : public ReaderBase {
   enum { kBufferSize = 256 << 10 /* 256 kB */ };
   const int skip_header_lines_;
   Env* const env_;
-  int64 line_number_;
+  int64_t line_number_;
   std::unique_ptr<RandomAccessFile> file_;  // must outlive input_buffer_
   std::unique_ptr<io::InputBuffer> input_buffer_;
 };

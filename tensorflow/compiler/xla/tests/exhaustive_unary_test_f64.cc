@@ -33,7 +33,7 @@ namespace exhaustive_op_test {
 class ExhaustiveF64UnaryTest : public ExhaustiveUnaryTest<F64>,
                                public ::testing::WithParamInterface<FpValues> {
  private:
-  int64 GetInputSize() override {
+  int64_t GetInputSize() override {
     FpValues values = GetParam();
     return values.GetTotalNumValues();
   }

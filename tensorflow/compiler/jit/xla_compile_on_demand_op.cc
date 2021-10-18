@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/refcount.h"
 
@@ -75,14 +76,13 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(execution_inputs.status());
 
   VLOG(2) << "Executing computation: " << name();
-  StatusOr<absl::optional<xla::DeviceAssignment>> device_assignment =
-      ResolveDeviceAssignment(ctx, result->collective_reduce_info);
-  TF_RETURN_IF_ERROR(device_assignment.status());
-
   xla::ExecutableRunOptions run_options;
-  if (*device_assignment) {
-    run_options.set_device_assignment(&**device_assignment);
-  }
+  xla::gpu::GpuExecutableRunOptions gpu_options;
+  xla::DeviceAssignment device_assignment;
+  TF_RETURN_IF_ERROR(
+      ResolveDeviceAssignment(ctx, result->collective_reduce_info, run_options,
+                              device_assignment, gpu_options));
+
   run_options.set_stream(stream);
   run_options.set_allocator(allocator);
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());

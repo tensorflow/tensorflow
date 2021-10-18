@@ -115,7 +115,7 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
 
     const Tensor* num_streams_t;
     OP_REQUIRES_OK(context, context->input(kNumStreamsName, &num_streams_t));
-    int64_t num_streams = num_streams_t->scalar<int64>()();
+    int64_t num_streams = num_streams_t->scalar<int64_t>()();
     OP_REQUIRES(context, num_streams >= 0,
                 errors::InvalidArgument(
                     "Num_streams input cannot be a negative integer"));
@@ -131,7 +131,7 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
  private:
   // An upper bound on the number of entries that the summaries might have
   // for a feature.
-  int64 max_elements_;
+  int64_t max_elements_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -190,7 +190,8 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
             context,
             summaries_output_list.allocate(
                 index,
-                TensorShape({static_cast<int64>(summary_entry_list.size()), 4}),
+                TensorShape(
+                    {static_cast<int64_t>(summary_entry_list.size()), 4}),
                 &output_t));
         auto output = output_t->matrix<float>();
         for (auto row = 0; row < summary_entry_list.size(); row++) {
@@ -211,7 +212,7 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
   }
 
  private:
-  int64 num_features_;
+  int64_t num_features_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -248,7 +249,7 @@ class BoostedTreesFlushQuantileSummariesOp : public OpKernel {
         const auto summary_list = stream->GetFinalSummary().GetEntryList();
         Tensor* output_t;
         const int64_t summary_list_size =
-            static_cast<int64>(summary_list.size());
+            static_cast<int64_t>(summary_list.size());
         OP_REQUIRES_OK(context, summaries_output_list.allocate(
                                     index, TensorShape({summary_list_size, 4}),
                                     &output_t));
@@ -272,7 +273,7 @@ class BoostedTreesFlushQuantileSummariesOp : public OpKernel {
   }
 
  private:
-  int64 num_features_;
+  int64_t num_features_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -385,7 +386,7 @@ class BoostedTreesQuantileStreamResourceDeserializeOp : public OpKernel {
   }
 
  private:
-  int64 num_features_;
+  int64_t num_features_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -413,7 +414,7 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
 
     const Tensor* num_buckets_t;
     OP_REQUIRES_OK(context, context->input(kNumBucketsName, &num_buckets_t));
-    const int64_t num_buckets = num_buckets_t->scalar<int64>()();
+    const int64_t num_buckets = num_buckets_t->scalar<int64_t>()();
     const int64_t num_streams = stream_resource->num_streams();
 
     auto do_quantile_flush = [&](const int64_t begin, const int64_t end) {
@@ -477,10 +478,10 @@ class BoostedTreesQuantileStreamResourceGetBucketBoundariesOp
       for (int64_t stream_idx = begin; stream_idx < end; stream_idx++) {
         const auto& boundaries = stream_resource->boundaries(stream_idx);
         Tensor* bucket_boundaries_t = nullptr;
-        OP_REQUIRES_OK(context,
-                       bucket_boundaries_list.allocate(
-                           stream_idx, {static_cast<int64>(boundaries.size())},
-                           &bucket_boundaries_t));
+        OP_REQUIRES_OK(
+            context, bucket_boundaries_list.allocate(
+                         stream_idx, {static_cast<int64_t>(boundaries.size())},
+                         &bucket_boundaries_t));
         auto* quantiles_flat = bucket_boundaries_t->flat<float>().data();
         memcpy(quantiles_flat, boundaries.data(),
                sizeof(float) * boundaries.size());
@@ -496,7 +497,7 @@ class BoostedTreesQuantileStreamResourceGetBucketBoundariesOp
   }
 
  private:
-  int64 num_features_;
+  int64_t num_features_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -574,7 +575,7 @@ class BoostedTreesBucketizeOp : public OpKernel {
   }
 
  private:
-  int64 num_features_;
+  int64_t num_features_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BoostedTreesBucketize").Device(DEVICE_CPU),

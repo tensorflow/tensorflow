@@ -14,10 +14,6 @@
 # =============================================================================
 """Cloud TPU profiler package."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from setuptools import setup
 
 from cloud_tpu_profiler.version import __version__

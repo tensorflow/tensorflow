@@ -24,7 +24,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <fp16.h>
+#include "fp16.h"  // from @FP16
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -122,8 +122,8 @@ absl::Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
 absl::Status ExtractAxisFromIndex(const TfLiteTensor& tflite_tensor, int index,
                                   Axis* axis) {
   const TfLiteIntArray* dims = tflite_tensor.dims;
-  if (index == -1) {
-    index = dims->size - 1;
+  if (index < 0) {
+    index = dims->size + index;
   }
   if (index < 0 || index >= dims->size) {
     return absl::OutOfRangeError("Index for axis out of range");

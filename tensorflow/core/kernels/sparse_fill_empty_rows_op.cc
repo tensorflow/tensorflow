@@ -24,11 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -223,6 +225,12 @@ void SparseFillEmptyRowsOpImpl(OpKernelContext* context,
                                             values_t.shape().DebugString()),
                     done);
   OP_REQUIRES_ASYNC(
+      context, indices_t.dim_size(0) == values_t.dim_size(0),
+      errors::InvalidArgument("The length of `values` (", values_t.dim_size(0),
+                              ") must match the first dimension of `indices` (",
+                              indices_t.dim_size(0), ")."),
+      done);
+  OP_REQUIRES_ASYNC(
       context, TensorShapeUtils::IsScalar(default_value_t.shape()),
       errors::InvalidArgument("default_value must be a scalar, saw: ",
                               default_value_t.shape().DebugString()),
@@ -298,7 +306,7 @@ namespace functor {
       const Tensor& indices_t, const Tensor& values_t,                         \
       const Tensor& dense_shape_t, typename AsyncOpKernel::DoneCallback done); \
   extern template struct SparseFillEmptyRows<GPUDevice, T, Tindex>;
-#define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64)
+#define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64_t)
 TF_CALL_POD_TYPES(DECLARE_GPU_SPEC_INT64)
 #undef DECLARE_GPU_SPEC_INT64
 #undef DECLARE_GPU_SPEC
@@ -427,7 +435,7 @@ namespace functor {
       typename TTypes<T>::Vec d_values,                             \
       typename TTypes<T>::Scalar d_default_value);                  \
   extern template struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex>;
-#define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64)
+#define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64_t)
 TF_CALL_REAL_NUMBER_TYPES(DECLARE_GPU_SPEC_INT64);
 #undef DECLARE_GPU_SPEC_INT64
 #undef DECLARE_GPU_SPEC

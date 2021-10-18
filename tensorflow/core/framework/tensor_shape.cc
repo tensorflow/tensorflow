@@ -181,7 +181,7 @@ Status TensorShapeBase<Shape>::BuildTensorShapeBase(
 }
 
 template <class Shape>
-TensorShapeBase<Shape>::TensorShapeBase(gtl::ArraySlice<int64> dim_sizes) {
+TensorShapeBase<Shape>::TensorShapeBase(gtl::ArraySlice<int64_t> dim_sizes) {
   set_tag(REP16);
   set_data_type(DT_INVALID);
   TF_CHECK_OK(InitDims(dim_sizes));
@@ -189,7 +189,7 @@ TensorShapeBase<Shape>::TensorShapeBase(gtl::ArraySlice<int64> dim_sizes) {
 
 template <class Shape>
 Status TensorShapeBase<Shape>::BuildTensorShapeBase(
-    gtl::ArraySlice<int64> dim_sizes, TensorShapeBase* out) {
+    gtl::ArraySlice<int64_t> dim_sizes, TensorShapeBase* out) {
   out->set_tag(REP16);
   out->set_data_type(DT_INVALID);
   return out->InitDims(dim_sizes);
@@ -210,7 +210,7 @@ static inline bool Set16(bool partial, uint16* dst, int dim, int64_t val) {
 }
 
 template <class Shape>
-Status TensorShapeBase<Shape>::InitDims(gtl::ArraySlice<int64> dim_sizes) {
+Status TensorShapeBase<Shape>::InitDims(gtl::ArraySlice<int64_t> dim_sizes) {
   DCHECK_EQ(tag(), REP16);
 
   // Allow sizes that are under kint64max^0.25 so that 4-way multiplication
@@ -331,13 +331,13 @@ void TensorShapeRep::SlowCopyFrom(const TensorShapeRep& b) {
       *(as64()->dims_) = *(b.as64()->dims_);
     } else {
       set_tag(REP_OUT_OF_LINE);
-      as64()->dims_ = new gtl::InlinedVector<int64, 4>(*(b.as64()->dims_));
+      as64()->dims_ = new gtl::InlinedVector<int64_t, 4>(*(b.as64()->dims_));
     }
   }
 }
 
 template <class Shape>
-int64 TensorShapeBase<Shape>::dim_size(int d) const {
+int64_t TensorShapeBase<Shape>::dim_size(int d) const {
   if (unknown_rank()) return -1;
   DCHECK_GE(d, 0);
   DCHECK_LT(d, dims());
@@ -453,7 +453,7 @@ void TensorShapeBase<Shape>::UnsafeAddDim(int64_t size,
     as64()->dims_->push_back(size);
   } else {
     // Need to change representation
-    gtl::InlinedVector<int64, 8> vals;
+    gtl::InlinedVector<int64_t, 8> vals;
     AppendTo(*this, &vals);
     vals.push_back(size);
     // We know we can't be REP16.  See if we have a small enough
@@ -478,7 +478,7 @@ void TensorShapeBase<Shape>::UnsafeAddDim(int64_t size,
     } else {
       set_tag(REP_OUT_OF_LINE);
       as64()->dims_ =
-          new gtl::InlinedVector<int64, 4>(vals.begin(), vals.end());
+          new gtl::InlinedVector<int64_t, 4>(vals.begin(), vals.end());
     }
   }
   set_ndims_byte(nd + 1);
@@ -509,7 +509,7 @@ void TensorShapeBase<Shape>::InsertDim(int d, int64_t size) {
   CHECK_LE(d, dims());
   if (!kIsPartial) CHECK_GE(size, 0);
   CHECK_LT(dims(), MaxDimensions());
-  gtl::InlinedVector<int64, 8> vals;
+  gtl::InlinedVector<int64_t, 8> vals;
   AppendTo(*this, &vals);
   vals.insert(vals.begin() + d, size);
   ClearAllButDataType();
@@ -539,7 +539,7 @@ Status TensorShapeBase<Shape>::InsertDimWithStatus(int d, int64_t size) {
                             " dimensions which is the maximum allowed");
   }
 
-  gtl::InlinedVector<int64, 8> vals;
+  gtl::InlinedVector<int64_t, 8> vals;
   AppendTo(*this, &vals);
   vals.insert(vals.begin() + d, size);
   ClearAllButDataType();
@@ -555,8 +555,8 @@ Status TensorShapeBase<Shape>::InsertDimWithStatus(int d, int64_t size) {
 }
 
 template <class Shape>
-gtl::InlinedVector<int64, 4> TensorShapeBase<Shape>::dim_sizes() const {
-  gtl::InlinedVector<int64, 4> result;
+gtl::InlinedVector<int64_t, 4> TensorShapeBase<Shape>::dim_sizes() const {
+  gtl::InlinedVector<int64_t, 4> result;
   for (auto dim : *this) {
     result.push_back(dim.size);
   }
@@ -580,7 +580,7 @@ void TensorShapeBase<Shape>::set_dim(int d, int64_t size) {
     (*as64()->dims_)[d] = size;
   } else {
     // Must upgrade
-    gtl::InlinedVector<int64, 8> vals;
+    gtl::InlinedVector<int64_t, 8> vals;
     AppendTo(*this, &vals);
     vals[d] = size;
     ClearAllButDataType();
@@ -613,7 +613,7 @@ Status TensorShapeBase<Shape>::SetDimWithStatus(int d, int64_t size) {
     (*as64()->dims_)[d] = size;
   } else {
     // Must upgrade
-    gtl::InlinedVector<int64, 8> vals;
+    gtl::InlinedVector<int64_t, 8> vals;
     AppendTo(*this, &vals);
     vals[d] = size;
     ClearAllButDataType();
@@ -640,7 +640,7 @@ void TensorShapeBase<Shape>::RemoveDimRange(int begin, int end) {
   CHECK_GE(end, 0);
   CHECK_LE(end, dims());
   if (begin >= end) return;
-  gtl::InlinedVector<int64, 8> vals;
+  gtl::InlinedVector<int64_t, 8> vals;
   AppendTo(*this, &vals);
   vals.erase(vals.begin() + begin, vals.begin() + end);
   ClearAllButDataType();
@@ -678,7 +678,7 @@ Status TensorShapeBase<Shape>::RemoveDimRangeWithStatus(int begin, int end) {
     return Status::OK();
   }
 
-  gtl::InlinedVector<int64, 8> vals;
+  gtl::InlinedVector<int64_t, 8> vals;
   AppendTo(*this, &vals);
   vals.erase(vals.begin() + begin, vals.begin() + end);
   ClearAllButDataType();
@@ -825,16 +825,16 @@ Status MakeShapeHelper(const T* dims, int64_t n, Shape* out) {
 }
 
 #define MAKE_SHAPE(T, Shape)                                                 \
-  Status TensorShapeUtils::MakeShape(const T* dims, int64 n, Shape* out) {   \
+  Status TensorShapeUtils::MakeShape(const T* dims, int64_t n, Shape* out) { \
     return MakeShapeHelper(dims, n, out);                                    \
   }                                                                          \
   Status TensorShapeUtils::MakeShape(gtl::ArraySlice<T> shape, Shape* out) { \
     return MakeShapeHelper(shape.data(), shape.size(), out);                 \
   }
 MAKE_SHAPE(int32, TensorShape)
-MAKE_SHAPE(int64, TensorShape)
+MAKE_SHAPE(int64_t, TensorShape)
 MAKE_SHAPE(int32, PartialTensorShape)
-MAKE_SHAPE(int64, PartialTensorShape)
+MAKE_SHAPE(int64_t, PartialTensorShape)
 #undef MAKE_SHAPE
 
 string TensorShapeUtils::ShapeListString(
@@ -1000,8 +1000,8 @@ bool PartialTensorShapeUtils::AreIdentical(
   }
 }
 
-Status TensorShapeUtils::NumElements(gtl::ArraySlice<int64> shape,
-                                     int64* num_elements) {
+Status TensorShapeUtils::NumElements(gtl::ArraySlice<int64_t> shape,
+                                     int64_t* num_elements) {
   int64_t n = 1;
   for (auto dim : shape) {
     n = MultiplyWithoutOverflow(n, dim);

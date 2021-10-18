@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test utilities for tf.data benchmarking functionality."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 import numpy as np

@@ -95,7 +95,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override {
+  int64_t Cardinality() const override {
     // As long as one of input dataset has infinite cardinality, the output
     // cardinality is infinite.
     for (const auto& input : data_inputs_) {
@@ -191,7 +191,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
 
-        int64_t selected_input = selector_result[0].scalar<int64>()();
+        int64_t selected_input = selector_result[0].scalar<int64_t>()();
         if (selected_input < 0 || selected_input >= data_input_impls_.size()) {
           return errors::InvalidArgument(
               "Selector index out of range: ", selected_input,
@@ -292,7 +292,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<IteratorBase> selector_input_impl_ TF_GUARDED_BY(mu_);
     std::vector<std::unique_ptr<IteratorBase>> data_input_impls_
         TF_GUARDED_BY(mu_);
-    int64 num_active_inputs_ TF_GUARDED_BY(mu_);
+    int64_t num_active_inputs_ TF_GUARDED_BY(mu_);
   };
 
   static PartialTensorShape MostSpecificCompatibleShape(

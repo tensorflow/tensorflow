@@ -31,7 +31,6 @@ struct TestParams {
   bool enable_native_ops = false;
   bool enable_grappler = false;
   bool enable_lazy_loading = false;
-  bool force_bef_function_async = false;
 };
 
 class SavedModelTest : public testing::TestWithParam<TestParams> {};
@@ -63,7 +62,6 @@ TEST_P(SavedModelTest, BasicV1) {
       CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
 
   tfrt::SavedModel::RunOptions run_options;
-  run_options.force_bef_function_async = GetParam().force_bef_function_async;
 
   std::vector<tensorflow::Tensor> outputs;
   TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
@@ -75,16 +73,14 @@ TEST_P(SavedModelTest, BasicV1) {
 
 // Tests all the value combinations of `TestParams`. For readability, use
 // integers instead of booleans.
-INSTANTIATE_TEST_SUITE_P(SavedModelLiteTest, SavedModelTest,
-                         testing::Values(
-                             // The values below are for:
-                             // enable_native_ops, enable_grappler,
-                             // enable_lazy_loading, force_bef_function_async
-                             TestParams{0, 0, 0}, TestParams{0, 0, 0, 1},
-                             TestParams{0, 0, 1}, TestParams{0, 1, 0},
-                             TestParams{0, 1, 1}, TestParams{1, 0, 0},
-                             TestParams{1, 0, 1}, TestParams{1, 1, 0},
-                             TestParams{1, 1, 1}, TestParams{1, 1, 1, 1}));
+INSTANTIATE_TEST_SUITE_P(
+    SavedModelLiteTest, SavedModelTest,
+    testing::Values(
+        // The values below are for:
+        // enable_native_ops, enable_grappler, enable_lazy_loading
+        TestParams{0, 0, 0}, TestParams{0, 0, 1}, TestParams{0, 1, 0},
+        TestParams{0, 1, 1}, TestParams{1, 0, 0}, TestParams{1, 0, 1},
+        TestParams{1, 1, 0}, TestParams{1, 1, 1}));
 
 TEST(SavedModelTest, BasicV2) {
   // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
@@ -409,6 +405,29 @@ TEST_F(SavedModelRunByTensorNamesTest, NoOutputNodes) {
   ASSERT_EQ(outputs.size(), 0);
 }
 
+TEST_F(SavedModelRunByTensorNamesTest, ShuffleInputsAndOutputs) {
+  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs = {
+      {"input2", CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{4, 4, 4})},
+      {"input1", CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1})},
+      {"input3", CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{3, 3, 3})},
+  };
+  std::vector<std::string> output_tensor_names{"result22", "result1",
+                                               "result31"};
+
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK(saved_model_->RunByTensorNames(
+      /*run_options=*/{}, inputs, output_tensor_names, {}, &outputs));
+
+  ASSERT_EQ(outputs.size(), 3);
+
+  // Check output "r22".
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]), testing::ElementsAre(30));
+  // Check output "r1".
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[1]), testing::ElementsAre(6));
+  // Check output "r31".
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[2]), testing::ElementsAre(18));
+}
+
 TEST(SavedModelTest, CustomWorkQueue) {
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       "tensorflow/core/tfrt/saved_model/tests/toy_v1");
@@ -445,6 +464,55 @@ TEST(SavedModelTest, CustomWorkQueue) {
   // Run one more time to check per-request state is correct set up.
   outputs.clear();
   TF_ASSERT_OK(saved_model->Run({}, "toy", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              testing::ElementsAreArray({6}));
+}
+
+// Verifies the savedmodel runs correctly with work queues specified in
+// RunOptions.
+TEST(SavedModelTest, RunOptionsWorkQueue) {
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+
+  auto runtime = tensorflow::tfrt_stub::Runtime::Create();
+
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.compile_options.enable_native_ops = false;
+
+  tensorflow::Status status;
+  auto saved_model =
+      SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                     /*tags=*/{"serve"}, &status);
+  TF_CHECK_OK(status);
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.push_back(
+      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
+
+  std::vector<tensorflow::Tensor> outputs;
+
+  tfrt::tf::RunHandlerThreadWorkQueue::Options queue_options;
+  queue_options.num_complementary_threads = 1;
+  queue_options.num_main_threads = 1;
+  queue_options.init_timeout_ms = 100;
+
+  tfrt::tf::RunHandlerThreadWorkQueue run_handler_queue(queue_options);
+
+  tfrt::SavedModel::RunOptions run_options;
+  run_options.work_queue = &run_handler_queue;
+
+  TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              testing::ElementsAreArray({6}));
+
+  // Run one more time to check per-request state is correct set up.
+  outputs.clear();
+  TF_ASSERT_OK(saved_model->Run(run_options, "toy", inputs, &outputs));
   ASSERT_EQ(outputs.size(), 1);
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
@@ -678,15 +746,22 @@ TEST(SavedModelTest, Error) {
       status.error_message(), "You must feed a value for placeholder tensor"));
 }
 
-class SavedModelPowTest : public testing::TestWithParam<std::string> {};
+struct PowTestParam {
+  std::string path;
+  bool run_placer_grappler_on_functions;
+};
+
+class SavedModelPowTest : public testing::TestWithParam<PowTestParam> {};
 
 TEST_P(SavedModelPowTest, Pow) {
   std::string saved_model_dir =
-      tensorflow::GetDataDependencyFilepath(GetParam());
+      tensorflow::GetDataDependencyFilepath(GetParam().path);
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
   options.compile_options.enable_grappler = true;
+  options.run_placer_grappler_on_functions =
+      GetParam().run_placer_grappler_on_functions;
 
   tensorflow::Status status;
   auto saved_model =
@@ -708,8 +783,10 @@ TEST_P(SavedModelPowTest, Pow) {
 
 INSTANTIATE_TEST_SUITE_P(
     SavedModelPowTest, SavedModelPowTest,
-    testing::Values("tensorflow/core/tfrt/saved_model/tests/pow",
-                    "tensorflow/core/tfrt/saved_model/tests/pow_v2"));
+    testing::Values(
+        PowTestParam{"tensorflow/core/tfrt/saved_model/tests/pow", false},
+        PowTestParam{"tensorflow/core/tfrt/saved_model/tests/pow_v2", false},
+        PowTestParam{"tensorflow/core/tfrt/saved_model/tests/pow_v2", true}));
 
 TEST(SavedModelTest, ControlFlowV1) {
   // This test checks that loading a savedmodel with V1 control flows works
@@ -815,13 +892,3 @@ TEST(SavedModelTest, DeadlineExceeded) {
 }  // namespace
 }  // namespace saved_model_test
 }  // namespace tfrt
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-
-  absl::SetFlag(&FLAGS_tfrt_default_device,
-                "/job:localhost/replica:0/task:0/device:CPU:0");
-  absl::SetFlag(&FLAGS_tfrt_num_threads, 1);
-
-  return RUN_ALL_TESTS();
-}

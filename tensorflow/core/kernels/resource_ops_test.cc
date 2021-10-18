@@ -53,7 +53,7 @@ class MockHandleCreationOpKernel : public OpKernel {
       : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    bool* alive = reinterpret_cast<bool*>(ctx->input(0).scalar<int64>()());
+    bool* alive = reinterpret_cast<bool*>(ctx->input(0).scalar<int64_t>()());
     int payload = ctx->input(1).scalar<int>()();
     AllocatorAttributes attr;
     Tensor handle_tensor;
@@ -93,7 +93,8 @@ TEST_F(MockHandleCreationOpTest, RefCounting) {
   int payload = -123;
 
   // Feed and run
-  AddInputFromArray<int64>(TensorShape({}), {reinterpret_cast<int64>(&alive)});
+  AddInputFromArray<int64_t>(TensorShape({}),
+                             {reinterpret_cast<int64_t>(&alive)});
   AddInputFromArray<int32>(TensorShape({}), {payload});
   TF_ASSERT_OK(RunOpKernel());
   EXPECT_TRUE(alive);

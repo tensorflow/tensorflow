@@ -98,7 +98,7 @@ class AdaptiveSharedBatchScheduler
     // latency and therefore undergoes a random walk.  Unreasonably large values
     // for num_batch_threads allows for large in_flight_batches_limit_, which
     // will harm latency for some time once load increases again.
-    int64 num_batch_threads = port::MaxParallelism();
+    int64_t num_batch_threads = port::MaxParallelism();
     // You can pass a ThreadPool directly rather than the above two
     // parameters.  If given, the above two parameers are ignored.  Ownership of
     // the threadpool is not transferred.
@@ -106,14 +106,14 @@ class AdaptiveSharedBatchScheduler
 
     // Lower bound for in_flight_batches_limit_. As discussed above, can be used
     // to minimize the damage caused by the random walk under low load.
-    int64 min_in_flight_batches_limit = 1;
+    int64_t min_in_flight_batches_limit = 1;
     // Although batch selection is primarily based on age, this parameter
     // specifies a preference for larger batches.  A full batch will be
     // scheduled before an older, nearly empty batch as long as the age gap is
     // less than full_batch_scheduling_boost_micros.  The optimal value for this
     // parameter should be of order the batch processing latency, but must be
     // chosen carefully, as too large a value will harm tail latency.
-    int64 full_batch_scheduling_boost_micros = 0;
+    int64_t full_batch_scheduling_boost_micros = 0;
     // The environment to use (typically only overridden by test code).
     Env* env = Env::Default();
     // Initial limit for number of batches being concurrently processed.
@@ -123,7 +123,7 @@ class AdaptiveSharedBatchScheduler
     // Number of batches between adjustments of in_flight_batches_limit.  Larger
     // numbers will give less noisy latency measurements, but will be less
     // responsive to changes in workload.
-    int64 batches_to_average_over = 1000;
+    int64_t batches_to_average_over = 1000;
 
     // If true, schedule batches using FIFO policy.
     // Requires that `full_batch_scheduling_boost_micros` is zero.
@@ -149,12 +149,14 @@ class AdaptiveSharedBatchScheduler
     //
     // If specified, it should be larger than or equal to 'max_batch_size'.
     absl::optional<int> max_input_task_size = absl::nullopt;
+    // Maximum number of tasks to add to a specific batch.
+    absl::optional<int> max_tasks_per_batch = absl::nullopt;
     // Maximum number of enqueued (i.e. non-scheduled) batches.
     int max_enqueued_batches = 10;
     // Amount of time non-full batches must wait before becoming schedulable.
     // A non-zero value can improve performance by limiting the scheduling of
     // nearly empty batches.
-    int64 batch_timeout_micros = 0;
+    int64_t batch_timeout_micros = 0;
     // If non nullptr, split_input_task_func should split input_task into
     // multiple tasks, the first of which has size first_size and the remaining
     // not exceeding max_size. This function may acquire ownership of input_task
@@ -207,6 +209,8 @@ class AdaptiveSharedBatchScheduler
 
   void MaybeScheduleClosedBatchesLockedFIFO() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  void MaybeAdjustInflightLimit() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // Notifies scheduler of non-empty batch which is eligible for processing.
   void AddBatch(const internal::ASBSBatch<TaskType>* batch);
 
@@ -243,9 +247,9 @@ class AdaptiveSharedBatchScheduler
   double in_flight_batches_limit_ TF_GUARDED_BY(mu_);
 
   // Number of regular batches currently being processed.
-  int64 in_flight_batches_ TF_GUARDED_BY(mu_) = 0;
+  int64_t in_flight_batches_ TF_GUARDED_BY(mu_) = 0;
   // Number of express batches currently being processed.
-  int64 in_flight_express_batches_ TF_GUARDED_BY(mu_) = 0;
+  int64_t in_flight_express_batches_ TF_GUARDED_BY(mu_) = 0;
 
   // RNG engine and distribution.
   std::default_random_engine rand_engine_;
@@ -253,15 +257,23 @@ class AdaptiveSharedBatchScheduler
 
   // Fields controlling the dynamic adjustment of in_flight_batches_limit_.
   // Number of batches since the last in_flight_batches_limit_ adjustment.
-  int64 batch_count_ TF_GUARDED_BY(mu_) = 0;
-  // Sum of processing latency for batches counted by batch_count_.
-  int64 batch_latency_sum_ TF_GUARDED_BY(mu_) = 0;
-  // Average batch latency for previous value of in_flight_batches_limit_.
-  double last_avg_latency_ms_ TF_GUARDED_BY(mu_) = 0;
-  // Did last_avg_latency_ms_ decrease from the previous last_avg_latency_ms_?
-  bool last_latency_decreased_ TF_GUARDED_BY(mu_) = false;
-  // Current direction (+-) to adjust in_flight_batches_limit_
-  int step_direction_ TF_GUARDED_BY(mu_) = 1;
+  int64_t batch_count_ TF_GUARDED_BY(mu_) = 0;
+
+  struct DelayStats {
+    // Sum of processing latency for batches counted by batch_count_.
+    int64_t batch_latency_sum = 0;
+    // Average batch latency for previous value of in_flight_batches_limit_.
+    double last_avg_latency_ms = 0;
+    // Did last_avg_latency_ms decrease from the previous last_avg_latency_ms?
+    bool last_latency_decreased = false;
+    // Current direction (+-) to adjust in_flight_batches_limit_
+    int step_direction = 1;
+  };
+
+  // Delay stats between the creation of a batch and the completion of a
+  // batch.
+  DelayStats batch_delay_stats_ TF_GUARDED_BY(mu_);
+
   // Max adjustment size (as a fraction of in_flight_batches_limit_).
   constexpr static double kMaxStepSizeMultiplier = 0.125;  // 1/8;
   // Min adjustment size (as a fraction of in_flight_batches_limit_).
@@ -318,8 +330,8 @@ class ASBSQueue : public BatchScheduler<TaskType> {
   const QueueOptions options_;
   // Owned by scheduler_.
   ASBSBatch<TaskType>* current_batch_ TF_GUARDED_BY(mu_) = nullptr;
-  int64 num_enqueued_batches_ TF_GUARDED_BY(mu_) = 0;
-  int64 num_enqueued_tasks_ TF_GUARDED_BY(mu_) = 0;
+  int64_t num_enqueued_batches_ TF_GUARDED_BY(mu_) = 0;
+  int64_t num_enqueued_tasks_ TF_GUARDED_BY(mu_) = 0;
   mutable mutex mu_;
   TF_DISALLOW_COPY_AND_ASSIGN(ASBSQueue);
 };
@@ -339,16 +351,16 @@ class ASBSBatch : public Batch<TaskType> {
 
   ASBSQueue<TaskType>* queue() const { return queue_; }
 
-  int64 creation_time_micros() const { return creation_time_micros_; }
+  int64_t creation_time_micros() const { return creation_time_micros_; }
 
-  int64 schedulable_time_micros() const { return schedulable_time_micros_; }
+  int64_t schedulable_time_micros() const { return schedulable_time_micros_; }
 
   uint64 traceme_context_id() const { return traceme_context_id_; }
 
  private:
   ASBSQueue<TaskType>* queue_;
-  const int64 creation_time_micros_;
-  const int64 schedulable_time_micros_;
+  const int64_t creation_time_micros_;
+  const int64_t schedulable_time_micros_;
   const uint64 traceme_context_id_;
   TF_DISALLOW_COPY_AND_ASSIGN(ASBSBatch);
 };
@@ -620,7 +632,7 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
       },
       profiler::ContextType::kAdaptiveSharedBatchScheduler,
       batch->traceme_context_id());
-  int64_t start_time = batch->creation_time_micros();
+  const int64_t start_time = batch->creation_time_micros();
   callback(std::unique_ptr<Batch<TaskType>>(
       const_cast<internal::ASBSBatch<TaskType>*>(batch)));
   int64_t end_time = GetEnv()->NowMicros();
@@ -632,21 +644,31 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
   }
   in_flight_batches_--;
   batch_count_++;
-  batch_latency_sum_ += end_time - start_time;
+  batch_delay_stats_.batch_latency_sum += end_time - start_time;
+
+  MaybeAdjustInflightLimit();
+
+  MaybeScheduleNextBatch();
+}
+
+template <typename TaskType>
+void AdaptiveSharedBatchScheduler<TaskType>::MaybeAdjustInflightLimit() {
   // Occasionally adjust in_flight_batches_limit_ to minimize average latency.
   // Although the optimal value may depend on the workload, the latency should
   // be a simple convex function of in_flight_batches_limit_, allowing us to
   // locate the global minimum relatively quickly.
   if (batch_count_ == options_.batches_to_average_over) {
-    double current_avg_latency_ms = (batch_latency_sum_ / 1000.) / batch_count_;
+    double current_avg_latency_ms =
+        (batch_delay_stats_.batch_latency_sum / 1000.) / batch_count_;
     bool current_latency_decreased =
-        current_avg_latency_ms < last_avg_latency_ms_;
+        current_avg_latency_ms < batch_delay_stats_.last_avg_latency_ms;
     if (current_latency_decreased) {
       // If latency improvement was because we're moving in the correct
       // direction, increase step_size so that we can get to the minimum faster.
       // If latency improvement was due to backtracking from a previous failure,
       // decrease step_size in order to refine our location.
-      step_size_multiplier_ *= (last_latency_decreased_ ? 2 : 0.5);
+      step_size_multiplier_ *=
+          (batch_delay_stats_.last_latency_decreased ? 2 : 0.5);
       step_size_multiplier_ =
           std::min(step_size_multiplier_, kMaxStepSizeMultiplier);
       step_size_multiplier_ =
@@ -654,22 +676,22 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
     } else {
       // Return (nearly) to previous position and confirm that latency is better
       // there before decreasing step size.
-      step_direction_ = -step_direction_;
+      batch_delay_stats_.step_direction = -batch_delay_stats_.step_direction;
     }
-    in_flight_batches_limit_ +=
-        step_direction_ * in_flight_batches_limit_ * step_size_multiplier_;
+    in_flight_batches_limit_ += batch_delay_stats_.step_direction *
+                                in_flight_batches_limit_ *
+                                step_size_multiplier_;
     in_flight_batches_limit_ =
         std::min(in_flight_batches_limit_,
                  static_cast<double>(options_.num_batch_threads));
     in_flight_batches_limit_ =
         std::max(in_flight_batches_limit_,
                  static_cast<double>(options_.min_in_flight_batches_limit));
-    last_avg_latency_ms_ = current_avg_latency_ms;
-    last_latency_decreased_ = current_latency_decreased;
+    batch_delay_stats_.last_avg_latency_ms = current_avg_latency_ms;
+    batch_delay_stats_.last_latency_decreased = current_latency_decreased;
     batch_count_ = 0;
-    batch_latency_sum_ = 0;
+    batch_delay_stats_.batch_latency_sum = 0;
   }
-  MaybeScheduleNextBatch();
 }
 
 // ---------------- ASBSQueue ----------------
@@ -772,7 +794,11 @@ Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
       current_batch_->AddTask(std::move(task));
       num_enqueued_tasks_++;
       // If current_batch_ is now full, allow it to be processed immediately.
-      if (current_batch_->size() == options_.max_batch_size) {
+      bool reached_max_tasks =
+          (options_.max_tasks_per_batch.has_value() &&
+           current_batch_->num_tasks() >= options_.max_tasks_per_batch.value());
+      if (current_batch_->size() == options_.max_batch_size ||
+          reached_max_tasks) {
         current_batch_->Close();
         closed_batch = true;
         current_batch_ = nullptr;

@@ -35,7 +35,7 @@ namespace functor {
 template <typename Device, typename T>
 struct LaunchTensorToHashBucket {
   void operator()(OpKernelContext* c, const int64_t num_buckets, const T* input,
-                  const int num_elems, int64* output) {
+                  const int num_elems, int64_t* output) {
     string format = "%";
     switch (DataTypeToEnum<T>::value) {
       case DT_INT8:
@@ -61,7 +61,7 @@ struct LaunchTensorToHashBucket {
       // The number of buckets is always in the positive range of int64 so is
       // the resulting bucket_id. Casting the bucket_id from uint64 to int64 is
       // safe.
-      output[i] = static_cast<int64>(bucket_id);
+      output[i] = static_cast<int64_t>(bucket_id);
     }
   }
 };
@@ -70,7 +70,7 @@ struct LaunchTensorToHashBucket {
 template <typename T>
 struct LaunchTensorToHashBucket<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* c, const int64_t num_buckets, const T* input,
-                  const int num_elems, int64* output);
+                  const int num_elems, int64_t* output);
 };
 #endif  // GOOGLE_CUDA
 }  // namespace functor

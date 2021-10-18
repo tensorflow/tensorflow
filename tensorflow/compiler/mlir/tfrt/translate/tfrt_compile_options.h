@@ -16,10 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_TFRT_COMPILE_OPTIONS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_TFRT_COMPILE_OPTIONS_H_
 
+#include <iosfwd>
 #include <string>
 #include <vector>
 
 namespace tensorflow {
+
+enum class TfrtTpuInfraTarget {
+  kNoTpu,           // No TPU support.
+  kTpurt,           // Target TPURT dialect and kernels.
+  kTfFallback,      // Target TPU kernels in TF Fallback.
+  kBridgeFallback,  // TPU support but choose kTpurt or kTfFallback depending on
+                    // whether the graph has unsupported feature in Bridge
+};
+
+std::ostream& operator<<(std::ostream& os, TfrtTpuInfraTarget tpu_target);
 
 struct TfrtCompileOptions {
   // TODO(tfrt-devs): Ideally, compiler should make the decision where
@@ -46,11 +57,22 @@ struct TfrtCompileOptions {
   // data format should be changed, instead of controlled by users.
   std::string force_data_format;
 
-  // TODO(tfrt-devs): Ideally, compiler should work for both CPU and TPU
-  // models and no need to manually specify this option.
-  // If true, the compiler runs TPU specific passes and the runtime does TPU
-  // specific initializations (e.g. create the TpuVariablesTable).
-  bool target_tpu = false;
+  // The target TPU infrastructure to use. This will trigger TPU target specific
+  // compiler passes and runtime initialization.
+  TfrtTpuInfraTarget tpu_target = TfrtTpuInfraTarget::kNoTpu;
+
+  // If true, use the fused TPU compile_and_execute kernel, which performs all
+  // TPU inference related operations, e.g. core selection, h2d/d2h transfers,
+  // compile and execute.
+  bool tpu_fuse_ops = false;
+
+  // If true, resource gather ops in the device graph are moved to host graphs
+  // in order to saved TPU memory usage. This option is experimental.
+  bool tpu_move_resource_gather_to_host = false;
+
+  // If true, fallback executeops that produce inputs to tpu program will use
+  // tpu host allocator. This options is experimental.
+  bool use_tpu_host_allocator_for_inputs = false;
 
   // If true, the compiler will try to hoist invariant ops (e.g., const ops and
   // their non-side-effecting consumers) to loading phase, which avoids the

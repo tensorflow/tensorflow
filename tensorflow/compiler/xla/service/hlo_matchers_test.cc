@@ -169,7 +169,7 @@ TEST_F(HloMatchersTest, ShardingMatcher) {
       {ShapeUtil::MakeShape(F32, {7}), ShapeUtil::MakeShape(S32, {9}),
        ShapeUtil::MakeShape(F32, {11})});
   auto p2 = HloInstruction::CreateParameter(1, tuple_shape, "param.2");
-  Array<int64> assignment({2});
+  Array<int64_t> assignment({2});
   assignment.SetValues({0, 1});
   auto sharding = HloSharding::Tuple(
       tuple_shape, {HloSharding::Tile(assignment), HloSharding::AssignDevice(1),
@@ -321,6 +321,30 @@ ENTRY main {
   EXPECT_THAT(Explain(root, op::Constant(LiteralUtil::CreateR0<uint32_t>(1))),
               "(%x = u32[2]{0} constant({1, 2})) has wrong value (got u32[2] "
               "{1, 2}, want u32[] 1)");
+}
+
+TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
+  Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
+  std::unique_ptr<HloInstruction> p0 =
+      HloInstruction::CreateParameter(0, shape, "param");
+
+  std::vector<ReplicaGroup> replica_groups(2);
+  replica_groups[0].add_replica_ids(0);
+  replica_groups[0].add_replica_ids(2);
+  replica_groups[1].add_replica_ids(1);
+  replica_groups[1].add_replica_ids(3);
+  std::unique_ptr<HloInstruction> all_to_all =
+      HloInstruction::CreateAllToAll(shape, {p0.get()}, replica_groups,
+                                     /*constrain_layout=*/false,
+                                     /*channel_id=*/absl::nullopt);
+
+  EXPECT_THAT(Explain(p0.get(), op::ReplicaGroups({})),
+              "%param = f32[5,7]{1,0} parameter(0) not a collective op");
+  EXPECT_THAT(Explain(all_to_all.get(), op::ReplicaGroups({{0, 1}, {2, 3}})),
+              "%all-to-all = f32[5,7]{1,0} all-to-all(f32[5,7]{1,0} %param), "
+              "replica_groups={{0,2},{1,3}} has incorrect replica_groups "
+              "(expected: {{0,1},{2,3}})");
+  EXPECT_THAT(all_to_all.get(), op::ReplicaGroups({{0, 2}, {1, 3}}));
 }
 
 }  // namespace

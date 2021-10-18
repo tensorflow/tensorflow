@@ -200,8 +200,8 @@ FusionPattern::FusionPattern(Operation* op) {
 }
 
 // Create a new fusion pattern from the ops inside the lmhlo fusion op.
-FusionPattern::FusionPattern(lmhlo::FusionOp op) {
-  for (Operation& op : op.region().getBlocks().front()) {
+FusionPattern::FusionPattern(lmhlo::FusionOp fusion_op) {
+  for (Operation& op : fusion_op.region().getBlocks().front()) {
     op_list_.push_back(&op);
   }
 

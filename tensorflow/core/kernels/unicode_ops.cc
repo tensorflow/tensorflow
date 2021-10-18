@@ -492,12 +492,12 @@ class UnicodeDecodeWithOffsetsOp : public UnicodeDecodeBaseOp<SPLITS_TYPE> {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("UnicodeDecode").Device(DEVICE_CPU).TypeConstraint<int64>("Tsplits"),
-    UnicodeDecodeOp<int64>);
+    Name("UnicodeDecode").Device(DEVICE_CPU).TypeConstraint<int64_t>("Tsplits"),
+    UnicodeDecodeOp<int64_t>);
 REGISTER_KERNEL_BUILDER(Name("UnicodeDecodeWithOffsets")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int64>("Tsplits"),
-                        UnicodeDecodeWithOffsetsOp<int64>);
+                            .TypeConstraint<int64_t>("Tsplits"),
+                        UnicodeDecodeWithOffsetsOp<int64_t>);
 REGISTER_KERNEL_BUILDER(
     Name("UnicodeDecode").Device(DEVICE_CPU).TypeConstraint<int32>("Tsplits"),
     UnicodeDecodeOp<int32>);
@@ -598,8 +598,8 @@ class UnicodeEncodeOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("UnicodeEncode").Device(DEVICE_CPU).TypeConstraint<int64>("Tsplits"),
-    UnicodeEncodeOp<int64>);
+    Name("UnicodeEncode").Device(DEVICE_CPU).TypeConstraint<int64_t>("Tsplits"),
+    UnicodeEncodeOp<int64_t>);
 REGISTER_KERNEL_BUILDER(
     Name("UnicodeEncode").Device(DEVICE_CPU).TypeConstraint<int32>("Tsplits"),
     UnicodeEncodeOp<int32>);

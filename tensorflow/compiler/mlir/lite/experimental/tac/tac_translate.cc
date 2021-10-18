@@ -126,6 +126,8 @@ absl::Status TargetAwareConversionMain() {
   if (!output_mlir || inline_subgraphs) {
     options.debug_mode = false;
   }
+  options.enable_inliner = true;
+  options.legalize_to_tflite_ops = true;
   mlir::TFL::tac::TacModule tac_module(options);
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);

@@ -131,7 +131,7 @@ class RingGathererTest : public ::testing::Test {
             GenerateEvenSubdivOffsets(test_env->num_devices_per_worker,
                                       num_subdivs);
       }
-      string dev_name = col_params_->group.devices[rank].name();
+      string dev_name = col_params_->group.members[rank].device.name();
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(dev_name, &device_))
           << "Couldn't find device " << dev_name
           << " existing devices: " << test_env_->device_mgr->DebugString();
@@ -228,7 +228,7 @@ TEST_F(RingGathererInitParamsTest, SpecifiedSubdivs) {
         RunTest<int32>(dtype, DEVICE_##T, W, D, S, L, A);                     \
       } break;                                                                \
       case DT_INT64: {                                                        \
-        RunTest<int64>(dtype, DEVICE_##T, W, D, S, L, A);                     \
+        RunTest<int64_t>(dtype, DEVICE_##T, W, D, S, L, A);                   \
       } break;                                                                \
       default:                                                                \
         LOG(FATAL) << "Unimplemented";                                        \

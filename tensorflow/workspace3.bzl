@@ -2,6 +2,7 @@
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//third_party:tf_runtime/workspace.bzl", tf_runtime = "repo")
+load("//third_party/llvm:workspace.bzl", llvm = "repo")
 
 def workspace():
     http_archive(
@@ -16,15 +17,39 @@ def workspace():
 
     http_archive(
         name = "tf_toolchains",
-        sha256 = "917a8403520981026dab6e4b920cb006041308064d87ef5792dd3b5d89a49bcb",
-        strip_prefix = "toolchains-d781e89e2ee797ea7afd0c8391e761616fc5d50d",
+        sha256 = "214e306fc217bccf20e31ce32b943734b41b5d809fb84cf56b30093bef8f9249",
+        strip_prefix = "toolchains-1.2.9",
         urls = [
-            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/d781e89e2ee797ea7afd0c8391e761616fc5d50d.tar.gz",
-            "https://github.com/tensorflow/toolchains/archive/d781e89e2ee797ea7afd0c8391e761616fc5d50d.tar.gz",
+            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v1.2.9.tar.gz",
+            "https://github.com/tensorflow/toolchains/archive/v1.2.9.tar.gz",
         ],
     )
 
     tf_runtime()
+
+    # https://github.com/bazelbuild/bazel-skylib/releases
+    http_archive(
+        name = "bazel_skylib",
+        sha256 = "1c531376ac7e5a180e0237938a2536de0c54d93f5c278634818e0efc952dd56c",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
+        ],
+    )
+
+    # TODO(rostam): Delete after the release of Bazel built-in cc_shared_library.
+    http_archive(
+        name = "rules_pkg",
+        sha256 = "352c090cc3d3f9a6b4e676cf42a6047c16824959b438895a76c2989c6d7c246a",
+        urls = [
+            "https://github.com/bazelbuild/rules_pkg/releases/download/0.2.5/rules_pkg-0.2.5.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.2.5/rules_pkg-0.2.5.tar.gz",
+        ],
+    )
+
+    # Load the raw llvm-project.  llvm does not have build rules set up by default,
+    # but provides a script for setting up build rules via overlays.
+    llvm("llvm-raw")
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

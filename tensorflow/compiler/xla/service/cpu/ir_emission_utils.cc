@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-int64 GetMinimumAlignmentForArray(
+int64_t GetMinimumAlignmentForArray(
     const Shape& shape, const TargetMachineFeatures& target_machine_features) {
   CHECK(shape.IsArray());
   CHECK(!LayoutUtil::HasLayout(shape) || LayoutUtil::IsDense(shape.layout()));

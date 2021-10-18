@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -56,9 +59,9 @@ static mutex* get_dataset_experiment_registry_lock() {
   return &dataset_experiment_registry_lock;
 }
 
-static absl::flat_hash_map<string, int64>* get_dataset_experiments() {
-  static absl::flat_hash_map<string, int64>* experiments =
-      new absl::flat_hash_map<string, int64>;
+static absl::flat_hash_map<string, int64_t>* get_dataset_experiments() {
+  static absl::flat_hash_map<string, int64_t>* experiments =
+      new absl::flat_hash_map<string, int64_t>;
   return experiments;
 }
 
@@ -79,9 +82,11 @@ constexpr char kMakeSloppyOpt[] = "make_sloppy";
 constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
+constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
+constexpr char kMakeDeterministicOpt[] = "make_deterministic";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
@@ -107,6 +112,9 @@ void DefaultOptimizationGraphRewrites(
         OptimizationOptions::kShuffleAndRepeatFusion) {
       optimization_default->insert(kShuffleAndRepeatFusionOpt);
     }
+  }
+  if (OpDeterminismRequired()) {
+    optimization_enabled->insert(kMakeDeterministicOpt);
   }
   if (optimization_options.optional_filter_fusion_case() ==
       OptimizationOptions::kFilterFusion) {
@@ -188,7 +196,8 @@ bool IsOpAllowlisted(const OpDef* op_def) {
 
 }  // namespace
 
-std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds) {
+std::pair<int64_t, int64_t> MaybeOverrideSeeds(
+    std::pair<int64_t, int64_t> seeds) {
   if (seeds.first == 0 && seeds.second == 0) {
     return {random::New64(), random::New64()};
   }
@@ -452,7 +461,7 @@ absl::flat_hash_set<string> GetExperiments(
   }
 
   // Identify opted out experiments.
-  absl::flat_hash_map<string, int64> live_experiments =
+  absl::flat_hash_map<string, int64_t> live_experiments =
       DatasetExperimentRegistry::Experiments();
   absl::flat_hash_set<string> opt_outs;
   if (opt_outs_raw == "all") {
@@ -498,11 +507,13 @@ absl::flat_hash_set<string> GetExperiments(
 
 void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments) {
   if (!experiments.empty()) {
-    VLOG(1) << "The input pipeline is subject to tf.data experiments. "
-               "Please see `go/tf-data-experiments` for more details.";
+    constexpr float TEN_MINUTES = 60.0 * 10.0;
+    LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
+        << "The input pipeline is subject to the following tf.data experiments:"
+        << " " << absl::StrJoin(experiments, ", ") << ". "
+        << "See `go/tf-data-experiments` for more details.";
   }
   for (auto& experiment : experiments) {
-    VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
     metrics::RecordTFDataExperiment(experiment);
   }
 }
@@ -514,12 +525,10 @@ void GetOptimizations(const Options& options,
   DefaultOptimizationGraphRewrites(options, optimizations_enabled,
                                    optimizations_disabled,
                                    optimizations_default);
-  if (options.optional_deterministic_case() == Options::kDeterministic) {
-    if (options.deterministic()) {
-      optimizations_disabled->insert(kMakeSloppyOpt);
-    } else {
-      optimizations_enabled->insert(kMakeSloppyOpt);
-    }
+  if (!OpDeterminismRequired() &&
+      options.optional_deterministic_case() == Options::kDeterministic &&
+      !options.deterministic()) {
+    optimizations_enabled->insert(kMakeSloppyOpt);
   }
   if (options.optional_slack_case() == Options::kSlack) {
     if (options.slack()) {
@@ -551,6 +560,15 @@ absl::flat_hash_set<tstring> SelectOptimizations(
   }
 
   return optimizations;
+}
+
+Tensor MaybeCopySubSlice(const Tensor& tensor, int64 index) {
+  Tensor slice = tensor.SubSlice(index);
+  if (slice.IsAligned()) {
+    return slice;
+  } else {
+    return tensorflow::tensor::DeepCopy(slice);
+  }
 }
 
 void StripDevicePlacement(FunctionDefLibrary* library) {
@@ -666,7 +684,7 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
                    const Status& status, IteratorStateWriter* writer) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
-      static_cast<int64>(status.code())));
+      static_cast<int64_t>(status.code())));
   if (!status.ok()) {
     TF_RETURN_IF_ERROR(writer->WriteScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
@@ -718,7 +736,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
   return Status::OK();
 }
 
-Status CopyBatch(IteratorContext* ctx,
+Status CopyBatch(CopyBatchParams params,
                  const std::vector<std::vector<Tensor>>& batch_elements,
                  bool parallel_copy,
                  std::function<Status()> allocation_callback,
@@ -734,7 +752,7 @@ Status CopyBatch(IteratorContext* ctx,
     TensorShape first_element_shape(first_element.shape());
     TensorShape batch_component_shape({num_batch_elements});
     batch_component_shape.AppendShape(first_element_shape);
-    out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
+    out_tensors->emplace_back(params.allocator, first_element.dtype(),
                               batch_component_shape);
     if (!out_tensors->back().IsInitialized()) {
       return errors::ResourceExhausted(
@@ -773,7 +791,7 @@ Status CopyBatch(IteratorContext* ctx,
       Status status;
       mutex status_mu;
       BlockingCounter counter(num_batch_elements);
-      const auto num_threads = ctx->runner_threadpool_size();
+      const auto num_threads = params.runner_threadpool_size;
       const auto slice_size = num_batch_elements / num_threads;
       int64_t offset = 0;
       for (size_t i = 0; i < num_threads; ++i) {
@@ -782,7 +800,7 @@ Status CopyBatch(IteratorContext* ctx,
         // evenly, the size of some slices is incremented to guarantee their
         // sizes add up to the total number of elements.
         if (i < num_batch_elements % num_threads) ++length;
-        (*ctx->runner())([offset, length, &status, &status_mu, &counter,
+        (*params.runner)([offset, length, &status, &status_mu, &counter,
                           &copy_element_fn]() {
           for (size_t j = offset; j < offset + length; ++j) {
             {
@@ -810,9 +828,12 @@ absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& autotune_options = options.autotune_options();
   std::vector<tstring> autotune_only_optimizations = {
-      kAutotuneBufferSizesOpt, kBatchParallelizationOpt,
-      kDisablePrefetchLegacyAutotuneOpt, kEnableGradientDescentOpt,
-      kMapParallelizationOpt};
+      kAutotuneBufferSizesOpt,
+      kBatchParallelizationOpt,
+      kDisablePrefetchLegacyAutotuneOpt,
+      kEnableGradientDescentOpt,
+      kMapParallelizationOpt,
+      kInjectPrefetchOpt};
 
   if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
       !autotune_options.enabled()) {
@@ -873,16 +894,17 @@ void DatasetExperimentRegistry::Register(const string& experiment,
 }
 
 // static
-absl::flat_hash_map<string, int64> DatasetExperimentRegistry::Experiments() {
+absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
   mutex_lock l(*get_dataset_experiment_registry_lock());
   return *get_dataset_experiments();
 }
 
 namespace {
 
-REGISTER_DATASET_EXPERIMENT("enable_gradient_descent", 0);
 REGISTER_DATASET_EXPERIMENT("parallelize_batch_copy", 100);
-REGISTER_DATASET_EXPERIMENT("max_parallelism", 50);
+REGISTER_DATASET_EXPERIMENT("max_parallelism", 100);
+REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
+REGISTER_DATASET_EXPERIMENT("inject_prefetch", 50);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

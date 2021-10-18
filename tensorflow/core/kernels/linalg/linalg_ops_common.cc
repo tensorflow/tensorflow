@@ -150,7 +150,7 @@ void LinearAlgebraOp<InputScalar, OutputScalar>::AnalyzeInputs(
     const int64_t num_rows = in.dim_size(row_dimension);
     const int64_t num_cols = in.dim_size(col_dimension);
     input_matrix_shapes->emplace_back(
-        std::initializer_list<int64>({num_rows, num_cols}));
+        std::initializer_list<int64_t>({num_rows, num_cols}));
     inputs->emplace_back(&in);
   }
   // Have the derived class validate that the inputs are as expected.

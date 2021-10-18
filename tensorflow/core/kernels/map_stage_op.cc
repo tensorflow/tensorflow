@@ -37,21 +37,23 @@ namespace {
 // Partial Ordering Comparator for Tensor keys containing scalar int64's
 struct KeyTensorLess {
   bool operator()(const Tensor& lhs, const Tensor& rhs) const {
-    return std::less<int64>{}(lhs.scalar<int64>()(), rhs.scalar<int64>()());
+    return std::less<int64_t>{}(lhs.scalar<int64_t>()(),
+                                rhs.scalar<int64_t>()());
   }
 };
 
 // Key Equality operator for Tensor keys containing scalar int64's
 struct KeyTensorEqual {
   bool operator()(const Tensor& lhs, const Tensor& rhs) const {
-    return std::equal_to<int64>{}(lhs.scalar<int64>()(), rhs.scalar<int64>()());
+    return std::equal_to<int64_t>{}(lhs.scalar<int64_t>()(),
+                                    rhs.scalar<int64_t>()());
   }
 };
 
 // Hash for Tensor keys containing scalar int64's
 struct KeyTensorHash {
   std::size_t operator()(const Tensor& key) const {
-    return std::hash<int64>{}(key.scalar<int64>()());
+    return std::hash<int64_t>{}(key.scalar<int64_t>()());
   }
 };
 
@@ -165,7 +167,7 @@ class StagingMap : public ResourceBase {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (index >= dtypes_.size()) {
       return Status(errors::InvalidArgument(
-          "Index '", index, "' for key '", key.scalar<int64>()(),
+          "Index '", index, "' for key '", key.scalar<int64_t>()(),
           "' was out of bounds '", dtypes_.size(), "'."));
     }
 
@@ -187,7 +189,7 @@ class StagingMap : public ResourceBase {
       // Insist on a value present at the specified index
       if (!(*map_tuple)[index].has_value()) {
         return Status(errors::InvalidArgument(
-            "Tensor at index '", index, "' for key '", key.scalar<int64>()(),
+            "Tensor at index '", index, "' for key '", key.scalar<int64_t>()(),
             "' has already been removed."));
       }
 
@@ -210,9 +212,10 @@ class StagingMap : public ResourceBase {
                                    const OptionalTuple& tuple)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (tuple[index].has_value()) {
-      return errors::InvalidArgument(
-          "The tensor for index '", index, "' for key '", key.scalar<int64>()(),
-          "' was already initialized '", dtypes_.size(), "'.");
+      return errors::InvalidArgument("The tensor for index '", index,
+                                     "' for key '", key.scalar<int64_t>()(),
+                                     "' was already initialized '",
+                                     dtypes_.size(), "'.");
     }
 
     return Status::OK();

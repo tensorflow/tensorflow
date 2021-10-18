@@ -25,7 +25,7 @@ REGISTER_KERNEL_BUILDER(
     ReductionOp<CPUDevice, bool, int32, Eigen::internal::AndReducer>);
 REGISTER_KERNEL_BUILDER(
     Name("All")
-        .TypeConstraint<int64>("Tidx")
+        .TypeConstraint<int64_t>("Tidx")
         .Device(DEVICE_CPU)
         .HostMemory("reduction_indices"),
     ReductionOp<CPUDevice, bool, int64, Eigen::internal::AndReducer>);
@@ -39,7 +39,7 @@ REGISTER_KERNEL_BUILDER(
     ReductionOp<GPUDevice, bool, int32, Eigen::internal::AndReducer>);
 REGISTER_KERNEL_BUILDER(
     Name("All")
-        .TypeConstraint<int64>("Tidx")
+        .TypeConstraint<int64_t>("Tidx")
         .Device(DEVICE_GPU)
         .HostMemory("reduction_indices"),
     ReductionOp<GPUDevice, bool, int64, Eigen::internal::AndReducer>);

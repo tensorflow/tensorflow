@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Functional tests for the ops to generate and execute vocab remapping."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 import numpy as np

@@ -345,13 +345,13 @@ TF_CALL_double(REGISTER);
   REGISTER_V2(RTYPE, float);       \
   REGISTER_V2(RTYPE, double);      \
   REGISTER_V2(RTYPE, int32);       \
-  REGISTER_V2(RTYPE, int64);
+  REGISTER_V2(RTYPE, int64_t);
 
 REGISTER_ALL(Eigen::half);
 REGISTER_ALL(float);
 REGISTER_ALL(double);
 REGISTER_ALL(int32);
-REGISTER_ALL(int64);
+REGISTER_ALL(int64_t);
 
 #undef REGISTER_ALL
 #undef REGISTER_V2

@@ -156,8 +156,8 @@ func @testWhile0Result() {
 
 // CHECK-LABEL:  func @testComplexWhile1Result(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 func @testComplexWhile1Result(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> (tensor<*xf32>) {
-  %0 = addf %arg0, %arg1 : tensor<*xf32>
-// CHECK:    [[ADDF:%.+]] = addf %arg0, %arg1 : tensor<*xf32>
+  %0 = arith.addf %arg0, %arg1 : tensor<*xf32>
+// CHECK:    [[ADDF:%.+]] = arith.addf %arg0, %arg1 : tensor<*xf32>
 
   %1:2 = "tf.While"(%arg0, %0) {
     cond = @testWhile2Cond, body = @testWhile2Body, is_stateless = false
@@ -177,10 +177,10 @@ func @testComplexWhile1Result(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> (te
 // CHECK:    br ^bb4([[EXITARG1]], [[ADDF]] : tensor<*xf32>, tensor<*xf32>)
 
 ^bb1(%2: tensor<*xf32>, %3: tensor<*xf32>):
-  %4 = subf %arg0, %arg1 : tensor<*xf32>
+  %4 = arith.subf %arg0, %arg1 : tensor<*xf32>
   return %4 : tensor<*xf32>
 // CHECK:  ^bb4([[FINALARG0:%.+]]: tensor<*xf32>, [[FINALARG1:%.+]]: tensor<*xf32>):
-// CHECK:    [[SUBF:%.+]] = subf %arg0, %arg1 : tensor<*xf32>
+// CHECK:    [[SUBF:%.+]] = arith.subf %arg0, %arg1 : tensor<*xf32>
 // CHECK:    return [[SUBF]] : tensor<*xf32>
 }
 

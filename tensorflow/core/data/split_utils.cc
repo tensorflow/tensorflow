@@ -39,7 +39,7 @@ Status IndexSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   }
   *end_of_splits = false;
   *split = Tensor(DT_INT64, TensorShape{});
-  split->scalar<int64>()() = i_++;
+  split->scalar<int64_t>()() = i_++;
   return Status::OK();
 }
 

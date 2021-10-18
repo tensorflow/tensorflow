@@ -14,10 +14,6 @@
 # ==============================================================================
 """Base testing class for strategies that require multiple nodes."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import copy
 import json
@@ -364,6 +360,8 @@ def create_multi_process_cluster(num_workers,
                                  rpc_layer='grpc',
                                  stream_output=False,
                                  collective_leader=None):
+  logging.info('Now creating a MultiProcessCluster with '
+               f'num_workers={num_workers}, num_ps={num_ps}.')
   cluster_spec = create_cluster_spec(
       has_chief=has_chief,
       num_workers=num_workers,

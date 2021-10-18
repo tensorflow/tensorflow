@@ -93,8 +93,8 @@ Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
         std::ceil(sample_f - kernel.Radius() * kernel_scale - 0.5f);
     int64_t span_end =
         std::floor(sample_f + kernel.Radius() * kernel_scale - 0.5f);
-    span_start = Clamp(static_cast<int64>(0), input_size - 1, span_start);
-    span_end = Clamp(static_cast<int64>(0), input_size - 1, span_end) + 1;
+    span_start = Clamp(static_cast<int64_t>(0), input_size - 1, span_start);
+    span_end = Clamp(static_cast<int64_t>(0), input_size - 1, span_end) + 1;
     const int this_span_size = span_end - span_start;
     if (this_span_size > spans->span_size) {
       return errors::Internal(Printf("Span is too large: %d vs %d.",

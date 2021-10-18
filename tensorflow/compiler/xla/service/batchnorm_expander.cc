@@ -187,7 +187,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   auto epsilon = add(HloInstruction::CreateBroadcast(
       operand_shape,
       add(HloInstruction::CreateConstant(std::move(epsilon_literal))), {}));
-  std::vector<int64> dimensions_without_feature;
+  std::vector<int64_t> dimensions_without_feature;
 
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
     if (i != feature_index) {
@@ -272,7 +272,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     const HloSharding& sharding = batch_norm->sharding();
     HloSharding operand_sharding =
         sharding.GetAsShapeTree(batch_norm->shape()).element({0});
-    optional<int64> unique_device = batch_norm->sharding_unique_device();
+    optional<int64_t> unique_device = batch_norm->sharding_unique_device();
     HloSharding default_sharding =
         unique_device.has_value()
             ? HloSharding::AssignDevice(unique_device.value())
@@ -315,7 +315,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
           HloInstruction::CreateConstant(std::move(epsilon_literal))),
       {}));
 
-  std::vector<int64> dimensions_without_feature;
+  std::vector<int64_t> dimensions_without_feature;
 
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
     if (i != feature_index) {
@@ -359,7 +359,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
            instruction_count_before + added_instructions.size());
   if (batch_norm->has_sharding()) {
     const HloSharding& sharding = batch_norm->sharding();
-    optional<int64> unique_device = batch_norm->sharding_unique_device();
+    optional<int64_t> unique_device = batch_norm->sharding_unique_device();
     HloSharding default_sharding =
         unique_device.has_value()
             ? HloSharding::AssignDevice(unique_device.value())
@@ -434,7 +434,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   auto epsilon_feature =
       add(HloInstruction::CreateBroadcast(feature_shape, epsilon_scalar, {}));
 
-  std::vector<int64> dimensions_without_feature;
+  std::vector<int64_t> dimensions_without_feature;
 
   for (int64_t i = 0; i < activation_shape.rank(); ++i) {
     if (i != feature_index) {

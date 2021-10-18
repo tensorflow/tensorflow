@@ -509,8 +509,7 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       return absl::NotFoundError(
           absl::StrCat("Input id ", index, " is an invalid input index."));
     }
-    RETURN_IF_ERROR(inputs_[index]->CopyFromExternalObject());
-    return queue_->WaitForCompletion();
+    return inputs_[index]->CopyFromExternalObject();
   }
 
   absl::Status CopyToExternalOutput(int index) override {
@@ -518,8 +517,7 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       return absl::NotFoundError(
           absl::StrCat("Output id ", index, " is an invalid output index"));
     }
-    RETURN_IF_ERROR(outputs_[index]->CopyToExternalObject());
-    return queue_->WaitForCompletion();
+    return outputs_[index]->CopyToExternalObject();
   }
 
   absl::Status Run() override {

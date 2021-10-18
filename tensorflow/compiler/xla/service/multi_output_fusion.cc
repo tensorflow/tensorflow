@@ -74,7 +74,7 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
             RoundDownToNearest(operand->UserId(instruction), kUserSliceSize);
 
         const int64_t user_slice_end =
-            std::min(static_cast<int64>(operand->users().size()),
+            std::min(static_cast<int64_t>(operand->users().size()),
                      user_slice_begin + kUserSliceSize);
 
         for (int64_t i = user_slice_begin; i < user_slice_end; ++i) {
@@ -191,7 +191,7 @@ bool MultiOutputFusion::IsProfitableOperand(HloInstruction* instr) {
   return true;
 }
 
-std::vector<std::pair<HloInstruction*, int64>>
+std::vector<std::pair<HloInstruction*, int64_t>>
 MultiOutputFusion::GetNewFusibles(HloInstruction* instr1,
                                   HloInstruction* instr2) {
   HloInstruction* fusion = instr1;
@@ -205,7 +205,7 @@ MultiOutputFusion::GetNewFusibles(HloInstruction* instr1,
   FusionCandidate& fused_node = candidates_[get_candidate_id(fused)];
 
   // The second entry of the pair is an old profit value.
-  std::vector<std::pair<HloInstruction*, int64>> new_fusibles;
+  std::vector<std::pair<HloInstruction*, int64_t>> new_fusibles;
   absl::flat_hash_set<HloInstruction*> in_list;
   auto it = fusion_node.fusibles.begin();
   while (it != fusion_node.fusibles.end()) {
@@ -264,7 +264,7 @@ void MultiOutputFusion::UpdateBeforeFuse(HloInstruction* instr1,
 
 void MultiOutputFusion::UpdateAfterFuse(
     HloInstruction* fusion,
-    const std::vector<std::pair<HloInstruction*, int64>>& new_fusibles,
+    const std::vector<std::pair<HloInstruction*, int64_t>>& new_fusibles,
     bool new_fusion_node) {
   FusionCandidate& candidate_node = candidates_[candidates_index_[fusion]];
   for (auto it : new_fusibles) {
@@ -427,7 +427,7 @@ bool MultiOutputFusion::Perform() {
                        HloPrintOptions().set_indent_amount(1));
       }
       UpdateBeforeFuse(instr1, instr2);
-      std::vector<std::pair<HloInstruction*, int64>> new_fusibles =
+      std::vector<std::pair<HloInstruction*, int64_t>> new_fusibles =
           GetNewFusibles(instr1, instr2);
       HloInstruction* fusion = Fuse(instr1, instr2);
       if (fusion != instr1) {

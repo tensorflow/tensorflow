@@ -18,19 +18,21 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
 const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
 
-int64 GetTotalGPUMemory(PlatformDeviceId gpu_id) {
+int64_t GetTotalGPUMemory(PlatformDeviceId gpu_id) {
   se::StreamExecutor* se =
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
           .ValueOrDie();
@@ -66,7 +68,8 @@ class GPUDeviceTest : public ::testing::Test {
       const string& visible_device_list = "",
       double per_process_gpu_memory_fraction = 0, int gpu_device_count = 1,
       const std::vector<std::vector<float>>& memory_limit_mb = {},
-      const std::vector<std::vector<int32>>& priority = {}) {
+      const std::vector<std::vector<int32>>& priority = {},
+      const bool use_cuda_malloc_async = false) {
     SessionOptions options;
     ConfigProto* config = &options.config;
     (*config->mutable_device_count())["GPU"] = gpu_device_count;
@@ -74,6 +77,8 @@ class GPUDeviceTest : public ::testing::Test {
     gpu_options->set_visible_device_list(visible_device_list);
     gpu_options->set_per_process_gpu_memory_fraction(
         per_process_gpu_memory_fraction);
+    gpu_options->mutable_experimental()->set_use_cuda_malloc_async(
+        use_cuda_malloc_async);
     for (int i = 0; i < memory_limit_mb.size(); ++i) {
       auto virtual_devices =
           gpu_options->mutable_experimental()->add_virtual_devices();
@@ -108,6 +113,84 @@ class GPUDeviceTest : public ::testing::Test {
         gpu_tensor, /*tensor_name=*/"", device, cpu_tensor));
   }
 };
+
+TEST_F(GPUDeviceTest, CudaMallocAsync) {
+  // cudaMallocAsync supported only when cuda toolkit and driver supporting
+  // CUDA 11.2+
+#ifndef GOOGLE_CUDA
+  return;
+#elif CUDA_VERSION < 11020
+  LOG(INFO) << "CUDA toolkit too old, skipping this test: " << CUDA_VERSION;
+  return;
+#else
+  // cudaMallocAsync supported only for driver supporting CUDA 11.2+
+  int driverVersion;
+  cuDriverGetVersion(&driverVersion);
+  if (driverVersion < 11020) {
+    LOG(INFO) << "Driver version too old, skipping this test: "
+              << driverVersion;
+    return;
+  }
+#endif
+
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {},
+                                           /*use_cuda_malloc_async=*/true);
+  std::vector<std::unique_ptr<Device>> devices;
+  Status status;
+  int number_instantiated =
+      GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
+  {  // The new scope is to trigger the destruction of the object.
+    status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+        opts, kDeviceNamePrefix, &devices);
+    EXPECT_EQ(devices.size(), 1);
+    Device* device = devices[0].get();
+    auto* device_info = device->tensorflow_gpu_device_info();
+    EXPECT_NE(device_info, nullptr);
+
+    AllocatorAttributes allocator_attributes = AllocatorAttributes();
+    allocator_attributes.set_gpu_compatible(true);
+    Allocator* allocator = devices[0]->GetAllocator(allocator_attributes);
+    void* ptr = allocator->AllocateRaw(Allocator::kAllocatorAlignment, 1024);
+    EXPECT_NE(ptr, nullptr);
+    allocator->DeallocateRaw(ptr);
+  }
+  EXPECT_EQ(number_instantiated + 1,
+            GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
+  EXPECT_EQ(status.code(), error::OK);
+}
+
+TEST_F(GPUDeviceTest, CudaMallocAsyncPreallocate) {
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {},
+                                           /*use_cuda_malloc_async=*/true);
+  setenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", "2048", 1);
+  std::vector<std::unique_ptr<Device>> devices;
+  Status status;
+
+  int number_instantiated =
+      GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
+  {  // The new scope is to trigger the destruction of the object.
+    status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+        opts, kDeviceNamePrefix, &devices);
+    EXPECT_EQ(devices.size(), 1);
+    Device* device = devices[0].get();
+    auto* device_info = device->tensorflow_gpu_device_info();
+    CHECK(device_info);
+
+    AllocatorAttributes allocator_attributes = AllocatorAttributes();
+    allocator_attributes.set_gpu_compatible(true);
+    Allocator* allocator = devices[0]->GetAllocator(allocator_attributes);
+    void* ptr = allocator->AllocateRaw(Allocator::kAllocatorAlignment, 1024);
+    EXPECT_NE(ptr, nullptr);
+    allocator->DeallocateRaw(ptr);
+  }
+
+  unsetenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC");
+
+  EXPECT_EQ(number_instantiated + 1,
+            GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
+
+  EXPECT_EQ(status.code(), error::OK);
+}
 
 TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
   SessionOptions opts = MakeSessionOptions("0,abc");
@@ -380,8 +463,8 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
 
   int64_t memory_limit = devices[0]->attributes().memory_limit();
   ASSERT_EQ(memory_limit,
-            static_cast<int64>(GetTotalGPUMemory(kPlatformDeviceId) *
-                               kGpuMemoryFraction));
+            static_cast<int64_t>(GetTotalGPUMemory(kPlatformDeviceId) *
+                                 kGpuMemoryFraction));
 
   AllocatorAttributes allocator_attributes = AllocatorAttributes();
   allocator_attributes.set_gpu_compatible(true);
@@ -475,7 +558,7 @@ TEST_F(GPUKernelTrackerTest, CappingOnly) {
   // 1 is the expected value when no kernels have yet terminated.
   EXPECT_EQ(1, kernel_tracker_->LastTerminatedCount(0));
 
-  std::deque<int64> queued_counts;
+  std::deque<int64_t> queued_counts;
   for (int i = 0; i < 32; ++i) {
     uint64 queued_count = timing_counter_->next();
     queued_counts.push_back(queued_count);

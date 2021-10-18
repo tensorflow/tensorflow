@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -103,7 +103,7 @@ class CSRMatMulOp : public OpKernel {
 
   Status ValidateInputs(const CSRSparseMatrix& sparse_matrix_a,
                         const Tensor& dense_tensor_b, int* rank,
-                        int64* batch_size) {
+                        int64_t* batch_size) {
     if (sparse_matrix_a.dtype() != dense_tensor_b.dtype()) {
       return errors::InvalidArgument(
           "Input types don't match.  a.dtype == ",
@@ -123,7 +123,7 @@ class CSRMatMulOp : public OpKernel {
                                      sparse_matrix_a.batch_size(), " vs. ",
                                      batch_size, ".");
     }
-    const auto& a_dense_shape = sparse_matrix_a.dense_shape().vec<int64>();
+    const auto& a_dense_shape = sparse_matrix_a.dense_shape().vec<int64_t>();
     const int64_t a_inner_dim =
         a_dense_shape(this->transpose_a_ ? *rank - 2 : *rank - 1);
     const int64_t b_inner_dim =
@@ -176,7 +176,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
     OP_REQUIRES_OK(ctx, this->ValidateInputs(*sparse_matrix_a, matrix_b, &rank,
                                              &batch_size));
 
-    const auto dense_shape = sparse_matrix_a->dense_shape().vec<int64>();
+    const auto dense_shape = sparse_matrix_a->dense_shape().vec<int64_t>();
     int64_t num_lhs_rows = dense_shape(rank - 2);
     int64_t num_lhs_cols = dense_shape(rank - 1);
     int64_t num_rhs_rows = matrix_b.dim_size(rank - 2);
@@ -274,7 +274,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
           row_offset;
     }
     const int64_t num_cols =
-        csr_matrix.dense_shape().vec<int64>()(csr_matrix.dims() - 1);
+        csr_matrix.dense_shape().vec<int64_t>()(csr_matrix.dims() - 1);
     return Eigen::Map<const SparseMatrix>(
         num_shard_rows /* num_rows */, num_cols /* num_cols */,
         row_ptrs->at(num_shard_rows) /* total_nnz */, row_ptrs->data(),
@@ -511,7 +511,7 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
 
     const Tensor& a_dense_shape_t = a_matrix->dense_shape();
     TensorShape a_dense_tensor_shape;
-    auto a_dense_shape = a_dense_shape_t.vec<int64>();
+    auto a_dense_shape = a_dense_shape_t.vec<int64_t>();
     OP_REQUIRES_OK(
         ctx, TensorShapeUtils::MakeShape(a_dense_shape, &a_dense_tensor_shape));
 
@@ -549,8 +549,8 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
 #endif
     if (use_matrix_vector_multiply) {
       // Call matrix-vector multiply if b is a vector.
-      TTypes<int64>::ConstVec a_dense_shape_comp(a_dense_shape.data() + row_dim,
-                                                 2);
+      TTypes<int64_t>::ConstVec a_dense_shape_comp(
+          a_dense_shape.data() + row_dim, 2);
       Tensor b_conj_t;
       const T* b_base_ptr = b_t.template flat<T>().data();
       bool conjugate_a = this->conjugate_a_;
@@ -632,7 +632,7 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
       a_input_matrix = &a_matrix_transposed;
     }
 
-    auto a_input_dense_shape = a_input_matrix->dense_shape().vec<int64>();
+    auto a_input_dense_shape = a_input_matrix->dense_shape().vec<int64_t>();
 
     // Possibly transpose b.
     Tensor b_t_input;
@@ -658,7 +658,7 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
     }
 
     // Dense shape of a batch component of A.
-    TTypes<int64>::ConstVec a_input_dense_shape_comp(
+    TTypes<int64_t>::ConstVec a_input_dense_shape_comp(
         a_input_dense_shape.data() + row_dim, 2);
 
     auto b = b_t_input.flat<T>();
@@ -857,7 +857,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       Tensor buffer;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+          DT_INT8, TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
       DCHECK(buffer.flat<int8>().data() != nullptr);
 
       TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,
@@ -895,7 +895,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       Tensor buffer;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+          DT_INT8, TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
       DCHECK(buffer.flat<int8>().data() != nullptr);
 
       TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,

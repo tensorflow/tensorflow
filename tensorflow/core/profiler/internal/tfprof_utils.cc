@@ -63,7 +63,7 @@ string FormatMemory(int64_t bytes) {
   }
 }
 
-string FormatShapes(const std::vector<int64>& shape) {
+string FormatShapes(const std::vector<int64_t>& shape) {
   return absl::StrJoin(shape, "x");
 }
 
