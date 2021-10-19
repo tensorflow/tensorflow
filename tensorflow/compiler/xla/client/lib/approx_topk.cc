@@ -88,6 +88,7 @@ XlaOp SortAndSliceBuilder(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   slice_limit_indices.insert(slice_limit_indices.begin(),
                              operands_shapes[0].dimensions().begin(),
                              operands_shapes[0].dimensions().end());
+  slice_limit_indices[reduction_dim] = top_k;
 
   std::vector<XlaOp> sliced_results;
   sliced_results.reserve(num_operands);
