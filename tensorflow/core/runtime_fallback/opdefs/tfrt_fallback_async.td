@@ -506,4 +506,39 @@ def ExecuteOpWithAllocator : FallbackAsync_Op<"executeop.allocator",
   let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
 }
 
+def ExecuteOpSeqWithAllocator : FallbackAsync_Op<"executeop.seq.allocator",
+    [CoreRT_TypedAttributeTrait, TFRT_CostFunctionInterface, TFRT_AttrCostTrait]> {
+  let summary = "The sequenced version of Fallback ExecuteOp with custom allocator";
+  let description = [{
+    Similar to ExecuteOpSeq but takes a custom allocator for allocating output tensors.
+
+    Example:
+      %op_ch_out, %res = tfrt_fallback_async.executeop.seq.allocator(%op_ch_in, %allocator)
+        key(0) cost(100) device("/CPU:0") "some.op"(%arg) : 1
+  }];
+
+  let arguments = (ins
+    TFRT_ChainType:$in_op_chain,
+    TFAllocatorType:$allocator,
+    Variadic<TFTensorType>:$operands,
+    StrAttr:$device,
+    ArrayAttr:$op_attrs,
+    // TODO(b/173025975): consider using DictionaryAttr after we support
+    // BEF conversion for this type.
+    ArrayAttr:$op_func_attrs,
+    I64Attr:$op_key,
+    StrAttr:$op_name,
+    I64Attr:$_tfrt_cost
+  );
+
+  let results = (outs
+    TFRT_ChainType:$out_op_chain,
+    Variadic<TFTensorType>:$results
+  );
+
+  let verifier = [{ return tfrt::fallback_async::verify(*this); }];
+  let printer = [{ return tfrt::fallback_async::print(p, *this); }];
+  let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
+}
+
 #endif
