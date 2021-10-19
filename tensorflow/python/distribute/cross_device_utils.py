@@ -191,29 +191,28 @@ class CollectiveKeys(object):
       group_key_start: the starting integer of group key.
     """
     self._group_key = group_key_start
-    self._group_key_table = {}
     self._instance_key_table = {}
     self._lock = threading.Lock()
 
   def get_group_key(self, devices):
-    """Returns a group key for the set of devices.
+    """Returns a new group key.
+
+    The caller should store and reuse the same group key for the same set of
+    devices. Calling this method always returns a new group key.
 
     Args:
       devices: a list of canonical device strings in a collective group.
 
     Returns:
-      int key uniquely identifying the set of device names.
+      a new group key.
     """
-    key_id = hash(tuple(sorted(devices)))
     with self._lock:
-      if key_id not in self._group_key_table:
-        new_key = self._group_key
-        self._group_key += 1
-        self._group_key_table[key_id] = new_key
-        self._instance_key_table[new_key] = {}
-        for device in devices:
-          self._instance_key_table[new_key][device] = INSTANCE_KEY_START_NUMBER
-      return self._group_key_table[key_id]
+      new_key = self._group_key
+      self._group_key += 1
+      self._instance_key_table[new_key] = {}
+      for device in devices:
+        self._instance_key_table[new_key][device] = INSTANCE_KEY_START_NUMBER
+      return new_key
 
   def get_instance_key(self, group_key, device):
     """Returns a new instance key for use in defining a collective op.
@@ -248,7 +247,6 @@ class CollectiveKeys(object):
     # CollectiveKeys needs to support deep copy as well.
     copied = CollectiveKeys()
     copied._group_key = self._group_key
-    copied._group_key_table = copy.deepcopy(self._group_key_table, memo)
     copied._instance_key_table = copy.deepcopy(self._instance_key_table, memo)
     return copied
 
