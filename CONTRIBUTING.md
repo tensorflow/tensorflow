@@ -219,7 +219,7 @@ There are two ways to run TensorFlow unit tests.
     bazel test ${flags} //tensorflow/python/saved_model:load_test --test_arg=-- --test_arg=-k=*LoadTest.test_capture_variables*
     ```
 
-    **Note:** You can add `--test_sharding_strategy=disabled` to the `flags` to disables the
+    **Note:** You can add `--test_sharding_strategy=disabled` to the `flags` to disable the
     sharding so that all the test outputs are in one file. However, it may slow
     down the tests for not running in parallel and may cause the test to timeout
     but it could be useful when you need to execute a single test or more in
