@@ -278,8 +278,8 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   xla::DeviceAssignment device_assignment;
   xla::ExecutableRunOptions run_options;
   OP_REQUIRES_OK(ctx, ResolveDeviceAssignment(
-                          ctx, compilation_result->collective_reduce_info,
-                          run_options, device_assignment, gpu_options));
+                          ctx, compilation_result->collective_info, run_options,
+                          device_assignment, gpu_options));
 
   run_options.set_stream(stream);
   run_options.set_allocator(allocator);
