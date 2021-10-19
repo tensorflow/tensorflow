@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/tf2tensorrt/convert/trt_parameters.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"

@@ -93,6 +93,7 @@ cc_library(
     ],
     copts = tf_copts(),
     deps = [
+        ":trt_parameters",
         ":trt_resources",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:direct_session",
@@ -358,6 +359,7 @@ tf_cuda_library(
         ":trt_logging",
         ":utils",
         ":trt_allocator",
+        ":trt_parameters",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
@@ -398,6 +400,21 @@ tf_custom_op_py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resources",
     ],
+)
+
+tf_cuda_library(
+    name = "trt_parameters",
+    srcs = ["convert/trt_parameters.cc"],
+    hdrs = [
+        "convert/trt_parameters.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":utils",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
+    ] + if_tensorrt([":tensorrt_lib"]),
 )
 
 tf_cuda_library(
@@ -518,6 +535,7 @@ tf_cuda_library(
         "convert/op_converter.h",
     ],
     deps = [
+        ":trt_parameters",
         ":trt_weights",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
@@ -573,6 +591,7 @@ tf_cuda_library(
         ":logger_registry",
         ":segment",
         ":trt_allocator",
+        ":trt_parameters",
         ":trt_plugins",
         ":trt_logging",
         ":trt_resources",
