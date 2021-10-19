@@ -42,6 +42,12 @@ class DeviceToDeviceCopyThunk : public Thunk {
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  const BufferAllocation::Slice& source() const { return source_buffer_; }
+  const BufferAllocation::Slice& destination() const {
+    return destination_buffer_;
+  }
+  uint64_t size_bytes() const { return mem_size_; }
+
  private:
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;

@@ -27,6 +27,7 @@
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -38,6 +39,7 @@
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
@@ -47,6 +49,7 @@
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
+#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -54,6 +57,7 @@ using mlir::ArrayRef;
 using mlir::SmallVector;
 using mlir::Value;
 using mlir::memref::GetGlobalOp;
+using xla::gpu::DeviceToDeviceCopyThunk;
 using xla::gpu::IrEmitterContext;
 using xla::gpu::IrEmitterUnnested;
 using xla::gpu::KernelThunk;
@@ -248,9 +252,11 @@ static llvm::Expected<RewriteData> Match(mlir::lmhlo::FusionOp fusion_op) {
     }
   }
   if (!llvm::all_of(*thunks, [](const auto& thunk) {
-        return thunk->kind() == Thunk::kKernel;
+        Thunk::Kind kinds[] = {Thunk::kKernel, Thunk::kCopy};
+        auto equal = [&](Thunk::Kind kind) { return thunk->kind() == kind; };
+        return llvm::any_of(kinds, equal);
       })) {
-    return MakeError("Expected only kernel thunks");
+    return MakeError("Expected only kernel and copy thunks");
   }
 
   auto libdevice_dir = xla::gpu::GetLibdeviceDir(hlo_module_config);
@@ -276,7 +282,8 @@ static void Rewrite(mlir::lmhlo::FusionOp fusion_op,
   rewriter.setInsertionPoint(fusion_op->getParentOfType<mlir::FuncOp>());
   auto gpu_module = rewriter.create<mlir::gpu::GPUModuleOp>(loc, "gpu_module");
   symbol_table.insert(gpu_module);
-  gpu_module->setAttr("nvvm.cubin", rewriter.getStringAttr(gpu_module_data));
+  gpu_module->setAttr(tfrt::gpu::getGpuBinaryAttrName(),
+                      rewriter.getStringAttr(gpu_module_data));
   SmallVector<mlir::NamedAttribute, 4> const_attrs;
   for (const auto& constant : constants) {
     if (constant.content.empty()) continue;
@@ -286,9 +293,32 @@ static void Rewrite(mlir::lmhlo::FusionOp fusion_op,
     const_attrs.emplace_back(rewriter.getNamedAttr(constant.symbol_name, attr));
   }
   if (!const_attrs.empty())
-    gpu_module->setAttr("constants", rewriter.getDictionaryAttr(const_attrs));
+    gpu_module->setAttr(tfrt::gpu::getGpuConstantsAttrName(),
+                        rewriter.getDictionaryAttr(const_attrs));
 
   for (const auto& thunk : *thunks) {
+    if (thunk->kind() == Thunk::kCopy) {
+      const auto* copy_thunk =
+          static_cast<const DeviceToDeviceCopyThunk*>(thunk.get());
+      auto get_argument = [&](const xla::BufferAllocation::Slice& slice) {
+        assert(slice.offset() == 0 && slice.size() == copy_thunk->size_bytes());
+        Value result = captures[slice.index()];
+        // Annotate defining memref.get_global with the gpu_module symbol.
+        // Unlike kernel thunks below, which use the global in the kernel only.
+        if (auto op = result.getDefiningOp<GetGlobalOp>()) {
+          op->setAttr(tfrt::gpu::getGpuModuleAttrName(),
+                      mlir::SymbolRefAttr::get(gpu_module));
+        }
+        return result;
+      };
+      rewriter.setInsertionPoint(fusion_op);
+      rewriter.create<mlir::gpu::MemcpyOp>(
+          loc, mlir::TypeRange(), mlir::ValueRange(),
+          get_argument(copy_thunk->destination()),
+          get_argument(copy_thunk->source()));
+      continue;
+    }
+
     const auto* kernel_thunk = static_cast<const KernelThunk*>(thunk.get());
     rewriter.setInsertionPointToStart(gpu_module.getBody());
     SmallVector<Value, 4> arguments;

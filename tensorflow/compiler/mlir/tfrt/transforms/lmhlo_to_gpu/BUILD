@@ -126,6 +126,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@tf_runtime//backends/gpu:gpu_passes",
     ],
     alwayslink = 1,
 )
