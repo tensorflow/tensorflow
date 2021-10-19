@@ -1079,9 +1079,7 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(auto thunk, [&]() -> StatusOr<std::unique_ptr<Thunk>> {
     if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(op)) {
-      // TODO(loreno): TFRT support for zero-strided gemm calls
-      if (IsBefThunkEnabled() && gemm.lhs_stride() && gemm.rhs_stride())
-        return make_bef_thunk(gemm);
+      if (IsBefThunkEnabled()) return make_bef_thunk(gemm);
       return make_gemm_thunk(gemm);
     }
 
@@ -1090,9 +1088,7 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
       TF_ASSIGN_OR_RETURN(auto bias, GetAllocationSlice(gemm.bias()));
       TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(gemm.output()));
 
-      // TODO(loreno): TFRT support for zero-strided gemm calls
-      if (IsBefThunkEnabled() && gemm.lhs_stride() && gemm.rhs_stride())
-        return make_bef_thunk(gemm, bias);
+      if (IsBefThunkEnabled()) return make_bef_thunk(gemm, bias);
 
       // The bias is passed inside the output buffer. If those buffers are
       // shared we can just use it, otherwise copy the bias values into the

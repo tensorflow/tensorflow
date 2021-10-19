@@ -2588,6 +2588,7 @@ test_suite(
         # E.g., it takes ~1300s for 256x128 matrix.
         # "//tensorflow/compiler/xla/client/lib:svd_test_gpu",
         "//tensorflow/compiler/xla/service/gpu:custom_call_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:gemm_broadcast_folding_rewrite_test",
         "//tensorflow/compiler/xla/service/gpu/tests:kernel_thunk_test",
         "//tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test",
         # TODO(b/187959015): Enable when complex number types are supported.
@@ -2605,5 +2606,6 @@ test_suite(
     name = "bef_executable_tests",
     tests = [
         "//tensorflow/compiler/xla/service/gpu/tests:bef_executable_test_gpu",
+        "//tensorflow/compiler/xla/service/gpu/tests:gemm_broadcast_folding_rewrite_test",
     ],
 )
