@@ -742,8 +742,8 @@ filegroup(
 )
 
 tf_cc_test(
-    name = "kernel_thunk_test",
-    srcs = ["kernel_thunk_test.cc"],
+    name = "kernel_launch_test",
+    srcs = ["kernel_launch_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "no_rocm",
     ],

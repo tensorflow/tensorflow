@@ -2589,7 +2589,8 @@ test_suite(
         # "//tensorflow/compiler/xla/client/lib:svd_test_gpu",
         "//tensorflow/compiler/xla/service/gpu:custom_call_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gemm_broadcast_folding_rewrite_test",
-        "//tensorflow/compiler/xla/service/gpu/tests:kernel_thunk_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_copy_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:kernel_launch_test",
         "//tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test",
         # TODO(b/187959015): Enable when complex number types are supported.
         #"//tensorflow/compiler/xla/tests:cholesky_test_gpu",
@@ -2607,5 +2608,7 @@ test_suite(
     tests = [
         "//tensorflow/compiler/xla/service/gpu/tests:bef_executable_test_gpu",
         "//tensorflow/compiler/xla/service/gpu/tests:gemm_broadcast_folding_rewrite_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_copy_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:kernel_launch_test",
     ],
 )
