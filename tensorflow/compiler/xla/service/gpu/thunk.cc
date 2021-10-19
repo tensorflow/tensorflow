@@ -96,7 +96,7 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
 std::string ThunkSequence::ToString(
     int indent,
     std::function<std::string(const Thunk*)> get_thunk_annotation) const {
-  const std::string indent_str(" ", indent * 2);
+  const std::string indent_str(indent * 2, ' ');
   if (empty()) return indent_str + "No thunks.";
 
   auto thunk_with_longest_kind = absl::c_max_element(
