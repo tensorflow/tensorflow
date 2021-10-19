@@ -155,6 +155,9 @@ class ConvolutionVisitor {
   // Perform space-to-batch propagation on reverse.
   Status PropagateOnReverse(HloInstruction* reverse);
 
+  // Perform space-to-batch propagation on reverse.
+  Status PropagateOnPad(HloInstruction* pad);
+
   // Perform space-to-batch propagation on the backprop filter convolution.
   // Assumes the activations and kernel were already space-to-batched.
   Status PropagateOnBackpropFilterConv(HloInstruction* convolution);
@@ -1482,6 +1485,29 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
     return true;
   }
 
+  if (consumer->opcode() == HloOpcode::kPad) {
+    auto operand_0 = consumer->mutable_operand(0);
+    if (!instr_to_dim_map_.contains(operand_0)) {
+      return false;
+    }
+    // Disallow reversing on the batch and space dims
+    auto result = instr_to_dim_map_[operand_0];
+    const int64_t old_batch_dim = result.batch;
+    const int64_t old_space_dim = result.space;
+
+    auto does_dim_have_padding = [](PaddingConfig padding_config, int64_t dim) {
+      return padding_config.dimensions(dim).edge_padding_low() != 0 ||
+             padding_config.dimensions(dim).edge_padding_high() != 0 ||
+             padding_config.dimensions(dim).interior_padding() != 0;
+    };
+    // Batch and space dims should not have padding.
+    if (does_dim_have_padding(consumer->padding_config(), old_batch_dim) ||
+        does_dim_have_padding(consumer->padding_config(), old_space_dim)) {
+      return false;
+    }
+    return true;
+  }
+
   if (consumer->opcode() == HloOpcode::kReduce) {
     // Support only the trivial case where both batch and split spatial dim are
     // being reduced
@@ -1758,6 +1784,13 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
 
   if (consumer->opcode() == HloOpcode::kReverse) {
     TF_CHECK_OK(PropagateOnReverse(consumer));
+    return true;
+  }
+
+  // TODO(b/189500737) : Consider a common way of propagation for
+  // slice/pad/reduce-window.
+  if (consumer->opcode() == HloOpcode::kPad) {
+    TF_CHECK_OK(PropagateOnPad(consumer));
     return true;
   }
 
@@ -2553,6 +2586,34 @@ Status ConvolutionVisitor::PropagateOnReverse(HloInstruction* reverse) {
   // Set mappings from operand 0.
   instr_to_dim_map_[reverse] = instr_to_dim_map_[reverse->mutable_operand(0)];
   instr_to_dim_permute_map_[new_reverse] =
+      std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
+
+  return Status::OK();
+}
+
+Status ConvolutionVisitor::PropagateOnPad(HloInstruction* pad) {
+  auto first_operand = old_to_new_instrs_[pad->mutable_operand(0)];
+  auto permute_dims = instr_to_dim_permute_map_[first_operand];
+
+  PaddingConfig padding_config;
+  for (int i = 0; i < pad->shape().rank(); ++i) {
+    auto dimension = padding_config.add_dimensions();
+    const int64_t old_dim = ReverseDimLookUp(permute_dims, i);
+    auto old_padding = pad->padding_config().dimensions(old_dim);
+    dimension->set_edge_padding_low(old_padding.edge_padding_low());
+    dimension->set_edge_padding_high(old_padding.edge_padding_high());
+    dimension->set_interior_padding(old_padding.interior_padding());
+  }
+
+  HloInstruction* padding = pad->mutable_operand(1);
+
+  TF_ASSIGN_OR_RETURN(auto new_pad,
+                      MakePadHlo(first_operand, padding, padding_config));
+
+  old_to_new_instrs_[pad] = new_pad;
+  // Set mappings from operand 0.
+  instr_to_dim_map_[pad] = instr_to_dim_map_[pad->mutable_operand(0)];
+  instr_to_dim_permute_map_[new_pad] =
       std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
 
   return Status::OK();
