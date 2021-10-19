@@ -1360,6 +1360,21 @@ func @test_resize_bilinear_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.
 }
 
 // -----
+// CHECK-LABEL: test_gather
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<7x7xi32>}
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 13, 63]}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 49]}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR5]])
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [7, 7, 21, 3]}
+// CHECK-DAG: %[[VAR8:.*]] = tensor.cast %[[VAR7]]
+// CHECK: return %[[VAR8]]
+func @test_gather(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %1 = arith.constant dense<[[9, 8, 11, 10, 11, 0, 12], [7, 0, 1, 5, 2, 9, 6], [7, 9, 10, 8, 0, 3, 0], [8, 9, 10, 4, 9, 12, 6], [0, 2, 4, 3, 6, 11, 8], [5, 8, 7, 2, 4, 10, 5], [4, 12, 8, 3, 12, 9, 1]]>  : tensor<7x7xi32>
+  %2 = "tfl.gather"(%arg0, %1) {axis = 0 : i32} : (tensor<13x21x3xf32>, tensor<7x7xi32>) -> tensor<*xf32>
+  return %2 : tensor<*xf32>
+}
+
+// -----
 // CHECK-LABEL: test_gather_nd
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<[21, 1]> : tensor<2xi32>}
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 273, 3]}

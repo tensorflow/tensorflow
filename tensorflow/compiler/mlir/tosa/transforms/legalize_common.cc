@@ -3172,7 +3172,7 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
                                       Value result_value, Value params_value,
                                       Value indices_value, int32_t batch_dims,
                                       int32_t axis) {
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
+  auto result_type = result_value.getType().dyn_cast<ShapedType>();
   auto params_type = params_value.getType().dyn_cast<RankedTensorType>();
   auto indices_type = indices_value.getType().dyn_cast<RankedTensorType>();
 
