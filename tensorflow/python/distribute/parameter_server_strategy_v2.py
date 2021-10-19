@@ -25,6 +25,7 @@ from tensorflow.python.distribute import cross_device_ops as cross_device_ops_li
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
@@ -856,7 +857,7 @@ class ParameterServerStrategyV2Extended(
     # If this DistributedDataset is created outside ClusterCoordinator, i,e,
     # outside a tf.function, we don't build its underlying datasets immediately
     # until it is passed to ClusterCoordinator.create_per_worker_dataset.
-    return input_lib.get_distributed_dataset(
+    return input_util.get_distributed_dataset(
         dataset,
         input_workers_devices,
         self._container_strategy(),
@@ -879,10 +880,9 @@ class ParameterServerStrategyV2Extended(
     # ClusterCoordinator, i,e, outside a tf.function, we don't build its
     # underlying datasets immediately until it is passed to
     # ClusterCoordinator.create_per_worker_dataset.
-    return input_lib.get_distributed_datasets_from_function(
+    return input_util.get_distributed_datasets_from_function(
         dataset_fn,
-        self._input_workers_with_options(options),
-        [input_context],
+        self._input_workers_with_options(options), [input_context],
         self._container_strategy(),
         options=options,
         build=ops.inside_function())  # will be built by ClusterCoordinator

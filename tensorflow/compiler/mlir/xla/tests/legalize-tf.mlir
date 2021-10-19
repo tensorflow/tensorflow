@@ -1939,6 +1939,16 @@ func @relu_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
 
 // -----
 
+// CHECK-LABEL: func @relu_unsigned
+func @relu_unsigned(%arg0: tensor<?xui32>) -> tensor<?xui32> {
+  // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<ui32>
+  // CHECK: chlo.broadcast_maximum %[[ZERO]], %arg0 {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<ui32>, tensor<?xui32>) -> tensor<?xui32>
+  %0 = "tf.Relu"(%arg0) : (tensor<?xui32>) -> tensor<?xui32>
+  return %0: tensor<?xui32>
+}
+
+// -----
+
 // CHECK-LABEL: func @relu6
 func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
@@ -1957,6 +1967,17 @@ func @relu6_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   // CHECK: "mhlo.clamp"(%[[ZERO]], %arg0, %[[SIX]]) : (tensor<i32>, tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
   %0 = "tf.Relu6"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
   return %0: tensor<?xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @relu6_unsigned
+func @relu6_unsigned(%arg0: tensor<?xui32>) -> tensor<?xui32> {
+  // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<ui32>
+  // CHECK-DAG: %[[SIX:.*]] = mhlo.constant dense<6> : tensor<ui32>
+  // CHECK: "mhlo.clamp"(%[[ZERO]], %arg0, %[[SIX]]) : (tensor<ui32>, tensor<?xui32>, tensor<ui32>) -> tensor<?xui32>
+  %0 = "tf.Relu6"(%arg0) : (tensor<?xui32>) -> tensor<?xui32>
+  return %0: tensor<?xui32>
 }
 
 // -----

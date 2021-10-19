@@ -29,7 +29,6 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
@@ -37,6 +36,7 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
@@ -302,7 +302,7 @@ class DistributedCollectiveAllReduceStrategyTest(
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
         dataset, options=input_options)
-    if isinstance(dataset, input_lib.DistributedDatasetV1):
+    if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
       item = dataset.make_initializable_iterator().get_next()
     else:
       self.skipTest('unsupported test combination')
@@ -323,7 +323,7 @@ class DistributedCollectiveAllReduceStrategyTest(
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
         dataset, options=input_options)
-    if isinstance(dataset, input_lib.DistributedDatasetV1):
+    if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
       item = dataset.make_initializable_iterator().get_next()
     else:
       self.skipTest('unsupported test combination')

@@ -510,20 +510,18 @@ def : Pat<(TF_EluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$featur
 // TODO(hinsu): Make these patterns to TF to TF lowering. Relu6 lowering will
 // require HLO canonicalization of min and max on a tensor to ClampOp.
 
-// TODO(hinsu): Lower unsigned and quantized types after supporting
-// them in GetScalarOfType.
+// TODO(hinsu): Lower quantized types after supporting them in GetScalarOfType.
 def : Pat<(TF_ReluOp AnyTensor:$input),
           (HLOClient_BroadcastMaxOp
                (HLO_ConstOp:$zero (GetScalarOfType<0> $input)), $input,
                (BinBroadcastDimensions $zero, $input)),
-          [(TF_SintOrFpTensor $input)]>;
+          [(TF_IntOrFpTensor $input)]>;
 
-// TODO(hinsu): Lower unsigned and quantized types after supporting
-// them in GetScalarOfType.
+// TODO(hinsu): Lower quantized types after supporting them in GetScalarOfType.
 def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
           (HLO_ClampOp (HLO_ConstOp (GetScalarOfType<0> $input)), $input,
                        (HLO_ConstOp (GetScalarOfType<6> $input))),
-          [(TF_SintOrFpTensor $input)]>;
+          [(TF_IntOrFpTensor $input)]>;
 
 // ReluGrad(gradients, features) = gradients * (features > 0)
 // The condition that $gradients and $features need to have the same shape is

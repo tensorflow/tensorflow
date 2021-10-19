@@ -249,7 +249,8 @@ void DistributedRuntimeClient::HeartbeatLoop() {
 
     ::grpc::ClientContext ctx;
     ctx.set_fail_fast(false);
-    ctx.set_deadline(absl::ToChronoTime(absl::Now() + options_.rpc_timeout));
+    ctx.set_deadline(
+        absl::ToChronoTime(absl::Now() + options_.heartbeat_interval));
     HeartbeatRequest request;
     request.set_session_id(session_id_);
     request.set_node_id(options_.node_id);
@@ -257,15 +258,19 @@ void DistributedRuntimeClient::HeartbeatLoop() {
     HeartbeatResponse response;
     ::grpc::Status status = stub_->Heartbeat(&ctx, request, &response);
     if (status.ok()) {
+      VLOG(10) << "Heartbeat ok";
       num_missing_heartbeats = 0;
     } else {
       ++num_missing_heartbeats;
+      VLOG(10) << "Heartbeat error, "
+               << options_.max_missing_heartbeats - num_missing_heartbeats
+               << " tries left: " << status.error_message();
       bool is_transient_error =
           (status.error_code() == ::grpc::StatusCode::DEADLINE_EXCEEDED ||
            status.error_code() == ::grpc::StatusCode::UNAVAILABLE);
       if (!stop_heartbeats_.HasBeenNotified() &&
           (!is_transient_error ||
-           num_missing_heartbeats > options_.max_missing_heartbeats)) {
+           num_missing_heartbeats >= options_.max_missing_heartbeats)) {
         // If we are shutting down, missed heartbeats are benign: they may
         // simply mean that the server has shut down already before it saw
         // the heartbeat request.

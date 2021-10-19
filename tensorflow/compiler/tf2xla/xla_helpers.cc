@@ -224,14 +224,13 @@ StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
 
 Status ResolveDeviceAssignment(
     OpKernelContext* ctx,
-    const absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>&
-        collective_reduce_info,
+    const absl::optional<XlaCompilationResult::CollectiveInfo>& collective_info,
     xla::ExecutableRunOptions& run_options,
     xla::DeviceAssignment& device_assignment,
     xla::gpu::GpuExecutableRunOptions& gpu_options) {
   // TODO(nnigania): workaround for b/199436990
   static const int kTimeoutSeconds = 300;
-  if (!collective_reduce_info) {
+  if (!collective_info) {
     // An empty device assignment is sufficient for the case where no
     // collectives are present.
     return Status::OK();
@@ -245,8 +244,8 @@ Status ResolveDeviceAssignment(
   params->name = "xla-reduction-compilation";
   params->group.device_type =
       DeviceType{static_cast<Device*>(ctx->device())->device_type()};
-  params->group.group_size = collective_reduce_info->group_size;
-  params->group.group_key = collective_reduce_info->group_key;
+  params->group.group_size = collective_info->group_size;
+  params->group.group_key = collective_info->group_key;
   params->instance.type = REDUCTION_COLLECTIVE;
   params->instance.impl_details.communication_hint = "nccl";
   params->instance.impl_details.timeout_seconds = kTimeoutSeconds;

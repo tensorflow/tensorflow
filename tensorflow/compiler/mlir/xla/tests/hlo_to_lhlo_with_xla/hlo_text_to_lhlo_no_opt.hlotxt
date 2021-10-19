@@ -808,3 +808,27 @@ ENTRY main {
   input = f32[8]{0} parameter(0)
   ROOT ars = f32[4]{0} reduce-scatter(input), replica_groups={{0,1}}, dimensions={0}, to_apply=add
 }
+
+// -----
+// CHECK: func @main
+// CHECK: "lmhlo.while"(%{{.*}}) ( {
+HloModule WhileConstantCondition
+
+%body {
+  %parameter.5 = (f32[5]{0}) parameter(0)
+  %constant_8 = f32[] constant(0)
+  %broadcast.9 = f32[5]{0} broadcast(f32[] %constant_8), dimensions={}
+  ROOT %tuple.2 = (f32[5]{0}) tuple(f32[5]{0} %broadcast.9)
+}
+
+%cond {
+  %parameter.12 = (f32[5]{0}) parameter(0)
+  ROOT %constant_1 = pred[] constant(false)
+}
+
+ENTRY %main (parameter.1: f32[5]) -> (f32[5]) {
+  %parameter.1 = f32[5]{0} parameter(0)
+  %copy.3 = f32[5]{0} copy(f32[5]{0} %parameter.1)
+  %tuple = (f32[5]{0}) tuple(f32[5]{0} %copy.3)
+  ROOT %while.19 = (f32[5]{0}) while((f32[5]{0}) %tuple), condition=%cond, body=%body
+}
