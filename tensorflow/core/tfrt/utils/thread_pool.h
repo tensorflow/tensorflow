@@ -12,21 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_TEST_TEST_UTIL_H_
-#define TENSORFLOW_CORE_RUNTIME_FALLBACK_TEST_TEST_UTIL_H_
+#ifndef TENSORFLOW_CORE_TFRT_UTILS_THREAD_POOL_H_
+#define TENSORFLOW_CORE_TFRT_UTILS_THREAD_POOL_H_
 
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 
 namespace tensorflow {
-namespace tfd {
+namespace tfrt_stub {
 
-class TestThreadPool : public thread::ThreadPoolInterface {
+class TfThreadPool : public thread::ThreadPoolInterface {
  public:
-  explicit TestThreadPool(int num_threads)
-      : underlying_threadpool_(tensorflow::Env::Default(), "test_threadpool",
-                               num_threads) {}
+  explicit TfThreadPool(const std::string& name, int num_threads)
+      : underlying_threadpool_(tensorflow::Env::Default(), name, num_threads) {}
 
   void Schedule(std::function<void()> fn) override {
     underlying_threadpool_.Schedule(std::move(fn));
@@ -50,7 +49,7 @@ class TestThreadPool : public thread::ThreadPoolInterface {
   tensorflow::thread::ThreadPool underlying_threadpool_;
 };
 
-}  // namespace tfd
+}  // namespace tfrt_stub
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_TEST_TEST_UTIL_H_
+#endif  // TENSORFLOW_CORE_TFRT_UTILS_THREAD_POOL_H_
