@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/time/time.h"
@@ -58,10 +59,12 @@ class TfrtGraphExecutionState {
   TfrtGraphExecutionState(
       std::unique_ptr<tensorflow::GraphExecutionState> graph_execution_state,
       const FallbackState& fallback_state,
-      bool run_placer_grappler_on_functions)
+      bool run_placer_grappler_on_functions,
+      absl::flat_hash_set<std::string> functions_to_optimize)
       : graph_execution_state_(std::move(graph_execution_state)),
         fallback_state_(fallback_state),
-        run_placer_grappler_on_functions_(run_placer_grappler_on_functions) {}
+        run_placer_grappler_on_functions_(run_placer_grappler_on_functions),
+        functions_to_optimize_(std::move(functions_to_optimize)) {}
 
   // Creates an optimized graph by pruning with `graph_import_config` and
   // best-effort Grappler run.
@@ -88,6 +91,8 @@ class TfrtGraphExecutionState {
   std::unique_ptr<tensorflow::GraphExecutionState> graph_execution_state_;
   const FallbackState& fallback_state_;
   bool run_placer_grappler_on_functions_;
+  // Only valid if `run_placer_grappler_on_functions_` is true.
+  absl::flat_hash_set<std::string> functions_to_optimize_;
 };
 
 // Prunes the `graph_def` using the feed/fetch nodes specified in
