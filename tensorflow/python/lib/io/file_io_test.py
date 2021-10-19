@@ -694,6 +694,17 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
   def testHasAtomicMove(self):
     self.assertTrue(file_io.has_atomic_move("/a/b/c"))
 
+  def testGetRegisteredSchemes(self):
+    expected = ["", "file", "ram"]
+    actual = file_io.get_registered_schemes()
+    # Be flexible about additional schemes that may sometimes be registered when
+    # this test is run, while still verifying each scheme appears just once.
+    maybe_expected = ["gs"]
+    for scheme in maybe_expected:
+      if scheme in actual:
+        expected.append("gs")
+    self.assertCountEqual(expected, actual)
+
 
 if __name__ == "__main__":
   test.main()
