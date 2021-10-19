@@ -1238,5 +1238,44 @@ XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicAnd) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
+// TODO(b/199531352): Different layouts in variadic output are not supported in
+// elemental IR emitter.
+XLA_TEST_F(VariadicReduceTest,
+           DISABLED_ON_CPU(ReduceMultiOutputVariadicDifferentLayout)) {
+  absl::string_view hlo_string = R"(
+HloModule ReduceWithLayoutChangeVariadicDifferent
+
+argmax {
+  running_max = f32[] parameter(0)
+  running_max_idx = u32[] parameter(1)
+  current_value = f32[] parameter(2)
+  current_value_idx = u32[] parameter(3)
+
+  current = (f32[], u32[]) tuple(running_max, running_max_idx)
+  potential = (f32[], u32[]) tuple(current_value, current_value_idx)
+
+  cmp_code = pred[] compare(current_value, running_max), direction=GT
+
+  new_max = f32[] select(cmp_code, current_value, running_max)
+  new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
+
+  ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
+}
+
+ENTRY main {
+  arg0 = f32[2,3,4,1024]{2,1,0,3}  parameter(0)
+  idxs = u32[2,3,4,1024]{3,2,1,0}  parameter(1)
+  constant0 = f32[] constant(0)
+  constant1 = u32[] constant(0)
+  ROOT reduce0 = (
+      f32[2,3,4]{2,1,0},
+      u32[2,3,4]{1,0,2}
+    ) reduce(arg0, idxs, constant0,constant1), dimensions={3}, to_apply=argmax
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
 }  // namespace
 }  // namespace xla

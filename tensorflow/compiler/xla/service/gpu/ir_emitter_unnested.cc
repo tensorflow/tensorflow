@@ -3901,49 +3901,22 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
   }
 }
 
-// Given the IrArray index of a reduction input, returns the linear address of
-// the reduction output as if the reduction were going to keep the input shape
-// with the dimensions being reduced moved.
-static llvm::Value* GetUntransposedOutputLinearAddress(
-    llvm::IRBuilder<>* b, const llvm_ir::IrArray::Index& index,
-    const ReductionCodegenState& reduction_info) {
-  const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
-  if (reduction_info.IsRowReduction()) {
-    // For row-reduction, y-coordinate determines which row we write into.
-    return index[kDimY];
-  }
-  // For column reduction, we get the transposed address.
-  absl::Span<const int64_t> dims_in_elem = tiling_scheme.GetDimsInElems();
-  llvm::Value* x_dim_size = index.GetConstantWithIndexType(dims_in_elem[kDimX]);
-  llvm::Value* x_block_offset = b->CreateMul(index[kDimZ], x_dim_size);
-  return b->CreateAdd(x_block_offset, index[kDimX]);
-}
-
-static llvm::Value* GetOutputAddressForReduction(
-    const IrArray::Index& element_index,
-    const IrEmitterUnnested::ReductionOutputMap& output_arrays,
-    const HloInstruction* reduction, int output_idx, llvm::IRBuilder<>* b) {
-  const IrArray& output_array = output_arrays.at(reduction)[output_idx];
-  IrArray::Index output_index(element_index.multidim(), output_array.GetShape(),
-                              element_index.GetType());
-  return output_array.EmitArrayElementAddress(output_index, b,
-                                              "output_element_address");
-}
-
-void IrEmitterUnnested::EmitReductionOutput(
-    llvm::Type* index_ty, mlir::lmhlo::FusionOp fusion,
-    absl::Span<const HloReduceInstruction* const> reduce_instr_index_group,
-    const ReductionOutputMap& result_ir_arrays,
+llvm::Value* IrEmitterUnnested::GetOutputAddressForReduction(
+    int partial_result_idx, llvm::Type* index_ty,
     const ReductionCodegenState& reduction_codegen_state,
-    const TilingKernelInfo& tiling_kernel_info) {
-  const TilingScheme& tiling_scheme = reduction_codegen_state.GetTilingScheme();
+    const TilingKernelInfo& tiling_kernel_info,
+    const IrEmitterUnnested::ReductionOutputMap& output_arrays,
+    const HloReduceInstruction* reduction, int output_idx) {
   auto constant = [&](uint64 c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
 
+  const TilingScheme& tiling_scheme = reduction_codegen_state.GetTilingScheme();
+  const ThreadIdInfo& thread_id_info = tiling_kernel_info.thread_id_info;
+
   IrArray::Index start_offset = [&] {
-    llvm::Value* x_loc = tiling_kernel_info.thread_id_info.thread_id_x;
-    llvm::Value* y_loc = tiling_kernel_info.thread_id_info.thread_id_y;
+    llvm::Value* x_loc = thread_id_info.thread_id_x;
+    llvm::Value* y_loc = thread_id_info.thread_id_y;
     if (!reduction_codegen_state.IsRowReduction()) {
       std::swap(x_loc, y_loc);
     }
@@ -3953,47 +3926,48 @@ void IrEmitterUnnested::EmitReductionOutput(
         .AddOffsetToDim(start_offset_x, kDimX, &b_);
   }();
 
-  for (const HloReduceInstruction* reduce : reduce_instr_index_group) {
-    Shape operand_shape = reduce->inputs()[0]->shape();
-    Shape reduction_kept_element_shape = ShapeUtil::FilterDimensions(
-        [&](int64_t dim) {
-          return !absl::c_linear_search(reduce->dimensions(), dim);
-        },
-        operand_shape);
-    for (int partial_result_idx = 0;
-         partial_result_idx < reduction_codegen_state.GetNumPartialResults();
-         ++partial_result_idx) {
-      llvm::Value* untransposed_output_linear_address =
-          GetUntransposedOutputLinearAddress(
-              &b_,
-              start_offset.AddOffsetToDim(constant(partial_result_idx), kDimX,
-                                          &b_),
-              reduction_codegen_state);
+  const IrArray& output_array = output_arrays.at(reduction)[output_idx];
+  const Shape& operand_shape = reduction->inputs()[output_idx]->shape();
+  Shape reduction_kept_element_shape = ShapeUtil::FilterDimensions(
+      [&](int64_t dim) {
+        return !absl::c_linear_search(reduction->dimensions(), dim);
+      },
+      operand_shape);
 
-      // A reduction is allowed to transpose its output.  For example, suppose
-      // we are reducing the second dimension of f32[10,20,30]{3,2,1}.  We are
-      // allowed to produce as output either f32[10,30]{1,0} (no transpose) or
-      // f32[10,30]{0,1} (transposing the two output dims).
-      //
-      // At this point in the function we have a "partial sum" of input elements
-      // (stored in partial_result_addresses), and we need to accumulate it into
-      // the correct output element.
-      IrArray::Index element_index(
-          /*linear=*/untransposed_output_linear_address,
-          reduction_kept_element_shape, &b_);
-      if (reduction_codegen_state.IsRowReduction()) {
-        EmitReductionOutputForRowReduction(tiling_kernel_info.thread_id_info,
-                                           reduction_codegen_state, index_ty,
-                                           result_ir_arrays, element_index,
-                                           reduce, partial_result_idx);
-      } else {
-        EmitReductionOutputForColumnReduction(
-            tiling_kernel_info.thread_id_info, reduction_codegen_state,
-            index_ty, result_ir_arrays, element_index, reduce,
-            partial_result_idx, tiling_kernel_info);
-      }
+  // Given the IrArray index of a reduction input, returns the linear address of
+  // the reduction output as if the reduction were going to keep the input shape
+  // with the dimensions being reduced moved.
+  llvm::Value* untransposed_output_linear_address = [&] {
+    const llvm_ir::IrArray::Index index =
+        start_offset.AddOffsetToDim(constant(partial_result_idx), kDimX, &b_);
+    if (reduction_codegen_state.IsRowReduction()) {
+      // For row-reduction, y-coordinate determines which row we write into.
+      return index[kDimY];
     }
-  }
+    // For column reduction, we get the transposed address.
+    absl::Span<const int64_t> dims_in_elem = tiling_scheme.GetDimsInElems();
+    llvm::Value* x_dim_size =
+        index.GetConstantWithIndexType(dims_in_elem[kDimX]);
+    llvm::Value* x_block_offset = b_.CreateMul(index[kDimZ], x_dim_size);
+    return b_.CreateAdd(x_block_offset, index[kDimX]);
+  }();
+
+  // A reduction is allowed to transpose its output.  For example, suppose
+  // we are reducing the second dimension of f32[10,20,30]{3,2,1}.  We are
+  // allowed to produce as output either f32[10,30]{1,0} (no transpose) or
+  // f32[10,30]{0,1} (transposing the two output dims).
+  //
+  // At this point in the function we have a "partial sum" of input elements
+  // (stored in partial_result_addresses), and we need to accumulate it into
+  // the correct output element.
+  IrArray::Index element_index(
+      /*linear=*/untransposed_output_linear_address,
+      reduction_kept_element_shape, &b_);
+  IrArray::Index output_index(element_index.multidim(), output_array.GetShape(),
+                              element_index.GetType());
+
+  return output_array.EmitArrayElementAddress(output_index, &b_,
+                                              "output_element_address");
 }
 
 llvm::Value* IrEmitterUnnested::EmitBlockId(int64_t num_blocks,
@@ -4036,12 +4010,12 @@ void IrEmitterUnnested::EmitPrintfWithThreadId(
 }
 
 void IrEmitterUnnested::EmitReductionOutputForRowReduction(
-    const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+    const TilingKernelInfo& tiling_kernel_info,
     const ReductionCodegenState& reduction_codegen_state, llvm::Type* index_ty,
     const ReductionOutputMap& output_arrays,
-    const llvm_ir::IrArray::Index& element_index,
     const HloReduceInstruction* reduction, int partial_result_idx) {
   const HloComputation* reducer = reduction->to_apply();
+  const auto& thread_id_info = tiling_kernel_info.thread_id_info;
   auto constant = [&](uint64 c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
@@ -4115,7 +4089,8 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
                     "the value directly";
         for (int oidx = 0; oidx < num_outputs; oidx++) {
           llvm::Value* output_address = GetOutputAddressForReduction(
-              element_index, output_arrays, reduction, oidx, &b_);
+              partial_result_idx, index_ty, reduction_codegen_state,
+              tiling_kernel_info, output_arrays, reduction, oidx);
 
           b_.CreateStore(b_.CreateLoad(selected_values[oidx], "output"),
                          output_address);
@@ -4124,8 +4099,8 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
         CHECK_EQ(selected_values.size(), 1)
             << "Variadic non-atomic reductions not supported";
         llvm::Value* output_address = GetOutputAddressForReduction(
-            element_index, output_arrays, reduction,
-            /*output_idx=*/0, &b_);
+            partial_result_idx, index_ty, reduction_codegen_state,
+            tiling_kernel_info, output_arrays, reduction, 0);
         TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
             *reducer, output_address, selected_values[0]));
       }
@@ -4134,14 +4109,13 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
 }
 
 void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
-    const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+    const TilingKernelInfo& tiling_kernel_info,
     const ReductionCodegenState& reduction_codegen_state, llvm::Type* index_ty,
     const ReductionOutputMap& output_arrays,
-    const llvm_ir::IrArray::Index& element_index,
-    const HloReduceInstruction* reduction, int partial_result_idx,
-    const TilingKernelInfo& tiling_kernel_info) {
+    const HloReduceInstruction* reduction, int partial_result_idx) {
   KernelSupportLibrary ksl(&b_);
   const HloComputation* reducer = reduction->to_apply();
+  const auto& thread_id_info = tiling_kernel_info.thread_id_info;
 
   auto constant = [&](uint64 c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
@@ -4208,7 +4182,8 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
              for (int output_idx = 0;
                   output_idx < reducer->num_parameters() / 2; output_idx++) {
                llvm::Value* output_address = GetOutputAddressForReduction(
-                   element_index, output_arrays, reduction, output_idx, &b_);
+                   partial_result_idx, index_ty, reduction_codegen_state,
+                   tiling_kernel_info, output_arrays, reduction, output_idx);
                b_.CreateStore(b_.CreateLoad(shmem_transposed_addrs[output_idx],
                                             "output_value"),
                               output_address);
@@ -4217,8 +4192,8 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
              CHECK_EQ(shmem_transposed_addrs.size(), 1)
                  << "Variadic non-atomic reductions not supported";
              llvm::Value* output_address = GetOutputAddressForReduction(
-                 element_index, output_arrays, reduction,
-                 /*output_idx=*/0, &b_);
+                 partial_result_idx, index_ty, reduction_codegen_state,
+                 tiling_kernel_info, output_arrays, reduction, 0);
              TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
                  *reducer, output_address, shmem_transposed_addrs[0]));
            }
@@ -5134,8 +5109,21 @@ void IrEmitterUnnested::EmitIRForReduction(
       });
 
   KernelSupportLibrary ksl(&b_);
-  EmitReductionOutput(index_ty, fusion, reductions, result_ir_arrays,
-                      codegen_state, tiling_kernel_info);
+  for (const HloReduceInstruction* reduce : reductions) {
+    for (int partial_result_idx = 0;
+         partial_result_idx < reduction_info.GetNumPartialResults();
+         ++partial_result_idx) {
+      if (codegen_state.IsRowReduction()) {
+        EmitReductionOutputForRowReduction(tiling_kernel_info, codegen_state,
+                                           index_ty, result_ir_arrays, reduce,
+                                           partial_result_idx);
+      } else {
+        EmitReductionOutputForColumnReduction(tiling_kernel_info, codegen_state,
+                                              index_ty, result_ir_arrays,
+                                              reduce, partial_result_idx);
+      }
+    }
+  }
 }
 
 namespace {

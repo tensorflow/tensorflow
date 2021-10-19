@@ -545,23 +545,28 @@ class IrEmitterUnnested : public IrEmitter {
       const ReductionCodegenState& reduction_codegen_state,
       const TilingKernelInfo& tiling_kernel_info);
 
+  // Returns the address to write the reduction output to.
+  llvm::Value* GetOutputAddressForReduction(
+      int partial_result_idx, llvm::Type* index_ty,
+      const ReductionCodegenState& reduction_codegen_state,
+      const TilingKernelInfo& tiling_kernel_info,
+      const IrEmitterUnnested::ReductionOutputMap& output_arrays,
+      const HloReduceInstruction* reduction, int output_idx);
+
   // `current_output`: the value the tile has calculated.
   // `output_address`: address where the output value has to be written.
   void EmitReductionOutputForRowReduction(
-      const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+      const TilingKernelInfo& tiling_kernel_info,
       const ReductionCodegenState& reduction_codegen_state,
       llvm::Type* index_ty, const ReductionOutputMap& output_arrays,
-      const llvm_ir::IrArray::Index& element_index,
       const HloReduceInstruction* reduction, int partial_result_idx);
 
   // Same arguments as EmitReductionOutputForRowReduction.
   void EmitReductionOutputForColumnReduction(
-      const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+      const TilingKernelInfo& tiling_kernel_info,
       const ReductionCodegenState& reduction_codegen_state,
       llvm::Type* index_ty, const ReductionOutputMap& output_arrays,
-      const llvm_ir::IrArray::Index& element_index,
-      const HloReduceInstruction* reduction, int partial_result_idx,
-      const TilingKernelInfo& tiling_kernel_info);
+      const HloReduceInstruction* reduction, int partial_result_idx);
 
   // Emits code for reductions in the output_instructions.
   void EmitIRForReduction(mlir::lmhlo::FusionOp fusion,
