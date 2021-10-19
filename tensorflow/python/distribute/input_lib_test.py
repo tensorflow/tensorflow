@@ -30,10 +30,12 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import test_util
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -84,11 +86,11 @@ class DistributedIteratorTestBase(test.TestCase):
                 input_pipeline_id=i,
                 num_replicas_in_sync=len(devices)))
 
-      iterator = input_lib.InputFunctionIterator(dataset_or_input_fn,
-                                                 input_workers, input_contexts,
-                                                 strategy)
+      iterator = input_lib_v1.InputFunctionIterator(dataset_or_input_fn,
+                                                    input_workers,
+                                                    input_contexts, strategy)
     else:
-      iterator = input_lib.DatasetIterator(
+      iterator = input_lib_v1.DatasetIterator(
           dataset_or_input_fn,
           input_workers,
           strategy,
@@ -112,7 +114,7 @@ class DistributedIteratorTestBase(test.TestCase):
             num_replicas_in_sync=num_replicas_in_sync,
             input_context=input_context)
       else:
-        return input_lib.DistributedDatasetV1(
+        return input_lib_v1.DistributedDatasetV1(
             dataset,
             input_workers,
             strategy,
@@ -198,7 +200,7 @@ class DistributedIteratorTestBase(test.TestCase):
       if ops.executing_eagerly_outside_functions():
         iterator = iter(dataset)
       else:
-        if isinstance(dataset, input_lib.DistributedDatasetV1):
+        if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
           iterator = dataset.make_initializable_iterator()
         else:
           self.skipTest("unsupported test combination")
@@ -292,7 +294,7 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
 
     input_workers = input_lib.InputWorkers(worker_device_pairs)
 
-    dist_dataset = input_lib.get_distributed_dataset(
+    dist_dataset = input_util.get_distributed_dataset(
         dataset_fn(distribute_lib.InputContext()), input_workers, distribution)
 
     iterator = dataset_ops.make_one_shot_iterator(dist_dataset)
@@ -492,8 +494,8 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
     input_workers = input_lib.InputWorkers(worker_device_pairs)
 
     dataset = dataset_ops.Dataset.range(10)
-    dist_dataset = input_lib.get_distributed_dataset(dataset, input_workers,
-                                                     distribution)
+    dist_dataset = input_util.get_distributed_dataset(dataset, input_workers,
+                                                      distribution)
 
     iterator = iter(dist_dataset)
     for i, element in enumerate(iterator):
@@ -1790,8 +1792,8 @@ class DistributedIteratorTfDataServiceTest(DistributedIteratorTestBase,
             service=combinations.env().tf_data_service_dispatcher,
             job_name="foo"))
 
-    dist_dataset = input_lib.get_distributed_dataset(dataset, input_workers,
-                                                     distribution)
+    dist_dataset = input_util.get_distributed_dataset(dataset, input_workers,
+                                                      distribution)
 
     iterator = iter(dist_dataset)
     results = []
