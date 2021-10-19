@@ -357,7 +357,6 @@ absl::optional<CompileResult> PersistentCompilationCache::Lookup(
   if (!InUse()) {
     return {};
   }
-  bool have_ptx = false;
   bool valid = true;
   int64_t key = CreateKey(
       llvm_module, compute_capability,
@@ -365,12 +364,10 @@ absl::optional<CompileResult> PersistentCompilationCache::Lookup(
   if (!valid) return {};
 
   std::string ptx;
-  have_ptx = LookupCache(key, ptx);
-  if (have_ptx) { // Don't look up the cubin if ptx will be recompiled.
+  // Don't look up the cubin if ptx will be recompiled.
+  if (LookupCache(key, ptx)) {
     std::vector<uint8> cubin;
-    bool have_cubin = false;
-    have_cubin = LookupCache(key, cubin);
-    if (have_cubin) {
+    if (LookupCache(key, cubin)) {
       VLOG(2) << "Found cubin and PTX in the cache";
       return CompileResult{key, cubin, ptx};
     }
@@ -524,8 +521,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   const se::CudaComputeCapability &compute_capability =
     absl::get<se::CudaComputeCapability>(gpu_version);
 
-  bool have_ptx = false;
-  bool have_cubin = false;
+  bool need_insert = false;
   std::vector<uint8> cubin;
   std::string ptx;
   int64_t key;
@@ -536,11 +532,10 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     key = cache_result->key;
     cubin = cache_result->cubin;
     ptx = cache_result->ptx;
-    have_ptx = ptx.length() > 0;
-    have_cubin = cubin.size() > 0;
+    need_insert = ptx.empty() || cubin.empty();
   }
 
-  if (!have_ptx) {
+  if (ptx.empty()) {
     std::string libdevice_dir;
     {
       tensorflow::mutex_lock lock(mutex_);
@@ -572,11 +567,11 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     }
   }
 
-  if (!have_cubin) {
+  if (cubin.empty()) {
     cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, compute_capability, module_config, relocatable);
   }
-  if (!have_ptx && !have_ptx) {
+  if (need_insert) {
     persistent_compilation_cache_.Insert(
         CompileResult{key, cubin, ptx});
   }
