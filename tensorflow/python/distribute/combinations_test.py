@@ -15,7 +15,9 @@
 # ==============================================================================
 """Tests for tensorflow.python.distribute.combinations."""
 
+import importlib
 import os
+import sys
 import unittest
 
 from absl.testing import parameterized
@@ -191,6 +193,15 @@ class TfFunctionTest(test.TestCase, parameterized.TestCase):
 
     foo()
     bar()
+
+
+class ModuleInitializingTest(test.TestCase, parameterized.TestCase):
+
+  def testSysArgvClearedIsFine(self):
+    original_argv = list(sys.argv)
+    sys.argv.clear()
+    importlib.reload(combinations)
+    sys.argv = original_argv
 
 
 class ShareGPUTest(test.TestCase, parameterized.TestCase):
