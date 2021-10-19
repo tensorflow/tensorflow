@@ -1796,6 +1796,10 @@ class TfToTfrtConversionPass
                    llvm::dyn_cast<tfrt::fallback_async::ExecuteOpWithAllocator>(
                        fallback_op)) {
       return execute_op_allocator.operands().size();
+    } else if (auto execute_op_seq_allocator = llvm::dyn_cast<
+                   tfrt::fallback_async::ExecuteOpSeqWithAllocator>(
+                   fallback_op)) {
+      return execute_op_seq_allocator.operands().size();
     }
     llvm_unreachable("invalid fallback op type");
   }
