@@ -499,6 +499,44 @@ Eigen::half baseline_floor_div(Eigen::half lhs, Eigen::half rhs) {
   return static_cast<Eigen::half>(std::floor(static_cast<float>(lhs / rhs)));
 }
 
+template <>
+int16_t baseline_floor_div(int16_t lhs, int16_t rhs) {
+  int16_t res = lhs / rhs;
+  if (((lhs < 0 && rhs > 0) || (lhs > 0 && rhs < 0)) && lhs % rhs) {
+    --res;
+  }
+  return res;
+}
+
+template <>
+int64_t baseline_floor_div(int64_t lhs, int64_t rhs) {
+  int64_t res = lhs / rhs;
+  if (((lhs < 0 && rhs > 0) || (lhs > 0 && rhs < 0)) && lhs % rhs) {
+    --res;
+  }
+  return res;
+}
+
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/UInt8, uint8_t, uint8_t, test::DefaultInput<uint8_t>(),
+    test::DefaultInputNonZero<uint8_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/UInt16, uint16_t, uint16_t, test::DefaultInput<uint16_t>(),
+    test::DefaultInputNonZero<uint16_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/Int16, int16_t, int16_t, test::DefaultInput<int16_t>(),
+    test::DefaultInputNonZero<int16_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/Int64, int64_t, int64_t, test::DefaultInput<int64_t>(),
+    test::DefaultInputNonZero<int64_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     FloorDiv,
     /*test_name=*/Half, Eigen::half, Eigen::half,

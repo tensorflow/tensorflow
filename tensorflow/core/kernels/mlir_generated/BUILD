@@ -1246,11 +1246,13 @@ gpu_kernel_library(
     name = "gpu_floor_div_kernels",
     op = "floor_div",
     tile_size = "1024",
-    # TODO(b/196539835): Enable for integer types also once unsigned integers
-    # and unranked tensors are supported.
     types = [
         "f16",
         "f32",
+        "i16",
+        "i64",
+        "ui8",
+        "ui16",
         "f64",
     ],
     unroll_factors = "4",
