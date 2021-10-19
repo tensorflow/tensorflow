@@ -670,6 +670,10 @@ gpu_kernel_library(
 # TODO(b/25387198): Add an int32 kernel.
 gpu_kernel_library(
     name = "gpu_abs_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+    ],
     op = "abs",
     tile_size = "256",
     types = [
