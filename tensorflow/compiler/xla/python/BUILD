@@ -29,6 +29,8 @@ pytype_library(
     ],
 )
 
+exports_files(["xla_client.pyi"])
+
 pyx_library(
     name = "custom_call_for_test",
     testonly = True,
