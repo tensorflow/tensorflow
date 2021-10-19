@@ -48,7 +48,6 @@ limitations under the License.
 #include "tfrt/support/pointer_util.h"  // from @tf_runtime
 #include "tfrt/support/string_util.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor.h"  // from @tf_runtime
-#include "tfrt/tracing/tracing.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {
@@ -446,17 +445,11 @@ std::string GetTracingMetadata(llvm::ArrayRef<tfrt::AsyncValue*> args,
                                const tfrt::ExecutionContext& exec_ctx,
                                const OpKernelRunner& kernel_runner) {
   auto request_id = exec_ctx.request_ctx()->id();
-  auto current_tracing_level = tfrt::tracing::GetCurrentTracingLevel();
-
-  if (current_tracing_level == tfrt::tracing::TracingLevel::Default) {
-    return profiler::TraceMeEncode({{"id", request_id}});
-  }
-
   // Get Long Name
   auto debug_info = exec_ctx.location().GetDebugInfo();
   auto long_name = debug_info.hasValue() ? debug_info.getValue().info : "";
 
-  if (current_tracing_level == tfrt::tracing::TracingLevel::Verbose) {
+  if (!profiler::TfOpDetailsEnabled()) {
     return profiler::TraceMeEncode(
         {{"id", request_id}, {"long_name", ToAbslStringView(long_name)}});
   }
