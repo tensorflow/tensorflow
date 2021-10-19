@@ -388,6 +388,11 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  if (!tflite::testing::TfLiteDriver::InitTestDelegateProviders(
+          &argc, const_cast<const char**>(argv))) {
+    return EXIT_FAILURE;
+  }
+
   ::tflite::LogToStderr();
   // TODO(mikie): googletest arguments do not work - maybe the tensorflow flags
   // parser removes them?
