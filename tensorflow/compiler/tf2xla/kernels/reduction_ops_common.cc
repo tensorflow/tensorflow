@@ -93,7 +93,6 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
 
   std::vector<int64_t> final_shape;
   auto dims = data_shape.dims();
-  final_shape.reserve(dims);
   for (int i = 0; i < dims; ++i) {
     if (!bitmap[i]) {
       // If we are not reducing along dimension i.
