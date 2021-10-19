@@ -210,6 +210,9 @@ class _LoadDataset(dataset_ops.DatasetSource):
 
     self._path = path
     if element_spec is None:
+      if not context.executing_eagerly():
+        raise ValueError(
+            "In graph mode the `element_spec` argument must be provided.")
       with gfile.GFile(os.path.join(path, DATASET_SPEC_FILENAME), "rb") as f:
         encoded_spec = f.read()
       struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
@@ -289,7 +292,8 @@ def load(path, element_spec=None, compression=None, reader_func=None):
     element_spec: Optional. A nested structure of `tf.TypeSpec` objects matching
       the structure of an element of the saved dataset and specifying the type
       of individual element components. If not provided, the nested structure of
-      `tf.TypeSpec` saved with the saved dataset is used.
+      `tf.TypeSpec` saved with the saved dataset is used. This argument needs to
+      be provided if the method is executed in graph mode.
     compression: Optional. The algorithm to use to decompress the data when
       reading it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
     reader_func: Optional. A function to control how to read data from shards.
@@ -301,6 +305,8 @@ def load(path, element_spec=None, compression=None, reader_func=None):
   Raises:
     FileNotFoundError: If `element_spec` is not specified and the saved nested
       structure of `tf.TypeSpec` can not be located with the saved dataset.
+    ValueError: If `element_spec` is not specified and the method is executed
+      in graph mode.
   """
 
   return _LoadDataset(
