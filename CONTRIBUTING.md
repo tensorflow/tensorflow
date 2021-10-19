@@ -216,7 +216,7 @@ There are two ways to run TensorFlow unit tests.
     (Requires `python>=3.7`)
 
     ```bash
-    bazel test ${flags} //tensorflow/python/saved_model:load_test --test_arg=-- --test_arg=-k=*LoadTest.test_capture_variables*
+    bazel test ${flags} //tensorflow/python/saved_model:load_test --test_filter=*LoadTest.test_capture_variables*
     ```
 
     **Note:** You can add `--test_sharding_strategy=disabled` to the `flags` to disable the
