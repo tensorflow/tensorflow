@@ -78,7 +78,8 @@ class AdjustLayout : public PassWrapper<AdjustLayout, FunctionPass> {
     if (type.isa<TupleType>()) {
       auto tuple_type = type.dyn_cast<TupleType>();
       auto types = tuple_type.getTypes();
-      llvm::SmallVector<mlir::Attribute, types.size()> v;
+      llvm::SmallVector<mlir::Attribute> v;
+      v.reserve(types.size());
       for (const mlir::Type &t : types) {
         auto layout = GetLayout(t, rewriter);
         if (failed(layout)) return failure();
