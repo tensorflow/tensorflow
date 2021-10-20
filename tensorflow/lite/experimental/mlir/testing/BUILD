@@ -2,6 +2,7 @@ load(
     ":build_def.bzl",
     "gen_zip_test",
     "generated_test_models_all",
+    "merged_test_models",
 )
 
 package(
@@ -92,7 +93,7 @@ py_library(
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, test_name, tags, args in generated_test_models_all()]
+) for conversion_mode, test_name, tags, args in generated_test_models_all() + merged_test_models()]
 
 py_library(
     name = "op_tests",
