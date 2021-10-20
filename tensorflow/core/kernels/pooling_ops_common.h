@@ -194,6 +194,9 @@ class MaxPoolingOp : public OpKernel {
   void SpatialMaxPool(OpKernelContext* context, Tensor* output,
                       const Tensor& tensor_in, const PoolParameters& params,
                       const Padding& padding) {
+    if (output->NumElements() == 0) {
+      return;
+    }
     // On GPU, use Eigen's Spatial Max Pooling.  On CPU, use an
     // EigenMatrix version that is currently faster than Eigen's
     // Spatial MaxPooling implementation.
@@ -447,6 +450,9 @@ class MaxPoolingV2Op : public OpKernel {
   void SpatialMaxPool(OpKernelContext* context, Tensor* output,
                       const Tensor& tensor_in, const PoolParameters& params,
                       const Padding& padding) {
+    if (output->NumElements() == 0) {
+      return;
+    }
     // On GPU, use Eigen's Spatial Max Pooling.  On CPU, use an
     // EigenMatrix version that is currently faster than Eigen's
     // Spatial MaxPooling implementation.
@@ -564,6 +570,9 @@ template <typename Device, typename T>
 void SpatialAvgPool(OpKernelContext* context, Tensor* output,
                     const Tensor& input, const PoolParameters& params,
                     const Padding& padding) {
+  if (output->NumElements() == 0) {
+    return;
+  }
   typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
       ConstEigenMatrixMap;
   typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
