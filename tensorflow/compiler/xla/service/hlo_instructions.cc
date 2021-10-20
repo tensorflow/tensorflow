@@ -869,7 +869,7 @@ HloCollectivePermuteInstruction::ExtraAttributesToStringImpl(
       HloChannelInstruction::ExtraAttributesToStringImpl(options);
   {
     std::vector<string> strs;
-    const auto pairs = source_target_pairs();
+    const auto& pairs = source_target_pairs();
     strs.reserve(pairs.size());
     for (const auto& pair : pairs) {
       strs.push_back(StrCat("{", pair.first, ",", pair.second, "}"));
