@@ -1919,7 +1919,7 @@ HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
       CHECK_EQ(clone, instruction_to_fuse);
       index -= clone->operand_count();
       std::vector<HloInstruction*> to_be_removed;
-      auto users = clone->users();
+      const auto& users = clone->users();
       to_be_removed.reserve(users.size());
       for (auto old_gte : users) {
         CHECK_EQ(old_gte->opcode(), HloOpcode::kGetTupleElement);
