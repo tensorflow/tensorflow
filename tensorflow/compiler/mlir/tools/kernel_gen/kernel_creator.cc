@@ -155,7 +155,7 @@ class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
     auto is_simple_access_pattern = [](ParallelOp ploop) {
       for (mlir::Operation& nested : ploop.getBody()->without_terminator()) {
         if (auto load_op = llvm::dyn_cast<mlir::memref::LoadOp>(nested)) {
-          if (!load_op.getMemRefType().getAffineMaps().empty() ||
+          if (!load_op.getMemRefType().getLayout().isIdentity() ||
               (!load_op.getIndices().empty() &&
                load_op.getIndices() != ploop.getInductionVars())) {
             return false;
