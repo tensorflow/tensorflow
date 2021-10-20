@@ -3160,11 +3160,11 @@ def TFL_TileOp: TFL_Op<"tile", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I32, I64, UI8, QUI8, TFL_Str]>:$input,
+    TFL_TensorOf<[F32, I1, I32, I64, UI8, QI8, QUI8, TFL_Str]>:$input,
     TFL_I32OrI64Tensor:$multiples);
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I32, I64, UI8, QUI8, TFL_Str]>:$output);
+    TFL_TensorOf<[F32, I1, I32, I64, UI8, QI8, QUI8, TFL_Str]>:$output);
 
   let hasOptions = 0;
 }
