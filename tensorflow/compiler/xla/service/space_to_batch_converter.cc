@@ -1329,7 +1329,7 @@ void ConvolutionVisitor::PropagateOnBroadcast(HloInstruction* consumer,
   }
 
   std::vector<int64_t> broadcast_dims;
-  const auto dimensions = consumer->dimensions();
+  const auto& dimensions = consumer->dimensions();
   broadcast_dims.reserve(dimensions.size());
   for (auto j : dimensions) {
     broadcast_dims.push_back(DimLookUp(permute_dims, j));
