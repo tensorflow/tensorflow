@@ -269,7 +269,7 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
                                           bool use_large_range) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
-    const auto shape_tuple_shapes = shape.tuple_shapes();
+    const auto& shape_tuple_shapes = shape.tuple_shapes();
     elements.reserve(shape_tuple_shapes.size());
     for (const Shape& element_shape : shape_tuple_shapes) {
       TF_ASSIGN_OR_RETURN(Literal element, MakeFakeLiteralInternal(
@@ -373,7 +373,7 @@ StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
                                                     bool is_sorted) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
-    const auto shape_tuple_shapes = shape.tuple_shapes();
+    const auto& shape_tuple_shapes = shape.tuple_shapes();
     elements.reserve(shape_tuple_shapes.size());
     for (const Shape& element_shape : shape_tuple_shapes) {
       TF_ASSIGN_OR_RETURN(Literal element,
