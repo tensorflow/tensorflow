@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
@@ -665,6 +666,64 @@ Status IrEmitterUnnested::EmitConditional(mlir::Operation* op) {
   return Status::OK();
 }
 
+llvm::Value* IrEmitterUnnested::CreateLoad(llvm::Value* address,
+                                           llvm::Type* data_type,
+                                           int alignment_bytes) {
+  int data_bytes = data_type->getPrimitiveSizeInBits() /
+                   primitive_util::BitWidth(PrimitiveType::U8);
+  if (alignment_bytes == 0) {
+    return b_.CreateLoad(b_.CreateBitCast(address, data_type->getPointerTo()));
+  }
+
+  int alignment_bitwidth =
+      alignment_bytes * primitive_util::BitWidth(PrimitiveType::U8);
+
+  llvm::Value* output = llvm::ConstantInt::get(data_type, 0);
+  for (int offset_bytes = 0; offset_bytes < data_bytes;
+       offset_bytes += alignment_bytes) {
+    llvm::Value* offset_address = b_.CreateConstInBoundsGEP1_32(
+        b_.getInt8Ty(), address, offset_bytes, "offset_address");
+    llvm::Value* partial_value = b_.CreateLoad(b_.getIntNTy(alignment_bitwidth),
+                                               offset_address, "partial_value");
+    llvm::Value* zextd =
+        b_.CreateZExt(partial_value, output->getType(), "partial_value_zextd");
+    llvm::Value* shifted = b_.CreateShl(
+        zextd, llvm::ConstantInt::get(b_.getInt32Ty(), offset_bytes),
+        "partial_input_shifted");
+    output = b_.CreateAdd(output, shifted, "output_updated");
+  }
+  return output;
+}
+
+void IrEmitterUnnested::CreateStore(llvm::Value* data, llvm::Value* address,
+                                    int alignment_bytes) {
+  int data_bytes = data->getType()->getPrimitiveSizeInBits() /
+                   primitive_util::BitWidth(PrimitiveType::U8);
+  CHECK_GE(data_bytes, alignment_bytes);
+  if (alignment_bytes == 0) {
+    b_.CreateStore(data,
+                   b_.CreateBitCast(address, data->getType()->getPointerTo()));
+    return;
+  }
+
+  int alignment_bitwidth =
+      alignment_bytes * primitive_util::BitWidth(PrimitiveType::U8);
+
+  for (int offset_bytes = 0; offset_bytes < data_bytes;
+       offset_bytes += alignment_bytes) {
+    llvm::Value* offset_address = b_.CreateConstInBoundsGEP1_32(
+        b_.getInt8Ty(), address, offset_bytes, "offset_address");
+    llvm::Value* shifted_partial = b_.CreateTrunc(
+        b_.CreateLShr(data,
+                      llvm::ConstantInt::get(b_.getInt32Ty(), offset_bytes)),
+        b_.getIntNTy(alignment_bitwidth), "truncated_value");
+    b_.CreateStore(
+        shifted_partial,
+        b_.CreateBitCast(offset_address,
+                         b_.getIntNTy(alignment_bitwidth)->getPointerTo()));
+  }
+}
+
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
 // Output = {static array, dynamic_dim0, dynamic_dim1}
 Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
@@ -705,6 +764,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   //   int* dyn_dim0_size = source_array + meta_data_offset;
   //   int* dyn_dim1_size = source_array + meta_data_offset + sizeof(int);
   std::vector<llvm::Value*> dynamic_dims;
+  int alignment = raw_data_size % sizeof(int32_t);
   for (int64_t i = 1; i < pad_to_static.output().size(); ++i) {
     // Dynamic size of each dimension is attached at the end of the source
     // array(operand(0)). We need to extract these value.
@@ -714,9 +774,8 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
     const int64_t dim_index = i - 1;
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
         b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
-    llvm::Value* dyn_dim_size = b_.CreateLoad(
-        b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()),
-        "dyn_dim_size");
+    llvm::Value* dyn_dim_size =
+        CreateLoad(metadata, b_.getInt32Ty(), alignment);
     dynamic_dims.push_back(dyn_dim_size);
   }
 
@@ -733,9 +792,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
       llvm::Value* dest_dim_size_address =
           output_dim_arrays[dim_index].GetBasePointer();
       // output[i] stores dynamic_dim_(i-1)
-      b_.CreateStore(dynamic_dims[i - 1],
-                     b_.CreateBitCast(dest_dim_size_address,
-                                      b_.getInt32Ty()->getPointerTo()));
+      CreateStore(dynamic_dims[dim_index], dest_dim_size_address, alignment);
     }
   });
 
@@ -830,6 +887,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
 
   // Load dynamic dimensions from memory.
   std::vector<llvm::Value*> dynamic_dims;
+  int alignment = raw_data_size % sizeof(int32_t);
   for (int64_t i = 1; i < slice_to_dynamic.args().size(); ++i) {
     // const int64_t dim_index = i - 1;
     llvm::Value* source_buffer = ir_arrays[i].GetBasePointer();
@@ -851,9 +909,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
           b_.getInt8Ty(), raw_buffer,
           raw_data_size + dim_index * sizeof(int32));
       // output[i] stores dynamic_dim_(i-1)
-      b_.CreateStore(
-          dynamic_dims[dim_index],
-          b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()));
+      CreateStore(dynamic_dims[dim_index], metadata, alignment);
     }
   });
 
