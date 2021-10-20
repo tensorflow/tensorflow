@@ -248,7 +248,7 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
   }
 
   std::vector<std::pair<void*, int64_t>> buffer_data;
-  for (int64_t i = 0; i < literal.shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < literal.shape().tuple_shapes_size(); ++i) {
     const Shape& tuple_element_shape =
         ShapeUtil::GetTupleElementShape(literal.shape(), i);
     int64_t size = cpu::runtime::GetByteSizeRequirement(tuple_element_shape,
