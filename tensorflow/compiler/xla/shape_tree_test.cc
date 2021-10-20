@@ -514,7 +514,7 @@ TEST_F(ShapeTreeTest, ConstFind) {
 TEST_F(ShapeTreeTest, IterateOrderLeaves) {
   ShapeTree<int> t(nested_tuple_shape_, 42);
   std::vector<ShapeIndex> v;
-  auto leaves = t.leaves();
+  const auto& leaves = t.leaves();
   v.reserve(t.leaf_count());
   for (auto index_to_data : leaves) {
     v.push_back(index_to_data.first);
