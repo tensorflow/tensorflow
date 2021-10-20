@@ -400,7 +400,9 @@ class PodTpuDriver : public TpuDriver {
     auto deps = GetDependencyOperationIds(wait_for);
 
     std::vector<int64_t> children_ids;
-    for (int i = 0; i < children.size(); ++i) {
+    const size_t children_ids_size = children.size();
+    children_ids.reserve(children_ids_size);
+    for (size_t i = 0; i < children_ids_size; ++i) {
       auto child_op_id =
           static_cast<PodBufferHandle* const>(children[i])->operation_id();
       deps.insert(child_op_id);
@@ -414,7 +416,7 @@ class PodTpuDriver : public TpuDriver {
             -> std::shared_ptr<Event> {
           std::vector<BufferHandle*> child_buffers;
           child_buffers.reserve(children_ids.size());
-          for (int i = 0; i < children_ids.size(); ++i) {
+          for (size_t i = 0; i < children_ids.size(); ++i) {
             CHECK_EXISTS_OR_RETURN(underlying_buffers_, children_ids[i],
                                    operation_id);
             child_buffers.push_back(underlying_buffers_[children_ids[i]].get());
@@ -664,6 +666,8 @@ class PodTpuDriver : public TpuDriver {
 
     std::vector<int64_t> input_op_ids;
     std::vector<int64_t> output_op_ids;
+    input_op_ids.reserve(inputs.size());
+    output_op_ids.reserve(outputs.size());
 
     for (auto* input : inputs) {
       auto input_dep =
