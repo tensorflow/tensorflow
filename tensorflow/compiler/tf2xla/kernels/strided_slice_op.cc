@@ -112,7 +112,7 @@ class StridedSliceOp : public XlaOpKernel {
     xla::PaddingConfig padding_config;
     bool need_padding = false;
     std::vector<bool> result_dims_are_dynamic;
-    const auto dims = input_shape.dims();
+    const auto& dims = input_shape.dims();
     result_dims_are_dynamic.reserve(dims);
     for (int64_t i = 0; i < dims; ++i) {
       int64_t sparse_index = shape_spec.processing_to_sparse_mapping[i];
