@@ -797,6 +797,19 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_BUCKETIZE: {
+      auto params = safe_allocator.Allocate<TfLiteBucketizeParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* bucketize_params =
+              op->builtin_options_as_BucketizeOptions()) {
+        const flatbuffers::Vector<float>* boundaries =
+            bucketize_params->boundaries();
+        params->num_boundaries = boundaries->size();
+        params->boundaries = boundaries->data();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     // Below are the ops with no builtin_data structure.
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
     // ok for now, since there is no call implementation either.

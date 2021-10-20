@@ -380,6 +380,7 @@ enum BuiltinOperator : int32 {
   ASSIGN_VARIABLE = 144,
   BROADCAST_ARGS = 145,
   RANDOM_STANDARD_NORMAL = 146,
+  BUCKETIZE = 147,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -499,6 +500,7 @@ union BuiltinOptions {
   ReadVariableOptions,
   AssignVariableOptions,
   RandomOptions,
+  BucketizeOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -1087,6 +1089,10 @@ table AssignVariableOptions {
 table RandomOptions {
   seed: int;
   seed2: int;
+}
+
+table BucketizeOptions {
+  boundaries: [float];  // The bucket boundaries.
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

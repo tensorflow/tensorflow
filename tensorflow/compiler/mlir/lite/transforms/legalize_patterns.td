@@ -513,3 +513,7 @@ def LegalizeComplexAbs : Pat<(TF_ComplexAbsOp $arg), (TFL_ComplexAbsOp $arg)>;
 def LegalizeReal : Pat<(TF_RealOp $arg), (TFL_RealOp $arg)>;
 
 def LegalizeImag : Pat<(TF_ImagOp $arg), (TFL_ImagOp $arg)>;
+
+def LegalizeBucketize : Pat<
+  (TF_BucketizeOp $input, F32ArrayAttr:$boundaries),
+  (TFL_BucketizeOp $input, $boundaries)>;

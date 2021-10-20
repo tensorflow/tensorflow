@@ -556,6 +556,7 @@ BUILTIN_KERNEL_SRCS = [
     "bidirectional_sequence_rnn.cc",
     "broadcast_args.cc",
     "broadcast_to.cc",
+    "bucketize.cc",
     "call_once.cc",
     "cast.cc",
     "ceil.cc",
@@ -1114,6 +1115,20 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "bucketize_test",
+    size = "small",
+    srcs = ["bucketize_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )

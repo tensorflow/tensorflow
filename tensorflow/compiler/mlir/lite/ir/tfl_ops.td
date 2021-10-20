@@ -5125,6 +5125,28 @@ broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
   );
 }
 
+def TFL_BucketizeOp
+    : TFL_Op<"bucketize", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Bucketizes 'input' based on 'boundaries'.";
+
+  let description = [{
+Example:
+
+If the inputs are `boundaries = [0, 10, 100]` and
+`input = [[-5, 10000][150, 10][5, 100]]`,
+then the output will be `output = [[0, 3][3, 2][1, 3]]`.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, F64, I32, I64]>:$input,
+    F32ArrayAttr:$boundaries
+  );
+
+  let results = (outs
+    TFL_TensorOf<[I32]>:$output
+  );
+}
+
 #endif // TFL_OPS
 
 // LINT.ThenChange(//tensorflow/lite/tools/versioning/op_version.cc)
