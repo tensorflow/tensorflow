@@ -22,6 +22,8 @@ limitations under the License.
 #include <typeinfo>
 #include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/types/variant.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -166,8 +168,9 @@ class ResourceMgr {
   // transfer the ownership of any ref on "resource" to *this, regardless of
   // whether this operation succeeds or fails.
   //
-  // The caller must ensure calling this->Delete() on the name before the
-  // resource is destroyed.
+  // After the resource is destroyed, lookups from the manager fail.
+  // The caller must call this->Delete() on the name to free up the memory
+  // entry of the name.
   //
   // REQUIRES: std::is_base_of<ResourceBase, T>
   // REQUIRES: resource != nullptr.
@@ -246,27 +249,34 @@ class ResourceMgr {
       return (x.second == y.second) && (x.first == y.first);
     }
   };
+  typedef absl::variant<core::RefCountPtr<ResourceBase>,
+                        core::WeakPtr<ResourceBase>>
+      StrongOrWeakResourcePtr;
+
   struct ResourceAndName {
-    ResourceBase* resource;
+    StrongOrWeakResourcePtr resource;
     std::unique_ptr<string> name;
-    core::RefCountPtr<ResourceBase> resource_owner;
 
     ResourceAndName();
-    ResourceAndName(ResourceBase* resource, std::string name,
-                    ResourceBase* resource_owner);
+    ResourceAndName(StrongOrWeakResourcePtr&& resource, std::string name);
     ResourceAndName(ResourceAndName&& other) noexcept;
     ~ResourceAndName();
 
     ResourceAndName& operator=(ResourceAndName&&) noexcept;
 
+    // Returns a strong reference to resource, or nullptr if the resource is
+    // no longer valid.
+    core::RefCountPtr<ResourceBase> GetResource() const;
+
    private:
     TF_DISALLOW_COPY_AND_ASSIGN(ResourceAndName);
   };
-  typedef std::unordered_map<Key, ResourceAndName, KeyHash, KeyEqual> Container;
+  typedef absl::flat_hash_map<Key, ResourceAndName, KeyHash, KeyEqual>
+      Container;
 
   const std::string default_container_;
   mutable mutex mu_;
-  std::unordered_map<string, Container*> containers_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<string, Container*> containers_ TF_GUARDED_BY(mu_);
 
   template <typename T, bool use_dynamic_cast = false>
   Status LookupInternal(const std::string& container, const std::string& name,
@@ -296,6 +306,12 @@ class ResourceMgr {
   Status DoDelete(const std::string& container, TypeIndex type,
                   const std::string& resource_name) TF_MUST_USE_RESULT;
 
+  // Pops the ResourceAndName entry. The entry is moved from the list to
+  // the output argument `resource_and_name`.
+  Status PopResourceAndName(
+      const std::string& container, uint64 type_hash_code,
+      const std::string& resource_name, const std::string& type_name,
+      ResourceAndName& resource_and_name) TF_MUST_USE_RESULT;
   // Inserts the type name for 'hash_code' into the hash_code to type name map.
   Status InsertDebugTypeName(uint64 hash_code, const std::string& type_name)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;

@@ -7,7 +7,7 @@
 // expected-remark@below {{4: after all regions}}
 func @foo(%arg0: tensor<f32>) -> tensor<f32> {
   // expected-remark@below {{1: before all regions}}
-  %cst = constant dense<1.0> : tensor<f32>
+  %cst = arith.constant dense<1.0> : tensor<f32>
   // expected-remark@below {{2: before all regions}}
   %0 = "tf.Identity"(%arg0) : (tensor<f32>) -> tensor<f32>
   // expected-remark@below {{3: before all regions}}
@@ -23,7 +23,7 @@ func @foo(%arg0: tensor<f32>) -> tensor<f32> {
 // expected-remark@below {{2: walk was interrupted}}
 func @foo(%arg0: tensor<f32>) -> tensor<f32> {
   // expected-remark@below {{1: before all regions}}
-  %cst = constant dense<1.0> : tensor<f32>
+  %cst = arith.constant dense<1.0> : tensor<f32>
   %0 = "tf.Identity"(%arg0)  {interrupt_before_all = true} : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
@@ -34,7 +34,7 @@ func @foo(%arg0: tensor<f32>) -> tensor<f32> {
 // expected-remark@below {{5: walk was interrupted}}
 func @foo(%arg0: tensor<f32>) -> tensor<f32> {
   // expected-remark@below {{1: before all regions}}
-  %cst = constant dense<1.0> : tensor<f32>
+  %cst = arith.constant dense<1.0> : tensor<f32>
   // expected-remark@below {{2: before all regions}}
   %0 = "tf.unknownop"(%arg0) ({
     // expected-remark@below {{3: before all regions}}
@@ -51,7 +51,7 @@ func @foo(%arg0: tensor<f32>) -> tensor<f32> {
 // expected-remark@below {{5: walk was interrupted}}
 func @foo(%arg0: tensor<f32>) -> tensor<f32> {
   // expected-remark@below {{1: before all regions}}
-  %cst = constant dense<1.0> : tensor<f32>
+  %cst = arith.constant dense<1.0> : tensor<f32>
   // expected-remark@below {{2: before all regions}}
   %0 = "tf.unknownop"(%arg0) ({
     // expected-remark@below {{3: before all regions}}
@@ -71,7 +71,7 @@ func @foo(%arg0: tensor<f32>) -> tensor<f32> {
 // expected-remark@below {{7: walk was interrupted}}
 func @foo(%arg0: tensor<f32>, %arg1: tensor<i1>) -> tensor<f32> {
   // expected-remark@below {{1: before all regions}}
-  %cst = constant dense<1.0> : tensor<f32>
+  %cst = arith.constant dense<1.0> : tensor<f32>
   // expected-remark@below {{2: before all regions}}
   // expected-remark@below {{5: before region #1}}
   // expected-remark@below {{8: before all regions}}

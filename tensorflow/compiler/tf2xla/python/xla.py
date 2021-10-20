@@ -24,10 +24,6 @@ by jax2tf. Hence, we need to maintain backwards compatibility for these
 operators. Please reach out to the JAX team if you want to make changes.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import constant_op

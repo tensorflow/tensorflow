@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -417,7 +418,8 @@ struct QuantizationPattern : public RewritePattern {
             if (!matchPattern(q.input(), m_Constant(&attr))) {
               continue;
             }
-            auto cst = rewriter.create<ConstantOp>(new_op->getLoc(), attr);
+            auto cst =
+                rewriter.create<arith::ConstantOp>(new_op->getLoc(), attr);
             quantized_op->setOperand(i, cst.getResult());
           }
         }

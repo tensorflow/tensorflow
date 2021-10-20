@@ -34,6 +34,16 @@ py_library(
     name = "zip_test_%s" % test_name,
     size = "medium",
     srcs = ["generated_examples_zip_test.cc"],
+    additional_test_tags_args = {
+        "xnnpack": (
+            [
+                # TODO(b/162696268): remove 'notap' and 'no_oss' once the bug is fixed.
+                "notap",
+                "no_oss",
+            ],
+            ["--use_xnnpack=true"],
+        ),
+    },
     args = args + select({
         "//tensorflow:android": [],
         "//conditions:default": [
@@ -57,12 +67,12 @@ py_library(
     # copybara:comment_end
     shard_count = 20,
     tags = tags + [
-        "nomac",  # TODO(b/190747043): Remove when the breakage is fixed.
         "gen_zip_test",
         "tflite_not_portable_intentional",
     ],
     test_name = test_name,
     deps = [
+        "//tensorflow/lite/testing:tflite_driver_delegate_providers",
         "//tensorflow/lite/testing:parse_testdata_lib",
         "//tensorflow/lite/testing:tflite_driver",
         "//tensorflow/lite/testing:util",

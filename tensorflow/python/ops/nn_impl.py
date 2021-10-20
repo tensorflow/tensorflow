@@ -14,10 +14,6 @@
 # =============================================================================
 """Implementation of Neural Net (NN) functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 from tensorflow.python.distribute import distribution_strategy_context as ds

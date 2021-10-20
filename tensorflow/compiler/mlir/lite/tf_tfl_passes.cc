@@ -210,7 +210,14 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
   // Add function inlining pass. Both TF and TFLite dialects are opted into
   // function inliner interface.
   pass_manager->addPass(mlir::createInlinerPass());
-
+  // Reduce operands of TFL::While without changing the outcome.
+  // It needs to stay here because:
+  // 1. WhileOps are in TFL dialect.
+  // 2. The body and cond are inlined.
+  // 3. We need to do this before while canonicalization, otherwise it would be
+  //   difficult to find dependencies.
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateReduceWhileOperandsPass());
   // Canonicalization includes const folding, which is utilized here to optimize
   // away ops that can't get constant folded after PrepareTF pass. For example,
   // tf.Conv2D is split into tf.Transpose and tfl.Conv2D.

@@ -414,8 +414,8 @@ void Worker::CompleteGroupAsync(CallOptions* opts,
             response->set_group_size(group_params->group_size);
             response->set_device_type(group_params->device_type.type_string());
             response->set_num_tasks(group_params->num_tasks);
-            for (const DeviceAttributes& device : group_params->devices) {
-              *response->add_device_attributes() = device;
+            for (const CollGroupMember& member : group_params->members) {
+              *response->add_device_attributes() = member.device;
             }
             response->set_communicator_key(
                 group_params->runtime_details.communicator_key);

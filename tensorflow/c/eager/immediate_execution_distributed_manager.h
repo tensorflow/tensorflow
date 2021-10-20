@@ -58,6 +58,12 @@ class ImmediateExecutionDistributedManager {
 
   // Get pointer to the coordination service agent instance.
   virtual CoordinationServiceAgent* GetCoordinationServiceAgent() = 0;
+
+  // Get the next valid step id.
+  virtual int64_t GetNextStepId() = 0;
+
+  // Get the current step id.
+  virtual int64_t step_id() = 0;
 };
 }  // namespace tensorflow
 

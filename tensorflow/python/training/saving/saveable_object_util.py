@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities for working with and creating SaveableObjects."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import six
 
@@ -37,7 +33,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -117,7 +112,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
     else:
       raise ValueError(
           "Saveable is neither a resource variable nor a read operation."
-          " Got: %s" % repr(var))
+          f" Got: {repr(var)}")
     spec = saveable_object.SaveSpec(tensor, slice_spec, name,
                                     dtype=var.dtype, device=var.device)
     super(ResourceVariableSaveable, self).__init__(var, [spec], name)
@@ -127,8 +122,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
     if restored_shapes is not None:
       restored_tensor = array_ops.reshape(restored_tensor, restored_shapes[0])
     # Copy the restored tensor to the variable's device.
-    device = "" if save_context.in_save_context() else self._var_device
-    with ops.device(device):
+    with ops.device(self._var_device):
       restored_tensor = array_ops.identity(restored_tensor)
       return resource_variable_ops.shape_safe_assign_variable_handle(
           self.handle_op, self._var_shape, restored_tensor)
@@ -138,65 +132,13 @@ def _tensor_comes_from_variable(v):
   return isinstance(v, ops.Tensor) and v.op.type in _VARIABLE_OPS
 
 
-def create_saveables_from_factory(saveable_factory, checkpoint_key,
-                                  use_graph_element_for_variables=True):
-  """Runs the saveable factory to produce a tuple of SaveableObjects.
-
-  `obj` and `attribute_name` are only used in the error produced in the
-  validation of the produced saveables.
-
-  Args:
-    saveable_factory: A callable that accepts a name argument and produces
-      a SaveableObject.
-    checkpoint_key: A string that is uniquely generated to be used in the
-      `saveable_factory`. The names of the produced SaveableObjects must contain
-      this key.
-    use_graph_element_for_variables: Boolean, whether to return the graph
-      element of resource variables created under graph mode. This argument
-      defaults to True for compatibility reasons.
-
-  Returns:
-    a tuple of SaveableObjects
-  """
-  if callable(saveable_factory):
-    maybe_saveable = saveable_factory(name=checkpoint_key)
-  else:
-    maybe_saveable = saveable_factory
-  if isinstance(maybe_saveable, saveable_object.SaveableObject):
-    saveables = (maybe_saveable,)
-  else:
-    saveables = tuple(saveable_objects_for_op(
-        op=maybe_saveable, name=checkpoint_key,
-        use_graph_element_for_variables=use_graph_element_for_variables))
-    if isinstance(checkpoint_key, str):
-      # Figure out the name-based Saver's name for this variable. If it's
-      # already a SaveableObject we'd just get the checkpoint key back, so
-      # we leave full_name blank.
-      saver_dict = op_list_to_dict(
-          [maybe_saveable], convert_variable_to_tensor=False)
-      full_name, = saver_dict.keys()
-      for saveable in saveables:
-        saveable.full_name = full_name
-  return saveables
-
-
-def saveable_objects_for_op(op, name, use_graph_element_for_variables=True):
-  """Create `SaveableObject`s from an object or operation.
-
-  This function converts all of the objects returned from
-  `_gather_saveables_for_checkpoint` and factory methods to SaveableObjects. The
-  different types of objects that may be received include variables objects,
-  variable handles, other Trackables, and data structures containing
-  SaveableObjects.
+def saveable_objects_for_op(op, name):
+  """Create `SaveableObject`s from an operation.
 
   Args:
     op: A variable, operation, or SaveableObject to coerce into a
       SaveableObject.
     name: A string name for the SaveableObject.
-    use_graph_element_for_variables: Boolean, whether to replace resource
-      variables with their graph element (i.e. a pre-created tensor in the Graph
-      that reads the resource variable). This argument defaults to True for
-      compatibility reasons.
 
   Yields:
     `SaveableObject`s which together save/restore `op`.
@@ -205,11 +147,10 @@ def saveable_objects_for_op(op, name, use_graph_element_for_variables=True):
     TypeError: If `name` is not a string.
     ValueError: For operations with no known conversion to SaveableObject.
   """
-  if not (isinstance(name, six.string_types) or
-          (tensor_util.is_tf_type(name) and name.dtype == dtypes.string)):
+  if not isinstance(name, six.string_types):
     raise TypeError(
         "names_to_saveables must be a dict mapping string names to "
-        "trackable operations. Name is not a string: %s" % name)
+        f"trackable operations. Name is not a string: {name}")
   if isinstance(op, saveable_object.SaveableObject):
     yield op
   elif isinstance(op, (list, tuple, variables.PartitionedVariable)):
@@ -223,15 +164,15 @@ def saveable_objects_for_op(op, name, use_graph_element_for_variables=True):
         yield variable
         continue
       if not isinstance(variable, variables.Variable):
-        raise ValueError("Slices must all be Variables: %s" % variable)
+        raise ValueError(f"Slices must all be Variables: {variable}")
       if not variable._save_slice_info:
-        raise ValueError("Slices must all be slices: %s" % variable)
+        raise ValueError(f"Slices must all be slices: {variable}")
       if slice_name is None:
         slice_name = variable._save_slice_info.full_name
       elif slice_name != variable._save_slice_info.full_name:
         raise ValueError(
-            "Slices must all be from the same tensor: %s != %s" %
-            (slice_name, variable._save_slice_info.full_name))
+            f"Slices must all be from the same tensor: {slice_name} != "
+            f"{variable._save_slice_info.full_name}")
       if variable.op.type in ["Variable", "VariableV2",
                               "AutoReloadVariable"]:
         yield ReferenceVariableSaveable(
@@ -256,7 +197,7 @@ def saveable_objects_for_op(op, name, use_graph_element_for_variables=True):
   else:
     # A variable or tensor.
     if isinstance(op, resource_variable_ops.BaseResourceVariable):
-      if op._in_graph_mode and use_graph_element_for_variables:  # pylint: disable=protected-access
+      if op._in_graph_mode:  # pylint: disable=protected-access
         variable = op._graph_element  # pylint: disable=protected-access
       else:
         variable = op
@@ -264,13 +205,13 @@ def saveable_objects_for_op(op, name, use_graph_element_for_variables=True):
     else:
       if context.executing_eagerly():
         raise ValueError("Can only save/restore ResourceVariables when "
-                         "executing eagerly, got type: %s." % type(op))
+                         f"executing eagerly, got type: {type(op)}.")
 
       variable = ops.convert_to_tensor(op, as_ref=True)
       if not _tensor_comes_from_variable(variable):
-        raise TypeError("names_to_saveables must be a dict mapping string "
-                        "names to Tensors/Variables. Not a variable: %s" %
-                        variable)
+        raise TypeError(
+            "names_to_saveables must be a dict mapping string "
+            f"names to Tensors/Variables. Not a variable: {variable}")
       if variable.op.type in ["Variable", "VariableV2",
                               "AutoReloadVariable"]:
         yield ReferenceVariableSaveable(variable, "", name)
@@ -297,7 +238,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   """
   if not isinstance(op_list, (list, tuple, set)):
     raise TypeError("Variables to save should be passed in a dict or a "
-                    "list: %s" % op_list)
+                    f"list. Got {op_list}")
   # List casting is necessary to support sets.
   op_list = nest.flatten(list(op_list))
   # When ResourceVariables are converted to Tensors, read ops are added to the
@@ -315,15 +256,15 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
       names_to_saveables[var.name] = var
     elif isinstance(var, variables.PartitionedVariable):
       if var.name in names_to_saveables:
-        raise ValueError("At least two variables have the same name: %s" %
-                         var.name)
+        raise ValueError(
+            f"At least two variables have the same name: {var.name}")
       names_to_saveables[var.name] = var
     elif isinstance(var, variables.Variable) and var._save_slice_info:
       name = var._save_slice_info.full_name
       if name in names_to_saveables:
         if not isinstance(names_to_saveables[name], list):
           raise ValueError("Mixing slices and non-slices with the same name: "
-                           "%s" % name)
+                           f"{name}")
         names_to_saveables[name].append(var)
       else:
         names_to_saveables[name] = [var]
@@ -341,15 +282,14 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
         if not isinstance(var, resource_variable_ops.BaseResourceVariable):
           raise ValueError(
               "Can only save/restore ResourceVariables when eager execution "
-              "is enabled, type: %s." % type(var))
+              f"is enabled. Got type: {type(var)}.")
         set_var = names_to_saveables.setdefault(var._shared_name, var)
         if set_var is not var:
           raise ValueError(
-              ("Two different ResourceVariable objects with the same "
-               "shared_name '%s' were passed to the Saver. This likely means "
-               "that they were created in different Graphs or isoWlation "
-               "contexts, and may not be checkpointed together.") %
-              (var._shared_name,))
+              "Two different ResourceVariable objects with the same "
+              f"shared_name '{var._shared_name}' were passed to the Saver. This"
+              " likely means that they were created in different Graphs or "
+              "isolated contexts, and may not be checkpointed together.")
       else:
         if convert_variable_to_tensor:
           if isinstance(var, resource_variable_ops.BaseResourceVariable):
@@ -357,14 +297,13 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
           else:
             var = ops.convert_to_tensor(var, as_ref=True)
           if not _tensor_comes_from_variable(var):
-            raise TypeError("Variable to save is not a Variable: %s" % var)
+            raise TypeError(f"Variable to save is not a Variable: {var}")
         if var.op.type == "ReadVariableOp":
           name = var.op.inputs[0].op.name
         else:
           name = var.op.name
         if name in names_to_saveables:
-          raise ValueError("At least two variables have the same name: %s" %
-                           name)
+          raise ValueError(f"At least two variables have the same name: {name}")
         names_to_saveables[name] = var
 
     # pylint: enable=protected-access
@@ -384,8 +323,8 @@ def _add_saveable(saveables, seen_ops, saveable):
     ValueError: If the saveable has already been processed.
   """
   if saveable.op is not None and saveable.op in seen_ops:
-    raise ValueError("The same saveable will be restored with two names: %s" %
-                     saveable.name)
+    raise ValueError("The same saveable will be restored with two names: "
+                     f"{saveable.name}")
   saveables.append(saveable)
   seen_ops.add(saveable.op)
 
@@ -419,12 +358,11 @@ def validate_and_slice_inputs(names_to_saveables):
   return saveables
 
 
-def build_traceable_saveable(saveable_factory, checkpoint_key, obj):
-  """Creates a Saveable with traced save and restore functions."""
+def trace_save_restore_functions(saveable_factory, obj):
+  """Traces save and restore functions."""
   if is_factory_for_restored_saveable_object(saveable_factory):
-    restored_saveable = saveable_factory(name=checkpoint_key)
-    return (restored_saveable.save_function, restored_saveable.restore_function,
-            restored_saveable)
+    return (saveable_factory.keywords["save_function"],
+            saveable_factory.keywords["restore_function"])
 
   saveables = []  # Store the saveables in a data structure accessible to both
                   # the save and restore functions.
@@ -432,12 +370,11 @@ def build_traceable_saveable(saveable_factory, checkpoint_key, obj):
   @def_function.function(
       input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
   def save_fn(checkpoint_key):
-    # Saveables must be created inside this function to ensure that the ops
-    # in the factory methods are created inside the right Graph/FuncGraph.
-    saveables[:] = create_saveables_from_factory(
-        saveable_factory, checkpoint_key,
-        # Force variables created in Graph mode to recreate their read tensors.
-        use_graph_element_for_variables=False)
+    maybe_saveable = saveable_factory(name=checkpoint_key)
+    if isinstance(maybe_saveable, saveable_object.SaveableObject):
+      maybe_saveable = [maybe_saveable]
+    saveables[:] = maybe_saveable
+
     # Return list of all SaveSpecs created by the factory.
     ret = []
     for saveable in saveables:
@@ -451,7 +388,7 @@ def build_traceable_saveable(saveable_factory, checkpoint_key, obj):
   # The SaveableObjects are produced when `save_fn` is traced.
   saveables = validate_saveables_for_saved_model(saveables, obj)
   if not saveables:
-    return None, None, None
+    return None, None
 
   # Use the SaveSpecs to define the input signature of the restore function.
   restored_type_specs = []
@@ -473,8 +410,7 @@ def build_traceable_saveable(saveable_factory, checkpoint_key, obj):
     return 1  # Return dummy tensor
 
   concrete_restore = restore_fn.get_concrete_function()
-  return concrete_save, concrete_restore, RestoredSaveableObject(
-      concrete_save, concrete_restore, checkpoint_key)
+  return concrete_save, concrete_restore
 
 
 def validate_saveables_for_saved_model(saveables, obj):
@@ -519,6 +455,37 @@ def restored_saved_object_factory(save_function, restore_function):
   return functools.partial(RestoredSaveableObject,
                            save_function=save_function,
                            restore_function=restore_function)
+
+
+def create_saveable_object(factory, name, call_with_mapped_captures):
+  """Creates a SaveableObject while potentially in a different graph.
+
+  When creating the frozen saver for SavedModel, the save and restore ops are
+  placed in a separate graph. Since RestoredSaveableObject uses tf.functions to
+  save and restore, the function captures must be mapped to the new graph.
+
+  Args:
+    factory: Factory method for creating the SaveableObject.
+    name: Checkpoint key of this SaveableObject.
+    call_with_mapped_captures: Helper that calls a tf.function while remapping
+      the captures.
+
+  Returns:
+    a SaveableObject.
+  """
+  if (call_with_mapped_captures is None or
+      not is_factory_for_restored_saveable_object(factory)):
+    return factory(name=name)
+
+  concrete_save_fn = factory.keywords["save_function"]
+  def save_fn(name):
+    return call_with_mapped_captures(concrete_save_fn, [name])
+
+  concrete_restore_fn = factory.keywords["restore_function"]
+  def restore_fn(*restored_tensors):
+    return call_with_mapped_captures(concrete_restore_fn, restored_tensors)
+
+  return factory(save_function=save_fn, restore_function=restore_fn, name=name)
 
 
 def is_factory_for_restored_saveable_object(factory):

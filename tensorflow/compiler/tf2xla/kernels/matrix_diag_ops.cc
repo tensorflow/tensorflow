@@ -65,7 +65,7 @@ std::pair<int64_t, int64_t> ProcessDiagIndex(XlaOpKernelContext* context) {
                      context->ConstantInputAsIntScalar("k", &lower_diag_index));
       upper_diag_index = lower_diag_index;
     } else {
-      std::vector<int64> diag_index;
+      std::vector<int64_t> diag_index;
       OP_REQUIRES_OK(context,
                      context->ConstantInputAsIntVector("k", &diag_index));
       OP_REQUIRES(

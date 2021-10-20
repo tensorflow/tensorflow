@@ -14,10 +14,6 @@
 # ==============================================================================
 """Operations for generating random numbers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import six
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -473,7 +469,9 @@ class Generator(tracking.AutoTrackable):
     Returns:
       The created variable.
     """
-    v = variables.Variable(*args, **kwargs)
+    with ops.name_scope("random_generator"):
+      kwargs["name"] = "StateVar"
+      v = variables.Variable(*args, **kwargs)
     if isinstance(v, sharded_variable.ShardedVariable):
       # RNG state is an atomic entity representing a 128-bit or
       # 192-bit value, so it mustn't be sharded.

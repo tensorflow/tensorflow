@@ -16,8 +16,8 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 specializations = [
     tf_cpurt.Specialization.ENABLED,
@@ -28,7 +28,7 @@ specializations = [
 cpurt = tf_cpurt.TfCpurtExecutor()
 
 
-class TfTransposeTest(googletest.TestCase):
+class TfTransposeTest(test.TestCase):
 
   def test_transpose_2d(self):
     for specialize in specializations:
@@ -141,4 +141,4 @@ class TfTransposeTest(googletest.TestCase):
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

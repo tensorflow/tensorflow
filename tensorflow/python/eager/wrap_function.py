@@ -15,10 +15,6 @@
 # pylint: disable=unidiomatic-typecheck
 """Prototype decorator for defining legacy-graph-mode functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import weakref
 
 from tensorflow.core.protobuf import meta_graph_pb2

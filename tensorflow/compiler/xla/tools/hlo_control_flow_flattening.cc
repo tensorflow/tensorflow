@@ -18,6 +18,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
@@ -83,10 +85,86 @@ bool IsCollective(const HloInstruction* instruction) {
   }
 }
 
+// Prints sub-expression rooted at inst for a given depth.
+void PrintSubexpression(HloInstruction* inst, int depth) {
+  if (depth == 0) {
+    return;
+  }
+  for (auto* operand : inst->operands()) {
+    PrintSubexpression(operand, depth - 1);
+  }
+  VLOG(2) << inst->ToString();
+}
+
+bool IsConstantScalarInt(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kConstant &&
+         ShapeUtil::IsEffectiveScalar(inst->shape()) &&
+         inst->shape().IsInteger();
+}
+
+bool IsNotContainedInLoop(const HloInstruction& while_hlo,
+                          const CallGraph& call_graph) {
+  const HloComputation* computation = while_hlo.parent();
+  while (!computation->IsEntryComputation()) {
+    auto node = call_graph.GetNode(computation);
+    CHECK_EQ(node.caller_callsites().size(), 1)
+        << "The module is not flattened!";
+    auto callsite = node.caller_callsites()[0];
+    if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
+      // Another while loop has been found traversing up the call tree.
+      return false;
+    }
+    computation = callsite.instruction()->parent();
+  }
+  // No calling while loops were found.
+  return true;
+}
+
+int GetLoopBoundWithOuterLoopMax(const HloInstruction& while_hlo,
+                                 const CallGraph& call_graph,
+                                 const int default_loop_count,
+                                 const int max_outer_loop_count,
+                                 const int max_loop_count) {
+  int loop_bound = GetLoopBound(while_hlo, default_loop_count, max_loop_count);
+  if (loop_bound > max_outer_loop_count) {
+    // First does the inexpensive loop bound check to avoid as many
+    // expensive graph traversals in IsNotContainedInLoop as possible.
+    if (IsNotContainedInLoop(while_hlo, call_graph)) {
+      return max_outer_loop_count;
+    }
+  }
+  return loop_bound;
+}
+
 }  // namespace
 
+int GetLoopBound(const HloInstruction& while_hlo, const int default_loop_count,
+                 const int max_loop_count) {
+  HloInstruction* condition = while_hlo.while_condition()->root_instruction();
+  if (condition->opcode() == HloOpcode::kCompare) {
+    int64_t value = 0;
+    Comparison::Direction cmp = condition->comparison_direction();
+    if ((cmp == Comparison::Direction::kLt ||
+         cmp == Comparison::Direction::kLe ||
+         cmp == Comparison::Direction::kNe) &&
+        IsConstantScalarInt(condition->operand(1))) {
+      value = *condition->operand(1)->literal().GetFirstInteger();
+    } else if ((cmp == Comparison::Direction::kGt ||
+                cmp == Comparison::Direction::kGe ||
+                cmp == Comparison::Direction::kNe) &&
+               IsConstantScalarInt(condition->operand(0))) {
+      value = *condition->operand(0)->literal().GetFirstInteger();
+    }
+    if (value > 0) {
+      // Caps to a max loop count to avoid long execution times.
+      return std::min(value, static_cast<int64_t>(max_loop_count));
+    }
+  }
+  return default_loop_count;
+}
+
 Status HloControlFlowFlattening::FlattenWhileLoop(
-    HloInstruction* while_hlo) const {
+    HloInstruction* while_hlo, const CallGraph& call_graph) const {
   CHECK_EQ(while_hlo->opcode(), HloOpcode::kWhile);
   HloComputation* computation = while_hlo->parent();
   // Add a new induction variable.
@@ -112,9 +190,18 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
     HloComputation* condition = while_hlo->while_condition();
     TF_RETURN_IF_ERROR(change_op_shape(condition->parameter_instruction(0)));
 
-    HloInstruction* limit =
-        condition->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int>(while_execution_count_)));
+    if (VLOG_IS_ON(2)) {
+      VLOG(2) << "Loop condition in " << while_hlo->parent()->name();
+      PrintSubexpression(condition->root_instruction(), /*depth=*/3);
+    }
+    const int loop_bound = GetLoopBoundWithOuterLoopMax(
+        *while_hlo, call_graph, while_execution_count_, max_outer_loop_count_,
+        max_loop_count_);
+
+    VLOG(1) << "loop_bound = " << loop_bound;
+
+    HloInstruction* limit = condition->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(loop_bound)));
     Shape shape = initialization->shape();
     HloInstruction* induction_variable =
         condition->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -276,6 +363,7 @@ Status HloControlFlowFlattening::RemovePartitionOrReplicaId(
 }
 
 StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
+  auto call_graph = CallGraph::Build(module);
   bool changed = false;
   absl::flat_hash_set<HloInstruction*> removed;
   for (HloComputation* computation : module->computations()) {
@@ -287,7 +375,7 @@ StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
       }
       if (flatten_while_loop_ && instruction->opcode() == HloOpcode::kWhile) {
         VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(FlattenWhileLoop(instruction));
+        TF_RETURN_IF_ERROR(FlattenWhileLoop(instruction, *call_graph));
         changed = true;
       } else if (remove_infeed_outfeed_ &&
                  instruction->opcode() == HloOpcode::kInfeed) {
@@ -326,7 +414,7 @@ StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
   if (changed && module->has_schedule()) {
     TF_RETURN_IF_ERROR(module->schedule().Update());
   }
-  XLA_VLOG_LINES(1, module->ToString());
+  XLA_VLOG_LINES(3, module->ToString());
   return changed;
 }
 

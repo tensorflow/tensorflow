@@ -82,7 +82,8 @@ mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
 JitExecutable& CreateJitExecutable(const HostContext& host,
                                    llvm::StringRef mlir_input,
                                    llvm::StringRef function_name,
-                                   bool lower_from_tensorflow);
+                                   bool lower_from_tensorflow,
+                                   const TfCpuRtPipelineOptions& tf_cpurt_opts);
 
 // Converts Eigen Tensor to Memref descriptor.
 template <typename T, int rank>
@@ -115,6 +116,21 @@ struct ExecuteAssignOp {
     Executor::run(Assign(dst, expr), d);
   }
 };
+
+// -------------------------------------------------------------------------- //
+// Common utilities.
+// -------------------------------------------------------------------------- //
+
+static constexpr int64_t kDynSize = mlir::ShapedType::kDynamicSize;
+
+// Prints an MLIR tensor type, i.e. for `shape` {1, kDynSize} and `element_type`
+// "f32" the output is "tensor<1x?xf32>".
+std::string PrintTensorType(llvm::ArrayRef<int64_t> shape,
+                            llvm::StringRef element_type);
+
+// Prints an MLIR dense array attribute, i.e. for `array` {1, 2} the output is
+// "dense<[1, 2]>".
+std::string PrintDenseArray(llvm::ArrayRef<int32_t> array);
 
 }  // namespace tensorflow
 

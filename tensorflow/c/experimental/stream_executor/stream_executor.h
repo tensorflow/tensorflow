@@ -393,6 +393,21 @@ typedef struct SP_StreamExecutor {
   // likely a whole device).
   void (*synchronize_all_activity)(const SP_Device* device, TF_Status* status);
 
+  // Zero out `size` bytes starting at the location.
+  void (*mem_zero)(const SP_Device* device, SP_Stream stream,
+                   SP_DeviceMemoryBase* location, uint64_t size,
+                   TF_Status* status);
+
+  // Set the 8-bit patterns starting at the location with `size` bytes.
+  void (*memset)(const SP_Device* device, SP_Stream stream,
+                 SP_DeviceMemoryBase* location, uint8_t pattern, uint64_t size,
+                 TF_Status* status);
+
+  // Set the 32-bit patterns starting at the location with `size` bytes.
+  void (*memset32)(const SP_Device* device, SP_Stream stream,
+                   SP_DeviceMemoryBase* location, uint32_t pattern,
+                   uint64_t size, TF_Status* status);
+
   // Enqueues on a stream a user-specified function to be run on the host.
   // `callback_arg` should be passed as the first argument to `callback_fn`.
   TF_Bool (*host_callback)(const SP_Device* device, SP_Stream stream,

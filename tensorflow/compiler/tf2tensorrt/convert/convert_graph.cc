@@ -253,7 +253,7 @@ Status GetEngineInfo(const Graph* g,
   TF_RETURN_IF_ERROR(
       ConvertSegmentToGraphDef(g, graph_properties, subgraph_nodes, info));
   VLOG(1) << "Converted TensorRT candidate segment '" << info->engine_name
-          << "' to a GraphDef " << info->has_int32_input;
+          << "' to a GraphDef";
   if (segment_device.has_type) {
     // If the accumulated device assignment for the segment has a device type,
     // the segmenter guarantees the device type is GPU. Use the device
@@ -420,8 +420,6 @@ Status CreateTRTNode(const ConversionParams& params,
         "Segment has no inputs (possible constfold failure)");
   }
 
-  const bool calibrate_int8 =
-      (info.precision_mode == TrtPrecisionMode::INT8 && info.use_calibration);
   // Build the engine and get its serialized representation.
   string segment_string;
 
@@ -430,35 +428,8 @@ Status CreateTRTNode(const ConversionParams& params,
                            : default_max_batch_size;
 
   if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
-    std::pair<int, Allocator*> device_allocator =
-        GetDeviceAndAllocator(params, info);
-    int cuda_device_id = 0;
-    std::unique_ptr<TRTBaseAllocator> trt_allocator;
-    if (device_allocator.first >= 0) {
-      cuda_device_id = device_allocator.first;
-      trt_allocator.reset(new TRTDeviceAllocator(device_allocator.second));
-    } else {
-      // The value in trt_allocator is a nullptr and cudamalloc will be used.
-      LOG_WARNING_WITH_PREFIX << "Can't identify the cuda device. Running on "
-                                 "device 0 and use cudamalloc as an allocator";
-    }
-    cudaSetDevice(cuda_device_id);
-
-    auto trt_logger = GetLoggerRegistry()->LookUp(params.trt_logger_name);
-
-    // Create static engines with precision_mode fp32/fp16.
-    TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
-    TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
-        info.segment_graph_def,
-        calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
-        max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
-        trt_allocator.get(), /*calibrator=*/nullptr, &engine,
-        info.use_calibration, params.use_implicit_batch,
-        /*convert_successfully=*/nullptr,
-        /*profile=*/nullptr, info.engine_name));
-    TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
-    segment_string = string(static_cast<const char*>(engine_data->data()),
-                            engine_data->size());
+    TF_RETURN_IF_ERROR(CreateStaticEngine(
+        params, info, max_batch_size, input_shapes, nullptr, &segment_string));
   }
 
   string prec_string;
@@ -562,7 +533,7 @@ Status CreateTRTNode(const ConversionParams& params,
 }
 
 int64 GetNextGraphSequenceNumber() {
-  static std::atomic<int64> graph_sequence_num;
+  static std::atomic<int64_t> graph_sequence_num;
   return graph_sequence_num++;
 }
 
@@ -614,8 +585,7 @@ Status MaybeRewriteCastToFp32(GraphDef* graph_def, NodeDef* node_def) {
 }  // namespace
 
 Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
-                                      Graph* graph, const string& engine_name,
-                                      bool has_int32_input) {
+                                      Graph* graph, const string& engine_name) {
   Graph segment_graph(graph->flib_def());
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
                                             segment_graph_def, &segment_graph));
@@ -623,16 +593,6 @@ Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
   auto segment_func = library.add_function();
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
       segment_graph, StrCat(engine_name, "_native_segment"), segment_func));
-  if (has_int32_input) {
-    // Setting this attribute value informs TensorFlow that the int32 _Arg node
-    // inputs are on device memory during native segment execution. We only set
-    // the attribute value when there is any int32 input because the attribute
-    // is not compatible with is_multi_device_function.
-    SetAttrValue(
-        true,
-        &(*segment_func
-               ->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]);
-  }
   if (VLOG_IS_ON(7)) {
     VLOG(7) << engine_name << " Function_Def ";
     VLOG(7) << segment_func->DebugString();
@@ -691,6 +651,44 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
                             << "' is not found in the cluster";
   }
   return std::make_pair(cuda_device_id, dev_allocator);
+}
+
+Status CreateStaticEngine(const ConversionParams& params,
+                          const EngineInfo& info, int max_batch_size,
+                          const std::vector<PartialTensorShape>& input_shapes,
+                          TrtShapeOptimizationProfile* profile,
+                          string* segment_string) {
+  std::pair<int, Allocator*> device_allocator =
+      GetDeviceAndAllocator(params, info);
+  int cuda_device_id = 0;
+  std::unique_ptr<TRTBaseAllocator> trt_allocator;
+  if (device_allocator.first >= 0) {
+    cuda_device_id = device_allocator.first;
+    trt_allocator.reset(new TRTDeviceAllocator(device_allocator.second));
+  } else {
+    // The value in trt_allocator is a nullptr and cudamalloc will be used.
+    LOG_WARNING_WITH_PREFIX << "Can't identify the cuda device. Running on "
+                               "device 0 and use cudamalloc as an allocator";
+  }
+  cudaSetDevice(cuda_device_id);
+
+  auto trt_logger = GetLoggerRegistry()->LookUp(params.trt_logger_name);
+  const bool calibrate_int8 =
+      (info.precision_mode == TrtPrecisionMode::INT8 && info.use_calibration);
+
+  // Create static engines with precision_mode fp32/fp16.
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
+  TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
+      info.segment_graph_def,
+      calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
+      max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
+      trt_allocator.get(), /*calibrator=*/nullptr, &engine,
+      info.use_calibration, params.use_implicit_batch,
+      /*convert_successfully=*/nullptr, profile, info.engine_name));
+  TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
+  *segment_string = string(static_cast<const char*>(engine_data->data()),
+                           engine_data->size());
+  return Status::OK();
 }
 
 // Entry function from optimization pass.
@@ -816,8 +814,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     }
 
     status = RegisterGraphToFunctionLibrary(curr_engine.segment_graph_def,
-                                            &graph, curr_engine.engine_name,
-                                            curr_engine.has_int32_input);
+                                            &graph, curr_engine.engine_name);
 
     if (!status.ok()) {
       LOG_WARNING_WITH_PREFIX

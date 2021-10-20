@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.test_util."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import random
@@ -391,6 +387,18 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(AssertionError,
                                 r"\[y\]\[1\]\[0\]\[nested\]\[n\]"):
       self.assertAllClose(a, b)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertDictEqual(self):
+    a = 7
+    b = (2., 3.)
+    c = np.ones((3, 2, 4)) * 7.
+    d = "testing123"
+    expected = {"a": a, "b": b, "c": c, "d": d}
+    actual = {"a": a, "b": b, "c": constant_op.constant(c), "d": d}
+
+    self.assertDictEqual(expected, expected)
+    self.assertDictEqual(expected, actual)
 
   @test_util.run_in_graph_and_eager_modes
   def testArrayNear(self):

@@ -520,7 +520,7 @@ class Interpreter {
   /// parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
   /// 'delegate' must outlive the interpreter.
-  /// Returns one of the following four status codes:
+  /// Returns one of the following status codes:
   /// 1. kTfLiteOk: Success.
   /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
   /// delegate, or the delegate parameter was null. The Interpreter has been
@@ -530,7 +530,10 @@ class Interpreter {
   /// incompatibility with the TfLite runtime, e.g., the model graph is already
   /// immutable when applying the delegate. However, the interpreter could still
   /// be invoked.
-  /// 4. kTfLiteError: Unexpected/runtime failure.
+  /// 4. kTfLiteUnresolvedOps: Delegation failed because the model has an
+  /// operator that cannot be resolved. This can happen when the op is not
+  /// registered or built with the TF Lite framework.
+  /// 5. kTfLiteError: Unexpected/runtime failure.
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
@@ -670,14 +673,6 @@ class Interpreter {
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
 #ifndef DOXYGEN_SKIP
-  /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
-  /// entries. The value pointed to by `first_new_subgraph_index` will be set to
-  /// the index of the first new subgraph if `first_new_subgraph_index` is
-  /// non-null.
-  /// WARNING: This is an experimental API and subject to change.
-  void AddSubgraphs(int subgraphs_to_add,
-                    int* first_new_subgraph_index = nullptr);
-
   /// Return the number of subgraphs in the model.
   /// WARNING: This is an experimental API and subject to change.
   size_t subgraphs_size() const { return subgraphs_.size(); }
@@ -781,6 +776,13 @@ class Interpreter {
   // Sets model metadata as a mapping of name (key) and buffer (value) strings.
   // Used by InterpreterBuilder, should be called after setting up subgraphs.
   TfLiteStatus SetMetadata(const std::map<std::string, std::string>& metadata);
+
+  /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
+  /// entries. The value pointed to by `first_new_subgraph_index` will be set to
+  /// the index of the first new subgraph if `first_new_subgraph_index` is
+  /// non-null.
+  void AddSubgraphs(int subgraphs_to_add,
+                    int* first_new_subgraph_index = nullptr);
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive

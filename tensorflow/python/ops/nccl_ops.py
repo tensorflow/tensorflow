@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Ops for GPU collective operations implemented using NVIDIA nccl."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 
 from tensorflow.python.eager import context

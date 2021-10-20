@@ -37,7 +37,7 @@ Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
   }
 
   int64 index = 0;
-  TF_RETURN_IF_ERROR(ParseScalarArgument<int64>(ctx, "index", &index));
+  TF_RETURN_IF_ERROR(ParseScalarArgument<int64_t>(ctx, "index", &index));
 
   std::vector<Tensor> components;
   TF_RETURN_IF_ERROR(dataset->Get(ctx, index, &components));

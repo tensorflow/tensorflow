@@ -55,8 +55,7 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
     mutex_lock l(cache_mu_);
     auto& function_state = cache_[cache_key];
     if (function_state) {
-      *result =
-          FunctionCache::FunctionCacheResult{function_state.CopyRef(), false};
+      *result = FunctionCache::FunctionCacheResult{function_state, false};
       return tensorflow::Status::OK();
     }
   }
@@ -145,7 +144,7 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
   mutex_lock l(cache_mu_);
   // Insert the new entry to cache. If an entry with the same key is already
   // present in the cache at this moment due to race condition, overwrites it.
-  cache_[cache_key] = entry.CopyRef();
+  cache_[cache_key] = entry;
   *result = FunctionCache::FunctionCacheResult{std::move(entry), true};
   return tensorflow::Status::OK();
 }

@@ -25,6 +25,8 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h.inc"
 
+using mlir::linalg::CodegenStrategy;
+
 struct VectorizeTiledOpsPass
     : public VectorizeTiledOpsBase<VectorizeTiledOpsPass> {
   void getDependentDialects(mlir::DialectRegistry &registry) const override {
@@ -36,17 +38,26 @@ struct VectorizeTiledOpsPass
 
     // Vector transfer options.
     mlir::VectorTransferToSCFOptions vector_transfer_opts;
-    vector_transfer_opts.setUnroll(true);
+
+    // Vectorize linalg.fill operations.
+    if (failed(CodegenStrategy{}
+                   .vectorize(mlir::linalg::FillOp::getOperationName())
+                   .setVectorTransferToSCFOptions(vector_transfer_opts)
+                   .transform(funcOp)))
+      return signalPassFailure();
 
     // Vectorize linalg.generic operations.
-    mlir::linalg::CodegenStrategy strategy;
-    strategy.vectorize<mlir::linalg::GenericOp>()
-        .setVectorTransferToSCFOptions(vector_transfer_opts)
-        .transform(funcOp);
+    if (failed(CodegenStrategy{}
+                   .vectorize(mlir::linalg::GenericOp::getOperationName())
+                   .setVectorTransferToSCFOptions(vector_transfer_opts)
+                   .transform(funcOp)))
+      return signalPassFailure();
 
     // Vectorize padding.
     mlir::OwningRewritePatternList patterns(funcOp.getContext());
     mlir::linalg::populatePadTensorOpVectorizationPatterns(patterns);
+    mlir::vector::populateVectorTransferPermutationMapLoweringPatterns(
+        patterns);
     (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
   }
 };

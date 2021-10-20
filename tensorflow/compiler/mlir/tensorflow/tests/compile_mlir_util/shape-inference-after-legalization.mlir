@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-tf-to-hlo-text %s -tf-input-shapes=8,16,16,64:64 -emit-use-tuple-args -emit-return-tuple | FileCheck %s
+// RUN: tf-mlir-translate -mlir-tf-to-hlo-text %s -tf-input-shapes=8,16,16,64:64 -tf-xla-emit-use-tuple-args -tf-xla-emit-return-tuple | FileCheck %s
 // RUN: tf-mlir-translate -mlir-tf-to-hlo-text-via-builder %s -tf-input-shapes=8,16,16,64:64 | FileCheck %s
 
 module attributes {tf.versions = {producer = 179 : i32}} {

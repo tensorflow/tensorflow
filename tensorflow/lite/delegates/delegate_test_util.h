@@ -87,7 +87,7 @@ class SimpleDelegate {
 };
 
 // Base class for single/multiple delegate tests.
-// Friend of Interpreter to access RemoveAllDelegates().
+// Friend of Interpreter to access private methods.
 class TestDelegation {
  protected:
   TfLiteStatus RemoveAllDelegates() {
@@ -95,6 +95,8 @@ class TestDelegation {
   }
 
   void SetUpSubgraph(Subgraph* subgraph);
+  void AddSubgraphs(int subgraphs_to_add,
+                    int* first_new_subgraph_index = nullptr);
 
   std::unique_ptr<Interpreter> interpreter_;
 };

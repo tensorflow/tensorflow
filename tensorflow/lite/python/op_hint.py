@@ -65,10 +65,6 @@ contain a custom operator called "cool_activation". Developer needs to implement
 and register this operator in TensorFlow Lite in order to do inference.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections as _collections
 import copy as _copy
 import json as _json

@@ -44,7 +44,7 @@ struct SparseConcatFunctor<CPUDevice, T> {
                   const OpInputList& vals, const OpInputList& shapes,
                   int concat_dim) {
     const int N = inds.size();
-    const TensorShape input_shape(shapes[0].vec<int64>());
+    const TensorShape input_shape(shapes[0].vec<int64_t>());
     const int input_rank = input_shape.dims();
 
     // The input and output sparse tensors are assumed to be ordered along
@@ -58,7 +58,7 @@ struct SparseConcatFunctor<CPUDevice, T> {
     gtl::InlinedVector<int64, 8> std_order(input_rank);
     std::iota(std_order.begin(), std_order.end(), 0);
 
-    std::vector<int64> concat_order;
+    std::vector<int64_t> concat_order;
     concat_order.reserve(input_rank);
     concat_order.push_back(concat_dim);
     for (int j = 0; j < input_rank; ++j) {
@@ -69,7 +69,7 @@ struct SparseConcatFunctor<CPUDevice, T> {
 
     std::vector<sparse::SparseTensor> sp_inputs;
     for (int i = 0; i < N; ++i) {
-      const TensorShape current_shape(shapes[i].vec<int64>());
+      const TensorShape current_shape(shapes[i].vec<int64_t>());
       sparse::SparseTensor tensor;
       OP_REQUIRES_OK(context,
                      sparse::SparseTensor::Create(
@@ -186,7 +186,7 @@ class SparseConcatOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_output(2, TensorShape({output_shape.dims()}),
                                           &output_shape_out));
-    auto output_shape_t = output_shape_out->vec<int64>();
+    auto output_shape_t = output_shape_out->vec<int64_t>();
     for (int j = 0; j < output_shape.dims(); ++j) {
       output_shape_t(j) = output_shape.dim_size(j);
     }

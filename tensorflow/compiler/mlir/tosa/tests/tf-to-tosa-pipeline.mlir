@@ -587,6 +587,16 @@ func @test_expand_dims(%arg0: tensor<13x21x3xf32>) -> tensor<1x13x21x3xf32> {
 
 // -----
 
+// CHECK-LABEL: test_expand_dims_negative_index
+// CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [13, 1, 21, 3]}
+func @test_expand_dims_negative_index(%arg0: tensor<13x21x3xf32>) -> tensor<13x1x21x3xf32> {
+  %2 = "tf.Const"()  {value = dense<-2> : tensor<1xi32>}  : () -> tensor<1xi32>
+  %3 = "tf.ExpandDims"(%arg0, %2)   : (tensor<13x21x3xf32>, tensor<1xi32>) -> tensor<13x1x21x3xf32>
+  return %3 : tensor<13x1x21x3xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_shape
 // CHECK: %[[VAR0:.*]] = "tosa.const"() {value = dense<[13, 21, 3]> : tensor<3xi32>}
 func @test_shape() -> tensor<3xi32> {
@@ -884,8 +894,9 @@ func @test_gather(%arg0: tensor<13x21x3xf32>) -> tensor<7x7x21x3xf32> {
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%[[VAR1]]) {new_shape = [1, 1]}
 // CHECK-DAG: %[[VAR5:.*]] = "tosa.mul"(%[[VAR3]], %[[VAR4]]) {shift = 0 : i32}
 // CHECK-DAG: %[[VAR6:.*]] = "tosa.reduce_sum"(%[[VAR5]]) {axis = 1 : i64}
-// CHECK-DAG: %[[VAR7:.*]] = "tosa.gather"(%[[VAR2]], %[[VAR6]])
-// CHECK: %[[VAR8:.*]] = "tosa.reshape"(%[[VAR7]]) {new_shape = [6, 7, 21, 3]}
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [1, 42]}
+// CHECK-DAG: %[[VAR8:.*]] = "tosa.gather"(%[[VAR2]], %[[VAR7]])
+// CHECK: %[[VAR9:.*]] = "tosa.reshape"(%[[VAR8]]) {new_shape = [6, 7, 21, 3]}
 func @test_gather_nd(%arg0: tensor<13x21x3xf32>) -> tensor<6x7x21x3xf32> {
   %0 = "tf.Const"() {device = "", value = dense<[[[0], [5], [3], [12], [2], [4], [3]], [[11], [1], [11], [10], [3], [12], [8]], [[5], [3], [1], [11], [3], [10], [0]], [[0], [8], [4], [7], [3], [12], [2]], [[7], [6], [11], [4], [2], [10], [11]], [[11], [1], [11], [1], [1], [11], [8]]]> : tensor<6x7x1xi32>} : () -> tensor<6x7x1xi32>
   %1 = "tf.GatherNd"(%arg0, %0) {device = ""} : (tensor<13x21x3xf32>, tensor<6x7x1xi32>) -> tensor<6x7x21x3xf32>

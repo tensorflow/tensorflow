@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -104,7 +105,7 @@ int main(int argc, char** argv) {
   // Load the MLIR module.
   mlir::DialectRegistry registry;
   registry.insert<mlir::TF::TensorFlowDialect, mlir::TFL::TensorFlowLiteDialect,
-                  mlir::StandardOpsDialect>();
+                  mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect>();
   mlir::MLIRContext context(registry);
 
   llvm::SourceMgr source_mgr;

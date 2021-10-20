@@ -410,7 +410,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
-    ],
+    ] + tf_protos_all(),
 )
 
 cc_library(
@@ -765,6 +765,7 @@ cc_library(
     deps = [
         ":graph_utils",
         ":optimizer_base",
+        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",

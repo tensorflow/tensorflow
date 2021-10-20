@@ -12,6 +12,16 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "native_srcs",
+    srcs = [
+        "interpreter_test_jni.cc",
+        "nnapi_delegate_test_jni.cc",
+        "supported_features_jni.cc",
+        "test_init_jni.cc",
+    ],
+)
+
 cc_library_with_tflite(
     name = "native",
     testonly = 1,

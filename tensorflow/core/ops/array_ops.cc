@@ -51,7 +51,7 @@ Status GetAxisForPackAndUnpack(InferenceContext* c, int32_t rank_after_pack,
 }
 
 template <typename T>
-std::vector<int64> AsInt64(const Tensor* tensor, int64_t num_elements) {
+std::vector<int64_t> AsInt64(const Tensor* tensor, int64_t num_elements) {
   std::vector<int64_t> ret(num_elements);
   auto data = tensor->vec<T>();
   for (int64_t i = 0; i < num_elements; ++i) {
@@ -168,7 +168,7 @@ Status TransposeShapeFn(InferenceContext* c) {
 
     for (int32_t i = 0; i < rank; ++i) {
       int64_t in_idx = data[i];
-      if (in_idx >= rank) {
+      if (in_idx >= rank || in_idx <= -rank) {
         return errors::InvalidArgument("perm dim ", in_idx,
                                        " is out of range of input rank ", rank);
       }
@@ -647,11 +647,12 @@ REGISTER_OP("SplitV")
         // known.
         int64_t split_dim = c->Value(split_dimension);
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
-        std::vector<int64> data;
+        std::vector<int64_t> data;
         if (size_splits->dtype() == DT_INT32) {
           data = AsInt64<int32>(size_splits, size_splits->shape().dim_size(0));
         } else {
-          data = AsInt64<int64>(size_splits, size_splits->shape().dim_size(0));
+          data =
+              AsInt64<int64_t>(size_splits, size_splits->shape().dim_size(0));
         }
         if (num_outputs != data.size()) {
           return errors::InvalidArgument(
@@ -679,6 +680,12 @@ REGISTER_OP("SplitV")
           auto size = data[i];
           if (data[i] == -1 && c->ValueKnown(split_dim_size)) {
             size = split_dim_size - total_size;
+          }
+          // If we have a negative known size (either explicit, or computed
+          // via -1), then the split sizes are invalid.
+          if (size < -1 || (size == -1 && c->ValueKnown(split_dim_size))) {
+            return errors::InvalidArgument("Split size at index ", i,
+                                           " must be >= 0. Got: ", size);
           }
           TF_RETURN_IF_ERROR(
               c->ReplaceDim(input, split_dim, c->MakeDim(size), &output_shape));
@@ -1013,11 +1020,12 @@ REGISTER_OP("ReverseV2")
       const Tensor* axis_tensor = c->input_tensor(1);
       if (axis_tensor != nullptr && c->RankKnown(input)) {
         int32_t rank = c->Rank(input);
-        std::vector<int64> axis_value;
+        std::vector<int64_t> axis_value;
         if (axis_tensor->dtype() == DT_INT32) {
           axis_value = AsInt64<int32>(axis_tensor, axis_tensor->NumElements());
         } else {
-          axis_value = AsInt64<int64>(axis_tensor, axis_tensor->NumElements());
+          axis_value =
+              AsInt64<int64_t>(axis_tensor, axis_tensor->NumElements());
         }
         std::vector<bool> axes_dense(c->Rank(input), false);
         for (int i = 0; i < axis_value.size(); i++) {
@@ -1070,8 +1078,8 @@ REGISTER_OP("EditDistance")
             truth_shape_t->NumElements());
       }
 
-      auto h_values = hypothesis_shape_t->flat<int64>();
-      auto t_values = truth_shape_t->flat<int64>();
+      auto h_values = hypothesis_shape_t->flat<int64_t>();
+      auto t_values = truth_shape_t->flat<int64_t>();
       std::vector<DimensionHandle> dims(hypothesis_shape_t->NumElements() - 1);
       for (int i = 0; i < dims.size(); ++i) {
         dims[i] = c->MakeDim(std::max(h_values(i), t_values(i)));
@@ -1102,7 +1110,7 @@ REGISTER_OP("Fill")
       if (t != nullptr) {
         for (int i = 0; i < t->NumElements(); ++i) {
           if ((index_type == DT_INT32 && t->vec<int32>()(i) < 0) ||
-              (index_type == DT_INT64 && t->vec<int64>()(i) < 0)) {
+              (index_type == DT_INT64 && t->vec<int64_t>()(i) < 0)) {
             return errors::InvalidArgument("Fill dimensions must be >= 0");
           }
         }
@@ -1221,7 +1229,7 @@ REGISTER_OP("GatherV2")
       if (axis_t->dtype() == DT_INT32) {
         axis = axis_t->scalar<int32>()();
       } else {
-        axis = axis_t->scalar<int64>()();
+        axis = axis_t->scalar<int64_t>()();
       }
 
       // Check that params has rank of at least axis + 1.
@@ -1283,6 +1291,7 @@ REGISTER_OP("Identity")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetForwardTypeFn(full_type::ReplicateInputs())
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("Snapshot")
@@ -2027,7 +2036,7 @@ REGISTER_OP("MirrorPadGrad")
       if (paddings_t->dtype() == DT_INT32) {
         return MirrorPadKnown<int32>(c, input, paddings_t, input_rank);
       } else {
-        return MirrorPadKnown<int64>(c, input, paddings_t, input_rank);
+        return MirrorPadKnown<int64_t>(c, input, paddings_t, input_rank);
       }
     });
 
@@ -2106,9 +2115,9 @@ REGISTER_OP("ExpandDims")
 
       int64_t dim;
       if (dim_t->dtype() == DT_INT32) {
-        dim = static_cast<int64>(dim_t->flat<int32>()(0));
+        dim = static_cast<int64_t>(dim_t->flat<int32>()(0));
       } else {
-        dim = dim_t->flat<int64>()(0);
+        dim = dim_t->flat<int64_t>()(0);
       }
 
       const int32_t rank = c->Rank(input);
@@ -2223,9 +2232,9 @@ REGISTER_OP("ListDiff")
 
 namespace {
 
-// Converts Tensor to flat std::vector<int64>.
+// Converts Tensor to flat std::vector<int64_t>.
 template <typename InputType>
-std::vector<int64> GetFlatInt64(const Tensor& t) {
+std::vector<int64_t> GetFlatInt64(const Tensor& t) {
   std::vector<int64_t> output(t.shape().num_elements());
   if (t.shape().num_elements() > 0) {
     auto eigen_vec = t.flat<InputType>();
@@ -2234,7 +2243,7 @@ std::vector<int64> GetFlatInt64(const Tensor& t) {
   return output;
 }
 
-// Converts int32 or int64 Tensor to flat std::vector<int64>.
+// Converts int32 or int64 Tensor to flat std::vector<int64_t>.
 std::vector<int64_t> GetFlatInt64(const Tensor& t) {
   if (t.dtype() == DT_INT32) {
     return GetFlatInt64<int32>(t);
@@ -2427,7 +2436,7 @@ REGISTER_OP("SpaceToBatch")
       TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
 
       Tensor block_shape(tensorflow::DT_INT64, TensorShape({2}));
-      auto block_shape_vec = block_shape.vec<int64>();
+      auto block_shape_vec = block_shape.vec<int64_t>();
       block_shape_vec(0) = block_size;
       block_shape_vec(1) = block_size;
 
@@ -2467,7 +2476,7 @@ REGISTER_OP("BatchToSpace")
       TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
 
       Tensor block_shape(tensorflow::DT_INT64, TensorShape({2}));
-      auto block_shape_vec = block_shape.vec<int64>();
+      auto block_shape_vec = block_shape.vec<int64_t>();
       block_shape_vec(0) = block_size;
       block_shape_vec(1) = block_size;
 
@@ -2854,7 +2863,10 @@ REGISTER_OP("QuantizeAndDequantizeV2")
       ShapeHandle minmax;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), minmax_rank, &minmax));
       TF_RETURN_IF_ERROR(c->Merge(c->input(2), minmax, &minmax));
-      if (axis != -1) {
+      if (axis < -1) {
+        return errors::InvalidArgument("axis should be at least -1, got ",
+                                       axis);
+      } else if (axis != -1) {
         ShapeHandle input;
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
@@ -2886,7 +2898,10 @@ REGISTER_OP("QuantizeAndDequantizeV4")
       ShapeHandle minmax;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), minmax_rank, &minmax));
       TF_RETURN_IF_ERROR(c->Merge(c->input(2), minmax, &minmax));
-      if (axis != -1) {
+      if (axis < -1) {
+        return errors::InvalidArgument("axis should be at least -1, got ",
+                                       axis);
+      } else if (axis != -1) {
         ShapeHandle input;
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
@@ -2914,7 +2929,10 @@ REGISTER_OP("QuantizeAndDequantizeV4Grad")
       ShapeHandle minmax;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), minmax_rank, &minmax));
       TF_RETURN_IF_ERROR(c->Merge(c->input(3), minmax, &minmax));
-      if (axis != -1) {
+      if (axis < -1) {
+        return errors::InvalidArgument("axis should be at least -1, got ",
+                                       axis);
+      } else if (axis != -1) {
         ShapeHandle input;
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;
@@ -2947,7 +2965,10 @@ REGISTER_OP("QuantizeAndDequantizeV3")
       ShapeHandle minmax;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), minmax_rank, &minmax));
       TF_RETURN_IF_ERROR(c->Merge(c->input(2), minmax, &minmax));
-      if (axis != -1) {
+      if (axis < -1) {
+        return errors::InvalidArgument("axis should be at least -1, got ",
+                                       axis);
+      } else if (axis != -1) {
         ShapeHandle input;
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
         DimensionHandle depth;

@@ -47,6 +47,18 @@ class XLIR_Op<string mnemonic, list<OpTrait> traits = []> :
   let assemblyFormat = "operands attr-dict";
 }
 
+def XLIR_ModuleLoadOp : XLIR_Op<"module.load"> {
+  let description = [{
+    xlir.module.load loads GPU device module from a binary blob provided by the
+    execution context.
+
+    Example:
+      %module = tfrt_gpu.module.load %ctx
+  }];
+  let arguments = (ins GPU_ContextType:$ctx);
+  let results = (outs GPU_ModuleType);
+}
+
 def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
   let description = [{
     xlir.ccl.create returns a ccl.handle, which can be populated with individual

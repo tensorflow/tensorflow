@@ -1788,6 +1788,7 @@ cuda_py_test(
     name = "bias_op_deterministic_test",
     size = "medium",
     srcs = ["bias_op_deterministic_test.py"],
+    shard_count = 2,
     deps = [
         ":bias_op_base",
     ],
@@ -2961,6 +2962,7 @@ cuda_py_test(
     name = "xent_op_deterministic_test",
     size = "medium",
     srcs = ["xent_op_deterministic_test.py"],
+    tags = ["notsan"],  # TODO(b/200548634): Remove.
     xla_enable_strict_auto_jit = False,
     deps = [
         ":xent_op_test_base",
@@ -3398,7 +3400,6 @@ cuda_py_test(
         "no_gpu",  # b/171837334
         "no_oss",  # Test times out on oss-nightly cpu builds
         "no_pip",
-        "nogpu",  # b/171837334
         "nomac",  # b/139946976
         "notap",  # b/31080670
     ],

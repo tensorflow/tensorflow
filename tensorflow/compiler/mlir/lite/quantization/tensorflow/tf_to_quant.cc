@@ -47,7 +47,7 @@ struct LegalizeTFToQuant : public PassWrapper<LegalizeTFToQuant, FunctionPass> {
 
 // Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
 // "tf.FakeQuantWithMinMaxVarsOp" to be constant folded. Since the constant
-// folding logic will use a "std.constant" op to replace the
+// folding logic will use a "arith.constant" op to replace the
 // "tf.FakeQuantWithMinMaxVarsOp", the "tfl.quantize" op is used to preserve
 // the quantization parameters as a TypeAttr and "tfl.dequantize" op used to
 // convert the output type to the next op. Here are the transformations:

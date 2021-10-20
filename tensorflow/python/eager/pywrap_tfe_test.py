@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for low-level eager execution primitives."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 import traceback
 

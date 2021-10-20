@@ -156,6 +156,7 @@ enum class AppleGpu {
   kA12Z,
   kA13,
   kA14,
+  kA15,
 };
 
 struct AppleInfo {
@@ -171,6 +172,12 @@ struct AppleInfo {
   bool IsRoundToNearestSupported() const;
 
   int GetComputeUnitsCount() const;
+
+  // do not use, for internal usage
+  void SetComputeUnits(int compute_units_count);
+
+ private:
+  int compute_units = -1;
 };
 
 enum class MaliGpu {

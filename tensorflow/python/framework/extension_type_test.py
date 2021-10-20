@@ -119,17 +119,24 @@ def _masked_array_repr(values, mask):
   return '[%s]' % ', '.join(items)
 
 
-class MaskedTensorV3(extension_type.ExtensionType):
+class MaskedTensorV3(extension_type.BatchableExtensionType):
   """Example subclass of ExtensionType, used for testing.
 
   This version adds Keras required properties to MaskedTensor and its Spec
   class, to test Keras integration.
   """
+  __name__ = 'tf.test.MaskedTensorV3.Spec'
 
-  values: ops.Tensor
-  mask: ops.Tensor
+  values: typing.Union[ops.Tensor, ragged_tensor.RaggedTensor]
+  mask: typing.Union[ops.Tensor, ragged_tensor.RaggedTensor]
 
   def __init__(self, values, mask):
+    if isinstance(values, ragged_tensor.RaggedTensor):
+      assert isinstance(mask, ragged_tensor.RaggedTensor)
+      assert mask.dtype == dtypes.bool
+    else:
+      values = ops.convert_to_tensor(values)
+      mask = ops.convert_to_tensor(mask, dtypes.bool)
     self.values = values
     self.mask = mask
 
@@ -142,17 +149,12 @@ class MaskedTensorV3(extension_type.ExtensionType):
   def dtype(self):
     return self.values.dtype
 
+  class Spec:
 
-class MaskedTensorV3Spec(MaskedTensorV3.Spec):
-
-  # Required by KerasTensor.shape in keras/engine/keras_tensor.py
-  @property
-  def _shape(self):
-    return self.values._shape
-
-
-MaskedTensorV3.Spec = MaskedTensorV3Spec
-type_spec.register('tf.test.MaskedTensorV3.Spec')(MaskedTensorV3.Spec)
+    # Required by KerasTensor.shape in keras/engine/keras_tensor.py
+    @property
+    def _shape(self):
+      return self.values._shape
 
 
 class ForwardRefA(extension_type.ExtensionType):
@@ -1002,13 +1004,39 @@ class ExtensionTypeIntegrationTest(test_util.TensorFlowTestCase):
     ds = dataset_ops.DatasetV2.from_tensors(mt)
     self.assertEqual(next(iter(ds)), mt)
 
-    # TODO(b/195884675) Support batch and unbatch.
-    # Broken: 'MaskedTensorV3Spec' object has no attribute
-    # '_to_batched_tensor_list'
-    # _ = ds.unbatch()
-    # Broken: 'MaskedTensorV3Spec' object has no attribute '_batch'
-    # _ = ds.batch(1)
+  @test_util.run_v2_only
+  def testDatasetBatch(self):
+    xs = MaskedTensorV3([[1], [2], [3]], [[True], [False], [True]])
+    x0 = MaskedTensorV3(xs.values[0], xs.mask[0])
 
+    ds = dataset_ops.DatasetV2.from_tensors(xs)
+    self.assertEqual(next(iter(ds)), xs)
+    ds = ds.unbatch()
+    self.assertEqual(next(iter(ds)), x0)
+
+    ds = dataset_ops.DatasetV2.from_tensor_slices(xs)
+    self.assertEqual(next(iter(ds)), x0)
+    ds = ds.batch(3, drop_remainder=True)
+    self.assertEqual(next(iter(ds)), xs)
+
+  @test_util.run_v2_only
+  def testDatasetBatchRagged(self):
+    xs = MaskedTensorV3(
+        ragged_factory_ops.constant([[1], [2, 3], [4]]),
+        ragged_factory_ops.constant([[True], [False], [True]]))
+    x0 = MaskedTensorV3(xs.values[0], xs.mask[0])
+
+    ds = dataset_ops.DatasetV2.from_tensors(xs)
+    self.assertEqual(next(iter(ds)), xs)
+    ds = ds.unbatch()
+    self.assertEqual(next(iter(ds)), x0)
+
+    ds = dataset_ops.DatasetV2.from_tensor_slices(xs)
+    self.assertEqual(next(iter(ds)), x0)
+    ds = ds.batch(3, drop_remainder=True)
+    self.assertEqual(next(iter(ds)), xs)
+
+  # TODO(edloper): Move this test to Keras.
   @test_util.run_v2_only
   def testKerasModel(self):
     mt_spec = MaskedTensorV3.Spec(
@@ -1022,11 +1050,6 @@ class ExtensionTypeIntegrationTest(test_util.TensorFlowTestCase):
     self.assertEqual(model(mt), mt)
     ds = dataset_ops.DatasetV2.from_tensors(mt)
     self.assertEqual(model.predict(ds), mt)
-
-    # TODO(b/195884675) Support batch and unbatch.
-    # Broken: 'MaskedTensorV3Spec' object has no attribute
-    # '_to_batched_tensor_list'
-    # self.assertEqual(model.predict(mt), mt)
 
     with self.subTest('keras save'):
       path = self.create_tempdir().full_path
@@ -1244,11 +1267,12 @@ class ExtensionTypeSpecTest(test_util.TensorFlowTestCase,
 
   def testNestedSpecMayNotHaveBaseClasses(self):
     with self.assertRaisesRegex(
-        ValueError, r'BrokenExtensionType\.Spec may not have base classes.'):
+        ValueError, r'BrokenExtensionType\.Spec must be directly subclassed '
+        'from tf.TypeSpec.'):
 
       class BrokenExtensionType(extension_type.ExtensionType):
 
-        class Spec(type_spec.TypeSpec):
+        class Spec(type_spec.BatchableTypeSpec):
           pass
 
       del BrokenExtensionType

@@ -129,14 +129,16 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
         input_shapes, output_arrays, control_output_arrays,
         specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
         /*graph_as_function=*/false, specs.upgrade_legacy,
-        /*enable_shape_inference=*/false, context);
+        /*enable_shape_inference=*/false,
+        /*unconditionally_use_set_output_shapes=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, control_output_arrays,
       specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
       /*graph_as_function=*/false, specs.upgrade_legacy,
-      /*enable_shape_inference=*/false, context);
+      /*enable_shape_inference=*/false,
+      /*unconditionally_use_set_output_shapes=*/false, context);
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(

@@ -129,7 +129,5 @@ std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass() {
   return std::make_unique<GpuOpFusionPass>();
 }
 
-static PassRegistration<GpuOpFusionPass> layout_assignment;
-
 }  // namespace TF
 }  // namespace mlir

@@ -14,11 +14,6 @@
 # ==============================================================================
 """Companion classes for mid level API for TPU Embeddings in TF2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-
 import abc
 import math
 import typing
@@ -731,7 +726,7 @@ class TableConfig(object):
   def __init__(self,
                vocabulary_size: int,
                dim: int,
-               initializer: Optional[Callable[[Any], None]],
+               initializer: Optional[Callable[[Any], None]] = None,
                optimizer: Optional[_Optimizer] = None,
                combiner: Text = "mean",
                name: Optional[Text] = None):

@@ -13,11 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Batching dataset transformations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
@@ -339,7 +336,7 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
                drop_remainder, use_legacy_function=False):
     self._input_dataset = input_dataset
 
-    self._map_func = dataset_ops.StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func,
         "tf.data.experimental.map_and_batch()",
         dataset=input_dataset,
@@ -445,7 +442,7 @@ class _DenseToRaggedDataset(dataset_ops.UnaryDataset):
         return spec._to_tensor_list(value)[0]  # pylint: disable=protected-access
 
     # Tuples are automatically unpacked by `dataset.map` so we repack them.
-    if dataset_ops._should_unpack(input_dataset.element_spec):  # pylint: disable=protected-access
+    if structured_function._should_unpack(input_dataset.element_spec):  # pylint: disable=protected-access
       map_fn = lambda *value: nest.map_structure(to_ragged_variant, value)
     else:
       map_fn = lambda value: nest.map_structure(to_ragged_variant, value)

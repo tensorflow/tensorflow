@@ -913,15 +913,6 @@ void RecordElementSize(const std::vector<Tensor> element,
 Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   profiler::TraceMe traceme(
       [&] {
-        int64_t mem_bw = port::GetMemoryBandwidthInfo().bw_used;
-
-        if (mem_bw != INT64_MAX) {
-          return profiler::TraceMeEncode(
-              "IteratorGetNextOp::DoCompute",
-              {{"id", ctx->step_id()},
-               {"iter_num", ctx->frame_iter().iter_id},
-               {"mem_bw_used_megabytes_per_sec", mem_bw}});
-        }
         return profiler::TraceMeEncode(
             "IteratorGetNextOp::DoCompute",
             {{"id", ctx->step_id()}, {"iter_num", ctx->frame_iter().iter_id}});

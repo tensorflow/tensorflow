@@ -276,6 +276,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.fused_batch_norm_v3 = "FusedBatchNormV3";
     csinfo_.fused_batch_norm_grad_v3 = "FusedBatchNormGradV3";
     csinfo_.fused_conv2d = "_FusedConv2D";
+    csinfo_.fused_conv3d = "_FusedConv3D";
     csinfo_.fused_depthwise_conv2d = "_FusedDepthwiseConv2dNative";
     csinfo_.fused_matmul = "_FusedMatMul";
     csinfo_.identity = "Identity";
@@ -307,6 +308,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         "_MklNativeConv2DBackpropFilterWithBias";
     csinfo_.mkl_native_fused_batch_norm_ex = "_MklNativeFusedBatchNormEx";
     csinfo_.mkl_native_fused_conv2d = "_MklNativeFusedConv2D";
+    csinfo_.mkl_native_fused_conv3d = "_MklNativeFusedConv3D";
     csinfo_.mkl_native_fused_depthwise_conv2d =
         "_MklNativeFusedDepthwiseConv2dNative";
     csinfo_.mkl_native_fused_matmul = "_MklNativeFusedMatMul";
@@ -499,6 +501,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                  : csinfo_.mkl_fused_conv2d,
                       CopyAttrsAllCheckConstFilter, FusedConv2DRewrite,
                       GetRewriteCause()});
+    rinfo_.push_back({csinfo_.fused_conv3d, csinfo_.mkl_native_fused_conv3d,
+                      CopyAttrsAllCheckConstFilter, AlwaysRewrite,
+                      kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.fused_depthwise_conv2d,
                       native_fmt ? csinfo_.mkl_native_fused_depthwise_conv2d
                                  : csinfo_.mkl_fused_depthwise_conv2d,
@@ -943,6 +948,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string fused_batch_norm_v3;
     string fused_batch_norm_grad_v3;
     string fused_conv2d;
+    string fused_conv3d;
     string fused_depthwise_conv2d;
     string fused_matmul;
     string identity;
@@ -971,6 +977,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_native_conv2d_grad_filter_with_bias;
     string mkl_native_fused_batch_norm_ex;
     string mkl_native_fused_conv2d;
+    string mkl_native_fused_conv3d;
     string mkl_native_fused_depthwise_conv2d;
     string mkl_native_fused_matmul;
     string mkl_native_pad_with_conv2d;
@@ -1435,7 +1442,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
               if (tensor_content[i] != perm[i]) return false;
             return true;
           } else if (type == DT_INT64) {
-            const auto tensor_content = tensor.flat<int64>().data();
+            const auto tensor_content = tensor.flat<int64_t>().data();
             for (int i = 0; i < perm.size(); ++i)
               if (tensor_content[i] != perm[i]) return false;
             return true;
@@ -2200,7 +2207,7 @@ void MklLayoutRewritePass::GetNodeProducingMklTensor(
   // If this is an MKL op, then it will create extra output for MKL layout.
   DataType T;
   if (TryGetNodeAttr(n->def(), "T", &T) &&
-      mkl_op_registry::IsMklLayoutDependentOp(n->type_string(), T)) {
+      mkl_op_registry::IsMklOp(n->type_string(), T, false)) {
     // If this is an MKL op, then it will generate an edge that will receive
     // Mkl tensor from a node.
     // output slot number for Mkl tensor would be N+slot number of TensorFlow
@@ -3229,7 +3236,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
     // FusedConv2D has one additional input, args
     std::vector<NodeBuilder::NodeOut> args;
     int num_args = 1;
-    GetNodeAttr(succ->def(), "num_args", &num_args);
+    TF_CHECK_OK(GetNodeAttr(succ->def(), "num_args", &num_args));
     for (int i = 0; i < num_args; i++) {
       args.emplace_back(succ_in[2 + i].first, succ_in[2 + i].second);
     }
@@ -3740,6 +3747,10 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   // TODO(intel): support `EXPLICIT` padding for ConvGrad
   if (n->type_string() == csinfo_.conv2d_grad_input ||
       n->type_string() == csinfo_.conv2d_grad_filter ||
+      n->type_string() == csinfo_.depthwise_conv2d_grad_filter ||
+      n->type_string() == csinfo_.depthwise_conv2d_grad_input ||
+      n->type_string() == csinfo_.conv3d_grad_filter ||
+      n->type_string() == csinfo_.conv3d_grad_filter ||
       n->type_string() == csinfo_.max_pool ||
       n->type_string() == csinfo_.max_pool_grad ||
       n->type_string() == csinfo_.max_pool3d ||
@@ -3760,6 +3771,7 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
       n->type_string() != csinfo_.fused_conv2d &&
       n->type_string() != csinfo_.fused_depthwise_conv2d &&
       n->type_string() != csinfo_.fused_matmul &&
+      n->type_string() != csinfo_.fused_conv3d &&
       !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()),
                                 T)) {
     return nullptr;
@@ -3955,7 +3967,7 @@ bool MklLayoutRewritePass::FixMklMetaDataEdges(std::unique_ptr<Graph>* g,
   // If graph node is not Mkl node, then return.
   DataType T = DT_INVALID;
   if (!TryGetNodeAttr(n->def(), "T", &T) ||
-      !mkl_op_registry::IsMklLayoutDependentOp(n->type_string(), T)) {
+      !mkl_op_registry::IsMklOp(n->type_string(), T, false)) {
     return result;
   }
 
@@ -3980,7 +3992,7 @@ bool MklLayoutRewritePass::FixMklMetaDataEdges(std::unique_ptr<Graph>* g,
     // node, then we don't need to do anything.
     Node* e_src = e->src();
     if (TryGetNodeAttr(e_src->def(), "T", &T) &&
-        mkl_op_registry::IsMklLayoutDependentOp(e_src->type_string(), T)) {
+        mkl_op_registry::IsMklOp(e_src->type_string(), T, false)) {
       // Source node for edge 'e' is Mkl node.
       // Destination node and destination input slot of e is node 'n' and 'idx'
       // resp.
@@ -4093,24 +4105,26 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
 
   DumpGraph("After running MklLayoutRewritePass(NodeMerge+Rewrite)", &**g);
 
-  order.clear();
-  GetReversePostOrder(**g, &order);  // This will give us topological sort.
-  for (Node* n : order) {
-    // If node is not an op or it cannot run on CPU device, then skip.
-    if (!n->IsOp() || !CanOpRunOnCPUDevice(n)) {
-      continue;
-    }
-    if (FixMklMetaDataEdges(g, n)) {
-      string node_name = n->name();
-      string op_name = n->type_string();
+  if (!NativeFormatEnabled()) {
+    order.clear();
+    GetReversePostOrder(**g, &order);  // This will give us topological sort.
+    for (Node* n : order) {
+      // If node is not an op or it cannot run on CPU device, then skip.
+      if (!n->IsOp() || !CanOpRunOnCPUDevice(n)) {
+        continue;
+      }
+      if (FixMklMetaDataEdges(g, n)) {
+        string node_name = n->name();
+        string op_name = n->type_string();
 
-      VLOG(1) << "MklLayoutRewritePass: fixed metadata edges for node "
-              << node_name << " with op " << op_name;
-      result = true;
+        VLOG(1) << "MklLayoutRewritePass: fixed metadata edges for node "
+                << node_name << " with op " << op_name;
+        result = true;
+      }
     }
+    DumpGraph("After running MklLayoutRewritePass(NodeMerge+Rewrite+Fixup)",
+              &**g);
   }
-  DumpGraph("After running MklLayoutRewritePass(NodeMerge+Rewrite+Fixup)",
-            &**g);
 
   return result;
 }

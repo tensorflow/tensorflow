@@ -140,6 +140,15 @@ class BatchMatMulMkl : public OpKernel {
     MklBatchMatMulHelper bmm;
     auto params = bmm.CreateMatMulParams(lhs.shape(), rhs.shape(), out_shape,
                                          adj_x_, adj_y_);
+
+#ifdef DNNL_AARCH64_USE_ACL
+    // ACL does not support reuse of primitives with different data.
+    // For matmul, the previous approach (PR #47775) of using Tensor addresses
+    // does not work, as the addresses are re-used in matmul with different data
+    // The counter  ensure we still benefit from caching via SetMklMatmul().
+    static int counter = 1;
+    params->aarch64_counter = counter++;
+#endif
     // Create or retrieve matmul primitive from cache.
     MklMatMulPrimitive<Scalar>* matmul_prim =
         MklMatMulPrimitiveFactory<Scalar>::Get(

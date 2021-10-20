@@ -16,8 +16,8 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 
 def matmul():
@@ -43,7 +43,7 @@ def verify_matmul(compiled, m, k, n):
   np.testing.assert_allclose(res, np.matmul(lhs, rhs), rtol=1e-05)
 
 
-class TfMatMulTest(googletest.TestCase):
+class TfMatMulTest(test.TestCase):
 
   # Matmul: [1, k] x [k, 1]
   def test_dot_product(self):
@@ -80,4 +80,4 @@ class TfMatMulTest(googletest.TestCase):
 
 if __name__ == "__main__":
   np.random.seed(0)
-  googletest.main()
+  test.main()

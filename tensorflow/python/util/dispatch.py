@@ -59,10 +59,6 @@ visible ops by default.  APIs/ops that are implemented in Python can opt in to
 dispatch support using the `add_dispatch_support` decorator.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import itertools
 import typing  # pylint: disable=unused-import (used in doctests)
@@ -74,15 +70,7 @@ from tensorflow.python.util import tf_export as tf_export_lib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util import traceback_utils
 from tensorflow.python.util import type_annotations
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# TODO(edloper) This is just used for doctests; once extension_type has been
-# tf_export'ed, switch the doctests to use the name under `tf`, and delete this.
-extension_type = LazyLoader(
-    "extension_type", globals(),
-    "tensorflow.python.framework.extension_type")
 
 
 # Private function attributes used to store dispatchers on TensorFlow APIs.
@@ -270,7 +258,7 @@ def dispatch_for_api(api, *signatures):
   `masked_add` will be called for `tf.add` if both `x` and `y` are
   `MaskedTensor`s:
 
-  >>> class MaskedTensor(extension_type.ExtensionType):
+  >>> class MaskedTensor(tf.experimental.ExtensionType):
   ...   values: tf.Tensor
   ...   mask: tf.Tensor
 
@@ -487,7 +475,7 @@ def unregister_dispatch_for(dispatch_target):
   Example:
 
   >>> # Define a type and register a dispatcher to override `tf.abs`:
-  >>> class MyTensor(extension_type.ExtensionType):
+  >>> class MyTensor(tf.experimental.ExtensionType):
   ...   value: tf.Tensor
   >>> @dispatch_for_api(tf.abs)
   ... def my_abs(x: MyTensor):
@@ -751,8 +739,7 @@ def dispatch_for_unary_elementwise_apis(x_type):
   The following example shows how this decorator can be used to update all
   unary elementwise operations to handle a `MaskedTensor` type:
 
-  >>> from tensorflow.python.framework import extension_type
-  >>> class MaskedTensor(extension_type.ExtensionType):
+  >>> class MaskedTensor(tf.experimental.ExtensionType):
   ...   values: tf.Tensor
   ...   mask: tf.Tensor
   >>> @dispatch_for_unary_elementwise_apis(MaskedTensor)
@@ -819,8 +806,7 @@ def dispatch_for_binary_elementwise_apis(x_type, y_type):
   The following example shows how this decorator can be used to update all
   binary elementwise operations to handle a `MaskedTensor` type:
 
-  >>> from tensorflow.python.framework import extension_type
-  >>> class MaskedTensor(extension_type.ExtensionType):
+  >>> class MaskedTensor(tf.experimental.ExtensionType):
   ...   values: tf.Tensor
   ...   mask: tf.Tensor
   >>> @dispatch_for_binary_elementwise_apis(MaskedTensor, MaskedTensor)
@@ -1008,8 +994,8 @@ def _update_docstring_with_api_list(target, api_list):
     name = tf_export_lib.get_canonical_name_for_symbol(
         func, add_prefix_to_v1_names=True)
     if name is not None:
-      signature = tf_inspect.signature(func)
-      lines.append(f"  * `tf.{name}{signature}`")
+      params = tf_inspect.signature(func).parameters.keys()
+      lines.append(f"  * `tf.{name}({', '.join(params)})`")
   lines.sort()
   target.__doc__ = target.__doc__.replace("  <<API_LIST>>", "\n".join(lines))
 
@@ -1030,7 +1016,7 @@ def add_dispatch_support(target=None, iterable_parameters=None):
   >>> @add_dispatch_support
   ... def double(x):
   ...   return x * 2
-  >>> class MaskedTensor(extension_type.ExtensionType):
+  >>> class MaskedTensor(tf.experimental.ExtensionType):
   ...   values: tf.Tensor
   ...   mask: tf.Tensor
   >>> @dispatch_for_api(double, {'x': MaskedTensor})

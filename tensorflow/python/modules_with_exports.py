@@ -17,10 +17,6 @@
 This file should eventually contain everything we need to scan looking for
 tf_export decorators.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 # pylint: disable=unused-import,g-importing-member

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for pprof_profiler."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gzip
 
 from proto import profile_pb2

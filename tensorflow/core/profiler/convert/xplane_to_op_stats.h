@@ -40,9 +40,6 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
                                          OpStats* op_stats);
 
-// Extracts DeviceCapabilities from XPlane stats.
-DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane);
-
 // Populates PerfEnv.
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
                     double peak_hbm_bw_giga_bytes_per_second);

@@ -133,10 +133,10 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
     std::unique_ptr<FunctionLibraryDefinition> flib_def;
   };
 
+  // This method is thread-safe.
   Status GetTpuCoreOrdinal(OpKernelContext* ctx, uint64 input_hash,
                            int64_t* ordinal_selector_req_id,
-                           int32_t* core_ordinal)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                           int32_t* core_ordinal);
 
   // Helper to create and initialize a TPU variable given a CPU variable
   // var: the CPU variable created by the user

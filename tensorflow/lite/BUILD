@@ -706,8 +706,7 @@ cc_library(
     # configuration conditions will make TFLite interpreter to apply XNNPACK
     # delegate by default.
     deps = select({
-        "//tensorflow:android_arm64": [":tflite_with_xnnpack_enabled"],
-        "//tensorflow:android_arm": [":tflite_with_xnnpack_enabled"],
+        "//tensorflow:android": [":tflite_with_xnnpack_enabled"],
         # XNNPACK delivers significant benefits w/ WASM and is already in use
         # by most WASM clients.
         "//tensorflow:emscripten": [":tflite_with_xnnpack_enabled"],
@@ -807,6 +806,21 @@ cc_test(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Test subgraph.
+cc_test(
+    name = "subgraph_test",
+    size = "small",
+    srcs = [
+        "core/subgraph_test.cc",
+    ],
+    deps = [
+        ":framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1024,6 +1038,22 @@ cc_library(
 cc_library(
     name = "create_op_resolver_with_builtin_ops",
     srcs = ["create_op_resolver_with_builtin_ops.cc"],
+    hdrs = ["create_op_resolver.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":mutable_op_resolver",
+        ":op_resolver",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+    # Some targets only have an implicit dependency on CreateOpResolver.
+    # This avoids warnings about backwards references when linking.
+    alwayslink = True,
+)
+
+# Defines CreateOpResolver with a selected subset of ops.
+cc_library(
+    name = "create_op_resolver_with_selected_ops",
+    srcs = ["create_op_resolver_with_selected_ops.cc"],
     hdrs = ["create_op_resolver.h"],
     copts = tflite_copts(),
     deps = [

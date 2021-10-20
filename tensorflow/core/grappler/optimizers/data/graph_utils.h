@@ -198,6 +198,10 @@ bool HasSloppyAttr(const string& op);
 // Checks whether the op has a "deterministic" attribute.
 bool HasDeterministicAttr(const string& op);
 
+// Sets the `name` as the metadata name of the `node`. It returns an error if
+// the `node` already has a metadata name.
+Status SetMetadataName(const std::string& name, NodeDef* node);
+
 }  // namespace graph_utils
 }  // namespace grappler
 }  // namespace tensorflow

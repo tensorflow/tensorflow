@@ -285,6 +285,9 @@ Status QuantizedAvgPoolShape(InferenceContext* c);
 // Shape function for QuantizeV2 op
 Status QuantizeV2Shape(InferenceContext* c);
 
+// Shape function for ReduceScatter ops
+Status ReduceScatterShape(shape_inference::InferenceContext* c);
+
 }  // namespace shape_inference
 
 }  // namespace tensorflow

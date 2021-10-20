@@ -24,7 +24,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'key_dtype\', \'value_dtype\', \'default_value\', \'name\', \'checkpoint\'], varargs=None, keywords=None, defaults=[\'MutableHashTable\', \'True\'], "
+    argspec: "args=[\'self\', \'key_dtype\', \'value_dtype\', \'default_value\', \'name\', \'checkpoint\', \'experimental_is_anonymous\'], varargs=None, keywords=None, defaults=[\'MutableHashTable\', \'True\', \'False\'], "
   }
   member_method {
     name: "export"

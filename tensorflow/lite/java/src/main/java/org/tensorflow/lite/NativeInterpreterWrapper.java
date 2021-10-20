@@ -77,15 +77,20 @@ class NativeInterpreterWrapper implements AutoCloseable {
     // delegates might fail if there are any unresolved flex ops.
     // (Alternatively, we could determine this without needing to recreate the interpreter
     // by passing the tflite::Model in to here, and then traversing that?)
+    ArrayList<Long> delegateHandles = new ArrayList<Long>();
     this.interpreterHandle =
-        createInterpreter(modelHandle, errorHandle, options.numThreads, delegates);
+        createInterpreter(modelHandle, errorHandle, options.numThreads, delegateHandles);
     this.originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);
     addDelegates(options);
-    if (!delegates.isEmpty()) {
+    delegateHandles.ensureCapacity(delegates.size());
+    for (Delegate delegate : delegates) {
+      delegateHandles.add(Long.valueOf(delegate.getNativeHandle()));
+    }
+    if (!delegateHandles.isEmpty()) {
       // If there are any delegates enabled, recreate the interpreter with those delegates.
       delete(/* errorHandle= */ 0, /* modelHandle= */ 0, this.interpreterHandle);
       this.interpreterHandle =
-          createInterpreter(modelHandle, errorHandle, options.numThreads, delegates);
+          createInterpreter(modelHandle, errorHandle, options.numThreads, delegateHandles);
     }
     if (options.allowFp16PrecisionForFp32 != null) {
       allowFp16PrecisionForFp32(
@@ -637,7 +642,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
   private static native long createModelWithBuffer(ByteBuffer modelBuffer, long errorHandle);
 
   private static native long createInterpreter(
-      long modelHandle, long errorHandle, int numThreads, List<Delegate> delegates);
+      long modelHandle, long errorHandle, int numThreads, List<Long> delegateHandles);
 
   private static native void resetVariableTensors(long interpreterHandle, long errorHandle);
 

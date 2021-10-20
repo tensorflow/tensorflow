@@ -104,10 +104,10 @@ LINALG_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core/kernels:cast_op",
     "//tensorflow/core/kernels:fill_functor",
+    "//tensorflow/core/kernels:transpose_functor",
 ] + if_cuda([
     ":eye_functor",
     "//tensorflow/core/util:cuda_solvers",
-    "//tensorflow/core/kernels:transpose_functor",
 ]) + if_rocm([
     "//tensorflow/core/util:rocm_solvers",
 ])
@@ -133,7 +133,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cholesky_op",
     prefix = "cholesky_op",
-    deps = if_cuda([
+    deps = if_cuda_or_rocm([
         ":matrix_band_part_op",
     ]) + LINALG_DEPS,
 )

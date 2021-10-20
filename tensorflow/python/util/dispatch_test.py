@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for operator dispatch."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import typing
 import numpy as np
@@ -1021,18 +1017,18 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
         dispatch.dispatch_for_api.__doc__,
         r"(?s)  The TensorFlow APIs that may be overridden "
         r"by `@dispatch_for_api` are:\n\n.*"
-        r"  \* `tf\.concat\(values, axis, name='concat'\)`\n.*"
-        r"  \* `tf\.math\.add\(x, y, name=None\)`\n.*")
+        r"  \* `tf\.concat\(values, axis, name\)`\n.*"
+        r"  \* `tf\.math\.add\(x, y, name\)`\n.*")
     self.assertRegex(
         dispatch.dispatch_for_unary_elementwise_apis.__doc__,
         r"(?s)  The unary elementwise APIs are:\n\n.*"
-        r"  \* `tf\.math\.abs\(x, name=None\)`\n.*"
-        r"  \* `tf\.math\.cos\(x, name=None\)`\n.*")
+        r"  \* `tf\.math\.abs\(x, name\)`\n.*"
+        r"  \* `tf\.math\.cos\(x, name\)`\n.*")
     self.assertRegex(
         dispatch.dispatch_for_binary_elementwise_apis.__doc__,
         r"(?s)  The binary elementwise APIs are:\n\n.*"
-        r"  \* `tf\.math\.add\(x, y, name=None\)`\n.*"
-        r"  \* `tf\.math\.multiply\(x, y, name=None\)`\n.*")
+        r"  \* `tf\.math\.add\(x, y, name\)`\n.*"
+        r"  \* `tf\.math\.multiply\(x, y, name\)`\n.*")
 
 
 if __name__ == "__main__":

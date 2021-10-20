@@ -15,10 +15,6 @@
 
 """Test for version 2 of the zero_out op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow as tf
 
 

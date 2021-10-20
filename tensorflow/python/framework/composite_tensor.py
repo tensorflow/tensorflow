@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tensor-like objects that are composed from tf.Tensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 
 import six
@@ -88,6 +84,9 @@ class CompositeTensor(object):
         if getattr(component, "graph", None) is not None
     ])
     return list(set(consumers))
+
+  def __tf_tracing_type__(self, context):
+    return self._type_spec.__tf_tracing_type__(context)
 
 
 _pywrap_utils.RegisterType("CompositeTensor", CompositeTensor)

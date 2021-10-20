@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Generate __all__ from a module docstring."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re as _re
 import sys as _sys
 

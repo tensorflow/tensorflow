@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """ShardedVariable class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import math
 from typing import Sequence
@@ -720,10 +716,6 @@ class ShardedVariableMixin(trackable.Trackable):
       return saveables
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
-
-  def _gather_saveables_for_saved_model(self):
-    """Return a `Saveable` for each shard for SavedModel. See `Trackable`."""
-    return {trackable.VARIABLE_VALUE_KEY: self._saving_variable}
 
   def _map_resources(self, save_options):
     """For implementing `Trackable`."""

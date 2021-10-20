@@ -201,7 +201,7 @@ TEST_P(ConsumeParallelTest, ConsumeParallel) {
     per_consumer_results.emplace_back();
     consumers.push_back(absl::WrapUnique(Env::Default()->StartThread(
         {}, absl::StrCat("consumer_", consumer), [&, consumer] {
-          std::vector<int64> results;
+          std::vector<int64_t> results;
           Status s = RunConsumer(consumer, /*start_index=*/0,
                                  /*end_index=*/num_elements, runner, results);
           mutex_lock l(mu);
@@ -251,7 +251,7 @@ TEST(RoundRobinTaskRunner, ConsumeParallelPartialRound) {
     per_consumer_results.emplace_back();
     consumers.push_back(absl::WrapUnique(Env::Default()->StartThread(
         {}, absl::StrCat("consumer_", consumer), [&, consumer] {
-          std::vector<int64> results;
+          std::vector<int64_t> results;
           Status s = RunConsumer(consumer, starting_rounds[consumer], end_index,
                                  runner, results);
           mutex_lock l(mu);

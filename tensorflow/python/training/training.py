@@ -19,10 +19,6 @@ See the [Training](https://tensorflow.org/api_guides/python/train) guide.
 """
 
 # Optimizers.
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=g-bad-import-order,unused-import
 from tensorflow.python.ops.sdca_ops import sdca_optimizer
 from tensorflow.python.ops.sdca_ops import sdca_fprint

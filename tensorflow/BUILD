@@ -258,15 +258,6 @@ config_setting(
 )
 
 config_setting(
-    name = "msvc_cl_debug",
-    values = {
-        "compiler": "msvc-cl",
-        "compilation_mode": "dbg",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_tensorflow_py_deps",
     define_values = {"no_tensorflow_py_deps": "true"},
     visibility = ["//visibility:public"],
@@ -925,6 +916,7 @@ tf_cc_shared_object(
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-rename_section,__TEXT,text_env,__TEXT,__text",
+            "-Wl,-unexported_symbols_list,$(location //tensorflow:tf_private_symbols.lds)",
         ],
         "//tensorflow:windows": [],
         "//tensorflow:freebsd": [
@@ -940,6 +932,7 @@ tf_cc_shared_object(
     soversion = VERSION,
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow:tf_private_symbols.lds",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/c:env",
@@ -1045,11 +1038,6 @@ tf_cc_shared_object(
             "-z defs",
             "-Wl,--version-script,$(location //tensorflow:tf_version_script.lds)",
         ],
-    }) + select({
-        "//tensorflow:msvc_cl_debug": [
-            "/DEBUG:FASTLINK",
-        ],
-        "//conditions:default": [],
     }),
     per_os_targets = True,
     soversion = VERSION,
@@ -1062,6 +1050,7 @@ tf_cc_shared_object(
     # copybara:comment_end
     deps = [
         "//tensorflow:tf_exported_symbols.lds",
+        "//tensorflow:tf_private_symbols.lds",
         "//tensorflow:tf_version_script.lds",
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
@@ -1162,6 +1151,7 @@ exports_files(
     [
         "tf_version_script.lds",
         "tf_exported_symbols.lds",
+        "tf_private_symbols.lds",
     ],
 )
 
@@ -1296,9 +1286,6 @@ py_library(
         "//conditions:default": [":tf_python_api_gen_v1"],
     }) + [
         ":root_init_gen",
-        "//tensorflow/python/keras/api:keras_python_api_gen",
-        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
-        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",
     ],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],

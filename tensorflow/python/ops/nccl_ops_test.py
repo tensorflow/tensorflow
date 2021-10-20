@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for nccl ops. See also the cc test for nccl_communicator."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from functools import partial
 
 import numpy as np

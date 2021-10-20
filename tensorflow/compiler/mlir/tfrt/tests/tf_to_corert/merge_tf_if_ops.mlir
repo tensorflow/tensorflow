@@ -52,8 +52,8 @@ func @nested_if_op_else_1(%cond: tensor<i1>, %x: tensor<i32>, %y: tensor<i32>) -
 
 // CHECK-LABEL: func private @merge_stateless_merged_if_0_0_else
 // CHECK-SAME: ([[x:%.*]]: tensor<i32>, [[y:%.*]]: tensor<i32>)
-// CHECK: [[cst:%.*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
-// CHECK: [[cst_0:%.*]] = "tf.Const"() {value = dense<2> : tensor<i32>}
+// CHECK-DAG: [[cst:%.*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+// CHECK-DAG: [[cst_0:%.*]] = "tf.Const"() {value = dense<2> : tensor<i32>}
 // CHECK: [[r0:%.*]] = "tf.AddV2"([[x]], [[cst]])
 // CHECK: [[r1:%.*]] = "tf.AddV2"([[y]], [[r0]])
 // CHECK: [[r2:%.*]] = "tf.AddV2"([[x]], [[cst_0]])

@@ -2960,7 +2960,7 @@ on_false
   v4 = f32[2] conditional(pred.1, v1, v2), true_computation=on_true.1, false_computation=on_false.1
   v5 = f32[2] multiply(v4,v2)
   ROOT t2 = (f32[2], f32[2]) tuple(v2,v5)
-  
+
 }
 
 cond.outer {
@@ -3003,7 +3003,7 @@ HloModule TestModule
  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
  ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
  }
- 
+
  branch_1_comp.12.clone {
   %parameter.4 = (s32[2]{0:T(128)}) parameter(0)
   %get-tuple-element.5 = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.4), index=0
@@ -3011,7 +3011,7 @@ HloModule TestModule
   ROOT tuple.6 = (s32[2]{0:T(128)}) tuple(%copy.1)
  }
 
-ENTRY TestComputation { 
+ENTRY TestComputation {
   %parameter.1 = s32[]{:T(128)} parameter(0), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
   %parameter.2 = s32[2]{0:T(128)} parameter(1), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
   %parameter.3 = s32[2]{0:T(128)} parameter(2), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
@@ -3049,7 +3049,7 @@ HloModule TestModule
  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
  ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
  }
- 
+
  branch_1_comp.12.clone {
   %parameter.4 = (s32[2]{0:T(128)}) parameter(0)
   %get-tuple-element.5 = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.4), index=0
@@ -3061,7 +3061,7 @@ HloModule TestModule
   ROOT tuple.6 = (s32[2]{0:T(128)}) tuple(%add.1)
  }
 
-ENTRY TestComputation { 
+ENTRY TestComputation {
   %parameter.1 = s32[]{:T(128)} parameter(0), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
   %parameter.2 = s32[2]{0:T(128)} parameter(1), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
   %parameter.3 = s32[2]{0:T(128)} parameter(2), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
@@ -3285,5 +3285,71 @@ ENTRY main {
   EXPECT_EQ(CountCopies(*module), 2);
 }
 
+TEST_F(CopyInsertionTest, CustomCallAliasingCopyInsertedAliasedParam) {
+  // The custom call specifies aliasing for an operand that is an input to the
+  // computation, but it does not own that buffer so a precautionary copy
+  // must be inserted.
+  const char* const kModuleString = R"(
+    HloModule xla_computation_f
+
+    ENTRY xla_computation_f {
+      parameter.1 = f32[2,3,4,5] parameter(0)
+      parameter.2 = f32[2,3,4,5] parameter(1)
+      ROOT custom-call = f32[2,3,4,5] custom-call(parameter.1, parameter.2), custom_call_target="dm_softmax", operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]}, output_to_operand_aliasing={{}: (0, {})}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+  InsertCopies(module.get());
+  HloInstruction* custom_call = module->entry_computation()->root_instruction();
+  EXPECT_THAT(custom_call->operand(0), op::Copy(op::Parameter(0)));
+}
+
+TEST_F(CopyInsertionTest, CustomCallAliasingCopyInsertedAliasedReuse) {
+  // The custom call specifies aliasing for an operand that is later re-used
+  // by a different instruction (add.2) A copy must be inserted so the correct
+  // HloValue is passed to the add, and not the result of the aliased call.
+  const char* const kModuleString = R"(
+    HloModule xla_computation_f
+
+    ENTRY xla_computation_f {
+      parameter.1 = f32[2,3,4,5] parameter(0)
+      parameter.2 = f32[2,3,4,5] parameter(1)
+      add.1 = f32[2,3,4,5] add(parameter.1, parameter.2)
+      custom-call = f32[2,3,4,5] custom-call(add.1, parameter.2), custom_call_target="dm_softmax", operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]}, output_to_operand_aliasing={{}: (0, {})}
+      ROOT add.2 = f32[2,3,4,5] add(custom-call, add.1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+
+  InsertCopies(module.get());
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
+  CHECK_NE(custom_call, nullptr);
+  EXPECT_THAT(custom_call->operand(0), op::Copy(op::Add()));
+}
+
+TEST_F(CopyInsertionTest, CustomCallAliasingCopyRemoved) {
+  // This custom call aliases an intermediate result, and the value is never
+  // reused. There is no need for a copy.
+  const char* const kModuleString = R"(
+    HloModule xla_computation_f__1
+    ENTRY xla_computation_f {
+      parameter.1 = f32[2,3,4,5] parameter(0)
+      parameter.2 = f32[2,3,4,5] parameter(1)
+      add = f32[2,3,4,5] add(parameter.1, parameter.2)
+      ROOT custom-call = f32[2,3,4,5] custom-call(add, parameter.2), custom_call_target="dm_softmax", operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]}, output_to_operand_aliasing={{}: (0, {})}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+
+  InsertCopies(module.get());
+  HloInstruction* custom_call = module->entry_computation()->root_instruction();
+  EXPECT_THAT(custom_call->operand(0), op::Add());
+}
 }  // namespace
 }  // namespace xla

@@ -54,6 +54,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass(
     bool default_to_single_batch = false);
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
+// TODO(b/201596819): Improve long list of parameters in QuantizePass.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
     bool verify_numeric = false, bool whole_model_verify = false,
     bool legacy_float_scale = false, const StringSet& ops_blocklist = {},
@@ -61,6 +62,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
+    const QuantizationSpecs& quant_specs);
+
+// Creates an instance of the TensorFlow Lite dialect PrepareDynamicQuantize
+// pass.
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicQuantizePass(
     const QuantizationSpecs& quant_specs);
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
@@ -111,6 +117,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass();
 
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
+
+// Creates a pass to remove operands of TFL WhileOp without changing outcomes.
+std::unique_ptr<OperationPass<FuncOp>> CreateReduceWhileOperandsPass();
 
 // Verifies runtime constraints.
 std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass();

@@ -437,7 +437,7 @@ REGISTER_OP("RandomCrop")
         h = c->UnknownDim();
         w = c->UnknownDim();
       } else {
-        auto size_vec = size->vec<int64>();
+        auto size_vec = size->vec<int64_t>();
         h = c->MakeDim(size_vec(0));
         w = c->MakeDim(size_vec(1));
       }

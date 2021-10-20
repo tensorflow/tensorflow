@@ -1640,12 +1640,18 @@ class HloInstruction {
 
   // Sets the string identifier for this instruction. Name will be sanitized to
   // match the regexp "[a-zA-Z_][a-zA-Z0-9_.-]*".
-  void SetAndSanitizeName(const string& name) {
+  //
+  // See also HloModule::SetAndUniquifyInstrName(), which does this plus
+  // UniqufyName().
+  void SetAndSanitizeName(absl::string_view name) {
     name_ = NameUniquer::GetSanitizedName(name);
   }
 
   // Use the given NameUniquer to select a unique name for the instruction based
   // on the instruction's existing name.
+  //
+  // See also HloModule::SetAndUniquifyInstrName(), which does this plus
+  // SetAndSanitizeName().
   void UniquifyName(NameUniquer* name_uniquer);
 
   // Clear the unique ID of the instruction so that it can be re-assigned, such

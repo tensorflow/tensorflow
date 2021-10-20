@@ -16,8 +16,9 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
@@ -42,6 +43,7 @@ using mlir::linalg::LinalgTilingOptions;
 using mlir::linalg::LinalgTransformationFilter;
 using mlir::linalg::PaddingValueComputationFunction;
 using mlir::linalg::TiledLoopOp;
+using mlir::tensor::ExtractSliceOp;
 using mlir::tensor::InsertSliceOp;
 
 // Tiles a GenericOp that models a reduction and then fuses its inputs and
@@ -155,18 +157,52 @@ struct TileAndFusePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
   LinalgTilingOptions options;
 };
 
+// Rewrite linalg.fill(extract_slice) as linalg.fill(init_tensor). This rewrite
+// is required for correctness, because otherwise after bufferization the fused
+// output linalg.fill would still use the buffer for the reduction of the whole
+// output instead of allocating a local buffer only for the reduced tile.
+//
+// A better way to perform this transformation is to have it in MLIR Core as a
+// part of the fusion logic. To support this correctly, we would also modify
+// logic for padding, so that we could pad fill(init_tensor). Currently, only
+// fill(extract_slice) can be padded. All these changes will happen once we
+// converge on the pipeline design.
+struct FillOfExtractSlice : public mlir::OpRewritePattern<FillOp> {
+  using OpRewritePattern<FillOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(FillOp fill,
+                                PatternRewriter &rewriter) const override {
+    if (!fill.hasTensorSemantics()) return failure();
+
+    auto fill_tensor_type = fill.getOutputTensorTypes().back();
+    if (!fill_tensor_type.hasStaticShape()) return failure();
+
+    if (auto extract = fill.output().getDefiningOp<ExtractSliceOp>()) {
+      llvm::SmallVector<int64_t, 4> static_sizes = llvm::to_vector<4>(
+          llvm::map_range(extract.static_sizes().cast<mlir::ArrayAttr>(),
+                          [](mlir::Attribute a) -> int64_t {
+                            return a.cast<mlir::IntegerAttr>().getInt();
+                          }));
+      auto init = rewriter.create<mlir::linalg::InitTensorOp>(
+          fill.getLoc(), extract.getDynamicSizes(), static_sizes,
+          fill_tensor_type.getElementType());
+      rewriter.replaceOpWithNewOp<FillOp>(fill, fill.value(), init);
+      return success();
+    }
+    return failure();
+  }
+};
+
 // Match 2D row reduction. This is a starting point, we will relax this
 // condition further down the road, when we add support for more reduction
 // types.
-bool is2DRowReduction(mlir::Operation *op) {
+bool is2DRowOrColumnReduction(mlir::Operation *op) {
   auto reduction = mlir::dyn_cast<GenericOp>(op);
   if (!reduction) return false;
 
   if (reduction.getNumOutputs() != 1 || reduction.getNumLoops() != 2)
     return false;
-  auto iter_types = reduction.iterator_types();
-  return mlir::isParallelIterator(iter_types[0]) &&
-         mlir::isReductionIterator(iter_types[1]);
+  return reduction.getNumReductionLoops() == 1;
 }
 
 struct CodegenReductionPass
@@ -181,11 +217,13 @@ struct CodegenReductionPass
 
     auto patterns =
         mlir::linalg::getLinalgTilingCanonicalizationPatterns(context);
+    mlir::memref::populateResolveRankedShapeTypeResultDimsPatterns(patterns);
     auto filter = LinalgTransformationFilter(
                       llvm::None, {Identifier::get("tiled", context)})
                       .addFilter([](Operation *op) {
-                        return success(is2DRowReduction(op));
+                        return success(is2DRowOrColumnReduction(op));
                       });
+    patterns.insert<FillOfExtractSlice>(context);
     patterns.insert<TileAndFusePattern>(tiling_options, filter,
                                         patterns.getContext());
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));

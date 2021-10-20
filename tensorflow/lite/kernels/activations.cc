@@ -1471,7 +1471,7 @@ TfLiteStatus EluPrepare(TfLiteContext* context, TfLiteNode* node) {
   // Use LUT to handle quantized elu path.
   if (input->type == kTfLiteInt8) {
     PopulateLookupTable<int8_t>(data, input, output, [](float value) {
-      return value < 0.0 ? std::exp(value) - 1.0f : value;
+      return value < 0.0f ? std::expm1(value) : value;
     });
   }
   return GenericPrepare(context, node);

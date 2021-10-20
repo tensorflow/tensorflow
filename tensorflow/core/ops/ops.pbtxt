@@ -851,6 +851,92 @@ op {
   is_stateful: true
 }
 op {
+  name: "AnonymousMutableDenseHashTable"
+  input_arg {
+    name: "empty_key"
+    type_attr: "key_dtype"
+  }
+  input_arg {
+    name: "deleted_key"
+    type_attr: "key_dtype"
+  }
+  output_arg {
+    name: "table_handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+  }
+  attr {
+    name: "value_dtype"
+    type: "type"
+  }
+  attr {
+    name: "value_shape"
+    type: "shape"
+    default_value {
+      shape {
+      }
+    }
+  }
+  attr {
+    name: "initial_num_buckets"
+    type: "int"
+    default_value {
+      i: 131072
+    }
+  }
+  attr {
+    name: "max_load_factor"
+    type: "float"
+    default_value {
+      f: 0.8
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "AnonymousMutableHashTable"
+  output_arg {
+    name: "table_handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+  }
+  attr {
+    name: "value_dtype"
+    type: "type"
+  }
+  is_stateful: true
+}
+op {
+  name: "AnonymousMutableHashTableOfTensors"
+  output_arg {
+    name: "table_handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+  }
+  attr {
+    name: "value_dtype"
+    type: "type"
+  }
+  attr {
+    name: "value_shape"
+    type: "shape"
+    default_value {
+      shape {
+      }
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "AnonymousRandomSeedGenerator"
   input_arg {
     name: "seed"
@@ -2434,6 +2520,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -2461,6 +2554,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -2876,6 +2976,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "auto_shard_policy"
@@ -3490,6 +3597,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -3528,6 +3642,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "parallel_copy"
@@ -6695,6 +6816,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -6839,6 +6967,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -6908,6 +7043,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -7170,6 +7312,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -7208,6 +7357,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -7446,6 +7602,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "Targuments"
@@ -7493,6 +7656,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "N"
@@ -7568,6 +7738,48 @@ op {
     type: DT_RESOURCE
   }
   is_stateful: true
+}
+op {
+  name: "CollectiveAllToAllV3"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "communicator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "group_assignment"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "CollectiveBcastRecv"
@@ -7920,6 +8132,41 @@ op {
   is_distributed_communication: true
 }
 op {
+  name: "CollectiveInitializeCommunicator"
+  input_arg {
+    name: "group_key"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "rank"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "group_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "communicator"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  is_stateful: true
+  is_distributed_communication: true
+}
+op {
   name: "CollectivePermute"
   input_arg {
     name: "input"
@@ -8136,6 +8383,60 @@ op {
     type: "int"
     default_value {
       i: -1
+    }
+  }
+  is_stateful: true
+  is_distributed_communication: true
+}
+op {
+  name: "CollectiveReduceV3"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "communicator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "group_assignment"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "reduction"
+    type: "string"
+    allowed_values {
+      list {
+        s: "Min"
+        s: "Max"
+        s: "Mul"
+        s: "Add"
+      }
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
     }
   }
   is_stateful: true
@@ -8486,6 +8787,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -11417,6 +11725,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "task_refresh_interval_hint_ms"
@@ -11494,6 +11809,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "task_refresh_interval_hint_ms"
@@ -12746,6 +13068,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -13545,6 +13874,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -14846,6 +15182,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -14877,6 +15220,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "auto_shard_policy"
@@ -14911,6 +15261,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -14966,6 +15323,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15000,6 +15364,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "N"
@@ -15068,6 +15439,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15096,6 +15474,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15141,6 +15526,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "key_func"
@@ -15213,6 +15605,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "key_func"
@@ -15263,6 +15662,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15305,6 +15711,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15333,6 +15746,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15372,6 +15792,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -15415,6 +15842,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -15461,6 +15895,15 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_STRING
+        }
+      }
+    }
   }
   is_stateful: true
 }
@@ -15477,6 +15920,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15500,6 +15950,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15547,6 +16004,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -15587,6 +16051,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "sparse_keys"
@@ -15660,6 +16131,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15687,6 +16165,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15715,6 +16200,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15753,6 +16245,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -15810,6 +16309,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15838,6 +16344,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15873,6 +16386,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15904,6 +16424,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -15966,6 +16493,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "predicate"
@@ -16002,6 +16536,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -16063,6 +16604,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -16086,6 +16634,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -16856,6 +17411,13 @@ op {
   output_arg {
     name: "output"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -16883,6 +17445,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "predicate"
@@ -16922,6 +17491,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "has_captured_ref"
@@ -16987,6 +17563,15 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_STRING
+        }
+      }
+    }
   }
   attr {
     name: "metadata"
@@ -17026,6 +17611,15 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_STRING
+        }
+      }
+    }
   }
   attr {
     name: "metadata"
@@ -17257,6 +17851,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -18706,6 +19307,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "init_func"
@@ -18768,6 +19376,13 @@ op {
   output_arg {
     name: "components"
     type_list_attr: "output_types"
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -18936,6 +19551,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "key_func"
@@ -19008,6 +19630,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "key_func"
@@ -19680,6 +20309,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -20342,6 +20978,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -20945,6 +21588,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -21305,6 +21955,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -21505,6 +22162,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -21774,6 +22438,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -22946,6 +23617,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -23034,6 +23712,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -23492,6 +24177,15 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_STRING
+        }
+      }
+    }
   }
   is_stateful: true
 }
@@ -24096,6 +24790,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -25446,6 +26147,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "algorithm"
@@ -26045,6 +26753,9 @@ op {
   output_arg {
     name: "mutex_lock"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_MUTEX_LOCK
+    }
   }
   is_stateful: true
 }
@@ -26660,6 +27371,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -26874,6 +27592,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -26917,6 +27642,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -27013,6 +27745,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "serialized_options"
@@ -27607,6 +28346,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "Toutput_types"
+      }
+    }
   }
   attr {
     name: "Toutput_types"
@@ -27660,6 +28406,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "Toutput_types"
+      }
+    }
   }
   attr {
     name: "parallel_copy"
@@ -27804,6 +28557,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "parallel_copy"
@@ -27925,6 +28685,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -27980,6 +28747,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -28042,6 +28816,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -28112,6 +28893,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -28166,6 +28954,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -28234,6 +29029,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -28448,6 +29250,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "sparse_keys"
@@ -28565,6 +29374,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "sparse_keys"
@@ -29721,6 +30537,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -30013,6 +30836,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -35378,6 +36208,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -35970,6 +36807,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -36358,6 +37202,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -36396,6 +37247,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -37086,6 +37944,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -43463,6 +44328,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -43798,6 +44670,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "f"
@@ -45531,6 +46410,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -45627,6 +46513,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "require_non_empty"
@@ -45714,6 +46607,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -45771,6 +46671,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "reshuffle_each_iteration"
@@ -45821,6 +46728,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "reshuffle_each_iteration"
@@ -45866,6 +46780,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -45913,6 +46834,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "reshuffle_each_iteration"
@@ -46120,6 +47048,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -46219,6 +47154,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -46287,6 +47229,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -46329,6 +47278,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -46454,6 +47410,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -46500,6 +47463,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -46584,6 +47554,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -50485,6 +51462,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "Tvalues"
+      }
+    }
   }
   attr {
     name: "Tvalues"
@@ -50741,6 +51725,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -53647,6 +54638,15 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_STRING
+        }
+      }
+    }
   }
   attr {
     name: "metadata"
@@ -53835,6 +54835,7 @@ op {
     has_minimum: true
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "TPUExecuteAndUpdateVariables"
@@ -53871,6 +54872,7 @@ op {
     has_minimum: true
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "TPUOrdinalSelector"
@@ -54156,6 +55158,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -54228,6 +55237,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "predicate"
@@ -55340,6 +56356,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "Toutput_types"
+      }
+    }
   }
   attr {
     name: "Toutput_types"
@@ -56195,6 +57218,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "Toutput_types"
+      }
+    }
   }
   attr {
     name: "Toutput_types"
@@ -56377,6 +57407,15 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_STRING
+        }
+      }
+    }
   }
   attr {
     name: "metadata"
@@ -56463,6 +57502,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -57056,6 +58102,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -57487,6 +58540,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -58383,6 +59443,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -58413,6 +59480,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"
@@ -58999,6 +60073,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "output_types"
+      }
+    }
   }
   attr {
     name: "output_types"

@@ -43,6 +43,21 @@ tf_py_test(
 )
 
 py_library(
+    name = "trackable_utils",
+    srcs = ["trackable_utils.py"],
+    srcs_version = "PY3",
+)
+
+tf_py_test(
+    name = "trackable_utils_test",
+    srcs = ["trackable_utils_test.py"],
+    deps = [
+        ":trackable_utils",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
     name = "base_delegate",
     srcs = ["base_delegate.py"],
     srcs_version = "PY3",
@@ -181,7 +196,10 @@ py_library(
 tf_py_test(
     name = "util_test",
     srcs = ["util_test.py"],
-    tags = ["notsan"],  # b/74395663
+    tags = [
+        "no_windows",  # TODO(b/201457117)
+        "notsan",  # TODO(b/74395663)
+    ],
     deps = [
         ":base",
         ":graph_view",

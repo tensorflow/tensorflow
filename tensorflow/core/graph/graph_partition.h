@@ -76,6 +76,10 @@ struct PartitionOptions {
   // in the graph as a node attribute.
   bool need_to_record_start_times = false;
   std::vector<Microseconds> start_times;
+
+  // Optional customized function to compute the "tensor_name" attr value of
+  // Send/Recv ops inserted during partitioning.
+  std::function<string(const Edge*)> get_tensor_name_attr = nullptr;
 };
 
 // Partition "input" graph into a set of graphs, one per location.

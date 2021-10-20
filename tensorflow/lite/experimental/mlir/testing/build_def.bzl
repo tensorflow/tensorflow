@@ -94,7 +94,8 @@ def mlir_generated_test_models():
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
 
-    return ["forward-compat", "", "mlir-quant"]
+    # TODO(b/146025965): Remove reference to toco.
+    return ["toco-flex", "forward-compat", "", "mlir-quant"]
 
 def generated_test_models_all():
     """Generates a list of all tests with the different converters.
@@ -130,7 +131,14 @@ def generated_test_models_all():
 
     return options
 
-def gen_zip_test(name, test_name, conversion_mode, **kwargs):
+def gen_zip_test(
+        name,
+        test_name,
+        conversion_mode,
+        tags,
+        args,
+        additional_test_tags_args = {},
+        **kwargs):
     """Generate a zipped-example test and its dependent zip files.
 
     Args:
@@ -146,13 +154,27 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         flags += " --make_forward_compat_test"
     elif conversion_mode == "mlir-quant":
         flags += " --mlir_quantizer"
+        # TODO(b/146025965): Remove reference to toco.
+
+    elif conversion_mode == "toco-flex":
+        flags += " --ignore_converter_errors --run_with_flex"
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,
         file = "%s.zip" % test_name,
         flags = flags,
     )
-    tf_cc_test(name, **kwargs)
+    tf_cc_test(name, tags = tags, args = args, **kwargs)
+
+    for key, value in additional_test_tags_args.items():
+        additional_tags, additional_args = value
+        additional_tags.append("gen_zip_test_%s" % key)
+        tf_cc_test(
+            name = "%s_%s" % (name, key),
+            args = args + additional_args,
+            tags = tags + additional_tags,
+            **kwargs
+        )
 
 def gen_zipped_test_file(name, file, flags = ""):
     """Generate a zip file of tests by using :generate_examples.

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for liveness module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import naming

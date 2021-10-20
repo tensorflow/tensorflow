@@ -15,10 +15,6 @@
 
 """Utilities for using the TensorFlow C API."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import api_def_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api

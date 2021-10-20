@@ -17,10 +17,6 @@
 # This is forked from `tensorflow/lite/testing/generate_examples.py`.
 # TODO(b/136499575): Merge this back to TFLite codebase when open sourcing.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import os
 import sys

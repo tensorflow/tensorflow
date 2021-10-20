@@ -16,6 +16,7 @@ limitations under the License.
 #include <stdexcept>
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
@@ -26,6 +27,8 @@ limitations under the License.
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -61,13 +64,13 @@ class ConvertLaunchFuncOpToTfRuntimeCallPattern
         gpu_binary_annotation_(gpu_binary_annotation) {}
 
  private:
-  Value generateParamsArray(gpu::LaunchFuncOp launch_op,
-                            ArrayRef<Value> operands, OpBuilder &builder) const;
+  Value generateParamsArray(gpu::LaunchFuncOp launch_op, OpAdaptor adaptor,
+                            OpBuilder &builder) const;
   Value generateKernelNameConstant(StringRef moduleName, StringRef name,
                                    Location loc, OpBuilder &builder) const;
 
   LogicalResult matchAndRewrite(
-      gpu::LaunchFuncOp launch_op, ArrayRef<Value> operands,
+      gpu::LaunchFuncOp launch_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override;
 
   MLIRContext *context_ = &this->getTypeConverter()->getContext();
@@ -100,13 +103,12 @@ class ConvertLaunchFuncOpToTfRuntimeCallPattern
 //   llvm.store %fieldPtr, %elementPtr
 // return %array
 Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
-    gpu::LaunchFuncOp launch_op, ArrayRef<Value> operands,
-    OpBuilder &builder) const {
+    gpu::LaunchFuncOp launch_op, OpAdaptor adaptor, OpBuilder &builder) const {
   auto loc = launch_op.getLoc();
   auto num_kernel_operands = launch_op.getNumKernelOperands();
   auto arguments = getTypeConverter()->promoteOperands(
       loc, launch_op.getOperands().take_back(num_kernel_operands),
-      operands.take_back(num_kernel_operands), builder);
+      adaptor.operands().take_back(num_kernel_operands), builder);
   auto num_arguments = arguments.size();
   SmallVector<Type, 4> argument_types;
   argument_types.reserve(num_arguments);
@@ -148,7 +150,7 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
 // %2 = <see generateParamsArray>
 // call %tfLaunchKernel(%ctx, %0, %1, <launch_op operands 0..5>, %2)
 LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
-    gpu::LaunchFuncOp launch_op, ArrayRef<Value> operands,
+    gpu::LaunchFuncOp launch_op, OpAdaptor adaptor,
     ConversionPatternRewriter &rewriter) const {
   if (!launch_op.asyncDependencies().empty() || launch_op.asyncToken()) {
     return rewriter.notifyMatchFailure(
@@ -192,14 +194,11 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
       LLVM::createGlobalString(loc, rewriter, kernel_name_global_name,
                                kernel_name_buffer, LLVM::Linkage::Internal);
 
-  auto adaptor =
-      gpu::LaunchFuncOpAdaptor(operands, launch_op->getAttrDictionary());
-
   // The TensorFlow OpKernelContext is the first argument of the surrounding
   // LLVMFunc.
   Value context_arg =
       launch_op->getParentOfType<LLVM::LLVMFuncOp>().getArgument(0);
-  auto kernel_params = generateParamsArray(launch_op, operands, rewriter);
+  auto kernel_params = generateParamsArray(launch_op, adaptor, rewriter);
 
   auto libraryLaunchNameAttr =
       mlir::StringAttr::get(loc.getContext(), kTfWrapperLibaryLaunchHelperName);
@@ -265,7 +264,9 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
+    arith::populateArithmeticExpandOpsPatterns(patterns);
     populateStdExpandOpsPatterns(patterns);
+    arith::populateArithmeticToLLVMConversionPatterns(type_converter, patterns);
     populateMemRefToLLVMConversionPatterns(type_converter, patterns);
     populateMathToLLVMConversionPatterns(type_converter, patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
@@ -279,9 +280,9 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     //  Set target.
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addIllegalDialect<StandardOpsDialect, complex::ComplexDialect,
-                             gpu::GPUDialect, tf_framework::TFFrameworkDialect,
-                             math::MathDialect>();
+    target.addIllegalDialect<
+        arith::ArithmeticDialect, StandardOpsDialect, complex::ComplexDialect,
+        gpu::GPUDialect, tf_framework::TFFrameworkDialect, math::MathDialect>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();
     // Do not look into gpu modules, only consider host-side.

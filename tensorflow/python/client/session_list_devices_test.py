@@ -15,10 +15,6 @@
 
 """Tests for tensorflow.python.client.session.Session's list_devices API."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import pywrap_tf_session as tf_session

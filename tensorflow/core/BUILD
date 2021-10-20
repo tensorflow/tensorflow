@@ -183,6 +183,7 @@ COMMON_PROTO_SRCS = [
     "//tensorflow/core/protobuf:rewriter_config.proto",
     "//tensorflow/core/protobuf:tensor_bundle.proto",
     "//tensorflow/core/protobuf:saver.proto",
+    "//tensorflow/core/protobuf:status.proto",
     "//tensorflow/core/protobuf:verifier_config.proto",
 ]
 
@@ -1430,7 +1431,6 @@ cc_library(
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:env_impl",
-        "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:fingerprint",

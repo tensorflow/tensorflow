@@ -370,8 +370,10 @@ PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 // then the encoding only stores tensor ranks, and the key is
 // agnostic to dimension sizes.  Otherwise, full tensor shape encodings are
 // returned.
-PyObject* TFE_Py_EncodeArg(PyObject*, bool include_tensor_ranks_only,
-                           bool encode_var_by_res_id);
+PyObject* TFE_Py_EncodeArg(PyObject* arg, PyObject* signature_context,
+                           bool include_tensor_ranks_only,
+                           bool encode_variable_by_resource_id,
+                           bool use_full_trace_type);
 
 void TFE_Py_EnableInteractivePythonLogging();
 

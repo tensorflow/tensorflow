@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
@@ -134,9 +135,10 @@ MlirGpuTestBase::RunMlirModuleWithHostBuffers(
 
 StatusOr<mlir::OwningModuleRef> MlirGpuTestBase::ParseMlirModule(
     absl::string_view module_text, mlir::MLIRContext& context) {
-  context.loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-                      mlir::StandardOpsDialect, mlir::gpu::GPUDialect,
-                      mlir::lmhlo_gpu::LmhloGpuDialect>();
+  context
+      .loadDialect<mlir::arith::ArithmeticDialect, mlir::lmhlo::LmhloDialect,
+                   mlir::mhlo::MhloDialect, mlir::StandardOpsDialect,
+                   mlir::gpu::GPUDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
   llvm::SourceMgr source_mgr;
   std::string diagnostic_str;
   llvm::raw_string_ostream os(diagnostic_str);

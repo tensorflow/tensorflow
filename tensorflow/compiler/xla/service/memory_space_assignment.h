@@ -1041,6 +1041,10 @@ struct Options {
   // Enable cross-program prefetch freeing optimization where the
   // cross-program-prefetched buffer can be reused.
   bool enable_cross_program_prefetch_freeing = true;
+
+  // An optional memory space assignment autotuning config, which is used
+  // to sort allocated buffers.
+  absl::optional<std::vector<uint64_t>> autotuning_config = absl::nullopt;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -1508,6 +1512,10 @@ class AlternateMemoryBestFitHeap
       required_assignments_;
   // Number of bytes reserved in alternate memory space.
   int64_t reserved_in_bytes_ = 0;
+  // A rough measure of the memory pressure of the model, in bytes. Note that
+  // this is pressure for memory capacity (and not accessed bytes), and for
+  // alternate memory (not default memory).
+  int64_t memory_pressure_ = 0;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;

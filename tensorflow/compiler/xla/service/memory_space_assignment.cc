@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -69,13 +70,13 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
 
 bool IsCrossProgramPrefetchCandidate(const HloValue& value,
                                      const Options& options) {
-  return value.instruction()->parent() ==
-             value.instruction()->GetModule()->entry_computation() &&
-         value.instruction()->opcode() == HloOpcode::kParameter &&
+  return value.defining_instruction()->parent() ==
+             value.defining_instruction()->GetModule()->entry_computation() &&
+         value.defining_instruction()->opcode() == HloOpcode::kParameter &&
          (!value.shape().has_layout() ||
           value.shape().layout().memory_space() !=
               options.alternate_memory_space) &&
-         value.index().size() == 1 && value.shape().IsArray() &&
+         value.index().size() <= 1 && value.shape().IsArray() &&
          !value.uses().empty() &&
          options.size_fn(value) <= options.max_size_in_bytes &&
          absl::c_all_of(value.uses(), [&](const HloUse& use) {
@@ -83,15 +84,17 @@ bool IsCrossProgramPrefetchCandidate(const HloValue& value,
                use.instruction->operand(use.operand_number);
 
            // Skip the LooksLikeAnActivation test since we're testing the
-           // parent GTE and its children below.
+           // parent GTE/parameter and its children below.
            if (inst->opcode() == HloOpcode::kBitcast &&
-               inst->operand(0)->opcode() == HloOpcode::kGetTupleElement &&
-               inst->operand(0)->operand(0)->opcode() ==
-                   HloOpcode::kParameter) {
+               ((inst->operand(0)->opcode() == HloOpcode::kGetTupleElement &&
+                 inst->operand(0)->operand(0)->opcode() ==
+                     HloOpcode::kParameter) ||
+                inst->operand(0)->opcode() == HloOpcode::kParameter)) {
              return true;
            }
 
-           return inst->opcode() == HloOpcode::kGetTupleElement &&
+           return (inst->opcode() == HloOpcode::kGetTupleElement ||
+                   inst->opcode() == HloOpcode::kParameter) &&
                   !LooksLikeAnActivation(inst);
          });
 }
@@ -821,6 +824,7 @@ bool MemorySpaceAssignment::Allocation::operator==(
          uses() == other.uses() && memory_space() == other.memory_space() &&
          chunk() == other.chunk() && start_time() == other.start_time() &&
          end_time() == other.end_time() &&
+         earliest_available_time() == other.earliest_available_time() &&
          is_copy_allocation() == other.is_copy_allocation() &&
          is_scoped_allocation() == other.is_scoped_allocation();
 }
@@ -1216,7 +1220,30 @@ void AlternateMemoryBestFitHeap::DumpDebugStringsIfEnabled() const {
 }
 
 HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
+  if (options_.autotuning_config.has_value()) {
+    CHECK_EQ((*options_.autotuning_config).size(), buffer_intervals_.size());
+  }
+
   AllocateReservedScopedAllocations();
+  std::vector<BufferInterval> sorted_buffer_intervals =
+      GetSortedBufferIntervals();
+  memory_space_assignment::CustomizeSortedBufferInterval(
+      options_.autotuning_config, sorted_buffer_intervals);
+
+  // Calculate the memory pressure for the buffers that can be assigned in the
+  // alternate memory.
+  memory_pressure_ = 0;
+  for (auto& interval : sorted_buffer_intervals) {
+    if (!interval.need_allocation ||
+        !MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
+            interval) ||
+        interval.size > available_heap_size()) {
+      continue;
+    }
+    memory_pressure_ += interval.size;
+  }
+  VLOG(1) << "Memory pressure = " << memory_pressure_;
+
   if (options_.enable_cross_program_prefetch) {
     absl::optional<AlternateMemoryBestFitHeap::BufferInterval>
         prefetch_candidate = FindCrossProgramPrefetchCandidate(
@@ -1228,8 +1255,6 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
     }
   }
 
-  std::vector<BufferInterval> sorted_buffer_intervals =
-      GetSortedBufferIntervals();
 
   VLOG(1) << "Assigning buffers to alternate memory. Max heap size = "
           << options_.max_size_in_bytes;
@@ -1831,9 +1856,10 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
           << ", buffer occupied ratio = " << buffer_occupied_ratio;
   // Freeing buffer only makes sense if the buffer will be free for a
   // substantial time. Only perform this optimization if the ratio is below the
-  // limit.
+  // limit, and if the memory pressure is above the alternate memory size.
   bool free_buffer =
       (options_.enable_cross_program_prefetch_freeing &&
+       memory_pressure_ > options_.max_size_in_bytes &&
        buffer_occupied_ratio < kCrossProgramPrefetchOccupyFreeingLimit &&
        end_of_program_prefetch_start_time > last_use_time &&
        end_of_program_prefetch_start_time < end_of_program_prefetch_end_time);

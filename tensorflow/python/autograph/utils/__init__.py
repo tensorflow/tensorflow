@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utility module that contains APIs usable in the generated code."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.utils.context_managers import control_dependency_on_returns
 from tensorflow.python.autograph.utils.misc import alias_tensors
 from tensorflow.python.autograph.utils.py_func import wrap_py_func

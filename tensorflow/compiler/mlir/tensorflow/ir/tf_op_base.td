@@ -163,6 +163,8 @@ def TF_DatasetMemoryCacheResource : TF_ResourceBase<"DatasetMemoryCache">;
 def TF_DatasetIteratorResource : TF_ResourceBase<"DatasetIterator">;
 def TF_TPUEmbeddingResource : TF_ResourceBase<"TPUEmbedding">;
 def TF_GeneratorOpResource : TF_ResourceBase<"GeneratorOp">;
+def TF_SendRecvResource : TF_ResourceBase<"SendRecv">;
+def TF_TPUCompileExecuteResource : TF_ResourceBase<"TPUCompileExecute">;
 
 // Value-based side effects
 //
@@ -220,6 +222,8 @@ def TF_GeneratorOpSideEffect : MemoryEffects<[MemWrite<TF_GeneratorOpResource>]>
 // b/196857154), or once MLIR supports a trait to mark an op as not dead, this
 // hack can be removed.
 def TF_TPUEmbeddingSideEffect : MemoryEffects<[MemWrite<TF_TPUEmbeddingResource>]>;
+def TF_SendRecvSideEffect : MemoryEffects<[MemWrite<TF_SendRecvResource>]>;
+def TF_TPUCompileExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUCompileExecuteResource>]>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
@@ -429,6 +433,9 @@ def TF_FpOrComplexTensor : TensorOf<[TF_Float, TF_Complex]>;
 def TF_Number : AnyTypeOf<
   [TF_Int, TF_Float, TF_Quantized, TF_Complex], "number">;
 def TF_NumberTensor : TensorOf<[TF_Number]>;
+
+def TF_NumberNotQuantizedTensor : TensorOf<
+  [TF_Float, TF_SInt, TF_Complex, TF_Uint8]>;
 
 def TF_NumberNotQuantizedOrStr :
   AnyTypeOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Str]>;

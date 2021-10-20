@@ -59,6 +59,9 @@ inline const strings::AlphaNum& PrepareForStrCat(const strings::AlphaNum& a) {
 
 }  // namespace internal
 
+// Maps UNIX errors into a Status.
+Status IOError(const string& context, int err_number);
+
 // Returns all payloads from a Status as a key-value map.
 inline std::unordered_map<std::string, std::string> GetPayloads(
     const ::tensorflow::Status& status) {

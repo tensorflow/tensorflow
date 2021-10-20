@@ -127,9 +127,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputNames(JNIEnv* env,
   if (interpreter == nullptr) return nullptr;
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can not find java/lang/String class to get "
-                   "input names.");
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: Can not find java/lang/String class to "
+                     "get input names.");
+    }
     return nullptr;
   }
   size_t size = interpreter->inputs().size();
@@ -200,9 +202,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureKeys(
   if (interpreter == nullptr) return nullptr;
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can not find java/lang/String class to get "
-                   "SignatureDef keys.");
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: Can not find java/lang/String class to "
+                     "get SignatureDef keys.");
+    }
     return nullptr;
   }
   const auto& signature_keys = interpreter->signature_keys();
@@ -282,9 +286,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputNames(JNIEnv* env,
   if (interpreter == nullptr) return nullptr;
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can not find java/lang/String class to get "
-                   "output names.");
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: Can not find java/lang/String class to "
+                     "get output names.");
+    }
     return nullptr;
   }
   size_t size = interpreter->outputs().size();
@@ -383,12 +389,23 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createXNNPACKDelegate(
     jclass xnnpack_delegate_class =
         env->FindClass("org/tensorflow/lite/XnnpackDelegate");
     if (xnnpack_delegate_class == nullptr) {
-      ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                     "Internal error: "
-                     "Can't find org/tensorflow/lite/XnnpackDelegate class");
+      if (!env->ExceptionCheck()) {
+        ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                       "Internal error: "
+                       "Can't find org/tensorflow/lite/XnnpackDelegate class");
+      }
+      return 0;
     }
     jmethodID constructor =
         env->GetMethodID(xnnpack_delegate_class, "<init>", "(JJ)V");
+    if (constructor == nullptr) {
+      if (!env->ExceptionCheck()) {
+        ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                       "Internal error: Can't find "
+                       "org/tensorflow/lite/XnnpackDelegate constructor");
+      }
+      return 0;
+    }
     jobject xnnpack_delegate = env->NewObject(
         xnnpack_delegate_class, constructor, delegate_handle, delete_handle);
     return reinterpret_cast<jlong>(xnnpack_delegate);
@@ -477,42 +494,52 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle,
-    jint num_threads, jobject delegate_list) {
+    jint num_threads, jobject delegate_handle_list) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
 
   static jclass list_class = env->FindClass("java/util/List");
   if (list_class == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can't find java.util.List class.");
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: Can't find java.util.List class.");
+    }
     return 0;
   }
   static jmethodID list_size_method =
       env->GetMethodID(list_class, "size", "()I");
   if (list_size_method == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can't find java.util.List.size method.");
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: Can't find java.util.List.size method.");
+    }
     return 0;
   }
   static jmethodID list_get_method =
       env->GetMethodID(list_class, "get", "(I)Ljava/lang/Object;");
   if (list_get_method == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can't find java.util.List.get method.");
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: Can't find java.util.List.get method.");
+    }
     return 0;
   }
-  static jclass delegate_class = env->FindClass("org/tensorflow/lite/Delegate");
-  if (delegate_class == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: "
-                   "Can't find org.tensorflow.lite.Delegate class.");
+  static jclass long_class = env->FindClass("java/lang/Long");
+  if (long_class == nullptr) {
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: "
+                     "Can't find java.lang.Long class.");
+    }
     return 0;
   }
-  static jmethodID delegate_get_native_handle_method =
-      env->GetMethodID(delegate_class, "getNativeHandle", "()J");
-  if (delegate_get_native_handle_method == nullptr) {
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Internal error: Can't find org.tensorflow.lite.Delegate "
-                   "getNativeHandle method.");
+  static jmethodID long_value_method =
+      env->GetMethodID(long_class, "longValue", "()J");
+  if (long_value_method == nullptr) {
+    if (!env->ExceptionCheck()) {
+      ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                     "Internal error: "
+                     "Can't find java.lang.Long longValue method.");
+    }
     return 0;
   }
 
@@ -530,20 +557,20 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
 
   // Add delegate_list to interpreter_builder.
 
-  // Java: int size = delegate_list->size();
-  jint size = env->CallIntMethod(delegate_list, list_size_method);
+  // Java: int size = delegate_list.size();
+  jint size = env->CallIntMethod(delegate_handle_list, list_size_method);
   for (jint i = 0; i < size; ++i) {
-    // Java: Object jdelegate = delegate_list->get(i);
-    jobject jdelegate =
-        env->CallObjectMethod(delegate_list, list_get_method, i);
-    if (jdelegate == nullptr) {
+    // Java: Long jdelegate_handle = delegate_handle_list->get(i);
+    jobject jdelegate_handle =
+        env->CallObjectMethod(delegate_handle_list, list_get_method, i);
+    if (jdelegate_handle == nullptr) {
       ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: null Delegate");
+                     "Internal error: null Delegate handle");
       return 0;
     }
-    // Java: long delegate_handle = jdelegate->getNativeHandle();
+    // Java: long delegate_handle = jdelegate_handle.longValue();
     jlong delegate_handle =
-        env->CallLongMethod(jdelegate, delegate_get_native_handle_method);
+        env->CallLongMethod(jdelegate_handle, long_value_method);
     if (delegate_handle == 0) {
       ThrowException(env, tflite::jni::kIllegalArgumentException,
                      "Internal error: Found invalid handle");

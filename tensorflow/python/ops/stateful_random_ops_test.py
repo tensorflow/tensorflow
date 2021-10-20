@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for stateful_random_ops.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import re
 

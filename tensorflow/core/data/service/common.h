@@ -32,6 +32,11 @@ namespace data {
 // between tf.data servers.
 constexpr int kDataServiceVersion = 3;
 
+// If the user starts a colocated tf.data worker on each TF host, the worker
+// will be applied a "COLOCATED" tag. This is used to avoid reading from tf.data
+// workers on other TF hosts when the host runs a local tf.data service worker.
+constexpr absl::string_view kColocatedWorkerTag = "COLOCATED";
+
 // Returns true if `processing_mode` specifies no sharding policy.
 bool IsNoShard(const ProcessingModeDef& processing_mode);
 

@@ -63,6 +63,32 @@ struct CudaComputeCapability {
     return !(*this == other);
   }
 
+  // Maximum resident blocks per multiprocessor, values taken from
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities.
+  int GetMaxResidentBlocksPerSM() const {
+    if (IsAtLeast(8, 6)) {
+      return 16;
+    } else if (IsAtLeast(8)) {
+      return 32;
+    } else if (IsAtLeast(7, 5)) {
+      return 16;
+    }
+    return 32;
+  }
+
+  // Maximum resident warps per multiprocessor, values taken from
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities.
+  int GetMaxResidentWarpsPerSM() const {
+    if (IsAtLeast(8, 6)) {
+      return 48;
+    } else if (IsAtLeast(8)) {
+      return 64;
+    } else if (IsAtLeast(7, 5)) {
+      return 32;
+    }
+    return 64;
+  }
+
   std::string ToString() const { return absl::StrCat(major, ".", minor); }
 
   std::pair<int, int> ToPair() const { return std::make_pair(major, minor); }

@@ -215,6 +215,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
+      interleave_depth_ = ctx->interleave_depth();
+
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
@@ -334,6 +336,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           parallelism == -1
               ? kTraceInfoUnavailable
               : strings::Printf("%lld", static_cast<long long>(parallelism))));
+      result.push_back(std::make_pair(
+          "interleave_depth",
+          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -689,6 +694,12 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
     // Method for deregistering the cancellation callback.
     std::function<void()> deregister_fn_;
+
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree. We record the interleave depth so that it can be included in the
+    // trace metadata.
+    int64 interleave_depth_ = -1;
   };
 
   const DatasetBase* const input_;

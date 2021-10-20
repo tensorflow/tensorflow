@@ -61,8 +61,9 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
       num_threads > 0 ? CreateMultiThreadedHostContext(num_threads)
                       : CreateSingleThreadedHostContext();
 
+  TfCpuRtPipelineOptions tf_cpurt_opts;
   JitExecutable& jit_executable = CreateJitExecutable(
-      *host, mlir_input, function_name, lower_from_tensorflow);
+      *host, mlir_input, function_name, lower_from_tensorflow, tf_cpurt_opts);
 
   // Build an ExecutionContext from the HostContext.
   llvm::Expected<RCReference<RequestContext>> req_ctx =
@@ -113,7 +114,8 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
 
   // Execute once.
   b.executable->Execute(call_frame, b.exec_ctx);
-  if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
+  if (auto err =
+          b.executable->ReturnResults(b.converter, b.exec_ctx, &call_frame))
     LOG(FATAL) << "Failed to return compiled kernel results";
 }
 
@@ -139,7 +141,8 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
 
   for (auto _ : state) {
     b.executable->Execute(call_frame, b.exec_ctx);
-    if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
+    if (auto err =
+            b.executable->ReturnResults(b.converter, b.exec_ctx, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 

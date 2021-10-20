@@ -20,10 +20,6 @@ rule, then this function is overridden and will instead cause Tensorflow graphs
 to be compiled with XLA.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 def is_xla_enabled():
   """Returns true to state XLA should be enabled for Tensorflow tests."""
   return True

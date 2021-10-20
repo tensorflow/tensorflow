@@ -249,7 +249,9 @@ PyTypeChecker::MatchType PyInstanceChecker::Check(PyObject* value) {
   if (py_class_cache_.size() < kMaxItemsInCache) {
     Py_INCREF(type);
     auto insert_result = py_class_cache_.insert({type, result});
-    DCHECK(insert_result.second);
+    if (!insert_result.second) {
+      Py_DECREF(type);  // Result was added by a different thread.
+    }
   }
   return result;
 }

@@ -599,7 +599,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduce)) {
 
       ENTRY test_computation {
         id = u32[] replica-id()
-        start = (u32[], u32[]) all-reduce-start(id), to_apply=apply_op
+        start = u32[] all-reduce-start(id), to_apply=apply_op
         ROOT done = u32[] all-reduce-done(start)
       }
     )";
@@ -632,7 +632,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduceTwoOperands)) {
       ENTRY test_computation {
         id = u32[] replica-id()
         id2 = u32[] multiply(id, id)
-        start = ((u32[], u32[]), (u32[], u32[])) all-reduce-start(id, id2), to_apply=apply_op
+        start = (u32[], u32[]) all-reduce-start(id, id2), to_apply=apply_op
         ROOT done = (u32[], u32[]) all-reduce-done(start)
       }
     )";
