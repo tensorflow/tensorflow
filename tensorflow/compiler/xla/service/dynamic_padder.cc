@@ -1609,11 +1609,11 @@ StatusOr<bool> RewriteDynamicReshape(
     auto end = common_factors[i + 1];
     std::vector<int64_t> input_dims;
     std::vector<int64_t> output_dims;
-    input_dims.reserve(end.first - start.first - 1);
+    input_dims.reserve(end.first - start.first);
     for (int64_t dim = start.first; dim < end.first; ++dim) {
       input_dims.push_back(dim);
     }
-    output_dims.reserve(end.second - start.second - 1);
+    output_dims.reserve(end.second - start.second);
     for (int64_t dim = start.second; dim < end.second; ++dim) {
       output_dims.push_back(dim);
     }
