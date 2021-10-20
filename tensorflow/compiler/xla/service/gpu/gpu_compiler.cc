@@ -756,7 +756,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 
 #if BEF_EXECUTABLE
 static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
-                                           std::string entry_function_name) {
+                                           std::string entry_function_name,
+                                           HloModule* hlo_module) {
   if (!mlir_module) {
     return tensorflow::errors::FailedPrecondition(
         "No mlir module to lower to BEF.");
@@ -774,6 +775,13 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
   if (pm.run(mlir_module).failed()) {
     return InternalError(
         "Failed to lower LHLO to TFRT Dialect with gpu kernels.");
+  }
+
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    std::string tfrt_mlir;
+    llvm::raw_string_ostream tfrt_mlir_ostream(tfrt_mlir);
+    mlir_module.print(tfrt_mlir_ostream);
+    DumpToFileInDirOrStdout(*hlo_module, "", "tfrt_mlir", tfrt_mlir);
   }
 
   // TFRT Dialect -> BEF
@@ -892,8 +900,9 @@ static Status CompileModuleToLlvmIrImpl(
   }
 
 #if BEF_EXECUTABLE
-  TF_ASSIGN_OR_RETURN(results->thunks_or_bef,
-                      LowerToBef(*mlir_module, entry_function.getName().str()));
+  TF_ASSIGN_OR_RETURN(
+      results->thunks_or_bef,
+      LowerToBef(*mlir_module, entry_function.getName().str(), hlo_module));
 #else   // BEF_EXECUTABLE
   results->thunks_or_bef =
       absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
