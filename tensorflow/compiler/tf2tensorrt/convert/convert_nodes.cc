@@ -6502,6 +6502,7 @@ Status ConvertAddN(OpConverterParams* params) {
 
   // AddN doesn't support broadcast.
   std::vector<ITensorProxyPtr> tensor_inputs;
+  tensor_inputs.reserve(inputs.size());
   for (const auto& input : inputs) {
     if (input.is_tensor()) {
       tensor_inputs.push_back(input.tensor());
