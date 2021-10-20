@@ -826,6 +826,24 @@ GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/UInt8, uint8_t, uint8_t,
                        baseline_maximum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
+/// Test the experimental JIT-compiled kernels.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Int8, int8_t, int8_t,
+                       baseline_maximum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/UInt16, uint16_t, uint16_t,
+                       baseline_maximum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/UInt32, uint32_t, uint32_t,
+                       baseline_maximum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/UInt64, uint64_t, uint64_t,
+                       baseline_maximum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
+
 /// Test `tf.Minmum`.
 
 template <typename T>
@@ -851,6 +869,24 @@ GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Int64, int64_t, int64_t,
 GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/UInt8, uint8_t, uint8_t,
                        baseline_minimum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+
+/// Test the experimental JIT-compiled kernels.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Int8, int8_t, int8_t,
+                       baseline_minimum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/UInt16, uint16_t, uint16_t,
+                       baseline_minimum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/UInt32, uint32_t, uint32_t,
+                       baseline_minimum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/UInt64, uint64_t, uint64_t,
+                       baseline_minimum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
 
 /// Test `tf.Mul`.
 

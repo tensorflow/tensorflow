@@ -1207,6 +1207,12 @@ gpu_kernel_library(
 [
     gpu_kernel_library(
         name = "gpu_" + op + "_kernels",
+        jit_types = [
+            "i8",
+            "ui16",
+            "ui32",
+            "ui64",
+        ],
         op = op,
         tile_size = "1024",
         types = [
