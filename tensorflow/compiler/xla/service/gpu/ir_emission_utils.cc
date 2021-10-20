@@ -386,7 +386,7 @@ bool IsReductionFromOrToContiguousDimensions(mlir::Operation* op) {
   Shape operand_shape = GetShape(first_input);
 
   std::vector<int64_t> dimensions_to_reduce;
-  const auto dimensions = reduce.dimensions();
+  const auto& dimensions = reduce.dimensions();
   dimensions_to_reduce.reserve(dimensions.size());
   for (const llvm::APInt& d : dimensions) {
     dimensions_to_reduce.push_back(d.getZExtValue());
@@ -432,7 +432,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
   mlir::Value input = reduce->getOperand(0);
   Shape operand_shape = GetShape(input);
   std::vector<int64_t> dimensions_to_reduce;
-  const auto dimensions = mlir::cast<mlir::mhlo::ReduceOp>(reduce).dimensions();
+  const auto& dimensions = mlir::cast<mlir::mhlo::ReduceOp>(reduce).dimensions();
   dimensions_to_reduce.reserve(dimensions.size());
   for (const llvm::APInt& d : dimensions) {
     dimensions_to_reduce.push_back(d.getZExtValue());
