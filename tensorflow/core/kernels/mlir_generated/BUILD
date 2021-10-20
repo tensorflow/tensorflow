@@ -1380,6 +1380,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_pow_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+    ],
     op = "pow",
     tile_size = "1024",
     types = [
