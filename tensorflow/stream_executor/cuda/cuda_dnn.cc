@@ -4536,17 +4536,29 @@ port::Status CudnnSupport::GetConvolveRunners(
     }
 
     for (const auto& algo : algorithms) {
-      SE_ASSIGN_OR_RETURN(
-          auto runner,
-          ConvolveRunnerFromDesc(algo, kind, input_type, output_type,
-                                 input_descriptor, filter_descriptor,
-                                 output_descriptor, convolution_descriptor));
+      auto runner_or = ConvolveRunnerFromDesc(
+          algo, kind, input_type, output_type, input_descriptor,
+          filter_descriptor, output_descriptor, convolution_descriptor);
+      if (!runner_or.ok()) {
+        // Failures here are not expected and should not be ignored silently.
+        // Still, we can hope other algorithms continue to work.
+        LOG(ERROR) << "ConvolveRunnerFromDesc failed: " << runner_or.status();
+        continue;
+      }
+      auto runner = runner_or.ConsumeValueOrDie();
 
       CudnnConvolutionDescriptor conv(
           convolution_descriptor,
           ToCudnnDataType(GetConvAccumulatorType(input_type)));
-      SE_ASSIGN_OR_RETURN(bool use_tensor_ops,
-                          UseTensorOps(stream, input_type, algo));
+
+      auto use_tensor_ops_or = UseTensorOps(stream, input_type, algo);
+      if (!use_tensor_ops_or.ok()) {
+        // This "fails" when some global config indicates we shouldn't enable
+        // tensor ops on float32.  This actually just means we should exclude
+        // this algorithm from consideration.
+        continue;
+      }
+      bool use_tensor_ops = use_tensor_ops_or.ValueOrDie();
       conv.set_use_tensor_op_math(use_tensor_ops);
 
       out_exec_plans->push_back(std::make_unique<CudnnLegacyConvRunner>(
