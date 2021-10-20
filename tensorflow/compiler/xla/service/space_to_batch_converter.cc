@@ -210,9 +210,8 @@ class ConvolutionVisitor {
   // Duplicates elements at boundaries.
   StatusOr<HloInstruction*> HaloDuplicateWithSlice(
       HloInstruction* activations, int64_t spatial_dimension_to_split,
-      int64_t activations_batch_dim, int64_t old_batch_size,
-      int64_t low_padding, int64_t high_padding, int64_t halo_size,
-      int64_t original_split_dim_size, HloInstruction* pad_val = nullptr);
+      int64_t activations_batch_dim, int64_t low_padding, int64_t halo_size,
+      HloInstruction* pad_val = nullptr);
 
   // Runs the visitor on a computation.
   StatusOr<bool> Run();
@@ -459,8 +458,7 @@ bool ConvolutionVisitor::IsThisBackPropFilterConv(HloInstruction* convolution) {
 
 StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
     HloInstruction* activations, int64_t spatial_dimension_to_split,
-    int64_t activations_batch_dim, int64_t old_batch_size, int64_t low_padding,
-    int64_t high_padding, int64_t halo_size, int64_t original_split_dim_size,
+    int64_t activations_batch_dim, int64_t low_padding, int64_t halo_size,
     HloInstruction* pad_val) {
   const int64_t original_batch_size =
       activations->shape().dimensions(activations_batch_dim) /
@@ -1933,12 +1931,10 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
 
     const int64_t halo_size = last_overlap_point + window_size - new_space_size;
     if (halo_size > 0) {
-      TF_ASSIGN_OR_RETURN(first_operand,
-                          HaloDuplicateWithSlice(first_operand, new_space_dim,
-                                                 new_batch_dim, new_batch_size,
-                                                 /*low_padding=*/0,
-                                                 /*high_padding=*/0, halo_size,
-                                                 new_space_size, init_val));
+      TF_ASSIGN_OR_RETURN(
+          first_operand,
+          HaloDuplicateWithSlice(first_operand, new_space_dim, new_batch_dim,
+                                 /*low_padding=*/0, halo_size, init_val));
     }
 
     Window new_win;
@@ -2364,8 +2360,6 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
 
   const int64_t old_space_dim = original_conv_dims.input_spatial_dimensions(
       get_chosen_spatial_dim(convolution));
-  const int64_t old_split_dim_size =
-      convolution->mutable_operand(0)->shape().dimensions(old_space_dim);
 
   auto permuted_conv_dims_numbers = original_conv_dims;
 
@@ -2486,13 +2480,11 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
       activations_new,
       HaloDuplicateWithSlice(
           activations_new, c.spatial_dimension_to_split, activations_batch_dim,
-          old_batch_size,
           /*low_padding=*/c.base_dilation_factor != 1 &&
                   c.inherent_low_padding != 0
               ? (c.inherent_low_padding == c.base_dilation_factor ? 1 : 0)
               : c.inherent_low_padding,
-          c.inherent_high_padding, slice_size - spatial_split_size,
-          old_split_dim_size));
+          slice_size - spatial_split_size));
 
   // We will generate output such that batch is followed by the split spatial
   // dimension.
@@ -3003,10 +2995,8 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
     TF_ASSIGN_OR_RETURN(
         HloInstruction * activations_slice,
         HaloDuplicateWithSlice(activations_to_use, spatial_dimension_to_split,
-                               activations_batch_dim, old_batch_size,
-                               /*low_padding=*/1,
-                               /*high_padding=*/0,
-                               /*halo_size=*/0, old_split_dim_size));
+                               activations_batch_dim, /*low_padding=*/1,
+                               /*halo_size=*/0));
     activations_chunks.push_back(activations_slice);
   }
   // Reverse the low padding slices because we created them in the opposite
@@ -3034,13 +3024,12 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
     if (i == 0) {
       activations_to_use = activations_new;
       if (inherent_low_padding < 0) {
-        TF_ASSIGN_OR_RETURN(activations_slice,
-                            HaloDuplicateWithSlice(
-                                activations_to_use, spatial_dimension_to_split,
-                                activations_batch_dim, old_batch_size,
-                                /*low_padding=*/inherent_low_padding,
-                                /*high_padding=*/0,
-                                /*halo_size=*/0, old_split_dim_size));
+        TF_ASSIGN_OR_RETURN(
+            activations_slice,
+            HaloDuplicateWithSlice(
+                activations_to_use, spatial_dimension_to_split,
+                activations_batch_dim,
+                /*low_padding=*/inherent_low_padding, /*halo_size=*/0));
       } else {
         activations_slice = activations_to_use;
       }
@@ -3050,10 +3039,8 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
       TF_ASSIGN_OR_RETURN(
           activations_slice,
           HaloDuplicateWithSlice(activations_to_use, spatial_dimension_to_split,
-                                 activations_batch_dim, old_batch_size,
-                                 /*low_padding=*/-1,
-                                 /*high_padding=*/0,
-                                 /*halo_size=*/0, old_split_dim_size));
+                                 activations_batch_dim, /*low_padding=*/-1,
+                                 /*halo_size=*/0));
     }
 
     activations_chunks.push_back(activations_slice);
@@ -3077,9 +3064,8 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
     TF_ASSIGN_OR_RETURN(
         HloInstruction * activations_slice,
         HaloDuplicateWithSlice(activations_to_use, spatial_dimension_to_split,
-                               activations_batch_dim, old_batch_size,
-                               /*low_padding=*/-1, /*high_padding=*/0,
-                               /*halo_size=*/0, old_split_dim_size));
+                               activations_batch_dim,
+                               /*low_padding=*/-1, /*halo_size=*/0));
     activations_chunks.push_back(activations_slice);
   }
 
@@ -3343,9 +3329,6 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
   int64_t activations_batch_dim = dim_numbers.input_batch_dimension();
 
-  const int64_t old_batch_size =
-      convolution->operand(0)->shape().dimensions(activations_batch_dim);
-
   auto activations = convolution->mutable_operand(0);
 
   VLOG(1) << "spatial size " << c.spatial_size;
@@ -3440,10 +3423,10 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
       activations,
       HaloDuplicateWithSlice(
           batch_increased_reshape, spatial_dimension_to_split,
-          activations_batch_dim, old_batch_size,
+          activations_batch_dim,
           /*low_padding=*/
           handle_low_pad_in_first_reshape ? 0 : low_pad_to_handle_base_dilation,
-          /*high_padding=*/0, c.halo_size, c.input_dim_size));
+          c.halo_size));
 
   VLOG(1) << "Batch merge done " << activations->ToString();
 
