@@ -588,6 +588,7 @@ tf_cuda_cc_test(
             "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
         ],
     ),
+    shard_count = 20,
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
     ],
@@ -1244,6 +1245,11 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_floor_div_kernels",
+    jit_types = [
+        "i8",
+        "ui32",
+        "ui64",
+    ],
     op = "floor_div",
     tile_size = "1024",
     types = [
@@ -1251,8 +1257,6 @@ gpu_kernel_library(
         "f32",
         "i16",
         "i64",
-        "ui8",
-        "ui16",
         "f64",
     ],
     unroll_factors = "4",

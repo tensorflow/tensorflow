@@ -499,6 +499,18 @@ Eigen::half baseline_floor_div(Eigen::half lhs, Eigen::half rhs) {
   return static_cast<Eigen::half>(std::floor(static_cast<float>(lhs / rhs)));
 }
 
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+template <>
+int8_t baseline_floor_div(int8_t lhs, int8_t rhs) {
+  int8_t res = lhs / rhs;
+  if (((lhs < 0 && rhs > 0) || (lhs > 0 && rhs < 0)) && lhs % rhs) {
+    --res;
+  }
+  return res;
+}
+#endif
+
 template <>
 int16_t baseline_floor_div(int16_t lhs, int16_t rhs) {
   int16_t res = lhs / rhs;
@@ -517,6 +529,14 @@ int64_t baseline_floor_div(int64_t lhs, int64_t rhs) {
   return res;
 }
 
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+template <>
+uint64_t baseline_floor_div(uint64_t lhs, uint64_t rhs) {
+  return lhs / rhs;
+}
+#endif
+
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     FloorDiv,
     /*test_name=*/UInt8, uint8_t, uint8_t, test::DefaultInput<uint8_t>(),
@@ -527,6 +547,24 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/UInt16, uint16_t, uint16_t, test::DefaultInput<uint16_t>(),
     test::DefaultInputNonZero<uint16_t>(), baseline_floor_div,
     test::OpsTestConfig().ExpectStrictlyEqual());
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/Int8, int8_t, int8_t, test::DefaultInput<int8_t>(),
+    test::DefaultInputNonZero<int8_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/UInt32, uint32_t, uint32_t, test::DefaultInput<uint32_t>(),
+    test::DefaultInputNonZero<uint32_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/UInt64, uint64_t, uint64_t, test::DefaultInput<uint64_t>(),
+    test::DefaultInputNonZero<uint64_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
+#endif
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     FloorDiv,
     /*test_name=*/Int16, int16_t, int16_t, test::DefaultInput<int16_t>(),
