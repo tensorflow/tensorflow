@@ -736,7 +736,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // Create the inner loop to iterate over the window.
   llvm_ir::ForLoopNest window_loops(IrName(select_and_scatter, "window"), &b_);
   std::vector<int64_t> window_size;
-  const auto dimensions = window.dimensions();
+  const auto& dimensions = window.dimensions();
   window_size.reserve(dimensions.size());
   for (const auto& dim : dimensions) {
     window_size.push_back(dim.size());
@@ -1926,7 +1926,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
 
   // Determine the dimensions that get lowered as loops.
   std::vector<int64_t> outer_dims;
-  const int64_t n = num_dims - inner_dims.size() - 1;
+  const int64_t n = num_dims - inner_dims.size() + 1;
   outer_dims.reserve(n);
   for (int64_t i = 0; i < n; ++i) {
     outer_dims.push_back(LayoutUtil::Major(layout, i));
