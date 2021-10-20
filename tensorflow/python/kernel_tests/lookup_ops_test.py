@@ -35,6 +35,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -616,13 +617,20 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     def size():
       return root.table.size()
 
+    @def_function.function(input_signature=[])
+    def is_ref_counting():
+      return test_ops.is_resource_handle_ref_counting(
+          root.table.resource_handle)
+
     root.lookup = lookup
     root.size = size
+    root.is_ref_counting = is_ref_counting
 
     self.assertEqual(root.table.size(), 3)
     self.assertEqual(root.lookup(12), 1)
     self.assertEqual(root.lookup(10), -1)
     self.assertLen(root.table.export()[0], 3)
+    self.assertEqual(root.is_ref_counting(), is_anonymous)
 
     saved_model_save.save(root, save_path)
 
@@ -631,6 +639,7 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertEqual(loaded.size(), 3)
     self.assertEqual(loaded.lookup(12), 1)
     self.assertEqual(loaded.lookup(10), -1)
+    self.assertEqual(loaded.is_ref_counting(), is_anonymous)
 
 
 @parameterized.named_parameters(
@@ -1456,12 +1465,19 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     def size():
       return root.table.size()
 
+    @def_function.function(input_signature=[])
+    def is_ref_counting():
+      return test_ops.is_resource_handle_ref_counting(
+          root.table.resource_handle)
+
     root.lookup = lookup
     root.size = size
+    root.is_ref_counting = is_ref_counting
 
     self.assertEqual(root.table.size(), 4)
     self.assertEqual(root.lookup(12), 1)
     self.assertEqual(root.lookup(10), 3)
+    self.assertEqual(root.is_ref_counting(), is_anonymous)
 
     saved_model_save.save(root, save_path)
 
@@ -1470,6 +1486,7 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertEqual(loaded.size(), 4)
     self.assertEqual(loaded.lookup(12), 1)
     self.assertEqual(loaded.lookup(10), 3)
+    self.assertEqual(loaded.is_ref_counting(), is_anonymous)
 
 
 @parameterized.named_parameters(
@@ -2039,8 +2056,14 @@ class DenseHashTableOpTest(test.TestCase):
     def size():
       return root.table.size()
 
+    @def_function.function(input_signature=[])
+    def is_ref_counting():
+      return test_ops.is_resource_handle_ref_counting(
+          root.table.resource_handle)
+
     root.lookup = lookup
     root.size = size
+    root.is_ref_counting = is_ref_counting
 
     self.assertEqual(root.table.size(), 0)
     root.table.insert(keys, values)
@@ -2048,6 +2071,7 @@ class DenseHashTableOpTest(test.TestCase):
     self.assertEqual(root.table.lookup(12), 1)
     self.assertEqual(root.table.lookup(10), -1)
     self.assertEqual(len(root.table.export()[0]), 32)
+    self.assertEqual(root.is_ref_counting(), is_anonymous)
 
     saved_model_save.save(root, save_path)
 
@@ -2056,6 +2080,7 @@ class DenseHashTableOpTest(test.TestCase):
     self.assertEqual(loaded.size(), 3)
     self.assertEqual(loaded.lookup(12), 1)
     self.assertEqual(loaded.lookup(10), -1)
+    self.assertEqual(loaded.is_ref_counting(), is_anonymous)
 
   @test_util.run_v1_only("Saver V1 only")
   def testVectorSaveRestore(self, is_anonymous):
@@ -3554,8 +3579,14 @@ class MutableHashTableOpTest(test.TestCase):
     def size():
       return root.table.size()
 
+    @def_function.function(input_signature=[])
+    def is_ref_counting():
+      return test_ops.is_resource_handle_ref_counting(
+          root.table.resource_handle)
+
     root.lookup = lookup
     root.size = size
+    root.is_ref_counting = is_ref_counting
 
     self.assertEqual(root.table.size(), 0)
     root.table.insert(keys, values)
@@ -3563,6 +3594,7 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertEqual(root.table.lookup(12), 1)
     self.assertEqual(root.table.lookup(10), -1)
     self.assertEqual(len(root.table.export()[0]), 3)
+    self.assertEqual(root.is_ref_counting(), is_anonymous)
 
     saved_model_save.save(root, save_path)
 
@@ -3571,6 +3603,7 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertEqual(loaded.size(), 3)
     self.assertEqual(loaded.lookup(12), 1)
     self.assertEqual(loaded.lookup(10), -1)
+    self.assertEqual(loaded.is_ref_counting(), is_anonymous)
 
   @test_util.run_v1_only("Multiple sessions")
   def testSharing(self, is_anonymous):
