@@ -990,24 +990,28 @@ std::complex<double> baseline_sign(std::complex<double> x) {
 
 GENERATE_DEFAULT_TEST(Sign, DT_FLOAT, DT_FLOAT, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TEST(Sign, DT_DOUBLE, DT_DOUBLE, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
-
 // TODO(b/162577610): We should actually use ExpectStrictlyEqual()
 // here. This requires returning 0.0 for input -0.0.
 GENERATE_DEFAULT_TEST_2(Sign, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_sign, test::OpsTestConfig())
-
 GENERATE_DEFAULT_TEST(Sign, DT_INT64, DT_INT64, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TEST_2(Sign, DT_COMPLEX64, DT_COMPLEX128, DT_COMPLEX64,
                         DT_COMPLEX128, baseline_sign,
                         test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TEST(Sign, DT_COMPLEX128, DT_COMPLEX128, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
+
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TEST(Sign, DT_INT8, DT_INT8, baseline_sign,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Sign, DT_INT16, DT_INT16, baseline_sign,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
 
 /// Test `tf.Sin`.
 

@@ -906,6 +906,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_sign_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+    ],
     op = "sign",
     tile_size = "256",
     types = [
