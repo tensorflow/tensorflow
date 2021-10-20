@@ -75,7 +75,7 @@ class HloAliasAnalysisTest : public HloTestBase {
   // Return a vector containing all of the HloValues in the given buffer.
   std::vector<HloValue> GetValuesInBuffer(const HloBuffer& buffer) {
     std::vector<HloValue> values;
-    const auto buffer_values = buffer.values();
+    const auto& buffer_values = buffer.values();
     values.reserve(buffer_values.size());
     for (const HloValue* value : buffer_values) {
       values.push_back(*value);

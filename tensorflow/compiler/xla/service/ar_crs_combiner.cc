@@ -288,7 +288,7 @@ absl::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
     }
     case HloOpcode::kConditional: {
       std::vector<HloInstruction*> result_tuples;
-      auto branch_computations = instruction->branch_computations();
+      const auto& branch_computations = instruction->branch_computations();
       result_tuples.reserve(branch_computations.size());
       for (HloComputation* body : branch_computations) {
         if (body->root_instruction()->opcode() != HloOpcode::kTuple) {

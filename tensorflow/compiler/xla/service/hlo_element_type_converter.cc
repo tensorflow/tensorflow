@@ -175,7 +175,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       // First, convert the operands with eliminate_type_ to operands with
       // replace_with_type_.
       std::vector<HloInstruction*> new_operands;
-      auto operands = hlo->operands();
+      const auto& operands = hlo->operands();
       new_operands.reserve(operands.size());
       for (HloInstruction* operand : operands) {
         if (operand->shape().element_type() == eliminate_type_) {

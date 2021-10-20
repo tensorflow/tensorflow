@@ -57,7 +57,7 @@ Status IrEmitterNested::CodegenNestedComputation() {
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
   std::vector<int64_t> argument_dereferenceable_bytes;
-  const auto params = nested_computation_.parameter_instructions();
+  const auto& params = nested_computation_.parameter_instructions();
   const auto n = params.size() + 1;
   io_hlos.reserve(n - 1);
   argument_types.reserve(n);
