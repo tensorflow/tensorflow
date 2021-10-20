@@ -692,9 +692,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ string ShapeUtil::HumanString(const ProgramShape& program_shape) {
   std::vector<string> parameters;
-  const auto _parameters = program_shape.parameters();
-  parameters.reserve(_parameters.size());
-  for (const auto& shape : _parameters) {
+  const auto& shape_parameters = program_shape.parameters();
+  parameters.reserve(shape_parameters.size());
+  for (const auto& shape : shape_parameters) {
     const int i = parameters.size();
     parameters.push_back(StrCat(i < program_shape.parameter_names_size()
                                     ? program_shape.parameter_names(i)
