@@ -622,7 +622,7 @@ Status DatasetBase::ComputeNumSources() {
 }
 
 Status DatasetBase::ComputeCardinality() {
-  cardinality_ = this->Cardinality();
+  cardinality_ = this->CardinalityInternal();
   return Status::OK();
 }
 

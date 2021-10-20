@@ -38,7 +38,7 @@ class TakeDataset : public DatasetBase {
 
   string DebugString() const override;
 
-  int64_t Cardinality() const override;
+  int64_t CardinalityInternal() const override;
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
 

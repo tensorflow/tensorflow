@@ -182,7 +182,9 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       return "ThreadPoolDatasetOp::Dataset";
     }
 
-    int64_t Cardinality() const override { return input_->Cardinality(); }
+    int64_t CardinalityInternal() const override {
+      return input_->Cardinality();
+    }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
@@ -302,7 +304,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
     return "MaxIntraOpParallelismDatasetOp::Dataset";
   }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
@@ -443,7 +445,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
     return "PrivateThreadPoolDatasetOp::Dataset";
   }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();

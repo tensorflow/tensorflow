@@ -90,7 +90,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override { return "ModelDatasetOp::Dataset"; }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
