@@ -1129,9 +1129,9 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnRowValidPaddingTest) {
   EXPECT_THAT(
       m.GetDequantizedOutput(),
       ElementsAreArray({
-        9, 18, 0, 0, 45, 54, 0, 0,
-        9, 18, 0, 0, 45, 54, 0, 0,
-        9, 18, 0, 0, 45, 54, 0, 0
+        9, 18, 0, 0, 46, 55, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0
       }));
   // clang-format on
 }
@@ -1198,13 +1198,13 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnRowSamePaddingTest) {
       ElementsAreArray({
         // array of 9 x 8 => [1, 3, 3, 8]
         4, 8, 0, 0, 20, 24, 0, 0,
-        6, 12, 0, 0, 30, 36, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,
         4, 8, 0, 0, 20, 24, 0, 0,
-        6, 12, 0, 0, 30, 36, 0, 0,
-        9, 18, 0, 0, 45, 54, 0, 0,
-        6, 12, 0, 0, 30, 36, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,
         4, 8, 0, 0, 20, 24, 0, 0,
-        6, 12, 0, 0, 30, 36, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,
         4, 8, 0, 0, 20, 24, 0, 0,
       }));
   // clang-format on
@@ -1269,8 +1269,8 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest,
   EXPECT_THAT(
       m.GetDequantizedOutput(),
       ElementsAreArray({
-        9, 18, 0, 0, 45, 54, 0, 0,
-        9, 18, 0, 0, 45, 54, 0, 0
+        9, 18, 0, 0, 46, 55, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0
       }));
   // clang-format on
 }
@@ -1334,15 +1334,15 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnBatchSamePaddingTest) {
       m.GetDequantizedOutput(),
       ElementsAreArray({
         // array of 9 x 16 => [2, 3, 3, 8]
-        4, 8,  0, 0, 20, 24, 0, 0,   6, 12, 0, 0, 30, 36, 0, 0,
-        4, 8,  0, 0, 20, 24, 0, 0,   6, 12, 0, 0, 30, 36, 0, 0,
-        9, 18, 0, 0, 45, 54, 0, 0,   6, 12, 0, 0, 30, 36, 0, 0,
-        4, 8,  0, 0, 20, 24, 0, 0,   6, 12, 0, 0, 30, 36, 0, 0,
+        4, 8,  0, 0, 20, 24, 0, 0,   6, 12, 0, 0, 30, 37, 0, 0,
+        4, 8,  0, 0, 20, 24, 0, 0,   6, 12, 0, 0, 30, 37, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0,   6, 12, 0, 0, 30, 37, 0, 0,
+        4, 8,  0, 0, 20, 24, 0, 0,   6, 12, 0, 0, 30, 37, 0, 0,
         4, 8,  0, 0, 20, 24, 0, 0,   4, 8,  0, 0, 20, 24, 0, 0,
-        6, 12, 0, 0, 30, 36, 0, 0,   4, 8,  0, 0, 20, 24, 0, 0,
-        6, 12, 0, 0, 30, 36, 0, 0,   9, 18, 0, 0, 45, 54, 0, 0,
-        6, 12, 0, 0, 30, 36, 0, 0,   4, 8,  0, 0, 20, 24, 0, 0,
-        6, 12, 0, 0, 30, 36, 0, 0,   4, 8,  0, 0, 20, 24, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,   4, 8,  0, 0, 20, 24, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,   9, 18, 0, 0, 46, 55, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,   4, 8,  0, 0, 20, 24, 0, 0,
+        6, 12, 0, 0, 30, 37, 0, 0,   4, 8,  0, 0, 20, 24, 0, 0,
       }));
   // clang-format on
 }
@@ -1475,10 +1475,10 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest,
   EXPECT_THAT(
       m.GetDequantizedOutput(),
       ElementsAreArray({
-        9, 18, 0, 0, 45, 54, 0, 0,
-        9, 18, 0, 0, 45, 54, 0, 0,
-        9, 18, 0, 0, 45, 54, 0, 0,
-        9, 18, 0, 0, 45, 54, 0, 0
+        9, 18, 0, 0, 46, 55, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0
       }));
   // clang-format on
 }
@@ -1536,8 +1536,8 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest,
   EXPECT_THAT(
       m.GetDequantizedOutput(),
       ElementsAreArray({
-        9, 18, 27, 36, 0, 0, 0, 0,
-        9, 18, 27, 36, 0, 0, 0, 0
+        9, 18, 27, 37, 0, 0, 0, 0,
+        9, 18, 27, 37, 0, 0, 0, 0
       }));
   // clang-format on
 }
@@ -1763,9 +1763,9 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
   m.Invoke();
   EXPECT_THAT(
       m.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({43, 48, 18.5, 22, 3, -4, -28, -36})));
+      ElementsAreArray(ArrayFloatNear({43, 48, 18.5, 22, 3, -4, -28.5, -36})));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({85, 95, 36, 43, 5, -9, -57, -73}));
+              ElementsAreArray({85, 95, 36, 43, 5, -9, -58, -73}));
 }
 
 // Same as previous test, except the shift will be mixed for the outputs.
@@ -1886,10 +1886,10 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({
                   // array of 9 x 8 => [1, 3, 3, 8]
-                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31, 36, 0, 0,
-                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31, 36, 0, 0,
-                  9, 18, 0, 0, 47, 54, 0, 0, 6, 12, 0, 0, 31, 36, 0, 0,
-                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31, 36, 0, 0,
+                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                  9, 18, 0, 0, 47, 54, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
                   4, 8,  0, 0, 21, 24, 0, 0,
               })));
 }

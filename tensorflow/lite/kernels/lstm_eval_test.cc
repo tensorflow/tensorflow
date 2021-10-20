@@ -625,7 +625,7 @@ void TestOneFullyQuantizedLSTM() {
 
   // Verify results.
   const std::vector<int16_t> expected_cell = {
-      7, 1, 3, 2, 0, 1, 0, 2, -2, 4, 1, 6, 4, 3, 0, 1, 2, 2, -2, 4,
+      7, 1, 3, 2, 0, 1, 0, 2, -2, 4, 1, 6, 4, 3, 0, 1, 0, 2, -2, 4,
   };
   const std::vector<int8_t> expected_activation = {
       50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50,

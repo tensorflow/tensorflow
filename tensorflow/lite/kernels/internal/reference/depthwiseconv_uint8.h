@@ -68,6 +68,8 @@ inline int32_t DepthwiseConvRound(int32_t x, int32_t quantized_multiplier,
   return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
 }
 
+// Single-rounding MultiplyByQuantizedMultiplier
+#if TFLITE_SINGLE_ROUNDING
 template <>
 inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kAwayFromZero>(
     int32_t x, int32_t quantized_multiplier, int shift) {
@@ -85,6 +87,27 @@ inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kUpward>(
     int32_t x, int32_t quantized_multiplier, int shift) {
   return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
 }
+// Double-rounding MultiplyByQuantizedMultiplier
+#else
+template <>
+inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kAwayFromZero>(
+    int32_t x, int32_t quantized_multiplier, int shift) {
+  return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
+}
+
+template <>
+inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kUpward>(
+    int32_t x, int32_t quantized_multiplier, int shift) {
+  using gemmlowp::SaturatingRoundingDoublingHighMul;
+  const int left_shift = shift > 0 ? shift : 0;
+  const int right_shift = shift > 0 ? 0 : -shift;
+  const int rounding_offset = right_shift > 0 ? 1 << (right_shift - 1) : 0;
+  return (SaturatingRoundingDoublingHighMul(x * (1 << left_shift),
+                                            quantized_multiplier) +
+          rounding_offset) >>
+         right_shift;
+}
+#endif  // TFLITE_SINGLE_ROUNDING
 
 template <DepthwiseConvOutputRounding output_rounding>
 struct DepthwiseConvBasicKernel {
@@ -283,11 +306,11 @@ inline void DepthwiseConv(
     const int32_t* bias_data, const RuntimeShape& output_shape,
     uint8_t* output_data) {
   return depthwise_conv::DepthwiseConvBasicKernel<
-      DepthwiseConvOutputRounding::kUpward>::Run(params, input_shape,
-                                                 input_data, filter_shape,
-                                                 filter_data, bias_shape,
-                                                 bias_data, output_shape,
-                                                 output_data);
+      DepthwiseConvOutputRounding::kAwayFromZero>::Run(params, input_shape,
+                                                       input_data, filter_shape,
+                                                       filter_data, bias_shape,
+                                                       bias_data, output_shape,
+                                                       output_data);
 }
 
 }  // namespace reference_ops

@@ -138,6 +138,8 @@ inline void BiasAndClamp(float clamp_min, float clamp_max, int bias_size,
 #endif
 }
 
+// Single-rounding MultiplyByQuantizedMultiplier
+#if TFLITE_SINGLE_ROUNDING
 inline int32_t MultiplyByQuantizedMultiplier(int32_t x,
                                              int32_t quantized_multiplier,
                                              int shift) {
@@ -225,7 +227,97 @@ inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
 
   return result;
 }
-#endif
+#endif  // USE_NEON
+// Double-rounding MultiplyByQuantizedMultiplier
+#else
+inline int32_t MultiplyByQuantizedMultiplierSmallerThanOneExp(
+    int32_t x, int32_t quantized_multiplier, int left_shift) {
+  using gemmlowp::RoundingDivideByPOT;
+  using gemmlowp::SaturatingRoundingDoublingHighMul;
+  return RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(x, quantized_multiplier), -left_shift);
+}
+
+inline int32_t MultiplyByQuantizedMultiplierGreaterThanOne(
+    int32_t x, int32_t quantized_multiplier, int left_shift) {
+  using gemmlowp::SaturatingRoundingDoublingHighMul;
+  return SaturatingRoundingDoublingHighMul(x * (1 << left_shift),
+                                           quantized_multiplier);
+}
+
+inline int32_t MultiplyByQuantizedMultiplier(int32_t x,
+                                             int32_t quantized_multiplier,
+                                             int shift) {
+  using gemmlowp::RoundingDivideByPOT;
+  using gemmlowp::SaturatingRoundingDoublingHighMul;
+  int left_shift = shift > 0 ? shift : 0;
+  int right_shift = shift > 0 ? 0 : -shift;
+  return RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(
+                                 x * (1 << left_shift), quantized_multiplier),
+                             right_shift);
+}
+
+inline int32_t MultiplyByQuantizedMultiplier(int64_t x,
+                                             int32_t quantized_multiplier,
+                                             int shift) {
+  // Inputs:
+  // - quantized_multiplier has fixed point at bit 31
+  // - shift is -31 to +7 (negative for right shift)
+  //
+  // Assumptions: The following input ranges are assumed
+  // - quantize_scale>=0  (the usual range is (1<<30) to (1>>31)-1)
+  // - scaling is chosen so final scaled result fits in int32_t
+  // - input x is in the range -(1<<47) <= x < (1<<47)
+  assert(quantized_multiplier >= 0);
+  assert(shift >= -31 && shift < 8);
+  assert(x >= -(static_cast<int64_t>(1) << 47) &&
+         x < (static_cast<int64_t>(1) << 47));
+
+  int32_t reduced_multiplier = (quantized_multiplier < 0x7FFF0000)
+                                   ? ((quantized_multiplier + (1 << 15)) >> 16)
+                                   : 0x7FFF;
+  int total_shift = 15 - shift;
+  x = (x * (int64_t)reduced_multiplier) + ((int64_t)1 << (total_shift - 1));
+  int32_t result = x >> total_shift;
+  return result;
+}
+
+#ifdef USE_NEON
+// Round uses ARM's rounding shift right.
+inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
+    int32x4x4_t input_val, int32_t quantized_multiplier, int shift) {
+  const int left_shift = std::max(shift, 0);
+  const int right_shift = std::min(shift, 0);
+  int32x4x4_t result;
+
+  int32x4_t multiplier_dup = vdupq_n_s32(quantized_multiplier);
+  int32x4_t left_shift_dup = vdupq_n_s32(left_shift);
+  int32x4_t right_shift_dup = vdupq_n_s32(right_shift);
+
+  result.val[0] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[0], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  result.val[1] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[1], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  result.val[2] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[2], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  result.val[3] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[3], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  return result;
+}
+#endif  // USE_NEON
+#endif  // TFLITE_SINGLE_ROUNDING
 
 template <typename T>
 int CountLeadingZeros(T integer_input) {

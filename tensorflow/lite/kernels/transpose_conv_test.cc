@@ -414,7 +414,7 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannelSingleChannel) {
 
   EXPECT_THAT(
       model.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({28, 62, 82, 76, 98, 192, 236, 198, 206,
+      ElementsAreArray(ArrayFloatNear({28, 62, 82, 76, 98, 192, 238, 198, 206,
                                        372, 416, 330, 262, 446, 486, 366},
                                       1e-5)));
 
