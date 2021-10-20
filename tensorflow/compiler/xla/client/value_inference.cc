@@ -44,7 +44,7 @@ namespace {
 Literal CreatePredLiteral(bool pred, const Shape& reference_shape) {
   if (reference_shape.IsTuple()) {
     std::vector<Literal> sub_literals;
-    const auto reference_shape_tuple_shapes = reference_shape.tuple_shapes();
+    const auto& reference_shape_tuple_shapes = reference_shape.tuple_shapes();
     sub_literals.reserve(reference_shape_tuple_shapes.size());
     for (const Shape& shape : reference_shape_tuple_shapes) {
       sub_literals.emplace_back(CreatePredLiteral(pred, shape));
@@ -65,7 +65,7 @@ Literal CreatePredLiteral(bool pred, const Shape& reference_shape) {
 Literal CreateS64Literal(int64_t value, const Shape& reference_shape) {
   if (reference_shape.IsTuple()) {
     std::vector<Literal> sub_literals;
-    const auto reference_shape_tuple_shapes = reference_shape.tuple_shapes();
+    const auto& reference_shape_tuple_shapes = reference_shape.tuple_shapes();
     sub_literals.reserve(reference_shape_tuple_shapes.size());
     for (const Shape& shape : reference_shape_tuple_shapes) {
       sub_literals.emplace_back(CreateS64Literal(value, shape));
