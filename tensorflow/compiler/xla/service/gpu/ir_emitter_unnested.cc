@@ -482,6 +482,11 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
   return first_slice_operand_shape;
 }
 
+// Returns a sanitized (doesn't need quoting) identifier name from a location.
+std::string GetIrNameFromLoc(mlir::Location loc) {
+  return llvm_ir::SanitizeConstantName(mlir::GetNameFromLoc(loc));
+}
+
 }  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
@@ -730,7 +735,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   // TODO(jurahul): Create an op to represent PadToStatic.
   auto pad_to_static = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
   int unroll_factor = 1;
-  std::string ir_name = mlir::GetNameFromLoc(pad_to_static.getLoc());
+  std::string ir_name = GetIrNameFromLoc(pad_to_static.getLoc());
 
   const Shape& input_shape = GetShape(pad_to_static.args().front());
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
@@ -851,7 +856,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   // TODO(jurahul): Create an op to represent SliceToDynamic.
   auto slice_to_dynamic = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
   int unroll_factor = 1;
-  std::string ir_name = mlir::GetNameFromLoc(slice_to_dynamic.getLoc());
+  std::string ir_name = GetIrNameFromLoc(slice_to_dynamic.getLoc());
 
   const Shape& input_shape = GetShape(slice_to_dynamic.args().front());
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
@@ -1964,7 +1969,7 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
       TF_RETURN_IF_ERROR(
           ParallelLoopEmitter(generator, ir_arrays.back(), launch_dimensions,
                               &b_, {unroll_factor})
-              .EmitLoop(IrName(mlir::GetNameFromLoc(fusion_op.getLoc())),
+              .EmitLoop(IrName(GetIrNameFromLoc(fusion_op.getLoc())),
                         GetIndexTypeForKernel(
                             fusion_op, launch_dimensions.launch_bound(), &b_)));
     }
@@ -2168,7 +2173,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
   TF_RETURN_IF_ERROR(AssertNonDeterminismIsOkay(
       mlir::GetNameFromLoc(select_and_scatter_op.getLoc())));
 
-  std::string name = mlir::GetNameFromLoc(select_and_scatter_op.getLoc());
+  std::string name = GetIrNameFromLoc(select_and_scatter_op.getLoc());
 
   // IrEmitterUnnested implements kSelectAndScatter as a SequentialThunk
   // consisting of two thunks, an initializer KernelThunk that initializes
@@ -2445,7 +2450,7 @@ Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
 
   if (!scatter_op.unique_indices()) {
     TF_RETURN_IF_ERROR(
-        AssertNonDeterminismIsOkay(mlir::GetNameFromLoc(scatter_op.getLoc())));
+        AssertNonDeterminismIsOkay(GetIrNameFromLoc(scatter_op.getLoc())));
   }
 
   TF_ASSIGN_OR_RETURN(auto operand_buffer,
@@ -2527,7 +2532,7 @@ Status IrEmitterUnnested::EmitScatter(
                                           /*is_fusion=*/false));
 
   ScatterDescriptor desc;
-  desc.name = mlir::GetNameFromLoc(scatter.getLoc());
+  desc.name = GetIrNameFromLoc(scatter.getLoc());
   desc.operand_shape = operand_shape;
   desc.scatter_indices_shape = GetShape(scatter.scatter_indices());
   desc.updates_shape = GetShape(scatter.updates());
@@ -3335,7 +3340,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
     slice.written = WritesMlirBuffer(op, operand);
     slice.shape = GetShape(operand);
   }
-  std::string name = mlir::GetNameFromLoc(op->getLoc());
+  std::string name = GetIrNameFromLoc(op->getLoc());
   return BuildKernelThunkImpl(name, thunk_info, slices, ir_arrays,
                               launch_dimensions);
 }
@@ -3365,7 +3370,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
       slice.written = true;
       slice.shape = GetShape(output);
     }
-    std::string name = mlir::GetNameFromLoc(op->getLoc());
+    std::string name = GetIrNameFromLoc(op->getLoc());
     return BuildKernelThunkImpl(name, thunk_info, slices, ir_arrays,
                                 launch_dimensions);
   }
@@ -3478,13 +3483,13 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
   const llvm_ir::IrArray init_array = ir_arrays[0];
   const llvm_ir::IrArray dest_array = ir_arrays[1];
 
-  std::string name = mlir::GetNameFromLoc(op->getLoc());
+  std::string name = GetIrNameFromLoc(op->getLoc());
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(
                          [=](const IrArray::Index& index) {
                            return init_array.EmitReadArrayElement(index, &b_);
                          },
                          dest_array, launch_dimensions, &b_)
-                         .EmitLoop(mlir::GetNameFromLoc(op->getLoc())));
+                         .EmitLoop(GetIrNameFromLoc(op->getLoc())));
 
   return std::move(kernel_thunk);
 }
@@ -3547,7 +3552,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildFusedInitializerThunk(
                       fused_emitter.GetGenerator(instr->operand(1)));
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(generator, dest_array, launch_dimensions, &b_)
-          .EmitLoop(mlir::GetNameFromLoc(fusion.getLoc())));
+          .EmitLoop(GetIrNameFromLoc(fusion.getLoc())));
   return {std::move(kernel_thunk)};
 }
 
@@ -4426,7 +4431,7 @@ void IrEmitterUnnested::EmitHlo021Tile(
     absl::Span<const int64_t> tiled_param_ids,
     const TilingScheme& tiling_scheme,
     const LaunchDimensions& launch_dimensions) {
-  std::string name = mlir::GetNameFromLoc(op->getLoc());
+  std::string name = GetIrNameFromLoc(op->getLoc());
 
   llvm::Type* index_type =
       GetIndexTypeForKernel(op, launch_dimensions.launch_bound(), &b_);
@@ -5561,7 +5566,7 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
                                                     ir_arrays, index);
           },
           element_shape, launch_dimensions, &b_)
-          .EmitLoop(IrName(mlir::GetNameFromLoc(fusion.getLoc())),
+          .EmitLoop(IrName(GetIrNameFromLoc(fusion.getLoc())),
                     GetIndexTypeForKernel(
                         fusion, launch_dimensions.launch_bound(), &b_));
 
@@ -5728,7 +5733,7 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(mlir::Operation* op) {
 }
 
 void MlirEmitterContext::SetOperation(mlir::Operation* op) {
-  this->name = mlir::GetNameFromLoc(op->getLoc());
+  this->name = GetIrNameFromLoc(op->getLoc());
 
   auto operands = GetHloOperands(op);
   auto outputs = GetHloOutputs(op);
