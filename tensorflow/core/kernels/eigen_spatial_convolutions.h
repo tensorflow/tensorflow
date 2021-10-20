@@ -25,6 +25,10 @@ limitations under the License.
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 
+#if defined(_MSC_VER)
+#define __restrict__ __restrict
+#endif
+
 namespace Eigen {
 namespace internal {
 
