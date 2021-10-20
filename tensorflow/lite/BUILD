@@ -810,6 +810,21 @@ cc_test(
     ],
 )
 
+# Test subgraph.
+cc_test(
+    name = "subgraph_test",
+    size = "small",
+    srcs = [
+        "core/subgraph_test.cc",
+    ],
+    deps = [
+        ":framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # Test signature runner.
 cc_test(
     name = "signature_runner_test",
