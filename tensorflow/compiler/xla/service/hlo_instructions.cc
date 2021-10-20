@@ -878,7 +878,7 @@ HloCollectivePermuteInstruction::ExtraAttributesToStringImpl(
   }
   if (!dynamic_slice_sizes_list().empty()) {
     std::vector<string> strs;
-    const auto sizes_list = dynamic_slice_sizes_list();
+    const auto& sizes_list = dynamic_slice_sizes_list();
     strs.reserve(sizes_list.size());
     for (const auto& slice_sizes : dynamic_slice_sizes_list()) {
       strs.push_back(StrCat("{", StrJoin(slice_sizes, ","), "}"));
