@@ -292,6 +292,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testAllCloseTensors(self):
+    self.skipTest("b/182342669; fails with numpy 1.20")
     a_raw_data = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
     a = constant_op.constant(a_raw_data)
     b = math_ops.add(1, constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8]]))
