@@ -52,7 +52,7 @@ namespace {
 // Finds the names of functions that are safe to optimize.
 absl::flat_hash_set<std::string> FindFunctionsToOptimize(
     const GraphDef& graph_def) {
-  // TODO(b/178423010): Add more functional ops.
+  // TODO(b/203689805): Add more functional ops.
   static const auto* const kOpWhitelist = new absl::flat_hash_set<std::string>{
       "PartitionedCall", "StatefulPartitionedCall"};
   absl::flat_hash_map<
