@@ -280,7 +280,6 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     del tape
 
   def testLookupAddGrad(self):
-    self.skipTest("b/182342669; fails with numpy 1.20")
     with backprop.GradientTape(persistent=True) as tape:
       k = constant_op.constant(1.0)
       k2 = constant_op.constant(2.0)
