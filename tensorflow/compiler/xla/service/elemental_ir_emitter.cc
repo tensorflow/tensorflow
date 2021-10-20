@@ -2821,7 +2821,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   const Window& window = reduce_window->window();
   llvm_ir::ForLoopNest loops(IrName(reduce_window), b_, index_type);
   std::vector<int64_t> window_size;
-  const auto dimensions = window.dimensions();
+  const auto& dimensions = window.dimensions();
   window_size.reserve(dimensions.size());
   for (const auto& dim : dimensions) {
     window_size.push_back(dim.size());
