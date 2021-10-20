@@ -2200,7 +2200,9 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
           inst->while_condition()->parameter_instruction(0)};
     } else if (inst->opcode() == HloOpcode::kConditional) {
       std::vector<HloInstruction*> comps{inst};
-      for (HloComputation* c : inst->called_computations()) {
+      const auto& called_computations = inst->called_computations();
+      comps.reserve(called_computations.size());
+      for (HloComputation* c : called_computations) {
         comps.push_back(c->root_instruction());
       }
       return comps;
