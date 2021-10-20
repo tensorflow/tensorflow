@@ -3547,6 +3547,15 @@ TEST_F(OpTest, XlaEinsum) {
   });
 }
 
+TEST_F(OpTest, XlaSort) {
+  Repeatedly([this]() {
+    auto dtype = Choose<DataType>(kAllXlaTypes);
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("XlaSort")
+                                             .RandomInput(dtype, RandomDims())
+                                             .Attr("T", dtype));
+  });
+}
+
 TEST_F(OpTest, ZerosLike) {
   GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
