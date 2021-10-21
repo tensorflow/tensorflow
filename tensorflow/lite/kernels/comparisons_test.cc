@@ -357,7 +357,6 @@ TEST(ComparisonsTest, GreaterEqualBroadcastTwoD) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 2, 4));
 }
 
-
 TEST(ComparisonsTest, LessFloat) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT32,
                           BuiltinOperator_LESS);
@@ -474,6 +473,22 @@ TEST(QuantizedComparisonsTest, EqualInt8Quantized) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, true, false));
 }
 
+TEST(QuantizedComparisonsTest, EqualInt16Quantized) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<int16_t>::max() /
+      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  ComparisonOpModel model(
+      {TensorType_INT16, {1, 2, 2, 1}, 1000 * kMin, 1000 * kMax},
+      {TensorType_INT16, {1, 2, 2, 1}, 2000 * kMin, 2000 * kMax},
+      TensorType_INT16, BuiltinOperator_EQUAL);
+  model.QuantizeAndPopulate<int16_t>(model.input1(), {1, -900, 999.939, 3});
+  model.QuantizeAndPopulate<int16_t>(model.input2(), {-1, 200, 999.939, 5});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, true, false));
+}
+
 TEST(QuantizedComparisonsTest, NotEqualUInt8Quantized) {
   const float kMin = -1.f;
   const float kMax = 128.f;
@@ -500,6 +515,22 @@ TEST(QuantizedComparisonsTest, NotEqualInt8Quantized) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, false, true));
 }
 
+TEST(QuantizedComparisonsTest, NotEqualInt16Quantized) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<int16_t>::max() /
+      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  ComparisonOpModel model(
+      {TensorType_INT16, {1, 2, 2, 1}, 1000 * kMin, 1000 * kMax},
+      {TensorType_INT16, {1, 2, 2, 1}, 2000 * kMin, 2000 * kMax},
+      TensorType_INT16, BuiltinOperator_NOT_EQUAL);
+  model.QuantizeAndPopulate<int16_t>(model.input1(), {0.977, -900, 999.939, 3});
+  model.QuantizeAndPopulate<int16_t>(model.input2(), {0.977, 200, 999.939, 5});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, false, true));
+}
+
 TEST(ComparisonsTest, GreaterQuantized) {
   const float kMin = -1.f;
   const float kMax = 128.f;
@@ -513,7 +544,7 @@ TEST(ComparisonsTest, GreaterQuantized) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, true, false));
 }
 
-TEST(ComparisonsTest, GreaterQuantizedSmallRange) {
+TEST(ComparisonsTest, GreaterUInt8QuantizedSmallRange) {
   ComparisonOpModel model({TensorType_UINT8, {1, 2, 2, 1}, 0.0, 1.0},
                           {TensorType_UINT8, {1, 2, 2, 1}, 0.0, 2.0},
                           TensorType_UINT8, BuiltinOperator_GREATER);
@@ -522,6 +553,33 @@ TEST(ComparisonsTest, GreaterQuantizedSmallRange) {
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, true, false));
+}
+
+TEST(ComparisonsTest, GreaterInt8QuantizedSmallRange) {
+  ComparisonOpModel model({TensorType_INT8, {1, 2, 2, 1}, -1.0, 1.0},
+                          {TensorType_INT8, {1, 2, 2, 1}, -2.0, 2.0},
+                          TensorType_INT8, BuiltinOperator_GREATER);
+  model.QuantizeAndPopulate<int8_t>(model.input1(), {-1.0, 0.5, -0.35, 0.1});
+  model.QuantizeAndPopulate<int8_t>(model.input2(), {-1.01, 0.25, -0.3, 0.4});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, true, false, false));
+}
+
+TEST(ComparisonsTest, GreaterInt16QuantizedSmallRange) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<int16_t>::max() /
+      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  ComparisonOpModel model(
+      {TensorType_INT16, {1, 2, 2, 1}, 1.0 * kMin, 1.0 * kMax},
+      {TensorType_INT16, {1, 2, 2, 1}, 2.0 * kMin, 2.0 * kMax},
+      TensorType_INT16, BuiltinOperator_GREATER);
+  model.QuantizeAndPopulate<int16_t>(model.input1(), {-1.0, 0.5, -0.35, 0.1});
+  model.QuantizeAndPopulate<int16_t>(model.input2(), {-1.01, 0.25, -0.3, 0.4});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, true, false, false));
 }
 
 TEST(ComparisonsTest, GreaterEqualQuantized) {
@@ -617,6 +675,28 @@ TEST(ComparisonsTest, QuantizedInt8NotEqualWithBroadcast) {
   }
 }
 
+TEST(ComparisonsTest, QuantizedInt16NotEqualWithBroadcast) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<int16_t>::max() /
+      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    ComparisonOpModel model(
+        {TensorType_INT16, test_shapes[i], 32767 * kMin, 32767 * kMax},
+        {TensorType_INT16, {}, 0 * kMin, 0 * kMax}, TensorType_INT16,
+        BuiltinOperator_NOT_EQUAL);
+    model.QuantizeAndPopulate<int16_t>(model.input1(),
+                                       {-32767, 2, 0, -8, 11, 32766});
+    model.QuantizeAndPopulate<int16_t>(model.input2(), {0});
+    model.Invoke();
+    EXPECT_THAT(model.GetOutput(),
+                ElementsAre(true, true, false, true, true, true))
+        << "With shape number " << i;
+  }
+}
+
 TEST(ComparisonsTest, QuantizedUInt8GreaterWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
@@ -646,6 +726,28 @@ TEST(ComparisonsTest, QuantizedInt8GreaterWithBroadcast) {
                             BuiltinOperator_GREATER);
     model.QuantizeAndPopulate<int8_t>(model.input1(), {20, -2, -71, 8, 11, 20});
     model.QuantizeAndPopulate<int8_t>(model.input2(), {8});
+    model.Invoke();
+    EXPECT_THAT(model.GetOutput(),
+                ElementsAre(true, false, false, false, true, true))
+        << "With shape number " << i;
+  }
+}
+
+TEST(ComparisonsTest, QuantizedInt16GreaterWithBroadcast) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<int16_t>::max() /
+      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    ComparisonOpModel model(
+        {TensorType_INT16, test_shapes[i], 2000 * kMin, 2000 * kMax},
+        {TensorType_INT16, {}, 1000 * kMin, 1000 * kMax}, TensorType_INT16,
+        BuiltinOperator_GREATER);
+    model.QuantizeAndPopulate<int16_t>(model.input1(),
+                                       {20, -2000, -71, 7.996, 11, 2000});
+    model.QuantizeAndPopulate<int16_t>(model.input2(), {7.996});
     model.Invoke();
     EXPECT_THAT(model.GetOutput(),
                 ElementsAre(true, false, false, false, true, true))
@@ -689,6 +791,28 @@ TEST(ComparisonsTest, QuantizedInt8GreaterEqualWithBroadcast) {
   }
 }
 
+TEST(ComparisonsTest, QuantizedInt16GreaterEqualWithBroadcast) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<int16_t>::max() /
+      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    ComparisonOpModel model(
+        {TensorType_INT16, test_shapes[i], 2000 * kMin, 2000 * kMax},
+        {TensorType_INT16, {}, 1000 * kMin, 1000 * kMax}, TensorType_INT16,
+        BuiltinOperator_GREATER_EQUAL);
+    model.QuantizeAndPopulate<int16_t>(model.input1(),
+                                       {20, -32766, -71, 7.996, 11, 32766});
+    model.QuantizeAndPopulate<int16_t>(model.input2(), {7.996});
+    model.Invoke();
+    EXPECT_THAT(model.GetOutput(),
+                ElementsAre(true, false, false, true, true, true))
+        << "With shape number " << i;
+  }
+}
+
 TEST(ComparisonsTest, QuantizedUInt8LessWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
@@ -725,6 +849,28 @@ TEST(ComparisonsTest, QuantizedInt8LessWithBroadcast) {
   }
 }
 
+TEST(ComparisonsTest, QuantizedInt16LessWithBroadcast) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<int16_t>::max() /
+      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    ComparisonOpModel model(
+        {TensorType_INT16, test_shapes[i], 2000 * kMin, 2000 * kMax},
+        {TensorType_INT16, {}, 1000 * kMin, 1000 * kMax}, TensorType_INT16,
+        BuiltinOperator_LESS);
+    model.QuantizeAndPopulate<int16_t>(model.input1(),
+                                       {20, -2000, -71, 7.996, 11, 2000});
+    model.QuantizeAndPopulate<int16_t>(model.input2(), {7.996});
+    model.Invoke();
+    EXPECT_THAT(model.GetOutput(),
+                ElementsAre(false, true, true, false, false, false))
+        << "With shape number " << i;
+  }
+}
+
 TEST(ComparisonsTest, QuantizedUInt8LessEqualWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
@@ -754,6 +900,28 @@ TEST(ComparisonsTest, QuantizedInt8LessEqualWithBroadcast) {
                             BuiltinOperator_LESS_EQUAL);
     model.QuantizeAndPopulate<int8_t>(model.input1(), {20, -2, -71, 8, 11, 20});
     model.QuantizeAndPopulate<int8_t>(model.input2(), {8});
+    model.Invoke();
+    EXPECT_THAT(model.GetOutput(),
+                ElementsAre(false, true, true, true, false, false))
+        << "With shape number " << i;
+  }
+}
+
+TEST(ComparisonsTest, QuantizedInt16LessEqualWithBroadcast) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<int16_t>::max() /
+      static_cast<float>(std::numeric_limits<int16_t>::max() + 1);
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    ComparisonOpModel model(
+        {TensorType_INT16, test_shapes[i], 2000 * kMin, 2000 * kMax},
+        {TensorType_INT16, {}, 1000 * kMin, 1000 * kMax}, TensorType_INT16,
+        BuiltinOperator_LESS_EQUAL);
+    model.QuantizeAndPopulate<int16_t>(model.input1(),
+                                       {20, -2000, -71, 7.996, 11, 2000});
+    model.QuantizeAndPopulate<int16_t>(model.input2(), {7.996});
     model.Invoke();
     EXPECT_THAT(model.GetOutput(),
                 ElementsAre(false, true, true, true, false, false))

@@ -165,6 +165,8 @@ TEST(OpVersionTest, VersioningEqualTest) {
       .inputs = CreateOpSignatureTensorSpecs(kTfLiteString),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 
 TEST(OpVersionTest, VersioningNotEqualTest) {
@@ -174,22 +176,24 @@ TEST(OpVersionTest, VersioningNotEqualTest) {
       .inputs = CreateOpSignatureTensorSpecs(kTfLiteString),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 
 TEST(OpVersionTest, VersioningLessTest) {
-  SimpleVersioningTest(BuiltinOperator_LESS);
+  SimpleVersioningTestExtended(BuiltinOperator_LESS);
 }
 
 TEST(OpVersionTest, VersioningLessEqualTest) {
-  SimpleVersioningTest(BuiltinOperator_LESS_EQUAL);
+  SimpleVersioningTestExtended(BuiltinOperator_LESS_EQUAL);
 }
 
 TEST(OpVersionTest, VersioningGreaterTest) {
-  SimpleVersioningTest(BuiltinOperator_GREATER);
+  SimpleVersioningTestExtended(BuiltinOperator_GREATER);
 }
 
 TEST(OpVersionTest, VersioningGreaterEqualTest) {
-  SimpleVersioningTest(BuiltinOperator_GREATER_EQUAL);
+  SimpleVersioningTestExtended(BuiltinOperator_GREATER_EQUAL);
 }
 
 TEST(OpVersionTest, VersioningSpaceToBatchNDTest) {

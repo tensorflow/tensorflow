@@ -1208,8 +1208,8 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
   }];
 
   let arguments = (
-      ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8]>:$lhs,
-      TFL_TensorOf<[F32, I32, I64, QI8, QUI8]>:$rhs);
+      ins TFL_TensorOf<[F32, I32, I64, QI8, QI16, QUI8]>:$lhs,
+      TFL_TensorOf<[F32, I32, I64, QI8, QI16, QUI8]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -1271,8 +1271,8 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
   }];
 
   let arguments = (
-      ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8]>:$lhs,
-      TFL_TensorOf<[F32, I32, I64, QUI8, QI8]>:$rhs);
+      ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8, QI16]>:$lhs,
+      TFL_TensorOf<[F32, I32, I64, QUI8, QI8, QI16]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -1466,8 +1466,8 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   }];
 
   let arguments = (
-      ins TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, TFL_Quint8, TFL_Str]>:$lhs,
-      TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, TFL_Quint8, TFL_Str]>:$rhs);
+      ins TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, QI16, TFL_Quint8, TFL_Str]>:$lhs,
+      TFL_TensorOf<[I1, F32, I32, I64, QUI8, QI8, QI16, TFL_Quint8, TFL_Str]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -1570,8 +1570,8 @@ def TFL_EqualOp: TFL_Op<"equal", [
 
   let arguments = (
     ins
-    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$x,
-    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, UI8, TFL_Str]>:$y
+    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, UI8, QI16, TFL_Str]>:$x,
+    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, UI8, QI16, TFL_Str]>:$y
   );
 
   let results = (outs TFL_BoolTensor:$output);
@@ -1779,8 +1779,8 @@ def TFL_GreaterOp : TFL_Op<"greater", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$lhs,
-    TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$rhs);
+    ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8, QI16, TFL_Quint8]>:$lhs,
+    TFL_TensorOf<[F32, I32, I64, QUI8, QI8, QI16, TFL_Quint8]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -1879,8 +1879,8 @@ def TFL_LessOp : TFL_Op<"less", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$lhs,
-    TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$rhs);
+    ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8, QI16, TFL_Quint8]>:$lhs,
+    TFL_TensorOf<[F32, I32, I64, QUI8, QI8, QI16, TFL_Quint8]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 

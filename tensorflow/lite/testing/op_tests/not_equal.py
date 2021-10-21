@@ -28,6 +28,11 @@ def make_not_equal_tests(options):
       "input_shape_pair": [([1, 1, 1, 3], [1, 1, 1, 3]),
                            ([2, 3, 4, 5], [2, 3, 4, 5]), ([2, 3, 3], [2, 3]),
                            ([5, 5], [1]), ([10], [2, 4, 10])],
+  }, {
+      "input_dtype": [tf.float32],
+      "input_shape_pair": [([1, 1, 1, 3], [1, 1, 1, 3]), ([2, 3, 3], [2, 3])],
+      "fully_quantize": [True],
+      "quant_16x8": [False, True],
   }]
 
   def build_graph(parameters):
@@ -56,4 +61,4 @@ def make_not_equal_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=4)
+      expected_tf_failures=6)

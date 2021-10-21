@@ -33,6 +33,7 @@ def make_less_equal_tests(options):
       "input_dtype": [tf.float32],
       "input_shape_pair": [([1, 1, 1, 3], [1, 1, 1, 3]), ([2, 3, 3], [2, 3])],
       "fully_quantize": [True],
+      "quant_16x8": [False, True],
   }]
 
   # High dimension broadcasting support in MLIR converter.
@@ -83,4 +84,4 @@ def make_less_equal_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=4)
+      expected_tf_failures=5)

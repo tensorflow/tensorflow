@@ -188,7 +188,6 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.inputs = {{0, {}}, {1, {}}};
       // Comparisons have no quantizable outputs.
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_EXPAND_DIMS:
       // We skip input 1 as it is not real valued (it's the index of axis) and
