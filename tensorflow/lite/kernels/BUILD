@@ -613,6 +613,7 @@ BUILTIN_KERNEL_SRCS = [
     "pow.cc",
     "quantize.cc",
     "random_standard_normal.cc",
+    "random_uniform.cc",
     "range.cc",
     "rank.cc",
     "read_variable.cc",
@@ -703,6 +704,8 @@ cc_library(
     deps = BUILTIN_KERNEL_DEPS + [
         "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
+        "//tensorflow/core/lib/random:philox_random",
+        "//tensorflow/core/lib/random:random_distributions_utils",
         "//tensorflow/lite/c:c_api_types",
         # TODO(b/179298174): Move out from the experimental directory.
         "//tensorflow/lite/experimental/resource",
@@ -873,7 +876,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":builtin_op_kernels",
+        ":builtin_op_kernels",  # buildcleaner: keep
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
@@ -1624,6 +1627,18 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "random_uniform_test",
+    size = "small",
+    srcs = ["random_uniform_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )

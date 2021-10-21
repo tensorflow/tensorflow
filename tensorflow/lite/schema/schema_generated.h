@@ -862,11 +862,12 @@ enum BuiltinOperator {
   BuiltinOperator_BROADCAST_ARGS = 145,
   BuiltinOperator_RANDOM_STANDARD_NORMAL = 146,
   BuiltinOperator_BUCKETIZE = 147,
+  BuiltinOperator_RANDOM_UNIFORM = 148,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_BUCKETIZE
+  BuiltinOperator_MAX = BuiltinOperator_RANDOM_UNIFORM
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[148] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[149] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1015,13 +1016,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[148] {
     BuiltinOperator_ASSIGN_VARIABLE,
     BuiltinOperator_BROADCAST_ARGS,
     BuiltinOperator_RANDOM_STANDARD_NORMAL,
-    BuiltinOperator_BUCKETIZE
+    BuiltinOperator_BUCKETIZE,
+    BuiltinOperator_RANDOM_UNIFORM
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[149] = {
+  static const char * const names[150] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1170,13 +1172,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "BROADCAST_ARGS",
     "RANDOM_STANDARD_NORMAL",
     "BUCKETIZE",
+    "RANDOM_UNIFORM",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_BUCKETIZE)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_RANDOM_UNIFORM)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
