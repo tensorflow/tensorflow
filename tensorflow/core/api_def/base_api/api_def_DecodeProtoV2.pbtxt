@@ -63,7 +63,12 @@ END
   summary: <<END
 The op extracts fields from a serialized protocol buffers message into tensors.
 END
+# LINT.IfChange
   description: <<END
+Note: This API is designed for orthogonality rather than human-friendliness. It
+can be used to parse input protos by hand, but it is intended for use in
+generated code.
+
 The `decode_proto` op extracts fields from a serialized protocol buffers
 message into tensors.  The fields in `field_names` are decoded and converted
 to the corresponding `output_types` if possible.
@@ -95,6 +100,14 @@ way). Unsigned int32 values can be represented exactly by specifying type
 `DT_INT64`, or using twos-complement if the caller specifies `DT_INT32` in
 the `output_types` attribute.
 
+- `map` fields are not directly decoded. They are treated as `repeated` fields,
+of the appropriate entry type. The proto-compiler defines entry types for each
+map field. The type-name is the field name, converted to "CamelCase" with
+"Entry" appended. The `tf.train.Features.FeatureEntry` message is an example of
+one of these implicit `Entry` types.
+
+- `enum` fields should be read as int32.
+
 Both binary and text proto serializations are supported, and can be
 chosen using the `format` attribute.
 
@@ -113,3 +126,4 @@ and `--include_imports` options to the protocol compiler `protoc`.
 which is expected to be a `FileDescriptorSet` serialized as a string.
 END
 }
+# LINT.ThenChange(//tensorflow/core/api_def/python_api/api_def_DecodeProtoV2.pbtxt)
