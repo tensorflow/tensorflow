@@ -118,6 +118,7 @@ XlaOp ConcatenateIota(xla::XlaBuilder* b, XlaOp indices,
                       const TensorShape& warp_shape) {
   // We need to create an iota tensor with the same batch dimension.
   std::vector<int64_t> dimensions;
+  dimensions.reserve(warp_shape.dims());
   for (auto dim : warp_shape) {
     dimensions.push_back(dim.size);
   }
