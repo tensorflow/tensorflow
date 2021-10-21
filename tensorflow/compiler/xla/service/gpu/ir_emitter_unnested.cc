@@ -1209,13 +1209,13 @@ std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
     }
 
     if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
-      if (broadcast.broadcast_dimensions().size() == 0) {
+      const auto& broadcast_dimensions_size = broadcast.broadcast_dimensions().size();
+      if (broadcast_dimensions_size == 0) {
         continue;
       }
-      std::vector<int64_t> broadcast_dimensions;
-      const auto _broadcast_dimensions = broadcast.broadcast_dimensions();
-      broadcast_dimensions.reserve(_broadcast_dimensions.size());
-      for (const llvm::APInt& int_value : _broadcast_dimensions) {
+      llvm::SmallVector<int64_t> broadcast_dimensions;
+      broadcast_dimensions.reserve(broadcast_dimensions_size);
+      for (const llvm::APInt& int_value : broadcast.broadcast_dimensions()) {
         broadcast_dimensions.push_back(int_value.getSExtValue());
       }
 
@@ -2518,8 +2518,8 @@ Status IrEmitterUnnested::EmitScatter(
 
     // Apply inserted_window_dims to the window dimensions.
     int64_t raw_window_multidim_idx = 0;
-    std::vector<llvm::Value*> input_window_multidim;
-    std::vector<int64_t> input_window_bounds;
+    llvm::SmallVector<llvm::Value*> input_window_multidim;
+    llvm::SmallVector<int64_t> input_window_bounds;
     const int64_t rank = desc.operand_shape.rank();
     input_window_bounds.reserve(rank);
     input_window_multidim.reserve(rank);
@@ -3279,7 +3279,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
     const LaunchDimensions& launch_dimensions) {
   TF_RET_CHECK(!mlir::isa<mlir::lmhlo::FusionOp>(op));
 
-  llvm::SmallVector<BufferSlice> slices;
+  std::vector<BufferSlice> slices;
   slices.reserve(operands.size());
   for (mlir::Value operand : operands) {
     slices.emplace_back();
