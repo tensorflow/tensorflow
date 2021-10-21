@@ -188,8 +188,8 @@ module {
   // CHECK-LABEL: @cond(%arg0: tensor<0xf32>) -> tensor<i1>
   func private @cond(%arg0:tensor<0xf32>, %arg1:tensor<*x!tf_type.resource>) -> tensor<i1> {
     %val = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource>) -> (tensor<0xf32>)
-    %cst = constant dense<-2.0>: tensor<0xf32>
-    %cst_1 = constant dense<0> : tensor<i32>
+    %cst = arith.constant dense<-2.0>: tensor<0xf32>
+    %cst_1 = arith.constant dense<0> : tensor<i32>
     %greater = "tf.Greater"(%val, %cst) : (tensor<0xf32>, tensor<0xf32>) -> tensor<0xi1>
     %res = "tf.Any"(%greater, %cst_1) : (tensor<0xi1>, tensor<i32>) -> (tensor<i1>)
     return %res : tensor<i1>
@@ -266,7 +266,7 @@ module {
     %0 = "tf.Const"() {value = dense<1.0> : tensor<0xf32>} : () -> tensor<0xf32>
     %1:2 = "tf.WhileRegion"(%arg0, %0) ( {
       ^bb0(%carg0: tensor<i32>, %carg1: tensor<0xf32>):
-         %limit = constant dense<5> : tensor<i32>
+         %limit = arith.constant dense<5> : tensor<i32>
          %cond = "tf.NotEqual"(%carg0, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
          "tf.Yield"(%cond) : (tensor<i1>) -> ()
     },  {
@@ -290,7 +290,7 @@ module {
     %1:3 = "tf.WhileRegion"(%arg0, %0, %handle) ( {
       // CHECK: ^bb0(%arg1: tensor<i32>, %arg2: tensor<0xf32>)
       ^bb0(%carg0: tensor<i32>, %carg1: tensor<0xf32>, %carg2: tensor<!tf_type.resource<tensor<0xf32>>>):
-         %limit = constant dense<5> : tensor<i32>
+         %limit = arith.constant dense<5> : tensor<i32>
          %cond = "tf.NotEqual"(%carg0, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
          "tf.Yield"(%cond) : (tensor<i1>) -> ()
     },  {

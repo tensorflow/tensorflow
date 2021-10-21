@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -189,6 +190,7 @@ static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(
       registry.insert<quant::QuantizationDialect>();
       mlir::RegisterAllTensorFlowDialects(registry);
       registry.insert<TFL::TensorFlowLiteDialect>();
+      registry.insert<arith::ArithmeticDialect>();
       registry.insert<StandardOpsDialect>();
     });
 }  // namespace mlir

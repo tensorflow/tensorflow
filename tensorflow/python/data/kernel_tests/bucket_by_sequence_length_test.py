@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.bucket_by_sequence_length()."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 
 from absl.testing import parameterized

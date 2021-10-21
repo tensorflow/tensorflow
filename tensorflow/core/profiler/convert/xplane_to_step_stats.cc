@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/parse_annotation.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -129,7 +128,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
       uint32_t stream_id = line.Id();
       line.ForEachEvent([&](const XEventVisitor& event) {
         int64_t correlation_id = -1;
-        absl::string_view annotation;
+        absl::string_view tf_op_fullname;
         absl::string_view kernel_details;
         absl::string_view memcpy_details;
         event.ForEachStat([&](const XStatVisitor& stat) {
@@ -138,8 +137,8 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
             case StatType::kCorrelationId:
               correlation_id = stat.IntValue();
               break;
-            case StatType::kKernelAnnotation:
-              annotation = stat.StrOrRefValue();
+            case StatType::kTfOp:
+              tf_op_fullname = stat.StrOrRefValue();
               break;
             case StatType::kKernelDetails:
               kernel_details = stat.StrOrRefValue();
@@ -166,13 +165,8 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
           }
         }
 
-        absl::string_view node_name = event.Name();
-        if (!annotation.empty()) {
-          auto annotation_stack = ParseAnnotationStack(annotation);
-          if (!annotation_stack.empty()) {
-            node_name = annotation_stack.back().name;
-          }
-        }
+        absl::string_view node_name =
+            !tf_op_fullname.empty() ? tf_op_fullname : event.Name();
         ns->set_node_name(std::string(node_name));
 
         if (!kernel_details.empty()) {

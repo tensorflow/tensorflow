@@ -31,7 +31,6 @@ limitations under the License.
 
 #include "tensorflow/core/platform/default/posix_file_system.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
@@ -40,6 +39,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
+
+using ::tensorflow::errors::IOError;
 
 // 128KB of copy buffer
 constexpr size_t kPosixCopyFileBufferSize = 128 * 1024;

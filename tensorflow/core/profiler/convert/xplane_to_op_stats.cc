@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/device_caps_utils.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
@@ -49,38 +50,6 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane) {
-  DeviceCapabilities cap;
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_plane);
-  plane.ForEachStat([&cap](const XStatVisitor& stat) {
-    if (!stat.Type().has_value()) return;
-    switch (stat.Type().value()) {
-      case kDevCapClockRateKHz:
-        cap.set_clock_rate_in_ghz(stat.IntValue() / 1000000.0);
-        break;
-      case kDevCapCoreCount:
-        cap.set_num_cores(stat.IntValue());
-        break;
-      case kDevCapMemoryBandwidth:
-        cap.set_memory_bandwidth(stat.UintValue());  // bytes/s
-        break;
-      case kDevCapMemorySize:
-        cap.set_memory_size_in_bytes(stat.UintValue());
-        break;
-      case kDevCapComputeCapMajor:
-        cap.mutable_compute_capability()->set_major(stat.IntValue());
-        break;
-      case kDevCapComputeCapMinor:
-        cap.mutable_compute_capability()->set_minor(stat.IntValue());
-        break;
-      case kDevVendor:
-        cap.set_device_vendor(std::string(stat.StrOrRefValue()));
-        break;
-    }
-  });
-  return cap;
-}
-
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
                     double peak_hbm_bw_giga_bytes_per_second) {
   PerfEnv result;
@@ -93,7 +62,7 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
 }
 
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
-  DeviceCapabilities cap = GetDeviceCapFromXPlane(device_plane);
+  DeviceCapabilities cap = GetDeviceCaps(device_plane);
   return MakePerfEnv(GetFlopMaxThroughputPerSM(cap) / 1000 * cap.num_cores(),
                      cap.memory_bandwidth() / 1e9);
 }
@@ -159,7 +128,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       op_metrics_db_combiner.Combine(device_op_metrics_db);
     }
     if (gpu_model.empty()) {
-      gpu_model = GpuModelName(GetDeviceCapFromXPlane(*device_trace));
+      gpu_model = GpuModelName(GetDeviceCaps(*device_trace));
     }
     if (options.generate_step_db) {
       StepEvents device_step_events =

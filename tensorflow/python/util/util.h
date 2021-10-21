@@ -24,8 +24,10 @@ limitations under the License.
 namespace tensorflow {
 namespace swig {
 
-// Implements the same interface as tensorflow.util.nest.is_sequence
-// Returns a true if its input is a collections.Sequence (except strings).
+// Implements the same interface as tensorflow.util.nest.is_nested
+// Returns a true if its input is a collections.abc.Sequence (except strings or
+// bytes); or a collections.abc.Mapping; or a collections.abc.MappingView; or
+// an attrs class.
 //
 // Args:
 //   seq: an input sequence.
@@ -33,6 +35,8 @@ namespace swig {
 // Returns:
 //   True if the sequence is a not a string and is a collections.Sequence or a
 //   dict.
+//
+// TODO(b/201685523) Rename this to `IsNested`.
 bool IsSequence(PyObject* o);
 
 // Implements the same interface as nest.is_sequence_or_composite
@@ -45,6 +49,8 @@ bool IsSequence(PyObject* o);
 // Returns:
 //   True if the sequence is a not a string and is a collections.Sequence or a
 //   dict or a CompositeTensor or a TypeSpec.
+//
+// TODO(b/201685523) Rename this to `IsNestedOrComposite`.
 bool IsSequenceOrComposite(PyObject* o);
 
 // Returns a true if its input is a CompositeTensor or a TypeSpec.

@@ -326,20 +326,22 @@ Status DotOpEmitter::EmitLinalgMatmul() {
             target_machine_features_.minimum_alignment_for_allocation(
                 ShapeUtil::ByteSizeOf(dot_info_.result_shape));
         mlir::linalg::CodegenStrategy strategy;
-        strategy.tile<mlir::linalg::GenericOp>(tilingOptions)
-            .promote<mlir::linalg::GenericOp>(
-                mlir::linalg::LinalgPromotionOptions()
-                    .setAlignment(alignment)
-                    .setUseFullTileBuffersByDefault(true)
-                    .setUseAlloca(true))
-            .vectorize<mlir::linalg::GenericOp>()
+        strategy
+            .tile(mlir::linalg::GenericOp::getOperationName(), tilingOptions)
+            .promote(mlir::linalg::GenericOp::getOperationName(),
+                     mlir::linalg::LinalgPromotionOptions()
+                         .setAlignment(alignment)
+                         .setUseFullTileBuffersByDefault(true)
+                         .setUseAlloca(true))
+            .vectorize(mlir::linalg::GenericOp::getOperationName())
             .setVectorTransformsOptions(
                 mlir::vector::VectorTransformsOptions()
                     .setVectorTransformsOptions(
                         mlir::vector::VectorContractLowering::OuterProduct))
             .setVectorTransferToSCFOptions(
                 mlir::VectorTransferToSCFOptions().setUnroll(true));
-        strategy.transform(function);
+        // Propagate pass failure?
+        (void)strategy.transform(function);
       });
 }
 

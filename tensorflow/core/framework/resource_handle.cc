@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_handle.h"
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -33,12 +34,6 @@ ResourceHandle::ResourceHandle(const ResourceHandleProto& proto) {
 ResourceHandle::~ResourceHandle() {}
 
 void ResourceHandle::AsProto(ResourceHandleProto* proto) const {
-  // TODO(b/197757028): Register the resource with ResourceManager to enable
-  // serialization of ref-counting handles.
-  if (!IsRefCounting()) {
-    LOG(ERROR) << "A ref-counted ResourceHandle cannot be serialized losslessly"
-               << "Deserializing the result is a failure: " << name();
-  }
   proto->set_device(device());
   proto->set_container(container());
   proto->set_name(name());
@@ -93,10 +88,12 @@ ResourceHandle ResourceHandle::MakeRefCountingHandle(
   ResourceHandle result;
   result.resource_.reset(resource, /*add_ref=*/false);
   result.set_device(device_name);
-  // "container" is only a ResourceMgr-only concept
-  result.set_container("");
+  // All resources owned by anonymous handles are put into the same container,
+  // and they get process-unique handle names.
+  result.set_container("Anonymous");
   result.set_definition_stack_trace(definition_stack_trace);
-  result.set_name(strings::StrCat("_AnonymousResource", GenerateUniqueId()));
+  result.set_name(
+      absl::StrFormat("Resource-%d-at-%p", GenerateUniqueId(), resource));
   result.set_hash_code(type_index.hash_code());
   result.set_maybe_type_name(type_index.name());
   result.set_dtypes_and_shapes(dtypes_and_shapes);

@@ -456,6 +456,21 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   TF_DCHECK_OK(ValidateShape(*shape));
 }
 
+/* static */ void ShapeUtil::AppendMinorDimension(int bound, Shape* shape) {
+  CHECK(LayoutUtil::IsDenseArray(*shape));
+
+  // Bump up all values in the layout by one.
+  for (int dim_idx = 0; dim_idx < shape->layout().minor_to_major_size();
+       dim_idx++) {
+    int layout_idx = shape->layout().minor_to_major(dim_idx);
+    shape->mutable_layout()->set_minor_to_major(dim_idx, layout_idx + 1);
+  }
+  // Then we can safely add zero.
+  shape->mutable_layout()->add_minor_to_major(0);
+  shape->add_dimensions(bound);
+  TF_DCHECK_OK(ValidateShape(*shape));
+}
+
 /* static */ void ShapeUtil::CopyDynamicDimensions(Shape* to,
                                                    const Shape& from) {
   CHECK_EQ(to->rank(), from.rank());
@@ -631,7 +646,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     return text;
   }
   std::vector<string> dim_elements;
-  for (int i = 0; i < shape.dimensions_size(); ++i) {
+  const auto dimensions_size = shape.dimensions_size();
+  dim_elements.reserve(dimensions_size);
+  for (int i = 0; i < dimensions_size; ++i) {
     if (shape.is_dynamic_dimension(i)) {
       dim_elements.push_back(StrCat("<=", shape.dimensions(i)));
     } else {
@@ -675,7 +692,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ string ShapeUtil::HumanString(const ProgramShape& program_shape) {
   std::vector<string> parameters;
-  for (auto& shape : program_shape.parameters()) {
+  const auto& shape_parameters = program_shape.parameters();
+  parameters.reserve(shape_parameters.size());
+  for (const auto& shape : shape_parameters) {
     const int i = parameters.size();
     parameters.push_back(StrCat(i < program_shape.parameter_names_size()
                                     ? program_shape.parameter_names(i)
@@ -1722,7 +1741,9 @@ static std::vector<size_t> ConsecutiveSegments(absl::Span<const int64_t> xs) {
 static Shape MergeDimensions(absl::Span<const size_t> segs,
                              const Shape& shape) {
   std::vector<int64_t> dimensions;
-  for (size_t i = 1; i <= segs.size(); ++i) {
+  const auto size = segs.size();
+  dimensions.reserve(size);
+  for (size_t i = 1; i <= size; ++i) {
     dimensions.push_back(std::accumulate(
         shape.dimensions().begin() + segs[i - 1],
         shape.dimensions().begin() +
@@ -1783,9 +1804,7 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
 
 /*static*/ bool ShapeUtil::ElementCanUpcast(const Shape& from,
                                             const Shape& to) {
-  return ElementIsFloating(from) == ElementIsFloating(to) &&
-         ElementIsSigned(from) == ElementIsSigned(to) &&
-         HigherPrecisionElementType(from, to) == to.element_type();
+  return HigherPrecisionElementType(from, to) == to.element_type();
 }
 
 /*static*/

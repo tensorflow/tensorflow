@@ -47,8 +47,9 @@ StatusOr<mlir::OwningModuleRef> GraphdefToMlirTranslateFunction(
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
     bool graph_as_function, bool upgrade_legacy,
-    // TODO(jpienaar): Remove this.
-    bool enable_shape_inference, mlir::MLIRContext* context);
+    // TODO(jpienaar): Remove these.
+    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
+    mlir::MLIRContext* context);
 
 ABSL_DEPRECATED(
     "Please use the other overload of this function which accepts structured "
@@ -61,8 +62,9 @@ StatusOr<mlir::OwningModuleRef> GraphdefToMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view control_output_arrays, bool prune_unused_nodes,
     bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
-    // TODO(jpienaar): Remove this.
-    bool enable_shape_inference, mlir::MLIRContext* context);
+    // TODO(jpienaar): Remove these.
+    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
+    mlir::MLIRContext* context);
 
 // Similar as the above function, but replaces all constant tensors
 // with randomly generated splat values.
@@ -74,7 +76,9 @@ StatusOr<mlir::OwningModuleRef> GraphdefToSplattedMlirTranslateFunction(
     const std::vector<std::string>& output_arrays,
     const std::vector<std::string>& control_output_arrays,
     bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, bool upgrade_legacy, bool enable_shape_inference,
+    bool graph_as_function, bool upgrade_legacy,
+    // TODO(jpienaar): Remove these.
+    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
     mlir::MLIRContext* context);
 
 ABSL_DEPRECATED(
@@ -88,8 +92,9 @@ StatusOr<mlir::OwningModuleRef> GraphdefToSplattedMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view control_output_arrays, bool prune_unused_nodes,
     bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
-    // TODO(jpienaar): Remove this.
-    bool enable_shape_inference, mlir::MLIRContext* context);
+    // TODO(jpienaar): Remove these.
+    bool enable_shape_inference, bool unconditionally_use_set_output_shapes,
+    mlir::MLIRContext* context);
 
 // Converts a TensorFlow SavedModel stored in the directory with the given
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the

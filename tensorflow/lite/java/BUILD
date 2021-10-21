@@ -2,7 +2,7 @@
 # TensorFlow Lite Java API.
 
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
-load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
+load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library_with_tflite", "cc_library_with_tflite", "java_library_with_tflite", "java_test_with_tflite", "jni_binary_with_tflite")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
@@ -17,9 +17,17 @@ exports_files([
     "src/testdata/add.bin",
     "src/testdata/add_unknown_dimensions.bin",
     "src/testdata/grace_hopper_224.jpg",
+    "src/testdata/int32.bin",
+    "src/testdata/int64.bin",
+    "src/testdata/invalid_model.bin",
     "src/testdata/mul_add_signature_def.bin",
     "src/testdata/multi_signature_def.bin",
+    "src/testdata/quantized.bin",
+    "src/testdata/string.bin",
+    "src/testdata/string_scalar.bin",
     "src/testdata/tile_with_bool_input.bin",
+    "src/testdata/uint8.bin",
+    "src/testdata/with_custom_op.lite",
     "AndroidManifest.xml",
     "AndroidManifestGpu.xml",
     "proguard.flags",
@@ -249,9 +257,22 @@ android_library(
     ],
 )
 
+# 'tensorflowlite_java' is the public android_library target for the TF Lite Java
+# APIs & Runtime, including experimental APIs, but EXCLUDING NATIVE CODE dependencies.
 android_library(
     name = "tensorflowlite_java",
     srcs = [":java_srcs"],
+    proguard_specs = ["proguard.flags"],
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+# 'tensorflowlite_java_stable' is the public android_library target for the TF Lite Java
+# APIs & Runtime, excluding experimental APIs, and EXCLUDING NATIVE CODE dependencies.
+android_library(
+    name = "tensorflowlite_java_stable",
+    srcs = [":java_stable_srcs"],
     proguard_specs = ["proguard.flags"],
     deps = [
         "@org_checkerframework_qual",
@@ -359,11 +380,12 @@ java_test_with_tflite(
 java_test(
     name = "TensorFlowLiteNoNativeLibTest",
     size = "small",
-    srcs = [":java_srcs"] + ["src/test/java/org/tensorflow/lite/TensorFlowLiteNoNativeLibTest.java"],
+    srcs = ["src/test/java/org/tensorflow/lite/TensorFlowLiteNoNativeLibTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.TensorFlowLiteNoNativeLibTest",
     visibility = ["//visibility:private"],
     deps = [
+        ":tensorflowlite_javalib",
         "@com_google_truth",
         "@junit",
         "@org_checkerframework_qual",
@@ -373,7 +395,7 @@ java_test(
 java_test_with_tflite(
     name = "TensorFlowLiteInvalidNativeLibTest",
     size = "small",
-    srcs = [":java_srcs"] + ["src/test/java/org/tensorflow/lite/TensorFlowLiteInvalidNativeLibTest.java"],
+    srcs = ["src/test/java/org/tensorflow/lite/TensorFlowLiteInvalidNativeLibTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.TensorFlowLiteInvalidNativeLibTest",
     tflite_jni_binaries = [
@@ -381,6 +403,7 @@ java_test_with_tflite(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":tensorflowlite_javalib",
         "@com_google_truth",
         "@junit",
         "@org_checkerframework_qual",
@@ -624,6 +647,20 @@ java_test(
 #-----------------------------------------------------------------------------
 # Test filegroup targets.
 
+# Java test source files that test the stable API implementation.
+filegroup(
+    name = "java_stable_test_srcs",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/DataTypeTest.java",
+        "src/test/java/org/tensorflow/lite/InterpreterApiTest.java",
+        "src/test/java/org/tensorflow/lite/NativeInterpreterWrapperTest.java",
+        "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
+        "src/test/java/org/tensorflow/lite/TensorTest.java",
+        "src/test/java/org/tensorflow/lite/TestInit.java",
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
+    ],
+)
+
 # portable_tests includes files for running TFLite interpreter tests.
 filegroup(
     name = "portable_tests",
@@ -718,6 +755,7 @@ cc_library(
 # This library will get automatically loaded by TensorFlowLite.init().
 jni_binary_with_tflite(
     name = "libtensorflowlite_jni.so",
+    linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
     linkscript = ":tflite_version_script.lds",
     tflite_deps = [
         "//tensorflow/lite/java/src/main/native",
@@ -738,6 +776,7 @@ jni_binary_with_tflite(
 # client code, using System.LoadLibrary, before TensorFlowLite.init() is called.
 jni_binary_with_tflite(
     name = "libtensorflowlite_jni_stable.so",
+    linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
     linkscript = ":tflite_version_script.lds",
     tflite_deps = [
         "//tensorflow/lite/java/src/main/native:native_stable",
@@ -756,6 +795,7 @@ jni_binary_with_tflite(
 # client code, using System.LoadLibrary, before TensorFlowLite.init() is called.
 tflite_jni_binary(
     name = "libtensorflowlite_gpu_jni.so",
+    linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
     linkscript = ":gpu_version_script.lds",
     deps = [
         "//tensorflow/lite/delegates/gpu/java/src/main/native",

@@ -14,10 +14,10 @@
 // CHECK:  "lmhlo.scatter"(%[[VIEW3]], %[[VIEW1]], %[[VIEW2]], %[[VIEW31]])
 // CHECK:  mhlo.add
 // CHECK: indices_are_sorted = false
-// CHECK: index_vector_dim = 1 : i64
-// CHECK: inserted_window_dims = dense<0> : tensor<1xi64>
-// CHECK: scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>
-// CHECK: update_window_dims = dense<1> : tensor<1xi64>
+// CHECK: update_window_dims = [1]
+// CHECK: inserted_window_dims = [0]
+// CHECK: scatter_dims_to_operand_dims = [0]
+// CHECK: index_vector_dim = 1
 // CHECK: unique_indices = false
 // CHECK: (memref<3x3xi32>, memref<2xi32>, memref<2x3xi32>, memref<3x3xi32>) -> ()
 func @main(%operand:tensor<3x3xi32>, %indices: tensor<2xi32>, %updates: tensor<2x3xi32>) -> tensor<3x3xi32> {
@@ -25,10 +25,12 @@ func @main(%operand:tensor<3x3xi32>, %indices: tensor<2xi32>, %updates: tensor<2
     ^bb0(%x: tensor<i32>, %y : tensor<i32>):
       %result = "mhlo.add"(%x, %y): (tensor<i32>, tensor<i32>) -> tensor<i32>
       "mhlo.return"(%result) : (tensor<i32>) -> ()
-    }) { scatter_dimension_numbers = {index_vector_dim = 1 : i64,
-                inserted_window_dims = dense<0> : tensor<1xi64>,
-                scatter_dims_to_operand_dims = dense<0> : tensor<1xi64>,
-                update_window_dims = dense<1> : tensor<1xi64>},
+    }) { scatter_dimension_numbers = #mhlo.scatter<
+           update_window_dims = [1],
+           inserted_window_dims = [0],
+           scatter_dims_to_operand_dims = [0],
+           index_vector_dim = 1,
+         >,
          indices_are_sorted = false,
          unique_indices = false} : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
   return %result : tensor<3x3xi32>

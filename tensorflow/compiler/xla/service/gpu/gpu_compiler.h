@@ -112,7 +112,7 @@ class GpuCompiler : public LLVMCompiler {
   }
 
   // Optional HloProto, stashed for dumping snapshots.
-  mutable std::unique_ptr<HloProto> hlo_proto_;
+  std::unique_ptr<HloProto> hlo_proto_;
 
   se::Platform::Id platform_id_;
 

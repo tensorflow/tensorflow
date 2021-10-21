@@ -36,6 +36,7 @@ transitive_hdrs(
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/pluggable_profiler:pluggable_profiler_hdrs",
         "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
         "//tensorflow/c/experimental/grappler:grappler_hdrs",
         "//tensorflow/c:kernels_hdrs",
@@ -135,7 +136,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras/mixed_precision:test_util",
     "//tensorflow/python/keras/utils:dataset_creator",
     "//tensorflow/python/keras/utils:kpl_test_utils",
-    "//tensorflow/python/keras/benchmarks:keras_benchmark_lib_pip",
     "//tensorflow/python/kernel_tests:cudnn_deterministic_base",
     "//tensorflow/python/kernel_tests:bias_op_base",
     "//tensorflow/python/kernel_tests:sparse_xent_op_test_base",
@@ -226,7 +226,6 @@ filegroup(
         "@zlib//:zlib.h",
         "@clog//:LICENSE",
         "@cpuinfo//:LICENSE",
-        "@upb//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -260,10 +259,7 @@ filegroup(
     ]) + if_enable_mkl(["//third_party/mkl:LICENSE"]) + if_not_system_lib(
         "absl_py",
         [
-            "@absl_py//absl:LICENSE",
-            "@absl_py//absl/logging:LICENSE",
-            "@absl_py//absl/flags:LICENSE",
-            "@absl_py//absl/testing:LICENSE",
+            "@absl_py//:LICENSE",
             "@absl_py//absl/third_party/unittest3_backport:LICENSE",
         ],
     ) + if_not_system_lib(

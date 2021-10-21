@@ -3837,7 +3837,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
             auto t_flat = t.flat<int32>();
             vec->assign(&t_flat(0), &t_flat(t.NumElements()));
           } else if (t.dtype() == DT_INT64) {
-            auto t_flat = t.flat<int64>();
+            auto t_flat = t.flat<int64_t>();
             vec->assign(&t_flat(0), &t_flat(t.NumElements()));
           } else {
             return errors::InvalidArgument("Node ", node->name(),

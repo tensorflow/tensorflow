@@ -42,10 +42,10 @@ func @constWeight(%arg0: tensor<256x32x32x3xf32>) -> tensor<256x30x30x16xf32> {
 }
 
 // CHECK:   func @constWeight(%[[VAL_0:.*]]: tensor<256x32x32x3xf32>) -> tensor<256x30x30x16xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<16x3x3x3xf32>} : () -> tensor<16x3x3x3xf32>
-// CHECK:           %[[VAL_2:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<16xf32>} : () -> tensor<16xf32>
-// CHECK:           %[[VAL_3:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<16x3x3x16xf32>} : () -> tensor<16x3x3x16xf32>
-// CHECK:           %[[VAL_4:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<16xf32>} : () -> tensor<16xf32>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<16x3x3x3xf32>} : () -> tensor<16x3x3x3xf32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<16xf32>} : () -> tensor<16xf32>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<16x3x3x16xf32>} : () -> tensor<16x3x3x16xf32>
+// CHECK-DAG:       %[[VAL_4:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<16xf32>} : () -> tensor<16xf32>
 // CHECK:           %[[VAL_5:.*]] = call @func_0_GPU_FLOAT(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]], %[[VAL_3]], %[[VAL_4]]) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>, tensor<16x3x3x16xf32>, tensor<16xf32>) -> tensor<256x30x30x16xf32>
 // CHECK:           return %[[VAL_5]] : tensor<256x30x30x16xf32>
 // CHECK:         }
@@ -74,9 +74,9 @@ func @norm1(%arg0: tensor<1x128x128xf32>) -> tensor<1x128x128xf32> {
 }
 
 // CHECK:   func @norm1(%[[VAL_0:.*]]: tensor<1x128x128xf32>) -> tensor<1x128x128xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<128xf32>} : () -> tensor<128xf32>
-// CHECK:           %[[VAL_2:.*]] = "tfl.pseudo_const"() {value = dense<128> : tensor<2xi32>} : () -> tensor<2xi32>
-// CHECK:           %[[VAL_3:.*]] = "tfl.pseudo_const"() {value = dense<[1, 128, 128]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<128xf32>} : () -> tensor<128xf32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tfl.pseudo_const"() {value = dense<128> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK-DAG:       %[[VAL_3:.*]] = "tfl.pseudo_const"() {value = dense<[1, 128, 128]> : tensor<3xi32>} : () -> tensor<3xi32>
 // CHECK:           %[[VAL_4:.*]] = call @func_0_GPU_FLOAT(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]], %[[VAL_3]]) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} : (tensor<1x128x128xf32>, tensor<128xf32>, tensor<2xi32>, tensor<3xi32>) -> tensor<1x128x128xf32>
 // CHECK:           return %[[VAL_4]] : tensor<1x128x128xf32>
 // CHECK:         }
@@ -111,11 +111,11 @@ func @norm2(%arg0: tensor<1x128x128xf32>) -> tensor<1x128x128xf32> {
 }
 
 // CHECK:   func @norm2(%[[VAL_0:.*]]: tensor<1x128x128xf32>) -> tensor<1x128x128xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<128xf32>} : () -> tensor<128xf32>
-// CHECK:           %[[VAL_2:.*]] = "tfl.pseudo_const"() {value = dense<128> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK-DAG:       %[[VAL_1:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<128xf32>} : () -> tensor<128xf32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tfl.pseudo_const"() {value = dense<128> : tensor<2xi32>} : () -> tensor<2xi32>
 // CHECK:           %[[VAL_3:.*]]:2 = call @func_0_GPU_FLOAT(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} : (tensor<1x128x128xf32>, tensor<128xf32>, tensor<2xi32>) -> (tensor<1x128x128xf32>, tensor<128x128xf32>)
-// CHECK:           %[[VAL_4:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<128x128xf32>} : () -> tensor<128x128xf32>
-// CHECK:           %[[VAL_5:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<128xf32>} : () -> tensor<128xf32>
+// CHECK-DAG:       %[[VAL_4:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<128x128xf32>} : () -> tensor<128x128xf32>
+// CHECK-DAG:       %[[VAL_5:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<128xf32>} : () -> tensor<128xf32>
 // CHECK:           %[[VAL_6:.*]] = call @func_1_CPU_FLOAT(%[[VAL_3]]#1, %[[VAL_4]], %[[VAL_5]]) {tac.device = "CPU", tac.inference_type = "FLOAT", tac.interface_name = "func_1"} : (tensor<128x128xf32>, tensor<128x128xf32>, tensor<128xf32>) -> tensor<128x128xf32>
 // CHECK:           %[[VAL_7:.*]] = "tfl.pseudo_const"() {value = dense<[1, 128, 128]> : tensor<3xi32>} : () -> tensor<3xi32>
 // CHECK:           %[[VAL_8:.*]] = call @func_2_GPU_FLOAT(%[[VAL_6]], %[[VAL_7]], %[[VAL_3]]#0) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_2"} : (tensor<128x128xf32>, tensor<3xi32>, tensor<1x128x128xf32>) -> tensor<1x128x128xf32>

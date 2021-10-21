@@ -464,14 +464,14 @@ TEST_F(TestDelegate, DelegateCustomOpResolution) {
           model, ::tflite::ops::builtin::BuiltinOpResolver())(&interpreter),
       kTfLiteOk);
   // AllocateTensors should fail, since my_add hasn't been resolved.
-  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteError);
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteUnresolvedOps);
 
   // Applying static delegate won't work, since the interpreter will first try
   // to Prepare all original nodes.
   std::unique_ptr<SimpleDelegate> static_delegate(new SimpleDelegate({0}));
   ASSERT_EQ(interpreter->ModifyGraphWithDelegate(
                 static_delegate->get_tf_lite_delegate()),
-            kTfLiteError);
+            kTfLiteUnresolvedOps);
 
   // Applying delegate that supports dynamic tensors should work.
   std::unique_ptr<SimpleDelegate> dynamic_delegate(
@@ -484,7 +484,7 @@ TEST_F(TestDelegate, DelegateCustomOpResolution) {
 }
 
 TEST_F(TestDelegate, AllSubgraphsAreDelegatedByDefault) {
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
   SetUpSubgraph(interpreter_->subgraph(1));
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
   ASSERT_EQ(
@@ -502,7 +502,7 @@ TEST_F(TestDelegate, AllSubgraphsAreDelegatedByDefault) {
 }
 
 TEST_F(TestDelegate, ValidationSubgraphsAreNotDelegated) {
-  interpreter_->AddSubgraphs(1);
+  AddSubgraphs(1);
   SetUpSubgraph(interpreter_->subgraph(1));
   interpreter_->subgraph(1)->SetName("VALIDATION:foo");
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));

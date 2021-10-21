@@ -36,10 +36,6 @@ TODO(mdan): Alternatively, consider adding an edge from try to all its excepts.
 # They should rather be called 'block statements', because they include
 # statements that may have a body, e.g. if and while.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import enum
 import weakref

@@ -41,17 +41,26 @@ std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForMatMulPass();
 // Pass to optimize padding in tiled loops by peeling the final loop iteration.
 std::unique_ptr<mlir::FunctionPass> CreatePeelTiledLoopsPass();
 
+// Pass to tile and fuse linalg.generic on tensors that models reduction.
+std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass();
+
 // Pass to pad linalg ops.
 std::unique_ptr<mlir::FunctionPass> CreatePadTiledOpsPass();
 
 // Pass to vectorize linalg ops.
 std::unique_ptr<mlir::FunctionPass> CreateVectorizeTiledOpsPass();
 
+// Pass to tile elementwise ops on tensors.
+std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForCWisePass();
+
 // Pass to specialize linalg.matmul to dot, matvec or vecmat.
 std::unique_ptr<mlir::FunctionPass> CreateLinalgMatmulSpecializationPass();
 
 // Pass to split _Fused Tensorflow kernels into primitives.
 std::unique_ptr<mlir::FunctionPass> CreateFissionPass();
+
+// Pass to fuse Linalg generic operations on Tensors.
+std::unique_ptr<mlir::FunctionPass> CreateFusionPass();
 
 // Pass to optimize broadcasts based on the symbolic shape constraints.
 std::unique_ptr<mlir::FunctionPass> CreateSymbolicShapeOptimizationPass(

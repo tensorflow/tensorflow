@@ -14,10 +14,6 @@
 # ==============================================================================
 """Python module for MLIR functions exported by pybind11."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=invalid-import-order, g-bad-import-order, wildcard-import, unused-import, undefined-variable
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context

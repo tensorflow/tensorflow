@@ -185,10 +185,6 @@ reasonable default behavior.
 """
 # pylint: enable=line-too-long
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import enum  # pylint: disable=g-bad-import-order
@@ -231,7 +227,6 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
-
 
 # ------------------------------------------------------------------------------
 # Context tracking whether in a strategy.update() or .update_non_slot() call.
@@ -429,8 +424,16 @@ class _CurrentDistributionContext(object):
 
     if self._resource_creator_scope:
       try:
-        self._resource_creator_scope.__exit__(exception_type, exception_value,
-                                              traceback)
+        if isinstance(self._resource_creator_scope, list):
+          reversed_resource_creator_scope = self._resource_creator_scope[::-1]
+          nest.map_structure(
+              lambda scope: scope.__exit__(exception_type, exception_value,  # pylint:disable=g-long-lambda
+                                           traceback),
+              reversed_resource_creator_scope)
+
+        else:
+          self._resource_creator_scope.__exit__(exception_type, exception_value,
+                                                traceback)
       except RuntimeError as e:
         six.raise_from(
             RuntimeError("Resource creator scope nesting error: move call "
@@ -2106,7 +2109,7 @@ class StrategyExtendedV2(object):
     self._require_static_shapes = False
 
   def _resource_creator_scope(self):
-    """Returns one or more ops.resource_creator_scope for some Strategy."""
+    """Returns one or a list of ops.resource_creator_scope for some Strategy."""
     return None
 
   def _container_strategy(self):
@@ -3550,8 +3553,6 @@ def _batch_reduce_destination(x):
     return x.device
   else:
     return x
-
-
 # ------------------------------------------------------------------------------
 
 

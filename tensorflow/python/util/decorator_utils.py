@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Utility functions for writing decorators (which modify docstrings)."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 
 

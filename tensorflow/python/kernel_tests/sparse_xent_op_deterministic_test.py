@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for deterministic functionality of SparseSoftmaxCrossEntropyWithLogits op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -101,7 +97,8 @@ class SparseXentOpDeterministicTest(
   @test_util.run_in_graph_and_eager_modes
   def testForward(self):
     with self.cached_session():
-      for logits_dtype in [np.float16, np.float32, np.float64]:
+      for logits_dtype in [np.float16, np.float32, np.float64, \
+          dtypes.bfloat16.as_numpy_dtype]:
         for labels_dtype in [np.int32, np.int64]:
           for trial in range(5):
             seed = 123 + trial
@@ -116,7 +113,8 @@ class SparseXentOpDeterministicTest(
   @test_util.run_in_graph_and_eager_modes
   def testBackward(self):
     with self.cached_session():
-      for logits_dtype in [np.float16, np.float32, np.float64]:
+      for logits_dtype in [np.float16, np.float32, np.float64, \
+          dtypes.bfloat16.as_numpy_dtype]:
         for labels_dtype in [np.int32, np.int64]:
           labels, logits = self._generateInputs(
               labels_dtype, logits_dtype, seed=456)
@@ -190,5 +188,5 @@ class SparseXentOpDeterministicTest(
 
 if __name__ == "__main__":
   # TODO(reedwm): Merge this test with sparse_xent_op_test.py.
-  config.enable_deterministic_ops(True)
+  config.enable_op_determinism()
   test.main()

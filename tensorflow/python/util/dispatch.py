@@ -59,10 +59,6 @@ visible ops by default.  APIs/ops that are implemented in Python can opt in to
 dispatch support using the `add_dispatch_support` decorator.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import itertools
 import typing  # pylint: disable=unused-import (used in doctests)
@@ -74,15 +70,7 @@ from tensorflow.python.util import tf_export as tf_export_lib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util import traceback_utils
 from tensorflow.python.util import type_annotations
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# TODO(edloper) This is just used for doctests; once extension_type has been
-# tf_export'ed, switch the doctests to use the name under `tf`, and delete this.
-extension_type = LazyLoader(
-    "extension_type", globals(),
-    "tensorflow.python.framework.extension_type")
 
 
 # Private function attributes used to store dispatchers on TensorFlow APIs.
@@ -259,6 +247,7 @@ add_dispatch_list = add_fallback_dispatch_list
 ################################################################################
 
 
+@tf_export("experimental.dispatch_for_api")
 def dispatch_for_api(api, *signatures):
   """Decorator that overrides the default implementation for a TensorFlow API.
 
@@ -269,7 +258,7 @@ def dispatch_for_api(api, *signatures):
   `masked_add` will be called for `tf.add` if both `x` and `y` are
   `MaskedTensor`s:
 
-  >>> class MaskedTensor(extension_type.ExtensionType):
+  >>> class MaskedTensor(tf.experimental.ExtensionType):
   ...   values: tf.Tensor
   ...   mask: tf.Tensor
 
@@ -477,15 +466,63 @@ def _add_name_scope_wrapper(func, api_signature):
   return wrapped_func
 
 
-def unregister_dispatch_target(api, dispatch_target):
-  """Unregisters a dispatch target that was registered with `dispatch_for_api`."""
-  dispatcher = getattr(api, TYPE_BASED_DISPATCH_ATTR, None)
-  if dispatcher is None:
-    raise ValueError(f"{api} does not support dispatch.")
-  if dispatch_target not in _TYPE_BASED_DISPATCH_SIGNATURES[api]:
-    raise ValueError(f"{dispatch_target} was not registered for {api}")
-  del _TYPE_BASED_DISPATCH_SIGNATURES[api][dispatch_target]
-  dispatcher.Unregister(dispatch_target)
+@tf_export("experimental.unregister_dispatch_for")
+def unregister_dispatch_for(dispatch_target):
+  """Unregisters a function that was registered with `@dispatch_for_*`.
+
+  This is primarily intended for testing purposes.
+
+  Example:
+
+  >>> # Define a type and register a dispatcher to override `tf.abs`:
+  >>> class MyTensor(tf.experimental.ExtensionType):
+  ...   value: tf.Tensor
+  >>> @dispatch_for_api(tf.abs)
+  ... def my_abs(x: MyTensor):
+  ...   return MyTensor(tf.abs(x.value))
+  >>> tf.abs(MyTensor(5))
+  MyTensor(value=<tf.Tensor: shape=(), dtype=int32, numpy=5>)
+
+  >>> # Unregister the dispatcher, so `tf.abs` no longer calls `my_abs`.
+  >>> unregister_dispatch_for(my_abs)
+  >>> tf.abs(MyTensor(5))
+  Traceback (most recent call last):
+  ...
+  ValueError: Attempt to convert a value ... to a Tensor.
+
+  Args:
+    dispatch_target: The function to unregister.
+
+  Raises:
+    ValueError: If `dispatch_target` was not registered using `@dispatch_for`,
+      `@dispatch_for_unary_elementwise_apis`, or
+      `@dispatch_for_binary_elementwise_apis`.
+  """
+  found = False
+
+  # Check if dispatch_target registered by `@dispatch_for_api`
+  for api, signatures in _TYPE_BASED_DISPATCH_SIGNATURES.items():
+    if dispatch_target in signatures:
+      dispatcher = getattr(api, TYPE_BASED_DISPATCH_ATTR)
+      dispatcher.Unregister(dispatch_target)
+      del signatures[dispatch_target]
+      found = True
+
+  # Check if dispatch_target registered by `@dispatch_for_*_elementwise_apis`
+  elementwise_keys_to_delete = [
+      key for (key, handler) in _ELEMENTWISE_API_HANDLERS.items()
+      if handler is dispatch_target
+  ]
+  for key in set(elementwise_keys_to_delete):
+    for _, target in _ELEMENTWISE_API_TARGETS[key]:
+      unregister_dispatch_for(target)
+    del _ELEMENTWISE_API_HANDLERS[key]
+    del _ELEMENTWISE_API_TARGETS[key]
+    found = True
+
+  if not found:
+    raise ValueError(f"Function {dispatch_target} was not registered using "
+                     "a `@dispatch_for_*` decorator.")
 
 
 def register_dispatchable_type(cls):
@@ -684,6 +721,7 @@ _ELEMENTWISE_API_HANDLERS = {}
 _ELEMENTWISE_API_TARGETS = {}
 
 
+@tf_export("experimental.dispatch_for_unary_elementwise_apis")
 def dispatch_for_unary_elementwise_apis(x_type):
   """Decorator to override default implementation for unary elementwise APIs.
 
@@ -701,8 +739,7 @@ def dispatch_for_unary_elementwise_apis(x_type):
   The following example shows how this decorator can be used to update all
   unary elementwise operations to handle a `MaskedTensor` type:
 
-  >>> from tensorflow.python.framework import extension_type
-  >>> class MaskedTensor(extension_type.ExtensionType):
+  >>> class MaskedTensor(tf.experimental.ExtensionType):
   ...   values: tf.Tensor
   ...   mask: tf.Tensor
   >>> @dispatch_for_unary_elementwise_apis(MaskedTensor)
@@ -751,6 +788,7 @@ def dispatch_for_unary_elementwise_apis(x_type):
   return decorator
 
 
+@tf_export("experimental.dispatch_for_binary_elementwise_apis")
 def dispatch_for_binary_elementwise_apis(x_type, y_type):
   """Decorator to override default implementation for binary elementwise APIs.
 
@@ -768,8 +806,7 @@ def dispatch_for_binary_elementwise_apis(x_type, y_type):
   The following example shows how this decorator can be used to update all
   binary elementwise operations to handle a `MaskedTensor` type:
 
-  >>> from tensorflow.python.framework import extension_type
-  >>> class MaskedTensor(extension_type.ExtensionType):
+  >>> class MaskedTensor(tf.experimental.ExtensionType):
   ...   values: tf.Tensor
   ...   mask: tf.Tensor
   >>> @dispatch_for_binary_elementwise_apis(MaskedTensor, MaskedTensor)
@@ -934,23 +971,6 @@ def _extract_name_arg(args, kwargs, name_index):
   return args, kwargs, name_value
 
 
-def unregister_elementwise_api_handler(api_handler):
-  """Unregisters api handlers registered with `dispatch_for_*_elementwise_apis`.
-
-  Args:
-    api_handler: The handler to unregister.
-  """
-  keys_to_delete = [
-      key for (key, handler) in _ELEMENTWISE_API_HANDLERS.items()
-      if handler is api_handler
-  ]
-  for key in set(keys_to_delete):
-    for api, target in _ELEMENTWISE_API_TARGETS[key]:
-      unregister_dispatch_target(api, target)
-    del _ELEMENTWISE_API_HANDLERS[key]
-    del _ELEMENTWISE_API_TARGETS[key]
-
-
 def update_docstrings_with_api_lists():
   """Updates the docstrings of dispatch decorators with API lists.
 
@@ -974,8 +994,8 @@ def _update_docstring_with_api_list(target, api_list):
     name = tf_export_lib.get_canonical_name_for_symbol(
         func, add_prefix_to_v1_names=True)
     if name is not None:
-      signature = tf_inspect.signature(func)
-      lines.append(f"  * `tf.{name}{signature}`")
+      params = tf_inspect.signature(func).parameters.keys()
+      lines.append(f"  * `tf.{name}({', '.join(params)})`")
   lines.sort()
   target.__doc__ = target.__doc__.replace("  <<API_LIST>>", "\n".join(lines))
 
@@ -996,7 +1016,7 @@ def add_dispatch_support(target=None, iterable_parameters=None):
   >>> @add_dispatch_support
   ... def double(x):
   ...   return x * 2
-  >>> class MaskedTensor(extension_type.ExtensionType):
+  >>> class MaskedTensor(tf.experimental.ExtensionType):
   ...   values: tf.Tensor
   ...   mask: tf.Tensor
   >>> @dispatch_for_api(double, {'x': MaskedTensor})

@@ -194,7 +194,7 @@ class BatchFunctionFallbackKernel : public AsyncOpKernel {
           std::unique_ptr<FallbackBatchResource> new_resource;
           TF_RETURN_IF_ERROR(FallbackBatchResource::Create(
               num_batch_threads_, max_batch_size_, batch_timeout_micros_,
-              max_enqueued_batches_, allowed_batch_sizes_, bef_func_.CopyRef(),
+              max_enqueued_batches_, allowed_batch_sizes_, bef_func_,
               enable_large_batch_splitting_, *exec_ctx, &new_resource));
           *r = new_resource.release();
           return Status::OK();
@@ -297,7 +297,7 @@ Status SetUpKernelFallbackCompatRequestContextForBatch(
       builder, device_manager, pflr, intra_op_threadpool, model_metadata);
 }
 
-StatusOr<RCReference<tfrt::RequestContext> > SetUpRequestContext(
+StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(
     HostContext* host_ctx, tfrt::ResourceContext* resource_context,
     tfrt::RequestContext* src_req_ctx) {
   // Using the same logic as in the c'tor of FunctionLibraryRuntime::Options,
@@ -343,7 +343,17 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     done(statusor.status());
     return;
   }
-  auto req_ctx = std::move(statusor.ValueOrDie());
+  auto req_ctx = std::move(statusor).ValueOrDie();
+
+  int64_t id = req_ctx->id();
+  tensorflow::profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in WorkQueue.
+      [id] {
+        return tensorflow::profiler::TraceMeEncode("RunBefFunction",
+                                                   {{"id", id}, {"_r", 1}});
+      },
+      tensorflow::profiler::ContextType::kTfrtExecutor, id,
+      tensorflow::profiler::TraceMeLevel::kInfo);
 
   tfrt::ExecutionContext batch_exec_ctx(std::move(req_ctx));
   batch_exec_ctx.set_work_queue(&exec_ctx.work_queue());

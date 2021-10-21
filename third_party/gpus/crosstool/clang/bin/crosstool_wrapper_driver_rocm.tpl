@@ -13,8 +13,6 @@ DESCRIPTION:
   present, this wrapper invokes gcc with the input arguments as is.
 """
 
-from __future__ import print_function
-
 __author__ = 'whchung@gmail.com (Wen-Heng (Jack) Chung)'
 
 from argparse import ArgumentParser

@@ -90,6 +90,16 @@ std::vector<int64_t> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
 
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
                                          const HloInstruction& reduce) {
+  if (producer.opcode() == HloOpcode::kFusion) {
+    for (const HloInstruction* instr : producer.fused_instructions()) {
+      if (instr->opcode() == HloOpcode::kCopy) {
+        // Elementwise copies are only inserted in input fusion for
+        // transposition, and those are never friendly to the reduction.
+        return false;
+      }
+    }
+  }
+
   std::vector<HloInstruction*> params;
   AppendParams(producer, &params);
   AppendParams(reduce, &params);
@@ -134,11 +144,6 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleReduction(const HloInstruction& instr) {
-  // TODO(b/129089333): Don't fuse variadic reduce.
-  if (instr.opcode() == HloOpcode::kReduce && instr.shape().IsTuple()) {
-    return false;
-  }
-
   return IsReduceInputFusion(instr) ||
          IsReductionFromOrToContiguousDimensions(instr);
 }
@@ -322,15 +327,17 @@ static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
       IsReductionFromOrToContiguousDimensions(instr)) {
     ReductionDimensions reduction_info =
         GetReductionKindAndContiguousComponents(instr);
-    int64_t primitive_size =
-        ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
+    int64_t primitive_size = ShapeUtil::ByteSizeOfPrimitiveType(
+        instr.operand(0)->shape().element_type());
+    int num_variadic =
+        instr.shape().IsTuple() ? instr.shape().tuple_shapes_size() : 1;
     if (reduction_info.is_row_reduction) {
       // __shared__[32] is used for row reduction.
-      return 32 * primitive_size;
+      return 32 * primitive_size * num_variadic;
     } else {
       // __shared__[2][32][33] cache is used for column reduction ("2" comes
       // from potential x-tiling).
-      return 2 * 32 * 33 * primitive_size;
+      return 2 * 32 * 33 * primitive_size * num_variadic;
     }
   } else if (instr.opcode() == HloOpcode::kFusion) {
     int64_t sum = 0;

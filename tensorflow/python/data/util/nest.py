@@ -31,10 +31,6 @@ The motivation for this change is twofold:
    arrays.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import six as _six
 
 from tensorflow.python.framework import sparse_tensor as _sparse_tensor

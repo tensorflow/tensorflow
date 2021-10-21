@@ -170,19 +170,19 @@ struct XlaCompilationResult {
   // The XLA computation built from the tensorflow subgraph.
   std::shared_ptr<xla::XlaComputation> computation;
 
-  // Meta-info about encountered CollectiveReduceV2Ops.
-  struct CollectiveReduceV2OpInfo {
+  // Meta-info about encountered collective ops.
+  struct CollectiveInfo {
     int group_key;
     int group_size;
+    int next_id;
   };
 
-  // Group keys of the collectives encountered during the translation.
-  // Mapping from group keys to group sizes.
-  absl::optional<CollectiveReduceV2OpInfo> collective_reduce_info;
+  // Information of the collectives encountered during the translation.
+  absl::optional<CollectiveInfo> collective_info;
 };
 
-// Resolves the device assignment based on CollectiveReduceV2OpInfo.
-// CollectiveReduceV2OpInfo records collective ops in the cluster. Note that
+// Resolves the device assignment based on CollectiveInfo.
+// CollectiveInfo records collective ops in the cluster. Note that
 // this relies on a rendezvous and blocks until all replicas are there.
 //
 // Takes several extra configuration objects by reference since
@@ -190,8 +190,7 @@ struct XlaCompilationResult {
 // bundled into `run_options` if applicable.
 Status ResolveDeviceAssignment(
     OpKernelContext* ctx,
-    const absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>&
-        collective_reduce_info,
+    const absl::optional<XlaCompilationResult::CollectiveInfo>& collective_info,
     xla::ExecutableRunOptions& run_options,
     xla::DeviceAssignment& device_assignment,
     xla::gpu::GpuExecutableRunOptions& gpu_options);

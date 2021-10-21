@@ -246,6 +246,7 @@ class ReduceTest : public ClientLibraryTestBase {
         client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
     std::vector<float> expected;
+    expected.reserve(cols);
     for (int64_t colno = 0; colno < cols; ++colno) {
       float column_sum = 0;
       for (int64_t rowno = 0; rowno < rows; ++rowno) {
@@ -456,6 +457,7 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
       client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   std::vector<float> expected;
+  expected.reserve(cols);
   for (int64_t colno = 0; colno < cols; ++colno) {
     float column_sum = 0;
     for (int64_t rowno = 0; rowno < rows; ++rowno) {
@@ -487,6 +489,7 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
       client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   std::vector<float> expected;
+  expected.reserve(cols);
   for (int64_t colno = 0; colno < cols; ++colno) {
     float column_sum = 0;
     for (int64_t rowno = 0; rowno < rows; ++rowno) {
@@ -533,6 +536,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
       client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   std::vector<float> expected;
+  expected.reserve(cols);
   for (int64_t major = 0; major < 2; ++major) {
     for (int64_t colno = 0; colno < cols / 2; ++colno) {
       float column_sum = 0;
@@ -1163,6 +1167,49 @@ XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_argmax) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
+XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_argmax_column) {
+  absl::string_view hlo_string = R"(
+    HloModule Reduce_R1x2_to_R0x2_argmax
+
+    add {
+      acc = f32[] parameter(1)
+      op = f32[] parameter(0)
+      ROOT out = f32[] add(acc, op)
+    }
+
+    argmax {
+      running_max = f32[] parameter(0)
+      running_max_idx = u32[] parameter(1)
+      current_value = f32[] parameter(2)
+      current_value_idx = u32[] parameter(3)
+
+      current = (f32[], u32[]) tuple(running_max, running_max_idx)
+      potential = (f32[], u32[]) tuple(current_value, current_value_idx)
+
+      cmp_code = pred[] compare(current_value, running_max), direction=GT
+
+      new_max = f32[] select(cmp_code, current_value, running_max)
+      new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
+
+      ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
+    }
+
+    ENTRY main {
+      input = f32[32,128] parameter(0)
+      idxs = u32[32,128] iota(), iota_dimension=0
+      zero = f32[] constant(0)
+      zero_idx = u32[] constant(0)
+
+      ROOT argmax_result = (f32[128], u32[128]) reduce(
+        input, idxs, zero, zero_idx),
+        dimensions={0},
+        to_apply=%argmax
+    }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
 XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicAnd) {
   absl::string_view hlo_string = R"(
     HloModule VariadicReduceMultiOutput
@@ -1190,6 +1237,42 @@ XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicAnd) {
 
       ROOT returned = u32[] get-tuple-element(out), index=1
     }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicDifferentLayout) {
+  absl::string_view hlo_string = R"(
+HloModule ReduceWithLayoutChangeVariadicDifferent
+
+argmax {
+  running_max = f32[] parameter(0)
+  running_max_idx = u32[] parameter(1)
+  current_value = f32[] parameter(2)
+  current_value_idx = u32[] parameter(3)
+
+  current = (f32[], u32[]) tuple(running_max, running_max_idx)
+  potential = (f32[], u32[]) tuple(current_value, current_value_idx)
+
+  cmp_code = pred[] compare(current_value, running_max), direction=GT
+
+  new_max = f32[] select(cmp_code, current_value, running_max)
+  new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
+
+  ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
+}
+
+ENTRY main {
+  arg0 = f32[2,3,4,1024]{2,1,0,3}  parameter(0)
+  idxs = u32[2,3,4,1024]{3,2,1,0}  parameter(1)
+  constant0 = f32[] constant(0)
+  constant1 = u32[] constant(0)
+  ROOT reduce0 = (
+      f32[2,3,4]{2,1,0},
+      u32[2,3,4]{1,0,2}
+    ) reduce(arg0, idxs, constant0,constant1), dimensions={3}, to_apply=argmax
+}
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));

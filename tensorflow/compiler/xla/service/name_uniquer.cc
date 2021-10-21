@@ -41,12 +41,12 @@ NameUniquer::NameUniquer(const string& separator) {
   separator_ = separator;
 }
 
-/*static*/ string NameUniquer::GetSanitizedName(const string& name) {
+/*static*/ string NameUniquer::GetSanitizedName(absl::string_view name) {
   if (name.empty()) {
     return "";
   }
 
-  string result = name;
+  string result(name);
   char c = static_cast<unsigned char>(result[0]);
   if (!absl::ascii_isalpha(c) && c != '_') {
     result[0] = '_';

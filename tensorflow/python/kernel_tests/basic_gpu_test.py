@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for basic component wise operations using a GPU device."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 import threading
 

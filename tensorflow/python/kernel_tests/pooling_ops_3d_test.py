@@ -14,14 +14,15 @@
 # ==============================================================================
 """Functional tests for 3d pooling operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
@@ -504,6 +505,57 @@ class PoolingTest(test.TestCase):
         window=(3, 3, 3),
         strides=(1, 1, 1),
         padding="SAME")
+
+  def testMaxPool3DZeroPoolSize(self):
+    # Test case for GitHub issue 51936.
+    for f in [nn_ops.max_pool3d, nn_ops.avg_pool3d]:
+      with self.session():
+        with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+          input_sizes = [3, 4, 10, 11, 12]
+
+          input_data = 1.
+          input_tensor = constant_op.constant(
+              input_data, shape=input_sizes, name="input")
+          pool_3d = f(input_tensor, ksize=[2, 2, 0], strides=1, padding="VALID")
+          self.evaluate(pool_3d)
+
+  def testMaxPoolGradEagerShapeErrors(self):
+    with context.eager_mode():
+      orig_in = array_ops.ones((1, 1, 1, 1, 1))
+
+      # Test invalid orig_out shape
+      orig_out = array_ops.ones((1, 1, 1, 1, 2))
+      grad = array_ops.ones((1, 1, 1, 1, 1))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected orig_output shape to be \[1,1,1,1,1\], but got "
+          r"\[1,1,1,1,2\]"):
+        gen_nn_ops.max_pool3d_grad(
+            orig_in, orig_out, grad, ksize=[1, 1, 1, 1, 1],
+            strides=[1, 1, 1, 1, 1], padding="VALID")
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected orig_output shape to be \[1,1,1,1,1\], but got "
+          r"\[1,1,1,1,2\]"):
+        gen_nn_ops.max_pool3d_grad_grad(
+            orig_in, orig_out, grad, ksize=[1, 1, 1, 1, 1],
+            strides=[1, 1, 1, 1, 1], padding="VALID")
+
+      # Test invalid grad shape
+      orig_out = array_ops.ones((1, 1, 1, 1, 1))
+      grad = array_ops.ones((1, 1, 1, 1, 2))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected grad shape to be \[1,1,1,1,1\], but got \[1,1,1,1,2\]"):
+        gen_nn_ops.max_pool3d_grad(
+            orig_in, orig_out, grad, ksize=[1, 1, 1, 1, 1],
+            strides=[1, 1, 1, 1, 1], padding="VALID")
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected grad shape to be \[1,1,1,1,1\], but got \[1,1,1,1,2\]"):
+        gen_nn_ops.max_pool3d_grad_grad(
+            orig_in, orig_out, grad, ksize=[1, 1, 1, 1, 1],
+            strides=[1, 1, 1, 1, 1], padding="VALID")
 
 
 if __name__ == "__main__":

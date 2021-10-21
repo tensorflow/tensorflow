@@ -6,6 +6,9 @@ load("//tensorflow:tensorflow.bzl", "if_not_windows", "if_xla_available", "py_te
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pytype_library")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
@@ -955,14 +958,30 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":auto_control_deps",
+        ":composite_tensor",
+        ":constant_op",
+        ":dtypes",
+        ":errors",
         ":ops",
-        ":sparse_tensor",
+        ":tensor_spec",
+        ":tensor_util",
+        ":type_spec",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:handle_data_util",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1186,14 +1205,16 @@ py_library(
     ],
 )
 
-py_library(
+pytype_library(
     name = "type_spec",
     srcs = ["type_spec.py"],
     srcs_version = "PY3",
     visibility = visibility,
     deps = [
+        ":composite_tensor",
         ":dtypes",
         ":tensor_shape",
+        "//tensorflow/python:platform",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],
@@ -1279,6 +1300,7 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/ops/ragged:ragged_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_tensor_value",
         "//tensorflow/python/platform:_pywrap_stacktrace_handler",
@@ -2037,9 +2059,10 @@ tf_py_test(
 
 tf_py_test(
     name = "convert_to_constants_test",
-    size = "small",
+    size = "medium",
     srcs = ["convert_to_constants_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = ["no_rocm"],
     deps = [
         ":convert_to_constants",
@@ -2084,8 +2107,8 @@ tf_python_pybind_extension(
 pyx_library(
     name = "fast_tensor_util",
     srcs = ["fast_tensor_util.pyx"],
+    cc_deps = ["//third_party/py/numpy:headers"],
     py_deps = ["//tensorflow/python:util"],
-    deps = ["//third_party/py/numpy:headers"],
 )
 
 py_test(

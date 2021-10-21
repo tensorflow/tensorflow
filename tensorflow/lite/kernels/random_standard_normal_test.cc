@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <initializer_list>
+#include <numeric>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
@@ -49,8 +49,9 @@ class RandomStandardNormalOpModel : public SingleOpModel {
                              {static_cast<int>(input.size())});
     }
     output_ = AddOutput(output);
-    SetCustomOp("RandomStandardNormal", {},
-                ops::custom::Register_RANDOM_STANDARD_NORMAL);
+    SetBuiltinOp(BuiltinOperator_RANDOM_STANDARD_NORMAL,
+                 BuiltinOptions_RandomOptions,
+                 CreateRandomOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)});
     if (dynamic_input) {
       PopulateTensor<int32_t>(input_, std::vector<int32_t>(input));
@@ -89,19 +90,16 @@ TYPED_TEST(RandomStandardNormalTest, TestOutput) {
     auto output = m.GetOutput<Type>();
     EXPECT_EQ(output.size(), 1000 * 50 * 5);
 
-    double sum = 0;
-    for (auto r : output) {
-      sum += r;
-    }
-    double avg = sum / output.size();
-    ASSERT_LT(std::abs(avg), 0.05);  // Average should be approximately 0.
+    // Mean should be approximately 0.
+    double sum = std::accumulate(output.begin(), output.end(), 0.0);
+    double mean = sum / output.size();
+    ASSERT_LT(std::abs(mean), 0.05);
 
-    double sum_squared = 0;
-    for (auto r : output) {
-      sum_squared += std::pow(r - avg, 2);
-    }
-    double var = sum_squared / output.size();
-    EXPECT_LT(std::abs(1 - var), 0.05);  // Variance should be approximately 1.
+    // Standard deviation should be approximately 1.
+    double sq_sum =
+        std::inner_product(output.begin(), output.end(), output.begin(), 0.0);
+    double std_dev = std::sqrt(sq_sum / output.size() - mean * mean);
+    EXPECT_LT(std::abs(1 - std_dev), 0.05);
   }
 }
 
@@ -117,17 +115,15 @@ TYPED_TEST(RandomStandardNormalTest, TestOutputDistributionRange) {
   m.Invoke();
   auto output = m.GetOutput<Type>();
   EXPECT_EQ(output.size(), 1000 * 50 * 5);
-  double sum = 0;
-  for (auto r : output) {
-    sum += r;
-  }
-  double avg = sum / output.size();
-  ASSERT_LT(std::abs(avg), 0.05);  // Average should be approximately 0.
 
-  double sum_squared = 0;
-  for (auto r : output) {
-    sum_squared += std::pow(r - avg, 2);
-  }
-  double var = sum_squared / output.size();
-  EXPECT_LT(std::abs(1 - var), 0.05);  // Variance should be approximately 1.
+  // Mean should be approximately 0.
+  double sum = std::accumulate(output.begin(), output.end(), 0.0);
+  double mean = sum / output.size();
+  ASSERT_LT(std::abs(mean), 0.05);
+
+  // Standard deviation should be approximately 1.
+  double sq_sum =
+      std::inner_product(output.begin(), output.end(), output.begin(), 0.0);
+  double std_dev = std::sqrt(sq_sum / output.size() - mean * mean);
+  EXPECT_LT(std::abs(1 - std_dev), 0.05);
 }

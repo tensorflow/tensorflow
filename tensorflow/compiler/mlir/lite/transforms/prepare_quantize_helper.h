@@ -244,7 +244,8 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
       if (input.getDefiningOp() == nullptr) continue;
 
       // TODO(b/172517537): make this work with non-PTQ case.
-      if (llvm::isa<ConstantOp, TFL::ConstOp>(input.getDefiningOp())) {
+      if (llvm::isa<ConstantOp, arith::ConstantOp, TFL::ConstOp>(
+              input.getDefiningOp())) {
         // Tensors with derived scale are biases, and handled in propagation.
         if (tensor_property.use_derived_scale) continue;
         // For weights, use quantization scale inferred from the values.

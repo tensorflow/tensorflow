@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.data service ops where servers are started late or preempted."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 import time
 

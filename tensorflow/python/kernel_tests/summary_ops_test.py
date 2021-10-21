@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for V2 summary ops from summary_ops_v2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import unittest
 

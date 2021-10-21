@@ -29,7 +29,8 @@ class TfrtSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
  public:
   static StatusOr<TfrtSavedModelMLIRImportInput> Create(
       const FallbackState& fallback_state, const MetaGraphDef* meta_graph_def,
-      const GraphDebugInfo& debug_info);
+      const GraphDebugInfo& debug_info,
+      bool run_placer_grappler_on_nested_functions = false);
 
   TfrtSavedModelMLIRImportInput(
       const MetaGraphDef* meta_graph_def, const GraphDebugInfo& debug_info,

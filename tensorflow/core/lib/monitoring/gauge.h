@@ -134,7 +134,7 @@ class GaugeCell {
   TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
 };
 
-// Explicit specialization of GaugeCell<int64>. Compared to the primary
+// Explicit specialization of GaugeCell<int64_t>. Compared to the primary
 // template, it uses atomic values as opposed to mutex. This class is
 // thread-safe.
 template <>

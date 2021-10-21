@@ -42,6 +42,18 @@ class XlirDialect : public mlir::Dialect {
   explicit XlirDialect(mlir::MLIRContext* context);
 };
 
+// GPU module data container to be stored in TFRT's resource context and picked
+// up by xlir.module.load.
+struct GpuModuleData {
+  llvm::StringRef blob;
+
+  struct ConstantInfo {
+    llvm::StringRef symbol_name;
+    llvm::ArrayRef<uint8_t> content;
+  };
+  std::vector<ConstantInfo> constants;
+};
+
 }  // namespace gpu
 }  // namespace xla
 

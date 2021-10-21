@@ -37,36 +37,23 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
 
-Status DataServiceDispatcherClient::WorkerHeartbeat(
-    const std::string& worker_address, const std::string& transfer_address,
-    const std::vector<int64_t>& current_tasks, std::vector<TaskDef>& new_tasks,
-    std::vector<int64_t>& tasks_to_delete) {
+StatusOr<WorkerHeartbeatResponse> DataServiceDispatcherClient::WorkerHeartbeat(
+    const WorkerHeartbeatRequest& request) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-  WorkerHeartbeatRequest req;
-  req.set_worker_address(worker_address);
-  req.set_transfer_address(transfer_address);
-  for (int64_t task : current_tasks) {
-    req.add_current_tasks(task);
-  }
-  WorkerHeartbeatResponse resp;
+  WorkerHeartbeatResponse response;
   grpc::ClientContext client_ctx;
-  grpc::Status status = stub_->WorkerHeartbeat(&client_ctx, req, &resp);
+  grpc::Status status = stub_->WorkerHeartbeat(&client_ctx, request, &response);
   if (!status.ok()) {
     return grpc_util::WrapError("Failed to perform worker heartbeat", status);
   }
-  for (const auto& task : resp.new_tasks()) {
-    new_tasks.push_back(task);
-  }
-  for (int64_t task_to_delete : resp.tasks_to_delete()) {
-    tasks_to_delete.push_back(task_to_delete);
-  }
-  return Status::OK();
+  return response;
 }
 
 Status DataServiceDispatcherClient::WorkerUpdate(
@@ -148,8 +135,9 @@ Status DataServiceDispatcherClient::RegisterDataset(
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
     int64_t dataset_id, const ProcessingModeDef& processing_mode,
-    const absl::optional<JobKey>& job_key, absl::optional<int64> num_consumers,
-    TargetWorkers target_workers, int64_t& job_client_id) {
+    const absl::optional<JobKey>& job_key,
+    absl::optional<int64_t> num_consumers, TargetWorkers target_workers,
+    int64_t& job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);

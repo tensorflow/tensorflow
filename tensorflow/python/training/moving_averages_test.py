@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional test for moving_averages.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding

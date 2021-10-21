@@ -45,6 +45,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -385,7 +386,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
         values.emplace_back(semantics, int_repr);
       }
 
-      return DenseElementsAttr::get(shaped_type, values);
+      return mlir::ElementsAttr(DenseElementsAttr::get(shaped_type, values));
     }
     case 32: {
       assert(bytes_len % 4 == 0);
@@ -401,7 +402,8 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
                                             llvm::support::unaligned>(data);
         values.push_back(absl::bit_cast<float>(bit_repr));
       }
-      return DenseElementsAttr::get(shaped_type, ArrayRef<float>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<float>(values)));
     }
     case 64: {
       assert(bytes_len % 8 == 0);
@@ -417,7 +419,8 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
                                             llvm::support::unaligned>(data);
         values.push_back(absl::bit_cast<double>(bit_repr));
       }
-      return DenseElementsAttr::get(shaped_type, ArrayRef<double>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<double>(values)));
     }
   }
   return errors::InvalidArgument("unsupported bit width", elem_type.getWidth());
@@ -445,22 +448,27 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
       for (auto b : buffer) {
         values.emplace_back(b != 0);
       }
-      return DenseElementsAttr::get(shaped_type, ArrayRef<bool>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<bool>(values)));
     }
     case 8: {
-      return DenseElementsAttr::get(shaped_type, ArrayRef<uint8_t>(buffer));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<uint8_t>(buffer)));
     }
     case 16: {
       auto values = ReadAsLittleEndian<uint16_t>(buffer);
-      return DenseElementsAttr::get(shaped_type, ArrayRef<uint16_t>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<uint16_t>(values)));
     }
     case 32: {
       auto values = ReadAsLittleEndian<uint32_t>(buffer);
-      return DenseElementsAttr::get(shaped_type, ArrayRef<uint32_t>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<uint32_t>(values)));
     }
     case 64: {
       auto values = ReadAsLittleEndian<uint64_t>(buffer);
-      return DenseElementsAttr::get(shaped_type, ArrayRef<uint64_t>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<uint64_t>(values)));
     }
     default:
       return errors::Unimplemented("Cannot handle bit width ", bit_width);
@@ -877,7 +885,8 @@ StatusOr<Operation*> ConvertOp(
       if (shape_ty != nullptr && shape_ty.hasRank() && shape_ty.getRank() > 1) {
         llvm::SmallVector<mlir::Attribute, 4> shape;
         int32_t dim_size = 0;
-        for (const auto& dim : llvm::enumerate(shape_attr.getIntValues())) {
+        for (const auto& dim :
+             llvm::enumerate(shape_attr.getValues<llvm::APInt>())) {
           const int64_t size = dim.value().getSExtValue();
           shape.push_back(
               builder.getI32IntegerAttr(static_cast<int32_t>(size)));
@@ -1432,9 +1441,10 @@ OwningModuleRef tflite::FlatBufferToMlir(
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally) {
-  context->loadDialect<
-      mlir::StandardOpsDialect, mlir::quant::QuantizationDialect,
-      mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect>();
+  context->loadDialect<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+                       mlir::quant::QuantizationDialect,
+                       mlir::TFL::TensorFlowLiteDialect,
+                       mlir::TF::TensorFlowDialect>();
 
   auto model_ptr =
       FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());

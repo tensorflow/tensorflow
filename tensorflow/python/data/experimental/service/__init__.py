@@ -367,10 +367,6 @@ dataset = coordinator.create_per_worker_dataset(new_dataset_fn)
   job of ParameterServerStrategy).
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.experimental.ops.data_service_ops import distribute
 from tensorflow.python.data.experimental.ops.data_service_ops import from_dataset_id
 from tensorflow.python.data.experimental.ops.data_service_ops import register_dataset

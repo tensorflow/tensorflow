@@ -23,7 +23,13 @@ limitations under the License.
 
 int TfLiteIntArrayGetSizeInBytes(int size) {
   static TfLiteIntArray dummy;
-  return sizeof(dummy) + sizeof(dummy.data[0]) * size;
+
+  int computed_size = sizeof(dummy) + sizeof(dummy.data[0]) * size;
+#if defined(_MSC_VER)
+  // Context for why this is needed is in http://b/189926408#comment21
+  computed_size -= sizeof(dummy.data[0]);
+#endif
+  return computed_size;
 }
 
 int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b) {
@@ -68,7 +74,13 @@ void TfLiteIntArrayFree(TfLiteIntArray* a) { free(a); }
 
 int TfLiteFloatArrayGetSizeInBytes(int size) {
   static TfLiteFloatArray dummy;
-  return sizeof(dummy) + sizeof(dummy.data[0]) * size;
+
+  int computed_size = sizeof(dummy) + sizeof(dummy.data[0]) * size;
+#if defined(_MSC_VER)
+  // Context for why this is needed is in http://b/189926408#comment21
+  computed_size -= sizeof(dummy.data[0]);
+#endif
+  return computed_size;
 }
 
 #ifndef TF_LITE_STATIC_MEMORY

@@ -2001,177 +2001,160 @@ TEST_F(QuantizeWhereModelTest, QuantizeWhere) {
   EXPECT_EQ(model_.operator_codes[0]->version, 1);
 }
 
-class QuantizeCallOnceModelTest : public QuantizeModelTest {
- protected:
-  QuantizeCallOnceModelTest() {
-    input_model_ = ReadModel(internal::kConvModelWith0Plus10Weights);
-    readonly_model_ = input_model_->GetModel();
-    readonly_model_->UnPackTo(&model_, nullptr);
-    AddSubOpForBias(&model_);
-    int var_handle_op_code = AddCallOnce(&model_);
-    AddAssignVariableOp(&model_, var_handle_op_code);
-  }
-
-  void AddSubOpForBias(ModelT* model) {
-    // Adds a use for bias as input in other op.
-    std::unique_ptr<OperatorCodeT> sub_opcode(new OperatorCodeT);
-    sub_opcode->builtin_code = BuiltinOperator_SUB;
-    model->operator_codes.push_back(std::move(sub_opcode));
-    const int sub_opcode_idx = model->operator_codes.size() - 1;
-    std::unique_ptr<OperatorT> sub_op(new OperatorT);
-    sub_op->opcode_index = sub_opcode_idx;
-    sub_op->builtin_options.type = BuiltinOptions_SubOptions;
-    sub_op->builtin_options.value = new SubOptionsT();
-    auto& primary_subgraph = model->subgraphs.front();
-    int bias_tensor_id = 1;
-    TensorT* bias_tensor;
-    for (int i = 0; i < primary_subgraph->tensors.size(); ++i) {
-      auto& tensor = primary_subgraph->tensors[i];
-      if (std::string(tensor->name) == "conv_bias") {
-        bias_tensor_id = i;
-        bias_tensor = tensor.get();
-      }
-    }
-    std::unique_ptr<TensorT> tensor(new TensorT);
-    tensor->name = "sub";
-    tensor->shape = bias_tensor->shape;
-    tensor->type = tflite::TensorType_FLOAT32;
-    tensor->quantization = absl::make_unique<QuantizationParametersT>();
-    tensor->quantization->min.push_back(bias_tensor->quantization->min[0]);
-    tensor->quantization->max.push_back(bias_tensor->quantization->max[0]);
-    primary_subgraph->tensors.push_back(std::move(tensor));
-    int output_tensor_id = primary_subgraph->tensors.size() - 1;
-    sub_op->inputs = {bias_tensor_id, bias_tensor_id};
-    sub_op->outputs = {output_tensor_id};
-    primary_subgraph->operators.push_back(std::move(sub_op));
-    primary_subgraph->outputs.push_back(output_tensor_id);
-  }
-
-  int AddCallOnce(ModelT* model) {
-    std::unique_ptr<SubGraphT> subgraph(new SubGraphT);
-    subgraph->name = "NoOp";
-    std::unique_ptr<OperatorCodeT> op_code(new OperatorCodeT);
-    op_code->builtin_code = BuiltinOperator_VAR_HANDLE;
-    model->operator_codes.push_back(std::move(op_code));
-    const int opcode_idx = model->operator_codes.size() - 1;
-    std::unique_ptr<OperatorT> op(new OperatorT);
-    op->opcode_index = opcode_idx;
-    op->builtin_options.type = BuiltinOptions_VarHandleOptions;
-    op->builtin_options.value = new VarHandleOptionsT();
-    op->builtin_options.AsVarHandleOptions()->shared_name = shared_name_;
-    std::unique_ptr<TensorT> tensor(new TensorT);
-    tensor->name = shared_name_;
-    tensor->type = tflite::TensorType_RESOURCE;
-    subgraph->tensors.push_back(std::move(tensor));
-    int tensor_id = subgraph->tensors.size() - 1;
-    op->outputs.push_back(tensor_id);
-    subgraph->operators.push_back(std::move(op));
-    model->subgraphs.push_back(std::move(subgraph));
-    const int subgraph_id = model->subgraphs.size() - 1;
-    std::unique_ptr<OperatorCodeT> call_once_opcode(new OperatorCodeT);
-    call_once_opcode->builtin_code = BuiltinOperator_CALL_ONCE;
-    model->operator_codes.push_back(std::move(call_once_opcode));
-    const int call_once_opcode_idx = model->operator_codes.size() - 1;
-    std::unique_ptr<OperatorT> call_once_op(new OperatorT);
-    call_once_op->opcode_index = call_once_opcode_idx;
-    call_once_op->builtin_options.type = BuiltinOptions_CallOnceOptions;
-    call_once_op->builtin_options.value = new CallOnceOptionsT();
-    call_once_op->builtin_options.AsCallOnceOptions()->init_subgraph_index =
-        subgraph_id;
-    auto& primary_subgraph = model->subgraphs.front();
-    primary_subgraph->operators.push_back(std::move(call_once_op));
-    return opcode_idx;
-  }
-
-  void AddAssignVariableOp(ModelT* model, int var_handle_op_code) {
-    // Create a var handle op that returns the resource created in AddCallOnce.
-    std::unique_ptr<OperatorT> var_handle_op(new OperatorT);
-    var_handle_op->opcode_index = var_handle_op_code;
-    var_handle_op->builtin_options.type = BuiltinOptions_VarHandleOptions;
-    var_handle_op->builtin_options.value = new VarHandleOptionsT();
-    var_handle_op->builtin_options.AsVarHandleOptions()->shared_name =
-        shared_name_;
-    std::unique_ptr<TensorT> resource_tensor(new TensorT);
-    resource_tensor->name = shared_name_;
-    resource_tensor->type = tflite::TensorType_RESOURCE;
-    auto& primary_subgraph = model->subgraphs.front();
-    primary_subgraph->tensors.push_back(std::move(resource_tensor));
-    int resource_tensor_id = primary_subgraph->tensors.size() - 1;
-    var_handle_op->outputs.push_back(resource_tensor_id);
-
-    std::unique_ptr<OperatorCodeT> assign_op_code(new OperatorCodeT);
-    assign_op_code->builtin_code = BuiltinOperator_ASSIGN_VARIABLE;
-    model->operator_codes.push_back(std::move(assign_op_code));
-    const int assign_opcode_idx = model->operator_codes.size() - 1;
-
-    std::unique_ptr<OperatorT> assign_op(new OperatorT);
-    assign_op->opcode_index = assign_opcode_idx;
-    assign_op->builtin_options.type = BuiltinOptions_AssignVariableOptions;
-    assign_op->builtin_options.value = new AssignVariableOptionsT();
-    int output_tensor_id = primary_subgraph->outputs[0];
-    assign_op->inputs = {resource_tensor_id, output_tensor_id};
-    primary_subgraph->operators.push_back(std::move(assign_op));
-  }
-
-  const std::string shared_name_ = "Variable";
+enum struct ModifyRangeType {
+  kNone = 0,
+  kAll = 1,
+  kReadOnly = 2,
+  kAssignOnly = 3,
 };
 
-TEST_F(QuantizeCallOnceModelTest, QuantizeCallOnce) {
-  const tflite::TensorType tensor_type = TensorType_INT16;
-  auto status = QuantizeModelAllOperators(
-      &builder_, &model_, tensor_type, tensor_type,
-      /*allow_float=*/true, tensor_type, &error_reporter_);
-  EXPECT_EQ(status, kTfLiteOk);
-  std::string serialized_quantized_model(
-      reinterpret_cast<const char*>(builder_.GetBufferPointer()),
-      builder_.GetSize());
-  int assign_float_tensor_id = -1;
-  for (const auto& subgraph : model_.subgraphs) {
-    for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
+struct TestType {
+  TensorType tensor_type;
+  ModifyRangeType modify_range;
+};
+
+class QuantizeResourcesModelTest
+    : public QuantizeModelTest,
+      public testing::WithParamInterface<TestType> {
+ protected:
+  QuantizeResourcesModelTest() {
+    TestType obj = GetParam();
+    tensor_type_ = obj.tensor_type;
+    modify_range_ = obj.modify_range;
+    input_model_ = ReadModel(internal::kModelWithResourceVarsCalibrated);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_, nullptr);
+    if (modify_range_ != ModifyRangeType::kNone) {
+      ModifyRange(&model_);
+    }
+  }
+  void ModifyRange(ModelT* model) {
+    // Modify ranges to test when min/max of the primary subgraph variable
+    // is smaller than the initializer subgraph.
+    const bool do_read = (modify_range_ == ModifyRangeType::kAll ||
+                          modify_range_ == ModifyRangeType::kReadOnly);
+    const bool do_assign = (modify_range_ == ModifyRangeType::kAll ||
+                            modify_range_ == ModifyRangeType::kAssignOnly);
+    SubGraphT* subgraph = model->subgraphs[0].get();
+    for (size_t op_idx = 0; op_idx < subgraph->operators.size(); ++op_idx) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
           GetBuiltinCode(model_.operator_codes[op->opcode_index].get());
-      if (op_code == BuiltinOperator_CONV_2D) {
-        for (const auto& tensor_id : op->inputs) {
-          auto& tensor = subgraph->tensors[tensor_id];
-          EXPECT_TRUE(tensor->type == TensorType_INT64 ||  // bias
-                      tensor->type == TensorType_INT8 ||   // weights
-                      tensor->type == TensorType_INT16);   // activations
-          if (tensor->type == TensorType_INT64) {  // bias should be duplicated.
-            EXPECT_EQ(tensor->name, "conv_bias_duplicate_1");
+      TensorT* var_tensor;
+      if (op_code == BuiltinOperator_ASSIGN_VARIABLE && do_assign) {
+        var_tensor = subgraph->tensors[op->inputs[1]].get();
+      } else if (op_code == BuiltinOperator_READ_VARIABLE && do_read) {
+        var_tensor = subgraph->tensors[op->outputs[0]].get();
+      } else {
+        continue;
+      }
+      // This value is lower than the initial values, so should be replaced
+      var_tensor->quantization->max[0] = 12.5;
+    }
+  }
+  TensorType tensor_type_;
+  ModifyRangeType modify_range_ = ModifyRangeType::kAll;
+};
+
+INSTANTIATE_TEST_SUITE_P(QuantizeResourcesModelTest, QuantizeResourcesModelTest,
+                         testing::ValuesIn<TestType>(
+                             {{TensorType_INT8, ModifyRangeType::kNone},
+                              {TensorType_INT8, ModifyRangeType::kAll},
+                              {TensorType_INT8, ModifyRangeType::kReadOnly},
+                              {TensorType_INT8, ModifyRangeType::kAssignOnly},
+                              {TensorType_INT16, ModifyRangeType::kNone},
+                              {TensorType_INT16, ModifyRangeType::kAll},
+                              {TensorType_INT16, ModifyRangeType::kReadOnly},
+                              {TensorType_INT16,
+                               ModifyRangeType::kAssignOnly}}));
+
+TEST_P(QuantizeResourcesModelTest, GraphIsFullyQuantized) {
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, tensor_type_, tensor_type_,
+      /*allow_float*/ false, tensor_type_, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+  std::vector<QuantizationParametersT*> quant_params;
+  const float quant_eps = tensor_type_ == TensorType_INT8 ? 1e-1 : 1e-2;
+  for (const auto& subgraph : model_.subgraphs) {
+    for (const auto& tensor : subgraph->tensors) {
+      if (tensor_type_ == TensorType_INT8) {
+        EXPECT_TRUE(
+            tensor->type == TensorType_RESOURCE ||  // resource
+            tensor->type == TensorType_INT32 ||     // bias and gather indices
+            tensor->type == TensorType_INT8);       // weights and activations
+      } else if (tensor_type_ == TensorType_INT16) {
+        EXPECT_TRUE(tensor->type == TensorType_RESOURCE ||  // resource
+                    tensor->type == TensorType_INT64 ||     // bias
+                    tensor->type == TensorType_INT32 ||     // gather indices
+                    tensor->type == TensorType_INT16 ||     // activations
+                    tensor->type == TensorType_INT8);       // weights
+      }
+    }
+    for (size_t op_idx = 0; op_idx < subgraph->operators.size(); ++op_idx) {
+      OperatorT* op = subgraph->operators[op_idx].get();
+      const BuiltinOperator op_code =
+          GetBuiltinCode(model_.operator_codes[op->opcode_index].get());
+      if (op_code == BuiltinOperator_ASSIGN_VARIABLE) {
+        TensorT* var_tensor = subgraph->tensors[op->inputs[1]].get();
+        quant_params.push_back(var_tensor->quantization.get());
+        if (model_.buffers[var_tensor->buffer] &&
+            !model_.buffers[var_tensor->buffer]->data.empty()) {
+          const BufferT* buffer = model_.buffers[var_tensor->buffer].get();
+          const int num_elements = 25;
+          const int expected_buffer_size = tensor_type_ == TensorType_INT8
+                                               ? num_elements * sizeof(int8_t)
+                                               : num_elements * sizeof(int16_t);
+          EXPECT_EQ(buffer->data.size(), expected_buffer_size);
+          for (int i = 0; i < num_elements; ++i) {
+            float dequantized = 0;
+            if (tensor_type_ == TensorType_INT8) {
+              auto data = reinterpret_cast<const int8_t*>(buffer->data.data());
+              const int zero_point = var_tensor->quantization->zero_point[0];
+              dequantized =
+                  (data[i] - zero_point) * var_tensor->quantization->scale[0];
+            } else if (tensor_type_ == TensorType_INT16) {
+              auto data = reinterpret_cast<const int16_t*>(buffer->data.data());
+              dequantized = data[i] * var_tensor->quantization->scale[0];
+            }
+            EXPECT_NEAR(dequantized, 25.0 - i, quant_eps);
           }
         }
-        for (const auto& tensor_id : op->outputs) {
-          auto& tensor = subgraph->tensors[tensor_id];
-          EXPECT_TRUE(tensor->type == TensorType_INT16);
-        }
+      } else if (op_code == BuiltinOperator_READ_VARIABLE) {
+        TensorT* var_tensor = subgraph->tensors[op->outputs[0]].get();
+        quant_params.push_back(var_tensor->quantization.get());
       }
-      if (op_code == BuiltinOperator_ASSIGN_VARIABLE) {
-        for (const auto& tensor_id : op->inputs) {
-          auto& tensor = subgraph->tensors[tensor_id];
-          EXPECT_TRUE(tensor->type == TensorType_FLOAT32 ||
-                      tensor->type == TensorType_RESOURCE);
-          assign_float_tensor_id = tensor_id;
+
+      // Test that the bias was duplicated.
+      if (op_code == BuiltinOperator_FULLY_CONNECTED) {
+        TensorT* bias = subgraph->tensors[op->inputs[2]].get();
+        EXPECT_EQ(bias->name, "Const_duplicate_1");
+        if (tensor_type_ == TensorType_INT8) {
+          EXPECT_EQ(bias->type, TensorType_INT32);
+        } else if (tensor_type_ == TensorType_INT8) {
+          EXPECT_EQ(bias->type, TensorType_INT64);
         }
       }
     }
   }
-  EXPECT_NE(assign_float_tensor_id, -1);
-  int num_dequantizes = 0;
-  for (const auto& subgraph : model_.subgraphs) {
-    for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
-      OperatorT* op = subgraph->operators[op_idx].get();
-      const BuiltinOperator op_code =
-          GetBuiltinCode(model_.operator_codes[op->opcode_index].get());
-      if (op_code == BuiltinOperator_DEQUANTIZE) {
-        num_dequantizes++;
-        EXPECT_EQ(op->outputs[0], assign_float_tensor_id);
-      }
-    }
+  EXPECT_EQ(quant_params.size(), 4);
+  QuantizationParametersT* expected_quant_param = quant_params[0];
+  EXPECT_EQ(expected_quant_param->scale.size(), 1);
+  float expected_scale =
+      tensor_type_ == TensorType_INT8 ? 0.1960605f : 0.0015258f;
+  if (modify_range_ == ModifyRangeType::kAll) {
+    expected_scale = tensor_type_ == TensorType_INT8 ? 0.0980392f : 0.0007629f;
   }
-  // There should be 1 dequantize for the resource.
-  EXPECT_EQ(num_dequantizes, 1);
+  const float eps = 1e-7;
+  EXPECT_NEAR(expected_quant_param->scale[0], expected_scale, eps);
+  for (int i = 1; i < quant_params.size(); ++i) {
+    QuantizationParametersT* test_param = quant_params[i];
+    EXPECT_EQ(test_param->scale, expected_quant_param->scale);
+    EXPECT_EQ(test_param->zero_point, expected_quant_param->zero_point);
+    EXPECT_EQ(test_param->min, expected_quant_param->min);
+    EXPECT_EQ(test_param->max, expected_quant_param->max);
+  }
 }
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite

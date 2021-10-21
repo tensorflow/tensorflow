@@ -25,7 +25,7 @@ func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = addf %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.addf %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -40,7 +40,7 @@ func @element_wise_with_dynamic_shape(%lhs: memref<?x?xf32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = addf %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.addf %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -54,7 +54,7 @@ func @element_wise_scalar(%lhs: memref<f32>, %rhs: memref<f32>,
 }
 // CHECK: %[[LHS:.*]] = memref.load
 // CHECK: %[[RHS:.*]] = memref.load
-// CHECK: %[[RES:.*]] = addf %[[LHS]], %[[RHS]]
+// CHECK: %[[RES:.*]] = arith.addf %[[LHS]], %[[RHS]]
 // CHECK: memref.store %[[RES]]
 // CHECK-NEXT: return
 
@@ -69,11 +69,7 @@ func @minf(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[CMP:.*]] = cmpf olt, %[[LHS_IN]], %[[RHS_IN]] : f32
-// CHECK-NEXT:   %[[MIN:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : f32
-// CHECK-NEXT:   %[[ISNAN:.*]] = cmpf uno, %[[LHS_IN]], %[[RHS_IN]] : f32
-// CHECK-NEXT:   %[[NAN:.*]] = constant 0x7FC00000 : f32
-// CHECK-NEXT:   %[[RESULT:.*]] = select %[[ISNAN]], %[[NAN]], %[[MIN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = minf %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -87,8 +83,7 @@ func @maxi(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i32):
-// CHECK-NEXT:   %[[CMP:.*]] = cmpi sgt, %[[LHS_IN]], %[[RHS_IN]] : i32
-// CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = maxsi %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -102,8 +97,7 @@ func @maxu(%lhs: memref<2x2xui32>, %rhs: memref<2x2xui32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i32):
-// CHECK-NEXT:   %[[CMP:.*]] = cmpi ugt, %[[LHS_IN]], %[[RHS_IN]] : i32
-// CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = maxui %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -117,7 +111,7 @@ func @and(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = and %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.andi %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -220,9 +214,9 @@ func @is_finite(%input: memref<2x2xf32>, %result: memref<2x2xi1>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[POS_INF:.+]] = constant 0x7F800000 : f32
-// CHECK-NEXT:   %[[ABS_X:.+]] = absf %[[OPERAND_IN]] : f32
-// CHECK-NEXT:   %[[RESULT:.+]] = cmpf one, %[[ABS_X]], %[[POS_INF]] : f32
+// CHECK-NEXT:   %[[POS_INF:.+]] = arith.constant 0x7F800000 : f32
+// CHECK-NEXT:   %[[ABS_X:.+]] = math.abs %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.+]] = arith.cmpf one, %[[ABS_X]], %[[POS_INF]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
@@ -236,7 +230,7 @@ func @float_cmp(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: i1):
-// CHECK-NEXT:   %[[RESULT:.*]] = cmpf oeq, %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.cmpf oeq, %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
@@ -250,7 +244,7 @@ func @int_cmp(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i1):
-// CHECK-NEXT:   %[[RESULT:.*]] = cmpi slt, %[[LHS_IN]], %[[RHS_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.cmpi slt, %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
@@ -335,8 +329,8 @@ func @iota(%out: memref<7x10xf32>) {
 // CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[RESULT:.*]]: f32):
 // CHECK-NEXT:   %[[D1:.+]] = linalg.index 1
-// CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i32
-// CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
+// CHECK-NEXT:   %[[INT_CAST:.*]] = arith.index_cast %[[D1]] : index to i32
+// CHECK-NEXT:   %[[FLOAT_CAST:.*]] = arith.sitofp %[[INT_CAST]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32
 
 // -----
@@ -472,7 +466,7 @@ func @static_broadcast_in_dim_with_one_to_many(%operand: memref<1xf32>,
   return
 }
 // CHECK-NOT: linalg.{{.*}}shape
-// CHECK: %[[C0:.*]] = constant 0 : index
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
 // CHECK: %[[VALUE:.*]] = memref.load %{{.*}}[[C0]]
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%{{.+}}: f32):
@@ -487,7 +481,7 @@ func @constant(%value: memref<i32>) {
   } : (memref<i32>) -> ()
   return
 }
-// CHECK: %[[CONSTANT:.*]] = constant 10 : i32
+// CHECK: %[[CONSTANT:.*]] = arith.constant 10 : i32
 // CHECK: affine.store %[[CONSTANT]], %{{.*}}[] : memref<i32>
 
 // -----
@@ -499,7 +493,7 @@ func @absf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = absf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.abs %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -527,9 +521,9 @@ func @absi(%input: memref<2x2xi32>,
 
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[L0:.*]] = constant 0 : i32
-// CHECK-NEXT:   %[[L1:.*]] = cmpi sge, %[[OPERAND_IN]], %[[L0]] : i32
-// CHECK-NEXT:   %[[L2:.*]] = subi %[[L0]], %[[OPERAND_IN]] : i32
+// CHECK-NEXT:   %[[L0:.*]] = arith.constant 0 : i32
+// CHECK-NEXT:   %[[L1:.*]] = arith.cmpi sge, %[[OPERAND_IN]], %[[L0]] : i32
+// CHECK-NEXT:   %[[L2:.*]] = arith.subi %[[L0]], %[[OPERAND_IN]] : i32
 // CHECK-NEXT:   %[[RESULT:.*]] = select %[[L1]], %[[OPERAND_IN]], %[[L2]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
@@ -542,7 +536,7 @@ func @ceil(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = ceilf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.ceil %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -554,7 +548,7 @@ func @bitcast_convert(%input: memref<2x2xi32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = bitcast %[[OPERAND_IN]] : i32 to f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.bitcast %[[OPERAND_IN]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -566,7 +560,7 @@ func @convert_i1_to_f32(%input: memref<2x2xi1>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i1, %[[RESULT_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = uitofp %[[OPERAND_IN]] : i1 to f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.uitofp %[[OPERAND_IN]] : i1 to f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -579,7 +573,7 @@ func @convert_ui8_to_f32(%input: memref<2x2xui8>, %result: memref<2x2xf32>) {
 // CHECK: unrealized_conversion_cast %arg0 : memref<2x2xui8> to memref<2x2xi8>
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i8, %[[RESULT_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = uitofp %[[OPERAND_IN]] : i8 to f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.uitofp %[[OPERAND_IN]] : i8 to f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -591,7 +585,7 @@ func @convert_i1_to_i32(%input: memref<2x2xi1>, %result: memref<2x2xi32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i1, %[[RESULT_OUT:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i1 to i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.extui %[[OPERAND_IN]] : i1 to i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -603,7 +597,7 @@ func @convert_i32_to_f32(%input: memref<2x2xi32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = sitofp %[[OPERAND_IN]] : i32 to f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.sitofp %[[OPERAND_IN]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -616,7 +610,7 @@ func @convert_ui32_to_f32(%input: memref<2x2xui32>, %result: memref<2x2xf32>) {
 // CHECK: unrealized_conversion_cast %arg0 : memref<2x2xui32> to memref<2x2xi32>
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = uitofp %[[OPERAND_IN]] : i32 to f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.uitofp %[[OPERAND_IN]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -629,7 +623,7 @@ func @convert_i16_to_i32(%input: memref<2x2xi16>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %[[RESULT_OUT:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = sexti %[[OPERAND_IN]] : i16 to i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.extsi %[[OPERAND_IN]] : i16 to i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -643,7 +637,7 @@ func @convert_ui16_to_i32(%input: memref<2x2xui16>,
 // CHECK: unrealized_conversion_cast %arg0 : memref<2x2xui16> to memref<2x2xi16>
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %[[RESULT_OUT:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i16 to i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.extui %[[OPERAND_IN]] : i16 to i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -655,7 +649,7 @@ func @convert_i32_to_i16(%input: memref<2x2xi32>, %result: memref<2x2xi16>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i16):
-// CHECK-NEXT:   %[[RESULT:.*]] = trunci %[[OPERAND_IN]] : i32 to i16
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.trunci %[[OPERAND_IN]] : i32 to i16
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i16
 
 // -----
@@ -667,7 +661,7 @@ func @convert_f32_to_f64(%input: memref<2x2xf32>, %result: memref<2x2xf64>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f64):
-// CHECK-NEXT:   %[[RESULT:.*]] = fpext %[[OPERAND_IN]] : f32 to f64
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.extf %[[OPERAND_IN]] : f32 to f64
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f64
 
 // -----
@@ -679,7 +673,7 @@ func @convert_f64_to_f32(%input: memref<2x2xf64>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f64, %[[RESULT_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = fptrunc %[[OPERAND_IN]] : f64 to f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.truncf %[[OPERAND_IN]] : f64 to f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -714,8 +708,8 @@ func @convert_i32_to_i1(%input: memref<2x2xi32>, %result: memref<2x2xi1>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i1):
-// CHECK-NEXT:   %[[ZERO:.*]] = constant 0 : i32
-// CHECK-NEXT:   %[[RESULT:.*]] = cmpi ne, %[[OPERAND_IN]], %[[ZERO]] : i32
+// CHECK-NEXT:   %[[ZERO:.*]] = arith.constant 0 : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.cmpi ne, %[[OPERAND_IN]], %[[ZERO]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
@@ -729,8 +723,8 @@ func @convert_ui32_to_i1(%input: memref<2x2xui32>, %result: memref<2x2xi1>) {
 // CHECK: unrealized_conversion_cast %arg0 : memref<2x2xui32> to memref<2x2xi32>
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i1):
-// CHECK-NEXT:   %[[ZERO:.*]] = constant 0 : i32
-// CHECK-NEXT:   %[[RESULT:.*]] = cmpi ne, %[[OPERAND_IN]], %[[ZERO]] : i32
+// CHECK-NEXT:   %[[ZERO:.*]] = arith.constant 0 : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.cmpi ne, %[[OPERAND_IN]], %[[ZERO]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
@@ -743,8 +737,8 @@ func @convert_f32_to_i1(%input: memref<2x2xf32>, %result: memref<2x2xi1>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]: i1):
-// CHECK-NEXT:   %[[ZERO:.*]] = constant 0.000000e+00 : f32
-// CHECK-NEXT:   %[[RESULT:.*]] = cmpf une, %[[OPERAND_IN]], %[[ZERO]] : f32
+// CHECK-NEXT:   %[[ZERO:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.cmpf une, %[[OPERAND_IN]], %[[ZERO]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
@@ -757,7 +751,7 @@ func @convert_f32_to_i32(%input: memref<2x2xf32>, %result: memref<2x2xi32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = fptosi %[[OPERAND_IN]] : f32 to i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.fptosi %[[OPERAND_IN]] : f32 to i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -795,7 +789,7 @@ func @floor(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = floorf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.floor %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -807,7 +801,7 @@ func @negf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = negf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.negf %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -835,8 +829,8 @@ func @negi(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[L0:.*]] = constant 0 : i32
-// CHECK-NEXT:   %[[RESULT:.*]] = subi %[[L0]], %[[OPERAND_IN]] : i32
+// CHECK-NEXT:   %[[L0:.*]] = arith.constant 0 : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.subi %[[L0]], %[[OPERAND_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -848,8 +842,8 @@ func @not(%input: memref<2x2xi64>, %result: memref<2x2xi64>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i64, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[N1:.*]] = constant -1 : i64
-// CHECK-NEXT:   %[[RESULT:.*]] = xor %[[N1]], %[[OPERAND_IN]] : i64
+// CHECK-NEXT:   %[[N1:.*]] = arith.constant -1 : i64
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.xori %[[N1]], %[[OPERAND_IN]] : i64
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i64
 
 // -----
@@ -863,7 +857,7 @@ func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT:.*]]: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = remf %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.remf %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -887,11 +881,11 @@ func @sign(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[CST_0:.*]] = constant 0.000000e+00 : f32
-// CHECK-NEXT:   %[[NE_0:.*]] = cmpf one, %[[OPERAND_IN]], %[[CST_0]] : f32
-// CHECK-NEXT:   %[[NE_0_FLOAT:.*]] = uitofp %[[NE_0]] : i1 to f32
-// CHECK-NEXT:   %[[SIGN:.*]] = copysign %[[NE_0_FLOAT]], %[[OPERAND_IN]] : f32
-// CHECK-NEXT:   %[[CMP:.*]] = cmpf uno, %[[OPERAND_IN]], %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[CST_0:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-NEXT:   %[[NE_0:.*]] = arith.cmpf one, %[[OPERAND_IN]], %[[CST_0]] : f32
+// CHECK-NEXT:   %[[NE_0_FLOAT:.*]] = arith.uitofp %[[NE_0]] : i1 to f32
+// CHECK-NEXT:   %[[SIGN:.*]] = math.copysign %[[NE_0_FLOAT]], %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[CMP:.*]] = arith.cmpf uno, %[[OPERAND_IN]], %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[OPERAND_IN]], %[[SIGN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
@@ -904,11 +898,11 @@ func @sign_bf16(%input: memref<2x2xbf16>, %result: memref<2x2xbf16>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: bf16, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[CST_0:.*]] = constant 0.000000e+00 : bf16
-// CHECK-NEXT:   %[[NE_0:.*]] = cmpf one, %[[OPERAND_IN]], %[[CST_0]] : bf16
-// CHECK-NEXT:   %[[NE_0_FLOAT:.*]] = uitofp %[[NE_0]] : i1 to bf16
-// CHECK-NEXT:   %[[SIGN:.*]] = copysign %[[NE_0_FLOAT]], %[[OPERAND_IN]] : bf16
-// CHECK-NEXT:   %[[CMP:.*]] = cmpf uno, %[[OPERAND_IN]], %[[OPERAND_IN]] : bf16
+// CHECK-NEXT:   %[[CST_0:.*]] = arith.constant 0.000000e+00 : bf16
+// CHECK-NEXT:   %[[NE_0:.*]] = arith.cmpf one, %[[OPERAND_IN]], %[[CST_0]] : bf16
+// CHECK-NEXT:   %[[NE_0_FLOAT:.*]] = arith.uitofp %[[NE_0]] : i1 to bf16
+// CHECK-NEXT:   %[[SIGN:.*]] = math.copysign %[[NE_0_FLOAT]], %[[OPERAND_IN]] : bf16
+// CHECK-NEXT:   %[[CMP:.*]] = arith.cmpf uno, %[[OPERAND_IN]], %[[OPERAND_IN]] : bf16
 // CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[OPERAND_IN]], %[[SIGN]] : bf16
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : bf16
 
@@ -921,12 +915,12 @@ func @sign_i16(%input: memref<2x2xi16>, %result: memref<2x2xi16>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[C0:.*]] = constant 0 : i16
-// CHECK-NEXT:   %[[C15:.*]] = constant 15 : i16
-// CHECK-NEXT:   %[[C1:.*]] = constant 1 : i16
-// CHECK-NEXT:   %[[CMP:.*]] = cmpi eq, %[[OPERAND_IN]], %[[C0]] : i16
-// CHECK-NEXT:   %[[ASHR:.*]] = shift_right_signed %[[OPERAND_IN]], %[[C15]] : i16
-// CHECK-NEXT:   %[[OR:.*]] = or %[[ASHR]], %[[C1]] : i16
+// CHECK-NEXT:   %[[C0:.*]] = arith.constant 0 : i16
+// CHECK-NEXT:   %[[C15:.*]] = arith.constant 15 : i16
+// CHECK-NEXT:   %[[C1:.*]] = arith.constant 1 : i16
+// CHECK-NEXT:   %[[CMP:.*]] = arith.cmpi eq, %[[OPERAND_IN]], %[[C0]] : i16
+// CHECK-NEXT:   %[[ASHR:.*]] = arith.shrsi %[[OPERAND_IN]], %[[C15]] : i16
+// CHECK-NEXT:   %[[OR:.*]] = arith.ori %[[ASHR]], %[[C1]] : i16
 // CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[C0]], %[[OR]] : i16
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i16
 
@@ -1133,30 +1127,6 @@ func @reverse(%arg0: memref<2x3xf32>, %arg1: memref<2x3xf32>) {
 }
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 
-
-// -----
-
-func @conv(%input: memref<3x5x5x3xf32>, %filter: memref<2x2x3x4xf32>, %output: memref<3x5x5x4xf32>) {
-  %c0 = constant 0 : index
-  %0 = memref.alloc() : memref<3x5x5x4xf32>
-  // CHECK: linalg.conv(%{{.+}}, %{{.+}}, %{{.+}})
-  // CHECK-SAME: dilations = [1, 2]
-  // CHECK-SAME: padding = dense<{{\[\[}}0, 1], [0, 1]]> : tensor<2x2xi64>
-  // CHECK-SAME: strides = [2, 1]}
-  // With all atributes explicitly specified.
-  "lmhlo.convolution"(%filter, %input, %0) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64, input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64, kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64, output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>, rhs_dilation = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()
-
-  // Dilation left unspecified, sets default dilation since linalg expects it.
-  // CHECK: linalg.conv(%{{.+}}, %{{.+}}, %{{.+}})
-  // CHECK-SAME: dilations = [1, 1]
-  // Padding is not set if it's zero.
-  // CHECK-NOT: padding
-  "lmhlo.convolution"(%filter, %input, %0) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64, input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64, kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64, output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, window_strides = dense<[2, 1]> : tensor<2xi64>} : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()
-
-  "lmhlo.copy"(%0, %output) : (memref<3x5x5x4xf32>, memref<3x5x5x4xf32>) -> ()
-  "lmhlo.terminator"() : () -> ()
-}
-
 // -----
 
 // CHECK-DAG: #[[TRANSPOSE_INPUT_MAP:.*]] = affine_map<(d0, d1) -> (d1, d0)>
@@ -1236,9 +1206,58 @@ func @reduce_maximum(%arg: memref<100x10xf32>,
 // CHECK-NEXT: memref.store
 // CHECK-NEXT: memref.load
 // CHECK-NEXT: memref.load
-// CHECK: cmpf
-// CHECK: select
+// CHECK: maxf
 // CHECK: memref.store
 // CHECK-NEXT: memref.load
 // CHECK-NEXT: linalg.yield
 // CHECK-NEXT: }
+
+// -----
+
+// CHECK-DAG: #[[REDUCE_INPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[REDUCE_OUTPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: func @reduce_multiple_operand
+module  {
+  func @reduce_multiple_operand(%arg0: memref<1x8xf32>, %arg1: memref<1x8xi32>,
+                                %arg2: memref<f32>, %arg3: memref<i32>,
+                                %arg4: memref<1xf32>, %arg5: memref<1xi32>) {
+    "lmhlo.reduce"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5) ( {
+    ^bb0(%arg6: memref<f32>, %arg7: memref<i32>, %arg8: memref<f32>,
+         %arg9: memref<i32>, %arg10: memref<f32>, %arg11: memref<i32>):
+      "lmhlo.add"(%arg6, %arg8, %arg10) : (memref<f32>, memref<f32>, memref<f32>) -> ()
+      "lmhlo.add"(%arg7, %arg9, %arg11) : (memref<i32>, memref<i32>, memref<i32>) -> ()
+      "lmhlo.terminator"() : () -> ()
+    }) {dimensions = dense<1> : tensor<1xi64>} 
+       : (memref<1x8xf32>, memref<1x8xi32>, memref<f32>, memref<i32>, memref<1xf32>, memref<1xi32>) -> ()
+    return
+  }
+}
+// CHECK: %[[INIT_VAL0:.*]] = memref.load %arg2[] : memref<f32>
+// CHECK: linalg.fill(%[[INIT_VAL0]], %arg4) : f32, memref<1xf32> 
+// CHECK: %[[INIT_VAL1:.*]] = memref.load %arg3[] : memref<i32>
+// CHECK: linalg.fill(%[[INIT_VAL1]], %arg5) : i32, memref<1xi32> 
+// CHECK: linalg.generic {
+// CHECK-SAME: indexing_maps = [#[[REDUCE_INPUT_MAP]], #[[REDUCE_INPUT_MAP]], #[[REDUCE_OUTPUT_MAP]], #[[REDUCE_OUTPUT_MAP]]],
+// CHECK-SAME: iterator_types = ["parallel", "reduction"]}
+// CHECK-SAME: ins(%arg0, %arg1 : memref<1x8xf32>, memref<1x8xi32>) outs(%arg4, %arg5 : memref<1xf32>, memref<1xi32>) {
+// CHECK: %[[lhsf:[0-9]+]] = memref.alloca() : memref<f32>
+// CHECK: %[[lhsi:[0-9]+]] = memref.alloca() : memref<i32>
+// CHECK: %[[rhsf:[0-9]+]] = memref.alloca() : memref<f32>
+// CHECK: %[[rhsi:[0-9]+]] = memref.alloca() : memref<i32>
+// CHECK: %[[outf:[0-9]+]] = memref.alloca() : memref<f32>
+// CHECK: %[[outi:[0-9]+]] = memref.alloca() : memref<i32>
+// CHECK: memref.store %arg[[#%u,idx:]], %[[lhsf]][] : memref<f32>
+// CHECK: memref.store %arg[[#idx+1]], %[[lhsi]][] : memref<i32>
+// CHECK: memref.store %arg[[#idx+2]], %[[rhsf]][] : memref<f32>
+// CHECK: memref.store %arg[[#idx+3]], %[[rhsi]][] : memref<i32>
+// CHECK: %[[lhsf_tmp:[0-9]+]] = memref.load %[[lhsf]][] : memref<f32>
+// CHECK: %[[rhsf_tmp:[0-9]+]] = memref.load %[[rhsf]][] : memref<f32>
+// CHECK: %[[outf_tmp:[0-9]+]] = arith.addf %[[lhsf_tmp]], %[[rhsf_tmp]] : f32
+// CHECK: memref.store %[[outf_tmp]], %[[outf]][] : memref<f32>
+// CHECK: %[[lhsi_tmp:[0-9]+]] = memref.load %[[lhsi]][] : memref<i32>
+// CHECK: %[[rhsi_tmp:[0-9]+]] = memref.load %[[rhsi]][] : memref<i32>
+// CHECK: %[[outi_tmp:[0-9]+]] = arith.addi %[[lhsi_tmp]], %[[rhsi_tmp]] : i32
+// CHECK: memref.store %[[outi_tmp]], %[[outi]][] : memref<i32>
+// CHECK: %[[scalarf:[0-9]+]] = memref.load %[[outf]][] : memref<f32>
+// CHECK: %[[scalari:[0-9]+]] = memref.load %[[outi]][] : memref<i32>
+// CHECK: linalg.yield %[[scalarf]], %[[scalari]] : f32, i32

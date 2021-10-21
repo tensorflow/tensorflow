@@ -14,13 +14,10 @@
 # ==============================================================================
 """Classes for storing ragged tensors and their values."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import operator
 
+import typing
 import numpy as np
 
 from tensorflow.python import tf2
@@ -43,6 +40,7 @@ from tensorflow.python.ops.ragged import ragged_config
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged.row_partition import RowPartition
+from tensorflow.python.types import core as core_types
 from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
@@ -340,7 +338,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       nvals = _nrows(values, row_partition.dtype)
       checks = [
           check_ops.assert_equal(
-              row_partition.nvals(out_type=row_partition.dtype),
+              math_ops.cast(row_partition.nvals(), row_partition.dtype),
               nvals,
               message=msg),
       ]
@@ -406,7 +404,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
           value_rowids=value_rowids,
           nrows=nrows,
           validate=validate,
-          preferred_dtype=_get_optional_partition_dtype(values))
+          dtype_hint=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
 
   @classmethod
@@ -454,7 +452,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       row_partition = RowPartition.from_row_splits(
           row_splits=row_splits,
           validate=validate,
-          preferred_dtype=_get_optional_partition_dtype(values))
+          dtype_hint=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
 
   @classmethod
@@ -498,7 +496,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       row_partition = RowPartition.from_row_lengths(
           row_lengths=row_lengths,
           validate=validate,
-          preferred_dtype=_get_optional_partition_dtype(values))
+          dtype_hint=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
 
   @classmethod
@@ -539,7 +537,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
           row_starts=row_starts,
           nvals=_nrows(values),
           validate=validate,
-          preferred_dtype=_get_optional_partition_dtype(values))
+          dtype_hint=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
 
   @classmethod
@@ -574,10 +572,11 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       raise TypeError(f"Argument `validate` must have type bool. "
                       f"Received {validate}.")
     with ops.name_scope(name, "RaggedFromRowLimits", [values, row_limits]):
+      values = _convert_to_ragged_tensor_values(values)
       row_partition = RowPartition.from_row_limits(
           row_limits=row_limits,
           validate=validate,
-          preferred_dtype=_get_optional_partition_dtype(values))
+          dtype_hint=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
 
   @classmethod
@@ -653,7 +652,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
           nvals=nvals,
           nrows=nrows,
           validate=validate,
-          preferred_dtype=_get_optional_partition_dtype(values))
+          dtype_hint=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
 
   @classmethod
@@ -1190,7 +1189,10 @@ class RaggedTensor(composite_tensor.CompositeTensor,
 
     """
     with ops.name_scope(name, "RaggedNRows", [self]):
-      return self._row_partition.nrows(out_type=out_type)
+      if out_type is None:
+        return self._row_partition.nrows()
+      else:
+        return math_ops.cast(self._row_partition.nrows(), dtype=out_type)
 
   def row_starts(self, name=None):
     """Returns the start indices for rows in this ragged tensor.
@@ -2637,7 +2639,7 @@ def convert_to_tensor_or_ragged_tensor(value,
       flat_values = ops.convert_to_tensor(
           value=value.flat_values,
           dtype=dtype,
-          preferred_dtype=preferred_dtype,
+          dtype_hint=preferred_dtype,
           name="flat_values")
       return RaggedTensor.from_nested_row_splits(
           flat_values, value.nested_row_splits, validate=False)
@@ -3044,3 +3046,13 @@ def _assert_is_supported_ragged_values_type(value):
   if not _is_supported_ragged_values_type(value):
     ok_types = ", ".join(cls.__name__ for cls in _SUPPORTED_RAGGED_VALUE_TYPES)
     raise TypeError(f"type(values) must be one of: {ok_types}, got {value}.")
+
+
+# Type annotation indicating that a value is ragged.  Includes RaggedTensor
+# as well as the (deprecated) RaggedTensorValue class from TF 1.x.
+Ragged = typing.Union[RaggedTensor, ragged_tensor_value.RaggedTensorValue]
+
+# Type annotation indicating that a value is a ragged tensor, a dense tensor,
+# or a value that can be converted to a tensor (e.g. np.array).
+# TODO(edloper): Add Variable to TensorLike, and remove it from here.
+RaggedOrDense = typing.Union[Ragged, core_types.TensorLike]

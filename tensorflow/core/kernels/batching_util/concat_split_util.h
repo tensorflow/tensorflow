@@ -198,7 +198,7 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
 // Handles the general case, on GPU.
 template <typename T>
 Status SplitGPU(OpKernelContext* context, const Tensor& input,
-                const gtl::ArraySlice<int64>& sizes,
+                const gtl::ArraySlice<int64_t>& sizes,
                 std::vector<Tensor>* outputs) {
   // TODO(olston, apassos): Implement this.
   LOG(FATAL) << "Not yet implemented";  // Crash ok

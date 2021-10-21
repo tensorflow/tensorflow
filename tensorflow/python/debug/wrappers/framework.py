@@ -94,10 +94,6 @@ TODO(cais): Implemented the instruction loop in B1 - B3.
 
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import re
 import threading

@@ -24,11 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -222,6 +224,12 @@ void SparseFillEmptyRowsOpImpl(OpKernelContext* context,
                     errors::InvalidArgument("values must be a vector, saw: ",
                                             values_t.shape().DebugString()),
                     done);
+  OP_REQUIRES_ASYNC(
+      context, indices_t.dim_size(0) == values_t.dim_size(0),
+      errors::InvalidArgument("The length of `values` (", values_t.dim_size(0),
+                              ") must match the first dimension of `indices` (",
+                              indices_t.dim_size(0), ")."),
+      done);
   OP_REQUIRES_ASYNC(
       context, TensorShapeUtils::IsScalar(default_value_t.shape()),
       errors::InvalidArgument("default_value must be a scalar, saw: ",

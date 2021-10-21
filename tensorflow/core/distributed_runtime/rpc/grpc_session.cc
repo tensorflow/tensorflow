@@ -246,7 +246,7 @@ Status GrpcSession::RunHelper(
 
   // Look for an extended error returned in the response body.
   if (resp->status_code() != error::Code::OK) {
-    return Status(resp->status_code(), resp->status_error_message());
+    return resp->status();
   }
 
   if (!output_tensor_names.empty()) {

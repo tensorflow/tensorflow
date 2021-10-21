@@ -13,17 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Python API for executing a tf.data.Dataset using a tf.data service."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import functools
+import typing
 import six
 
 from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import compression_ops
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils
@@ -103,6 +99,7 @@ class ShardingPolicy(enum.IntEnum):
   DATA = 3
   FILE_OR_DATA = 4
   HINT = 5
+
   # LINT.ThenChange()
 
   def _to_proto(self):
@@ -120,57 +117,41 @@ class ShardingPolicy(enum.IntEnum):
       return data_service_pb2.ProcessingModeDef.FILE_OR_DATA
     if self == ShardingPolicy.HINT:
       return data_service_pb2.ProcessingModeDef.HINT
-    raise ValueError(
-        f"Unable to convert sharding policy {self!r} to proto. Please verify "
-        "the policy mapping.")
+    raise ValueError(f"Unable to convert sharding policy {self!r} to proto.")
 
 
-def _get_validated_sharding_policy(processing_mode):
+def _get_validated_sharding_policy(
+    processing_mode: typing.Union[ShardingPolicy, str]) -> ShardingPolicy:
   """Validates `processing_mode` and converts it to ShardingPolicy."""
 
   if isinstance(processing_mode, ShardingPolicy):
     return processing_mode
-  if compat.forward_compatible(2021, 8, 24):
-    if processing_mode == _PARALLEL_EPOCHS:
-      return ShardingPolicy.OFF
-    if processing_mode == _DISTRIBUTED_EPOCH:
-      return ShardingPolicy.DYNAMIC
-  elif processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
-    return processing_mode
+  if processing_mode == _PARALLEL_EPOCHS:
+    return ShardingPolicy.OFF
+  if processing_mode == _DISTRIBUTED_EPOCH:
+    return ShardingPolicy.DYNAMIC
 
-  raise ValueError(
-      "tf.data service processing mode should be a ShardingPolicy, "
-      "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
-      f"{processing_mode!r}.")
-
-
-def _serialize(processing_mode):
-  """Serializes `processing_mode`."""
-
-  processing_mode = _get_validated_sharding_policy(processing_mode)
-  if isinstance(processing_mode, ShardingPolicy):
-    # pylint: disable=protected-access
-    processing_mode_def = data_service_pb2.ProcessingModeDef(
-        sharding_policy=_get_validated_sharding_policy(
-            processing_mode)._to_proto())
-    return processing_mode_def.SerializeToString()
-  if processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
-    return processing_mode
-
-  raise ValueError(
-      "tf.data service processing mode should be a ShardingPolicy, "
-      "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
-      f"{processing_mode!r}.")
+  raise ValueError("tf.data service processing mode should be a "
+                   "`tf.data.experimental.service.ShardingPolicy`, "
+                   "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
+                   f"{processing_mode!r}.")
 
 
 def _validate_job_name(job_name):
   if job_name is None:
     return
   if not isinstance(job_name, six.string_types):
-    raise ValueError("job_name must be a string, but job_name was of type "
-                     "{0}. job_name={1}".format(type(job_name), job_name))
+    raise ValueError("`job_name` must be a string, but `job_name` was of type "
+                     f"{type(job_name)}. job_name={job_name}")
   if not job_name:
-    raise ValueError("job_name must not be empty")
+    raise ValueError("`job_name` must not be empty")
+
+
+def _validate_compression(compression):
+  valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
+  if compression not in valid_compressions:
+    raise ValueError(f"Invalid `compression` argument: {compression}. "
+                     f"Must be one of {valid_compressions}.")
 
 
 class _DataServiceDatasetV2(dataset_ops.DatasetSource):
@@ -207,9 +188,9 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         data with the tf.data service. By default, data is transferred using
         gRPC.
       job_name: (Optional.) The name of the job. If provided, it must be a
-        non-empty string or Tensor. This argument makes it possible
-        for multiple datasets to share the same job. The default behavior is
-        that the dataset creates anonymous, exclusively owned jobs.
+        non-empty string or Tensor. This argument makes it possible for multiple
+        datasets to share the same job. The default behavior is that the dataset
+        creates anonymous, exclusively owned jobs.
       consumer_index: (Optional.) The index of the consumer in the range from
         `0` to `num_consumers`. Must be specified alongside `num_consumers`.
         When specified, consumers will read from the job in a strict round-robin
@@ -236,16 +217,18 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         service worker. Consumers of a shared job must use the same
         `target_workers`. Defaults to `"AUTO"`.
     """
-    processing_mode = _serialize(
-        _get_validated_sharding_policy(processing_mode))
     if consumer_index is None != num_consumers is None:
       raise ValueError(
-          "Must either set both consumer_index and num_consumers, or neither. ",
-          "consumer_index: ", consumer_index, ", num_consumers: ",
-          num_consumers)
+          "Must either set both `consumer_index` and `num_consumers`, "
+          "or neither. ",
+          f"consumer_index={consumer_index}, num_consumers={num_consumers}")
     if num_consumers is not None and job_name is None:
-      raise ValueError("job_name must be set when setting num_consumers")
+      raise ValueError("`job_name` must be set when setting `num_consumers`. "
+                       f"num_consumers was set to {num_consumers}.")
 
+    processing_mode_def = data_service_pb2.ProcessingModeDef(
+        sharding_policy=_get_validated_sharding_policy(
+            processing_mode)._to_proto())
     if job_name is None:
       job_name = ""
     if max_outstanding_requests is None:
@@ -256,7 +239,9 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     self._dataset_id = ops.convert_to_tensor(
         dataset_id, dtype=dtypes.int64, name="dataset_id")
     self._processing_mode = ops.convert_to_tensor(
-        processing_mode, dtype=dtypes.string, name="processing_mode")
+        processing_mode_def.SerializeToString(),
+        dtype=dtypes.string,
+        name="processing_mode")
     self._address = ops.convert_to_tensor(
         address, dtype=dtypes.string, name="address")
     self._protocol = ops.convert_to_tensor(
@@ -345,11 +330,10 @@ def _parse_service(service):
     The (protocol, address) tuple
   """
   if not isinstance(service, six.string_types):
-    raise ValueError(
-        "service must be a string, but service was of type {0}. service={1}"
-        .format(type(service), service))
+    raise ValueError("`service` must be a string, but `service` was of type "
+                     f"{type(service)}. service={service}")
   if not service:
-    raise ValueError("service must not be empty")
+    raise ValueError("`service` must not be empty")
   parts = service.split("://")
   if len(parts) == 2:
     protocol, address = parts
@@ -357,8 +341,8 @@ def _parse_service(service):
     address = parts[0]
     protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
   else:
-    raise ValueError("malformed service string has multiple '://': %s" %
-                     service)
+    raise ValueError("Malformed `service` string has multiple '://': "
+                     f"{service}.")
   # TODO(aaudibert): Considering validating reachability of address here.
   return (protocol, address)
 
@@ -395,12 +379,12 @@ def _distribute(processing_mode,
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
-      address and `<protocol>` can optionally be used to override the default
-      protocol to use. If it's a tuple, it should be (protocol, address).
+        address and `<protocol>` can optionally be used to override the default
+        protocol to use. If it's a tuple, it should be (protocol, address).
     job_name: (Optional.) The name of the job. If provided, it must be a
-      non-empty string. This argument makes it possible
-      for multiple datasets to share the same job. The default behavior is that
-      the dataset creates anonymous, exclusively owned jobs.
+      non-empty string. This argument makes it possible for multiple datasets to
+      share the same job. The default behavior is that the dataset creates
+      anonymous, exclusively owned jobs.
     consumer_index: (Optional.) The index of the consumer in the range from `0`
       to `num_consumers`. Must be specified alongside `num_consumers`. When
       specified, consumers will read from the job in a strict round-robin order,
@@ -429,18 +413,14 @@ def _distribute(processing_mode,
       tf.data service workers. `"AUTO"` works well for most cases, while users
       can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
       data copy if every TF worker colocates with a tf.data service worker.
-      Consumers of a shared job must use the same `target_workers`. Defaults
-      to `"AUTO"`.
+      Consumers of a shared job must use the same `target_workers`. Defaults to
+      `"AUTO"`.
 
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
   """
   processing_mode = _get_validated_sharding_policy(processing_mode)
-  valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
-  if compression not in valid_compressions:
-    raise ValueError(
-        "Invalid compression argument: {}. Must be one of {}".format(
-            compression, valid_compressions))
+  _validate_compression(compression)
   compression = _decide_compression(compression, data_transfer_protocol)
 
   def _apply_fn(dataset):  # pylint: disable=missing-docstring
@@ -654,12 +634,12 @@ def distribute(processing_mode,
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
-      address and `<protocol>` can optionally be used to override the default
-      protocol to use. If it's a tuple, it should be (protocol, address).
+        address and `<protocol>` can optionally be used to override the default
+        protocol to use. If it's a tuple, it should be (protocol, address).
     job_name: (Optional.) The name of the job. If provided, it must be a
-      non-empty string. This argument makes it possible
-      for multiple datasets to share the same job. The default behavior is that
-      the dataset creates anonymous, exclusively owned jobs.
+      non-empty string. This argument makes it possible for multiple datasets to
+      share the same job. The default behavior is that the dataset creates
+      anonymous, exclusively owned jobs.
     consumer_index: (Optional.) The index of the consumer in the range from `0`
       to `num_consumers`. Must be specified alongside `num_consumers`. When
       specified, consumers will read from the job in a strict round-robin order,
@@ -686,8 +666,8 @@ def distribute(processing_mode,
       tf.data service workers. `"AUTO"` works well for most cases, while users
       can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
       data copy if every TF worker colocates with a tf.data service worker.
-      Consumers of a shared job must use the same `target_workers`. Defaults
-      to `"AUTO"`.
+      Consumers of a shared job must use the same `target_workers`. Defaults to
+      `"AUTO"`.
 
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
@@ -715,8 +695,8 @@ def _register_dataset(service, dataset, compression):
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
-      address and `<protocol>` can optionally be used to override the default
-      protocol to use. If it's a tuple, it should be (protocol, address).
+        address and `<protocol>` can optionally be used to override the default
+        protocol to use. If it's a tuple, it should be (protocol, address).
     dataset: A `tf.data.Dataset` to register with the tf.data service.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
@@ -725,11 +705,7 @@ def _register_dataset(service, dataset, compression):
   Returns:
     A scalar int64 tensor of the registered dataset's id.
   """
-  valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
-  if compression not in valid_compressions:
-    raise ValueError(
-        "Invalid compression argument: {}. Must be one of {}".format(
-            compression, valid_compressions))
+  _validate_compression(compression)
   if isinstance(service, tuple):
     protocol, address = service
   else:
@@ -837,8 +813,8 @@ def _from_dataset_id(processing_mode,
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
-      address and `<protocol>` can optionally be used to override the default
-      protocol to use. If it's a tuple, it should be (protocol, address).
+        address and `<protocol>` can optionally be used to override the default
+        protocol to use. If it's a tuple, it should be (protocol, address).
     dataset_id: The id of the dataset to read from. This id is returned by
       `register_dataset` when the dataset is registered with the tf.data
       service.
@@ -847,9 +823,9 @@ def _from_dataset_id(processing_mode,
       tf.function. Use `tf.data.Dataset.element_spec` to get the element spec
       for a given dataset.
     job_name: (Optional.) The name of the job. If provided, it must be a
-      non-empty string or tensor. This argument makes it possible
-      for multiple datasets to share the same job. The default behavior is that
-      the dataset creates anonymous, exclusively owned jobs.
+      non-empty string or tensor. This argument makes it possible for multiple
+      datasets to share the same job. The default behavior is that the dataset
+      creates anonymous, exclusively owned jobs.
     consumer_index: (Optional.) The index of the consumer in the range from `0`
       to `num_consumers`. Must be specified alongside `num_consumers`. When
       specified, consumers will read from the job in a strict round-robin order,
@@ -877,33 +853,29 @@ def _from_dataset_id(processing_mode,
       tf.data service workers. `"AUTO"` works well for most cases, while users
       can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
       data copy if every TF worker colocates with a tf.data service worker.
-      Consumers of a shared job must use the same `target_workers`. Defaults
-      to `"AUTO"`.
+      Consumers of a shared job must use the same `target_workers`. Defaults to
+      `"AUTO"`.
 
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
   """
   processing_mode = _get_validated_sharding_policy(processing_mode)
-  valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
   if isinstance(service, tuple):
     protocol, address = service
   else:
     protocol, address = _parse_service(service)
-
-  if compression not in valid_compressions:
-    raise ValueError(
-        "Invalid compression argument: {}. Must be one of {}".format(
-            compression, valid_compressions))
+  _validate_compression(compression)
   if job_name is not None:
     if not isinstance(job_name, six.string_types) and not isinstance(
         job_name, ops.Tensor):
       raise ValueError(
-          "job_name must be a string or Tensor, but job_name was of type "
-          "{0}. job_name={1}".format(type(job_name), job_name))
+          "`job_name` must be a string or Tensor, but `job_name` was of type "
+          f"{type(job_name)}. job_name={job_name}.")
 
   if element_spec is None:
     if not context.executing_eagerly():
-      raise ValueError("In graph mode element_spec must be provided manually.")
+      raise ValueError(
+          "In graph mode `element_spec` must be provided manually.")
 
     dataset_id_val = tensor_util.constant_value(dataset_id)
     try:
@@ -919,7 +891,7 @@ def _from_dataset_id(processing_mode,
 
     except RuntimeError as err:
       raise ValueError("Failed to fetch element spec for dataset id " +
-                       str(dataset_id_val) + " from tf.data service. If the "
+                       f"{dataset_id_val} from tf.data service. If the "
                        "dataset was registered in graph mode or inside a "
                        "tf.function, the `element_spec` must be specified as "
                        "an argument to `from_dataset_id`.") from err
@@ -1022,8 +994,8 @@ def from_dataset_id(processing_mode,
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
-      address and `<protocol>` can optionally be used to override the default
-      protocol to use. If it's a tuple, it should be (protocol, address).
+        address and `<protocol>` can optionally be used to override the default
+        protocol to use. If it's a tuple, it should be (protocol, address).
     dataset_id: The id of the dataset to read from. This id is returned by
       `register_dataset` when the dataset is registered with the tf.data
       service.
@@ -1032,9 +1004,9 @@ def from_dataset_id(processing_mode,
       tf.function. Use `tf.data.Dataset.element_spec` to get the element spec
       for a given dataset.
     job_name: (Optional.) The name of the job. If provided, it must be a
-      non-empty string. This argument makes it possible
-      for multiple datasets to share the same job. The default behavior is that
-      the dataset creates anonymous, exclusively owned jobs.
+      non-empty string. This argument makes it possible for multiple datasets to
+      share the same job. The default behavior is that the dataset creates
+      anonymous, exclusively owned jobs.
     consumer_index: (Optional.) The index of the consumer in the range from `0`
       to `num_consumers`. Must be specified alongside `num_consumers`. When
       specified, consumers will read from the job in a strict round-robin order,
@@ -1058,8 +1030,8 @@ def from_dataset_id(processing_mode,
       tf.data service workers. `"AUTO"` works well for most cases, while users
       can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
       data copy if every TF worker colocates with a tf.data service worker.
-      Consumers of a shared job must use the same `target_workers`. Defaults
-      to `"AUTO"`.
+      Consumers of a shared job must use the same `target_workers`. Defaults to
+      `"AUTO"`.
 
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.

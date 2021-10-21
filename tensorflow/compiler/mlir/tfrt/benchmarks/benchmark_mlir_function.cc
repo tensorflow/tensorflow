@@ -65,8 +65,10 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
       num_threads > 0 ? CreateMultiThreadedHostContext(num_threads)
                       : CreateSingleThreadedHostContext();
 
-  JitExecutable& jit_executable = CreateJitExecutable(
-      *host, mlir_input, function_name, /*lower_from_tensorflow=*/true);
+  TfCpuRtPipelineOptions tf_cpurt_opts;
+  JitExecutable& jit_executable =
+      CreateJitExecutable(*host, mlir_input, function_name,
+                          /*lower_from_tensorflow=*/true, tf_cpurt_opts);
 
   // Build an ExecutionContext from the HostContext.
   llvm::Expected<RCReference<RequestContext>> req_ctx =
@@ -96,7 +98,7 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
   llvm::SmallVector<RCReference<AsyncValue>> result_values;
   for (int i = 0; i < executable->signature().num_results(); ++i)
     result_values.emplace_back();
-  RemainingResults results(host.get(), result_values);
+  RemainingResults results(result_values);
 
   // Free memory owned by the returned memrefs.
   ReturnValueConverter<ResultConversionCtx> converter(results);
@@ -109,7 +111,7 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
 
   for (auto _ : state) {
     executable->Execute(call_frame, exec_ctx);
-    if (auto err = executable->ReturnResults(converter, &call_frame))
+    if (auto err = executable->ReturnResults(converter, exec_ctx, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 }

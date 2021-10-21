@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/local_session_selection.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -162,7 +163,9 @@ class DirectSessionFactory : public SessionFactory {
   DirectSessionFactory() {}
 
   bool AcceptsOptions(const SessionOptions& options) override {
-    return options.target.empty();
+    return options.target.empty() &&
+           !options.config.experimental().use_tfrt() &&
+           GetDefaultLocalSessionImpl() == LocalSessionImpl::kDirectSession;
   }
 
   Status NewSession(const SessionOptions& options,
@@ -1404,7 +1407,7 @@ Status DirectSession::CreateExecutors(
     };
 
     optimizer.Optimize(lib, options_.env, device, &partition_graph,
-                       /*shape_map=*/nullptr);
+                       GraphOptimizer::Options());
 
     // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
     const DebugOptions& debug_options =

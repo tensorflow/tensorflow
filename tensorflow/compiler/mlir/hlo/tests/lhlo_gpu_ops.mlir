@@ -39,15 +39,17 @@ func @conv_forward_generic(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2
   // This defined a 2D convolution over a 8x8 single channel input using a 2x2
   // filter and with an output of 7x7xf16. The 1x1x8x8 is (N, C, H, W)
   "lmhlo_gpu.conv_forward"(%input, %filter, %output, %scratch)
-    { dimension_numbers = {input_batch_dimension = 0 : i64,
-                           input_feature_dimension = 1 : i64,
-                           input_spatial_dimensions = dense<[2,3]> : tensor<2xi64>,
-                           kernel_input_feature_dimension = 0 : i64,
-                           kernel_output_feature_dimension = 1 : i64,
-                           kernel_spatial_dimensions = dense<[2,3]> : tensor<2xi64>,
-                           output_batch_dimension = 0 : i64,
-                           output_feature_dimension = 1 : i64,
-                           output_spatial_dimensions = dense<[2,3]> : tensor<2xi64>},
+    { dimension_numbers = #mhlo.conv<raw
+        input_batch_dimension = 0,
+        input_feature_dimension = 1,
+        input_spatial_dimensions = [2, 3],
+        kernel_input_feature_dimension = 0,
+        kernel_output_feature_dimension = 1,
+        kernel_spatial_dimensions = [2, 3],
+        output_batch_dimension = 0,
+        output_feature_dimension = 1,
+        output_spatial_dimensions = [2, 3]
+      >,
       window_strides = dense<[1, 1]> : tensor<2xi64>,
       padding = dense<[[0, 0], [1, 0]]> : tensor<2x2xi64>,
       lhs_dilation = dense<[1,1]> : tensor<2xi64>,
@@ -178,18 +180,20 @@ func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x
 
 // CHECK-LABEL: func @gemm
 func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>) {
-  "lmhlo_gpu.gemm"(%lhs, %rhs, %output) { dot_dimension_numbers = {
-       lhs_batching_dimensions = dense<[1,1]> : tensor<2xi64>,
-       rhs_batching_dimensions = dense<[1,1]> : tensor<2xi64>,
-       lhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>,
-       rhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>},
-       alpha_real = 0.5,
-       alpha_imag = 0.0,
-       batch_size = 1,
-       lhs_stride = 20,
-       rhs_stride = 20,
-       algorithm = 0}
-    : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
+  "lmhlo_gpu.gemm"(%lhs, %rhs, %output) {
+    dot_dimension_numbers = #mhlo.dot<
+       lhs_batching_dimensions = [1,1],
+       rhs_batching_dimensions = [1,1],
+       lhs_contracting_dimensions = [1,1],
+       rhs_contracting_dimensions = [1,1]
+    >,
+    alpha_real = 0.5,
+    alpha_imag = 0.0,
+    batch_size = 1,
+    lhs_stride = 20,
+    rhs_stride = 20,
+    algorithm = 0
+  } : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
   return
 }
 
@@ -197,19 +201,21 @@ func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>
 // CHECK-LABEL: func @gemm_bias
 func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
                 %bias: memref<5x5xf32>, %output:memref<5x5xf32>) {
-  "lmhlo_gpu.gemm_bias"(%lhs, %rhs, %bias, %output) { dot_dimension_numbers = {
-       lhs_batching_dimensions = dense<[1,1]> : tensor<2xi64>,
-       rhs_batching_dimensions = dense<[1,1]> : tensor<2xi64>,
-       lhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>,
-       rhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>},
-       alpha_real = 0.5,
-       alpha_imag = 0.0,
-       beta = 1.0,
-       batch_size = 1,
-       lhs_stride = 20,
-       rhs_stride = 20,
-       algorithm = 0}
-    : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>, memref<5x5xf32>) -> ()
+  "lmhlo_gpu.gemm_bias"(%lhs, %rhs, %bias, %output) {
+    dot_dimension_numbers = #mhlo.dot<
+       lhs_batching_dimensions = [1,1],
+       rhs_batching_dimensions = [1,1],
+       lhs_contracting_dimensions = [1,1],
+       rhs_contracting_dimensions = [1,1]
+    >,
+    alpha_real = 0.5,
+    alpha_imag = 0.0,
+    beta = 1.0,
+    batch_size = 1,
+    lhs_stride = 20,
+    rhs_stride = 20,
+    algorithm = 0
+  } : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>, memref<5x5xf32>) -> ()
   return
 }
 

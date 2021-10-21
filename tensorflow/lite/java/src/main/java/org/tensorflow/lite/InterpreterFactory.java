@@ -33,7 +33,8 @@ public class InterpreterFactory {
    *     model.
    */
   public InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options) {
-    return new InterpreterImpl(modelFile, new InterpreterImpl.Options(options));
+    return new InterpreterImpl(
+        modelFile, options == null ? null : new InterpreterImpl.Options(options));
   }
 
   /**
@@ -44,11 +45,12 @@ public class InterpreterFactory {
    *     not be modified after the construction of an {@link InterpreterApi} instance. The {@code
    *     ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
    *     direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
-   * @param options a set of options for customizing interpreter behavior.
+   * @param options A set of options for customizing interpreter behavior.
    * @throws IllegalArgumentException if {@code byteBuffer} is not a {@code MappedByteBuffer} nor a
    *     direct {@code ByteBuffer} of nativeOrder.
    */
   public InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
-    return new InterpreterImpl(byteBuffer, new InterpreterImpl.Options(options));
+    return new InterpreterImpl(
+        byteBuffer, options == null ? null : new InterpreterImpl.Options(options));
   }
 }

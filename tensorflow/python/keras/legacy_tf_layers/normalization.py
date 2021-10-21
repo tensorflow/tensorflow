@@ -14,10 +14,6 @@
 # =============================================================================
 # pylint: disable=g-classes-have-attributes
 """Contains the normalization layer classes and their functional aliases."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import warnings
 
 from tensorflow.python.keras.layers.normalization import batch_normalization_v1

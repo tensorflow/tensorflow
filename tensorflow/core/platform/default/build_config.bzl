@@ -50,7 +50,7 @@ def tf_deps(deps, suffix):
 # Modified from @cython//:Tools/rules.bzl
 def pyx_library(
         name,
-        deps = [],
+        cc_deps = [],
         py_deps = [],
         srcs = [],
         testonly = None,
@@ -59,16 +59,18 @@ def pyx_library(
     """Compiles a group of .pyx / .pxd / .py files.
 
     First runs Cython to create .cpp files for each input .pyx or .py + .pxd
-    pair. Then builds a shared object for each, passing "deps" to each cc_binary
+    pair. Then builds a shared object for each, passing "cc_deps" to each cc_binary
     rule (includes Python headers by default). Finally, creates a py_library rule
     with the shared objects and any pure Python "srcs", with py_deps as its
     dependencies; the shared objects can be imported like normal Python files.
 
     Args:
       name: Name for the rule.
-      deps: C/C++ dependencies of the Cython (e.g. Numpy headers).
+      cc_deps: C/C++ dependencies of the Cython (e.g. Numpy headers).
       py_deps: Pure Python dependencies of the final library.
       srcs: .py, .pyx, or .pxd files to either compile or pass through.
+      testonly: If True, the target can only be used with tests.
+      srcs_version: Version of python source files.
       **kwargs: Extra keyword arguments passed to the py_library.
     """
 
@@ -107,7 +109,7 @@ def pyx_library(
         native.cc_binary(
             name = shared_object_name,
             srcs = [stem + ".cpp"],
-            deps = deps + ["@org_tensorflow//third_party/python_runtime:headers"],
+            deps = cc_deps + ["@org_tensorflow//third_party/python_runtime:headers"],
             linkshared = 1,
             testonly = testonly,
         )
@@ -569,7 +571,6 @@ def tf_additional_lib_hdrs():
         "//tensorflow/core/platform/default:mutex_data.h",
         "//tensorflow/core/platform/default:notification.h",
         "//tensorflow/core/platform/default:stacktrace.h",
-        "//tensorflow/core/platform/default:test_benchmark.h",
         "//tensorflow/core/platform/default:tracing_impl.h",
         "//tensorflow/core/platform/default:unbounded_work_queue.h",
     ] + select({
@@ -630,16 +631,12 @@ def tf_additional_device_tracer_srcs():
         "device_tracer_rocm.cc",
     ]
 
-def tf_additional_cupti_utils_cuda_deps():
-    return []
-
 def tf_additional_test_deps():
     return []
 
 def tf_additional_test_srcs():
     return [
         "//tensorflow/core/platform/default:test.cc",
-        "//tensorflow/core/platform/default:test_benchmark.cc",
     ]
 
 def tf_kernel_tests_linkstatic():

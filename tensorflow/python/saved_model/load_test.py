@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for trackable object SavedModel loading."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import contextlib
 import functools

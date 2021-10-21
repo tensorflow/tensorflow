@@ -8,7 +8,6 @@ load(
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_cupti_utils_cuda_deps",
     "tf_additional_device_tracer_srcs",
     "tf_kernel_tests_linkstatic",
 )
@@ -107,6 +106,59 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
     ] + tf_additional_cupti_deps(),
+)
+
+tf_cuda_library(
+    name = "mock_cupti",
+    testonly = 1,
+    hdrs = if_cuda(["mock_cupti.h"]),
+    copts = tf_profiler_copts() + tf_copts(),
+    cuda_deps = [
+        ":cupti_interface",
+    ],
+    deps = [
+        "//tensorflow/core:test",
+    ],
+)
+
+tf_cuda_library(
+    name = "cupti_error_manager",
+    srcs = if_cuda(["cupti_error_manager.cc"]),
+    hdrs = if_cuda(["cupti_error_manager.h"]),
+    copts = tf_profiler_copts() + tf_copts(),
+    cuda_deps = [
+        ":cupti_interface",
+        ":cupti_wrapper",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/debugging:leak_check",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "cupti_error_manager_test",
+    size = "small",
+    srcs = ["cupti_error_manager_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + [
+        "nomac",
+        "gpu_cupti",
+    ],
+    deps = [
+        "//tensorflow/core:test_main",
+    ] + if_cuda_is_configured([
+        ":cuda_test",
+        ":cupti_error_manager",
+        ":cupti_tracer",
+        ":cupti_utils",
+        ":cupti_wrapper",
+        ":mock_cupti",
+        "@com_google_absl//absl/memory",
+        "//tensorflow/core/profiler/utils:time_utils",
+    ]),
 )
 
 cuda_library(
@@ -243,9 +295,10 @@ tf_cuda_library(
     srcs = if_cuda(["cupti_utils.cc"]),
     copts = tf_profiler_copts() + tf_copts(),
     cuda_deps = [
+        ":cupti_error_manager",
         ":cupti_interface",
         ":cupti_wrapper",
-    ] + tf_additional_cupti_utils_cuda_deps(),
+    ],
     visibility = ["//visibility:public"],
     alwayslink = 1,
 )

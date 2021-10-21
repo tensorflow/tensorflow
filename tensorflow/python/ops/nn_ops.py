@@ -133,10 +133,6 @@ For example:
 >>> tf.debugging.assert_equal(output, output2)
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import numbers
 
@@ -177,6 +173,7 @@ from tensorflow.python.util.tf_export import tf_export
 local_response_normalization = gen_nn_ops.lrn
 
 # pylint: disable=protected-access
+# pylint: disable=g-classes-have-attributes
 
 # Acceptable channels last formats (robust to H, W, D order).
 _CHANNELS_LAST_FORMATS = frozenset({
@@ -214,8 +211,8 @@ def _get_sequence(value, n, channel_index, name):
   if len_value == 1:
     value = value * n  # Broadcast to spatial dimensions.
   elif len_value != n:
-    raise ValueError("{} should be of length 1, {} or {} but was {}".format(
-        name, n, n + 2, len_value))
+    raise ValueError(f"{name} should be of length 1, {n} or {n + 2}. "
+                     f"Received: {name}={value} of length {len_value}")
 
   # Add batch and channel dims (always 1).
   if channel_index == 1:
@@ -326,25 +323,27 @@ class _NonAtrousConvolution(object):
           filter_shape.ndims + num_batch_dims - 1)
     if input_shape.ndims is None:
       raise ValueError(
-          "Rank of convolution must be known, but saw input_shape.ndims == {}"
-          .format(input_shape.ndims))
+          "Rank of convolution must be known. "
+          f"Received: input_shape={input_shape} of rank {input_shape.rank}")
     if input_shape.ndims < 3 or input_shape.ndims - num_batch_dims + 1 > 5:
       raise ValueError(
-          "`input_shape.ndims - num_batch_dims + 1` must be at least 3 and at "
-          "most 5 but saw `input_shape.ndims == {}` and `num_batch_dims == {}`"
-          .format(input_shape.ndims, num_batch_dims))
+          "`input_shape.rank - num_batch_dims + 1` must be at least 3 and at "
+          f"most 5. Received: input_shape.rank={input_shape.rank} and "
+          f"num_batch_dims={num_batch_dims}")
     conv_dims = input_shape.ndims - num_batch_dims - 1
     if strides is None:
       strides = [1] * conv_dims
     elif len(strides) != conv_dims:
-      raise ValueError("len(strides)=%d, but should be %d" % (len(strides),
-                                                              conv_dims))
+      raise ValueError(
+          f"`len(strides)` should be {conv_dims}. "
+          f"Received: strides={strides} of length {len(strides)}")
     if conv_dims == 1:
       # conv1d uses the 2-d data format names
       if data_format is None:
         data_format = "NWC"
       elif data_format not in {"NCW", "NWC", "NCHW", "NHWC"}:
-        raise ValueError("data_format must be \"NWC\" or \"NCW\".")
+        raise ValueError("`data_format` must be 'NWC' or 'NCW'. "
+                         f"Received: data_format={data_format}")
       self.strides = strides[0]
       self.data_format = data_format
       self.conv_op = self._conv1d
@@ -355,7 +354,8 @@ class _NonAtrousConvolution(object):
       elif data_format == "NCHW":
         strides = [1, 1] + list(strides)
       else:
-        raise ValueError("data_format must be \"NHWC\" or \"NCHW\".")
+        raise ValueError("`data_format` must be 'NHWC' or 'NCHW'. "
+                         f"Received: data_format={data_format}")
       self.strides = strides
       self.data_format = data_format
       self.conv_op = conv2d
@@ -365,8 +365,8 @@ class _NonAtrousConvolution(object):
       elif data_format == "NCDHW":
         strides = [1, 1] + list(strides)
       else:
-        raise ValueError("data_format must be \"NDHWC\" or \"NCDHW\". Have: %s"
-                         % data_format)
+        raise ValueError("`data_format` must be 'NDHWC' or 'NCDHW'. "
+                         f"Received: data_format={data_format}")
       self.strides = strides
       self.data_format = data_format
       self.conv_op = _conv3d_expanded_batch
@@ -490,7 +490,9 @@ def dilation2d_v2(
       The stride of the sliding window for each dimension of the input
       tensor. Must be: `[1, stride_height, stride_width, 1]`.
     padding: A `string` from: `"SAME", "VALID"`.
-      The type of padding algorithm to use.
+      The type of padding algorithm to use. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: A `string`, only `"NHWC"` is currently supported.
     dilations: A list of `ints` that has length `>= 4`.
       The input stride for atrous morphological dilation. Must be:
@@ -501,7 +503,8 @@ def dilation2d_v2(
     A `Tensor`. Has the same type as `input`.
   """
   if data_format != "NHWC":
-    raise ValueError("Data formats other than NHWC are not yet supported")
+    raise ValueError("`data_format` values other  than 'NHWC' are not "
+                     f"supported. Received: data_format={data_format}")
 
   return gen_nn_ops.dilation2d(input=input,
                                filter=filters,
@@ -724,11 +727,14 @@ class _WithSpaceToBatch(object):
         dilation_rate, dtypes.int32, name="dilation_rate")
     if dilation_rate.shape.ndims not in (None, 1):
       raise ValueError(
-          "rate must be rank 1 but saw {}".format(dilation_rate.shape.ndims))
+          "`dilation_rate.shape.rank` must be 1. Received: "
+          f"dilation_rate={dilation_rate} of rank {dilation_rate.shape.rank}")
 
     if not dilation_rate.shape.is_fully_defined():
-      raise ValueError("rate must have known shape, but saw {}"
-                       .format(dilation_rate.shape))
+      raise ValueError(
+          "`dilation_rate.shape` must be fully defined. Received: "
+          f"dilation_rate={dilation_rate} with shape "
+          f"{dilation_rate.shape}")
 
     num_spatial_dims = dilation_rate.shape.dims[0].value
 
@@ -744,8 +750,8 @@ class _WithSpaceToBatch(object):
     spatial_dims = sorted(set(int(x) for x in orig_spatial_dims))
     if spatial_dims != orig_spatial_dims or any(x < 1 for x in spatial_dims):
       raise ValueError(
-          "spatial_dims must be a monotonically increasing sequence of "
-          "positive integers, but saw: {}".format(orig_spatial_dims))
+          "`spatial_dims` must be a monotonically increasing sequence of "
+          f"positive integers. Received: spatial_dims={orig_spatial_dims}")
 
     if data_format is not None and data_format.startswith("NC"):
       expected_input_rank = spatial_dims[-1]
@@ -756,16 +762,17 @@ class _WithSpaceToBatch(object):
       input_shape.with_rank_at_least(expected_input_rank)
     except ValueError:
       raise ValueError(
-          "input tensor must have rank at least {}, but saw rank {}"
-          .format(expected_input_rank, input_shape.ndims))
+          f"`input.shape.rank` must be at least {expected_input_rank}. "
+          f"Received: input.shape={input_shape} with rank {input_shape.rank}")
 
     const_rate = tensor_util.constant_value(dilation_rate)
     rate_or_const_rate = dilation_rate
     if const_rate is not None:
       rate_or_const_rate = const_rate
       if np.any(const_rate < 1):
-        raise ValueError("dilation_rate must be positive, but saw: {}"
-                         .format(const_rate))
+        raise ValueError(
+            "`dilation_rate` must be positive. "
+            f"Received: dilation_rate={const_rate}")
       if np.all(const_rate == 1):
         self.call = build_op(num_spatial_dims, padding)
         return
@@ -779,7 +786,9 @@ class _WithSpaceToBatch(object):
     # Padding required to reduce to "VALID" convolution
     if padding == "SAME":
       if filter_shape is None:
-        raise ValueError("filter_shape must be specified for SAME padding")
+        raise ValueError(
+            "`filter_shape` must be specified for `padding='SAME'`. "
+            f"Received: filter_shape={filter_shape} and padding={padding}")
       filter_shape = ops.convert_to_tensor(filter_shape, name="filter_shape")
       const_filter_shape = tensor_util.constant_value(filter_shape)
       if const_filter_shape is not None:
@@ -801,7 +810,8 @@ class _WithSpaceToBatch(object):
       else:
         self.base_paddings = base_paddings[1:-1]
     else:
-      raise ValueError("Invalid padding method %r" % padding)
+      raise ValueError("`padding` must be one of 'SAME' or 'VALID'. "
+                       f"Received: padding={padding}")
 
     self.input_shape = input_shape
     self.spatial_dims = spatial_dims
@@ -960,24 +970,28 @@ def _get_strides_and_dilation_rate(num_spatial_dims, strides, dilation_rate):
   if dilation_rate is None:
     dilation_rate = [1] * num_spatial_dims
   elif len(dilation_rate) != num_spatial_dims:
-    raise ValueError("len(dilation_rate)=%d but should be %d" %
-                     (len(dilation_rate), num_spatial_dims))
+    raise ValueError(f"`len(dilation_rate)` should be {num_spatial_dims}. "
+                     f"Received: dilation_rate={dilation_rate} of length "
+                     f"{len(dilation_rate)}")
   dilation_rate = np.array(dilation_rate, dtype=np.int32)
   if np.any(dilation_rate < 1):
-    raise ValueError("all values of dilation_rate must be positive")
+    raise ValueError("all values of `dilation_rate` must be positive. "
+                     f"Received: dilation_rate={dilation_rate}")
 
   if strides is None:
     strides = [1] * num_spatial_dims
   elif len(strides) != num_spatial_dims:
-    raise ValueError("len(strides)=%d but should be %d" % (len(strides),
-                                                           num_spatial_dims))
+    raise ValueError(f"`len(strides)` should be {num_spatial_dims}. "
+                     f"Received: strides={strides} of length {len(strides)}")
   strides = np.array(strides, dtype=np.int32)
   if np.any(strides < 1):
-    raise ValueError("all values of strides must be positive")
+    raise ValueError("all values of `strides` must be positive. "
+                     f"Received: strides={strides}")
 
   if np.any(strides > 1) and np.any(dilation_rate > 1):
     raise ValueError(
-        "strides > 1 not supported in conjunction with dilation_rate > 1")
+        "`strides > 1` not supported in conjunction with `dilation_rate > 1`. "
+        f"Received: strides={strides} and dilation_rate={dilation_rate}")
   return strides, dilation_rate
 
 
@@ -1060,7 +1074,9 @@ def convolution(
     padding: A string, either `"VALID"` or `"SAME"`. The padding algorithm.
       `"valid"` means no padding. `"same"` results in padding evenly to
       the left/right or up/down of the input such that output has the same
-      height/width dimension as the input.
+      height/width dimension as the input when the strides are 1. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     strides: Optional.  Sequence of N ints >= 1.  Specifies the output stride.
       Defaults to [1]*N.  If any value of strides is > 1, then all values of
       dilation_rate must be 1.
@@ -1201,13 +1217,16 @@ def convolution_internal(
     elif inputs_rank:
       num_spatial_dims = inputs_rank - 2
     else:
-      raise ValueError("rank of input or filter must be known")
+      raise ValueError(
+          "When `num_spatial_dims` is not set, one of `input.shape.rank` or "
+          "`filters.shape.rank` must be known. "
+          f"Received: input.shape={input.shape} of rank {inputs_rank} and "
+          f"filters.shape={filters.shape} of rank {filters_rank}")
   elif filters_rank and filters_rank - 2 != num_spatial_dims:
     raise ValueError(
-        "inconsistent estimate of spatial dims ({}) vs. actual passed "
-        "num_spatial_dims ({}).  n was estimated as len(filters.shape) - 2, "
-        "but filters shape is: {}".format(filters_rank, num_spatial_dims,
-                                          filters.shape))
+        "`filters.shape.rank - 2` should equal `num_spatial_dims`. Received: "
+        f"filters.shape={filters.shape} of rank {filters_rank} and "
+        f"num_spatial_dims={num_spatial_dims}")
 
   if inputs_rank:
     num_batch_dims = inputs_rank - num_spatial_dims - 1  # Channel dimension.
@@ -1216,9 +1235,8 @@ def convolution_internal(
 
   if num_spatial_dims not in {1, 2, 3}:
     raise ValueError(
-        "num_spatial_dims (input.shape.ndims - num_batch_dims - 1) must be one "
-        "of 1, 2 or 3 but saw {}.  num_batch_dims: {}.".format(
-            num_spatial_dims, num_batch_dims))
+        "`num_spatial_dims` must be 1, 2, or 3. "
+        f"Received: num_spatial_dims={num_spatial_dims}.")
 
   if data_format is None or data_format in _CHANNELS_LAST_FORMATS:
     channel_index = num_batch_dims + num_spatial_dims
@@ -1339,9 +1357,9 @@ class Convolution(object):
       if (num_spatial_dims is not None and
           filter_shape.ndims != num_spatial_dims + 2):
         raise ValueError(
-            "Expected filter_shape.ndims == num_spatial_dims + 2, "
-            "but saw filter_shape.ndims == {} and num_spatial_dims == {}"
-            .format(filter_shape.ndims, num_spatial_dims))
+            "`filters.shape.rank` must be `num_spatial_dims + 2`. Received: "
+            f"filters.shape={filter_shape} of rank {filter_shape.rank} and "
+            f"num_spatial_dims={num_spatial_dims}")
       else:
         num_spatial_dims = filter_shape.ndims - 2
 
@@ -1354,31 +1372,32 @@ class Convolution(object):
       if input_shape.ndims is not None:
         if input_shape.ndims < num_spatial_dims + 2:
           raise ValueError(
-              "Expected input_shape.ndims >= num_spatial_dims + 2, but saw "
-              "input_shape.ndims == {} and num_spatial_dims == {}"
-              .format(input_shape.ndims, num_spatial_dims))
+              "`input.shape.rank` must be >= than `num_spatial_dims + 2`. "
+              f"Received: input.shape={input_shape} of rank {input_shape.rank} "
+              f"and num_spatial_dims={num_spatial_dims}")
         else:
           if num_batch_dims is None:
             num_batch_dims = input_shape.ndims - num_spatial_dims - 1
 
     if num_spatial_dims is None:
       raise ValueError(
-          "Cannot estimate num_spatial_dims since input_shape.ndims is None, "
-          "filter_shape.ndims is None, and argument num_spatial_dims is also "
-          "None.")
+          "When `num_spatial_dims` is not set, one of `input.shape.rank` or "
+          "`filters.shape.rank` must be known. "
+          f"Received: input.shape={input_shape} of rank {input_shape.rank} and "
+          f"`filters.shape={filter_shape}` of rank {filter_shape.rank}")
 
     if num_batch_dims is None:
       num_batch_dims = 1
 
     if num_batch_dims < 1:
       raise ValueError(
-          "num_batch_dims should be >= 1, but saw {}.  num_batch_dims was "
-          "estimated as `input_shape.ndims - num_spatial_dims - 1` and "
-          "num_spatial_dims was either provided or estimated as "
-          "`filter_shape.ndims - 2`.  input_shape.ndims: {}, "
-          "num_spatial_dims: {}, filter_shape.ndims: {}"
-          .format(num_batch_dims, input_shape.ndims, num_spatial_dims,
-                  filter_shape.ndims))
+          f"Batch dims should be >= 1, but found {num_batch_dims}. "
+          "Batch dims was estimated as "
+          "`input.shape.rank - num_spatial_dims - 1` and `num_spatial_dims` "
+          "was either provided or estimated as `filters.shape.rank - 2`. "
+          f"Received: input.shape={input_shape} of rank {input_shape.rank}, "
+          f"filters.shape={filter_shape} of rank {filter_shape.rank}, and "
+          f"num_spatial_dims={num_spatial_dims}")
 
     if data_format is None or not data_format.startswith("NC"):
       input_channels_dim = tensor_shape.dimension_at_index(
@@ -1392,10 +1411,11 @@ class Convolution(object):
 
     filter_dim = tensor_shape.dimension_at_index(filter_shape, num_spatial_dims)
     if not (input_channels_dim % filter_dim).is_compatible_with(0):
-      raise ValueError("The number of input channels is not divisible by the "
-                       "corresponding number of output filters. Received: "
-                       "input channels={}, output filters={}".format(
-                           input_channels_dim, filter_dim))
+      raise ValueError(
+          "The number of input channels is not divisible by the corresponding "
+          f"number of output filters. Received: input.shape={input_shape} with "
+          f"{input_channels_dim} channels and filters.shape={filter_shape} "
+          f"with {filter_dim} output filters.")
 
     strides, dilation_rate = _get_strides_and_dilation_rate(
         num_spatial_dims, strides, dilation_rate)
@@ -1547,7 +1567,9 @@ def pool(
 
     num_spatial_dims = len(window_shape)
     if num_spatial_dims < 1 or num_spatial_dims > 3:
-      raise ValueError("It is required that 1 <= num_spatial_dims <= 3.")
+      raise ValueError("`len(window_shape)` must be 1, 2, or 3. Received: "
+                       f"window_shape={window_shape} of length "
+                       f"{len(window_shape)}")
 
     input.get_shape().with_rank(num_spatial_dims + 2)
 
@@ -1556,12 +1578,15 @@ def pool(
 
     if padding == "SAME" and np.any(dilation_rate > 1):
       raise ValueError(
-          "pooling with SAME padding is not implemented for dilation_rate > 1")
+          "pooling with 'SAME' padding is not implemented for "
+          f"`dilation_rate` > 1. Received: padding={padding} and "
+          f"dilation_rate={dilation_rate}")
 
     if np.any(strides > window_shape):
       raise ValueError(
-          "strides > window_shape not supported due to inconsistency between "
-          "CPU and GPU implementations")
+          "`strides` > `window_shape` not supported due to inconsistency "
+          f"between CPU and GPU implementations. Received: strides={strides} "
+          f"and window_shape={window_shape}")
 
     pooling_ops = {
         ("MAX", 1): max_pool,
@@ -1573,8 +1598,8 @@ def pool(
     }
     op_key = (pooling_type, num_spatial_dims)
     if op_key not in pooling_ops:
-      raise ValueError("%d-D %s pooling is not supported." % (op_key[1],
-                                                              op_key[0]))
+      raise ValueError(
+          f"{num_spatial_dims}-D {pooling_type} pooling is not supported.")
 
     if data_format is None or not data_format.startswith("NC"):
       adjusted_window_shape = [1] + list(window_shape) + [1]
@@ -1591,7 +1616,8 @@ def pool(
       elif data_format == "NCW":
         data_format_kwargs = dict(data_format="NCHW")
       else:
-        raise ValueError("data_format must be either \"NWC\" or \"NCW\".")
+        raise ValueError("data_format must be either 'NWC' or 'NCW'. "
+                         f"Received: data_format={data_format}")
       adjusted_window_shape = [1] + adjusted_window_shape
       adjusted_strides = [1] + adjusted_strides
     else:
@@ -1675,7 +1701,9 @@ def pool_v2(
     strides: Optional. Sequence of N ints >= 1.  Defaults to [1]*N. If any value of
       strides is > 1, then all values of dilation_rate must be 1.
     padding: The padding algorithm, must be "SAME" or "VALID". Defaults to "SAME".
-      See the "returns" section of `tf.nn.convolution` for details.
+      See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: A string or None.  Specifies whether the channel dimension of
       the `input` and output is the last dimension (default, or if `data_format`
       does not start with "NC"), or the second dimension (if `data_format`
@@ -1828,7 +1856,9 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
       upsample the filter values by inserting zeros across the `height` and
       `width` dimensions. In the literature, the same parameter is sometimes
       called `input stride` or `dilation`.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     name: Optional name for the returned tensor.
 
   Returns:
@@ -1889,24 +1919,25 @@ def convert_padding(padding, expected_length=4):
   """
   explicit_paddings = []
   if padding == "EXPLICIT":
-    # Give a better error message if EXPLICIT is passed.
-    raise ValueError('"EXPLICIT" is not a valid value for the padding '
-                     "parameter. To use explicit padding, the padding "
-                     "parameter must be a list.")
+    raise ValueError("'EXPLICIT' is not a valid value for `padding`. To use "
+                     "explicit padding, `padding` must be a list.")
   if isinstance(padding, (list, tuple)):
     for i, dim_paddings in enumerate(padding):
       if not isinstance(dim_paddings, (list, tuple)):
-        raise ValueError("When padding is a list, each element of padding must "
-                         "be a list/tuple of size 2. Element with index %d of "
-                         "padding is not a list/tuple" % i)
+        raise ValueError("When `padding` is a list, each element of `padding` "
+                         "must be a list/tuple of size 2. Received: "
+                         f"padding={padding} with element at index {i} of type "
+                         f"{type(dim_paddings)}")
       if len(dim_paddings) != 2:
-        raise ValueError("When padding is a list, each element of padding must "
-                         "be a list/tuple of size 2. Element with index %d of "
-                         "padding has size %d" % (i, len(dim_paddings)))
+        raise ValueError("When `padding` is a list, each element of `padding` "
+                         "must be a list/tuple of size 2. Received: "
+                         f"padding={padding} with element at index {i} of size "
+                         f"{len(dim_paddings)}")
       explicit_paddings.extend(dim_paddings)
     if len(padding) != expected_length:
-      raise ValueError("When padding is a list, it must be of size %d. Got "
-                       "padding of size: %d" % (expected_length, len(padding)))
+      raise ValueError(
+          f"When padding is a list, it must be of size {expected_length}. "
+          f"Received: padding={padding} of size {len(padding)}")
     padding = "EXPLICIT"
   return padding, explicit_paddings
 
@@ -1994,7 +2025,8 @@ def conv1d(
       spatial_start_dim = -2
       channel_index = 1
     else:
-      raise ValueError("data_format must be \"NWC\" or \"NCW\".")
+      raise ValueError("`data_format` must be 'NWC' or 'NCW'. "
+                       f"Received: data_format={data_format}")
     strides = [1] + _get_sequence(stride, 1, channel_index, "stride")
     dilations = [1] + _get_sequence(dilations, 1, channel_index, "dilations")
 
@@ -2067,7 +2099,9 @@ def conv1d_v2(
     filters: A Tensor of rank at least 3.  Must have the same type as `input`.
     stride: An int or list of `ints` that has length `1` or `3`.  The number of
       entries by which the filter is moved right at each step.
-    padding: 'SAME' or 'VALID'
+    padding: 'SAME' or 'VALID'. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: An optional `string` from `"NWC", "NCW"`.  Defaults to `"NWC"`,
       the data is stored in the order of
       `batch_shape + [in_width, in_channels]`.  The `"NCW"` format stores data
@@ -2123,8 +2157,9 @@ def conv1d_transpose(
       output shape of the deconvolution op.
     strides: An int or list of `ints` that has length `1` or `3`.  The number of
       entries by which the filter is moved right at each step.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the "returns" section of `tf.nn.convolution` for details.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: A string. `'NWC'` and `'NCW'` are supported.
     dilations: An int or list of `ints` that has length `1` or `3` which
       defaults to 1. The dilation factor for each dimension of input. If set to
@@ -2159,7 +2194,8 @@ def conv1d_transpose(
       spatial_start_dim = 2
       channel_index = 1
     else:
-      raise ValueError("data_format must be \"NWC\" or \"NCW\".")
+      raise ValueError("`data_format` must be 'NWC' or 'NCW'. "
+                       f"Received: data_format={data_format}")
 
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
     strides = [1] + _get_sequence(strides, 1, channel_index, "stride")
@@ -2253,10 +2289,12 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
       by the value of `data_format`, see below for details.
     padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
-      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
-      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      the start and end of each dimension. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information. When explicit padding is used and data_format is
+      `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [pad_left, pad_right], [0, 0]]`. When explicit padding used and
+      data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
       [pad_top, pad_bottom], [pad_left, pad_right]]`.
     data_format: An optional `string` from: `"NHWC", "NCHW"`.
       Defaults to `"NHWC"`.
@@ -2647,10 +2685,12 @@ def conv2d_transpose_v2(
       by the value of `data_format`, see below for details.
     padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
-      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
-      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      the start and end of each dimension. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.  When explicit padding is used and data_format is
+      `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [pad_left, pad_right], [0, 0]]`. When explicit padding used and
+      data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
       [pad_top, pad_bottom], [pad_left, pad_right]]`.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     dilations: An int or list of `ints` that has length `1`, `2` or `4`,
@@ -2760,13 +2800,15 @@ def atrous_conv2d_transpose(value,
       inserting `rate - 1` zeros along consecutive elements across the
       `filters`' spatial dimensions.
     output_shape: A 1-D `Tensor` of shape representing the output shape of the
-      deconvolution op.
+      deconvolution op, of form `[batch, out_height, out_width, out_channels]`.
     rate: A positive int32. The stride with which we sample input values across
       the `height` and `width` dimensions. Equivalently, the rate by which we
       upsample the filter values by inserting zeros across the `height` and
       `width` dimensions. In the literature, the same parameter is sometimes
       called `input stride` or `dilation`.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     name: Optional name for the returned tensor.
 
   Returns:
@@ -2790,11 +2832,13 @@ def atrous_conv2d_transpose(value,
     filters = ops.convert_to_tensor(filters, name="filters")
     if not value.get_shape().dims[3].is_compatible_with(filters.get_shape()[3]):
       raise ValueError(
-          "value's input channels does not match filters' input channels, "
-          "{} != {}".format(value.get_shape()[3],
-                            filters.get_shape()[3]))
+          "`value` channel count must be compatible with `filters` input "
+          f"channel count. Received: value.shape={value.get_shape()} with "
+          f"channel count {value.get_shape()[3]} and "
+          f"filters.shape={filters.get_shape()} with input channel count "
+          f"{filters.get_shape()[3]}.")
     if rate < 1:
-      raise ValueError("rate {} cannot be less than one".format(rate))
+      raise ValueError(f"`rate` cannot be less than one. Received: rate={rate}")
 
     if rate == 1:
       return conv2d_transpose(
@@ -2808,8 +2852,8 @@ def atrous_conv2d_transpose(value,
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
     if not output_shape_.get_shape().is_compatible_with(
         tensor_shape.TensorShape([4])):
-      raise ValueError("output_shape must have shape (4,), got {}".format(
-          output_shape_.get_shape()))
+      raise ValueError("`output_shape` must have shape (4,). "
+                       f"Received: output_shape={output_shape_.get_shape()}")
 
     if isinstance(output_shape, tuple):
       output_shape = list(output_shape)
@@ -2818,9 +2862,11 @@ def atrous_conv2d_transpose(value,
       # output_shape's shape should be == [4] if reached this point.
       if not filters.get_shape().dims[2].is_compatible_with(output_shape[3]):
         raise ValueError(
-            "output_shape does not match filter's output channels, "
-            "{} != {}".format(output_shape[3],
-                              filters.get_shape()[2]))
+            "`output_shape` channel count must be compatible with `filters` "
+            f"output channel count. Received: output_shape={output_shape} with "
+            f"channel count {output_shape[3]} and "
+            f"filters.shape={filters.get_shape()} with output channel count "
+            f"{filters.get_shape()[3]}.")
 
     # We have two padding contributions. The first is used for converting "SAME"
     # to "VALID". The second is required so that the height and width of the
@@ -2855,8 +2901,8 @@ def atrous_conv2d_transpose(value,
       pad_left = 0
       pad_right = 0
     else:
-      raise ValueError("padding must be either VALID or SAME:"
-                       " {}".format(padding))
+      raise ValueError("`padding` must be either 'VALID' or 'SAME'. "
+                       f"Received: padding={padding}")
 
     in_height = output_shape[1] + pad_top + pad_bottom
     in_width = output_shape[2] + pad_left + pad_right
@@ -3003,8 +3049,10 @@ def depthwise_conv2d_native_backprop_input(  # pylint: disable=redefined-builtin
     padding: Controls how to pad the image before applying the convolution. Can
       be the string `"SAME"` or `"VALID"` indicating the type of padding
       algorithm to use, or a list indicating the explicit paddings at the start
-      and end of each dimension. When explicit padding is used and data_format
-      is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      and end of each dimension. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information. When explicit padding is used and data_format is
+      `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
       [pad_left, pad_right], [0, 0]]`. When explicit padding used and
       data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
       [pad_top, pad_bottom], [pad_left, pad_right]]`.
@@ -3074,8 +3122,10 @@ def depthwise_conv2d_native_backprop_filter(  # pylint: disable=redefined-builti
     padding: Controls how to pad the image before applying the convolution. Can
       be the string `"SAME"` or `"VALID"` indicating the type of padding
       algorithm to use, or a list indicating the explicit paddings at the start
-      and end of each dimension. When explicit padding is used and data_format
-      is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      and end of each dimension. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information. When explicit padding is used and data_format is
+      `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
       [pad_left, pad_right], [0, 0]]`. When explicit padding used and
       data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
       [pad_top, pad_bottom], [pad_left, pad_right]]`.
@@ -3288,7 +3338,8 @@ def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
       default the `N` and `C` dimensions are set to 0. The dimension order is
       determined by the value of `data_format`, see below for details.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      the "returns" section of `tf.nn.convolution` for details.
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: A string. 'NDHWC' and 'NCDHW' are supported.
     dilations: An int or list of `ints` that has length `1`, `3` or `5`,
       defaults to 1. The dilation factor for each dimension of`input`. If a
@@ -3370,7 +3421,8 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
       the `N` and `C` dimensions are set to 0. The dimension order is determined
       by the value of `data_format`, see below for details.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      the "returns" section of `tf.nn.convolution` for details.
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: A string or None.  Specifies whether the channel dimension of
       the `input` and output is the last dimension (default, or if `data_format`
       does not start with "NC"), or the second dimension (if `data_format`
@@ -3404,11 +3456,13 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
     elif isinstance(output_shape, collections_abc.Sized):
       n = len(output_shape) - 2
     else:
-      raise ValueError("output_shape must be a tensor or sized collection.")
+      raise ValueError("`output_shape` must be a tensor or sized collection. "
+                       f"Received: output_shape={output_shape}")
 
     if not 1 <= n <= 3:
       raise ValueError(
-          "output_shape must be of length 3, 4 or 5 but was {}.".format(n + 2))
+          f"`output_shape` must be of length 3, 4 or 5. "
+          f"Received: output_shape={output_shape} of length {n + 2}.")
 
     op = CONV_TRANSPOSE_OPS[n-1]
     return op(
@@ -3459,30 +3513,14 @@ def bias_add(value, bias, data_format=None, name=None):
       elif data_format.startswith("N") and data_format.endswith("C"):
         data_format = "NHWC"
       else:
-        raise ValueError("data_format must be of the form `N...C` or `NC...`")
+        raise ValueError("`data_format` must be of the form `N...C` or "
+                         f"`NC...`. Received: data_format={data_format}")
 
     if not context.executing_eagerly():
       value = ops.convert_to_tensor(value, name="input")
       bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
 
-    # TODO(duncanriach): Implement deterministic functionality at CUDA kernel
-    #   level.
-    if config.deterministic_ops_enabled():
-      # Note that this code does not implement the same error checks as the
-      # pre-existing C++ ops.
-      if data_format == "NCHW":
-        broadcast_shape_head = [1, array_ops.size(bias)]
-        broadcast_shape_tail = array_ops.ones(
-            array_ops.rank(value) - 2, dtype=dtypes.int32)
-        broadcast_shape = array_ops.concat(
-            [broadcast_shape_head, broadcast_shape_tail], 0)
-        return math_ops.add(
-            value, array_ops.reshape(bias, broadcast_shape), name=name)
-      else:  # data_format == 'NHWC' or data_format == None
-        return math_ops.add(value, bias, name=name)
-    else:
-      return gen_nn_ops.bias_add(
-          value, bias, data_format=data_format, name=name)
+    return gen_nn_ops.bias_add(value, bias, data_format=data_format, name=name)
 
 
 def bias_add_v1(value, bias, name=None):
@@ -3556,6 +3594,19 @@ crelu_v2.__doc__ = crelu.__doc__
 @dispatch.add_dispatch_support
 def relu6(features, name=None):
   """Computes Rectified Linear 6: `min(max(features, 0), 6)`.
+
+  In comparison with `tf.nn.relu`, relu6 activation functions have shown to
+  empirically perform better under low-precision conditions (e.g. fixed point
+  inference) by encouraging the model to learn sparse features earlier.
+  Source: [Convolutional Deep Belief Networks on CIFAR-10: Krizhevsky et al.,
+  2010](http://www.cs.utoronto.ca/~kriz/conv-cifar10-aug2010.pdf).
+
+  For example:
+
+  >>> x = tf.constant([-3.0, -1.0, 0.0, 6.0, 10.0], dtype=tf.float32)
+  >>> y = tf.nn.relu6(x)
+  >>> y.numpy()
+  array([0., 0., 0., 6., 6.], dtype=float32)
 
   Args:
     features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
@@ -3732,9 +3783,9 @@ def _wrap_2d_function(inputs, compute_op, dim=-1, name=None):
   if dim_val is not None and not -shape.ndims <= dim_val < shape.ndims:
     raise errors_impl.InvalidArgumentError(
         None, None,
-        "Dimension (%d) must be in the range [%d, %d) where %d is the number of"
-        " dimensions in the input." % (dim_val, -shape.ndims, shape.ndims,
-                                       shape.ndims))
+        f"`dim` must be in the range [{-shape.ndims}, {shape.ndims}) where "
+        f"{shape.ndims} is the number of dimensions in the input. "
+        f"Received: dim={dim_val}")
 
   # If dim is not the last dimension, we have to do a transpose so that we can
   # still perform the op on its last dimension.
@@ -3883,10 +3934,12 @@ def log_softmax_v2(logits, axis=None, name=None):
 def _ensure_xent_args(name, sentinel, labels, logits):
   # Make sure that all arguments were passed as named arguments.
   if sentinel is not None:
-    raise ValueError("Only call `%s` with "
-                     "named arguments (labels=..., logits=..., ...)" % name)
+    raise ValueError(
+        f"Only call {name} with named arguments (labels=..., logits=..., ...). "
+        f"Received unnamed argument: {sentinel}")
   if labels is None or logits is None:
-    raise ValueError("Both labels and logits must be provided.")
+    raise ValueError("Both `labels` and `logits` must be provided. "
+                     f"Received: labels={labels} and logits={logits}")
 
 
 @tf_export("nn.softmax_cross_entropy_with_logits", v1=[])
@@ -4048,7 +4101,7 @@ def softmax_cross_entropy_with_logits_v2_helper(
     labels = _flatten_outer_dims(labels)
 
     # Do the actual op computation.
-    if config.deterministic_ops_enabled():
+    if config.is_op_determinism_enabled():
       log_probs = log_softmax_v2(precise_logits)
       cost = -math_ops.reduce_sum(labels * log_probs, axis=1)
     else:
@@ -4154,7 +4207,7 @@ def softmax_cross_entropy_with_logits(
 
 
 def _sparse_softmax_cross_entropy_with_rank_2_logits(logits, labels, name):
-  if config.deterministic_ops_enabled():
+  if config.is_op_determinism_enabled():
     # TODO(duncanriach): Implement a GPU-deterministic version of this op at
     #     the C++/CUDA level.
 
@@ -4261,19 +4314,21 @@ def sparse_softmax_cross_entropy_with_logits(
         logits.get_shape()[:-1].is_fully_defined())
     if logits.get_shape().ndims is not None and logits.get_shape().ndims == 0:
       raise ValueError(
-          "Logits cannot be scalars - received shape %s." % logits.get_shape())
+          f"`logits` cannot be a scalar. Received logits={logits}`")
     if logits.get_shape().ndims is not None and (
         labels_static_shape.ndims is not None and
         labels_static_shape.ndims != logits.get_shape().ndims - 1):
-      raise ValueError("Rank mismatch: Rank of labels (received %s) should "
-                       "equal rank of logits minus 1 (received %s)." %
-                       (labels_static_shape.ndims, logits.get_shape().ndims))
+      raise ValueError(
+          "`labels.shape.rank` must equal `logits.shape.rank - 1`. "
+          f"Received: labels.shape={labels_static_shape} of rank "
+          f"{labels_static_shape.rank} and logits.shape={logits.get_shape()} "
+          f"of rank {logits.get_shape().rank}")
     if (static_shapes_fully_defined and
         labels_static_shape != logits.get_shape()[:-1]):
-      raise ValueError("Shape mismatch: The shape of labels (received %s) "
-                       "should equal the shape of logits except for the last "
-                       "dimension (received %s)." % (labels_static_shape,
-                                                     logits.get_shape()))
+      raise ValueError(
+          "`labels.shape` must equal `logits.shape` except for "
+          f"the last dimension. Received: labels.shape={labels_static_shape} "
+          f"and logits.shape={logits.get_shape()}")
     # Check if no reshapes are required.
     if logits.get_shape().ndims == 2:
       cost = _sparse_softmax_cross_entropy_with_rank_2_logits(
@@ -4385,7 +4440,8 @@ def avg_pool_v2(input, ksize, strides, padding, data_format=None, name=None):  #
     strides: An int or list of `ints` that has length `1`, `N` or `N+2`. The
       stride of the sliding window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      the "returns" section of `tf.nn.convolution` for details.
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: A string. Specifies the channel dimension. For N=1 it can be
       either "NWC" (default) or "NCW", for N=2 it can be either "NHWC" (default)
       or "NCHW" and for N=3 either "NDHWC" (default) or "NCDHW".
@@ -4401,10 +4457,13 @@ def avg_pool_v2(input, ksize, strides, padding, data_format=None, name=None):  #
     n = len(data_format) - 2
   else:
     raise ValueError(
-        "The input must have a rank or a data format must be given.")
+        "`input` must have a static shape or `data_format` must be given. "
+        f"Received: input.shape={input.shape} and "
+        f"data_format={data_format}")
   if not 1 <= n <= 3:
     raise ValueError(
-        "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
+        f"`input.shape.rank` must be 3, 4 or 5. Received: "
+        f"input.shape={input.shape} of rank {n + 2}.")
 
   if data_format is None:
     channel_index = n + 1
@@ -4490,8 +4549,9 @@ def avg_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):  
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `2` or `4`. The
       stride of the sliding window for each dimension of the input tensor.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the "returns" section of `tf.nn.convolution` for details.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
@@ -4532,7 +4592,8 @@ def avg_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):  #
     strides: An int or list of `ints` that has length `1` or `3`. The stride of
       the sliding window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      the "returns" section of `tf.nn.convolution` for details.
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: An optional string from: "NWC", "NCW". Defaults to "NWC".
     name: A name for the operation (optional).
 
@@ -4576,8 +4637,9 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `3` or `5`. The
       stride of the sliding window for each dimension of the input tensor.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the "returns" section of `tf.nn.convolution` for details.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: A string. 'NDHWC' and 'NCDHW' are supported.
     name: Optional name for the operation.
 
@@ -4677,10 +4739,12 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
       stride of the sliding window for each dimension of the input tensor.
     padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
-      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
-      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      the start and end of each dimension. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information. When explicit padding is used and data_format is
+      `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [pad_left, pad_right], [0, 0]]`. When explicit padding used and
+      data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
       [pad_top, pad_bottom], [pad_left, pad_right]]`. When using explicit
       padding, the size of the paddings cannot be greater than the sliding
       window size.
@@ -4699,26 +4763,28 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
     n = len(data_format) - 2
   else:
     raise ValueError(
-        "The input must have a rank or a data format must be given.")
+        "`input` must have a static shape or a data format must be given. "
+        f"Received: input.shape={input.shape} and "
+        f"data_format={data_format}")
   if not 1 <= n <= 3:
     raise ValueError(
-        "Input tensor must be of rank 3, 4 or 5 but was {}.".format(n + 2))
-
+        f"`input.shape.rank` must be 3, 4 or 5. Received: "
+        f"input.shape={input.shape} of rank {n + 2}.")
   if data_format is None:
     channel_index = n + 1
   else:
     channel_index = 1 if data_format.startswith("NC") else n + 1
 
   if isinstance(padding, (list, tuple)) and data_format == "NCHW_VECT_C":
-    raise ValueError("Data formats NCHW_VECT_C is not yet supported with "
-                     "explicit padding")
+    raise ValueError("`data_format='NCHW_VECT_C'` is not supported with "
+                     f"explicit padding. Received: padding={padding}")
 
   ksize = _get_sequence(ksize, n, channel_index, "ksize")
   strides = _get_sequence(strides, n, channel_index, "strides")
 
   if (isinstance(padding, (list, tuple)) and n == 3):
-    raise ValueError("Explicit padding is not yet supported with an input "
-                     "tensor of rank 5")
+    raise ValueError("Explicit padding is not supported with an input "
+                     f"tensor of rank 5. Received: padding={padding}")
 
   max_pooling_ops = {
       1: max_pool1d,
@@ -4780,13 +4846,13 @@ def max_pool(value,
     ksize = _get_sequence(ksize, 2, channel_index, "ksize")
     strides = _get_sequence(strides, 2, channel_index, "strides")
     if isinstance(padding, (list, tuple)) and data_format == "NCHW_VECT_C":
-      raise ValueError("Data formats NCHW_VECT_C is not yet supported with "
-                       "explicit padding")
+      raise ValueError("`data_format='NCHW_VECT_C'` is not supported with "
+                       f"explicit padding. Received: padding={padding}")
     padding, explicit_paddings = convert_padding(padding)
     if ((np.isscalar(ksize) and ksize == 0) or
         (isinstance(ksize,
                     (list, tuple, np.ndarray)) and any(v == 0 for v in ksize))):
-      raise ValueError("ksize cannot be zero.")
+      raise ValueError(f"`ksize` cannot be zero. Received: ksize={ksize}")
 
     return gen_nn_ops.max_pool(
         value,
@@ -4814,12 +4880,14 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
       the sliding window for each dimension of the input tensor.
     padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NWC"`, this should be in the form `[[0, 0], [pad_left,
-      pad_right], [0, 0]]`. When explicit padding used and data_format is
-      `"NCW"`, this should be in the form `[[0, 0], [0, 0], [pad_left,
-      pad_right]]`. When using explicit padding, the size of the paddings cannot
-      be greater than the sliding window size.
+      the start and end of each dimension. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information. When explicit padding is used and data_format is
+      `"NWC"`, this should be in the form `[[0, 0], [pad_left, pad_right], [0,
+      0]]`. When explicit padding used and data_format is `"NCW"`, this should
+      be in the form `[[0, 0], [0, 0], [pad_left, pad_right]]`. When using
+      explicit padding, the size of the paddings cannot be greater than the
+      sliding window size.
     data_format: An optional string from: "NWC", "NCW". Defaults to "NWC".
     name: A name for the operation (optional).
 
@@ -4829,8 +4897,8 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
   """
   with ops.name_scope(name, "MaxPool1d", [input]) as name:
     if isinstance(padding, (list, tuple)) and data_format == "NCHW_VECT_C":
-      raise ValueError("Data formats NCHW_VECT_C is not yet supported with "
-                       "explicit padding")
+      raise ValueError("`data_format='NCHW_VECT_C'` is not supported with "
+                       f"explicit padding. Received: padding={padding}")
     if data_format is None:
       data_format = "NWC"
     channel_index = 1 if data_format.startswith("NC") else 2
@@ -4860,23 +4928,82 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
 @tf_export("nn.max_pool2d")
 @dispatch.add_dispatch_support
 def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
-  """Performs the max pooling on the input.
+  """Performs max pooling on 2D spatial data such as images.
+
+  This is a more specific version of `tf.nn.max_pool` where the input tensor
+  is 4D, representing 2D spatial data such as images. Using these APIs are
+  equivalent
+
+  Downsamples the input images along theirs spatial dimensions (height and
+  width) by taking its maximum over an input window defined by `ksize`.
+  The window is shifted by `strides` along each dimension.
+
+  For example, for `strides=(2, 2)` and `padding=VALID` windows that extend
+  outside of the input are not included in the output:
+
+  >>> x = tf.constant([[1., 2., 3., 4.],
+  ...                  [5., 6., 7., 8.],
+  ...                  [9., 10., 11., 12.]])
+  >>> # Add the `batch` and `channels` dimensions.
+  >>> x = x[tf.newaxis, :, :, tf.newaxis]
+  >>> result = tf.nn.max_pool2d(x, ksize=(2, 2), strides=(2, 2),
+  ...                           padding="VALID")
+  >>> result[0, :, :, 0]
+  <tf.Tensor: shape=(1, 2), dtype=float32, numpy=
+  array([[6., 8.]], dtype=float32)>
+
+  With `padding=SAME`, we get:
+
+  >>> x = tf.constant([[1., 2., 3., 4.],
+  ...                  [5., 6., 7., 8.],
+  ...                  [9., 10., 11., 12.]])
+  >>> x = x[tf.newaxis, :, :, tf.newaxis]
+  >>> result = tf.nn.max_pool2d(x, ksize=(2, 2), strides=(2, 2),
+  ...                           padding='SAME')
+  >>> result[0, :, :, 0]
+  <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
+  array([[ 6., 8.],
+         [10.,12.]], dtype=float32)>
+
+  We can also specify padding explicitly. The following example adds width-1
+  padding on all sides (top, bottom, left, right):
+
+  >>> x = tf.constant([[1., 2., 3., 4.],
+  ...                  [5., 6., 7., 8.],
+  ...                  [9., 10., 11., 12.]])
+  >>> x = x[tf.newaxis, :, :, tf.newaxis]
+  >>> result = tf.nn.max_pool2d(x, ksize=(2, 2), strides=(2, 2),
+  ...                           padding=[[0, 0], [1, 1], [1, 1], [0, 0]])
+  >>> result[0, :, :, 0]
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=
+  array([[ 1., 3., 4.],
+         [ 9., 11., 12.]], dtype=float32)>
+
+  For more examples and detail, see `tf.nn.max_pool`.
 
   Args:
     input: A 4-D `Tensor` of the format specified by `data_format`.
     ksize: An int or list of `ints` that has length `1`, `2` or `4`. The size of
-      the window for each dimension of the input tensor.
+      the window for each dimension of the input tensor. If only one integer is
+      specified, then we apply the same window for all 4 dims. If two are
+      provided then we use those for H, W dimensions and keep N, C dimension
+      window size = 1.
     strides: An int or list of `ints` that has length `1`, `2` or `4`. The
-      stride of the sliding window for each dimension of the input tensor.
+      stride of the sliding window for each dimension of the input tensor. If
+      only one integer is specified, we apply the same stride to all 4 dims. If
+      two are provided we use those for the H, W dimensions and keep N, C of
+      stride = 1.
     padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
-      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
-      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
-      [pad_top, pad_bottom], [pad_left, pad_right]]`. When using explicit
-      padding, the size of the paddings cannot be greater than the sliding
-      window size.
+      the start and end of each dimension. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+        for more information. When explicit padding is used and data_format is
+        `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+        [pad_left, pad_right], [0, 0]]`. When explicit padding used and
+        data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+        [pad_top, pad_bottom], [pad_left, pad_right]]`. When using explicit
+        padding, the size of the paddings cannot be greater than the sliding
+        window size.
     data_format: A string. 'NHWC', 'NCHW' and 'NCHW_VECT_C' are supported.
     name: Optional name for the operation.
 
@@ -4892,8 +5019,8 @@ def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
     ksize = _get_sequence(ksize, 2, channel_index, "ksize")
     strides = _get_sequence(strides, 2, channel_index, "strides")
     if isinstance(padding, (list, tuple)) and data_format == "NCHW_VECT_C":
-      raise ValueError("Data formats NCHW_VECT_C is not yet supported with "
-                       "explicit padding")
+      raise ValueError("`data_format='NCHW_VECT_C'` is not supported with "
+                       f"explicit padding. Received: padding={padding}")
     padding, explicit_paddings = convert_padding(padding)
 
     return gen_nn_ops.max_pool(
@@ -4920,7 +5047,8 @@ def max_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None):
     strides: An int or list of `ints` that has length `1`, `3` or `5`. The
       stride of the sliding window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      the "returns" section of `tf.nn.convolution` for details.
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: An optional string from: "NDHWC", "NCDHW". Defaults to "NDHWC".
       The data format of the input and output data. With the default format
       "NDHWC", the data is stored in the order of: [batch, in_depth, in_height,
@@ -4987,7 +5115,9 @@ def max_pool_with_argmax_v2(
       The stride of the sliding window for each dimension of the
       input tensor.
     padding: A `string` from: `"SAME", "VALID"`.
-      The type of padding algorithm to use.
+      The type of padding algorithm to use. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: An optional `string`, must be set to `"NHWC"`. Defaults to
       `"NHWC"`.
       Specify the data format of the input and output data.
@@ -5006,7 +5136,8 @@ def max_pool_with_argmax_v2(
   """
 
   if data_format != "NHWC":
-    raise ValueError("Data formats other than 'NHWC' are not yet supported")
+    raise ValueError("`data_format` values other  than 'NHWC' are not "
+                     f"supported. Received: data_format={data_format}")
 
   ksize = _get_sequence(ksize, 2, 3, "ksize")
   strides = _get_sequence(strides, 2, 3, "strides")
@@ -5034,7 +5165,8 @@ def max_pool_with_argmax_v1(  # pylint: disable=missing-docstring,invalid-name
     output_dtype=None,
     include_batch_in_index=False):
   if data_format != "NHWC":
-    raise ValueError("Data formats other than 'NHWC' are not yet supported")
+    raise ValueError("`data_format` values other  than 'NHWC' are not "
+                     f"supported. Received: data_format={data_format}")
 
   Targmax = deprecated_argument_lookup(
       "output_dtype", output_dtype, "Targmax", Targmax)
@@ -5231,15 +5363,15 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
   try:
     rate_from_keep_prob = 1. - keep_prob if keep_prob is not None else None
   except TypeError:
-    raise ValueError("keep_prob must be a floating point number or Tensor "
-                     "(got %r)" % keep_prob)
+    raise ValueError("`keep_prob` must be a floating point number or Tensor. "
+                     f"Received: keep_prob={keep_prob}")
 
   rate = deprecation.deprecated_argument_lookup(
       "rate", rate,
       "keep_prob", rate_from_keep_prob)
 
   if rate is None:
-    raise ValueError("You must provide a rate to dropout.")
+    raise ValueError(f"`rate` must be provided. Received: rate={rate}")
 
   return dropout_v2(x, rate, noise_shape=noise_shape, seed=seed, name=name)
 
@@ -5508,13 +5640,14 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
   with ops.name_scope(name, default_name, [x]) as name:
     is_rate_number = isinstance(rate, numbers.Real)
     if is_rate_number and (rate < 0 or rate >= 1):
-      raise ValueError("rate must be a scalar tensor or a float in the "
-                       "range [0, 1), got %g" % rate)
+      raise ValueError("`rate` must be a scalar tensor or a float in the "
+                       f"range [0, 1). Received: rate={rate}")
     x = ops.convert_to_tensor(x, name="x")
     x_dtype = x.dtype
     if not x_dtype.is_floating:
-      raise ValueError("x has to be a floating point tensor since it's going "
-                       "to be scaled. Got a %s tensor instead." % x_dtype)
+      raise ValueError(
+          "`x.dtype` must be a floating point tensor as `x` will be "
+          f"scaled. Received: x_dtype={x_dtype}")
     if is_rate_number and rate == 0:
       # Fast-path: Return the input immediately if rate is non-tensor & is `0`.
       # We trigger this after all error checking
@@ -5536,15 +5669,16 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
         scale = ops.convert_to_tensor(scale, dtype=x_dtype)
         ret = gen_math_ops.mul(x, scale)
       else:
-        raise ValueError("rate is neither scalar nor scalar tensor %r" % rate)
+        raise ValueError(
+            f"`rate` must be a scalar or scalar tensor. Received: rate={rate}")
     else:
       rate.get_shape().assert_has_rank(0)
       rate_dtype = rate.dtype
       if rate_dtype != x_dtype:
         if not rate_dtype.is_compatible_with(x_dtype):
           raise ValueError(
-              "`x` has dtype %s which is incomptaible with `rate`'s dtype %s" %
-              (x_dtype.name, rate_dtype.name))
+              "`x.dtype` must be compatible with `rate.dtype`. "
+              f"Received: x.dtype={x_dtype} and rate.dtype={rate_dtype}")
         rate = gen_math_ops.cast(rate, x_dtype, name="rate")
       one_tensor = constant_op.constant(1, dtype=x_dtype)
       ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
@@ -5723,11 +5857,23 @@ def fractional_max_pool(value,
     row_pooling_sequence: A `Tensor` of type `int64`.
     col_pooling_sequence: A `Tensor` of type `int64`.
 
+  Raises:
+    ValueError: If op determinism is enabled and either the seeds are not set or
+      the "deterministic" argument is False.
+
   References:
     Fractional Max-Pooling:
       [Graham, 2015](https://arxiv.org/abs/1412.6071)
       ([pdf](https://arxiv.org/pdf/1412.6071.pdf))
   """
+  if config.is_op_determinism_enabled() and (not seed or not seed2 or
+                                             not deterministic):
+    raise ValueError(
+        f'tf.compat.v1.nn.fractional_max_pool requires "seed" and '
+        f'"seed2" to be non-zero and "deterministic" to be true when op '
+        f"determinism is enabled. Please pass in such values, e.g. by passing"
+        f'"seed=1, seed2=1, deterministic=True". Got: seed={seed}, '
+        f'seed2={seed2}, deterministic={deterministic}')
   return gen_nn_ops.fractional_max_pool(value, pooling_ratio, pseudo_random,
                                         overlapping, deterministic, seed, seed2,
                                         name)
@@ -5801,6 +5947,9 @@ def fractional_max_pool_v2(value,
     row_pooling_sequence: A `Tensor` of type `int64`.
     col_pooling_sequence: A `Tensor` of type `int64`.
 
+  Raises:
+    ValueError: If no seed is specified and op determinism is enabled.
+
   References:
     Fractional Max-Pooling:
       [Graham, 2015](https://arxiv.org/abs/1412.6071)
@@ -5809,19 +5958,31 @@ def fractional_max_pool_v2(value,
   if (isinstance(pooling_ratio, (list, tuple))):
     if (pooling_ratio[0] != 1.0 or pooling_ratio[-1] != 1.0):
       raise ValueError(
-          "The first and last elements of pooling ratio must be 1.0.")
+          "`pooling_ratio` should have first and last elements with value 1.0. "
+          f"Received: pooling_ratio={pooling_ratio}")
     for element in pooling_ratio:
       if element < 1.0:
-        raise ValueError("pooling_ratio should be >= 1.0.")
+        raise ValueError(
+            f"`pooling_ratio` elements should be >= 1.0. "
+            f"Received: pooling_ratio={pooling_ratio}")
   elif (isinstance(pooling_ratio, (int, float))):
     if pooling_ratio < 1.0:
-      raise ValueError("pooling_ratio should be >= 1.0.")
+      raise ValueError(
+          "`pooling_ratio` should be >= 1.0. "
+          f"Received: pooling_ratio={pooling_ratio}")
   else:
-    raise ValueError("pooling_ratio should be an int or a list of ints.")
+    raise ValueError(
+        "`pooling_ratio` should be an int or a list of ints. "
+        f"Received: pooling_ratio={pooling_ratio}")
 
   pooling_ratio = _get_sequence(pooling_ratio, 2, 3, "pooling_ratio")
 
   if seed == 0:
+    if config.is_op_determinism_enabled():
+      raise ValueError(
+          f"tf.nn.fractional_max_pool requires a non-zero seed to be passed in "
+          f"when determinism is enabled, but got seed={seed}. Please pass in a "
+          f'non-zero seed, e.g. by passing "seed=1".')
     return gen_nn_ops.fractional_max_pool(value, pooling_ratio, pseudo_random,
                                           overlapping, deterministic=False,
                                           seed=0, seed2=0, name=name)
@@ -6075,7 +6236,9 @@ def erosion2d_v2(value,
       1-D of length 4. The stride of the sliding window for each dimension of
       the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
     padding: A `string` from: `"SAME", "VALID"`.
-      The type of padding algorithm to use.
+      The type of padding algorithm to use. See
+      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      for more information.
     data_format: A `string`, only `"NHWC"` is currently supported.
     dilations: A list of `ints` that has length `>= 4`.
       1-D of length 4. The input stride for atrous morphological dilation.
@@ -6092,7 +6255,8 @@ def erosion2d_v2(value,
       padding is other than `'VALID'` or `'SAME'`.
   """
   if data_format != "NHWC":
-    raise ValueError("Data formats other than NHWC are not yet supported")
+    raise ValueError("`data_format` values other  than 'NHWC' are not "
+                     f"supported. Received: data_format={data_format}")
 
   with ops.name_scope(name, "erosion2d", [value, filters]) as name:
     # Reduce erosion to dilation by duality.

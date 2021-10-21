@@ -70,22 +70,22 @@ class ResourceAliasAnalysisInfo {
   // Returns the set unique Values which map to `id`.
   const llvm::SmallSetVector<Value, 8>& GetUniqueIdResources(int64_t id) const;
 
-  // Propagates the resource ID's from an input operand to a result. Returns
+  // Propagates the resource IDs from an input operand to a result. Returns
   // true of the mapping has changed.
   bool PropagateInputToOutput(const Value& operand, const OpResult& result);
 
-  // Analyzes while loops to compute resourceID's for the loop results.
+  // Analyzes while loops to compute resource IDs for the loop results.
   // `body_info` is the backtrack analysis info for the loop body.
   void AnalyzeWhileLoop(Operation* while_op,
                         const BacktrackAnalysisInfo& body_info);
 
-  // Analyzes tf.Case/tf.If ops to compute resourceID's.
+  // Analyzes tf.Case/tf.If ops to compute resource IDs.
   template <class CaseOrIfOp>
   void AnalyzeFunctionalCaseOrIfOp(CaseOrIfOp case_or_if_op,
                                    llvm::ArrayRef<FuncOp> functions,
                                    const BacktrackAnalysis& backtrack_analysis);
 
-  // Analyzes tf.CaseRegion/tf.IfRegion ops to compute resourceID's.
+  // Analyzes tf.CaseRegion/tf.IfRegion ops to compute resource IDs.
   void AnalyzeRegionCaseOrIfOp(Operation* case_or_if_op,
                                const BacktrackAnalysis& backtrack_analysis);
 

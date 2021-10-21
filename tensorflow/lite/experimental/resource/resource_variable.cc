@@ -20,6 +20,8 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "tensorflow/lite/c/c_api_types.h"
+
 namespace tflite {
 namespace resource {
 
@@ -94,6 +96,11 @@ ResourceVariable* GetResourceVariable(ResourceMap* resources, int resource_id) {
     return static_cast<ResourceVariable*>(it->second.get());
   }
   return nullptr;
+}
+
+bool IsBuiltinResource(const TfLiteTensor* tensor) {
+  return tensor && tensor->type == kTfLiteResource &&
+         tensor->delegate == nullptr;
 }
 
 }  // namespace resource

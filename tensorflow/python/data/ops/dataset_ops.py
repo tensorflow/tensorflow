@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrappers for Datasets."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import functools
 import multiprocessing
@@ -36,13 +32,12 @@ from tensorflow.python import tf2
 from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import random_seed
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd_utils
 from tensorflow.python.framework import composite_tensor
@@ -73,11 +68,14 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest as tf_nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
+
+# Symbols forwarded for legacy access through dataset_ops.py. These forwarded
+# symbols can be removed once all internal uses are updated.
+StructuredFunctionWrapper = structured_function.StructuredFunctionWrapper
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->wrap_function->dataset->autograph->tf.function).
@@ -85,13 +83,6 @@ from tensorflow.python.util.tf_export import tf_export
 wrap_function = lazy_loader.LazyLoader(
     "wrap_function", globals(),
     "tensorflow.python.eager.wrap_function")
-# TODO(mdan): Create a public API for this.
-autograph_ctx = lazy_loader.LazyLoader(
-    "autograph_ctx", globals(),
-    "tensorflow.python.autograph.core.ag_ctx")
-autograph = lazy_loader.LazyLoader(
-    "autograph", globals(),
-    "tensorflow.python.autograph.impl.api")
 # Loaded lazily due to a circular dependency
 # dataset_ops->parsing_ops->dataset_ops
 # TODO(varshaan): Use a regular import.
@@ -116,12 +107,21 @@ tf_export("data.UNKNOWN_CARDINALITY").export_constant(__name__, "UNKNOWN")
 
 def _validate_and_encode(name):
   if not name.isidentifier():
-    raise ValueError("Name is not a valid identifier. Name is considered a "
-                     "valid identifier if it only contains alphanumeric "
-                     "characters (a-z), (A-Z), and (0-9), or underscores (_). "
-                     "A valid identifier cannot start with a number, or "
-                     "contain any spaces.")
+    raise ValueError("Invalid `name`. The argument `name` needs to be a valid "
+                     "identifier. Value is considered a valid identifier if it "
+                     "only contains alphanumeric characters (a-z), (A-Z), and "
+                     "(0-9), or underscores (_). A valid identifier cannot "
+                     "start with a number, or contain any spaces.")
   return name.encode("utf-8")
+
+
+def _get_type(value):
+  """Returns the type of `value` if it is a TypeSpec."""
+
+  if isinstance(value, type_spec.TypeSpec):
+    return value.value_type()
+  else:
+    return type(value)
 
 
 @tf_export("data.Dataset", v1=[])
@@ -245,14 +245,17 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         # grab the options of `_dataset` object
         if hasattr(input_dataset, "_dataset"):
           if not isinstance(input_dataset._dataset, DatasetV2):
-            raise AssertionError(
-                "The input_dataset._dataset of dataset %s should be DatasetV2."
-                % type(self))
+            raise TypeError(
+                f"Each input of dataset {type(self)} should be a subclass of "
+                f"`tf.data.Dataset` but encountered "
+                f"{type(input_dataset._dataset)}.")
           input_options = input_dataset._dataset._options_attr
       elif isinstance(input_dataset, DatasetV2):
         input_options = input_dataset._options_attr
       else:
-        raise TypeError("Unexpected dataset type: ", type(input_dataset))
+        raise TypeError(
+            f"Each input of dataset {type(self)} should be a subclass of "
+            f"`tf.data.Dataset` but encountered {type(input_dataset)}.")
       if input_options is not None:
         self._options_attr = self._options_attr.merge(input_options)
     self._options_attr._set_mutable(False)  # pylint: disable=protected-access
@@ -263,7 +266,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
   @_variant_tensor.setter
   def _variant_tensor(self, _):
-    raise ValueError("The _variant_tensor property is read-only")
+    raise ValueError("The `_variant_tensor` property cannot be modified.")
 
   @deprecation.deprecated_args(None, "Use external_state_policy instead",
                                "allow_stateful")
@@ -344,23 +347,25 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     variant = self._variant_tensor
     if not isinstance(variant, ops.EagerTensor):
       raise NotImplementedError(
-          "Can only export Datasets which were created executing eagerly. "
-          "Please file a feature request if this is important to you.")
+          "Constructing a tf.function that reproduces a given dataset is only "
+          "supported for datasets created eagerly. Please file a feature "
+          "request if this is important to you.")
     with context.eager_mode(), ops.device("CPU"):
       # pylint: disable=protected-access
       graph_def = graph_pb2.GraphDef().FromString(
           self._as_serialized_graph(external_state_policy=options_lib
                                     .ExternalStatePolicy.FAIL).numpy())
-    output_node_name = None
+    output_node_names = []
     for node in graph_def.node:
       if node.op == "_Retval":
-        if output_node_name is not None:
-          raise AssertionError(
-              "Found multiple return values from the dataset's graph, expected "
-              "only one.")
-        output_node_name, = node.input
-    if output_node_name is None:
-      raise AssertionError("Could not find the dataset's output node.")
+        output_node_names = node.input
+
+    if len(output_node_names) != 1:
+      raise AssertionError(
+          f"Dataset graph is expected to only have one return value but found "
+          f"{len(output_node_names)} return values: {output_node_names}.")
+
+    output_node_name = output_node_names[0]
 
     file_path_nodes = {}
     # TODO(b/188455028): Remove this check when
@@ -391,7 +396,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
   def _inputs(self):
     """Returns a list of the input datasets of the dataset."""
 
-    raise NotImplementedError("Dataset._inputs")
+    raise NotImplementedError(f"{type(self)}._inputs()")
 
   @property
   def _graph(self):
@@ -399,7 +404,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
   @_graph.setter
   def _graph(self, _):
-    raise ValueError("The _graph property is read-only")
+    raise ValueError("The `_graph` property cannot be modified.")
 
   # TODO(jsimsa): Change this to be the transitive closure of functions used
   # by this dataset and its inputs.
@@ -475,8 +480,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       with ops.colocate_with(self._variant_tensor):
         return iterator_ops.OwnedIterator(self)
     else:
-      raise RuntimeError("__iter__() is only supported inside of tf.function "
-                         "or when eager execution is enabled.")
+      raise RuntimeError("`tf.data.Dataset` only supports Python-style "
+                         "iteration in eager mode or within tf.function.")
 
   def __bool__(self):
     return True  # Required as __len__ is defined
@@ -499,13 +504,13 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         execution is not enabled.
     """
     if not context.executing_eagerly():
-      raise TypeError("__len__() is not supported while tracing functions. "
-                      "Use `tf.data.Dataset.cardinality` instead.")
+      raise TypeError("`tf.data.Dataset` only supports `len` in eager mode. "
+                      "Use `tf.data.Dataset.cardinality()` instead.")
     length = self.cardinality()
     if length.numpy() == INFINITE:
-      raise TypeError("dataset length is infinite.")
+      raise TypeError("The dataset is infinite.")
     if length.numpy() == UNKNOWN:
-      raise TypeError("dataset length is unknown.")
+      raise TypeError("The dataset length is unknown.")
     return length
 
   @abc.abstractproperty
@@ -523,16 +528,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       A (nested) structure of `tf.TypeSpec` objects matching the structure of an
       element of this dataset and specifying the type of individual components.
     """
-    raise NotImplementedError("Dataset.element_spec")
+    raise NotImplementedError(f"{type(self)}.element_spec()")
 
   def __repr__(self):
     type_ = type(self._dataset if isinstance(self, DatasetV1Adapter) else self)
-    output_shapes = nest.map_structure(str, get_legacy_output_shapes(self))
-    output_shapes = str(output_shapes).replace("'", "")
-    output_types = nest.map_structure(repr, get_legacy_output_types(self))
-    output_types = str(output_types).replace("'", "")
-    return ("<%s shapes: %s, types: %s>" % (type_.__name__, output_shapes,
-                                            output_types))
+    return f"<{type_.__name__} element_spec={self.element_spec}>"
 
   def __debug_string__(self):
     """Returns a string showing the type of the dataset and its inputs.
@@ -594,15 +594,15 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       RuntimeError: if eager execution is not enabled.
     """
     if not context.executing_eagerly():
-      raise RuntimeError("as_numpy_iterator() is not supported while tracing "
-                         "functions")
+      raise RuntimeError("`tf.data.Dataset.as_numpy_iterator()` is only "
+                         "supported in eager mode.")
     for component_spec in nest.flatten(self.element_spec):
       if not isinstance(
           component_spec,
           (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec)):
         raise TypeError(
-            "Dataset.as_numpy_iterator() does not support datasets containing "
-            + str(component_spec.value_type))
+            f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
+            f"datasets that produce values of type {component_spec.value_type}")
 
     return _NumpyIterator(self)
 
@@ -890,24 +890,25 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       Dataset: A `Dataset`.
     """
     if not callable(generator):
-      raise TypeError("`generator` must be callable.")
+      raise TypeError("`generator` must be a Python callable.")
 
     if output_signature is not None:
       if output_types is not None:
-        raise TypeError("`output_types` can not be used together with "
-                        "`output_signature`")
+        raise TypeError("The `output_types` argument can not be used together "
+                        "with the `output_signature` argument.")
       if output_shapes is not None:
-        raise TypeError("`output_shapes` can not be used together with "
-                        "`output_signature`")
-      if not all(
-          isinstance(_, type_spec.TypeSpec)
-          for _ in nest.flatten(output_signature)):
-        raise TypeError("All the elements of `output_signature` must be "
-                        "`tf.TypeSpec` objects.")
+        raise TypeError("The `output_shapes` argument can not be used together "
+                        "with the `output_signature` argument.")
+      for spec in nest.flatten(output_signature):
+        if not isinstance(spec, type_spec.TypeSpec):
+          raise TypeError(f"`output_signature` must contain objects that are "
+                          f"subclass of `tf.TypeSpec` but found {type(spec)} "
+                          f"which is not.")
     else:
       if output_types is None:
-        raise TypeError("Either `output_signature` or `output_types` must "
-                        "be specified")
+        raise TypeError("To specify the output signature you need to provide "
+                        "either the `output_signature` argument or the "
+                        "`output_types` argument.")
 
     if output_signature is None:
       if output_shapes is None:
@@ -985,9 +986,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
             six.reraise(
                 TypeError,
                 TypeError(
-                    "`generator` yielded an element that did not match the "
-                    "expected structure. The expected structure was %s, but "
-                    "the yielded element was %s." % (output_types, values)),
+                    f"`generator` yielded an element that did not match the "
+                    f"expected structure. The expected structure was "
+                    f"{output_types}, but the yielded element was {values}."),
                 sys.exc_info()[2])
           ret_arrays = []
           for ret, dtype in zip(flattened_values, flattened_types):
@@ -1000,10 +1001,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
               six.reraise(
                   TypeError,
                   TypeError(
-                      "`generator` yielded an element that could not be "
-                      "converted to the expected type. The expected type was "
-                      "%s, but the yielded element was %s." %
-                      (dtype.name, ret)),
+                      f"`generator` yielded an element that could not be "
+                      f"converted to the expected type. The expected type was "
+                      f"{dtype.name}, but the yielded element was {ret}."),
                   sys.exc_info()[2])
 
           # Additional type and shape checking to ensure that the components of
@@ -1014,14 +1014,13 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
                                       flattened_shapes):
             if ret_array.dtype != expected_dtype.as_numpy_dtype:
               raise TypeError(
-                  "`generator` yielded an element of type %s where an element "
-                  "of type %s was expected." %
-                  (ret_array.dtype, expected_dtype.as_numpy_dtype))
+                  f"`generator` yielded an element of type {ret_array.dtype} "
+                  f"where an element of type {expected_dtype.as_numpy_dtype} "
+                  f"was expected.")
             if not expected_shape.is_compatible_with(ret_array.shape):
-              raise ValueError(
-                  "`generator` yielded an element of shape %s where an element "
-                  "of shape %s was expected." %
-                  (ret_array.shape, expected_shape))
+              raise TypeError(
+                  f"`generator` yielded an element of shape {ret_array.shape} "
+                  f"where an element of shape {expected_shape} was expected.")
 
           return ret_arrays
 
@@ -1051,25 +1050,23 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
             six.reraise(
                 TypeError,
                 TypeError(
-                    "`generator` yielded an element that did not match the "
-                    "expected structure. The expected structure was %s, but "
-                    "the yielded element was %s." % (output_signature, values)),
+                    f"`generator` yielded an element that did not match the "
+                    f"expected structure. The expected structure was "
+                    f"{output_signature}, but the yielded element was "
+                    f"{values}."),
                 sys.exc_info()[2])
 
           values_spec = structure.type_spec_from_value(values)
 
           if not structure.are_compatible(values_spec, output_signature):
             raise TypeError(
-                "`generator` yielded an element of %s where an element "
-                "of %s was expected." % (values_spec, output_signature))
+                f"`generator` yielded an element of {values_spec} where an "
+                f"element of {output_signature} was expected.")
 
           return structure.to_tensor_list(output_signature, values)
 
-        return script_ops._eager_py_func(  # pylint: disable=protected-access
-            generator_py_func,
-            inp=[iterator_id_t],
-            Tout=flat_output_types,
-            use_tape_cache=False)
+        return script_ops.eager_py_func(
+            generator_py_func, inp=[iterator_id_t], Tout=flat_output_types)
 
     def finalize_fn(iterator_id_t):
       """Releases host-side state for the iterator with ID `iterator_id_t`."""
@@ -1820,12 +1817,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
     if padded_shapes is None:
       padded_shapes = get_legacy_output_shapes(self)
-      # A `tf.TensorShape` is only false if its *rank* is unknown:
-      # bool(tf.TensorShape(None)) is False
-      if not all(nest.flatten(padded_shapes)):
-        raise ValueError("You must set the `padded_shapes` argument to "
-                         "`Dataset.padded_batch` if any component of its "
-                         "input has an unknown rank")
+      for i, shape in enumerate(nest.flatten(padded_shapes)):
+        # A `tf.TensorShape` is only false if its *rank* is unknown.
+        if not shape:
+          raise ValueError(f"You must provide `padded_shapes` argument because "
+                           f"component {i} has unknown rank.")
     return PaddedBatchDataset(
         self,
         batch_size,
@@ -2216,8 +2212,8 @@ name=None))
     dataset = transformation_func(self)
     if not isinstance(dataset, DatasetV2):
       raise TypeError(
-          "`transformation_func` must return a Dataset. Got {}.".format(
-              dataset))
+          f"`transformation_func` must return a `tf.data.Dataset` object. "
+          f"Got {type(dataset)}.")
     dataset._input_datasets = [self]  # pylint: disable=protected-access
     return dataset
 
@@ -2234,9 +2230,9 @@ name=None))
     >>> dataset = tf.data.Dataset.range(7).window(3)
     >>> for window in dataset:
     ...   print(window)
-    <...Dataset shapes: (), types: tf.int64>
-    <...Dataset shapes: (), types: tf.int64>
-    <...Dataset shapes: (), types: tf.int64>
+    <...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int64, name=None)>
+    <...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int64, name=None)>
+    <...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int64, name=None)>
 
     Since windows are datasets, they can be iterated over:
 
@@ -2299,8 +2295,8 @@ name=None))
     >>> dataset = dataset.window(2)
     >>> windows = next(iter(dataset))
     >>> windows
-    (<...Dataset shapes: (), types: tf.int32>,
-     <...Dataset shapes: (), types: tf.int32>)
+    (<...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int32, name=None)>,
+     <...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int32, name=None)>)
 
     >>> def to_numpy(ds):
     ...   return list(ds.as_numpy_iterator())
@@ -2407,7 +2403,7 @@ name=None))
     need_to_rerun = True
     while need_to_rerun:
 
-      wrapped_func = StructuredFunctionWrapper(
+      wrapped_func = structured_function.StructuredFunctionWrapper(
           reduce_func,
           "reduce()",
           input_structure=(state_structure, self.element_spec),
@@ -2422,9 +2418,9 @@ name=None))
           nest.flatten(output_classes), nest.flatten(state_classes)):
         if not issubclass(new_state_class, state_class):
           raise TypeError(
-              "The element classes for the new state must match the initial "
-              "state. Expected %s; got %s." %
-              (state_classes, wrapped_func.output_classes))
+              f"The element classes for the new state must match the initial "
+              f"state. Expected {state_classes} but got "
+              f"{wrapped_func.output_classes}.")
 
       # Extract and validate type information from the returned values.
       output_types = wrapped_func.output_types
@@ -2435,9 +2431,9 @@ name=None))
           nest.flatten(output_types), nest.flatten(state_types)):
         if new_state_type != state_type:
           raise TypeError(
-              "The element types for the new state must match the initial "
-              "state. Expected %s; got %s." %
-              (state_types, wrapped_func.output_types))
+              f"The element types for the new state must match the initial "
+              f"state. Expected {state_types} but got "
+              f"{wrapped_func.output_types}.")
 
       # Extract shape information from the returned values.
       output_shapes = wrapped_func.output_shapes
@@ -2758,7 +2754,8 @@ name=None))
     """
     if (window_size is not None and window_size_func or
         not (window_size is not None or window_size_func)):
-      raise ValueError("Must pass either window_size or window_size_func.")
+      raise ValueError("Either the `window_size` argument or the "
+                       "`window_size_func` argument must be specified.")
 
     if window_size is not None:
 
@@ -2847,7 +2844,9 @@ name=None))
     """
     if len(bucket_batch_sizes) != (len(bucket_boundaries) + 1):
       raise ValueError(
-          "len(bucket_batch_sizes) must equal len(bucket_boundaries) + 1")
+          f"`len(bucket_batch_sizes)` must equal `len(bucket_boundaries) + 1` "
+          f"but `len(bucket_batch_sizes)={len(bucket_batch_sizes)}` and "
+          f"`len(bucket_boundaries)={len(bucket_boundaries)}`.")
 
     batch_sizes = constant_op.constant(bucket_batch_sizes, dtype=dtypes.int64)
 
@@ -3282,11 +3281,6 @@ name=None))
         - If `weights` is specified and does not match the length of `datasets`.
     """
 
-    def _shapes_are_compatible(datasets, weights):
-      if isinstance(weights, ops.Tensor):
-        return weights.shape.is_compatible_with([len(datasets)])
-      return len(datasets) == len(weights)
-
     def _skip_datasets_with_zero_weight(datasets, weights):
       datasets_and_weights = [(dataset, weight)
                               for (dataset, weight) in zip(datasets, weights)
@@ -3295,7 +3289,7 @@ name=None))
               ([datasets[0].take(0)], [1.]))
 
     if not datasets:
-      raise ValueError("`datasets` must be a non-empty list of datasets.")
+      raise ValueError("Invalid `datasets`. `datasets` should not be empty.")
 
     if not isinstance(weights, DatasetV2):
       if weights is None:
@@ -3303,8 +3297,17 @@ name=None))
         logits = [[1.0] * len(datasets)]
 
       else:
-        if not _shapes_are_compatible(datasets, weights):
-          raise ValueError("`weights` must have the same length as `datasets`.")
+        if isinstance(weights, ops.Tensor):
+          if not weights.shape.is_compatible_with([len(datasets)]):
+            raise ValueError(f"Invalid `weights`. The shape of `weights` "
+                             f"should be compatible with `[len(datasets)]` "
+                             f"but is {weights.shape}.")
+        else:
+          if len(datasets) != len(weights):
+            raise ValueError(f"Invalid `weights`. `weights` should have the "
+                             f"same length as `datasets` but got "
+                             f"`len(weights)={len(weights)}` vs. "
+                             f"`len(datasets)={len(datasets)}`.")
 
         # Use the given `weights` as the probability of choosing the respective
         # input.
@@ -3312,8 +3315,9 @@ name=None))
           datasets, weights = _skip_datasets_with_zero_weight(datasets, weights)
         weights = ops.convert_to_tensor(weights, name="weights")
         if weights.dtype not in (dtypes.float32, dtypes.float64):
-          raise TypeError("`weights` must be convertible to a tensor of "
-                          "`tf.float32` or `tf.float64` elements.")
+          raise TypeError(f"Invalid `weights`. `weights` type must be either "
+                          f"`tf.float32` or `tf.float64` but is "
+                          f"{weights.dtype}.")
 
         # The `stateless_multinomial()` op expects log-probabilities, as opposed
         # to weights.
@@ -3405,11 +3409,15 @@ name=None))
       ValueError: If `datasets` is empty.
     """
     if not datasets:
-      raise ValueError("`datasets` must be a non-empty list of datasets.")
-    if choice_dataset is None or not structure.are_compatible(
-        choice_dataset.element_spec, tensor_spec.TensorSpec([], dtypes.int64)):
-      raise TypeError("`choice_dataset` must be a dataset of scalar "
-                      "`tf.int64` tensors.")
+      raise ValueError("Invalid `datasets`. `datasets` should not be empty.")
+    if not isinstance(choice_dataset, DatasetV2):
+      raise TypeError(f"Invalid `choice_dataset`. `choice_dataset` should be a "
+                      f"`tf.data.Dataset` but is {type(choice_dataset)}.")
+    if not structure.are_compatible(choice_dataset.element_spec,
+                                    tensor_spec.TensorSpec([], dtypes.int64)):
+      raise TypeError(f"Invalid `choice_dataset`. Elements of `choice_dataset` "
+                      f"must be scalar `tf.int64` tensors but are "
+                      f"{choice_dataset.element_spec}.")
     # pylint: disable=protected-access
     return _DirectedInterleaveDataset(choice_dataset, datasets,
                                       stop_on_empty_dataset)
@@ -3429,16 +3437,16 @@ class DatasetV1(DatasetV2):
       variant_tensor = self._as_variant_tensor()
     except AttributeError as e:
       if "_as_variant_tensor" in str(e):
-        raise AttributeError("Please use _variant_tensor instead of "
-                             "_as_variant_tensor() to obtain the variant "
-                             "associated with a dataset")
+        raise AttributeError("Please use `_variant_tensor` instead of "
+                             "`_as_variant_tensor()` to obtain the variant "
+                             "associated with a dataset.")
       raise AttributeError("{}: A likely cause of this error is that the super "
                            "call for this dataset is not the last line of the "
-                           "__init__ method. The base class causes the "
-                           "_as_variant_tensor call in its constructor and "
-                           "if that uses attributes defined in the __init__ "
-                           "method, those attrs need to be defined before the "
-                           "super call.".format(e))
+                           "`__init__` method. The base class invokes the "
+                           "`_as_variant_tensor()` method in its constructor "
+                           "and if that method uses attributes defined in the "
+                           "`__init__` method, those attributes need to be "
+                           "defined before the super call.".format(e))
     super(DatasetV1, self).__init__(variant_tensor)
 
   @abc.abstractmethod
@@ -3448,7 +3456,7 @@ class DatasetV1(DatasetV2):
     Returns:
       A scalar `tf.Tensor` of `tf.variant` type, which represents this dataset.
     """
-    raise NotImplementedError("Dataset._as_variant_tensor")
+    raise NotImplementedError(f"{type(self)}.as_variant_tensor()")
 
   @deprecation.deprecated(
       None, "This is a deprecated API that should only be used in TF 1 graph "
@@ -3526,11 +3534,11 @@ class DatasetV1(DatasetV2):
     except ValueError as err:
       if "Cannot capture a stateful node" in str(err):
         raise ValueError(
-            "Failed to create a one-shot iterator for a dataset. "
-            "`Dataset.make_one_shot_iterator()` does not support datasets that "
-            "capture stateful objects, such as a `Variable` or `LookupTable`. "
-            "In these cases, use `Dataset.make_initializable_iterator()`. "
-            "(Original error: %s)" % err)
+            "{}: A likely cause of this error is that the dataset for which "
+            "you are calling `make_one_shot_iterator()` captures a stateful "
+            "object, such as a `tf.Variable` or `tf.lookup.StaticHashTable`, "
+            "which is not supported. Use `make_initializable_iterator()` "
+            "instead.".format(err))
       else:
         six.reraise(ValueError, err)
 
@@ -3593,9 +3601,8 @@ class DatasetV1(DatasetV2):
 
   def _make_initializable_iterator(self, shared_name=None):  # pylint: disable=missing-docstring
     if context.executing_eagerly():
-      raise RuntimeError(
-          "dataset.make_initializable_iterator is not supported when eager "
-          "execution is enabled. Use `for element in dataset` instead.")
+      raise RuntimeError("`make_initializable_iterator()` is not supported in "
+                         "eager mode. Use Python-style iteration instead.")
     _ensure_same_dataset_graph(self)
     dataset = self._apply_debug_options()
     if shared_name is None:
@@ -3975,13 +3982,12 @@ def _ensure_same_dataset_graph(dataset):
     ds_graph = ds._graph
     if current_graph != ds_graph:
       raise ValueError(
-          "The graph (" + str(current_graph) + ") of the iterator is different "
-          "from the graph (" + str(ds_graph) + ") the dataset: " +
-          str(ds._variant_tensor) + " was  created in. If you are using the "
-          "Estimator API, make sure that no part of the dataset returned by "
-          "the `input_fn` function is defined outside the `input_fn` function. "
-          "Please ensure that all datasets in the pipeline are created in the "
-          "same graph as the iterator.")
+          f"The graph {current_graph} of the iterator is different from the "
+          f"graph {ds_graph} the dataset: {ds._variant_tensor} was created in. "
+          f"If you are using the Estimator API, make sure that no part of the "
+          f"dataset returned by the `input_fn` function is defined outside the "
+          f"`input_fn` function. Otherwise, make sure that the dataset is "
+          f"created in the same graph as the iterator.")
     for input_ds in ds._inputs():
       if input_ds not in visited:
         bfs_q.put(input_ds)
@@ -4085,9 +4091,9 @@ def get_structure(dataset_or_iterator):
   try:
     return dataset_or_iterator.element_spec  # pylint: disable=protected-access
   except AttributeError:
-    raise TypeError("`dataset_or_iterator` must be a `tf.data.Dataset` or "
-                    "tf.data.Iterator object, but got %s." %
-                    type(dataset_or_iterator))
+    raise TypeError(f"Invalid `dataset_or_iterator`. `dataset_or_iterator` "
+                    f"must be a `tf.data.Dataset` or tf.data.Iterator object, "
+                    f"but got {type(dataset_or_iterator)}.")
 
 
 @tf_export(v1=["data.get_output_classes"])
@@ -4305,12 +4311,12 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
   def _unbatch(self):
     if self._dataset_shape.ndims == 0:
-      raise ValueError("Unbatching a dataset is only supported for rank >= 1")
+      raise ValueError("Slicing dataset elements is not supported for rank 0.")
     return DatasetSpec(self._element_spec, self._dataset_shape[1:])
 
   def _to_batched_tensor_list(self, value):
     if self._dataset_shape.ndims == 0:
-      raise ValueError("Unbatching a dataset is only supported for rank >= 1")
+      raise ValueError("Slicing dataset elements is not supported for rank 0.")
     return self._to_tensor_list(value)
 
   def _to_legacy_output_types(self):
@@ -4321,239 +4327,6 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
   def _to_legacy_output_classes(self):
     return self
-
-
-class StructuredFunctionWrapper(object):
-  """A function wrapper that supports structured arguments and return values."""
-
-  def __init__(self,
-               func,
-               transformation_name,
-               dataset=None,
-               input_classes=None,
-               input_shapes=None,
-               input_types=None,
-               input_structure=None,
-               add_to_graph=True,
-               use_legacy_function=False,
-               defun_kwargs=None):
-    """Creates a new `StructuredFunctionWrapper` for the given function.
-
-    Args:
-      func: A function from a (nested) structure to another (nested) structure.
-      transformation_name: Human-readable name of the transformation in which
-        this function is being instantiated, for error messages.
-      dataset: (Optional.) A `tf.data.Dataset`. If given, the structure of this
-        dataset will be assumed as the structure for `func` arguments; otherwise
-        `input_classes`, `input_shapes`, and `input_types` must be defined.
-      input_classes: (Optional.) A (nested) structure of `type`. If given, this
-        argument defines the Python types for `func` arguments.
-      input_shapes: (Optional.) A (nested) structure of `tf.TensorShape`. If
-        given, this argument defines the shapes and structure for `func`
-        arguments.
-      input_types: (Optional.) A (nested) structure of `tf.DType`. If given,
-        this argument defines the element types and structure for `func`
-        arguments.
-      input_structure: (Optional.) A `Structure` object. If given, this argument
-        defines the element types and structure for `func` arguments.
-      add_to_graph: (Optional.) If `True`, the function will be added to the
-        default graph, if it exists.
-      use_legacy_function: (Optional.) A boolean that determines whether the
-        function be created using `tensorflow.python.eager.function.defun`
-        (default behavior) or `tensorflow.python.framework.function.Defun`
-        (legacy behavior).
-      defun_kwargs: (Optional.) A dictionary mapping string argument names to
-        values. If supplied, will be passed to `function` as keyword arguments.
-
-    Raises:
-      ValueError: If an invalid combination of `dataset`, `input_classes`,
-        `input_shapes`, and `input_types` is passed.
-    """
-    # pylint: disable=protected-access
-    if input_structure is None:
-      if dataset is None:
-        if input_classes is None or input_shapes is None or input_types is None:
-          raise ValueError("Either `dataset`, `input_structure` or all of "
-                           "`input_classes`, `input_shapes`, and `input_types` "
-                           "must be specified.")
-        self._input_structure = structure.convert_legacy_structure(
-            input_types, input_shapes, input_classes)
-      else:
-        if not (input_classes is None and input_shapes is None and
-                input_types is None):
-          raise ValueError("Either `dataset`, `input_structure` or all of "
-                           "`input_classes`, `input_shapes`, and `input_types` "
-                           "must be specified.")
-        self._input_structure = dataset.element_spec
-    else:
-      if not (dataset is None and input_classes is None and input_shapes is None
-              and input_types is None):
-        raise ValueError("Either `dataset`, `input_structure`, or all of "
-                         "`input_classes`, `input_shapes`, and `input_types` "
-                         "must be specified.")
-      self._input_structure = input_structure
-
-    self._func = func
-
-    if defun_kwargs is None:
-      defun_kwargs = {}
-
-    readable_transformation_name = transformation_name.replace(
-        ".", "_")[:-2] if len(transformation_name) > 2 else ""
-
-    func_name = "_".join(
-        [readable_transformation_name,
-         function_utils.get_func_name(func)])
-    # Sanitize function name to remove symbols that interfere with graph
-    # construction.
-    for symbol in ["<", ">", "\\", "'", " "]:
-      func_name = func_name.replace(symbol, "")
-
-    ag_ctx = autograph_ctx.control_status_ctx()
-
-    def wrapper_helper(*args):
-      """Wrapper for passing nested structures to and from tf.data functions."""
-      nested_args = structure.from_compatible_tensor_list(
-          self._input_structure, args)
-      if not _should_unpack(nested_args):
-        nested_args = (nested_args,)
-      ret = autograph.tf_convert(self._func, ag_ctx)(*nested_args)
-      if _should_pack(ret):
-        ret = tuple(ret)
-
-      try:
-        self._output_structure = structure.type_spec_from_value(ret)
-      except (ValueError, TypeError):
-        six.reraise(
-            TypeError,
-            TypeError("Unsupported return value from function passed to "
-                      "%s: %s." % (transformation_name, ret)),
-            sys.exc_info()[2])
-      return ret
-
-    def trace_legacy_function(defun_kwargs):
-      @function.Defun(*structure.get_flat_tensor_types(self._input_structure),
-                      **defun_kwargs)
-      def wrapped_fn(*args):
-        ret = wrapper_helper(*args)
-        return structure.to_tensor_list(self._output_structure, ret)
-
-      return lambda: wrapped_fn
-
-    def trace_py_function(defun_kwargs):
-      # First we trace the function to infer the output structure.
-      @eager_function.defun_with_attributes(
-          input_signature=structure.get_flat_tensor_specs(
-              self._input_structure),
-          autograph=False,
-          attributes=defun_kwargs)
-      def unused(*args):  # pylint: disable=missing-docstring,unused-variable
-        ret = wrapper_helper(*args)
-        ret = structure.to_tensor_list(self._output_structure, ret)
-        return [ops.convert_to_tensor(t) for t in ret]
-
-      _ = unused.get_concrete_function()
-
-      def py_function_wrapper(*args):
-        nested_args = structure.from_compatible_tensor_list(
-            self._input_structure, args)
-        if not _should_unpack(nested_args):
-          nested_args = (nested_args,)
-        ret = self._func(*nested_args)
-        if _should_pack(ret):
-          ret = tuple(ret)
-        ret = structure.to_tensor_list(self._output_structure, ret)
-        return [ops.convert_to_tensor(t) for t in ret]
-
-      # Next we trace the function wrapped in `eager_py_func` to force eager
-      # execution.
-      @eager_function.defun_with_attributes(
-          input_signature=structure.get_flat_tensor_specs(
-              self._input_structure),
-          autograph=False,
-          attributes=defun_kwargs)
-      def wrapped_fn(*args):  # pylint: disable=missing-docstring
-        return script_ops.eager_py_func(
-            py_function_wrapper, args,
-            structure.get_flat_tensor_types(self._output_structure))
-
-      return wrapped_fn.get_concrete_function
-
-    def trace_tf_function(defun_kwargs):
-      # Note: wrapper_helper will apply autograph based on context.
-      @eager_function.defun_with_attributes(
-          input_signature=structure.get_flat_tensor_specs(
-              self._input_structure),
-          autograph=False,
-          attributes=defun_kwargs)
-      def wrapped_fn(*args):  # pylint: disable=missing-docstring
-        ret = wrapper_helper(*args)
-        ret = structure.to_tensor_list(self._output_structure, ret)
-        return [ops.convert_to_tensor(t) for t in ret]
-
-      return wrapped_fn.get_concrete_function
-
-    if use_legacy_function:
-      defun_kwargs.update({"func_name": func_name + "_" + str(ops.uid())})
-      fn_factory = trace_legacy_function(defun_kwargs)
-    else:
-      defun_kwargs.update({"func_name": func_name})
-      defun_kwargs.update({"_tf_data_function": True})
-      if DEBUG_MODE:
-        fn_factory = trace_py_function(defun_kwargs)
-      else:
-        if def_function.functions_run_eagerly():
-          warnings.warn(
-              "Even though the `tf.config.experimental_run_functions_eagerly` "
-              "option is set, this option does not apply to tf.data functions. "
-              "To force eager execution of tf.data functions, please use "
-              "`tf.data.experimental.enable_debug_mode()`.")
-        fn_factory = trace_tf_function(defun_kwargs)
-
-    self._function = fn_factory()
-    # There is no graph to add in eager mode.
-    add_to_graph &= not context.executing_eagerly()
-    # There are some lifetime issues when a legacy function is not added to a
-    # out-living graph. It's already deprecated so de-prioritizing the fix.
-    add_to_graph |= use_legacy_function
-    if add_to_graph:
-      self._function.add_to_graph(ops.get_default_graph())
-
-    if not use_legacy_function:
-      outer_graph_seed = ops.get_default_graph().seed
-      if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
-        if self._function.graph._seed_used:
-          warnings.warn(
-              "Seed %s from outer graph might be getting used by function %s, "
-              "if the random op has not been provided any seed. Explicitly set "
-              "the seed in the function if this is not the intended behavior."
-              %(outer_graph_seed, func_name), stacklevel=4)
-
-  @property
-  def output_structure(self):
-    return self._output_structure
-
-  @property
-  def output_classes(self):
-    return nest.map_structure(
-        lambda component_spec: component_spec._to_legacy_output_classes(),  # pylint: disable=protected-access
-        self._output_structure)
-
-  @property
-  def output_shapes(self):
-    return nest.map_structure(
-        lambda component_spec: component_spec._to_legacy_output_shapes(),  # pylint: disable=protected-access
-        self._output_structure)
-
-  @property
-  def output_types(self):
-    return nest.map_structure(
-        lambda component_spec: component_spec._to_legacy_output_types(),  # pylint: disable=protected-access
-        self._output_structure)
-
-  @property
-  def function(self):
-    return self._function
 
 
 class _NumpyIterator(object):
@@ -4642,7 +4415,7 @@ class TensorSliceDataset(DatasetSource):
     batched_spec = structure.type_spec_from_value(element)
     self._tensors = structure.to_batched_tensor_list(batched_spec, element)
     if not self._tensors:
-      raise ValueError("Input element does not contain any tensors.")
+      raise ValueError("Invalid `element`. `element` should not be empty.")
     self._structure = nest.map_structure(
         lambda component_spec: component_spec._unbatch(), batched_spec)  # pylint: disable=protected-access
     self._metadata = dataset_metadata_pb2.Metadata()
@@ -4678,9 +4451,8 @@ class SparseTensorSliceDataset(DatasetSource):
   def __init__(self, sparse_tensor):
     """See `Dataset.from_sparse_tensor_slices()` for details."""
     if not isinstance(sparse_tensor, sparse_tensor_lib.SparseTensor):
-      raise TypeError(
-          "`sparse_tensor` must be a `tf.sparse.SparseTensor` object."
-          "Was {}.".format(sparse_tensor))
+      raise TypeError(f"Invalid `sparse_tensor`. `sparse_tensor` must be a "
+                      f"`tf.sparse.SparseTensor`. Got {type(sparse_tensor)}.")
     self._sparse_tensor = sparse_tensor
 
     indices_shape = self._sparse_tensor.indices.get_shape()
@@ -4732,17 +4504,17 @@ class _GeneratorDataset(DatasetSource):
 
     self._init_structure = structure.type_spec_from_value(init_args)
 
-    self._init_func = StructuredFunctionWrapper(
+    self._init_func = structured_function.StructuredFunctionWrapper(
         init_func,
         self._transformation_name(),
         input_structure=self._init_structure)
 
-    self._next_func = StructuredFunctionWrapper(
+    self._next_func = structured_function.StructuredFunctionWrapper(
         next_func,
         self._transformation_name(),
         input_structure=self._init_func.output_structure)
 
-    self._finalize_func = StructuredFunctionWrapper(
+    self._finalize_func = structured_function.StructuredFunctionWrapper(
         finalize_func,
         self._transformation_name(),
         input_structure=self._init_func.output_structure)
@@ -4783,13 +4555,14 @@ class ZipDataset(DatasetV2):
     for ds in nest.flatten(datasets):
       if not isinstance(ds, DatasetV2):
         if isinstance(ds, list):
-          message = ("The argument to `Dataset.zip()` must be a (nested) "
-                     "structure of `Dataset` objects. Python `list` is not "
-                     "supported, please use a `tuple` instead.")
+          raise TypeError("Invalid `datasets`. `datasets` is expected to be a "
+                          "(nested) structure of `tf.data.Dataset` objects. "
+                          "Python `list` is not supported and you should use "
+                          "`tuple` instead.")
         else:
-          message = ("The argument to `Dataset.zip()` must be a (nested) "
-                     "structure of `Dataset` objects.")
-        raise TypeError(message)
+          raise TypeError(f"Invalid `datasets`. `datasets` is expected to be a "
+                          f"(nested) structure of `tf.data.Dataset` objects "
+                          f"but encountered object of type {type(ds)}.")
     self._datasets = datasets
     self._structure = nest.pack_sequence_as(
         self._datasets,
@@ -4820,24 +4593,15 @@ class ConcatenateDataset(DatasetV2):
     self._input_dataset = input_dataset
     self._dataset_to_concatenate = dataset_to_concatenate
 
-    output_types = get_legacy_output_types(input_dataset)
-    if output_types != get_legacy_output_types(dataset_to_concatenate):
+    try:
+      self._structure = tf_nest.map_structure(
+          lambda ts1, ts2: ts1.most_specific_compatible_type(ts2),
+          input_dataset.element_spec, dataset_to_concatenate.element_spec)
+    except (TypeError, ValueError) as e:
       raise TypeError(
-          "Two datasets to concatenate have different types %s and %s" %
-          (output_types, get_legacy_output_types(dataset_to_concatenate)))
-
-    output_classes = get_legacy_output_classes(input_dataset)
-    if output_classes != get_legacy_output_classes(dataset_to_concatenate):
-      raise TypeError(
-          "Two datasets to concatenate have different classes %s and %s" %
-          (output_classes, get_legacy_output_classes(dataset_to_concatenate)))
-
-    spec1 = input_dataset.element_spec
-    spec2 = dataset_to_concatenate.element_spec
-    self._structure = nest.pack_sequence_as(spec1, [
-        ts1.most_specific_compatible_type(ts2)
-        for (ts1, ts2) in zip(nest.flatten(spec1), nest.flatten(spec2))
-    ])
+          f"Incompatible dataset elements:\n"
+          f"  {input_dataset.element_spec} vs. "
+          f"  {dataset_to_concatenate.element_spec}") from e
 
     self._input_datasets = [input_dataset, dataset_to_concatenate]
     self._metadata = dataset_metadata_pb2.Metadata()
@@ -4914,7 +4678,8 @@ class RangeDataset(DatasetSource):
       self._stop = self._build_tensor(args[1], "stop")
       self._step = self._build_tensor(args[2], "step")
     else:
-      raise ValueError("Invalid arguments to RangeDataset: %s" % str(args))
+      raise ValueError(f"Invalid `args`. The lenght of `args` should be "
+                       f"between 1 and 3 but was {len(args)}.")
     if "output_type" in kwargs:
       self._output_type = kwargs["output_type"]
     else:
@@ -5228,22 +4993,21 @@ def _padded_shape_to_tensor(padded_shape, input_component_shape):
     ret = ops.convert_to_tensor(padded_shape, preferred_dtype=dtypes.int64)
     if ret.shape.dims is not None and len(ret.shape.dims) != 1:
       six.reraise(ValueError, ValueError(
-          "Padded shape %s must be a 1-D tensor of tf.int64 values, but its "
-          "shape was %s." % (padded_shape, ret.shape)), sys.exc_info()[2])
+          f"Padded shape {padded_shape} must be a `tf.int64` vector tensor, "
+          f"but its shape was {ret.shape}."), sys.exc_info()[2])
     if ret.dtype != dtypes.int64:
       six.reraise(
           TypeError,
-          TypeError(
-              "Padded shape %s must be a 1-D tensor of tf.int64 values, but "
-              "its element type was %s." % (padded_shape, ret.dtype.name)),
+          TypeError(f"Padded shape {padded_shape} must be a `tf.int64` vector "
+                    f"tensor, but its element type was {ret.dtype.name}."),
           sys.exc_info()[2])
     padded_shape_as_shape = tensor_util.constant_value_as_shape(ret)
 
   if not _is_padded_shape_compatible_with(padded_shape_as_shape,
                                           input_component_shape):
-    raise ValueError("The padded shape %s is not compatible with the "
-                     "corresponding input component shape %s."
-                     % (padded_shape_as_shape, input_component_shape))
+    raise ValueError(f"The padded shape {padded_shape_as_shape} is not "
+                     f"compatible with the shape {input_component_shape} of "
+                     f"the corresponding input component.")
 
   return ret
 
@@ -5264,10 +5028,12 @@ def _padding_value_to_tensor(value, output_type):
   """
   value = ops.convert_to_tensor(value, name="padding_value")
   if not value.shape.is_compatible_with(tensor_shape.TensorShape([])):
-    raise ValueError("Padding value should be a scalar, but is not: %s" % value)
+    raise ValueError(f"Invalid `padding_values`. `padding_values` values "
+                     f"should be scalars, but got {value.shape}.")
   if value.dtype != output_type:
-    raise TypeError("Padding value tensor (%s) does not match output type: %s" %
-                    (value, output_type))
+    raise TypeError(f"Invalid `padding_values`. `padding_values` values "
+                    f"type {value.dtype} does not match type {output_type} "
+                    f"of the corresponding input component.")
   return value
 
 
@@ -5278,10 +5044,8 @@ def _padding_values_or_default(padding_values, input_dataset):
     if t.base_dtype == dtypes.string:
       return ""
     elif t.base_dtype == dtypes.variant:
-      error_msg = ("Unable to create padding for field of type 'variant' "
-                   "because t.base_type == dtypes.variant == "
-                   "{}.".format(t.base_dtype))
-      raise TypeError(error_msg)
+      raise TypeError("Unable to create default padding value for a component "
+                      "of type 'variant'.")
     elif t.base_dtype == dtypes.bfloat16:
       # Special case `bfloat16` because it is not supported by NumPy.
       return constant_op.constant(0, dtype=dtypes.bfloat16)
@@ -5313,8 +5077,10 @@ class PaddedBatchDataset(UnaryDataset):
 
     def check_types(component_spec):
       if not isinstance(component_spec, tensor_spec.TensorSpec):
-        raise TypeError("Padded batching of components of type ",
-                        type(component_spec), " is not supported.")
+        raise TypeError(f"`padded_batch` is only supported for datasets that "
+                        f"produce tensor elements but the input dataset "
+                        f"produces elements of unsupported type "
+                        f"{component_spec.value_type()}.")
 
     nest.map_structure(check_types, input_dataset.element_spec)
     self._input_dataset = input_dataset
@@ -5384,39 +5150,6 @@ class PaddedBatchDataset(UnaryDataset):
     return self._structure
 
 
-def _should_pack(arg):
-  """Determines whether the caller needs to pack the argument in a tuple.
-
-  If user-defined function returns a list of tensors, `nest.flatten()` and
-  `ops.convert_to_tensor()` and would conspire to attempt to stack those tensors
-  into a single tensor because the tf.data version of `nest.flatten()` does
-  not recurse into lists. Since it is more likely that the list arose from
-  returning the result of an operation (such as `tf.numpy_function()`) that
-  returns a list of not-necessarily-stackable tensors, we treat the returned
-  value as a `tuple` instead. A user wishing to pack the return value into a
-  single tensor can use an explicit `tf.stack()` before returning.
-
-  Args:
-    arg: argument to check
-
-  Returns:
-    Indication of whether the caller needs to pack the argument in a tuple.
-  """
-  return isinstance(arg, list)
-
-
-def _should_unpack(arg):
-  """Determines whether the caller needs to unpack the argument from a tuple.
-
-  Args:
-    arg: argument to check
-
-  Returns:
-    Indication of whether the caller needs to unpack the argument from a tuple.
-  """
-  return type(arg) is tuple  # pylint: disable=unidiomatic-typecheck
-
-
 class MapDataset(UnaryDataset):
   """A `Dataset` that maps a function over elements in its input."""
 
@@ -5431,7 +5164,7 @@ class MapDataset(UnaryDataset):
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
     self._preserve_cardinality = preserve_cardinality
-    self._map_func = StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func,
         self._transformation_name(),
         dataset=input_dataset,
@@ -5477,7 +5210,7 @@ class ParallelMapDataset(UnaryDataset):
     """See `Dataset.map()` for details."""
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
-    self._map_func = StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func,
         self._transformation_name(),
         dataset=input_dataset,
@@ -5525,12 +5258,12 @@ class FlatMapDataset(UnaryDataset):
   def __init__(self, input_dataset, map_func, name=None):
     """See `Dataset.flat_map()` for details."""
     self._input_dataset = input_dataset
-    self._map_func = StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, DatasetSpec):
       raise TypeError(
-          "`map_func` must return a `Dataset` object. Got {}".format(
-              type(self._map_func.output_structure)))
+          "The `map_func` argument must return a `Dataset` object. Got "
+          f"{_get_type(self._map_func.output_structure)!r}.")
     self._structure = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
     self._metadata = dataset_metadata_pb2.Metadata()
     if name:
@@ -5568,12 +5301,12 @@ class InterleaveDataset(UnaryDataset):
     """See `Dataset.interleave()` for details."""
 
     self._input_dataset = input_dataset
-    self._map_func = StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, DatasetSpec):
       raise TypeError(
-          "`map_func` must return a `Dataset` object. Got {}".format(
-              type(self._map_func.output_structure)))
+          "The `map_func` argument must return a `Dataset` object. Got "
+          f"{_get_type(self._map_func.output_structure)!r}.")
     self._structure = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")
@@ -5620,12 +5353,12 @@ class ParallelInterleaveDataset(UnaryDataset):
                name=None):
     """See `Dataset.interleave()` for details."""
     self._input_dataset = input_dataset
-    self._map_func = StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, DatasetSpec):
       raise TypeError(
-          "`map_func` must return a `Dataset` object. Got {}".format(
-              type(self._map_func.output_structure)))
+          "The `map_func` argument must return a `Dataset` object. Got "
+          f"{_get_type(self._map_func.output_structure)!r}.")
     self._structure = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")
@@ -5690,17 +5423,16 @@ class FilterDataset(UnaryUnchangedStructureDataset):
                name=None):
     """See `Dataset.filter()` for details."""
     self._input_dataset = input_dataset
-    wrapped_func = StructuredFunctionWrapper(
+    wrapped_func = structured_function.StructuredFunctionWrapper(
         predicate,
         self._transformation_name(),
         dataset=input_dataset,
         use_legacy_function=use_legacy_function)
     if not wrapped_func.output_structure.is_compatible_with(
         tensor_spec.TensorSpec([], dtypes.bool)):
-      error_msg = ("`predicate` return type must be convertible to a scalar "
-                   "boolean tensor. Was {}.").format(
-                       wrapped_func.output_structure)
-      raise ValueError(error_msg)
+      raise ValueError(f"Invalid `predicate`. `predicate` must return a "
+                       f"`tf.bool` scalar tensor, but its return type is "
+                       f"{wrapped_func.output_structure}.")
     self._predicate = wrapped_func
     self._metadata = dataset_metadata_pb2.Metadata()
     if name:
@@ -5844,7 +5576,7 @@ def normalize_to_dense(dataset):
   # non-tensor components.
   #
   # TODO(mrry): Consider optimizing this if it turns out to be a bottleneck.
-  if _should_unpack(dataset.element_spec):
+  if structured_function._should_unpack(dataset.element_spec):  # pylint: disable=protected-access
 
     def normalize(*args):
       return structure.to_batched_tensor_list(dataset.element_spec, tuple(args))
@@ -5887,8 +5619,10 @@ class _UnbatchDataset(UnaryDataset):
       try:
         known_batch_dim = known_batch_dim.merge_with(s[0])
       except ValueError:
-        raise ValueError("Cannot unbatch an input whose components have "
-                         "different batch sizes.")
+        raise ValueError(f"`unbatch()` is only supported for datasets of "
+                         f"elements whose components have a matching leading "
+                         f"dimension. Encountered both {known_batch_dim} and "
+                         f"{s[0]}.")
     self._input_dataset = input_dataset
     self._structure = nest.map_structure(
         lambda component_spec: component_spec._unbatch(),  # pylint: disable=protected-access
@@ -5946,14 +5680,16 @@ class _GroupByWindowDataset(UnaryDataset):
     def window_size_func_wrapper(key):
       return ops.convert_to_tensor(window_size_func(key), dtype=dtypes.int64)
 
-    self._window_size_func = StructuredFunctionWrapper(
+    self._window_size_func = structured_function.StructuredFunctionWrapper(
         window_size_func_wrapper,
         self._transformation_name(),
         input_structure=tensor_spec.TensorSpec([], dtypes.int64))
     if not self._window_size_func.output_structure.is_compatible_with(
         tensor_spec.TensorSpec([], dtypes.int64)):
-      raise ValueError(
-          "`window_size_func` must return a single tf.int64 scalar tensor.")
+      raise ValueError(f"Invalid `window_size_func`. `window_size_func` must "
+                       f"return a single `tf.int64` scalar tensor but its "
+                       f"return type is "
+                       f"{self._window_size_func.output_structure}.")
 
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping defun for key_func."""
@@ -5961,23 +5697,26 @@ class _GroupByWindowDataset(UnaryDataset):
     def key_func_wrapper(*args):
       return ops.convert_to_tensor(key_func(*args), dtype=dtypes.int64)
 
-    self._key_func = StructuredFunctionWrapper(
+    self._key_func = structured_function.StructuredFunctionWrapper(
         key_func_wrapper, self._transformation_name(), dataset=input_dataset)
     if not self._key_func.output_structure.is_compatible_with(
         tensor_spec.TensorSpec([], dtypes.int64)):
-      raise ValueError(
-          "`key_func` must return a single tf.int64 scalar tensor.")
+      raise ValueError(f"Invalid `key_func`. `key_func` must return a single "
+                       f"`tf.int64` scalar tensor but its return type is "
+                       f"{self._key_func.output_structure}.")
 
   def _make_reduce_func(self, reduce_func, input_dataset):
     """Make wrapping defun for reduce_func."""
     nested_dataset = DatasetSpec(input_dataset.element_spec)
     input_structure = (tensor_spec.TensorSpec([], dtypes.int64), nested_dataset)
-    self._reduce_func = StructuredFunctionWrapper(
+    self._reduce_func = structured_function.StructuredFunctionWrapper(
         reduce_func,
         self._transformation_name(),
         input_structure=input_structure)
     if not isinstance(self._reduce_func.output_structure, DatasetSpec):
-      raise TypeError("`reduce_func` must return a `Dataset` object.")
+      raise TypeError(f"Invalid `reduce_func`. `reduce_func` must return a "
+                      f"single `tf.data.Dataset` object but its return type "
+                      f"is {self._reduce_func.output_structure}.")
     # pylint: disable=protected-access
     self._element_spec = (self._reduce_func.output_structure._element_spec)
 
@@ -6234,12 +5973,14 @@ class _TakeWhileDataset(UnaryUnchangedStructureDataset):
     """See `take_while()` for details."""
 
     self._input_dataset = input_dataset
-    wrapped_func = StructuredFunctionWrapper(
+    wrapped_func = structured_function.StructuredFunctionWrapper(
         predicate, self._transformation_name(), dataset=self._input_dataset)
 
     if not wrapped_func.output_structure.is_compatible_with(
         tensor_spec.TensorSpec([], dtypes.bool)):
-      raise ValueError("`predicate` must return a scalar boolean tensor.")
+      raise ValueError(f"Invalid `predicate`. `predicate` must return a "
+                       f"`tf.bool` scalar tensor but its return type is"
+                       f"{wrapped_func.output_structure}.")
 
     self._predicate = wrapped_func
     self._metadata = dataset_metadata_pb2.Metadata()
@@ -6268,12 +6009,11 @@ class _UniqueDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, name=None):
     """See `unique()` for details."""
     self._input_dataset = input_dataset
-    if get_legacy_output_types(input_dataset) not in (dtypes.int32,
-                                                      dtypes.int64,
-                                                      dtypes.string):
-      raise TypeError(
-          "`tf.data.Dataset.unique()` only supports inputs with a single "
-          "`tf.int32`, `tf.int64`, or `tf.string` component.")
+    for ty in nest.flatten(get_legacy_output_types(input_dataset)):
+      if ty not in (dtypes.int32, dtypes.int64, dtypes.string):
+        raise TypeError(
+            f"`unique()` does not support type {ty}, only `tf.int32`, "
+            f"`tf.int64`, and `tf.string` are supported.")
     self._metadata = dataset_metadata_pb2.Metadata()
     if name:
       self._metadata.name = _validate_and_encode(name)
@@ -6309,13 +6049,13 @@ class _SnapshotDataset(UnaryUnchangedStructureDataset):
     self._path = path
     self._compression = compression
 
-    self._reader_func = StructuredFunctionWrapper(
+    self._reader_func = structured_function.StructuredFunctionWrapper(
         reader_func,
         self._transformation_name() + ".reader_func",
         # Dataset of datasets of input elements
         input_structure=DatasetSpec(DatasetSpec(input_dataset.element_spec)),
         use_legacy_function=use_legacy_function)
-    self._shard_func = StructuredFunctionWrapper(
+    self._shard_func = structured_function.StructuredFunctionWrapper(
         shard_func,
         self._transformation_name() + ".shard_func",
         dataset=input_dataset,
@@ -6325,8 +6065,9 @@ class _SnapshotDataset(UnaryUnchangedStructureDataset):
         tensor_spec.TensorSpec([], dtypes.int32))) and
         (not self._shard_func.output_structure.is_compatible_with(
             tensor_spec.TensorSpec([], dtypes.int64)))):
-      raise TypeError(
-          "shard_func must return a 0-dimension tensor containing an int.")
+      raise TypeError(f"Invalid `shard_func`. `shard_func` must return "
+                      f"`tf.int64` scalar tensor but its return type is "
+                      f"{self._shard_func.output_structure}.")
 
     self._metadata = dataset_metadata_pb2.Metadata()
     if name:
@@ -6375,15 +6116,17 @@ class _ScanDataset(UnaryDataset):
     need_to_rerun = True
     while need_to_rerun:
 
-      wrapped_func = StructuredFunctionWrapper(
+      wrapped_func = structured_function.StructuredFunctionWrapper(
           scan_func,
           self._transformation_name(),
           input_structure=(self._state_structure, input_dataset.element_spec),
           add_to_graph=False)
       if not (isinstance(wrapped_func.output_types, collections_abc.Sequence)
               and len(wrapped_func.output_types) == 2):
-        raise TypeError("The scan function must return a pair comprising the "
-                        "new state and the output value.")
+        raise TypeError(f"Invalid `scan_func`. `scan_func` should return a "
+                        f"pair consisting of new state and the output value "
+                        f"but its return type is "
+                        f"{wrapped_func.output_structure}.")
 
       new_state_classes, self._output_classes = wrapped_func.output_classes
 
@@ -6395,10 +6138,9 @@ class _ScanDataset(UnaryDataset):
       for new_state_class, old_state_class in zip(
           nest.flatten(new_state_classes), nest.flatten(old_state_classes)):
         if not issubclass(new_state_class, old_state_class):
-          raise TypeError(
-              "The element classes for the new state must match the initial "
-              "state. Expected %s; got %s." %
-              (old_state_classes, new_state_classes))
+          raise TypeError(f"Invalid `scan_func`. The element classes for the "
+                          f"new state must match the initial state. Expected "
+                          f"{old_state_classes}, got {new_state_classes}.")
 
       # Extract and validate type information from the returned values.
       new_state_types, output_types = wrapped_func.output_types
@@ -6408,10 +6150,9 @@ class _ScanDataset(UnaryDataset):
       for new_state_type, old_state_type in zip(
           nest.flatten(new_state_types), nest.flatten(old_state_types)):
         if new_state_type != old_state_type:
-          raise TypeError(
-              "The element types for the new state must match the initial "
-              "state. Expected %s; got %s." %
-              (old_state_types, new_state_types))
+          raise TypeError(f"Invalid `scan_func`. The element types for the "
+                          f"new state must match the initial state. Expected "
+                          f"{old_state_types}, got {new_state_types}.")
 
       # Extract shape information from the returned values.
       new_state_shapes, output_shapes = wrapped_func.output_shapes
@@ -6500,12 +6241,13 @@ class _DirectedInterleaveDataset(DatasetV2):
     for i, data_input in enumerate(data_inputs[1:]):
       if (get_legacy_output_types(data_input) != first_output_types or
           get_legacy_output_classes(data_input) != first_output_classes):
-        raise TypeError(
-            "All datasets must have the same type and class.\n"
-            "dataset 0 vs dataset %s types: %s ; %s\n"
-            "classes: %s ; %s" %
-            (i + 1, first_output_types, get_legacy_output_types(data_input),
-             first_output_classes, get_legacy_output_classes(data_input)))
+        raise TypeError(f"Invalid `datasets`. `datasets` must have the same "
+                        f"type and class.\n Dataset 0 "
+                        f"types={first_output_types}; "
+                        f"classes={first_output_classes}.\n"
+                        f"Dataset {i+1} "
+                        f"types={get_legacy_output_types(data_input)}; "
+                        f"classes={get_legacy_output_classes(data_input)}.")
 
     spec = self._data_inputs[0].element_spec
     for data_input in self._data_inputs[1:]:
@@ -6666,7 +6408,7 @@ def enable_debug_mode():
   if context.executing_eagerly():
     toggle_debug_mode(True)
   else:
-    raise ValueError("Debug mode is only supported in eager mode.")
+    raise ValueError("`enable_debug_mode() is only supported in eager mode.")
 
 
 def toggle_debug_mode(debug_mode):

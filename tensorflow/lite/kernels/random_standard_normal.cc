@@ -16,17 +16,18 @@ limitations under the License.
 #include <cmath>
 #include <random>
 
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace random_standard_normal {
 
 struct OpData {
-  std::default_random_engine rng;
+  std::mt19937 rng;
 };
 
 namespace {
@@ -36,8 +37,8 @@ constexpr int kOutputTensor = 0;
 
 // Draws a sample from standard normal distribution.
 template <typename T>
-TfLiteStatus RandomStandardNormalSample(std::default_random_engine& rng,
-                                        T* output, size_t output_size) {
+TfLiteStatus RandomStandardNormalSample(std::mt19937& rng, T* output,
+                                        size_t output_size) {
   std::normal_distribution<T> dist;
   std::generate(output, output + output_size, [&]() { return dist(rng); });
 
@@ -55,13 +56,25 @@ void Free(TfLiteContext* context, void* buffer) {
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  // TODO(b/111309333): Handle optional seed input.
+  auto* params = static_cast<TfLiteRandomParams*>(node->builtin_data);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
   TF_LITE_ENSURE(context, NumInputs(node) == 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
   TF_LITE_ENSURE_EQ(context, shape->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, NumDimensions(shape), 1);
+
+  // TODO(b/111309333): Use TF philox random number generator.
+  // Set a seed for the random number generator.
+  unsigned int seed = params->seed + params->seed2;
+  // If both seeds are 0, then generate non-deterministic random numbers.
+  if (seed == 0) {
+    seed = std::random_device()();
+  }
+  data->rng.seed(seed);
+
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   if (!IsConstantTensor(shape)) {
     SetTensorToDynamic(output);
@@ -114,6 +127,6 @@ TfLiteRegistration* Register_RANDOM_STANDARD_NORMAL() {
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

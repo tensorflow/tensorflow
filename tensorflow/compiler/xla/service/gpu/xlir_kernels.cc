@@ -16,6 +16,7 @@
 
 #include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/kernels/kernels_detail.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/ccl_wrapper.h"  // from @tf_runtime
@@ -48,35 +49,51 @@
 namespace xla {
 namespace gpu {
 
-namespace {
+static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
+    tfrt::Argument<tfrt::gpu::GpuContext> context,
+    const tfrt::ExecutionContext& exec_ctx) {
+  const GpuModuleData* gpu_module_data =
+      exec_ctx.request_ctx()->GetDataIfExists<GpuModuleData>();
 
-// TODO(hanbinyoon): Expose this in ccl_wrapper.h.
-llvm::Expected<int> ToWidthInBytes(ncclDataType_t data_type) {
-  switch (data_type) {
-    case ncclInt8:
-    case ncclUint8:
-      return 1;
-    case ncclFloat16:
-#if defined(__CUDA_BF16_TYPES_EXIST__)
-    case ncclBfloat16:
-#endif
-      return 2;
-    case ncclInt32:
-    case ncclUint32:
-    case ncclFloat32:
-      return 4;
-    case ncclInt64:
-    case ncclUint64:
-    case ncclFloat64:
-      return 8;
-    default:
-      return tfrt::MakeStringError("Unknown ncclDataType_t: ", data_type);
+  if (gpu_module_data == nullptr) {
+    return tfrt::MakeStringError(
+        "No GpuModuleData resource found in the request context.");
   }
+  llvm::StringRef blob = gpu_module_data->blob;
+
+  if (blob.empty() || blob.back() != 0)
+    return tfrt::MakeStringError("blob must be null-terminated");
+
+  auto current = tfrt::gpu::wrapper::CtxSetCurrent(context->get());
+  if (!current) return current.takeError();
+
+  auto module = tfrt::gpu::wrapper::ModuleLoadData(*current, blob.data());
+  if (!module) return module.takeError();
+
+  // Resolve constants.
+  for (const auto& constant : gpu_module_data->constants) {
+    if (constant.content.empty()) continue;
+
+    auto global = tfrt::gpu::wrapper::ModuleGetGlobal(
+        module->get(), constant.symbol_name.data());
+    if (!global) return global.takeError();
+
+    const void* constant_content =
+        static_cast<const void*>(constant.content.data());
+    tfrt::gpu::GpuPointer constant_content_ptr(
+        const_cast<void*>(constant_content), current->platform());
+
+    if (auto error = tfrt::gpu::wrapper::MemcpyAsync(
+            *current, global->base, constant_content_ptr, global->size_bytes,
+            tfrt::gpu::wrapper::Stream(nullptr, current->platform()))) {
+      return error;
+    }
+  }
+  return tfrt::gpu::GpuModule(context.ValueRef(), std::move(*module));
 }
 
-}  // namespace
-
-tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
+#if XLA_ENABLE_XCCL
+static tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
     tfrt::Argument<tfrt::gpu::GpuContext> context,
     const tfrt::ExecutionContext& exec_ctx) {
   auto* xccl_ctx = exec_ctx.request_ctx()->GetDataIfExists<XcclContext>();
@@ -121,7 +138,7 @@ static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(
       xccl_ctx->collective_permute_source_target.target_peer;
 
   auto type = static_cast<ncclDataType_t>(*data_type);
-  auto width = ToWidthInBytes(type);
+  auto width = tfrt::gpu::wrapper::GetCclDataTypeSizeBytes(type);
   if (!width)
     return tfrt::MakeErrorAsyncValueRef(llvm::toString(width.takeError()));
   assert(*width != 0);
@@ -161,6 +178,7 @@ static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(
 
   return tfrt::MakeAvailableAsyncValueRef<tfrt::Chain>();
 }
+#endif  // XLA_ENABLE_XCCL
 
 static llvm::Error CustomCall(
     const tfrt::gpu::GpuStream& stream, tfrt::Chain chain,
@@ -177,7 +195,7 @@ static llvm::Error CustomCall(
     return tfrt::MakeStringError("Failed to get CustomCallContext.");
   }
 
-  auto current = tfrt::gpu::wrapper::CtxSetCurrent(stream.context());
+  auto current = tfrt::gpu::wrapper::CtxSetCurrent(stream.context()->get());
   if (!current) {
     return tfrt::MakeStringError(llvm::toString(current.takeError()));
   }
@@ -216,18 +234,18 @@ static llvm::Error CustomCall(
   return llvm::Error::success();
 }
 
-void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
+static void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
+  kernel_reg->AddKernel("xlir.module.load", TFRT_KERNEL(ModuleLoad));
+  kernel_reg->AddKernel("xlir.custom_call",
+                        TFRT_KERNEL_WITH_CHAIN_RESULT(CustomCall));
+#if XLA_ENABLE_XCCL
   kernel_reg->AddKernel("xlir.ccl.create", TFRT_KERNEL(CclCreate));
   kernel_reg->AddKernel("xlir.ccl.collective_permute",
                         TFRT_KERNEL(CclCollectivePermute));
-  kernel_reg->AddKernel("xlir.custom_call",
-                        TFRT_KERNEL_WITH_CHAIN_RESULT(CustomCall));
+#endif  // XLA_ENABLE_XCCL
 }
-
-namespace kernels {
 
 TFRT_STATIC_KERNEL_REGISTRATION(RegisterXlirKernels);
 
-}  // namespace kernels
 }  // namespace gpu
 }  // namespace xla

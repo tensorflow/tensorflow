@@ -14,15 +14,12 @@
 # ==============================================================================
 """Python API for save and loading a dataset."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import multiprocessing
 import os
 
 from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -123,7 +120,9 @@ def save(dataset,
 
     if "checkpoint" in checkpoint_args:
       raise ValueError(
-          "'checkpoint_args' are not allowed to include 'checkpoint'")
+          "'Invalid `checkpoint_args`. `checkpoint_args` are not allowed "
+          "to include 'checkpoint'."
+      )
     checkpoint = tracking.util.Checkpoint(iterator=save_iterator)
     checkpoint_args["checkpoint"] = checkpoint
     manager = checkpoint_management.CheckpointManager(**checkpoint_args)
@@ -176,7 +175,7 @@ def _set_save_dataset_attributes(dataset, shard_func, path):
   else:
     use_shard_func = True
 
-  wrapped_func = dataset_ops.StructuredFunctionWrapper(
+  wrapped_func = structured_function.StructuredFunctionWrapper(
       shard_func,
       "save()",
       input_structure=dataset.element_spec,
@@ -211,6 +210,9 @@ class _LoadDataset(dataset_ops.DatasetSource):
 
     self._path = path
     if element_spec is None:
+      if not context.executing_eagerly():
+        raise ValueError(
+            "In graph mode the `element_spec` argument must be provided.")
       with gfile.GFile(os.path.join(path, DATASET_SPEC_FILENAME), "rb") as f:
         encoded_spec = f.read()
       struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
@@ -221,7 +223,7 @@ class _LoadDataset(dataset_ops.DatasetSource):
     else:
       self._element_spec = element_spec
     self._compression = compression
-    self._reader_func = dataset_ops.StructuredFunctionWrapper(
+    self._reader_func = structured_function.StructuredFunctionWrapper(
         reader_func,
         "load()",
         # Dataset of datasets of input elements
@@ -290,7 +292,8 @@ def load(path, element_spec=None, compression=None, reader_func=None):
     element_spec: Optional. A nested structure of `tf.TypeSpec` objects matching
       the structure of an element of the saved dataset and specifying the type
       of individual element components. If not provided, the nested structure of
-      `tf.TypeSpec` saved with the saved dataset is used.
+      `tf.TypeSpec` saved with the saved dataset is used. This argument needs to
+      be provided if the method is executed in graph mode.
     compression: Optional. The algorithm to use to decompress the data when
       reading it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
     reader_func: Optional. A function to control how to read data from shards.
@@ -302,6 +305,8 @@ def load(path, element_spec=None, compression=None, reader_func=None):
   Raises:
     FileNotFoundError: If `element_spec` is not specified and the saved nested
       structure of `tf.TypeSpec` can not be located with the saved dataset.
+    ValueError: If `element_spec` is not specified and the method is executed
+      in graph mode.
   """
 
   return _LoadDataset(

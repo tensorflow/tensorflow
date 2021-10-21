@@ -33,10 +33,11 @@ message RegisterDatasetUpdate {
   uint64 fingerprint = 2;
 }
 
-// Next tag: 3
+// Next tag: 4
 message RegisterWorkerUpdate {
   string worker_address = 1;
   string transfer_address = 2;
+  repeated string worker_tags = 3;
 }
 
 // Next tag: 3
@@ -111,22 +112,24 @@ message ClientHeartbeatUpdate {
   TaskRejected task_rejected = 3;
 }
 
-// Next tag: 6
+// Next tag: 7
 message CreatePendingTaskUpdate {
   int64 task_id = 1;
   int64 job_id = 2;
   string worker_address = 3;
   string transfer_address = 4;
+  repeated string worker_tags = 6;
   int64 starting_round = 5;
 }
 
-// Next tag: 7
+// Next tag: 8
 message CreateTaskUpdate {
   reserved 3, 5;
   int64 task_id = 1;
   int64 job_id = 2;
   string worker_address = 4;
   string transfer_address = 6;
+  repeated string worker_tags = 7;
 }
 
 // Next tag: 2

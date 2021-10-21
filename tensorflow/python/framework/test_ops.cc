@@ -82,6 +82,11 @@ REGISTER_OP("ResourceUsingOp")
     .Input("resource: resource")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("IsResourceHandleRefCounting")
+    .Input("handle: resource")
+    .Output("result: bool")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("TestStringOutput")
     .Input("input: float")
     .Output("output1: float")
@@ -129,14 +134,12 @@ class KernelLabelOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("KernelLabel").Device(DEVICE_CPU),
                         KernelLabelOp<DEFAULT_LABEL>);
-REGISTER_KERNEL_BUILDER(Name("KernelLabel")
-                            .Device(DEVICE_CPU)
-                            .Label("overload_1"),
-                        KernelLabelOp<OVERLOAD_1_LABEL>);
-REGISTER_KERNEL_BUILDER(Name("KernelLabel")
-                            .Device(DEVICE_CPU)
-                            .Label("overload_2"),
-                        KernelLabelOp<OVERLOAD_2_LABEL>);
+REGISTER_KERNEL_BUILDER(
+    Name("KernelLabel").Device(DEVICE_CPU).Label("overload_1"),
+    KernelLabelOp<OVERLOAD_1_LABEL>);
+REGISTER_KERNEL_BUILDER(
+    Name("KernelLabel").Device(DEVICE_CPU).Label("overload_2"),
+    KernelLabelOp<OVERLOAD_2_LABEL>);
 
 // All "KernelLabelRequired" kernels have labels
 REGISTER_KERNEL_BUILDER(
@@ -238,6 +241,22 @@ class ResourceUsingOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ResourceUsingOp").Device(DEVICE_CPU),
                         ResourceUsingOp);
+
+class IsResourceHandleRefCountingOp : public OpKernel {
+ public:
+  explicit IsResourceHandleRefCountingOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const auto& handle = HandleFromInput(ctx, 0);
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &output));
+    output->flat<bool>()(0) = handle.IsRefCounting();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("IsResourceHandleRefCounting").Device(DEVICE_CPU),
+                        IsResourceHandleRefCountingOp);
 
 class TestAttrOp : public OpKernel {
  public:
@@ -728,7 +747,7 @@ class DevicePlacementOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_CPU),
                         DevicePlacementOp);
-REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_DEFAULT),
                         DevicePlacementOp);
 
 // An op which returns the dtype of the tensor it was passed in. It expects

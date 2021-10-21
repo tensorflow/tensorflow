@@ -48,7 +48,12 @@ bool OperandUpcaster::InstructionMatchesPattern(HloInstruction* instruction) {
     return false;
   }
   const Shape& inferred_shape = status_or_inferred_shape.ValueOrDie().value();
-  if (inferred_shape.element_type() == instruction->shape().element_type()) {
+  if (inferred_shape.element_type() == instruction->shape().element_type() &&
+      absl::c_all_of(instruction->operands(),
+                     [&](const HloInstruction* operand) {
+                       return operand->shape().element_type() ==
+                              inferred_shape.element_type();
+                     })) {
     return false;
   }
   return ShapeUtil::ElementCanUpcast(inferred_shape, instruction->shape());

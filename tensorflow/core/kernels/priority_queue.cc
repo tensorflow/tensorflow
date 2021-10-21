@@ -95,7 +95,7 @@ void PriorityQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
                     tuple[0].shape().DebugString()));
                 return kComplete;
               }
-              const int64_t priority = tuple[0].scalar<int64>()();
+              const int64_t priority = tuple[0].scalar<int64_t>()();
               for (int i = 0; i < num_components(); ++i) {
                 queues_[i].emplace(priority, tuple[i]);
               }
@@ -168,7 +168,7 @@ void PriorityQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
                     priority_element.shape().DebugString()));
                 return kComplete;
               }
-              const int64_t priority = priority_element.scalar<int64>()();
+              const int64_t priority = priority_element.scalar<int64_t>()();
               for (int i = 0; i < num_components(); ++i) {
                 Tensor element;
                 attempt->context->SetStatus(GetElementComponentFromBatch(

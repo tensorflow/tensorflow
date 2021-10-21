@@ -203,9 +203,12 @@ LogicalResult Verify(GraphOp graph) {
     if (i >= num_results)
       return fetch.emitOpError()
              << "operand #" << i << " does not have a graph results to bind";
-    if (graph.getResult(i).getType() != operand.getType())
+    if (graph.getResult(i).getType() != operand.getType()) {
       return fetch.emitOpError()
-             << "operand #" << i << " type mismatch graph results";
+             << "operand #" << i << " type mismatch graph results ("
+             << graph.getResult(i).getType() << " != " << operand.getType()
+             << ")";
+    }
   }
   return success();
 }

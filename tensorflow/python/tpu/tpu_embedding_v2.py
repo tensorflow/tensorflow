@@ -14,11 +14,6 @@
 # ==============================================================================
 """Mid level API for TPU Embeddings."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-
 import functools
 from typing import Any, Dict, Callable, Iterable, List, Optional, Text, Tuple, Union
 

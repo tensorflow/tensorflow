@@ -29,7 +29,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'initializer\', \'num_oov_buckets\', \'lookup_key_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'initializer\', \'num_oov_buckets\', \'lookup_key_dtype\', \'name\', \'experimental_is_anonymous\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "lookup"

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for lookup ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import tempfile
 
@@ -39,6 +35,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -63,12 +60,7 @@ class BaseLookupTableTest(test.TestCase):
     if tf2.enabled():
       return lookup_ops.StaticHashTable
     else:
-
-      def f(*args, **kwargs):
-        kwargs.pop("experimental_is_anonymous", None)
-        return lookup_ops.StaticHashTableV1(*args, **kwargs)
-
-      return f
+      return lookup_ops.StaticHashTableV1
 
   def getVocabularyTable(self):
     if tf2.enabled():
@@ -81,11 +73,21 @@ class BaseLookupTableTest(test.TestCase):
       self.evaluate(table.initializer)
 
 
+SKIP_ANONYMOUS_IN_TF1_REASON = (
+    "In v1 graph mode, each self.evaluate call will execute the handle "
+    "creation op (e.g. AnonymousHashTable) which will create a new table "
+    "resource unrelated to other self.evaluate calls, so we can't test "
+    "anonymous resources with self.evaluate ."
+)
+
+
 @parameterized.named_parameters(
     (f"_{is_anonymous}", is_anonymous) for is_anonymous in [False, True])
 class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
 
   def testStaticHashTable(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
@@ -93,7 +95,7 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
         lookup_ops.KeyValueTensorInitializer(keys, values),
         default_val,
         experimental_is_anonymous=is_anonymous)
-    self.assertEqual(table._is_anonymous, is_anonymous and tf2.enabled())
+    self.assertEqual(table._is_anonymous, is_anonymous)
     self.initialize_table(table)
 
     self.assertAllEqual(3, self.evaluate(table.size()))
@@ -112,6 +114,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertItemsEqual([0, 1, 2], self.evaluate(exported_values_tensor))
 
   def testStaticHashTableFindHighRank(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
@@ -131,6 +135,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertAllEqual([[0, 1], [-1, -1]], result)
 
   def testStaticHashTableInitWithPythonArrays(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = ["brain", "salad", "surgery"]
     values = [0, 1, 2]
@@ -150,6 +156,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertAllEqual([0, 1, -1], result)
 
   def testStaticHashTableInitWithNumPyArrays(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = np.array(["brain", "salad", "surgery"], dtype=np.str_)
     values = np.array([0, 1, 2], dtype=np.int64)
@@ -168,6 +176,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertAllEqual([0, 1, -1], result)
 
   def testMultipleStaticHashTables(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
@@ -203,6 +213,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertAllEqual([0, 1, -1], out3)
 
   def testStaticHashTableWithTensorDefault(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = constant_op.constant(-1, dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
@@ -219,6 +231,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertAllEqual([0, 1, -1], result)
 
   def testStaticHashTableGetItem(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = constant_op.constant(-1, dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
@@ -235,6 +249,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertAllEqual([0, 1, -1], result)
 
   def testStaticHashTableWithSparseTensorInput(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = constant_op.constant(-1, dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
@@ -259,6 +275,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertAllEqual(sp_shape, out_shape)
 
   def testStaticHashTableWithRaggedTensorInput(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = constant_op.constant(-1, dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
@@ -280,6 +298,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertAllEqual(row_splits, out.row_splits)
 
   def testSignatureMismatch(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
@@ -359,6 +379,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
 
   @test_util.run_v1_only("Sessions not available in TF2.0")
   def testMultipleSessions(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     # Start a server
     server = server_lib.Server({"local0": ["localhost:0"]},
                                protocol="grpc",
@@ -409,6 +431,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertAllEqual([1], wrapped())
 
   def testStaticHashTableInt32String(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = "n/a"
     keys = constant_op.constant([0, 1, 2], dtypes.int32)
     values = constant_op.constant(["brain", "salad", "surgery"])
@@ -463,6 +487,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertAllEqual([b"surgery", b"n/a", b"salad"], result)
 
   def testTwoTablesInControlFlow(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     keys = constant_op.constant([1, 2, 3], dtypes.int32)
     values = constant_op.constant([5, 10, 15], dtypes.int32)
 
@@ -516,6 +542,8 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
 
   @test_util.enable_control_flow_v2
   def testLookupTableInCondV2(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     lookup = self.getHashTable()(
         lookup_ops.KeyValueTensorInitializer(
             constant_op.constant([2, 5], dtype=dtypes.int64),
@@ -564,6 +592,54 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertLen(inferred_shapes, 2)
     self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
     self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
+
+  @test_util.run_v2_only
+  def testSavedModelSaveRestore(self, is_anonymous):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
+
+    root = tracking.AutoTrackable()
+
+    default_value = -1
+    keys = constant_op.constant([11, 12, 13], dtypes.int64)
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    root.table = self.getHashTable()(
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_value,
+        experimental_is_anonymous=is_anonymous)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec((), dtypes.int64)])
+    def lookup(key):
+      return root.table.lookup(key)
+
+    @def_function.function(input_signature=[])
+    def size():
+      return root.table.size()
+
+    @def_function.function(input_signature=[])
+    def is_ref_counting():
+      return test_ops.is_resource_handle_ref_counting(
+          root.table.resource_handle)
+
+    root.lookup = lookup
+    root.size = size
+    root.is_ref_counting = is_ref_counting
+
+    self.assertEqual(root.table.size(), 3)
+    self.assertEqual(root.lookup(12), 1)
+    self.assertEqual(root.lookup(10), -1)
+    self.assertLen(root.table.export()[0], 3)
+    self.assertEqual(root.is_ref_counting(), is_anonymous)
+
+    saved_model_save.save(root, save_path)
+
+    del root
+    loaded = saved_model_load.load(save_path)
+    self.assertEqual(loaded.size(), 3)
+    self.assertEqual(loaded.lookup(12), 1)
+    self.assertEqual(loaded.lookup(10), -1)
+    self.assertEqual(loaded.is_ref_counting(), is_anonymous)
 
 
 @parameterized.named_parameters(
@@ -623,6 +699,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
     return vocabulary_file
 
   def testInitializeStringTable(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocabulary_file = self._createVocabFile("one_column_1.txt")
     default_value = -1
     init = lookup_ops.TextFileInitializer(
@@ -639,6 +717,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, -1], result)
 
   def testInitializeInt64Table(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocabulary_file = self._createVocabFile(
         "one_column_int64.txt", values=("42", "1", "-1000"))
 
@@ -659,6 +739,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       self.assertAllEqual([0, 1, -1], result)
 
   def testInitializeIndexTable(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocabulary_file = self._createVocabFile("one_column_2.txt")
 
     with self.cached_session():
@@ -679,6 +761,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       self.assertAllEqual([b"brain", b"salad", b"surgery", b"UNK"], result)
 
   def testMultiColumn(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocabulary_file = os.path.join(self.get_temp_dir(), "three_columns.txt")
     with open(vocabulary_file, "w") as f:
       f.write("\n".join(["0\tbrain\t1", "1\tsalad\t5", "2\tsurgery\t6"]) + "\n")
@@ -750,6 +834,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
         self.initialize_table(table)
 
   def testInitializeSameTableWithMultipleNodes(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocabulary_file = self._createVocabFile("one_column_5.txt")
 
     with self.cached_session():
@@ -798,6 +884,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
             experimental_is_anonymous=is_anonymous)
 
   def testInitializeWithVocabSize(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     with self.cached_session():
       default_value = -1
       vocab_size = 3
@@ -851,6 +939,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
 
   @test_util.run_v1_only("placeholder usage")
   def testFeedVocabularyName(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocabulary_file = self._createVocabFile("feed_vocabulary.txt")
 
     with self.cached_session():
@@ -915,6 +1005,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
               experimental_is_anonymous=is_anonymous)
 
   def testIdToStringTable(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocab_file = self._createVocabFile("feat_to_id_1.txt")
     with self.cached_session():
       default_value = "UNK"
@@ -935,6 +1027,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       self.assertEqual(vocab_size, self.evaluate(table.size()))
 
   def testStringToIdTable(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocab_file = self._createVocabFile("feat_to_id_2.txt")
     with self.cached_session():
       default_value = -1
@@ -953,6 +1047,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       self.assertEqual(vocab_size, self.evaluate(table.size()))
 
   def testInt64ToIdTable(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocab_file = self._createVocabFile(
         "feat_to_id_3.txt", values=("42", "1", "-1000"))
     with self.cached_session():
@@ -971,6 +1067,8 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       self.assertEqual(vocab_size, self.evaluate(table.size()))
 
 
+@parameterized.named_parameters(
+    (f"_{is_anonymous}", is_anonymous) for is_anonymous in [False, True])
 class StaticVocabularyTableTest(BaseLookupTableTest):
 
   def _createVocabFile(self, basename, values=("brain", "salad", "surgery")):
@@ -979,12 +1077,17 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
       f.write("\n".join(values) + "\n")
     return vocabulary_file
 
-  def testStringStaticVocabularyTable(self):
+  def testStringStaticVocabularyTable(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocab_file = self._createVocabFile("feat_to_id_1.txt")
     vocab_size = 3
     oov_buckets = 1
-    table = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
-        vocab_file, vocab_size=vocab_size), oov_buckets)
+    table = self.getVocabularyTable()(
+        lookup_ops.TextFileIdTableInitializer(
+            vocab_file, vocab_size=vocab_size),
+        oov_buckets,
+        experimental_is_anonymous=is_anonymous)
 
     self.initialize_table(table)
 
@@ -994,12 +1097,17 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
     self.assertEqual(vocab_size + oov_buckets, self.evaluate(table.size()))
 
-  def testStaticVocabularyTableGetItem(self):
+  def testStaticVocabularyTableGetItem(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocab_file = self._createVocabFile("feat_to_id_1.txt")
     vocab_size = 3
     oov_buckets = 1
-    table = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
-        vocab_file, vocab_size=vocab_size), oov_buckets)
+    table = self.getVocabularyTable()(
+        lookup_ops.TextFileIdTableInitializer(
+            vocab_file, vocab_size=vocab_size),
+        oov_buckets,
+        experimental_is_anonymous=is_anonymous)
 
     self.initialize_table(table)
 
@@ -1009,7 +1117,9 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
     self.assertEqual(vocab_size + oov_buckets, self.evaluate(table.size()))
 
-  def testInt32StaticVocabularyTable(self):
+  def testInt32StaticVocabularyTable(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocab_file = self._createVocabFile("feat_to_id_2.txt", ("42", "1", "-1000"))
     vocab_size = 3
     oov_buckets = 1
@@ -1017,7 +1127,8 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
         lookup_ops.TextFileIdTableInitializer(
             vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
         oov_buckets,
-        lookup_key_dtype=dtypes.int32)
+        lookup_key_dtype=dtypes.int32,
+        experimental_is_anonymous=is_anonymous)
 
     self.initialize_table(table)
 
@@ -1027,12 +1138,17 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
     self.assertEqual(vocab_size + oov_buckets, self.evaluate(table.size()))
 
-  def testInt64StaticVocabularyTable(self):
+  def testInt64StaticVocabularyTable(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocab_file = self._createVocabFile("feat_to_id_3.txt", ("42", "1", "-1000"))
     vocab_size = 3
     oov_buckets = 1
-    table = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
-        vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64), oov_buckets)
+    table = self.getVocabularyTable()(
+        lookup_ops.TextFileIdTableInitializer(
+            vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
+        oov_buckets,
+        experimental_is_anonymous=is_anonymous)
 
     self.initialize_table(table)
 
@@ -1042,12 +1158,13 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
     self.assertEqual(vocab_size + oov_buckets, self.evaluate(table.size()))
 
-  def testStringStaticVocabularyTableNoInitializer(self):
+  def testStringStaticVocabularyTableNoInitializer(self, is_anonymous):
     oov_buckets = 5
 
     # Set a table that only uses hash buckets, for each input value returns
     # an id calculated by fingerprint("input") mod oov_buckets.
-    table = self.getVocabularyTable()(None, oov_buckets)
+    table = self.getVocabularyTable()(
+        None, oov_buckets, experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     values = constant_op.constant(("brain", "salad", "surgery"))
@@ -1062,16 +1179,26 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
         self.evaluate(out))
     self.assertEqual(oov_buckets, self.evaluate(table.size()))
 
-  def testStaticVocabularyTableWithMultipleInitializers(self):
+  def testStaticVocabularyTableWithMultipleInitializers(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocab_file = self._createVocabFile("feat_to_id_4.txt")
     vocab_size = 3
     oov_buckets = 3
 
     init = lookup_ops.TextFileIdTableInitializer(
         vocab_file, vocab_size=vocab_size)
-    table1 = self.getVocabularyTable()(init, oov_buckets, name="table1")
+    table1 = self.getVocabularyTable()(
+        init,
+        oov_buckets,
+        name="table1",
+        experimental_is_anonymous=is_anonymous)
 
-    table2 = self.getVocabularyTable()(init, oov_buckets, name="table2")
+    table2 = self.getVocabularyTable()(
+        init,
+        oov_buckets,
+        name="table2",
+        experimental_is_anonymous=is_anonymous)
 
     self.evaluate(lookup_ops.tables_initializer())
 
@@ -1087,13 +1214,18 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertEqual(vocab_size + oov_buckets, self.evaluate(table1.size()))
     self.assertEqual(vocab_size + oov_buckets, self.evaluate(table2.size()))
 
-  def testStaticVocabularyTableInitializationAcrossSessions(self):
+  def testStaticVocabularyTableInitializationAcrossSessions(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocab_file = self._createVocabFile("feat_to_id_5.txt")
     with self.cached_session():
       vocab_size = 3
       oov_buckets = 1
-      table1 = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
-          vocab_file, vocab_size=vocab_size), oov_buckets)
+      table1 = self.getVocabularyTable()(
+          lookup_ops.TextFileIdTableInitializer(
+              vocab_file, vocab_size=vocab_size),
+          oov_buckets,
+          experimental_is_anonymous=is_anonymous)
 
       self.initialize_table(table1)
 
@@ -1111,8 +1243,11 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
 
       # Underlying lookup table already initialized in previous session.
       # No need to initialize table2
-      table2 = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
-          vocab_file, vocab_size=vocab_size), oov_buckets)
+      table2 = self.getVocabularyTable()(
+          lookup_ops.TextFileIdTableInitializer(
+              vocab_file, vocab_size=vocab_size),
+          oov_buckets,
+          experimental_is_anonymous=is_anonymous)
 
       input_string_2 = constant_op.constant(["fruit", "salad", "UNK"])
 
@@ -1121,12 +1256,15 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
       self.assertAllEqual([3, 1, 3], self.evaluate(out2))
       self.assertEqual(vocab_size + oov_buckets, self.evaluate(table2.size()))
 
-  def testStaticVocabularyTableAssetTracking(self):
+  def testStaticVocabularyTableAssetTracking(self, is_anonymous):
     vocab_file = self._createVocabFile("vocab.txt")
     vocab_size = 3
     oov_buckets = 1
-    table = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
-        vocab_file, vocab_size=vocab_size), oov_buckets)
+    table = self.getVocabularyTable()(
+        lookup_ops.TextFileIdTableInitializer(
+            vocab_file, vocab_size=vocab_size),
+        oov_buckets,
+        experimental_is_anonymous=is_anonymous)
     object_graph_view = graph_view.ObjectGraphView(table)
     objects = object_graph_view.list_objects()
     assets = list(filter(lambda obj: isinstance(obj, tracking.Asset), objects))
@@ -1134,7 +1272,9 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertEqual(
         self.evaluate(assets[0].asset_path), compat.as_bytes(vocab_file))
 
-  def testSparseTensor(self):
+  def testSparseTensor(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocab_file = self._createVocabFile("feat_to_id_7.txt")
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
@@ -1144,8 +1284,10 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
                              dtypes.string),
         constant_op.constant(input_shape, dtypes.int64))
 
-    table = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
-        vocab_file, vocab_size=3), 1)
+    table = self.getVocabularyTable()(
+        lookup_ops.TextFileIdTableInitializer(vocab_file, vocab_size=3),
+        1,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     sp_ids = table.lookup(sp_features)
@@ -1159,7 +1301,9 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
     self.assertAllEqual(input_shape, sp_ids_shape)
 
-  def testRaggedTensor(self):
+  def testRaggedTensor(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     vocab_file = self._createVocabFile("feat_to_id_7.txt")
     input_row_splits = [0, 2, 4, 5]
     ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
@@ -1167,8 +1311,10 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
                              dtypes.string),
         constant_op.constant(input_row_splits, dtypes.int64))
 
-    table = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
-        vocab_file, vocab_size=3), 1)
+    table = self.getVocabularyTable()(
+        lookup_ops.TextFileIdTableInitializer(vocab_file, vocab_size=3),
+        1,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     ragged_ids = table.lookup(ragged_features)
@@ -1181,7 +1327,9 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
     self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
 
-  def testInt32SparseTensor(self):
+  def testInt32SparseTensor(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
     sp_features = sparse_tensor.SparseTensor(
@@ -1193,7 +1341,8 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
         lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
                                              dtypes.int64, dtypes.int64),
         1,
-        lookup_key_dtype=dtypes.int32)
+        lookup_key_dtype=dtypes.int32,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     sp_ids = table.lookup(sp_features)
@@ -1207,7 +1356,9 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
     self.assertAllEqual(input_shape, sp_ids_shape)
 
-  def testInt32RaggedTensor(self):
+  def testInt32RaggedTensor(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     input_row_splits = [0, 2, 4, 5]
     ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
         constant_op.constant([42, 1, 42, -1000, 11], dtypes.int32),
@@ -1217,7 +1368,8 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
         lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
                                              dtypes.int64, dtypes.int64),
         1,
-        lookup_key_dtype=dtypes.int32)
+        lookup_key_dtype=dtypes.int32,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     ragged_ids = table.lookup(ragged_features)
@@ -1230,7 +1382,9 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
     self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
 
-  def testInt64SparseTensor(self):
+  def testInt64SparseTensor(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
     sp_features = sparse_tensor.SparseTensor(
@@ -1238,8 +1392,11 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
         constant_op.constant([42, 1, 42, -1000, 11], dtypes.int64),
         constant_op.constant(input_shape, dtypes.int64))
 
-    table = self.getVocabularyTable()(lookup_ops.KeyValueTensorInitializer(
-        (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), 1)
+    table = self.getVocabularyTable()(
+        lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
+                                             dtypes.int64, dtypes.int64),
+        1,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     sp_ids = table.lookup(sp_features)
@@ -1253,14 +1410,19 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
     self.assertAllEqual(input_shape, sp_ids_shape)
 
-  def testInt64RaggedTensor(self):
+  def testInt64RaggedTensor(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     input_row_splits = [0, 2, 4, 5]
     ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
         constant_op.constant([42, 1, 42, -1000, 11], dtypes.int64),
         constant_op.constant(input_row_splits, dtypes.int64))
 
-    table = self.getVocabularyTable()(lookup_ops.KeyValueTensorInitializer(
-        (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), 1)
+    table = self.getVocabularyTable()(
+        lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
+                                             dtypes.int64, dtypes.int64),
+        1,
+        experimental_is_anonymous=is_anonymous)
     self.initialize_table(table)
 
     ragged_ids = table.lookup(ragged_features)
@@ -1273,14 +1435,67 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
     self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
 
-  def testStaticVocabularyTableNoInnerTable(self):
-    table = self.getVocabularyTable()(None, num_oov_buckets=1)
+  def testStaticVocabularyTableNoInnerTable(self, is_anonymous):
+    table = self.getVocabularyTable()(
+        None, num_oov_buckets=1, experimental_is_anonymous=is_anonymous)
     self.assertIsNone(table.resource_handle)
 
+  @test_util.run_v2_only
+  def testSavedModelSaveRestore(self, is_anonymous):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
+    root = tracking.AutoTrackable()
+
+    vocab_file = self._createVocabFile("feat_to_id_3.txt", ("11", "12", "13"))
+    vocab_size = 3
+    oov_buckets = 1
+    root.table = self.getVocabularyTable()(
+        lookup_ops.TextFileIdTableInitializer(
+            vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
+        oov_buckets,
+        experimental_is_anonymous=is_anonymous)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec((), dtypes.int64)])
+    def lookup(key):
+      return root.table.lookup(key)
+
+    @def_function.function(input_signature=[])
+    def size():
+      return root.table.size()
+
+    @def_function.function(input_signature=[])
+    def is_ref_counting():
+      return test_ops.is_resource_handle_ref_counting(
+          root.table.resource_handle)
+
+    root.lookup = lookup
+    root.size = size
+    root.is_ref_counting = is_ref_counting
+
+    self.assertEqual(root.table.size(), 4)
+    self.assertEqual(root.lookup(12), 1)
+    self.assertEqual(root.lookup(10), 3)
+    self.assertEqual(root.is_ref_counting(), is_anonymous)
+
+    saved_model_save.save(root, save_path)
+
+    del root
+    loaded = saved_model_load.load(save_path)
+    self.assertEqual(loaded.size(), 4)
+    self.assertEqual(loaded.lookup(12), 1)
+    self.assertEqual(loaded.lookup(10), 3)
+    self.assertEqual(loaded.is_ref_counting(), is_anonymous)
+
+
+@parameterized.named_parameters(
+    (f"_{is_anonymous}", is_anonymous) for is_anonymous in [False, True])
 class DenseHashTableOpTest(test.TestCase):
 
-  def testBasic(self):
+  def testBasic(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
     values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
     table = lookup_ops.DenseHashTable(
@@ -1288,7 +1503,8 @@ class DenseHashTableOpTest(test.TestCase):
         dtypes.int64,
         default_value=-1,
         empty_key=0,
-        deleted_key=-1)
+        deleted_key=-1,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -1305,7 +1521,9 @@ class DenseHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([0, -1, -1], result)
 
-  def testGetItem(self):
+  def testGetItem(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
     values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
     table = lookup_ops.DenseHashTable(
@@ -1313,7 +1531,8 @@ class DenseHashTableOpTest(test.TestCase):
         dtypes.int64,
         default_value=-1,
         empty_key=0,
-        deleted_key=-1)
+        deleted_key=-1,
+        experimental_is_anonymous=is_anonymous)
 
     self.evaluate(table.insert(keys, values))
 
@@ -1324,7 +1543,9 @@ class DenseHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, -1], result)
 
-  def testBasicBool(self):
+  def testBasicBool(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
     values = constant_op.constant([True, True, True, True], dtypes.bool)
     table = lookup_ops.DenseHashTable(
@@ -1332,7 +1553,8 @@ class DenseHashTableOpTest(test.TestCase):
         dtypes.bool,
         default_value=False,
         empty_key=0,
-        deleted_key=-1)
+        deleted_key=-1,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -1349,7 +1571,7 @@ class DenseHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([False, True, False], result)
 
-  def testSameEmptyAndDeletedKey(self):
+  def testSameEmptyAndDeletedKey(self, is_anonymous):
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                 "Empty and deleted keys"):
       table = lookup_ops.DenseHashTable(
@@ -1357,11 +1579,14 @@ class DenseHashTableOpTest(test.TestCase):
           dtypes.int64,
           default_value=-1,
           empty_key=42,
-          deleted_key=42)
+          deleted_key=42,
+          experimental_is_anonymous=is_anonymous)
       self.assertAllEqual(0, self.evaluate(table.size()))
 
   @test_util.run_v1_only("uses placeholders")
-  def testLookupUnknownShape(self):
+  def testLookupUnknownShape(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     with self.cached_session():
       keys = constant_op.constant([11, 12, 13], dtypes.int64)
       values = constant_op.constant([0, 1, 2], dtypes.int64)
@@ -1370,7 +1595,8 @@ class DenseHashTableOpTest(test.TestCase):
           dtypes.int64,
           default_value=-1,
           empty_key=0,
-          deleted_key=-1)
+          deleted_key=-1,
+          experimental_is_anonymous=is_anonymous)
 
       self.evaluate(table.insert(keys, values))
       self.assertAllEqual(3, self.evaluate(table.size()))
@@ -1381,7 +1607,9 @@ class DenseHashTableOpTest(test.TestCase):
       result = output.eval({placeholder_keys: [11, 12, 15]})
       self.assertAllEqual([0, 1, -1], result)
 
-  def testMapStringToFloat(self):
+  def testMapStringToFloat(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     keys = constant_op.constant(["a", "b", "c", "d"], dtypes.string)
     values = constant_op.constant([0.0, 1.1, 2.2, 3.3], dtypes.float32)
     default_value = constant_op.constant(-1.5, dtypes.float32)
@@ -1390,7 +1618,8 @@ class DenseHashTableOpTest(test.TestCase):
         dtypes.float32,
         default_value=default_value,
         empty_key="",
-        deleted_key="$")
+        deleted_key="$",
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -1407,7 +1636,9 @@ class DenseHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllClose([0, -1.5, 3.3, -1.5], result)
 
-  def testMapInt64ToFloat(self):
+  def testMapInt64ToFloat(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     for float_dtype in [dtypes.float32, dtypes.float64]:
       keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
       values = constant_op.constant([0.0, 1.1, 2.2, 3.3], float_dtype)
@@ -1417,7 +1648,8 @@ class DenseHashTableOpTest(test.TestCase):
           float_dtype,
           default_value=default_value,
           empty_key=0,
-          deleted_key=-1)
+          deleted_key=-1,
+          experimental_is_anonymous=is_anonymous)
       self.assertAllEqual(0, self.evaluate(table.size()))
 
       self.evaluate(table.insert(keys, values))
@@ -1434,7 +1666,9 @@ class DenseHashTableOpTest(test.TestCase):
       result = self.evaluate(output)
       self.assertAllClose([0, -1.5, 3.3, -1.5], result)
 
-  def testVectorValues(self):
+  def testVectorValues(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     keys = constant_op.constant([11, 12, 13], dtypes.int64)
     values = constant_op.constant([[0, 1, 2, 3], [3, 4, 5, 6], [6, 7, 8, 9]],
                                   dtypes.int64)
@@ -1445,7 +1679,8 @@ class DenseHashTableOpTest(test.TestCase):
         default_value=default_value,
         empty_key=0,
         deleted_key=-1,
-        initial_num_buckets=4)
+        initial_num_buckets=4,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -1475,7 +1710,9 @@ class DenseHashTableOpTest(test.TestCase):
         [[0, 1, 2, 3], [-1, -2, -3, -4], [2, 3, 4, 5], [-1, -2, -3, -4]],
         result)
 
-  def testVectorKeys(self):
+  def testVectorKeys(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     keys = constant_op.constant([[0, 1], [1, 2], [1, 3]], dtypes.int64)
     values = constant_op.constant([10, 11, 12], dtypes.int64)
     empty_key = constant_op.constant([0, 3], dtypes.int64)
@@ -1487,7 +1724,8 @@ class DenseHashTableOpTest(test.TestCase):
         default_value=default_value,
         empty_key=empty_key,
         deleted_key=deleted_key,
-        initial_num_buckets=8)
+        initial_num_buckets=8,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -1513,7 +1751,9 @@ class DenseHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([10, -1, 12, -1], result)
 
-  def testResize(self):
+  def testResize(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     keys = constant_op.constant([11, 12, 13], dtypes.int64)
     values = constant_op.constant([0, 1, 2], dtypes.int64)
     table = lookup_ops.DenseHashTable(
@@ -1522,7 +1762,8 @@ class DenseHashTableOpTest(test.TestCase):
         default_value=-1,
         empty_key=0,
         deleted_key=-1,
-        initial_num_buckets=4)
+        initial_num_buckets=4,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -1546,7 +1787,9 @@ class DenseHashTableOpTest(test.TestCase):
     output = table.lookup(keys4)
     self.assertAllEqual([-1, 0, -1, 3, 4, 5, 6, 7, -1], self.evaluate(output))
 
-  def testExport(self):
+  def testExport(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
     values = constant_op.constant([1, 2, 3, 4], dtypes.int64)
     table = lookup_ops.DenseHashTable(
@@ -1555,7 +1798,8 @@ class DenseHashTableOpTest(test.TestCase):
         default_value=-1,
         empty_key=100,
         deleted_key=200,
-        initial_num_buckets=8)
+        initial_num_buckets=8,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -1581,7 +1825,9 @@ class DenseHashTableOpTest(test.TestCase):
                          [100, 0], [100, 0], [200, 2]], pairs)
 
   @test_util.run_v1_only("Saver V1 only")
-  def testSaveRestore(self):
+  def testSaveRestore(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
@@ -1599,7 +1845,8 @@ class DenseHashTableOpTest(test.TestCase):
           deleted_key=deleted_key,
           name="t1",
           checkpoint=True,
-          initial_num_buckets=32)
+          initial_num_buckets=32,
+          experimental_is_anonymous=is_anonymous)
 
       save = saver.Saver()
 
@@ -1626,7 +1873,8 @@ class DenseHashTableOpTest(test.TestCase):
           deleted_key=deleted_key,
           name="t1",
           checkpoint=True,
-          initial_num_buckets=64)
+          initial_num_buckets=64,
+          experimental_is_anonymous=is_anonymous)
       table.insert(
           constant_op.constant([11, 14], dtypes.int64),
           constant_op.constant([12, 24], dtypes.int64)).run()
@@ -1646,7 +1894,9 @@ class DenseHashTableOpTest(test.TestCase):
       self.assertAllEqual([-1, 0, -1, 2, 3], output)
 
   @test_util.run_v1_only("Saver V1 only")
-  def testSaveRestoreOnlyTable(self):
+  def testSaveRestoreOnlyTable(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
@@ -1664,7 +1914,8 @@ class DenseHashTableOpTest(test.TestCase):
           deleted_key=deleted_key,
           name="t1",
           checkpoint=True,
-          initial_num_buckets=32)
+          initial_num_buckets=32,
+          experimental_is_anonymous=is_anonymous)
 
       save = saver.Saver([table])
 
@@ -1691,7 +1942,8 @@ class DenseHashTableOpTest(test.TestCase):
           deleted_key=deleted_key,
           name="t1",
           checkpoint=True,
-          initial_num_buckets=64)
+          initial_num_buckets=64,
+          experimental_is_anonymous=is_anonymous)
       table.insert(
           constant_op.constant([11, 14], dtypes.int64),
           constant_op.constant([12, 24], dtypes.int64)).run()
@@ -1711,7 +1963,9 @@ class DenseHashTableOpTest(test.TestCase):
       self.assertAllEqual([-1, 0, -1, 2, 3], output)
 
   @test_util.run_in_graph_and_eager_modes
-  def testObjectSaveRestore(self):
+  def testObjectSaveRestore(self, is_anonymous):
+    if is_anonymous and not context.executing_eagerly():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_prefix = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
@@ -1728,7 +1982,8 @@ class DenseHashTableOpTest(test.TestCase):
         deleted_key=deleted_key,
         name="t1",
         checkpoint=True,
-        initial_num_buckets=32)
+        initial_num_buckets=32,
+        experimental_is_anonymous=is_anonymous)
 
     save_checkpoint = trackable.Checkpoint(table=save_table)
 
@@ -1748,7 +2003,8 @@ class DenseHashTableOpTest(test.TestCase):
         deleted_key=deleted_key,
         name="t1",
         checkpoint=True,
-        initial_num_buckets=64)
+        initial_num_buckets=64,
+        experimental_is_anonymous=is_anonymous)
     self.evaluate(
         load_table.insert(
             constant_op.constant([11, 14], dtypes.int64),
@@ -1769,7 +2025,7 @@ class DenseHashTableOpTest(test.TestCase):
     self.assertAllEqual([-1, 0, 1, 2, -1], self.evaluate(output))
 
   @test_util.run_v2_only
-  def testSavedModelSaveRestore(self):
+  def testSavedModelSaveRestore(self, is_anonymous):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
@@ -1788,29 +2044,48 @@ class DenseHashTableOpTest(test.TestCase):
         deleted_key=deleted_key,
         name="t1",
         checkpoint=True,
-        initial_num_buckets=32)
+        initial_num_buckets=32,
+        experimental_is_anonymous=is_anonymous)
 
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec((), dtypes.int64)])
     def lookup(key):
       return root.table.lookup(key)
 
-    root.lookup = lookup
+    @def_function.function(input_signature=[])
+    def size():
+      return root.table.size()
 
-    self.assertAllEqual(0, root.table.size())
+    @def_function.function(input_signature=[])
+    def is_ref_counting():
+      return test_ops.is_resource_handle_ref_counting(
+          root.table.resource_handle)
+
+    root.lookup = lookup
+    root.size = size
+    root.is_ref_counting = is_ref_counting
+
+    self.assertEqual(root.table.size(), 0)
     root.table.insert(keys, values)
-    self.assertAllEqual(3, self.evaluate(root.table.size()))
-    self.assertAllEqual(32, len(self.evaluate(root.table.export()[0])))
+    self.assertEqual(root.table.size(), 3)
+    self.assertEqual(root.table.lookup(12), 1)
+    self.assertEqual(root.table.lookup(10), -1)
+    self.assertEqual(len(root.table.export()[0]), 32)
+    self.assertEqual(root.is_ref_counting(), is_anonymous)
 
     saved_model_save.save(root, save_path)
 
     del root
     loaded = saved_model_load.load(save_path)
+    self.assertEqual(loaded.size(), 3)
     self.assertEqual(loaded.lookup(12), 1)
     self.assertEqual(loaded.lookup(10), -1)
+    self.assertEqual(loaded.is_ref_counting(), is_anonymous)
 
   @test_util.run_v1_only("Saver V1 only")
-  def testVectorSaveRestore(self):
+  def testVectorSaveRestore(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     save_dir = os.path.join(self.get_temp_dir(), "vector_save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
@@ -1830,7 +2105,8 @@ class DenseHashTableOpTest(test.TestCase):
           deleted_key=deleted_key,
           name="t1",
           checkpoint=True,
-          initial_num_buckets=32)
+          initial_num_buckets=32,
+          experimental_is_anonymous=is_anonymous)
 
       save = saver.Saver()
 
@@ -1860,7 +2136,8 @@ class DenseHashTableOpTest(test.TestCase):
           deleted_key=deleted_key,
           name="t1",
           checkpoint=True,
-          initial_num_buckets=64)
+          initial_num_buckets=64,
+          experimental_is_anonymous=is_anonymous)
       table.insert(
           constant_op.constant([[11, 12], [13, 15]], dtypes.int64),
           constant_op.constant([[21, 22], [23, 24]], dtypes.int64)).run()
@@ -1882,7 +2159,9 @@ class DenseHashTableOpTest(test.TestCase):
                           self.evaluate(output))
 
   @test_util.run_v1_only("Saver V1 only")
-  def testVectorScalarSaveRestore(self):
+  def testVectorScalarSaveRestore(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     save_dir = os.path.join(self.get_temp_dir(), "vector_scalar_save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
@@ -1901,7 +2180,8 @@ class DenseHashTableOpTest(test.TestCase):
           deleted_key=deleted_key,
           name="t2",
           checkpoint=True,
-          initial_num_buckets=32)
+          initial_num_buckets=32,
+          experimental_is_anonymous=is_anonymous)
 
       save = saver.Saver()
 
@@ -1931,7 +2211,8 @@ class DenseHashTableOpTest(test.TestCase):
           deleted_key=deleted_key,
           name="t2",
           checkpoint=True,
-          initial_num_buckets=64)
+          initial_num_buckets=64,
+          experimental_is_anonymous=is_anonymous)
       table.insert(
           constant_op.constant([[11, 12], [13, 15]], dtypes.int64),
           constant_op.constant([3, 4], dtypes.int64)).run()
@@ -1951,7 +2232,9 @@ class DenseHashTableOpTest(test.TestCase):
       output = table.lookup(input_string)
       self.assertAllEqual([0, 1, -1, 3, -1], output)
 
-  def testReprobe(self):
+  def testReprobe(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     # Insert 6 keys into a table with 8 buckets.
     # The values are chosen to make sure collisions occur when using GCC STL
     keys = constant_op.constant([11, 12, 13, 19, 20, 21], dtypes.int64)
@@ -1962,7 +2245,8 @@ class DenseHashTableOpTest(test.TestCase):
         default_value=-1,
         empty_key=0,
         deleted_key=-1,
-        initial_num_buckets=8)
+        initial_num_buckets=8,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -1976,7 +2260,9 @@ class DenseHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([-1, 51, 52, 53, -1, 54, 55, 56, -1], result)
 
-  def testCustomEmptyKey(self):
+  def testCustomEmptyKey(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     keys = constant_op.constant([11, 0, 13], dtypes.int64)
     values = constant_op.constant([0, 1, 2], dtypes.int64)
     table = lookup_ops.DenseHashTable(
@@ -1984,7 +2270,8 @@ class DenseHashTableOpTest(test.TestCase):
         dtypes.int64,
         default_value=-1,
         empty_key=12,
-        deleted_key=-1)
+        deleted_key=-1,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -1997,13 +2284,14 @@ class DenseHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, -1], result)
 
-  def testErrors(self):
+  def testErrors(self, is_anonymous):
     table = lookup_ops.DenseHashTable(
         dtypes.int64,
         dtypes.int64,
         default_value=-1,
         empty_key=0,
-        deleted_key=-1)
+        deleted_key=-1,
+        experimental_is_anonymous=is_anonymous)
 
     # Inserting the empty key returns an error
     keys1 = constant_op.constant([11, 0], dtypes.int64)
@@ -2047,7 +2335,8 @@ class DenseHashTableOpTest(test.TestCase):
           default_value=-1,
           empty_key=17,
           deleted_key=-1,
-          initial_num_buckets=12)
+          initial_num_buckets=12,
+          experimental_is_anonymous=is_anonymous)
       self.assertAllEqual(0, self.evaluate(table2.size()))
 
     with self.assertRaisesRegex(
@@ -2058,7 +2347,8 @@ class DenseHashTableOpTest(test.TestCase):
           dtypes.int64,
           default_value=-1,
           empty_key=42,
-          deleted_key=[1, 2])
+          deleted_key=[1, 2],
+          experimental_is_anonymous=is_anonymous)
       self.assertAllEqual(0, self.evaluate(table3.size()))
 
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
@@ -2068,7 +2358,8 @@ class DenseHashTableOpTest(test.TestCase):
           dtypes.int64,
           default_value=-1,
           empty_key=42,
-          deleted_key=42)
+          deleted_key=42,
+          experimental_is_anonymous=is_anonymous)
       self.assertAllEqual(0, self.evaluate(table4.size()))
 
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
@@ -2078,11 +2369,12 @@ class DenseHashTableOpTest(test.TestCase):
           dtypes.int64,
           default_value=-1,
           empty_key=[1, 2, 3],
-          deleted_key=[1, 2, 3])
+          deleted_key=[1, 2, 3],
+          experimental_is_anonymous=is_anonymous)
       self.assertAllEqual(0, self.evaluate(table5.size()))
 
   @test_util.run_in_graph_and_eager_modes
-  def testStringToResource(self):
+  def testStringToResource(self, is_anonymous):
     v = variables.Variable(1.)
     v1 = variables.Variable(1.)
     table = lookup_ops.DenseHashTable(
@@ -2090,12 +2382,13 @@ class DenseHashTableOpTest(test.TestCase):
         dtypes.resource,
         default_value=v.handle,
         empty_key="<empty>",
-        deleted_key="<deleted>")
+        deleted_key="<deleted>",
+        experimental_is_anonymous=is_anonymous)
     self.assertEqual([], table.lookup("not_found").shape)
     table.insert("v1", v1.handle)
     self.assertEqual([], table.lookup("v1").shape)
 
-  def testExportShapeInference(self):
+  def testExportShapeInference(self, is_anonymous):
     default_value = -1
     empty_key = 0
     deleted_key = -1
@@ -2104,7 +2397,8 @@ class DenseHashTableOpTest(test.TestCase):
         dtypes.int64,
         default_value=default_value,
         empty_key=empty_key,
-        deleted_key=deleted_key)
+        deleted_key=deleted_key,
+        experimental_is_anonymous=is_anonymous)
     actual_shapes = [t.shape for t in table.export()]
     inferred_shapes = []
 
@@ -3021,14 +3315,21 @@ class IdTableWithHashBucketsTest(test.TestCase):
     self.assertIsNone(table.resource_handle)
 
 
+@parameterized.named_parameters(
+    (f"_{is_anonymous}", is_anonymous) for is_anonymous in [False, True])
 class MutableHashTableOpTest(test.TestCase):
 
-  def testMutableHashTable(self):
+  def testMutableHashTable(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery", "tarkus"])
     values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -3054,7 +3355,9 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertAllEqual([0, 1, 2], sorted_values)
 
   @test_util.run_v1_only("SaverV1")
-  def testSaveRestore(self):
+  def testSaveRestore(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
@@ -3066,7 +3369,12 @@ class MutableHashTableOpTest(test.TestCase):
       keys = constant_op.constant(["b", "c", "d"], dtypes.string)
       values = constant_op.constant([0, 1, 2], dtypes.int64)
       table = lookup_ops.MutableHashTable(
-          dtypes.string, dtypes.int64, default_val, name="t1", checkpoint=True)
+          dtypes.string,
+          dtypes.int64,
+          default_val,
+          name="t1",
+          checkpoint=True,
+          experimental_is_anonymous=is_anonymous)
 
       save = saver.Saver()
       self.evaluate(variables.global_variables_initializer())
@@ -3088,7 +3396,12 @@ class MutableHashTableOpTest(test.TestCase):
       v1 = variables.Variable(-1.0, name="v1")
       default_val = -1
       table = lookup_ops.MutableHashTable(
-          dtypes.string, dtypes.int64, default_val, name="t1", checkpoint=True)
+          dtypes.string,
+          dtypes.int64,
+          default_val,
+          name="t1",
+          checkpoint=True,
+          experimental_is_anonymous=is_anonymous)
       self.evaluate(
           table.insert(
               constant_op.constant(["a", "c"], dtypes.string),
@@ -3111,7 +3424,9 @@ class MutableHashTableOpTest(test.TestCase):
       self.assertAllEqual([-1, 0, 1, 2, -1], self.evaluate(output))
 
   @test_util.run_v1_only("SaverV1")
-  def testSaveRestoreOnlyTable(self):
+  def testSaveRestoreOnlyTable(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
@@ -3123,7 +3438,12 @@ class MutableHashTableOpTest(test.TestCase):
       keys = constant_op.constant(["b", "c", "d"], dtypes.string)
       values = constant_op.constant([0, 1, 2], dtypes.int64)
       table = lookup_ops.MutableHashTable(
-          dtypes.string, dtypes.int64, default_val, name="t1", checkpoint=True)
+          dtypes.string,
+          dtypes.int64,
+          default_val,
+          name="t1",
+          checkpoint=True,
+          experimental_is_anonymous=is_anonymous)
 
       save = saver.Saver([table])
       self.evaluate(variables.global_variables_initializer())
@@ -3143,7 +3463,12 @@ class MutableHashTableOpTest(test.TestCase):
     with self.session(graph=ops.Graph()) as sess:
       default_val = -1
       table = lookup_ops.MutableHashTable(
-          dtypes.string, dtypes.int64, default_val, name="t1", checkpoint=True)
+          dtypes.string,
+          dtypes.int64,
+          default_val,
+          name="t1",
+          checkpoint=True,
+          experimental_is_anonymous=is_anonymous)
       self.evaluate(
           table.insert(
               constant_op.constant(["a", "c"], dtypes.string),
@@ -3164,7 +3489,9 @@ class MutableHashTableOpTest(test.TestCase):
       self.assertAllEqual([-1, 0, 1, 2, -1], self.evaluate(output))
 
   @test_util.run_in_graph_and_eager_modes
-  def testObjectSaveRestore(self):
+  def testObjectSaveRestore(self, is_anonymous):
+    if is_anonymous and not context.executing_eagerly():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_prefix = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
@@ -3175,7 +3502,12 @@ class MutableHashTableOpTest(test.TestCase):
     keys = constant_op.constant(["b", "c", "d"], dtypes.string)
     values = constant_op.constant([0, 1, 2], dtypes.int64)
     table = lookup_ops.MutableHashTable(
-        dtypes.string, dtypes.int64, default_val, name="t1", checkpoint=True)
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        name="t1",
+        checkpoint=True,
+        experimental_is_anonymous=is_anonymous)
 
     checkpoint = trackable.Checkpoint(table=table, v0=v0, v1=v1)
     self.evaluate([v0.initializer, v1.initializer])
@@ -3195,7 +3527,12 @@ class MutableHashTableOpTest(test.TestCase):
     v1 = variables.Variable(-1.0, name="v1")
     default_val = -1
     table = lookup_ops.MutableHashTable(
-        dtypes.string, dtypes.int64, default_val, name="t1", checkpoint=True)
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        name="t1",
+        checkpoint=True,
+        experimental_is_anonymous=is_anonymous)
     self.evaluate(
         table.insert(
             constant_op.constant(["a", "c"], dtypes.string),
@@ -3217,8 +3554,61 @@ class MutableHashTableOpTest(test.TestCase):
     output = table.lookup(input_string)
     self.assertAllEqual([-1, 0, 1, 2, -1], self.evaluate(output))
 
+  @test_util.run_v2_only
+  def testSavedModelSaveRestore(self, is_anonymous):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
+
+    root = tracking.AutoTrackable()
+
+    default_value = -1
+    keys = constant_op.constant([11, 12, 13], dtypes.int64)
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    root.table = lookup_ops.MutableHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value,
+        experimental_is_anonymous=is_anonymous)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec((), dtypes.int64)])
+    def lookup(key):
+      return root.table.lookup(key)
+
+    @def_function.function(input_signature=[])
+    def size():
+      return root.table.size()
+
+    @def_function.function(input_signature=[])
+    def is_ref_counting():
+      return test_ops.is_resource_handle_ref_counting(
+          root.table.resource_handle)
+
+    root.lookup = lookup
+    root.size = size
+    root.is_ref_counting = is_ref_counting
+
+    self.assertEqual(root.table.size(), 0)
+    root.table.insert(keys, values)
+    self.assertEqual(root.table.size(), 3)
+    self.assertEqual(root.table.lookup(12), 1)
+    self.assertEqual(root.table.lookup(10), -1)
+    self.assertEqual(len(root.table.export()[0]), 3)
+    self.assertEqual(root.is_ref_counting(), is_anonymous)
+
+    saved_model_save.save(root, save_path)
+
+    del root
+    loaded = saved_model_load.load(save_path)
+    self.assertEqual(loaded.size(), 3)
+    self.assertEqual(loaded.lookup(12), 1)
+    self.assertEqual(loaded.lookup(10), -1)
+    self.assertEqual(loaded.is_ref_counting(), is_anonymous)
+
   @test_util.run_v1_only("Multiple sessions")
-  def testSharing(self):
+  def testSharing(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     # Start a server to store the table state
     server = server_lib.Server({"local0": ["localhost:0"]},
                                protocol="grpc",
@@ -3228,7 +3618,11 @@ class MutableHashTableOpTest(test.TestCase):
     session2 = session.Session(server.target)
 
     table = lookup_ops.MutableHashTable(
-        dtypes.int64, dtypes.string, "-", name="t1")
+        dtypes.int64,
+        dtypes.string,
+        "-",
+        name="t1",
+        experimental_is_anonymous=is_anonymous)
 
     # Populate the table in the first session
     with session1:
@@ -3249,13 +3643,18 @@ class MutableHashTableOpTest(test.TestCase):
       output = table.lookup(constant_op.constant([10, 11, 12], dtypes.int64))
       self.assertAllEqual([b"-", b"a", b"b"], output)
 
-  def testMutableHashTableOfTensors(self):
+  def testMutableHashTableOfTensors(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = constant_op.constant([-1, -1], dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery", "tarkus"])
     values = constant_op.constant([[0, 1], [2, 3], [4, 5], [6, 7]],
                                   dtypes.int64)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -3280,12 +3679,17 @@ class MutableHashTableOpTest(test.TestCase):
     sorted_expected_values = np.sort([[4, 5], [2, 3], [0, 1]], axis=0)
     self.assertAllEqual(sorted_expected_values, sorted_values)
 
-  def testMutableHashTableExportInsert(self):
+  def testMutableHashTableExportInsert(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = constant_op.constant([-1, -1], dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([[0, 1], [2, 3], [4, 5]], dtypes.int64)
-    table1 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                         default_val)
+    table1 = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table1.size()))
     self.evaluate(table1.insert(keys, values))
     self.assertAllEqual(3, self.evaluate(table1.size()))
@@ -3300,8 +3704,11 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertAllEqual(6, self.evaluate(exported_values).size)
 
     # Populate a second table from the exported data
-    table2 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                         default_val)
+    table2 = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table2.size()))
     self.evaluate(table2.insert(exported_keys, exported_values))
     self.assertAllEqual(3, self.evaluate(table2.size()))
@@ -3310,11 +3717,16 @@ class MutableHashTableOpTest(test.TestCase):
     output2 = table2.lookup(input_string)
     self.assertAllEqual(expected_output, self.evaluate(output2))
 
-  def testMutableHashTableOfTensorsInvalidShape(self):
+  def testMutableHashTableOfTensorsInvalidShape(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = constant_op.constant([-1, -1], dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
 
     # Shape [6] instead of [3, 2]
     values = constant_op.constant([0, 1, 2, 3, 4, 5], dtypes.int64)
@@ -3341,19 +3753,27 @@ class MutableHashTableOpTest(test.TestCase):
     self.evaluate(table.insert(keys, values))
     self.assertAllEqual(3, self.evaluate(table.size()))
 
-  def testMutableHashTableInvalidDefaultValue(self):
+  def testMutableHashTableInvalidDefaultValue(self, is_anonymous):
     default_val = constant_op.constant([[-1, -1]], dtypes.int64)
     with self.assertRaisesOpError("Default value must be a vector"):
-      table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                          default_val)
+      table = lookup_ops.MutableHashTable(
+          dtypes.string,
+          dtypes.int64,
+          default_val,
+          experimental_is_anonymous=is_anonymous)
       self.assertAllEqual(0, self.evaluate(table.size()))
 
-  def testMutableHashTableDuplicateInsert(self):
+  def testMutableHashTableDuplicateInsert(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery", "brain"])
     values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -3365,12 +3785,17 @@ class MutableHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([3, 1, -1], result)
 
-  def testMutableHashTableFindHighRank(self):
+  def testMutableHashTableFindHighRank(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
 
     self.evaluate(table.insert(keys, values))
     self.assertAllEqual(3, self.evaluate(table.size()))
@@ -3383,10 +3808,13 @@ class MutableHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([[0, 1], [-1, -1]], result)
 
-  def testMutableHashTableFindWithInvalidShapeDefaultValue(self):
+  def testMutableHashTableFindWithInvalidShapeDefaultValue(self, is_anonymous):
     default_val = [-1, -1]
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
 
     input_string = constant_op.constant([["brain", "salad"], ["tank",
                                                               "tarkus"]])
@@ -3406,12 +3834,18 @@ class MutableHashTableOpTest(test.TestCase):
         "Expected shape \[2\] or \[2,2,2\] for default value, got \[1,2,2\]"):
       self.evaluate(table.lookup(input_string, invalid_default_val))
 
-  def testMutableHashTableFindHighRankScalarWithDynamicDefaultValue(self):
+  def testMutableHashTableFindHighRankScalarWithDynamicDefaultValue(
+      self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
 
     self.evaluate(table.insert(keys, values))
     self.assertAllEqual(3, self.evaluate(table.size()))
@@ -3427,12 +3861,18 @@ class MutableHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([[0, 1], [-4, -5]], result)
 
-  def testMutableHashTableFindHighRankVectorWithDynamicDefaultValue(self):
+  def testMutableHashTableFindHighRankVectorWithDynamicDefaultValue(
+      self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = [-1, -1]
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([[0, 1], [2, 3], [4, 5]], dtypes.int64)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
 
     self.evaluate(table.insert(keys, values))
     self.assertAllEqual(3, self.evaluate(table.size()))
@@ -3448,12 +3888,17 @@ class MutableHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([[[0, 1], [2, 3]], [[-6, -7], [-8, -9]]], result)
 
-  def testMutableHashTableInsertHighRank(self):
+  def testMutableHashTableInsertHighRank(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = constant_op.constant([["brain", "salad"], ["surgery", "tank"]])
     values = constant_op.constant([[0, 1], [2, 3]], dtypes.int64)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
 
     self.evaluate(table.insert(keys, values))
     self.assertAllEqual(4, self.evaluate(table.size()))
@@ -3464,12 +3909,17 @@ class MutableHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, 3, -1], result)
 
-  def testMutableHashTableRemoveHighRank(self):
+  def testMutableHashTableRemoveHighRank(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = constant_op.constant([["brain", "salad"], ["surgery", "tank"]])
     values = constant_op.constant([[0, 1], [2, 3]], dtypes.int64)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
 
     self.evaluate(table.insert(keys, values))
     self.assertAllEqual(4, self.evaluate(table.size()))
@@ -3484,13 +3934,18 @@ class MutableHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([0, -1, 3, -1], result)
 
-  def testMutableHashTableOfTensorsFindHighRank(self):
+  def testMutableHashTableOfTensorsFindHighRank(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = constant_op.constant([-1, -1, -1], dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([[0, 1, 2], [2, 3, 4], [4, 5, 6]],
                                   dtypes.int64)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
 
     self.evaluate(table.insert(keys, values))
     self.assertAllEqual(3, self.evaluate(table.size()))
@@ -3504,13 +3959,18 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertAllEqual(
         [[[0, 1, 2], [2, 3, 4]], [[-1, -1, -1], [-1, -1, -1]]], result)
 
-  def testMutableHashTableOfTensorsRemoveHighRank(self):
+  def testMutableHashTableOfTensorsRemoveHighRank(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = constant_op.constant([-1, -1, -1], dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([[0, 1, 2], [2, 3, 4], [4, 5, 6]],
                                   dtypes.int64)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
 
     self.evaluate(table.insert(keys, values))
     self.assertAllEqual(3, self.evaluate(table.size()))
@@ -3528,17 +3988,28 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertAllEqual(
         [[[-1, -1, -1], [2, 3, 4]], [[4, 5, 6], [-1, -1, -1]]], result)
 
-  def testMultipleMutableHashTables(self):
+  def testMultipleMutableHashTables(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
 
-    table1 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                         default_val)
-    table2 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                         default_val)
-    table3 = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                         default_val)
+    table1 = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
+    table2 = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
+    table3 = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.evaluate(table1.insert(keys, values))
     self.evaluate(table2.insert(keys, values))
     self.evaluate(table3.insert(keys, values))
@@ -3557,12 +4028,17 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertAllEqual([0, 1, -1], out2)
     self.assertAllEqual([0, 1, -1], out3)
 
-  def testMutableHashTableWithTensorDefault(self):
+  def testMutableHashTableWithTensorDefault(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = constant_op.constant(-1, dtypes.int64)
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
 
     self.evaluate(table.insert(keys, values))
     self.assertAllEqual(3, self.evaluate(table.size()))
@@ -3573,12 +4049,17 @@ class MutableHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, -1], result)
 
-  def testSignatureMismatch(self):
+  def testSignatureMismatch(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.int64,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
 
     # insert with keys of the wrong type
     with self.assertRaises(ValueError):
@@ -3611,14 +4092,23 @@ class MutableHashTableOpTest(test.TestCase):
 
     # default value of the wrong type
     with self.assertRaises(TypeError):
-      lookup_ops.MutableHashTable(dtypes.string, dtypes.int64, "UNK")
+      lookup_ops.MutableHashTable(
+          dtypes.string,
+          dtypes.int64,
+          "UNK",
+          experimental_is_anonymous=is_anonymous)
 
-  def testMutableHashTableStringFloat(self):
+  def testMutableHashTableStringFloat(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1.5
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1.1, 2.2], dtypes.float32)
-    table = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.float32,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -3630,12 +4120,17 @@ class MutableHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllClose([0, 1.1, default_val], result)
 
-  def testMutableHashTableIntFloat(self):
+  def testMutableHashTableIntFloat(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = -1.0
     keys = constant_op.constant([3, 7, 0], dtypes.int64)
     values = constant_op.constant([7.5, -1.2, 9.9], dtypes.float32)
-    table = lookup_ops.MutableHashTable(dtypes.int64, dtypes.float32,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.int64,
+        dtypes.float32,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -3647,12 +4142,17 @@ class MutableHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllClose([-1.2, 9.9, default_val], result)
 
-  def testMutableHashTableInt64String(self):
+  def testMutableHashTableInt64String(self, is_anonymous):
+    if is_anonymous and not tf2.enabled():
+      self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)
     default_val = "n/a"
     keys = constant_op.constant([0, 1, 2], dtypes.int64)
     values = constant_op.constant(["brain", "salad", "surgery"])
-    table = lookup_ops.MutableHashTable(dtypes.int64, dtypes.string,
-                                        default_val)
+    table = lookup_ops.MutableHashTable(
+        dtypes.int64,
+        dtypes.string,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
     self.assertAllEqual(0, self.evaluate(table.size()))
 
     self.evaluate(table.insert(keys, values))
@@ -3664,12 +4164,13 @@ class MutableHashTableOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual((b"brain", b"salad", b"n/a"), result)
 
-  def testExportShapeInference(self):
+  def testExportShapeInference(self, is_anonymous):
     default_value = -1
     table = lookup_ops.MutableHashTable(
         dtypes.int64,
         dtypes.int64,
-        default_value=default_value)
+        default_value=default_value,
+        experimental_is_anonymous=is_anonymous)
     actual_shapes = [t.shape for t in table.export()]
     inferred_shapes = []
 

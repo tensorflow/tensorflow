@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_local_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_lookup.h"
+#include "tensorflow/core/tpu/kernels/tpu_embedding_engine_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_fingerprint_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
@@ -49,7 +50,7 @@ Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
                     tpu::kTpuMeshStateInterfaceResourceName, state)
            .ok()) {
     return errors::FailedPrecondition(
-        "The TPU system has not been initialized.");
+        "GetTpuMeshStateInterface: The TPU system has not been initialized.");
   }
   return Status::OK();
 }
@@ -274,6 +275,13 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   auto* rmgr = GetTPUConfigResourceMgr();
   auto tpu_host_config = ctx->input(0).scalar<tstring>()();
 
+  // Reset the TPU embedding engine interface if we are not the master.
+  // We need to reset the interface before initializing the host because the
+  // resetting process reset the TPU platform.
+  OP_REQUIRES_OK(ctx,
+                 DeleteIfExists<tpu::TpuEmbeddingEngineStateInterface>(
+                     rmgr, tpu::kTpuEmbeddingEngineStateInterfaceResourceName));
+
   bool is_master_worker =
       tpu::OpsApiFn()->TpuConfigurationApi_HasTPUPodStateFn();
   if (!is_master_worker) {
@@ -372,6 +380,13 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
         ctx, rmgr->Create(rmgr->default_container(),
                           tpu::kCompiledProtoCacheResourceName, proto_lookup));
   }
+
+  auto* engine_state_interface =
+      tpu::TpuEmbeddingEngineStateInterface::Create();
+  OP_REQUIRES_OK(
+      ctx, rmgr->Create(rmgr->default_container(),
+                        tpu::kTpuEmbeddingEngineStateInterfaceResourceName,
+                        engine_state_interface));
 
   Tensor* ctx_output;
   OP_REQUIRES_OK(

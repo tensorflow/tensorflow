@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for ragged_functional_ops.map_flat_values."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors

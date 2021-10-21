@@ -114,6 +114,7 @@ class BufferValueMap {
   // iterate through all buffers stabily.
   std::vector<BufferNumber> ComputeSortedBufferNumbers() const {
     std::vector<BufferNumber> buffer_numbers;
+    buffer_numbers.reserve(buffers_.size());
     for (const auto& pair : buffers_) {
       buffer_numbers.push_back(pair.first);
     }

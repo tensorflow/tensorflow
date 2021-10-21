@@ -1268,7 +1268,7 @@ Status FastParseExample(const Config& config,
     Tensor* values = &result->sparse_values.back();
 
     result->sparse_shapes.emplace_back(DT_INT64, TensorShape({2}));
-    auto shapes_shape_t = result->sparse_shapes.back().vec<int64>();
+    auto shapes_shape_t = result->sparse_shapes.back().vec<int64_t>();
     shapes_shape_t(0) = serialized.size();
     shapes_shape_t(1) = max_num_features;
 
@@ -1280,7 +1280,7 @@ Status FastParseExample(const Config& config,
       size_t delta = 0;
 
       if (indices->NumElements() > 0) {
-        int64* ix_p = &indices->matrix<int64>()(offset, 0);
+        int64* ix_p = &indices->matrix<int64_t>()(offset, 0);
         size_t example_index = first_example_of_minibatch(i);
         for (size_t example_end_index : buffer.example_end_indices) {
           size_t feature_index = 0;
@@ -1315,7 +1315,7 @@ Status FastParseExample(const Config& config,
                                        row_splits_shape);
     Tensor* row_splits = &result->ragged_splits.back();
     if (config.ragged[d].splits_dtype == DT_INT64) {
-      row_splits->flat<int64>()(0) = 0;
+      row_splits->flat<int64_t>()(0) = 0;
     } else {
       row_splits->flat<int32>()(0) = 0;
     }
@@ -1334,7 +1334,7 @@ Status FastParseExample(const Config& config,
       // Update row_splits.  row_splits are formed by concatenating the example
       // end_indices (adjusting each to start after the previous one ends).
       if (config.ragged[d].splits_dtype == DT_INT64) {
-        int64* row_splits_out = &row_splits->flat<int64>()(splits_offset);
+        int64* row_splits_out = &row_splits->flat<int64_t>()(splits_offset);
         int64_t start = *row_splits_out;
         for (size_t example_end_index : buffer.example_end_indices) {
           *++row_splits_out = start + example_end_index;
@@ -1392,8 +1392,8 @@ Status FastParseExample(const Config& config,
 
     switch (config.dense[d].dtype) {
       case DT_INT64: {
-        FillAndCopyVarLen<int64>(d, num_elements, num_elements_per_minibatch,
-                                 config, varlen_dense_buffers, &values);
+        FillAndCopyVarLen<int64_t>(d, num_elements, num_elements_per_minibatch,
+                                   config, varlen_dense_buffers, &values);
         break;
       }
       case DT_FLOAT: {

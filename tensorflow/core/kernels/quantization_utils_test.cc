@@ -771,25 +771,25 @@ void TestDivide64x2PowRound(int64 val, int64 ref) {
 void TestDivide64x2PowAll() {
   for (int64 i = 0; i < 1000; ++i) {
     TestDivide64x2PowRound<1>(
-        i, static_cast<int64>(static_cast<float>(i) / 2.0f + 0.5f));
+        i, static_cast<int64_t>(static_cast<float>(i) / 2.0f + 0.5f));
     TestDivide64x2PowRound<1>(
-        -i, static_cast<int64>(static_cast<float>(-i) / 2.0f - 0.5f));
+        -i, static_cast<int64_t>(static_cast<float>(-i) / 2.0f - 0.5f));
     TestDivide64x2PowRound<2>(
-        i, static_cast<int64>(static_cast<float>(i) / 4.0f + 0.5f));
+        i, static_cast<int64_t>(static_cast<float>(i) / 4.0f + 0.5f));
     TestDivide64x2PowRound<2>(
-        -i, static_cast<int64>(static_cast<float>(-i) / 4.0f - 0.5f));
+        -i, static_cast<int64_t>(static_cast<float>(-i) / 4.0f - 0.5f));
     TestDivide64x2PowRound<4>(
-        i, static_cast<int64>(static_cast<float>(i) / 16.0f + 0.5f));
+        i, static_cast<int64_t>(static_cast<float>(i) / 16.0f + 0.5f));
     TestDivide64x2PowRound<4>(
-        -i, static_cast<int64>(static_cast<float>(-i) / 16.0f - 0.5f));
+        -i, static_cast<int64_t>(static_cast<float>(-i) / 16.0f - 0.5f));
     TestDivide64x2PowRound<8>(
-        i, static_cast<int64>(static_cast<float>(i) / 256.0f + 0.5f));
+        i, static_cast<int64_t>(static_cast<float>(i) / 256.0f + 0.5f));
     TestDivide64x2PowRound<8>(
-        -i, static_cast<int64>(static_cast<float>(-i) / 256.0f - 0.5f));
+        -i, static_cast<int64_t>(static_cast<float>(-i) / 256.0f - 0.5f));
     TestDivide64x2PowRound<16>(
-        i, static_cast<int64>(static_cast<float>(i) / 65536.0f + 0.5f));
+        i, static_cast<int64_t>(static_cast<float>(i) / 65536.0f + 0.5f));
     TestDivide64x2PowRound<16>(
-        -i, static_cast<int64>(static_cast<float>(-i) / 65536.0f - 0.5f));
+        -i, static_cast<int64_t>(static_cast<float>(-i) / 65536.0f - 0.5f));
   }
 
   TestDivide64x2Pow<2>(100, 25);
@@ -881,10 +881,10 @@ void TestComputeLerp32x2(int32 top_left, int32 top_right, int32 bottom_left,
   int32 rets[2];
   vst1_s32(rets, ret);
   const int64 ref = ComputeRefLerp<RESOLUTION, int64>(
-      static_cast<int64>(top_left), static_cast<int64>(top_right),
-      static_cast<int64>(bottom_left), static_cast<int64>(bottom_right),
-      static_cast<int64>(x_lerp), static_cast<int64>(y_lerp));
-  EXPECT_EQ(static_cast<int64>(rets[0]), ref);
+      static_cast<int64_t>(top_left), static_cast<int64_t>(top_right),
+      static_cast<int64_t>(bottom_left), static_cast<int64_t>(bottom_right),
+      static_cast<int64_t>(x_lerp), static_cast<int64_t>(y_lerp));
+  EXPECT_EQ(static_cast<int64_t>(rets[0]), ref);
   VLOG(1) << "Lerp(32): " << top_left << ", " << top_right << ", "
           << bottom_left << ", " << bottom_right << ", " << x_lerp << ", "
           << y_lerp << ", " << rets[0] << ", " << ref;

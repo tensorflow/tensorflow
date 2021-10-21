@@ -378,6 +378,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "Print",
           "PrintV2",
           "Prod",
+          "Qr",
           "QuantizeDownAndShrinkRange",
           "QuantizeV2",
           "QuantizedAdd",

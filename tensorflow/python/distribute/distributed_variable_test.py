@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for the distributed variables library."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import os
 
@@ -82,6 +78,7 @@ def mirrored_and_tpu_strategy_combinations():
             strategy_combinations.mirrored_strategy_with_two_gpus_no_merge_call,
             strategy_combinations.tpu_strategy,
             strategy_combinations.tpu_strategy_packed_var,
+            strategy_combinations.tpu_strategy_spmd,
             strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,

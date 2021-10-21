@@ -742,6 +742,7 @@ tf_py_test(
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
@@ -1788,6 +1789,7 @@ cuda_py_test(
     name = "bias_op_deterministic_test",
     size = "medium",
     srcs = ["bias_op_deterministic_test.py"],
+    shard_count = 2,
     deps = [
         ":bias_op_base",
     ],
@@ -2555,6 +2557,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
     ],
 )
@@ -2960,6 +2963,7 @@ cuda_py_test(
     name = "xent_op_deterministic_test",
     size = "medium",
     srcs = ["xent_op_deterministic_test.py"],
+    tags = ["notsan"],  # TODO(b/200548634): Remove.
     xla_enable_strict_auto_jit = False,
     deps = [
         ":xent_op_test_base",
@@ -3135,10 +3139,9 @@ cuda_py_test(
     size = "medium",  # http://b/30603882
     timeout = "long",
     srcs = ["depthwise_conv_op_test.py"],
-    shard_count = 3,
+    shard_count = 8,
     tags = [
         "no_oss",  # TODO(b/118842098): Re-enable this test in Kokoro.
-        "notap",  # TOOD(b/195753631): Re-enable when not flaky
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -3147,6 +3150,8 @@ cuda_py_test(
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/eager:backprop",
         "//third_party/py/numpy",
     ],
 )
@@ -3396,7 +3401,6 @@ cuda_py_test(
         "no_gpu",  # b/171837334
         "no_oss",  # Test times out on oss-nightly cpu builds
         "no_pip",
-        "nogpu",  # b/171837334
         "nomac",  # b/139946976
         "notap",  # b/31080670
     ],

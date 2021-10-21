@@ -35,8 +35,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 #if GOOGLE_CUDA
@@ -247,16 +247,17 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
           done);
 
       Tensor dense_shape_t(cpu_allocator(), DT_INT64, TensorShape({rank}));
-      auto dense_shape_mutable = dense_shape_t.vec<int64>();
+      auto dense_shape_mutable = dense_shape_t.vec<int64_t>();
       for (int i = 0; i < rank; ++i) {
         dense_shape_mutable(i) = dense_tensor_shape.dim_size(i);
       }
-      auto dense_shape = const_cast<const Tensor&>(dense_shape_t).vec<int64>();
+      auto dense_shape =
+          const_cast<const Tensor&>(dense_shape_t).vec<int64_t>();
 
       Tensor batch_ptr_t(cpu_allocator(), DT_INT32,
                          TensorShape({batch_size + 1}));
       auto batch_ptr = batch_ptr_t.vec<int32>();
-      auto indices = indices_t.matrix<int64>();
+      auto indices = indices_t.matrix<int64_t>();
 
       batch_ptr(0) = 0;
       for (int i = 0; i < batch_size; ++i) {

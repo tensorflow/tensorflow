@@ -636,6 +636,11 @@ OpDefBuilder& OpDefBuilder::SetTypeConstructor(OpTypeConstructor c) {
   return *this;
 }
 
+OpDefBuilder& OpDefBuilder::SetForwardTypeFn(ForwardTypeInferenceFn f) {
+  op_reg_data_.fwd_type_fn = f;
+  return *this;
+}
+
 OpDefBuilder& OpDefBuilder::SetShapeFn(OpShapeInferenceFn fn) {
   if (op_reg_data_.shape_inference_fn != nullptr) {
     errors_.push_back(

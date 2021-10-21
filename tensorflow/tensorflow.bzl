@@ -55,7 +55,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.7.0"
+VERSION = "2.8.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -2236,9 +2236,9 @@ def py_binary(name, deps = [], **kwargs):
         **kwargs
     )
 
-def pytype_library(**kwargs):
+def pytype_library(name, pytype_deps = [], pytype_srcs = [], **kwargs):
     # Types not enforced in OSS.
-    native.py_library(**kwargs)
+    native.py_library(name = name, **kwargs)
 
 def tf_py_test(
         name,

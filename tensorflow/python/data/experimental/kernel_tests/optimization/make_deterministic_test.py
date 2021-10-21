@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the `MakeDeterministic` optimization."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import time
 
@@ -34,10 +30,13 @@ from tensorflow.python.data.ops import readers as reader_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import config
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -81,9 +80,6 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       else:
         dataset = dataset.interleave(
             interleave_fn, cycle_length=5, num_parallel_calls=3)
-      options = options_lib.Options()
-      options.experimental_optimization.apply_default_optimizations = False
-      dataset = dataset.with_options(options)
       self.evaluate(variables.global_variables_initializer())
       expected_output = list(zip([0] * 5 + [1] * 5, range(1, 11)))
       self.assertDatasetProduces(
@@ -110,11 +106,37 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       dataset = dataset_ops.Dataset.range(5)
       dataset = dataset.map(map_fn, num_parallel_calls=5)
-      options = options_lib.Options()
-      options.experimental_optimization.apply_default_optimizations = False
-      dataset = dataset.with_options(options)
       self.evaluate(variables.global_variables_initializer())
       expected_output = list(zip(range(0, 5), range(1, 6)))
+      self.assertDatasetProduces(
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(use_function=[False, True])))
+  def test_stateful_ops_batch(self, use_function):
+    with test_util.deterministic_ops():
+
+      v = variables.Variable(0.)
+
+      def map_fn(x):
+        return (x, v.read_value())
+
+      if use_function:
+        map_fn = def_function.function(map_fn)
+
+      dataset = dataset_ops.Dataset.range(5)
+      dataset = dataset.map(map_fn)
+      dataset = dataset.apply(testing.assert_next(["Batch"]))
+      dataset = dataset.batch(2, num_parallel_calls=2)
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = [
+          (np.array([0, 1]), np.array([0, 0])),
+          (np.array([2, 3]), np.array([0, 0])),
+          (np.array([4]), np.array([0])),
+      ]
       self.assertDatasetProduces(
           dataset,
           expected_output=expected_output,
@@ -140,17 +162,12 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
         map_fn = def_function.function(map_fn)
 
       dataset = dataset_ops.Dataset.range(5)
-      dataset = dataset.apply(testing.assert_next(["MapAndBatch"]))
       if use_legacy_map_and_batch:
         dataset = dataset.apply(batching.map_and_batch(map_fn, 2,
                                                        num_parallel_calls=5))
       else:
         dataset = dataset.map(map_fn, num_parallel_calls=5)
         dataset = dataset.batch(2)
-      options = options_lib.Options()
-      options.experimental_optimization.apply_default_optimizations = False
-      options.experimental_optimization.map_and_batch_fusion = True
-      dataset = dataset.with_options(options)
       self.evaluate(variables.global_variables_initializer())
       expected_output = [
           (np.array([0, 1]), np.array([1, 2])),
@@ -189,9 +206,6 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset = dataset.apply(testing.assert_next(["ParallelInterleave"]))
         dataset = dataset.interleave(
             interleave_fn, cycle_length=5, num_parallel_calls=3)
-      options = options_lib.Options()
-      options.experimental_optimization.apply_default_optimizations = False
-      dataset = dataset.with_options(options)
       self.evaluate(variables.global_variables_initializer())
       self.assertDatasetProduces(dataset, expected_output=[0] * 5 + [1] * 5)
 
@@ -211,17 +225,16 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset_ops.Dataset.range(5)
       dataset = dataset.apply(testing.assert_next(["ParallelMap"]))
       dataset = dataset.map(map_fn, num_parallel_calls=5)
-      options = options_lib.Options()
-      options.experimental_optimization.apply_default_optimizations = False
-      dataset = dataset.with_options(options)
       self.evaluate(variables.global_variables_initializer())
       expected_output = range(1, 6)
       self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(use_function=[False, True])))
-  def test_text_line_dataset(self, use_function):
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              use_function=[False, True], use_control_flow=[False, True])))
+  def test_text_line_dataset(self, use_function, use_control_flow):
     self._set_seed()
     with test_util.deterministic_ops():
 
@@ -235,8 +248,17 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       f2 = write_nums_to_file("f2", (4, 5, 6))
       f3 = write_nums_to_file("f3", (7, 8, 9))
 
-      def interleave_fn(filename):
-        return reader_ops.TextLineDataset(filename)
+      if use_control_flow:
+        def interleave_fn(filename):
+          # Test function that uses control flow. The True branch is never taken
+          concat = string_ops.string_join([filename, "abc"])
+          return control_flow_ops.cond(
+              math_ops.equal(filename, "abc"),
+              lambda: reader_ops.TextLineDataset(concat),
+              lambda: reader_ops.TextLineDataset(filename))
+      else:
+        def interleave_fn(filename):
+          return reader_ops.TextLineDataset(filename)
 
       if use_function:
         interleave_fn = def_function.function(interleave_fn)
@@ -245,9 +267,6 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.apply(testing.assert_next(["ParallelInterleave"]))
       dataset = dataset.interleave(
           interleave_fn, cycle_length=3, num_parallel_calls=3)
-      options = options_lib.Options()
-      options.experimental_optimization.apply_default_optimizations = False
-      dataset = dataset.with_options(options)
 
       self.assertDatasetProduces(
           dataset,
@@ -283,8 +302,30 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertDatasetProduces(dataset, expected_output=range(100))
 
   @combinations.generate(test_base.default_test_combinations())
+  def test_rewrite_prefetch(self):
+    with test_util.deterministic_ops():
+      v = variables.Variable(-1, dtype=dtypes.int64)
+
+      def map_fn(x):
+        v.assign(x)
+        return x
+
+      dataset = dataset_ops.Dataset.range(5)
+      dataset = dataset.map(map_fn)
+      dataset = dataset.prefetch(5)
+      self.evaluate(variables.global_variables_initializer())
+      get_next = self.getNext(dataset, requires_initialization=True)
+      self.assertEqual(self.evaluate(v), -1)
+      self.assertEqual(self.evaluate(get_next()), 0)
+      time.sleep(0.01)
+      self.assertEqual(self.evaluate(v), 0)
+      self.assertEqual(self.evaluate(get_next()), 1)
+      time.sleep(0.01)
+      self.assertEqual(self.evaluate(v), 1)
+
+  @combinations.generate(test_base.default_test_combinations())
   def test_no_determinism(self):
-    config.enable_deterministic_ops(False)
+    config.disable_op_determinism()
     v = variables.Variable(0.)
 
     def interleave_fn(x):
@@ -296,9 +337,6 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.apply(testing.assert_next(["ParallelInterleave"]))
     dataset = dataset.interleave(
         interleave_fn, cycle_length=5, num_parallel_calls=3)
-    options = options_lib.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    dataset = dataset.with_options(options)
     self.evaluate(variables.global_variables_initializer())
     expected_output = [0] * 5 + [1] * 5
     self.assertDatasetProduces(

@@ -3,21 +3,21 @@
 // CHECK-LABEL: @matmul_dynamic
 func @matmul_dynamic(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>,
                      %arg2: memref<?x?xf32>) {
-  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
-  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
 
   // CHECK: %[[M:.*]] = memref.dim %arg0, %[[C0]]
   // CHECK: %[[K:.*]] = memref.dim %arg0, %[[C1]]
   // CHECK: %[[N:.*]] = memref.dim %arg1, %[[C1]]
 
-  // CHECK: %[[M_ONE:.*]] = cmpi eq, %[[M]], %[[C1]]
-  // CHECK: %[[N_ONE:.*]] = cmpi eq, %[[N]], %[[C1]]
-  // CHECK: %[[M_NOT_ONE:.*]] = cmpi ne, %[[M]], %[[C1]]
-  // CHECK: %[[N_NOT_ONE:.*]] = cmpi ne, %[[N]], %[[C1]]
+  // CHECK: %[[M_ONE:.*]] = arith.cmpi eq, %[[M]], %[[C1]]
+  // CHECK: %[[N_ONE:.*]] = arith.cmpi eq, %[[N]], %[[C1]]
+  // CHECK: %[[M_NOT_ONE:.*]] = arith.cmpi ne, %[[M]], %[[C1]]
+  // CHECK: %[[N_NOT_ONE:.*]] = arith.cmpi ne, %[[N]], %[[C1]]
 
-  // CHECK: %[[IS_DOT:.*]] = and %[[M_ONE]], %[[N_ONE]]
-  // CHECK: %[[IS_VECMAT:.*]] = and %[[M_ONE]], %[[N_NOT_ONE]]
-  // CHECK: %[[IS_MATVEC:.*]] = and %[[N_ONE]], %[[M_NOT_ONE]]
+  // CHECK: %[[IS_DOT:.*]] = arith.andi %[[M_ONE]], %[[N_ONE]]
+  // CHECK: %[[IS_VECMAT:.*]] = arith.andi %[[M_ONE]], %[[N_NOT_ONE]]
+  // CHECK: %[[IS_MATVEC:.*]] = arith.andi %[[N_ONE]], %[[M_NOT_ONE]]
 
   // CHECK: scf.if %[[IS_DOT]] {
   // CHECK: memref.reinterpret_cast %arg0 {{.*}} to memref<?xf32>
@@ -48,20 +48,20 @@ func @matmul_dynamic(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>,
 // CHECK-LABEL: @matmul_static_k
 func @matmul_static_k(%arg0: memref<?x4xf32>, %arg1: memref<4x?xf32>,
                       %arg2: memref<?x?xf32>) {
-  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
-  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
 
   // CHECK: %[[M:.*]] = memref.dim %arg0, %[[C0]]
   // CHECK: %[[N:.*]] = memref.dim %arg1, %[[C1]]
 
-  // CHECK: %[[M_ONE:.*]] = cmpi eq, %[[M]], %[[C1]]
-  // CHECK: %[[N_ONE:.*]] = cmpi eq, %[[N]], %[[C1]]
-  // CHECK: %[[M_NOT_ONE:.*]] = cmpi ne, %[[M]], %[[C1]]
-  // CHECK: %[[N_NOT_ONE:.*]] = cmpi ne, %[[N]], %[[C1]]
+  // CHECK: %[[M_ONE:.*]] = arith.cmpi eq, %[[M]], %[[C1]]
+  // CHECK: %[[N_ONE:.*]] = arith.cmpi eq, %[[N]], %[[C1]]
+  // CHECK: %[[M_NOT_ONE:.*]] = arith.cmpi ne, %[[M]], %[[C1]]
+  // CHECK: %[[N_NOT_ONE:.*]] = arith.cmpi ne, %[[N]], %[[C1]]
 
-  // CHECK: %[[IS_DOT:.*]] = and %[[M_ONE]], %[[N_ONE]]
-  // CHECK: %[[IS_VECMAT:.*]] = and %[[M_ONE]], %[[N_NOT_ONE]]
-  // CHECK: %[[IS_MATVEC:.*]] = and %[[N_ONE]], %[[M_NOT_ONE]]
+  // CHECK: %[[IS_DOT:.*]] = arith.andi %[[M_ONE]], %[[N_ONE]]
+  // CHECK: %[[IS_VECMAT:.*]] = arith.andi %[[M_ONE]], %[[N_NOT_ONE]]
+  // CHECK: %[[IS_MATVEC:.*]] = arith.andi %[[N_ONE]], %[[M_NOT_ONE]]
 
   // CHECK: scf.if %[[IS_DOT]] {
   // CHECK: memref.reinterpret_cast %arg0 {{.*}} to memref<4xf32>

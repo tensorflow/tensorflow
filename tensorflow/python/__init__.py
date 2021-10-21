@@ -17,10 +17,6 @@
 Programs that want to build TensorFlow Ops and Graphs without having to import
 the constructors and utilities individually can import this file:
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 import tensorflow as tf
 """

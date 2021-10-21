@@ -14,10 +14,6 @@
 # ==============================================================================
 """Reader class for tfdbg v2 debug events."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os
 import threading

@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/platform/logging.h"
 
 #define DEBUG_TYPE "tf-executor-tpu-v1-island-coarsening"
@@ -61,16 +62,8 @@ constexpr llvm::StringRef kTpuStatusAttr = "_tpu_compilation_status";
 // TPU-annotated operations and intended to preserve backward compatibility with
 // TFv1.
 struct TpuV1BridgeExecutorIslandCoarsening
-    : public PassWrapper<TpuV1BridgeExecutorIslandCoarsening,
-                         OperationPass<ModuleOp>> {
-  StringRef getArgument() const final {
-    return "tf-executor-tpu-v1-island-coarsening";
-  }
-
-  StringRef getDescription() const final {
-    return "Merges TPU clusters IslandOps, intended for V1 compatibility mode";
-  }
-
+    : public TF::TpuV1BridgeExecutorIslandCoarseningPassBase<
+          TpuV1BridgeExecutorIslandCoarsening> {
   void runOnOperation() override;
 };
 
@@ -398,8 +391,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandCoarseningPass() {
   return std::make_unique<TpuV1BridgeExecutorIslandCoarsening>();
 }
-
-static PassRegistration<TpuV1BridgeExecutorIslandCoarsening> tpu_pass;
 
 }  // namespace tf_executor
 }  // namespace mlir

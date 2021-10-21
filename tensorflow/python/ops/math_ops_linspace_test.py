@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops.linspace."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # Using distutils.version.LooseVersion was resulting in an error, so importing
 # directly.
 from distutils.version import LooseVersion  # pylint: disable=g-importing-member

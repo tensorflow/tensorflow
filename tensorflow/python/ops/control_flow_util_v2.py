@@ -15,10 +15,6 @@
 
 """Utilities for V2 control flow."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context

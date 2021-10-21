@@ -13,15 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.zip()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 from absl.testing import parameterized
 
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -160,6 +157,118 @@ class ZipCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   )
   def test(self, verify_fn, elements):
     verify_fn(self, lambda: self._build_dataset(elements), len(elements))
+
+
+class ZipRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 3, 4])))
+  def testInvalidIndex(self, index):
+    dataset = dataset_ops.Dataset.zip(
+        (dataset_ops.Dataset.range(1, 4), dataset_ops.Dataset.range(4, 7)))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 0])))
+  def testEmptyDataset(self, index):
+    dataset = dataset_ops.Dataset.zip(
+        datasets=(dataset_ops.Dataset.from_tensor_slices([]),
+                  dataset_ops.Dataset.from_tensor_slices([])))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testZipBasic(self):
+    dataset = dataset_ops.Dataset.zip(
+        (dataset_ops.Dataset.range(1, 4), dataset_ops.Dataset.range(4, 7)))
+    expected_dataset = [(1, 4), (2, 5), (3, 6)]
+    for i in range(3):
+      self.assertEqual(
+          self.evaluate(random_access.at(dataset, index=i)),
+          expected_dataset[i])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testZipEqual(self):
+    components = [
+        np.tile(np.array([[1], [2], [3], [4]]), 20),
+        np.tile(np.array([[12], [13], [14], [15]]), 22),
+        np.array([37.0, 38.0, 39.0, 40.0])
+    ]
+    dataset = _dataset_factory(components)
+    for i in range(4):
+      results = self.evaluate(random_access.at(dataset, index=i))
+      for component, result_component in zip(components, results):
+        self.assertAllEqual(component[i], result_component)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=4))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testZipUnequal(self):
+    components = [[1, 2, 3, 4], [1, 2, 3, 4, 5], [1.0, 2.0]]
+    dataset = _dataset_factory(components)
+    for i in range(2):
+      results = self.evaluate(random_access.at(dataset, index=i))
+      for component, result_component in zip(components, results):
+        self.assertAllEqual(component[i], result_component)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=2))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNested(self):
+    components = [
+        np.tile(np.array([[1], [2], [3], [4]]), 20),
+        np.tile(np.array([[12], [13], [14], [15]]), 22),
+        np.array([37.0, 38.0, 39.0, 40.0])
+    ]
+    datasets = [
+        dataset_ops.Dataset.from_tensor_slices(component)
+        for component in components
+    ]
+    dataset = dataset_ops.Dataset.zip((datasets[0], (datasets[1], datasets[2])))
+    for i in range(4):
+      result1, (result2,
+                result3) = self.evaluate(random_access.at(dataset, index=i))
+      self.assertAllEqual(components[0][i], result1)
+      self.assertAllEqual(components[1][i], result2)
+      self.assertAllEqual(components[2][i], result3)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=4))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNamedTuple(self):
+    Foo = collections.namedtuple("Foo", ["x", "y"])
+    x = Foo(x=dataset_ops.Dataset.range(3), y=dataset_ops.Dataset.range(3, 6))
+    dataset = dataset_ops.Dataset.zip(x)
+    expected = [Foo(x=0, y=3), Foo(x=1, y=4), Foo(x=2, y=5)]
+    for i in range(3):
+      self.assertAllEqual(
+          self.evaluate(random_access.at(dataset, index=i)), expected[i])
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=4))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testAttrs(self):
+    if attr is None:
+      self.skipTest("attr module is not available.")
+
+    @attr.s
+    class Foo(object):
+      x = attr.ib()
+      y = attr.ib()
+
+    x = Foo(x=dataset_ops.Dataset.range(3), y=dataset_ops.Dataset.range(3, 6))
+    dataset = dataset_ops.Dataset.zip(x)
+    expected = [Foo(x=0, y=3), Foo(x=1, y=4), Foo(x=2, y=5)]
+    for i in range(3):
+      self.assertAllEqual(
+          self.evaluate(random_access.at(dataset, index=i)), expected[i])
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=4))
 
 
 if __name__ == "__main__":

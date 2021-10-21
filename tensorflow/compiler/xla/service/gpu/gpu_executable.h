@@ -52,6 +52,7 @@ namespace gpu {
 class GpuExecutable : public Executable {
   struct BefBufferDeleter {
     void operator()(uint8_t* ptr) const;
+    std::string entry_function_name;
     size_t size;
   };
 
@@ -89,7 +90,15 @@ class GpuExecutable : public Executable {
     std::string module_name;
     xla::Shape output_shape;
     std::vector<BufferAllocation> allocations;
-    std::unique_ptr<BufferAssignmentProto> debug_buffer_assignment;
+    std::unique_ptr<BufferAssignmentProto> debug_buffer_assignment = nullptr;
+
+    // A callable that dumps out a debug string upon device OOM. It's not the
+    // string itself, as the string can be huge and increase peak host memory
+    // usage for the common (non-OOM) case.
+    std::function<std::string()> verbose_buffer_assignment_string_dumper = [] {
+      return std::string();
+    };
+
     std::unique_ptr<HloModule> debug_module = nullptr;
     size_t entry_computation_profile_index = 0;
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data = nullptr;
@@ -142,6 +151,8 @@ class GpuExecutable : public Executable {
   absl::Span<const BufferAllocation> GetAllocations() const {
     return allocations_;
   }
+
+  const std::vector<ConstantInfo>& constants() const { return constants_; }
 
  private:
   // If `block_host_until_done` is false, execution will not block the host
@@ -214,6 +225,7 @@ class GpuExecutable : public Executable {
   const std::vector<BufferAllocation> allocations_;
 
   std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
+  std::function<std::string()> verbose_buffer_assignment_string_dumper_;
 
   size_t entry_computation_profile_index_ = -1;
 

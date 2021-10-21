@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functions called by the generated code to execute an eager-mode op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import six
 
 from google.protobuf import text_format

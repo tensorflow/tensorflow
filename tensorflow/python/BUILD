@@ -84,6 +84,11 @@ py_library(
     ],
 )
 
+# Some of the dependencies in keras_lib are possibly outdated or not generally
+# useful, so a future task is to determine a good set of dependencies.
+# keras_lib may be removed in the future, it should NOT be used as
+# a direct dependency.
+# TODO(b/199420795) investigate minimal set of dependencies ...
 py_library(
     name = "keras_lib",
     srcs_version = "PY3",
@@ -271,6 +276,7 @@ py_library(
     ],
     deps = [
         ":no_contrib",
+        "//tensorflow/python/distribute:merge_call_interim",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
     ],
@@ -432,6 +438,15 @@ py_library(
 py_library(
     name = "extra_py_tests_deps",
     srcs_version = "PY3",
+    # extra_py_tests_deps is public to allow the use of tf_py_test or
+    # cuda_py_test build rules for out-of-tree custom ops.
+    # extra_py_tests_deps should NOT be used as dependency directly
+    # in out-of-tree BUILD files.
+    # Some of the dependencies in :keras_lib are possibly outdated
+    # or not generally useful, so a future task is to determine a good
+    # set of dependencies.
+    # TODO(b/199420795) investigate minimal set of dependencies ...
+    visibility = ["//visibility:public"],
     deps = [
         ":keras_lib",
         "//third_party/py/numpy",
@@ -892,14 +907,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
-    name = "tpu_xla_ops_gen",
+    name = "tpu_partition_ops_gen",
     visibility = [
         "//tensorflow:internal",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/tpu/ops:__pkg__",
     ],
     deps = [
-        "//tensorflow/core/tpu/ops",
+        "//tensorflow/core/tpu/ops:tpu_partitioned_ops",
     ],
 )
 
@@ -1436,6 +1451,8 @@ py_library(
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/ops/ragged:ragged_functional_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
     ],
 )
 
@@ -1780,6 +1797,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/saved_model:registration",
         "//tensorflow/python/util",
         "@six_archive//:six",
     ],
@@ -1993,6 +2011,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework",
+        "//tensorflow/python/ops/ragged:ragged_math_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
     ],
 )
 
@@ -2151,6 +2171,8 @@ py_library(
     deps = [
         ":array_ops",
         ":script_ops_gen",
+        "//tensorflow/python/eager:backprop_util",
+        "//tensorflow/python/eager:tape",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/lib/core:_pywrap_py_func",
         "//third_party/py/numpy",
@@ -2896,6 +2918,7 @@ cuda_py_test(
         ":math_ops",
         ":platform_test",
         ":variables",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
@@ -3959,6 +3982,7 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:tfe_cancellationmanager_internal_hdrs_only",
+        "//tensorflow/c/eager:tfe_op_internal",
         "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",

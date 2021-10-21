@@ -16,10 +16,8 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
-#endif
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -401,12 +399,13 @@ class WhileOp : public AsyncOpKernel {
   static Status CondResultToBool(OpKernelContext* ctx,
                                  const FunctionLibraryRuntime::Options& opts,
                                  const Tensor& cond_t, bool* out_result) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    bool is_pluggable = ctx->op_device_context() &&
+                        ctx->op_device_context()->IsPluggableDevice();
     const DeviceBase::GpuDeviceInfo* gpu_device_info =
         ctx->device()->tensorflow_gpu_device_info();
     const bool is_hostmem_dtype =
         cond_t.dtype() == DT_INT32 || cond_t.dtype() == DT_INT64;
-    if (!is_hostmem_dtype && gpu_device_info &&
+    if (!is_hostmem_dtype && (is_pluggable || gpu_device_info) &&
         (opts.rets_alloc_attrs.empty() ||
          !opts.rets_alloc_attrs[0].on_host())) {
       // Copy the ret value to host if it's allocated on device.
@@ -417,7 +416,6 @@ class WhileOp : public AsyncOpKernel {
           &cond_t, /*tensor_name=*/"", device, &host_cond_t));
       return ToBool({host_cond_t}, out_result);
     }
-#endif
     return ToBool({cond_t}, out_result);
   }
 

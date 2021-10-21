@@ -272,7 +272,7 @@ StringPiece KeyedDenseTensorColumn<StringPiece>::Feature(
 template <typename OutType>
 class OutputUpdater {
  public:
-  OutputUpdater(const std::vector<int64>& output_start_indices,
+  OutputUpdater(const std::vector<int64_t>& output_start_indices,
                 Tensor* indices_out, Tensor* values_out)
       : output_start_indices_(output_start_indices),
         indices_out_(indices_out),
@@ -292,7 +292,7 @@ class OutputUpdater {
   }
 
  private:
-  const std::vector<int64>& output_start_indices_;
+  const std::vector<int64_t>& output_start_indices_;
   Tensor* indices_out_;
   Tensor* values_out_;
 };
@@ -643,10 +643,10 @@ GenerateColumnsFromInput(const OpInputList& indices_list_in,
   const int64_t batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
   const int64_t number_of_columns = shapes_list_in.size();
 
-  std::vector<std::vector<int64>> feature_counts(number_of_columns,
-                                                 std::vector<int64_t>());
-  std::vector<std::vector<int64>> feature_start_indices(number_of_columns,
-                                                        std::vector<int64_t>());
+  std::vector<std::vector<int64_t>> feature_counts(number_of_columns,
+                                                   std::vector<int64_t>());
+  std::vector<std::vector<int64_t>> feature_start_indices(
+      number_of_columns, std::vector<int64_t>());
 
   ExtractFeatureData(indices_list_in, batch_size, &feature_counts,
                      &feature_start_indices);
@@ -676,10 +676,10 @@ GenerateKeyedColumnsFromInput(const OpInputList& indices_list_in,
   const int64_t batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
   const int64_t number_of_columns = shapes_list_in.size();
 
-  std::vector<std::vector<int64>> feature_counts(number_of_columns,
-                                                 std::vector<int64_t>());
-  std::vector<std::vector<int64>> feature_start_indices(number_of_columns,
-                                                        std::vector<int64_t>());
+  std::vector<std::vector<int64_t>> feature_counts(number_of_columns,
+                                                   std::vector<int64_t>());
+  std::vector<std::vector<int64_t>> feature_start_indices(
+      number_of_columns, std::vector<int64_t>());
 
   ExtractFeatureData(indices_list_in, batch_size, &feature_counts,
                      &feature_start_indices);
@@ -707,7 +707,7 @@ Status CreateOutputTensors(
     const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>& columns,
     int64_t batch_size, OpKernelContext* context, Tensor** indices_out,
     Tensor** values_out, Tensor** shape_out,
-    std::vector<int64>* output_start_indices) {
+    std::vector<int64_t>* output_start_indices) {
   // Calculates dimensions for output tensors.
   int64_t cross_count_total = 0;
   int64_t max_cross_count = 0;
@@ -927,7 +927,7 @@ class SparseCrossHashedOp : public OpKernel {
     auto do_work = [&columns, crosser, updater, strong_hash](int64_t begin,
                                                              int64_t end) {
       for (int b = begin; b < end; b++) {
-        ProductIterator<int64> product_iterator(columns, b);
+        ProductIterator<int64_t> product_iterator(columns, b);
         int64_t cross_count = 0;
         while (product_iterator.HasNext()) {
           const auto permutation = product_iterator.Next();

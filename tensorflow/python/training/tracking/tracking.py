@@ -13,10 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import copy
 import warnings
@@ -93,26 +89,27 @@ class AutoTrackable(base.Trackable):
   def _list_functions_for_serialization(self, unused_serialization_cache):
     """Return a dict of `Function`s of a trackable."""
     functions = {}
-    for attribute_name in dir(self):
+    try:
       # We get the attributes, suppressing warnings and exceptions.
       logging_verbosity = logging.get_verbosity()
-      try:
-        logging.set_verbosity(logging.FATAL)
-        with warnings.catch_warnings():
-          warnings.simplefilter("ignore")
-          attribute_value = getattr(self, attribute_name, None)
-      except Exception:  # pylint: disable=broad-except
-        # We really don't want to throw an exception just because some object's
-        # attribute accessor is broken.
-        attribute_value = None
-      finally:
-        # We reset the verbosity setting in a `finally` block, to make
-        # sure it always happens, even if we make the exception catching above
-        # be less broad.
-        logging.set_verbosity(logging_verbosity)
-      if isinstance(attribute_value, (def_function.Function,
-                                      defun.ConcreteFunction)):
-        functions[attribute_name] = attribute_value
+      logging.set_verbosity(logging.FATAL)
+      for attribute_name in dir(self):
+        try:
+          with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            attribute_value = getattr(self, attribute_name, None)
+        except Exception:  # pylint: disable=broad-except
+          # NOTE: If we make the exception catching here less broad, we might
+          # need to revisit `finally` block below.
+          # We really don't want to throw an exception just because some
+          # object's attribute accessor is broken.
+          attribute_value = None
+        if isinstance(attribute_value, (def_function.Function,
+                                        defun.ConcreteFunction)):
+          functions[attribute_name] = attribute_value
+    finally:
+      logging.set_verbosity(logging_verbosity)
+
     return functions
 
   def _delete_tracking(self, name):

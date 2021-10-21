@@ -1,0 +1,23 @@
+From 0a64f40754e234dd0ca9d216d3f1c4bf207c6362 Mon Sep 17 00:00:00 2001
+From: yashkatariya <yashkatariya@google.com>
+Date: Wed, 20 Oct 2021 14:19:24 -0700
+Subject: [PATCH] Add darwin back for TF
+
+---
+ utils/bazel/llvm-project-overlay/llvm/config.bzl | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+index ff64df694048..710e848a2aa8 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
++++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+@@ -78,6 +78,7 @@ llvm_config_defines = os_defines + select({
+     "@bazel_tools//src/conditions:windows": native_arch_defines("X86", "x86_64-pc-win32"),
+     "@bazel_tools//src/conditions:darwin_arm64": native_arch_defines("AArch64", "arm64-apple-darwin"),
+     "@bazel_tools//src/conditions:darwin_x86_64": native_arch_defines("X86", "x86_64-unknown-darwin"),
++    "@bazel_tools//src/conditions:darwin": native_arch_defines("X86", "x86_64-unknown-darwin"),
+     "@bazel_tools//src/conditions:linux_aarch64": native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
+     "//conditions:default": native_arch_defines("X86", "x86_64-unknown-linux-gnu"),
+ }) + [
+-- 
+2.33.0.1079.g6e70778dc9-goog

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
@@ -77,6 +78,15 @@ bool NeedsAsyncCommsStream(Thunk& thunk) {
   }
 }
 
+static std::string ModuleUniqueName(absl::string_view module_name,
+                                    const HloModule* module) {
+  std::string unique_id;
+  if (module != nullptr) {
+    unique_id = absl::StrCat("module.", module->unique_id(), ".");
+  }
+  return absl::StrCat(unique_id, module_name);
+}
+
 }  // namespace
 
 void GpuExecutable::BefBufferDeleter::operator()(uint8_t* ptr) const {
@@ -101,16 +111,20 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       output_shape_(params.output_shape),
       allocations_(std::move(params.allocations)),
       debug_buffer_assignment_(std::move(params.debug_buffer_assignment)),
+      verbose_buffer_assignment_string_dumper_(
+          params.verbose_buffer_assignment_string_dumper),
       entry_computation_profile_index_(params.entry_computation_profile_index),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
-  XlaDebugInfoManager::Get()->RegisterModule(module_name_, shared_module(),
-                                             debug_buffer_assignment_);
+  XlaDebugInfoManager::Get()->RegisterModule(
+      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
+      debug_buffer_assignment_);
 }
 
 GpuExecutable::~GpuExecutable() {
-  XlaDebugInfoManager::Get()->UnregisterModule(module_name_, shared_module(),
-                                               debug_buffer_assignment_);
+  XlaDebugInfoManager::Get()->UnregisterModule(
+      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
+      debug_buffer_assignment_);
 
   {
     // We could have issued host->device mem copies in ResolveConstantGlobals.
@@ -191,7 +205,6 @@ Status GpuExecutable::ExecuteThunks(
 
   absl::flat_hash_map<const Thunk*, std::unique_ptr<se::Event>>
       thunk_to_finish_event;
-  std::vector<std::function<void()>> deferred_host_callbacks;
   for (const std::unique_ptr<Thunk>& thunk : thunk_schedule.TotalOrder()) {
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
@@ -220,7 +233,6 @@ Status GpuExecutable::ExecuteThunks(
         async_comms_stream.ok() ? async_comms_stream->get() : nullptr,
         run_options->run_options().run_id(),
         run_options->run_options().device_assignment(),
-        &deferred_host_callbacks,
         gpu_options && gpu_options->gpu_global_device_ids()
             ? &*gpu_options->gpu_global_device_ids()
             : nullptr,
@@ -237,19 +249,6 @@ Status GpuExecutable::ExecuteThunks(
   }
 
   main_stream->ThenWaitFor(&sub_streams);
-  if (!deferred_host_callbacks.empty()) {
-    auto fn = [deferred_host_callbacks{std::move(deferred_host_callbacks)}]() {
-      for (auto& callback : deferred_host_callbacks) {
-        callback();
-      }
-    };
-    if (run_options->run_options().then_execute_function()) {
-      (*run_options->run_options().then_execute_function())(main_stream,
-                                                            std::move(fn));
-    } else {
-      main_stream->ThenDoHostCallback(std::move(fn));
-    }
-  }
   // Make sure kernels are completed before deallocating temporary buffers or
   // the profiler state.
   // TODO(b/30100571): we could potentially postpone deallocating the temp
@@ -365,10 +364,13 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     const int64_t buffer_size = allocation.size();
     se::DeviceMemoryBase buffer_address;
     if (buffer_size > 0) {
-      TF_ASSIGN_OR_RETURN(
-          se::OwningDeviceMemory buffer,
-          memory_allocator->Allocate(device_ordinal, buffer_size));
-      buffer_address = buffer.Release();
+      StatusOr<se::OwningDeviceMemory> buffer =
+          memory_allocator->Allocate(device_ordinal, buffer_size);
+      if (!buffer.ok()) {
+        return ResourceExhausted("%s\n%s\n", buffer.status().error_message(),
+                                 verbose_buffer_assignment_string_dumper_());
+      }
+      buffer_address = buffer->Release();
     }
     return buffer_address;
   }
@@ -525,14 +527,11 @@ tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
 
 // TODO(hanbinyoon): Support profiling analogous to ScopedAnnotation in
 // ExecuteThunks().
-static Status ExecuteBef(
-    const tfrt::RCReference<tfrt::BEFFile>& bef_file,
-    absl::string_view entry_function_name,
-    const ServiceExecutableRunOptions* run_options,
-    const BufferAllocations& buffer_allocations,
-    const std::vector<BufferAllocation>& allocations,
-    const std::set<se::DeviceMemoryBase>& buffers_in_result,
-    bool block_host_until_done) {
+static Status ExecuteBef(const tfrt::RCReference<tfrt::BEFFile>& bef_file,
+                         absl::string_view entry_function_name,
+                         const ServiceExecutableRunOptions* run_options,
+                         const BufferAllocations& buffer_allocations,
+                         size_t num_allocations, bool block_host_until_done) {
   if (!block_host_until_done) {
     return Unimplemented(
         "Currently, we always block the host until BEF execution is "
@@ -547,9 +546,9 @@ static Status ExecuteBef(
 
   // Create execution context.
   TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
+  auto resource_ctx = std::make_unique<tfrt::ResourceContext>();
   tfrt::RequestContextBuilder request_context_builder(
-      runtime_and_queue.core_runtime->GetHostContext(),
-      /*resource_context=*/nullptr);
+      runtime_and_queue.core_runtime->GetHostContext(), resource_ctx.get());
   tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
   TF_RETURN_IF_ERROR(runtime_and_queue.work_queue->InitializeRequest(
       &request_context_builder, &intra_op_threadpool));
@@ -571,17 +570,10 @@ static Status ExecuteBef(
       static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(*borrowed_stream)
           .GetAsyncValue());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
-  for (int i = 0; i < allocations.size(); i++) {
-    if (allocations[i].is_entry_computation_parameter()) {
-      auto input = buffer_allocations.GetDeviceAddress(i);
-      buffers.push_back(CreateGpuBuffer(&input));
-    }
-  }
-  for (auto output : buffers_in_result) {
-    buffers.push_back(CreateGpuBuffer(&output));
-  }
-  for (auto& buffer : buffers) {
-    args.push_back(buffer.get());
+  for (size_t i = 0; i < num_allocations; i++) {
+    auto input = buffer_allocations.GetDeviceAddress(i);
+    buffers.push_back(CreateGpuBuffer(&input));
+    args.push_back(buffers.back().get());
   }
   if (args.size() != function->num_arguments())
     return InternalError("Unexpected argument count.");
@@ -615,6 +607,13 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   const bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();
 
+  se::StreamExecutor* executor = run_options->stream()->parent();
+
+  // Lock the GPU with a shared lock so that we don't interfere with autotuning
+  // that may be running during JIT compilation while allowing multiple XLA
+  // computations to use the same GPU simultaneously.
+  auto gpu_lock = LockGpuShared(executor);
+
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {
     tensorflow::profiler::TraceMe hlo_module_activity(
@@ -623,8 +622,6 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
     TF_ASSIGN_OR_RETURN(globals, ResolveConstantGlobals(run_options->stream()));
   }
-
-  se::StreamExecutor* executor = run_options->stream()->parent();
 
   auto device_ordinal = executor->device_ordinal();
   ExecutionOutput result(/*on_device_shape=*/output_shape_, memory_allocator,
@@ -713,10 +710,14 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                    "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(output_shape_, index));
-        TF_ASSIGN_OR_RETURN(
-            se::OwningDeviceMemory allocated_buffer,
-            memory_allocator->Allocate(device_ordinal, allocation_size));
-        result_buffer = allocated_buffer.Release();
+        StatusOr<se::OwningDeviceMemory> allocated_buffer =
+            memory_allocator->Allocate(device_ordinal, allocation_size);
+        if (!allocated_buffer.ok()) {
+          return ResourceExhausted("%s\n%s\n",
+                                   allocated_buffer.status().error_message(),
+                                   verbose_buffer_assignment_string_dumper_());
+        }
+        result_buffer = allocated_buffer->Release();
         se::DeviceMemoryBase& aliased_buffer =
             buffer_allocations.GetMutableDeviceAddress(
                 output_info.allocation_index);
@@ -755,9 +756,9 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       return InternalError("Failed to load BEF file.");
     }
 
-    TF_RETURN_IF_ERROR(ExecuteBef(bef_file, module_name_, run_options,
-                                  buffer_allocations, allocations_,
-                                  buffers_in_result, block_host_until_done));
+    TF_RETURN_IF_ERROR(ExecuteBef(
+        bef_file, bef_buffer.get_deleter().entry_function_name, run_options,
+        buffer_allocations, allocations_.size(), block_host_until_done));
   } else {
     return FailedPrecondition("Expected BefBuffer is not supplied.");
   }

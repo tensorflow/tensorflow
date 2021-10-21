@@ -78,7 +78,8 @@ namespace tensorflow {
   GENERATE_BINARY_KERNEL2(tf_op, CPU, input_type, output_type)
 
 #define GENERATE_AND_REGISTER_SELECT_CPU_KERNEL(tf_op, input_type) \
-  GENERATE_AND_REGISTER_SELECT_KERNEL(tf_op, CPU, input_type)
+  GENERATE_AND_REGISTER_TERNARY_KERNEL(tf_op, CPU, input_type,     \
+                                       /*no additional_cstrs*/)
 
 }  // namespace tensorflow
 

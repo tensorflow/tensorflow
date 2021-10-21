@@ -14,10 +14,6 @@
 # ==============================================================================
 """This module contains the user- and codegen-facing API for AutoGraph."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import importlib
 import inspect

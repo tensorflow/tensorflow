@@ -63,13 +63,14 @@ inline void balance211(T n, U team, U tid, T* n_start, T* n_end) {
 struct MklDnnThreadPool : public threadpool_iface {
   MklDnnThreadPool() = default;
 
-  MklDnnThreadPool(OpKernelContext* ctx)
-      : eigen_interface_(ctx->device()
-                             ->tensorflow_cpu_worker_threads()
-                             ->workers->AsEigenThreadPool()) {}
-  virtual int get_num_threads() const override {
-    return eigen_interface_->NumThreads();
+  MklDnnThreadPool(OpKernelContext* ctx, int num_threads = -1) {
+    eigen_interface_ = ctx->device()
+                           ->tensorflow_cpu_worker_threads()
+                           ->workers->AsEigenThreadPool();
+    num_threads_ =
+        (num_threads == -1) ? eigen_interface_->NumThreads() : num_threads;
   }
+  virtual int get_num_threads() const override { return num_threads_; }
   virtual bool get_in_parallel() const override {
     return (eigen_interface_->CurrentThreadId() != -1) ? true : false;
   }
@@ -106,6 +107,7 @@ struct MklDnnThreadPool : public threadpool_iface {
 
  private:
   Eigen::ThreadPoolInterface* eigen_interface_ = nullptr;
+  int num_threads_ = 1;  // Execute in caller thread.
 };
 
 #else
@@ -114,6 +116,7 @@ struct MklDnnThreadPool : public threadpool_iface {
 struct MklDnnThreadPool {
   MklDnnThreadPool() = default;
   MklDnnThreadPool(OpKernelContext* ctx) {}
+  MklDnnThreadPool(OpKernelContext* ctx, int num_threads) {}
 };
 
 #endif  // !ENABLE_ONEDNN_OPENMP

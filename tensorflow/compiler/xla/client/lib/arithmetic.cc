@@ -172,49 +172,6 @@ XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min,
   });
 }
 
-XlaOp ArgMinMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis,
-                       bool is_min, bool tie_low) {
-  XlaBuilder* builder = input.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
-    XlaOp init_value;
-    XlaComputation reducer;
-    if (is_min) {
-      init_value = MaxValue(builder, input_shape.element_type());
-      reducer = CreateScalarMinComputation(input_shape.element_type(), builder);
-    } else {
-      init_value = MinValue(builder, input_shape.element_type());
-      reducer = CreateScalarMaxComputation(input_shape.element_type(), builder);
-    }
-
-    XlaOp iota = Iota(
-        builder, ShapeUtil::ChangeElementType(input_shape, output_type), axis);
-    XlaOp reduced_input = Reduce(input, init_value, reducer,
-                                 /*dimensions_to_reduce=*/{axis});
-    std::vector<int64_t> broadcast_dims(input_shape.rank() - 1);
-    std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
-    std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
-    if (tie_low) {
-      XlaOp max_idx = MaxValue(builder, output_type);
-      XlaOp select_mask = Select(Eq(input, reduced_input, broadcast_dims),
-                                 /*on_true=*/iota,
-                                 /*on_false=*/
-                                 max_idx);
-      return Reduce(select_mask, max_idx,
-                    CreateScalarMinComputation(output_type, builder),
-                    /*dimensions_to_reduce=*/{axis});
-    } else {
-      XlaOp min_idx = MinValue(builder, output_type);
-      XlaOp select_mask = Select(Eq(input, reduced_input, broadcast_dims),
-                                 /*on_true=*/iota,
-                                 /*on_false=*/
-                                 min_idx);
-      return Reduce(select_mask, min_idx,
-                    CreateScalarMaxComputation(output_type, builder),
-                    /*dimensions_to_reduce=*/{axis});
-    }
-  });
-}
 }  // namespace
 
 XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis, bool stable,
@@ -227,13 +184,4 @@ XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis, bool stable,
   return ArgMinMax(input, output_type, axis, /*is_min=*/true, stable, tie_low);
 }
 
-XlaOp ArgMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis,
-                    bool tie_low) {
-  return ArgMinMaxTwoPass(input, output_type, axis, /*is_min=*/false, tie_low);
-}
-
-XlaOp ArgMinTwoPass(XlaOp input, PrimitiveType output_type, int axis,
-                    bool tie_low) {
-  return ArgMinMaxTwoPass(input, output_type, axis, /*is_min=*/true, tie_low);
-}
 }  // namespace xla

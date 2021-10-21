@@ -145,6 +145,7 @@ enum StatType {
   kChipOrdinal,
   kNodeOrdinal,
   kModelId,
+  kQueueId,
   kQueueAddr,
   kRequestId,
   kRunId,
@@ -187,7 +188,6 @@ enum StatType {
   kMemFreeDetails,
   kMemsetDetails,
   kMemoryResidencyDetails,
-  kKernelAnnotation,
   kNVTXRange,
   kKernelDetails,
   kStream,
@@ -199,6 +199,7 @@ enum StatType {
   kTfOp,
   kHloOp,
   kHloModule,
+  kProgramId,
   kEquation,
   kIsEager,
   kTfFunctionCall,
@@ -214,8 +215,6 @@ enum StatType {
   kScaledValue,
   kThreadId,
   // XLA metadata map related.
-  kSelfDurationPs,
-  kMinDurationPs,
   kHloProto,
   // Device capability related.
   kDevCapClockRateKHz,

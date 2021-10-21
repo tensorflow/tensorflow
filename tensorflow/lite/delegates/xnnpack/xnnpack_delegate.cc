@@ -845,6 +845,22 @@ class Subgraph {
       return kTfLiteError;
     }
 
+    if (params->stride_width > params->filter_width) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context,
+          "unsupported width stride %d exceeding filter width %d in node #%d",
+          params->stride_width, params->filter_width, node_index);
+      return kTfLiteError;
+    }
+
+    if (params->stride_height > params->filter_height) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context,
+          "unsupported height stride %d exceeding filter height %d in node #%d",
+          params->stride_height, params->filter_height, node_index);
+      return kTfLiteError;
+    }
+
     if (params->filter_width == 1 && params->filter_height == 1 &&
         std::max(params->stride_width, params->stride_height) > 1) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
@@ -2038,13 +2054,13 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt8Type(
         logging_context, input_tensor, node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input_tensor, node->inputs->data[0], node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt8Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));

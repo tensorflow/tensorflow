@@ -61,6 +61,25 @@ int64_t FindMissingDnum(absl::Span<const int64_t> vals) {
   return vals.size();
 }
 
+// Returns a mutex that can be used to lock the given stream executor.
+tensorflow::mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  // se::Platform*s are global singletons guaranteed to live forever.
+  static auto* mutexes =
+      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64_t>,
+                   tensorflow::mutex>();
+
+  tensorflow::mutex_lock global_lock(mu);
+  auto it = mutexes
+                ->emplace(std::piecewise_construct,
+                          std::make_tuple(stream_exec->platform(),
+                                          stream_exec->device_ordinal()),
+                          std::make_tuple())
+                .first;
+
+  return it->second;
+}
+
 }  // anonymous namespace
 
 StatusOr<std::tuple<Layout, Layout, Layout>>
@@ -310,20 +329,14 @@ FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
 }
 
 tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  // se::Platform*s are global singletons guaranteed to live forever.
-  static auto* mutexes =
-      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64_t>,
-                   tensorflow::mutex>();
+  tensorflow::mutex& mu = GetGpuMutex(stream_exec);
+  return tensorflow::mutex_lock{mu};
+}
 
-  tensorflow::mutex_lock global_lock(mu);
-  auto it = mutexes
-                ->emplace(std::piecewise_construct,
-                          std::make_tuple(stream_exec->platform(),
-                                          stream_exec->device_ordinal()),
-                          std::make_tuple())
-                .first;
-  return tensorflow::mutex_lock{it->second};
+tensorflow::tf_shared_lock LockGpuShared(
+    const se::StreamExecutor* stream_exec) {
+  tensorflow::mutex& mu = GetGpuMutex(stream_exec);
+  return tensorflow::tf_shared_lock{mu};
 }
 
 StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
@@ -460,6 +473,8 @@ StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
       return se::dnn::BACKWARD_DATA;
     case CudnnConvKind::kForward:
       return se::dnn::FORWARD;
+    case CudnnConvKind::kForwardActivation:
+      return se::dnn::FORWARD_BIAS_ACTIVATION;
     default:
       break;
   }
@@ -511,10 +526,13 @@ StatusOr<AutotuneResult> PickBestResult(
       });
 
   if (filtered_results.empty()) {
-    return InternalError(
-        "All algorithms tried for %s failed. Falling back to "
-        "default algorithm. ",
-        instr.ToString());
+    std::ostringstream msg;
+    msg << "All algorithms tried for " << instr.ToString()
+        << " failed. Falling back to default algorithm.  Per-algorithm errors:";
+    for (const auto& result : profile_results) {
+      msg << "\n  " << result.failure().msg();
+    }
+    return InternalError("%s", msg.str());
   }
 
   auto selected_result = filtered_results.begin();

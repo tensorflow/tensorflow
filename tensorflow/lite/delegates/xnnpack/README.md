@@ -371,6 +371,10 @@ Below is the list of currently supported quantized operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `ELU`
+
+* Inputs and outputs must be in 8-bit signed quantized format.
+
 #### `FULLY_CONNECTED`
 
 * Inputs and outputs must be in 8-bit quantized format (bias, if present, must

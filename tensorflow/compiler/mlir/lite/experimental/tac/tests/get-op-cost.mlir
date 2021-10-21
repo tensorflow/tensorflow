@@ -39,7 +39,7 @@ func @pack_CPU(%arg0: tensor<100xf32>, %arg1: tensor<100xf32>) -> tensor<2x100xf
 }
 
 func @concat_reshape_GPU(%arg0: tensor<100xf32>, %arg1: tensor<100xf32>) -> tensor<2x100xf32> attributes {tac.device = "GPU", tac.interface_name = "func_2"} {
-  %cst = constant dense<[2, 100]> : tensor<2xi64>
+  %cst = arith.constant dense<[2, 100]> : tensor<2xi64>
   // CHECK: tac.cost = 4.000000e+01
   %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE", tac.device = "GPU"} : (tensor<100xf32>, tensor<100xf32>) -> tensor<200xf32>
   // CHECK: tac.cost = 4.040000e+01
@@ -48,7 +48,7 @@ func @concat_reshape_GPU(%arg0: tensor<100xf32>, %arg1: tensor<100xf32>) -> tens
 }
 
 func @concat_reshape_CPU(%arg0: tensor<100xf32>, %arg1: tensor<100xf32>) -> tensor<2x100xf32> attributes {tac.device = "CPU", tac.interface_name = "func_2"} {
-  %cst = constant dense<[2, 100]> : tensor<2xi64>
+  %cst = arith.constant dense<[2, 100]> : tensor<2xi64>
   // CHECK: tac.cost = 1.000000e+02
   %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE", tac.device = "CPU"} : (tensor<100xf32>, tensor<100xf32>) -> tensor<200xf32>
   // CHECK: tac.cost = 1.010000e+02

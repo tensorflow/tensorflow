@@ -62,6 +62,8 @@ const std::string GetDimsDebugString(const TfLiteIntArray* dims) {
 namespace tflite {
 namespace flex {
 
+constexpr char kReadVariableOp[] = "ReadVariableOp";
+
 struct OpNode;
 
 // Represents the origin of a given tensor as a reference to the output
@@ -587,6 +589,14 @@ TfLiteStatus DelegateKernel::ValidateOutputTensorShapeConsistency(
       // the shape information of the given ShapeHandle for now.
       // TODO(b/169017408): Find a better approach without using debug string.
       if (tfl_shape_string != calculated_shape_string) {
+        if ((strcmp(op_name, kReadVariableOp) == 0) &&
+            (tfl_tensor->dims->size > 0)) {
+          // If ReadVariableOp has an output with valid shape, use it since
+          // ShapeInferenceFn of ReadVariableOp doesn't work well without having
+          // a valid resource handle.
+          continue;
+        }
+
         TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
                    "op '%s' output%d tensor#%d shape mismatch for  %s != %s",
                    op_name, i, output_tensor_index, tfl_shape_string.c_str(),

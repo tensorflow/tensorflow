@@ -33,7 +33,7 @@ class RaggedGatherOpTest : public ::tensorflow::OpsTestBase {
   template <typename VALUE_TYPE, typename INDEX_TYPE>
   void BuildRaggedGatherGraph(
       const TensorShape& indices_shape, const std::vector<INDEX_TYPE>& indices,
-      const std::vector<std::vector<int64>>& params_nested_splits,
+      const std::vector<std::vector<int64_t>>& params_nested_splits,
       const TensorShape& params_dense_values_shape,
       const gtl::ArraySlice<VALUE_TYPE> params_dense_values) {
     const auto& value_dtype = DataTypeToEnum<VALUE_TYPE>::v();

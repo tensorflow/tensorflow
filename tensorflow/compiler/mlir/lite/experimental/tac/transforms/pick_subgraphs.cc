@@ -277,7 +277,7 @@ void PickSubgraphsPass::ProcessSubgraph(
 }
 
 void PickSubgraphsPass::BuildSubgraphs(
-    FuncOp main_fn,
+    FuncOp fn,
     const std::unordered_map<std::string, std::vector<FuncOp>>& func_impls,
     llvm::SetVector<Operation*>* unprocessed_subgraphs,
     SmallVector<CallOp, 4>* output_subgraphs) {
@@ -291,7 +291,7 @@ void PickSubgraphsPass::BuildSubgraphs(
   //   ...
   //  %outputn = call @subgraph_k...
   //  return %output1, output2, ..., outputn.
-  main_fn.walk([&](ReturnOp return_op) {
+  fn.walk([&](ReturnOp return_op) {
     for (auto output : return_op.getOperands()) {
       CallOp output_call = GetProducerCallOpOrNull(output);
       if (output_call != nullptr) {
@@ -301,7 +301,7 @@ void PickSubgraphsPass::BuildSubgraphs(
   });
 
   // Each call op actually is the entry of the subgraph.
-  main_fn.walk([&](CallOp call_op) {
+  fn.walk([&](CallOp call_op) {
     auto interface_name = GetInterFaceName(call_op);
     // we only need to care about the call ops those have interface_name.
     if (!interface_name.hasValue()) return;
@@ -486,13 +486,6 @@ bool PickSubgraphsPass::PickSubgraphs(
 
 void PickSubgraphsPass::runOnOperation() {
   auto module = getOperation();
-
-  FuncOp main_fn = module.lookupSymbol<FuncOp>("main");
-  if (!main_fn) {
-    module.emitError("cannot find the main function");
-    signalPassFailure();
-  }
-
   // Collect & build the subgraphs.
   // Also collect the output subgraphs.
   // Output subgraphs are essentially those subgraphs pointed by the return
@@ -501,15 +494,16 @@ void PickSubgraphsPass::runOnOperation() {
       CollectSubgraphFuncs(module);
   llvm::SetVector<Operation*> unprocessed_subgraphs;
   SmallVector<CallOp, 4> output_subgraphs;
-  BuildSubgraphs(main_fn, func_impls, &unprocessed_subgraphs,
-                 &output_subgraphs);
 
-  OpBuilder builder(main_fn);
+  for (auto fn : module.getOps<FuncOp>()) {
+    BuildSubgraphs(fn, func_impls, &unprocessed_subgraphs, &output_subgraphs);
+  }
+  OpBuilder builder(module);
   if (!PickSubgraphs(&unprocessed_subgraphs, output_subgraphs, func_impls,
                      &builder)) {
     module.emitWarning(
-        "we cannot find the best scenarios for your case, so we just use your "
-        "original model plans");
+        "we cannot find the best scenarios for your case, so we just use "
+        "your original model plans");
   }
 }
 

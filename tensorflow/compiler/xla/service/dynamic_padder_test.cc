@@ -116,6 +116,38 @@ class DynamicPadderTest : public HloTestBase {
   const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
 };
 
+class MemoryAlignmentTest : public HloTestBase {};
+
+// Test that dynamic padder will not cause memory misalignment in CUDA
+// when the read or write address is not aligned with 32 bits.
+// TODO(b/203599920): Disabled on CPU due to ASAN test failure.
+TEST_F(MemoryAlignmentTest, DISABLED_ON_CPU(TestDataTypeFP16)) {
+  const string hlo_text = R"(
+    HloModule TestDataTypeFP16
+
+    update_add (p0: f16[], p1: f16[]) -> f16[] {
+      p0 = f16[] parameter(0)
+      p1 = f16[] parameter(1)
+      ROOT out = f16[] add(p0, p1)
+    }
+
+    ENTRY main () -> f16[<=1,1] {
+      c1 = s32[1]{0} constant({1})
+      c2 = f16[1,1]{1,0} constant({ {0.099976} })
+      shape = s32[] reshape(s32[1]{0} c1)
+      dim_size = f16[<=1,1]{1,0} set-dimension-size(f16[1,1]{1,0} c2, s32[] shape),
+          dimensions={0}
+      ROOT out = f16[<=1,1]{1,0} scatter(f16[<=1,1]{1,0} dim_size, s32[1]{0} c1, f16[1,1]{1,0} c2),
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1,
+          to_apply=update_add
+    }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
 TEST_F(DynamicPadderTest, ReduceTest) {
   auto builder = HloComputation::Builder(TestName());
   auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
