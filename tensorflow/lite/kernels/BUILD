@@ -984,11 +984,23 @@ cc_test(
     size = "small",
     srcs = ["add_n_test.cc"],
     deps = [
+        ":add_n_test_common",
         ":test_main",
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "add_n_test_common",
+    testonly = 1,
+    hdrs = [
+        "add_n_test_common.h",
+    ],
+    deps = [
+        ":test_util",
     ],
 )
 
