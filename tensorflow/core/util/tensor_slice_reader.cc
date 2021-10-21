@@ -168,7 +168,9 @@ void TensorSliceReader::LoadShard(int shard) const {
                           "checkpoint");
   if (!status_.ok()) return;
   for (const SavedSliceMeta& ssm : sts.meta().tensor()) {
-    TensorShape ssm_shape(ssm.shape());
+    TensorShape ssm_shape;
+    status_ = TensorShape::BuildTensorShapeBase(ssm.shape(), &ssm_shape);
+    if (!status_.ok()) return;
     for (const TensorSliceProto& tsp : ssm.slice()) {
       TensorSlice ss_slice(tsp);
       status_ = RegisterTensorSlice(ssm.name(), ssm_shape, ssm.type(), fname,
