@@ -215,8 +215,6 @@ enum StatType {
   kScaledValue,
   kThreadId,
   // XLA metadata map related.
-  kSelfDurationPs,
-  kMinDurationPs,
   kHloProto,
   // Device capability related.
   kDevCapClockRateKHz,
