@@ -1257,39 +1257,160 @@ Status Converter::RenameAndMarkOutputTensors(
   return Status::OK();
 }
 
-#if IS_TRT_VERSION_GE(7, 1, 3, 0)
-// An algorithm selector that always returns a specific ID for selectAlgorithms.
-// This is used to support the implementation of using environment variable
-// `TF_TRT_FIXED_ALGORITHM_ID` for debugging TensorRT.
-class StaticAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
- private:
-  int32_t algorithm_id_;
+#if IS_TRT_VERSION_GE(7, 2, 3, 4)
+enum class Tactic : int64_t { kINVALID_TACTIC = int64_t(0xD15EA5EDD15EA5ED) };
+
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+static constexpr int32_t kLAYER_IMPL_BASE = 0x80000000;
+#else
+static constexpr int32_t kLAYER_IMPL_BASE = 0x00000000;
+#endif
+
+enum class LayerImpl : int64_t {
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+  kSHUFFLE = kLAYER_IMPL_BASE + 14
+#else
+  kSHUFFLE = kLAYER_IMPL_BASE + 16
+#endif
+};
+
+// An algorithm selector to support debugging and work around known TensorRT
+// issues.
+class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
+  // A list of tactics allowed to be selected. An empty list means that all
+  // tactics are allowed. This list is initialized from environment variable
+  // TF_TRT_FIXED_ALGORITHM_ID.
+  std::unordered_set<int64> allowed_algorithm_ids;
+
+  // A list of tactics that we disallow. Used primarily to go around known
+  // TensorRT issues.
+  std::unordered_set<int64> disallowed_tactics;
 
  public:
-  StaticAlgorithmSelector(int32_t algorithm_id) : algorithm_id_(algorithm_id) {}
+  TftrtAlgorithmSelector() {
+    int64_t trt_algorithm_id;
+    int64_t null_tactic = std::numeric_limits<int64_t>::min();
+    TF_CHECK_OK(tensorflow::ReadInt64FromEnvVar("TF_TRT_FIXED_ALGORITHM_ID",
+                                                /*default_val=*/null_tactic,
+                                                &trt_algorithm_id));
+    // Populate allowed tactics. Used to force select tactics for any layer.
+    // TODO: accepting a list from the environment variable
+    if (trt_algorithm_id != null_tactic) {
+      allowed_algorithm_ids.insert(trt_algorithm_id);
+    }
+
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
+    disallowed_tactics = {
+        // turing_fp16_s1688cudnn_fp16_128x128_ldg8_relu_f2f_exp_medium_nhwc_gelu_tn_v1
+        -5927686925093575778,
+        // turing_fp16_s1688cudnn_fp16_128x128_ldg8_relu_f2f_exp_interior_nhwc_gelu_tn_v1
+        -3848538574386518527,
+        // turing_fp16_s1688cudnn_fp16_128x128_ldg8_relu_f2f_exp_small_nhwc_gelu_tn_v1
+        -959009792490796596};
+#endif  // !IS_TRT_VERSION_GE(8, 0, 0, 0)
+  }
 
   // Returns value in [0, nbChoices] for a valid algorithm.
   int32_t selectAlgorithms(const nvinfer1::IAlgorithmContext& algoContext,
                            const nvinfer1::IAlgorithm* const* algoChoices,
                            int32_t nbChoices,
                            int32_t* selection) noexcept override {
+    int nbSelections = 0;
+
     // TensorRT always provides more than zero number of algorithms
     // in selectAlgorithms.
     assert(nbChoices > 0);
 
-    // making sure that the requested TRT algorithm ID doesn't go above the
-    // max value accepted.
-    selection[0] = std::min(algorithm_id_, nbChoices);
-    return 1;
+    absl::optional<int64_t> forced_algorithm_id = absl::nullopt;
+
+    if (!allowed_algorithm_ids.empty()) {
+      assert(allowed_algorithm_ids.size() == 1);
+      forced_algorithm_id = *allowed_algorithm_ids.begin(0);
+      // Making sure that the requested TRT algorithm ID doesn't go above
+      // the max value accepted.
+      int64_t allowed_algorithm_id = forced_algorithm_id.value();
+      forced_algorithm_id = std::min(forced_algorithm_id.value(),
+                                     static_cast<int64_t>(nbChoices) - 1);
+
+      if (allowed_algorithm_id != forced_algorithm_id) {
+        VLOG(1) << "User allowed algorithm ID: " << allowed_algorithm_id
+                << " is not available.";
+      }
+      VLOG(1) << "Forcing TRT algorithm selection to: ID = "
+              << forced_algorithm_id.value();
+    }
+
+    // Disable all disallowed tactics
+    for (auto i = 0; i < nbChoices; i++) {
+      if (algoChoices[i] == nullptr) {
+        continue;
+      }
+
+      if (forced_algorithm_id.has_value() && forced_algorithm_id.value() != i) {
+        continue;
+      }
+
+      int64_t tacticId = algoChoices[i]->getAlgorithmVariant().getTactic();
+      assert(tacticId != static_cast<int64_t>(Tactic::kINVALID_TACTIC));
+
+      if (disallowed_tactics.find(tacticId) != disallowed_tactics.end()) {
+        if (!forced_algorithm_id.has_value()) {
+          VLOG(1) << "Rejecting a disallowed tactic: " << tacticId
+                  << " for node " << algoContext.getName();
+          continue;
+        }
+        VLOG(1) << "Impossible to force TensorRT tactic selection. This tactic "
+                << "has been explicitly banned. Please update the value passed "
+                << "to `TF_TRT_FIXED_ALGORITHM_ID`. Received: "
+                << forced_algorithm_id.value();
+        assert(false);
+      }
+
+      int64_t implementation =
+          algoChoices[i]->getAlgorithmVariant().getImplementation();
+      nvinfer1::TensorFormat format =
+          algoChoices[i]->getAlgorithmIOInfo(0).getTensorFormat();
+      nvinfer1::DataType datatype =
+          algoChoices[i]->getAlgorithmIOInfo(0).getDataType();
+
+      if (implementation == static_cast<int64_t>(LayerImpl::kSHUFFLE) &&
+          (
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+              // Reject shuffle node when input format is linear row major INT8
+              // format
+              format == nvinfer1::TensorFormat::kLINEAR &&
+              datatype == nvinfer1::DataType::kINT8
+#else
+              // Reject shuffle node when input format is 32-wide channel
+              // vectorized row major FP32 format
+              format == nvinfer1::TensorFormat::kCHW32
+#endif  // !IS_TRT_VERSION_GE(8, 0, 0, 0)
+              )) {
+        if (!forced_algorithm_id.has_value()) {
+          VLOG(1) << "Rejecting a disallowed tactic: " << tacticId
+                  << " for node " << algoContext.getName()
+                  << " with implementation " << implementation
+                  << " and input format " << static_cast<int32_t>(format);
+          continue;
+        }
+        VLOG(1) << "Impossible to force TensorRT algorithm selection. The "
+                << "forced tactic corresponds to an implementation that has "
+                << "been explicitly banned. Please update the value passed to "
+                << "`TF_TRT_FIXED_ALGORITHM_ID`. Received: "
+                << forced_algorithm_id.value();
+        assert(false);
+      }
+      selection[nbSelections++] = i;
+    }
+    return nbSelections;
   }
 
   // Called by TensorRT to report choices it made.
   void reportAlgorithms(const nvinfer1::IAlgorithmContext* const* algoContexts,
                         const nvinfer1::IAlgorithm* const* algoChoices,
-                        int32_t nbAlgorithms) noexcept override {
-  }  // do nothing
+                        int32_t nbAlgorithms) noexcept override {}
 };
-#endif
+#endif  // #if IS_TRT_VERSION_GE(7, 2, 3, 4)
 
 Status Converter::BuildCudaEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, int max_batch_size,
@@ -1311,20 +1432,10 @@ Status Converter::BuildCudaEngine(
       trt_builder_->createBuilderConfig());
   builder_config->setMaxWorkspaceSize(max_workspace_size_bytes);
 
-#if IS_TRT_VERSION_GE(7, 1, 3, 0)
-  static int32_t trt_algorithm_id = [] {
-    int64 trt_algorithm_id;
-    TF_CHECK_OK(tensorflow::ReadInt64FromEnvVar("TF_TRT_FIXED_ALGORITHM_ID",
-                                                /*default_val=*/-1,
-                                                &trt_algorithm_id));
-    return static_cast<int32_t>(trt_algorithm_id);
-  }();
-
-  if (trt_algorithm_id >= 0) {
-    VLOG(1) << "Forcing TRT algorithm selection to: ID=" << trt_algorithm_id;
-    StaticAlgorithmSelector trt_algorithm_selector(trt_algorithm_id);
-    builder_config->setAlgorithmSelector(&trt_algorithm_selector);
-  }
+#if IS_TRT_VERSION_GE(7, 2, 3, 4)
+  std::unique_ptr<nvinfer1::IAlgorithmSelector> trt_algorithm_selector(
+      new TftrtAlgorithmSelector());
+  builder_config->setAlgorithmSelector(trt_algorithm_selector.get());
 #endif
 
 #if IS_TRT_VERSION_GE(8, 0, 0, 0)
