@@ -22,6 +22,7 @@ from tensorflow import python as _tf_for_api_traversal
 from tensorflow.lite.python import lite as _tflite_for_api_traversal
 from tensorflow.lite.python.authoring import authoring
 from tensorflow.python import modules_with_exports
+from tensorflow.python.distribute import merge_call_interim
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2

@@ -118,6 +118,7 @@ py_library(
     deps = [
         ":cross_device_ops",
         ":distribute_lib",
+        ":merge_call_interim",
         ":mirrored_strategy",
         ":multi_process_runner",
         ":multi_worker_test_base",
@@ -2324,5 +2325,17 @@ pytype_strict_library(
         ":input_lib",
         "//tensorflow/python:tf2",
         "//tensorflow/python/distribute/v1:input_lib",
+    ],
+)
+
+py_library(
+    name = "merge_call_interim",
+    srcs = [
+        "merge_call_interim.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        ":distribute_lib",
+        "//tensorflow/python/util:tf_export",
     ],
 )
