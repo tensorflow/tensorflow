@@ -594,6 +594,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                         [[673, 674], [683, 684], [693, 694]]]),
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Error handling')
   def testDynamicSliceWithIncorrectStartIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
@@ -604,9 +605,10 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         session.run(output)
       self.assertRegex(
           invalid_arg_error.exception.message,
-          (r'op has mismatched number of slice sizes \(3\) and number of start'
-           r' indices \(2\)'))
+          (r'start_indices must be a vector with length equal to input rank, '
+           r'but input rank is 3 and start_indices has shape \[2\].*'))
 
+  @test_util.disable_mlir_bridge('Error handling')
   def testDynamicSliceWithIncorrectSizeIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
@@ -617,8 +619,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         session.run(output)
       self.assertRegex(
           invalid_arg_error.exception.message,
-          (r'op has mismatched number of slice sizes \(2\) and number of start'
-           r' indices \(3\)'))
+          (r'size_indices must be a vector with length equal to input rank, '
+           r'but input rank is 3 and size_indices has shape \[2\].*'))
 
 
 class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):

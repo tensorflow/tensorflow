@@ -799,9 +799,6 @@ def : Pat<(TF_XlaGatherOp $operand, $start_indices, (ConstantLikeMatcher Element
                         $indices_are_sorted),
           [(HasValidGatherDims $dimension_numbers)]>;
 
-//===----------------------------------------------------------------------===//
-// XlaDotOp op.
-//===----------------------------------------------------------------------===//
 
 def ToDotDimNumsAttr : NativeCodeCall<"GetDotDimNumsAttr($0, &$_builder)">;
 
@@ -810,6 +807,10 @@ def ToPrecisionConfigsAttr : NativeCodeCall<"GetPrecisionConfigAttr($0, &$_build
 def HasValidDotDims : Constraint<CPred<"HasValidDotDims($0)">>;
 
 def HasValidPrecisionConfig : Constraint<CPred<"HasValidPrecisionConfig($0)">>;
+
+//===----------------------------------------------------------------------===//
+// XlaDotOp op.
+//===----------------------------------------------------------------------===//
 
 def : Pat<(TF_XlaDotOp $lhs, $rhs, $dimension_numbers, $precision_config),
           (HLO_DotGeneralOp $lhs, $rhs,
@@ -826,16 +827,6 @@ def : Pat<(TF_XlaDotV2Op $lhs, $rhs, $dimension_numbers, $precision_config),
                             (ToDotDimNumsAttr $dimension_numbers),
                             (ToPrecisionConfigsAttr $precision_config)),
           [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
-
-//===----------------------------------------------------------------------===//
-// XlaDynamicSlice op.
-//===----------------------------------------------------------------------===//
-
-def : Pat<(TF_XlaDynamicSliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
-           (ConstantLikeMatcher AnyAttr:$slice_sizes)),
-          (HLO_DynamicSliceOp $input,
-           (UnpackStartingIndices $op, $starting_indices),
-           (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes))>;
 
 //===----------------------------------------------------------------------===//
 // XlaEisumOp op.
