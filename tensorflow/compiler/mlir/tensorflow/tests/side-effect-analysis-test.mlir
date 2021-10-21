@@ -1803,3 +1803,33 @@ func @tpu_compile_execute_effect(
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Predecessors: {5}}}
 }
+
+// -----
+
+// Tests that `_TPUDeviceOrdinalPlaceholder` is side-effect-free.
+func @device_ordinal_placeholder_side_effect_free(
+  // expected-remark@above {{ID: 7}}
+  ) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Successors: {6}}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        "tf._TPUDeviceOrdinalPlaceholder"() : () -> tensor<i64>
+        // expected-remark@above {{ID: 0}}
+        "tf._UnknownSideEffectingOp_"() : () -> ()
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Predecessors: {5}}}
+}
