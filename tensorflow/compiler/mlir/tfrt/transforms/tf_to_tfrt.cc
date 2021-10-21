@@ -205,7 +205,8 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
         mlir::TF::TPUExecuteOp, mlir::TF::TPUCompileMlirAndExecuteOp,
         // Specifically handle control flow ops.
         mlir::TF::CaseOp, mlir::TF::IfOp, mlir::TF::WhileOp,
-        mlir::TF::StatefulPartitionedCallOp, mlir::TF::PartitionedCallOp>(op);
+        mlir::TF::StatefulPartitionedCallOp, mlir::TF::PartitionedCallOp,
+        mlir::TF::LegacyCallOp>(op);
   }
 
   mlir::LogicalResult ConvertToFallbackExecuteOp(
@@ -1504,6 +1505,7 @@ void PopulateTFToTFRTConversionPatterns(
       tensor_array_side_effect_analysis, func_use_fallback_tensor);
   patterns->insert<TFRTCallOpConversion<mlir::TF::StatefulPartitionedCallOp>,
                    TFRTCallOpConversion<mlir::TF::PartitionedCallOp>,
+                   TFRTCallOpConversion<mlir::TF::LegacyCallOp>,
                    TFRTCaseOpConversion, TFRTCondOpConversion>(
       context, func_type_converter, corert_converter, func_use_fallback_tensor);
 
