@@ -14,12 +14,13 @@
 # ==============================================================================
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
-from typing import Optional, Sequence, Dict
+from typing import Dict, Optional, Sequence
 import weakref
 
 import numpy as np
 
 from tensorflow.python import pywrap_tfe
+from tensorflow.python.eager import core
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -269,8 +270,12 @@ def get_arg_spec(inputs, include_tensor_ranks_only,
 
   # TODO(b/201533914): Drop GenericType once TFE_Py_EncodeArg returns TraceType.
   signature_context = SignatureContext()
-  return GenericType(
-      pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
-                                  include_tensor_ranks_only,
-                                  encode_variables_by_resource_id,
-                                  use_full_trace_type))
+  try:
+    return GenericType(
+        pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
+                                    include_tensor_ranks_only,
+                                    encode_variables_by_resource_id,
+                                    use_full_trace_type))
+  except core._NotOkStatusException as e:  # pylint: disable=protected-access
+    raise core._status_to_exception(e) from None  # pylint: disable=protected-access
+

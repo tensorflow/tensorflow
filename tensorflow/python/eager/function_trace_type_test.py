@@ -15,6 +15,7 @@
 """Tests for function_trace_type."""
 
 import timeit
+
 from absl.testing import parameterized
 
 from tensorflow.python import keras
@@ -24,6 +25,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.eager import function_trace_type
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
@@ -303,6 +305,19 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
 
 
 class TraceTypeEncodingTest(test.TestCase):
+
+  def testCustomUnhashableTypeFailsGracefully(self):
+
+    class CustomUnhashable:
+
+      def __eq__(self, o):
+        return True
+
+    obj = CustomUnhashable()
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r'Could not determine tracing type of generic object'):
+      function_trace_type.get_arg_spec(obj, False, True, True)
 
   def testOrderedCollectionTypeEquality(self):
     collection = function_trace_type.OrderedCollectionType
