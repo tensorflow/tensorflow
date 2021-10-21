@@ -229,7 +229,6 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
                         ConvertTensorProto(tensor_copy, builder));
 
     llvm::SmallVector<int64_t> original_dimensions;
-    original_dimensions.reserve(input_tensor_shape.num_elements());
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
     return ElementsAttr(mlir::SplatElementsAttr::get(
         single_attr.getType().clone(original_dimensions),
