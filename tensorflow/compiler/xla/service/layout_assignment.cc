@@ -1093,7 +1093,9 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
           break;
         case HloOpcode::kConditional: {
           std::vector<ComputationLayout> branch_computation_layouts;
-          for (auto branch_computation : instruction->branch_computations()) {
+          const auto& branch_computations = instruction->branch_computations();
+          branch_computation_layouts.reserve(branch_computations.size());
+          for (const auto branch_computation : branch_computations) {
             branch_computation_layouts.emplace_back(
                 FindOrDie(computation_layouts_, branch_computation)
                     ->computation_layout());
