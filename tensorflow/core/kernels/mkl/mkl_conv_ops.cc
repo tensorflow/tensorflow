@@ -538,9 +538,8 @@ class MklConvOp : public OpKernel {
     // (`padding_list` versus `explicit_paddings`). But one and only one
     // attribute is expected.
     OP_REQUIRES(
-        context,
-        !(context->HasAttr("padding_list") &&
-          context->HasAttr("explicit_paddings")),
+        context, !(context->HasAttr("padding_list") &&
+                   context->HasAttr("explicit_paddings")),
         errors::InvalidArgument("Can only have 1 `padding` list at most"));
     if (context->HasAttr("padding_list")) {
       OP_REQUIRES_OK(context, context->GetAttr("padding_list", &padding_list_));
@@ -594,17 +593,15 @@ class MklConvOp : public OpKernel {
       OP_REQUIRES(context, dilations_.size() == 5,
                   errors::InvalidArgument("Dilation rates field must "
                                           "specify 5 dimensions"));
-      OP_REQUIRES(context,
-                  (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
-                   GetTensorDim(dilations_, data_format_, 'C') == 1),
+      OP_REQUIRES(context, (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
+                            GetTensorDim(dilations_, data_format_, 'C') == 1),
                   errors::InvalidArgument(
                       "Current implementation does not yet support "
                       "dilations rates in the batch and depth dimensions."));
       OP_REQUIRES(
-          context,
-          (GetTensorDim(dilations_, data_format_, '0') > 0 &&
-           GetTensorDim(dilations_, data_format_, '1') > 0 &&
-           GetTensorDim(dilations_, data_format_, '2') > 0),
+          context, (GetTensorDim(dilations_, data_format_, '0') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '1') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '2') > 0),
           errors::InvalidArgument("Dilated rates should be larger than 0."));
     }
   }
@@ -1073,9 +1070,10 @@ class MklConvOp : public OpKernel {
       GetMklShape(context, kInputIndex_Add, &add_mkl_shape, native_format);
       // Forward the summand tensor to the output only if it has no other
       // references, otherwise make a copy of it.
-      if (native_format && context->forward_input_to_output_with_shape(
-                               kInputIndex_Add, kOutputIndex_Dst,
-                               output_tf_shape, output_tensor)) {
+      if (native_format &&
+          context->forward_input_to_output_with_shape(
+              kInputIndex_Add, kOutputIndex_Dst, output_tf_shape,
+              output_tensor)) {
         return;
       }
       // Check if reorder is needed
@@ -2133,6 +2131,14 @@ class MklFusedConv3DOp
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv3D must have one extra argument: bias."));
+    } else if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") ==
+                   fused_ops.end() &&
+               std::find(fused_ops.begin(), fused_ops.end(), "Add") ==
+                   fused_ops.end()) {
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv3D must have two extra arguments: bias and add."));
     }
 
     if (fused_ops == std::vector<string>{"BiasAdd"}) {
@@ -2154,6 +2160,31 @@ class MklFusedConv3DOp
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, mkldnn::algorithm::eltwise_elu, 1.0);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_relu);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_bounded_relu,
+                                6.0);
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_elu, 1.0);
+    } else if (fused_ops ==
+               std::vector<string>{"BiasAdd", "Add", "LeakyRelu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      float leakyrelu_alpha;
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_relu,
+                                leakyrelu_alpha);
     } else {
       OP_REQUIRES(context, false,
                   errors::Unimplemented("Fusion is not implemented: [",
@@ -2252,7 +2283,7 @@ REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
 #define LABEL .Label(mkl_op_registry::kMklQuantizedOpLabel)
 #define TEMPLATE_ARGS(CPUDevice, input_type, bias_type, output_type, \
                       accu_type, has_bias, is_depthwise, is_native)  \
-<CPUDevice, input_type, bias_type, output_type, accu_type, has_bias, is_depthwise, is_native>
+  <CPUDevice, input_type, bias_type, output_type, accu_type, has_bias, is_depthwise, is_native>
 #define BIAS_TYPE_CONSTRAINT(bias_type)
 REGISTER_MKL_KERNEL_ALL_INPUT_TYPES("_MklQuantizedConv2D", MklQuantizedConv2DOp,
                                     float, qint32, qint32, false, false, true);
