@@ -804,7 +804,19 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_BucketizeOptions()) {
         const flatbuffers::Vector<float>* boundaries =
             bucketize_params->boundaries();
+        if (boundaries == nullptr) {
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
+              "boundaries array not provided for operation 'bucketize'.\n");
+          return kTfLiteError;
+        }
         params->num_boundaries = boundaries->size();
+        if (boundaries->data() == nullptr) {
+          TF_LITE_REPORT_ERROR(error_reporter,
+                               "boundaries.data() returned nullptr for "
+                               "operation 'bucketize'.\n");
+          return kTfLiteError;
+        }
         params->boundaries = boundaries->data();
       }
       *builtin_data = params.release();
