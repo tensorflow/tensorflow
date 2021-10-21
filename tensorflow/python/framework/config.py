@@ -297,6 +297,7 @@ def get_device_policy():
   elif device_policy == context.DEVICE_PLACEMENT_EXPLICIT:
     return 'explicit'
   else:
+    # pylint: disable-next=no-value-for-parameter
     raise errors.InternalError(
         f'Got an invalid device policy: {device_policy!r}.')
 
