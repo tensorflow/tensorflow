@@ -150,9 +150,6 @@ bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding) {
 }
 
 Shape MakePartitionedShape(const Shape& shape, const HloSharding& sharding) {
-  if (sharding.IsTileMaximal()) {
-    return shape;
-  }
   if (sharding.IsTuple()) {
     std::vector<Shape> subshapes;
     const int64_t shape_n = ShapeUtil::TupleElementCount(shape);

@@ -2088,7 +2088,8 @@ bool ShardingPropagation::InferShardingFromOperands(
                   instruction->operand(0)->sharding(), operand_parallel_dims);
           auto maybe_from_data =
               hlo_sharding_util::GatherOutputShardingFromDataOperand(
-                  filtered_operand_sharding, *instruction, instruction->shape(),
+                  filtered_operand_sharding, *instruction,
+                  instruction->gather_slice_sizes(), instruction->shape(),
                   instruction->operand(0)->shape());
           if (maybe_from_data) {
             changed |= MaybeImproveInstructionSharding(

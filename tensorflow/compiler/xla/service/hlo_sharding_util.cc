@@ -1046,7 +1046,8 @@ absl::optional<HloSharding> GatherParallelDataOperandSharding(
 
 absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
     const HloSharding& data_operand_sharding, const HloInstruction& hlo,
-    const Shape& output_shape, const Shape& operand_shape) {
+    absl::Span<const int64_t> slice_sizes, const Shape& output_shape,
+    const Shape& operand_shape) {
   const auto& dnums = hlo.gather_dimension_numbers();
   std::vector<int64_t> collapsed_slice_dims(
       dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
@@ -1056,7 +1057,7 @@ absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
                                    dnums.offset_dims().end());
   return PassthroughOperandToGatherOutputOrScatterUpdate(
       operand_shape, data_operand_sharding, output_shape, collapsed_slice_dims,
-      start_index_map, offset_dims, hlo.gather_slice_sizes());
+      start_index_map, offset_dims, slice_sizes);
 }
 
 absl::optional<HloSharding> GatherDataOperandShardingFromOutput(
