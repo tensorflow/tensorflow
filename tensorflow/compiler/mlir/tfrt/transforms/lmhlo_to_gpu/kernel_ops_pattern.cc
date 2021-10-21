@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Pattern to lower lmhlo.fusion ops to gpu dialect.
+// Pattern to lower lmhlo ops with help of the ir emitter to gpu device code
+// and gpu dialect ops (gpu.launch_func and gpu.memcpy).
 
 #include <iterator>
 #include <numeric>
@@ -54,6 +55,7 @@
 namespace tensorflow {
 
 using mlir::ArrayRef;
+using mlir::Operation;
 using mlir::SmallVector;
 using mlir::Value;
 using mlir::memref::GetGlobalOp;
@@ -67,8 +69,8 @@ using ConstantInfo = xla::gpu::GpuExecutable::ConstantInfo;
 
 namespace {
 
-// Replaces all lmhlo.fusion ops within a module with tfrt_gpu.launch ops.
-struct FusionRewritePattern : mlir::OpRewritePattern<mlir::ModuleOp> {
+// Replaces lmhlo ops within a module with gpu.launch_func and gpu.memcpy ops.
+struct KernelOpsPattern : mlir::OpRewritePattern<mlir::ModuleOp> {
   using OpRewritePattern<mlir::ModuleOp>::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
@@ -76,8 +78,8 @@ struct FusionRewritePattern : mlir::OpRewritePattern<mlir::ModuleOp> {
 };
 
 struct RewriteData {
-  mlir::lmhlo::FusionOp fusion_op;
-  mlir::SetVector<Value> captures;
+  Operation* op;
+  mlir::SmallVector<Value, 4> arguments;
   std::vector<xla::BufferAllocation> allocations;
   std::unique_ptr<ThunkSequence> thunks;
   std::vector<ConstantInfo> constants;
@@ -93,13 +95,13 @@ static llvm::Error MakeError(xla::Status status) {
   return MakeError(status.error_message());
 }
 
-// Clones `fusion_op` into a function within a module with `captures` arguments.
-// The `get_global_ops` are the def ops of `captures`, or null otherwise.
+// Clones `op` into a function within a module with `arguments`.
+// The `get_global_ops` are the def ops of `arguments`, or null otherwise.
 static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
-    mlir::lmhlo::FusionOp fusion_op, mlir::ValueRange captures,
+    Operation* op, mlir::ValueRange arguments,
     mlir::MutableArrayRef<GetGlobalOp> get_global_ops) {
-  auto loc = fusion_op->getLoc();
-  auto* context = fusion_op->getContext();
+  auto loc = op->getLoc();
+  auto* context = op->getContext();
   mlir::OpBuilder builder(context);
 
   mlir::OwningModuleRef module_op = builder.create<mlir::ModuleOp>(loc);
@@ -115,8 +117,8 @@ static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
   }
 
   auto func_type = builder.getType<mlir::FunctionType>(
-      mlir::TypeRange(captures), mlir::TypeRange());
-  auto func_name = fusion_op->getParentOfType<mlir::FuncOp>().getName();
+      mlir::TypeRange(arguments), mlir::TypeRange());
+  auto func_name = op->getParentOfType<mlir::FuncOp>().getName();
   auto func_op = builder.create<mlir::FuncOp>(loc, func_name, func_type);
   // Annotate the function arguments if they refer to a memref.global op.
   for (auto pair : llvm::enumerate(get_global_ops)) {
@@ -128,14 +130,14 @@ static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
 
   builder.setInsertionPointToEnd(func_op.addEntryBlock());
   mlir::BlockAndValueMapping mapping;
-  for (const auto& pair : llvm::zip_first(captures, func_op.getArguments()))
+  for (const auto& pair : llvm::zip_first(arguments, func_op.getArguments()))
     mapping.map(std::get<0>(pair), std::get<1>(pair));
   // Clone the memref.get_global ops.
   for (auto get_global_op : get_global_ops) {
     if (!get_global_op) continue;
     mapping.map(get_global_op, builder.clone(*get_global_op)->getResult(0));
   }
-  auto* clone = builder.clone(*fusion_op, mapping);
+  auto* clone = builder.clone(*op, mapping);
   auto name_loc = mlir::NameLoc::get(builder.getIdentifier(func_name));
   clone->setLoc(mlir::FusedLoc::get(context, {loc, name_loc}));
   builder.create<mlir::lmhlo::TerminatorOp>(loc);
@@ -145,11 +147,10 @@ static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
 
 // Converts the argument's shaped types into buffer allocations.
 static llvm::Expected<std::vector<xla::BufferAllocation>> GetAllocations(
-    const mlir::SetVector<Value>& captures,
-    ArrayRef<GetGlobalOp> get_global_ops) {
+    ArrayRef<Value> arguments, ArrayRef<GetGlobalOp> get_global_ops) {
   std::vector<xla::BufferAllocation> allocations;
-  allocations.reserve(captures.size());
-  for (Value argument : captures) {
+  allocations.reserve(arguments.size());
+  for (Value argument : arguments) {
     mlir::ShapedType type = argument.getType().dyn_cast<mlir::ShapedType>();
     if (!type || !type.hasStaticShape())
       return MakeError("Expected static shapes");
@@ -208,23 +209,25 @@ Emit(mlir::FuncOp func_op, absl::Span<const xla::BufferAllocation> allocations,
                          std::move(ir_emitter_context.constants()));
 }
 
-// Returns the data to rewrite fusion_op without changing the IR.
-static llvm::Expected<RewriteData> Match(mlir::lmhlo::FusionOp fusion_op) {
+// Returns the data to rewrite op without changing the IR.
+static llvm::Expected<RewriteData> Match(Operation* op) {
+  mlir::SmallVector<Value, 4> arguments = op->getOperands();
   mlir::SetVector<Value> captures;
-  getUsedValuesDefinedAbove(fusion_op->getRegions(), captures);
+  getUsedValuesDefinedAbove(op->getRegions(), captures);
+  llvm::copy(captures, std::back_inserter(arguments));
 
-  // Collect captures that are defined by a memref.get_global op. The created
-  // module's annotations make the ir emitter recognize them as constants.
+  // Collect arguments that are defined by a memref.get_global op. The
+  // created module's annotations make the ir emitter recognize them as
+  // constants.
   SmallVector<GetGlobalOp, 4> get_global_ops;
-  get_global_ops.reserve(captures.size());
+  get_global_ops.reserve(arguments.size());
   llvm::transform(
-      captures, std::back_inserter(get_global_ops),
+      arguments, std::back_inserter(get_global_ops),
       [](Value argument) { return argument.getDefiningOp<GetGlobalOp>(); });
 
-  auto allocations = GetAllocations(captures, get_global_ops);
+  auto allocations = GetAllocations(arguments, get_global_ops);
   if (!allocations) return allocations.takeError();
-  auto module_op =
-      CloneToModule(fusion_op, captures.getArrayRef(), get_global_ops);
+  auto module_op = CloneToModule(op, arguments, get_global_ops);
 
   xla::HloModuleConfig hlo_module_config;
   xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
@@ -265,21 +268,23 @@ static llvm::Expected<RewriteData> Match(mlir::lmhlo::FusionOp fusion_op) {
                                     hlo_module_config, libdevice_dir);
   if (!ptx.ok()) return MakeError(ptx.status());
 
-  return RewriteData{
-      fusion_op,         std::move(captures),  std::move(*allocations),
-      std::move(thunks), std::move(constants), std::move(*ptx)};
+  return RewriteData{op,
+                     std::move(arguments),
+                     std::move(*allocations),
+                     std::move(thunks),
+                     std::move(constants),
+                     std::move(*ptx)};
 }
 
-// Replaces fusion_op with gpu.launch_func.
-static void Rewrite(mlir::lmhlo::FusionOp fusion_op,
-                    mlir::PatternRewriter& rewriter,
-                    mlir::SymbolTable& symbol_table, ArrayRef<Value> captures,
+// Replaces op with gpu.launch_func and gpu.memcpy ops.
+static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
+                    mlir::SymbolTable& symbol_table, ArrayRef<Value> arguments,
                     ThunkSequence* thunks, ArrayRef<ConstantInfo> constants,
                     mlir::StringRef gpu_module_data) {
   mlir::OpBuilder::InsertionGuard guard(rewriter);
-  auto loc = fusion_op->getLoc();
+  auto loc = op->getLoc();
 
-  rewriter.setInsertionPoint(fusion_op->getParentOfType<mlir::FuncOp>());
+  rewriter.setInsertionPoint(op->getParentOfType<mlir::FuncOp>());
   auto gpu_module = rewriter.create<mlir::gpu::GPUModuleOp>(loc, "gpu_module");
   symbol_table.insert(gpu_module);
   gpu_module->setAttr(tfrt::gpu::getGpuBinaryAttrName(),
@@ -302,7 +307,7 @@ static void Rewrite(mlir::lmhlo::FusionOp fusion_op,
           static_cast<const DeviceToDeviceCopyThunk*>(thunk.get());
       auto get_argument = [&](const xla::BufferAllocation::Slice& slice) {
         assert(slice.offset() == 0 && slice.size() == copy_thunk->size_bytes());
-        Value result = captures[slice.index()];
+        Value result = arguments[slice.index()];
         // Annotate defining memref.get_global with the gpu_module symbol.
         // Unlike kernel thunks below, which use the global in the kernel only.
         if (auto op = result.getDefiningOp<GetGlobalOp>()) {
@@ -311,7 +316,7 @@ static void Rewrite(mlir::lmhlo::FusionOp fusion_op,
         }
         return result;
       };
-      rewriter.setInsertionPoint(fusion_op);
+      rewriter.setInsertionPoint(op);
       rewriter.create<mlir::gpu::MemcpyOp>(
           loc, mlir::TypeRange(), mlir::ValueRange(),
           get_argument(copy_thunk->destination()),
@@ -321,11 +326,11 @@ static void Rewrite(mlir::lmhlo::FusionOp fusion_op,
 
     const auto* kernel_thunk = static_cast<const KernelThunk*>(thunk.get());
     rewriter.setInsertionPointToStart(gpu_module.getBody());
-    SmallVector<Value, 4> arguments;
-    for (auto argument : kernel_thunk->arguments())
-      arguments.push_back(captures[argument->index()]);
+    SmallVector<Value, 4> kernel_args;
+    for (auto kernel_arg : kernel_thunk->arguments())
+      kernel_args.push_back(arguments[kernel_arg->index()]);
     auto func_type = rewriter.getType<mlir::FunctionType>(
-        mlir::TypeRange(mlir::ValueRange(arguments)), mlir::TypeRange());
+        mlir::TypeRange(mlir::ValueRange(kernel_args)), mlir::TypeRange());
     mlir::gpu::GPUFuncOp kernel_func = rewriter.create<mlir::gpu::GPUFuncOp>(
         loc, kernel_thunk->kernel_name(), func_type);
     kernel_func->setAttr(mlir::gpu::GPUDialect::getKernelFuncAttrName(),
@@ -333,7 +338,7 @@ static void Rewrite(mlir::lmhlo::FusionOp fusion_op,
     rewriter.setInsertionPointToEnd(&kernel_func.getBody().back());
     rewriter.create<mlir::gpu::ReturnOp>(loc);
 
-    rewriter.setInsertionPoint(fusion_op);
+    rewriter.setInsertionPoint(op);
     auto make_const_idx = [&](int64_t value) {
       auto attr = rewriter.getIndexAttr(value);
       return rewriter.create<mlir::arith::ConstantOp>(loc, attr).getResult();
@@ -349,28 +354,34 @@ static void Rewrite(mlir::lmhlo::FusionOp fusion_op,
 
     rewriter.create<mlir::gpu::LaunchFuncOp>(
         loc, kernel_func, grid_size, block_size,
-        /*shared_memory_size_bytes=*/nullptr, arguments);
+        /*shared_memory_size_bytes=*/nullptr, kernel_args);
   }
 
-  rewriter.eraseOp(fusion_op);
+  rewriter.eraseOp(op);
 }
 
-mlir::LogicalResult FusionRewritePattern::matchAndRewrite(
+mlir::LogicalResult KernelOpsPattern::matchAndRewrite(
     mlir::ModuleOp module_op, mlir::PatternRewriter& rewriter) const {
   SmallVector<RewriteData, 4> rewrites;
 
-  // Gather data to rewrite each lmhlo.fusion op without changing the IR.
-  auto callback = [&](mlir::lmhlo::FusionOp fusion_op) -> mlir::WalkResult {
-    auto data = Match(fusion_op);
-    if (!data)
-      return rewriter.notifyMatchFailure(fusion_op, toString(data.takeError()));
-    rewrites.emplace_back(std::move(*data));
-    return mlir::success();
+  // Get data to rewrite kernel ops without changing the IR.
+  auto walk = [&](auto concrete_op) {
+    return module_op.walk([&](decltype(concrete_op) op) -> mlir::WalkResult {
+      auto data = Match(op);
+      if (!data)
+        return rewriter.notifyMatchFailure(op, toString(data.takeError()));
+      rewrites.emplace_back(std::move(*data));
+      return mlir::success();
+    });
   };
-  if (module_op.walk(callback).wasInterrupted()) return mlir::failure();
+  if (walk(mlir::lmhlo::FusionOp()).wasInterrupted() ||
+      walk(mlir::lmhlo::ScatterOp()).wasInterrupted() ||
+      walk(mlir::lmhlo::SortOp()).wasInterrupted())
+    return mlir::failure();
 
-  if (rewrites.empty())
-    return rewriter.notifyMatchFailure(module_op, "No lmhlo.fusion ops");
+  if (rewrites.empty()) {
+    return rewriter.notifyMatchFailure(module_op, "No kernel ops");
+  }
 
   // Mark module as gpu.container_module.
   rewriter.updateRootInPlace(module_op, [&] {
@@ -378,18 +389,18 @@ mlir::LogicalResult FusionRewritePattern::matchAndRewrite(
                        rewriter.getUnitAttr());
   });
 
-  // Replace the lmhlo.fusion ops with gpu.launch_func.
+  // Replace the kernel ops with gpu.launch_func.
   mlir::SymbolTable symbol_table(module_op);
   for (const auto& data : rewrites) {
-    Rewrite(data.fusion_op, rewriter, symbol_table, data.captures.getArrayRef(),
-            data.thunks.get(), data.constants, data.gpu_module_data);
+    Rewrite(data.op, rewriter, symbol_table, data.arguments, data.thunks.get(),
+            data.constants, data.gpu_module_data);
   }
 
   return mlir::success();
 }
 
-void populateFusionConversionPattern(mlir::RewritePatternSet& patterns) {
-  patterns.add<FusionRewritePattern>(patterns.getContext());
+void populateKernelOpsPattern(mlir::RewritePatternSet& patterns) {
+  patterns.add<KernelOpsPattern>(patterns.getContext());
 }
 
 }  // namespace tensorflow

@@ -92,7 +92,7 @@ cc_library(
 cc_library(
     name = "lmhlo_to_gpu_binary",
     srcs = [
-        "fusion_pattern.cc",
+        "kernel_ops_pattern.cc",
         "lmhlo_to_gpu_binary.cc",
     ],
     hdrs = [

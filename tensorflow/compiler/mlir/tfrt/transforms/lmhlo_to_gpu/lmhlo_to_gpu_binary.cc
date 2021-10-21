@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-void populateFusionConversionPattern(mlir::RewritePatternSet&);
+void populateKernelOpsPattern(mlir::RewritePatternSet&);
 
 namespace {
 
@@ -42,7 +42,7 @@ struct ConvertLmhloToGpuBinaryPass
  private:
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
-    populateFusionConversionPattern(patterns);
+    populateKernelOpsPattern(patterns);
     if (failed(applyOpPatternsAndFold(getOperation(), std::move(patterns))))
       return signalPassFailure();
   }
