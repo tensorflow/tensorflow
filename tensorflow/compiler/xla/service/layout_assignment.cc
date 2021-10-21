@@ -1205,12 +1205,33 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   return nullptr;
 }
 
+static Layout GetReduceLayoutFromOperand(const Layout& operand_layout,
+                                         const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kReduce);
+  Shape operand_shape = hlo->operand(0)->shape();
+  *operand_shape.mutable_layout() = operand_layout;
+  operand_shape = ShapeUtil::FilterDimensions(
+      [&](int64_t dim) {
+        return !absl::c_linear_search(hlo->dimensions(), dim);
+      },
+      operand_shape);
+  return operand_shape.layout();
+}
+
 std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     const Layout& operand_layout, const HloInstruction* user,
     int64_t operand_no) {
   const HloInstruction* operand = user->operand(operand_no);
 
-  CHECK(user->shape().IsArray() && operand->shape().IsArray());
+  // Enforce standard layout on variadic reduction output to avoid having two
+  // inconsistent layouts.
+  if (user->opcode() == HloOpcode::kReduce && user->shape().IsTuple()) {
+    return absl::make_unique<Layout>(
+        GetReduceLayoutFromOperand(operand_layout, user));
+  }
+
+  CHECK(user->shape().IsArray() && operand->shape().IsArray())
+      << "Fails on instruction: " << user->ToString();
 
   if (!ShapeUtil::IsScalar(operand->shape()) &&
       operand->shape().rank() == user->shape().rank() &&
@@ -1359,7 +1380,9 @@ Status LayoutAssignment::PropagateUseConstraintToDefs(
         if (ShapeUtil::IsLeafIndex(shape_layout.shape(), index)) {
           for (const LogicalBuffer* buffer : buffers) {
             if (buffer->shape().IsArray() &&
-                GetBufferLayoutConstraint(*buffer) == nullptr) {
+                GetBufferLayoutConstraint(*buffer) == nullptr &&
+                (buffer->instruction()->opcode() != HloOpcode::kReduce ||
+                 !buffer->instruction()->shape().IsTuple())) {
               TF_RETURN_IF_ERROR(SetBufferLayout(
                   ShapeUtil::GetSubshape(shape_layout.shape(), index).layout(),
                   *buffer, /*mandatory=*/true));
@@ -1433,7 +1456,9 @@ Status LayoutAssignment::PropagateOperandConstraint(
                           /*mandatory=*/false, /*dfs=*/true));
     }
   }
-  if (InstructionCanChangeLayoutInstance(user) && !user->shape().IsArray()) {
+
+  if (InstructionCanChangeLayoutInstance(user) && !user->shape().IsArray() &&
+      user->opcode() != HloOpcode::kReduce) {
     return Status::OK();
   }
 

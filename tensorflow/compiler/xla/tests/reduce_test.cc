@@ -1238,10 +1238,7 @@ XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicAnd) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
-// TODO(b/199531352): Different layouts in variadic output are not supported in
-// elemental IR emitter.
-XLA_TEST_F(VariadicReduceTest,
-           DISABLED_ON_CPU(ReduceMultiOutputVariadicDifferentLayout)) {
+XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicDifferentLayout) {
   absl::string_view hlo_string = R"(
 HloModule ReduceWithLayoutChangeVariadicDifferent
 
