@@ -599,6 +599,11 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       !indices.sharding().IsTileMaximal() &&
       (dnums.index_vector_dim() == indices.base_shape().rank() ||
        indices.sharding().tile_assignment().dim(dnums.index_vector_dim()) == 1);
+  const bool should_shard_trivial_operand_slices =
+      GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
+          operand, scatter_dims_to_operand_dims, slice_size) &&
+      ShapeSizeInBytes(updates.base_shape()) <
+          ShapeSizeInBytes(scatter->shape());
   // If Passthrough sharding is available the updates are sharded according
   // to the *maybe_passthrough sharding, so compare with that size.
   const int64_t index_and_update_partitioning_size =
@@ -610,13 +615,21 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
                          : (2 * ShapeSizeInBytes(operand.hlo()->shape()) +
                             ShapeSizeInBytes(MakePartitionedShape(
                                 updates.base_shape(), *maybe_passthrough)));
+  const int64_t operand_trivial_slice_partitioning_size =
+      !should_shard_trivial_operand_slices
+          ? INT64_MAX
+          : 2 * ShapeSizeInBytes(operand.hlo()->shape()) +
+                ShapeSizeInBytes(updates.base_shape()) +
+                ShapeSizeInBytes(indices.base_shape());
   // Compare the size between doing sharding of the indices + updates vs
   // sharding of the operand + updates and see which is potentially better size
   // wise.
   const bool is_better_to_shard_updates_and_indices =
       !indices.sharding().IsTileMaximal() &&
       index_and_update_partitioning_size <
-          operand_passthrough_parititoning_size;
+          operand_passthrough_parititoning_size &&
+      index_and_update_partitioning_size <
+          operand_trivial_slice_partitioning_size;
   if (IsSupportedScatterForIndexUpdatePartitioning(scatter) &&
       ((is_better_to_shard_updates_and_indices &&
         should_shard_index_and_update) ||
@@ -706,10 +719,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
     });
     return Status::OK();
   }
-  if (GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
-          operand, scatter_dims_to_operand_dims, slice_size) &&
-      ShapeSizeInBytes(updates.base_shape()) <
-          ShapeSizeInBytes(scatter->shape())) {
+  if (should_shard_trivial_operand_slices) {
     // Operand is sharded on trivial slice dims (update slice size 1). We can
     // adjust the indices on each partition by subtracting the offsets. Then
     // we execute a scatter on full updated indices, and out-of-bound accesses
