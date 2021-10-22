@@ -257,7 +257,8 @@ std::string ImportGraphDef(const std::string &proto,
     Set_TF_Status_from_Status(status, s);
     return "// error";
   }
-  for (std::vector<string>::size_type i = 0, e = node_names_size; i < e; i++) {
+  for (decltype(node_names_size)::size_type i = llvm::seq<decltype(node_names_size)::size_type>(
+          0, node_names.size()) {
     const string &name = node_names[i];
     if (name.empty()) continue;
 
