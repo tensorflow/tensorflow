@@ -227,8 +227,8 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
     return self._to_tensor_list(value)
 
   # TODO(b/202447704): Rename to __tf_tracing_type__ at protocol export.
-  def _tf_tracing_type(self, _):
-    return ops.TensorType(self.shape, self.dtype, self.name)
+  def _tf_tracing_type(self, signature_context):
+    return ops.TensorType(signature_context, self.shape, self.dtype, self.name)
 
 
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?

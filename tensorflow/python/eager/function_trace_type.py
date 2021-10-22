@@ -32,7 +32,8 @@ from tensorflow.python.util import _pywrap_utils
 class SignatureContext(trace.TracingContext):
   """Container for variables and flags shared across signature tracing."""
 
-  def __init__(self):
+  def __init__(self, include_tensor_ranks_only=False):
+    self._include_tensor_ranks_only = include_tensor_ranks_only
     self._global_to_local_id = {}
 
   # TODO(b/202772221): Consider dropping after alias pattern matching is
@@ -43,6 +44,11 @@ class SignatureContext(trace.TracingContext):
       self._global_to_local_id[local_id] = len(self._global_to_local_id)
 
     return self._global_to_local_id[local_id]
+
+  # TODO(b/202430155): Remove this flag after TraceType shape relaxation.
+  @property
+  def include_tensor_ranks_only(self):
+    return self._include_tensor_ranks_only
 
 
 class GenericType(trace.TraceType):
@@ -283,7 +289,7 @@ def get_arg_spec(inputs, include_tensor_ranks_only,
   """
 
   # TODO(b/201533914): Drop GenericType once TFE_Py_EncodeArg returns TraceType.
-  signature_context = SignatureContext()
+  signature_context = SignatureContext(include_tensor_ranks_only)
   try:
     return GenericType(
         pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
