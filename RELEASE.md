@@ -47,23 +47,23 @@
     *   `tf.data.experimental.service.register_dataset` now accepts optional `compression` argument.
 
 *  Keras:
-  *  `tf.keras.layers.Conv` now includes a public `convolution_op` method. This method can be used to simplify the implementation of Conv subclasses. There are two primary ways to use this new method.  The first is to use the method directly in your own `call` method:
-      ```python
-        class StandardizedConv2D(tf.keras.layers.Conv2D):
-          def call(self, inputs):
-            mean, var = tf.nn.moments(self.kernel, axes=[0, 1, 2], keepdims=True)
-            return self.convolution_op(inputs, (self.kernel - mean) / tf.sqrt(var + 1e-10))
-      ```
-      Alternatively, you can override `convolution_op`:
-      ```python
-        class StandardizedConv2D(tf.keras.Layer):
-          def convolution_op(self, inputs, kernel):
-            mean, var = tf.nn.moments(kernel, axes=[0, 1, 2], keepdims=True)
-            # Author code uses std + 1e-5
-            return super().convolution_op(inputs, (kernel - mean) / tf.sqrt(var + 1e-10))
-      ```
-  * Added `merge_state()` method to `tf.keras.metrics.Metric` for use in distributed computations.
-  * Added `sparse` and `ragged` options to `tf.keras.layers.TextVectorization` to allow for `SparseTensor` and `RaggedTensor` outputs from the layer.
+    *  `tf.keras.layers.Conv` now includes a public `convolution_op` method. This method can be used to simplify the implementation of Conv subclasses. There are two primary ways to use this new method.  The first is to use the method directly in your own `call` method:
+        ```python
+          class StandardizedConv2D(tf.keras.layers.Conv2D):
+            def call(self, inputs):
+              mean, var = tf.nn.moments(self.kernel, axes=[0, 1, 2], keepdims=True)
+              return self.convolution_op(inputs, (self.kernel - mean) / tf.sqrt(var + 1e-10))
+        ```
+        Alternatively, you can override `convolution_op`:
+        ```python
+          class StandardizedConv2D(tf.keras.Layer):
+            def convolution_op(self, inputs, kernel):
+              mean, var = tf.nn.moments(kernel, axes=[0, 1, 2], keepdims=True)
+              # Author code uses std + 1e-5
+              return super().convolution_op(inputs, (kernel - mean) / tf.sqrt(var + 1e-10))
+        ```
+    * Added `merge_state()` method to `tf.keras.metrics.Metric` for use in distributed computations.
+    * Added `sparse` and `ragged` options to `tf.keras.layers.TextVectorization` to allow for `SparseTensor` and `RaggedTensor` outputs from the layer.
 *  distribute.experimental.rpc package:
    * distribute.experimental.rpc package introduces APIs to create a GRPC based server to register tf.function methods and a GRPC client to invoke remote registered methods. RPC APIs are intended for multi-client setups i.e. server and clients are started in separate binaries independently.
 
@@ -133,7 +133,7 @@
 
 This release contains contributions from many people at Google, as well as:
 
-8bitmp3, Abhilash Majumder, abhilash1910, AdeshChoudhar, Adrian Garcia Badaracco, Adrian Ratiu, ag.ramesh, Aleksandr Nikolaev, Alexander Bosch, Alexander Grund, Annie Tallund, Anush Elangovan, Artem Sokolovskii, azazhu, Balint Cristian, Bas Aarts, Ben Barsdell, bhack, cfRod, Cheney-Wang, Cheng Ren, Christopher Bate, collin, Danila Bespalov, David Datascientist, Deven Desai, Ehsan Kia, Ellie, Fan Du, fo40225, Frederic Bastien, fsx950223, Gauri1 Deshpande, geetachavan1, Guillaume Klein, guozhong.zhuang, helen, Håkon Sandsmark, japm48, jgehw, Jinzhe Zeng, Jonathan Dekhtiar, Kai Zhu, Kaixi Hou, Kanvi Khanna, Koan-Sin Tan, Koki Ibukuro, Kulin Seth, KumaTea, Kun-Lu, Lemo, lipracer, liuyuanqiang, Mahmoud Abuzaina, Marius Brehler, Maxiwell S. Garcia, mdfaijul, metarutaiga, Michal Szutenberg, nammbash, Neil Girdhar, Nishidha Panpaliya, Nyadla-Sys, Patrice Vignola, Peter Kasting, Philipp Hack, PINTO0309, Prateek Gupta, puneeshkhanna, Rahul Butani, Rajeshwar Reddy T, Reza Rahimi, RinozaJiffry, rmothukuru, Rohit Santhanam, Saduf2019, Samuel Marks, sclarkson, Sergii Khomenko, Sheng, Yang, Sidong-Wei, slowy07, Srinivasan Narayanamoorthy, Srishti Srivastava, stanley, Stella Alice Schlotter, Steven I Reeves, stevenireeves, svobora, Takayoshi Koizumi, Tamas Bela Feher, Thibaut Goetghebuer-Planchon, Trent Lo, Twice, Varghese, Jojimon, Vishnuvardhan Janapati, Wang Yanzhang, Wang,Quintin, William Muir, William Raveane, Yasuhiro Matsumoto, Yi Li, Yong Tang, zhaozheng09, Zhoulong Jiang, zzpmiracle
+8bitmp3, Abhilash Majumder, abhilash1910, AdeshChoudhar, Adrian Garcia Badaracco, Adrian Ratiu, ag.ramesh, Aleksandr Nikolaev, Alexander Bosch, Alexander Grund, Annie Tallund, Anush Elangovan, Artem Sokolovskii, azazhu, Balint Cristian, Bas Aarts, Ben Barsdell, bhack, cfRod, Cheney-Wang, Cheng Ren, Christopher Bate, collin, Danila Bespalov, David Datascientist, Deven Desai, Ehsan Kia, Ellie, Fan Du, fo40225, Frederic Bastien, fsx950223, Gauri1 Deshpande, geetachavan1, Guillaume Klein, guozhong.zhuang, helen, Håkon Sandsmark, japm48, jgehw, Jinzhe Zeng, Jonathan Dekhtiar, Kai Zhu, Kaixi Hou, Kanvi Khanna, Koan-Sin Tan, Koki Ibukuro, Kulin Seth, KumaTea, Kun-Lu, Lemo, lipracer, liuyuanqiang, Mahmoud Abuzaina, Marius Brehler, Maxiwell S. Garcia, mdfaijul, metarutaiga, Michal Szutenberg, nammbash, Neil Girdhar, Nishidha Panpaliya, Nyadla-Sys, Patrice Vignola, Peter Kasting, Philipp Hack, PINTO0309, Prateek Gupta, puneeshkhanna, Rahul Butani, Rajeshwar Reddy T, Reza Rahimi, RinozaJiffry, rmothukuru, Rohit Santhanam, Saduf2019, Samuel Marks, sclarkson, Sergii Khomenko, Sheng, Yang, Sidong-Wei, slowy07, Srinivasan Narayanamoorthy, Srishti Srivastava, stanley, Stella Alice Schlotter, Steven I Reeves, stevenireeves, svobora, Takayoshi Koizumi, Tamas Bela Feher, Thibaut Goetghebuer-Planchon, Trent Lo, Twice, Varghese, Jojimon, Vishnuvardhan Janapati, Wang Yanzhang, Wang,Quintin, William Muir, William Raveane, Yasir Modak, Yasuhiro Matsumoto, Yi Li, Yong Tang, zhaozheng09, Zhoulong Jiang, zzpmiracle
 
 # Release 2.6.0
 
