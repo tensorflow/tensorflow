@@ -4665,7 +4665,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
               "associating NNAPI execution input with a memory object", tensor,
               nnapi_errno);
         }
-      } else if (nn_input_memory_->get_byte_size() > 0) {
+      } else if (operand_mapping_.lite_index_to_ann(absolute_input_index) != -1) {
         // copy data to pre-allocated shared memory.
         memcpy(nn_input_memory_->get_data_ptr() + input_offset,
                tensor->data.raw, tensor->bytes);
