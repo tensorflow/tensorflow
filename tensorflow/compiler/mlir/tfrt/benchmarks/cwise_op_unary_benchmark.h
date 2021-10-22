@@ -78,17 +78,19 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   converter.AddConversion(FreeReturnedMemref);
 
   // Get an executable that might be specialized to the operands.
-  AsyncValuePtr<Executable> executable =
+  llvm::Expected<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands, exec_ctx);
+  if (auto err = executable.takeError())
+    LOG(FATAL) << "Failed to specialize executable";
 
   // Wait for the compilation completion.
-  host->Await({executable.CopyRef()});
+  host->Await({executable->CopyRef()});
 
-  CHECK(!executable.IsError())
-      << "Failed to get executable: " << StrCat(executable.GetError());
-  CHECK(!executable->IsAsync()) << "async results are not supported";
+  CHECK(!executable->IsError())
+      << "Failed to get executable: " << StrCat(executable->GetError());
+  CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
-  return {std::move(host), &executable.get(), exec_ctx, std::move(converter)};
+  return {std::move(host), &executable->get(), exec_ctx, std::move(converter)};
 }
 
 template <typename T, int rank>
