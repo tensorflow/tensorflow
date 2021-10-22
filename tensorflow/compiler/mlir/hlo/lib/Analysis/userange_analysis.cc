@@ -571,8 +571,9 @@ void UserangeAnalysis::gatherMemoryEffects(Operation *op) {
     if (auto effectInterface = dyn_cast<MemoryEffectOpInterface>(op)) {
       SmallPtrSet<Value, 2> readEffectSet;
       SmallPtrSet<Value, 2> writeEffectSet;
+      SmallVector<MemoryEffects::EffectInstance> effects;
       for (auto operand : op->getOperands()) {
-        SmallVector<MemoryEffects::EffectInstance, 2> effects;
+        effects.clear();
         effectInterface.getEffectsOnValue(operand, effects);
         for (auto effect : effects) {
           if (isa<MemoryEffects::Write>(effect.getEffect()))
@@ -592,7 +593,7 @@ size_t UserangeAnalysis::unwrapId(size_t id) const { return id / 2; }
 
 void UserangeAnalysis::dump(raw_ostream &os) {
   os << "// ---- UserangeAnalysis -----\n";
-  std::vector<Value> values;
+  SmallVector<Value> values;
   for (auto const &item : useIntervalMap) {
     values.push_back(item.first);
   }
