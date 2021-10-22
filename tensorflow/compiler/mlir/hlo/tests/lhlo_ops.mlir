@@ -309,7 +309,7 @@ func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2:
 // -----
 
 func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  // expected-error@+3{{Expected array with2 elements, got 3 elements instead}}
+  // expected-error@+3{{Expected array with 2 elements, got 3 elements instead}}
   lmhlo.convolution(%arg0, %arg1, %arg2)
      dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
      window = {stride = [2, 1], pad = [[0, 1, 2], [0, 1]], rhs_dilate = [1, 2]}
