@@ -710,11 +710,11 @@ Status ValidateDotDimensionNumbers(
   // dimensions except the contracted and batch dimensions.
   std::vector<int64_t> dimensions;
   std::vector<bool> is_dynamic;
-  const auto lhs_batch_dimensions = dimension_numbers.lhs_batch_dimensions();
+  const auto& lhs_batch_dimensions = dimension_numbers.lhs_batch_dimensions();
   const auto lhs_batch_dimensions_size =
-  lhs.rank() - dimension_numbers.lhs_contracting_dimensions().size() +
-  rhs.rank() - dimension_numbers.rhs_contracting_dimensions().size() -
-  dimension_numbers.rhs_batch_dimensions().size();
+    lhs.rank() - dimension_numbers.lhs_contracting_dimensions().size() +
+    rhs.rank() - dimension_numbers.rhs_contracting_dimensions().size() -
+    dimension_numbers.rhs_batch_dimensions().size();
   dimensions.reserve(lhs_batch_dimensions_size);
   is_dynamic.reserve(lhs_batch_dimensions_size);
   for (const int64_t lhs_dim : lhs_batch_dimensions) {
@@ -2305,7 +2305,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                                 new_dimensions, new_is_dynamic);
   } else {
     std::vector<Shape> result_subshapes;
-    const auto tuple_shapes = to_apply.result().tuple_shapes();
+    const auto& tuple_shapes = to_apply.result().tuple_shapes();
     result_subshapes.reserve(tuple_shapes.size());
     for (const Shape& subshape : tuple_shapes) {
       result_subshapes.push_back(ShapeUtil::MakeShape(
