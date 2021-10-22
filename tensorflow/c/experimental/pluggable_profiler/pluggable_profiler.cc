@@ -15,6 +15,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/c_api_macros.h"
+#include "tensorflow/c/c_api_macros_internal.h"
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device/device_utils.h"
