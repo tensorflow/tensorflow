@@ -6,8 +6,6 @@ package(licenses = ["notice"])
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
-    # TODO(b/203645380): Re-enable the test.
-    exclude = ["lhlo-legalize-roots-to-loops.mlir"],
     test_file_exts = ["mlir"],
 )
 
