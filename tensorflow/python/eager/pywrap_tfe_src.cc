@@ -4364,6 +4364,34 @@ tensorflow::StatusOr<PyObject*> MakeDictType(PyObject* mapping,
       Py_BuildValue("(O)", dict));
 }
 
+tensorflow::StatusOr<PyObject*> MakeAttrsType(PyObject* object,
+                                              PyObject* context) {
+  tensorflow::Safe_PyObjectPtr attributes_sequence(
+      PySequence_Fast(PyObject_GetAttrString(object, "__attrs_attrs__"),
+                      "Unable to create sequence from object."));
+
+  int size = PySequence_Fast_GET_SIZE(attributes_sequence.get());
+  PyObject** py_sequence_array =
+      PySequence_Fast_ITEMS(attributes_sequence.get());
+  PyObject* components_tuple = PyTuple_New(size);
+  for (int i = 0; i < size; ++i) {
+    tensorflow::Safe_PyObjectPtr name(
+        PyObject_GetAttrString(py_sequence_array[i], "name"));
+    tensorflow::Safe_PyObjectPtr attr_arg(PyObject_GetAttr(object, name.get()));
+    auto trace_type = EncodeTraceType(attr_arg.get(), context);
+    if (!trace_type.ok()) {
+      return trace_type.status();
+    }
+    PyTuple_SetItem(components_tuple, i, trace_type.ValueOrDie());
+  }
+
+  PyObject* object_type = PyObject_Type(object);
+
+  return PyObject_CallObject(
+      tensorflow::swig::GetRegisteredPyObject("AttrsType"),
+      Py_BuildValue("(OO)", object_type, components_tuple));
+}
+
 // TODO(b/201533914); Add support for attrs as well.
 tensorflow::StatusOr<PyObject*> TryEncodingCollection(PyObject* object,
                                                       PyObject* context) {
@@ -4375,6 +4403,8 @@ tensorflow::StatusOr<PyObject*> TryEncodingCollection(PyObject* object,
         tensorflow::swig::GetRegisteredPyObject("TupleType"), object, context);
   } else if (tensorflow::swig::IsMapping(object)) {
     return MakeDictType(object, context);
+  } else if (tensorflow::swig::IsAttrs(object)) {
+    return MakeAttrsType(object, context);
   }
 
   return tensorflow::errors::Unimplemented(

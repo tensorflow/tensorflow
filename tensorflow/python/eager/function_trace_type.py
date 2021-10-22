@@ -14,7 +14,7 @@
 # ==============================================================================
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
-from typing import Dict, Optional, Sequence
+from typing import Dict, Optional, Sequence, Type, Tuple
 import weakref
 
 import numpy as np
@@ -211,8 +211,22 @@ class TupleType(OrderedCollectionType):
   pass
 
 
+class AttrsType(OrderedCollectionType):
+  """Represents a class annotated by attr.s.
+
+  Each attr.s class has a fixed, ordered set of attributes. Therefore, we only
+  need to consider the class type and the underlying attributes. Extra
+  metadata including attribute names can be ignored.
+  """
+
+  def __init__(self, classtype: Type[object],
+               attributes: Tuple[trace.TraceType]):
+    super().__init__(GenericType(classtype) + attributes)
+
+
 _pywrap_utils.RegisterType("ListType", ListType)
 _pywrap_utils.RegisterType("TupleType", TupleType)
+_pywrap_utils.RegisterType("AttrsType", TupleType)
 
 
 class DictType(trace.TraceType):
@@ -278,4 +292,3 @@ def get_arg_spec(inputs, include_tensor_ranks_only,
                                     use_full_trace_type))
   except core._NotOkStatusException as e:  # pylint: disable=protected-access
     raise core._status_to_exception(e) from None  # pylint: disable=protected-access
-
