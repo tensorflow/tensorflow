@@ -474,7 +474,7 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64_t root_id,
   if (remove_dynamic_dimensions) {
     std::function<void(Shape*)> remove_dynamic_dimension = [&](Shape* shape) {
       if (shape->tuple_shapes_size() != 0) {
-        for (int64_t i = 0; i < shape->tuple_shapes_size(); ++i) {
+        for (int i = 0; i < shape->tuple_shapes_size(); ++i) {
           remove_dynamic_dimension(shape->mutable_tuple_shapes(i));
         }
       }
@@ -2841,7 +2841,7 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
       if (operand_shape->tuple_shapes_size() == 0) {
         return Unimplemented("0 element tuple AllReduce is not supported");
       }
-      for (int64_t i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
+      for (int i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
         if (operand_shape->tuple_shapes(i).element_type() !=
             operand_shape->tuple_shapes(0).element_type()) {
           return Unimplemented(
@@ -2919,7 +2919,7 @@ XlaOp XlaBuilder::ReduceScatter(
       if (operand_shape->tuple_shapes_size() == 0) {
         return Unimplemented("0 element tuple ReduceScatter is not supported");
       }
-      for (int64_t i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
+      for (int i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
         if (operand_shape->tuple_shapes(i).element_type() !=
             operand_shape->tuple_shapes(0).element_type()) {
           return Unimplemented(

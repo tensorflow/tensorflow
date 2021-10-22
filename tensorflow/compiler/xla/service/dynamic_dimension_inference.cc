@@ -1327,7 +1327,7 @@ Status DynamicDimensionInferenceVisitor::HandleConditional(
     // given branch.
     const int64_t operand_index = branch_index + 1;
 
-    int64_t operand_count =
+    int operand_count =
         hlo->operand(operand_index)->shape().tuple_shapes_size();
     // Prepare to pass dynamic dimension into the new computation and add
     // dynamic dimension sizes as parameters to the new tuple.
@@ -1394,7 +1394,7 @@ Status DynamicDimensionInferenceVisitor::HandleConditional(
     new_branch_computations.push_back(new_computation);
     new_operands.push_back(new_operand);
   }
-  int64_t tuple_count = hlo->shape().tuple_shapes_size();
+  int tuple_count = hlo->shape().tuple_shapes_size();
   // The dynamism of the output of branches can be different.
   // E.g.,
   //   true_branch  (s32[<=4])
@@ -1566,8 +1566,8 @@ Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
   ShapeTree<absl::flat_hash_map<int64_t, int64_t>> dynamic_output_mapping(
       hlo->shape());
   std::vector<HloInstruction*> operands_to_add;
-  const int64_t original_tuple_count = hlo->shape().tuple_shapes_size();
-  int64_t operand_count = original_tuple_count;
+  const int original_tuple_count = hlo->shape().tuple_shapes_size();
+  int operand_count = original_tuple_count;
   TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction*, ShapeIndex index, int64_t dim, int64_t,
                HloInstruction* dynamic_size) {
@@ -1660,7 +1660,7 @@ Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
                                                  nullptr);
 
   // Original non-dynamic-dim operands of root are pass-through.
-  for (int64_t i = 0; i < original_tuple_count; ++i) {
+  for (int i = 0; i < original_tuple_count; ++i) {
     new_root_operands[i] =
         hlo->while_body()->AddInstruction(HloInstruction::CreateGetTupleElement(
             body_root->shape().tuple_shapes(i), body_root, i));

@@ -688,7 +688,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
       // If old_root is not a kTuple but has tuple shape, elements within the
       // tuple must be extracted first to be used by the new instructions.
       const Shape& old_shape = old_root->shape();
-      for (int64_t i = 0; i < old_shape.tuple_shapes_size(); ++i) {
+      for (int i = 0; i < old_shape.tuple_shapes_size(); ++i) {
         auto element =
             computation->AddInstruction(HloInstruction::CreateGetTupleElement(
                 old_shape.tuple_shapes(i), old_root, i));
