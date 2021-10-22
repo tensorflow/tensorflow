@@ -47,23 +47,23 @@
     *   `tf.data.experimental.service.register_dataset` now accepts optional `compression` argument.
 
 *  Keras:
-  *  `tf.keras.layers.Conv` now includes a public `convolution_op` method. This method can be used to simplify the implementation of Conv subclasses. There are two primary ways to use this new method.  The first is to use the method directly in your own `call` method:
-      ```python
-        class StandardizedConv2D(tf.keras.layers.Conv2D):
-          def call(self, inputs):
-            mean, var = tf.nn.moments(self.kernel, axes=[0, 1, 2], keepdims=True)
-            return self.convolution_op(inputs, (self.kernel - mean) / tf.sqrt(var + 1e-10))
-      ```
-      Alternatively, you can override `convolution_op`:
-      ```python
-        class StandardizedConv2D(tf.keras.Layer):
-          def convolution_op(self, inputs, kernel):
-            mean, var = tf.nn.moments(kernel, axes=[0, 1, 2], keepdims=True)
-            # Author code uses std + 1e-5
-            return super().convolution_op(inputs, (kernel - mean) / tf.sqrt(var + 1e-10))
-      ```
-  * Added `merge_state()` method to `tf.keras.metrics.Metric` for use in distributed computations.
-  * Added `sparse` and `ragged` options to `tf.keras.layers.TextVectorization` to allow for `SparseTensor` and `RaggedTensor` outputs from the layer.
+    *  `tf.keras.layers.Conv` now includes a public `convolution_op` method. This method can be used to simplify the implementation of Conv subclasses. There are two primary ways to use this new method.  The first is to use the method directly in your own `call` method:
+        ```python
+          class StandardizedConv2D(tf.keras.layers.Conv2D):
+            def call(self, inputs):
+              mean, var = tf.nn.moments(self.kernel, axes=[0, 1, 2], keepdims=True)
+              return self.convolution_op(inputs, (self.kernel - mean) / tf.sqrt(var + 1e-10))
+        ```
+        Alternatively, you can override `convolution_op`:
+        ```python
+          class StandardizedConv2D(tf.keras.Layer):
+            def convolution_op(self, inputs, kernel):
+              mean, var = tf.nn.moments(kernel, axes=[0, 1, 2], keepdims=True)
+              # Author code uses std + 1e-5
+              return super().convolution_op(inputs, (kernel - mean) / tf.sqrt(var + 1e-10))
+        ```
+    * Added `merge_state()` method to `tf.keras.metrics.Metric` for use in distributed computations.
+    * Added `sparse` and `ragged` options to `tf.keras.layers.TextVectorization` to allow for `SparseTensor` and `RaggedTensor` outputs from the layer.
 *  distribute.experimental.rpc package:
    * distribute.experimental.rpc package introduces APIs to create a GRPC based server to register tf.function methods and a GRPC client to invoke remote registered methods. RPC APIs are intended for multi-client setups i.e. server and clients are started in separate binaries independently.
 
