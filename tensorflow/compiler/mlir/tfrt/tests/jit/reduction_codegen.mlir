@@ -1,6 +1,6 @@
 // RUN: tf-tfrt-opt -tf-cpurt-codegen-reduction %s --split-input-file | FileCheck %s
 
-func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
+func @reduce_row_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %input, %c0 : tensor<?x?xf32>
@@ -19,7 +19,7 @@ func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
   } -> tensor<?xf32>
   return %sum : tensor<?xf32>
 }
-// CHECK-LABEL: func @reduce_column_sum_2d(
+// CHECK-LABEL: func @reduce_row_sum_2d(
 // CHECK-SAME:    %[[INPUT:.*]]: tensor<?x?xf32>) -> tensor<?xf32>
 
 // CHECK-DAG:  %[[C0_F32:.*]] = arith.constant 0.000000e+00 : f32
@@ -61,7 +61,7 @@ func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
 
 // -----
 
-func @reduce_column_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
+func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %input, %c0 : tensor<8x16xf32>
@@ -80,14 +80,14 @@ func @reduce_column_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
   } -> tensor<8xf32>
   return %sum : tensor<8xf32>
 }
-// CHECK-LABEL: func @reduce_column_sum_2d_static
+// CHECK-LABEL: func @reduce_row_sum_2d_static
 // CHECK: linalg.tiled_loop
 // CHECK:   %[[LOCAL_INIT:.*]] = linalg.init_tensor [4] : tensor<4xf32>
 // CHECK:   linalg.fill(%{{.*}}, %[[LOCAL_INIT]]) : f32, tensor<4xf32>
 
 // -----
 
-func @reduce_row_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
+func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %input, %c0 : tensor<?x?xf32>
@@ -106,7 +106,7 @@ func @reduce_row_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
   } -> tensor<?xf32>
   return %sum : tensor<?xf32>
 }
-// CHECK-LABEL: func @reduce_row_sum_2d
+// CHECK-LABEL: func @reduce_column_sum_2d
 // CHECK-SAME:    %[[INPUT:.*]]: tensor<?x?xf32>) -> tensor<?xf32>
 
 // CHECK-DAG:  %[[C0_F32:.*]] = arith.constant 0.000000e+00 : f32
