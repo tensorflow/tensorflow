@@ -141,13 +141,13 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
   llvm::SmallVector<mlir::AffineForOp, ancestors_size> ancestors;
   getPerfectlyNestedLoops(ancestors, where);
   {
-    size_t i;
-    for (i = 0; i < ancestors_size; i++) {
+    llvm::SmallVectorBase::Size i;
+    for (i = 0; i < ancestors.size(); i++) {
       if (&ancestors[i].getBody()->front() == &*begin_op) {
         break;
       }
     }
-    CHECK(i < ancestors_size);
+    CHECK(i < ancestors.size());
     ancestors.resize(i + 1);
   }
 
