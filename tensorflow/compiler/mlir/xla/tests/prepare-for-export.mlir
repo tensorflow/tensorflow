@@ -1,4 +1,4 @@
-// RUN: tf-opt -xla-prepare-for-export %s | FileCheck %s
+// RUN: xla-opt -xla-prepare-for-export %s | FileCheck %s
 
 // CHECK-LABEL: func @splat_constants
 func @splat_constants() -> tensor<1x64x224x224xf32> {

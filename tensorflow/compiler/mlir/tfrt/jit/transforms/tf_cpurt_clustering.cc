@@ -46,16 +46,20 @@ using mlir::TFDevice::ValueConstraint;
 using mlir::TFDevice::ValuesConstraintSet;
 
 using mlir::TF::_FusedMatMulOp;
+using mlir::TF::BatchMatMulV2Op;
 using mlir::TF::BroadcastToOp;
 using mlir::TF::ConcatV2Op;
 using mlir::TF::ConstOp;
 using mlir::TF::ExpandDimsOp;
 using mlir::TF::FillOp;
 using mlir::TF::MatMulOp;
+using mlir::TF::OneHotOp;
 using mlir::TF::PackOp;
 using mlir::TF::RangeOp;
 using mlir::TF::ReshapeOp;
 using mlir::TF::ShapeOp;
+using mlir::TF::SliceOp;
+using mlir::TF::SqueezeOp;
 using mlir::TF::StopGradientOp;
 using mlir::TF::StridedSliceOp;
 using mlir::TF::TransposeOp;
@@ -186,6 +190,13 @@ LogicalResult DefaultClusteringPolicy::MatchAndUpdateConstraints(
     operands.Insert(op->getOperand(i), *default_constraint);
   return success();
 }
+
+// -------------------------------------------------------------------------- //
+// tf.BatchMatMulV2
+// -------------------------------------------------------------------------- //
+
+class BatchMatMulV2OpClusteringPolicy
+    : public OpDefaultClusteringPolicy<BatchMatMulV2Op> {};
 
 // -------------------------------------------------------------------------- //
 // tf.BroadcastTo
@@ -509,6 +520,26 @@ class FillOpClusteringPolicy : public TensorflowOpClusteringPolicy<FillOp> {
 class MatMulOpClusteringPolicy : public OpDefaultClusteringPolicy<MatMulOp> {};
 
 // -------------------------------------------------------------------------- //
+// tf.OneHot
+// -------------------------------------------------------------------------- //
+
+class OneHotOpClusteringPolicy : public TensorflowOpClusteringPolicy<OneHotOp> {
+  LogicalResult MatchAndUpdateConstraints(
+      OneHotOp op, const ValuesConstraintSet& results,
+      ValuesConstraintSet& operands) const final {
+    // Value constraint propagation is not supported.
+    if (auto constraint = results.GetConstraint(op.getResult()))
+      if (*constraint == ValueConstraint::kValue) return failure();
+
+    // MHLO lowering needs a static shape for the indices and a constant depth.
+    operands.Insert(op.indices(), ValueConstraint::kShape);
+    operands.Insert(op.depth(), ValueConstraint::kValue);
+
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
 // tf.Pack
 // -------------------------------------------------------------------------- //
 
@@ -615,6 +646,30 @@ class SoftmaxOpClusteringPolicy : public DefaultClusteringPolicy {
 };
 
 // -------------------------------------------------------------------------- //
+// tf.Squeeze
+// -------------------------------------------------------------------------- //
+
+class SqueezeOpClusteringPolicy
+    : public TensorflowOpClusteringPolicy<SqueezeOp> {
+  LogicalResult MatchAndUpdateConstraints(
+      SqueezeOp op, const ValuesConstraintSet& results,
+      ValuesConstraintSet& operands) const final {
+    // Propagate static shape constraints.
+    auto input_constraint = ValueConstraint::kRank;
+    if (auto result_constraint = results.GetConstraint(op.getResult())) {
+      if (*result_constraint == ValueConstraint::kValue) return failure();
+      input_constraint = *result_constraint;
+    }
+
+    // If squeeze_dims is not present we need a static shape.
+    if (op.squeeze_dims().empty()) input_constraint = ValueConstraint::kShape;
+
+    operands.Insert(op.input(), input_constraint);
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
 // tf.StopGradient
 // -------------------------------------------------------------------------- //
 
@@ -639,6 +694,30 @@ class TransposeOpClusteringPolicy
 
     // Permutation must be always known at compile time.
     operands.Insert(op.perm(), ValueConstraint::kValue);
+
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
+// tf.Slice
+// -------------------------------------------------------------------------- //
+
+class SliceOpClusteringPolicy : public TensorflowOpClusteringPolicy<SliceOp> {
+  LogicalResult MatchAndUpdateConstraints(
+      SliceOp op, const ValuesConstraintSet& results,
+      ValuesConstraintSet& operands) const final {
+    // Value constraint propagation is not supported.
+    if (auto constraint = results.GetConstraint(op.getResult()))
+      if (*constraint == ValueConstraint::kValue) return failure();
+
+    // We must know the shape of the input.
+    operands.Insert(op.input(), ValueConstraint::kShape);
+
+    // Force begin and size to be constants. The restriction on begin could be
+    // lifted if we know that there are no `-1` sizes.
+    // TODO(kramerb): Revisit this when mhlo.real_dynamic_slice stabilizes.
+    operands.Insert({op.begin(), op.size()}, ValueConstraint::kValue);
 
     return success();
   }
@@ -682,18 +761,22 @@ void populateTfCpurtClusteringPolicies(ClusteringPolicySet& policies,
   }
 
   if (is_enabled(CpurtClusteringTier::kAll)) {
-    policies.Add<BroadcastToOpClusteringPolicy,  //
-                 ConcatV2OpClusteringPolicy,     //
-                 ExpandDimsOpClusteringPolicy,   //
-                 FillOpClusteringPolicy,         //
-                 FusedMatMulOpClusteringPolicy,  //
-                 MatMulOpClusteringPolicy,       //
-                 PackOpClusteringPolicy,         //
-                 RangeOpClusteringPolicy,        //
-                 ReductionOpClusteringPolicy,    //
-                 ReshapeOpClusteringPolicy,      //
-                 ShapeOpClusteringPolicy,        //
-                 SoftmaxOpClusteringPolicy,      //
+    policies.Add<BatchMatMulV2OpClusteringPolicy,  //
+                 BroadcastToOpClusteringPolicy,    //
+                 ConcatV2OpClusteringPolicy,       //
+                 ExpandDimsOpClusteringPolicy,     //
+                 FillOpClusteringPolicy,           //
+                 FusedMatMulOpClusteringPolicy,    //
+                 MatMulOpClusteringPolicy,         //
+                 OneHotOpClusteringPolicy,         //
+                 PackOpClusteringPolicy,           //
+                 RangeOpClusteringPolicy,          //
+                 ReductionOpClusteringPolicy,      //
+                 ReshapeOpClusteringPolicy,        //
+                 ShapeOpClusteringPolicy,          //
+                 SliceOpClusteringPolicy,          //
+                 SoftmaxOpClusteringPolicy,        //
+                 SqueezeOpClusteringPolicy,        //
                  StridedSliceOpClusteringPolicy>();
   }
 }

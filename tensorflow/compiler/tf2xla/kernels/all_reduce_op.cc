@@ -46,9 +46,11 @@ class CollectiveReduceV2Op : public XlaOpKernel {
                     "Only compiling NCCL/auto collective is supported, got: ",
                     communication_hint_));
 
-    // Store all traversed collective configurations.
-    OP_REQUIRES_OK(ctx, ctx->xla_context()->RecordCollectiveReduceV2OpInfo(
-                            group_key, group_size));
+    // Store all traversed collective configurations, and generate channel_id
+    // for the collective.
+    StatusOr<int64_t> channel_id =
+        ctx->xla_context()->RecordCollectiveInfo(group_key, group_size);
+    OP_REQUIRES_OK(ctx, channel_id.status());
 
     DataType dtype = XlaHelpers::SumAccumulationType(ctx->input_type(0));
     OP_REQUIRES(ctx, merge_op_name_ == "Add" || merge_op_name_ == "Mul",
@@ -69,7 +71,7 @@ class CollectiveReduceV2Op : public XlaOpKernel {
                                 "for all-reduce tf2xla lowering"));
     xla::ChannelHandle channel_handle;
     channel_handle.set_type(xla::ChannelHandle::DEVICE_TO_DEVICE);
-    channel_handle.set_handle(group_key);
+    channel_handle.set_handle(*channel_id);
     ctx->SetOutput(0,
                    xla::AllReduce(ctx->Input(0), *reducer, {}, channel_handle));
   }

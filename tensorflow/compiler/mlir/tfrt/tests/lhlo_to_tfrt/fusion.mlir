@@ -6,7 +6,7 @@
 
 // CHECK: module attributes {gpu.container_module} {
 // CHECK: gpu.module @[[gpu_module:.*]] attributes {
-// CHECK-SAME: nvvm.cubin = "
+// CHECK-SAME: binary = "
 // CHECK-SAME:   .visible .entry _fusion(
 // CHECK-SAME:     .param .u64 _fusion_param_0
 // CHECK-SAME:   )
@@ -47,15 +47,15 @@ memref.global "private" constant @ones : memref<8xf32> = dense<
 
 // CHECK: module attributes {gpu.container_module} {
 // CHECK: gpu.module @[[gpu_module:.*]] attributes {
-// CHECK-SAME: constants = {ones = dense<[{{.*}}]> : tensor<32xi8>}
-// CHECK-SAME: nvvm.cubin = "
+// CHECK-SAME: binary = "
 // CHECK-SAME:   .visible .global .align 64 .b8 zero[4] = {0, 0, 0, 128};
 // CHECK-SAME:   .visible .global .align 64 .b8 ones[32];
 // CHECK-SAME:   .visible .entry _fusion(
 // CHECK-SAME:     .param .u64 _fusion_param_0,
 // CHECK-SAME:     .param .u64 _fusion_param_1
 // CHECK-SAME:   )
-// CHECK-SAME: "} {
+// CHECK-SAME: ",
+// CHECK-SAME: constants = {ones = dense<[{{.*}}]> : tensor<32xi8>}} {
 // CHECK: gpu.func @[[kernel:.*]](
 // CHECK-SAME:   %arg0: memref<8x128xf32>, %arg1: memref<8xf32>
 // CHECK-SAME: ) kernel {

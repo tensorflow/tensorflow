@@ -21,10 +21,12 @@ package_group(
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/mlir/tfrt_compiler/...",
         "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/tfrt/...",
         "//learning/serving/contrib/tfrt/mlir/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//platforms/xla/tests/gpu/...",
+        "//smartass/brain/ops/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
     ]),
@@ -324,8 +326,7 @@ cc_library(
         "@tf_runtime//:stream_analysis",
         "@tf_runtime//:test_kernels_opdefs",
     ] + if_google([
-        # TODO(tfrt-devs): Move out of experimental.
-        "//tensorflow/compiler/mlir/tfrt/experimental:tf_to_corert_tpu",
+        "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
     alwayslink = 1,
 )
@@ -424,7 +425,7 @@ cc_library(
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:tensor",
     ] + if_google([
-        "//tensorflow/compiler/mlir/tfrt/experimental:tf_to_corert_tpu",
+        "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
 )
 
@@ -461,7 +462,7 @@ cc_library(
         "@tf_runtime//:bef",
         "@tf_runtime//:mlirtobef",
     ] + if_google([
-        "//tensorflow/compiler/mlir/tfrt/experimental:tf_to_corert_tpu",
+        "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
 )
 
@@ -588,7 +589,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt_data",
     ] + if_google([
-        "//tensorflow/compiler/mlir/tfrt/experimental:tf_to_corert_tpu",
+        "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
 )
 

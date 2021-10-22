@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
@@ -52,7 +53,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
-#include "tensorflow/compiler/mlir/xla/xla_mlir_translate_cl.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -105,7 +105,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
 // Convert the MLIR `module` from HLO dialect to LHLO dialect using XLA for the
 // given platform.
 Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
-                                    ModuleOp module, StringRef platform_name) {
+                                    ModuleOp module, StringRef platform_name,
+                                    bool optimize_xla_hlo) {
   auto platform = xla::se::MultiPlatformManager::PlatformWithName(
       StringRefToView(platform_name));
   if (!platform.ok()) {
@@ -206,7 +207,7 @@ class XlaHloToLhloPass
           std::move(statusOrHloModule.ValueOrDie());
 
       return OptimizeAndConvertHloToLmhlo(std::move(hlo_module), module,
-                                          platform_);
+                                          platform_, optimize_xla_hlo_);
     }();
     if (!status.ok()) {
       module.emitError() << status.ToString();
@@ -218,6 +219,10 @@ class XlaHloToLhloPass
       *this, "platform",
       llvm::cl::desc("The platform to use for the XLA optimization pipeline."),
       llvm::cl::init("Host")};
+  Option<bool> optimize_xla_hlo_{
+      *this, "optimize-xla-hlo",
+      llvm::cl::desc("Whether to apply HLO optimizations."),
+      llvm::cl::init(true)};
 };
 
 }  // namespace
@@ -1010,6 +1015,11 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnBatchNorm(
 // Convert an XLA HLO constant to a global_memref + get_global_memref pair.
 StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
     const HloInstruction* instr) {
+  auto& cached_value = slices_[std::make_pair(instr, xla::ShapeIndex())];
+  if (cached_value) {
+    return dyn_cast<mlir::memref::GetGlobalOp>(cached_value.getDefiningOp());
+  }
+
   // Insert a global_memref in the module.
   Location loc = getLocation(instr);
 
@@ -1059,8 +1069,6 @@ StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
       builder_.create<memref::GetGlobalOp>(loc, memref_type, constant_name);
 
   // Update the cache to remember this value.
-  auto& cached_value = slices_[std::make_pair(instr, xla::ShapeIndex())];
-  TF_RET_CHECK(cached_value == nullptr);
   cached_value = get_global_memref;
   return get_global_memref;
 }
@@ -1376,16 +1384,18 @@ xla::StatusOr<lmhlo::WhileOp> LhloDialectEmitter::EmitWhileOp(
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
     const xla::HloInstruction* instr, const xla::Shape& current_shape,
     const xla::ShapeIndex& shape_index) {
+  // For constants, the cache is managed inside EmitConstant since it can
+  // be called either from here or when we see a top-level HloConstant instr.
+  if (instr->IsConstant() && shape_index.empty()) {
+    TF_ASSIGN_OR_RETURN(Value constant_memref, EmitConstant(instr));
+    return constant_memref;
+  }
+
   // Cache generated ViewOp and StaticMemRefCastOp by (instruction,
   // shape_index).
   auto& cached_value = slices_[std::make_pair(instr, shape_index)];
   if (cached_value) {
     return cached_value;
-  }
-
-  if (instr->IsConstant() && shape_index.empty()) {
-    TF_ASSIGN_OR_RETURN(Value constant_memref, EmitConstant(instr));
-    return cached_value = constant_memref;
   }
 
   // If the shape happens to have dynamic dimensions, create the memref using
@@ -1688,7 +1698,8 @@ Status HloToLhloModule(const BufferAssignment& assignment,
 }
 
 OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
-                                               MLIRContext* context) {
+                                               MLIRContext* context,
+                                               bool optimize_xla_hlo) {
   StatusOr<std::unique_ptr<HloModule>> maybe_module =
       xla::ParseAndReturnUnverifiedModule(
           absl::string_view(input.data(), input.size()));
@@ -1697,11 +1708,14 @@ OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
   OwningModuleRef module = ModuleOp::create(UnknownLoc::get(context));
 
   TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(maybe_module.ConsumeValueOrDie(),
-                                           module.get(), "Host"));
+                                           module.get(), "Host",
+                                           optimize_xla_hlo));
 
   return module;
 }
 
-static PassRegistration<XlaHloToLhloPass> registration;
+void RegisterMhloToLhloWithXlaPass() {
+  static PassRegistration<XlaHloToLhloPass> registration;
+}
 
 }  // namespace mlir

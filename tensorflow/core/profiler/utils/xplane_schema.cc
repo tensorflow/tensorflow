@@ -222,8 +222,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"Scaled Value", kScaledValue},
       {"Thread Id", kThreadId},
       // XLA metadata map related.
-      {"SELF_DURATION_PS", kSelfDurationPs},
-      {"MIN_DURATION_PS", kMinDurationPs},
       {"Hlo Proto", kHloProto},
       // Device capability related.
       {"clock_rate", kDevCapClockRateKHz},

@@ -50,7 +50,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -100,7 +99,7 @@ class CustomBufferizeTypeConverter : public BufferizeTypeConverter {
       // TODO(pifon) : Change how target materialization is invoked in dialect
       // conversion.
       if (auto memref_type = inputs[0].getType().dyn_cast<MemRefType>()) {
-        assert(!memref_type.getAffineMaps().empty());
+        assert(!memref_type.getLayout().isIdentity());
         return inputs[0];
       }
       assert(inputs[0].getType().isa<TensorType>());

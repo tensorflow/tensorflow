@@ -197,7 +197,6 @@ filegroup(
         "@dlpack//:LICENSE",
         "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
-        "@enum34_archive//:LICENSE",
         "@farmhash_archive//:COPYING",
         "@fft2d//:readme2d.txt",
         "@flatbuffers//:LICENSE.txt",

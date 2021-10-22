@@ -95,8 +95,8 @@ int NumIterations(const RewriterConfig& cfg) {
 // Check if optimizer is allowed to run only once.
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
-         name == "loop_optimizer" || name == "auto_mixed_precision" ||
-         name == "auto_mixed_precision_mkl";
+         name == "loop_optimizer" ||
+         absl::StartsWith(name, "auto_mixed_precision");
 }
 
 // Creates a function library stub from a real function library: copy only
@@ -221,6 +221,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
            new AutoMixedPrecision(AutoMixedPrecisionMode::MKL));
   }
 #endif
+  MK_OPT("auto_mixed_precision_cpu", "auto_mixed_precision_cpu",
+         new AutoMixedPrecision(AutoMixedPrecisionMode::CPU));
   MK_OPT("memory", "memory_optimization",
          new MemoryOptimizer(RewriterConfig::MANUAL));
   MK_OPT("common_subgraph_elimination", "common_subgraph_elimination",
@@ -323,6 +325,12 @@ Status MetaOptimizer::InitializeOptimizers(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::MKL));
   }
 #endif
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_cpu()) &&
+      AutoMixedPrecisionEnabled(
+          plugin_configs.toggle_config["auto_mixed_precision_cpu"])) {
+    optimizers->push_back(
+        MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::CPU));
+  }
   if (BOTH_ARE_ON(pin_to_host_optimization)) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
@@ -522,6 +530,10 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
         AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl())
             ? RewriterConfig::ON
             : RewriterConfig::OFF;
+    user_cfg.toggle_config["auto_mixed_precision_cpu"] =
+        AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_cpu())
+            ? RewriterConfig::ON
+            : RewriterConfig::OFF;
     user_cfg.toggle_config["memory_optimization"] =
         MemoryOptimizerEnabled(cfg_.memory_optimization(),
                                config_proto_.graph_options()
@@ -549,6 +561,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
       PRINT_CFG("shape", "shape_optimization")
       PRINT_CFG("auto_mixed_precision", "auto_mixed_precision")
       PRINT_CFG("auto_mixed_precision_mkl", "auto_mixed_precision_mkl")
+      PRINT_CFG("auto_mixed_precision_cpu", "auto_mixed_precision_cpu")
       PRINT_CFG("pin_to_host", "pin_to_host_optimization")
       PRINT_CFG("layout", "layout_optimizer")
       PRINT_CFG("remap", "remapping")
@@ -588,6 +601,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
     if (pair.first == "debug_stripper" ||
         pair.first == "auto_mixed_precision" ||
         pair.first == "auto_mixed_precision_mkl" ||
+        pair.first == "auto_mixed_precision_cpu" ||
         pair.first == "pin_to_host_optimization" ||
         pair.first == "scoped_allocator_optimization") {
       // These optimizers are turned off by default.
@@ -1174,6 +1188,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision()) ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_mkl()) ||
+         AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_cpu()) ||
          !rewrite_cfg.optimizers().empty() ||
          !rewrite_cfg.custom_optimizers().empty();
 }

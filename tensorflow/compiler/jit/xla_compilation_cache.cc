@@ -176,8 +176,8 @@ Status XlaCompilationCache::BuildExecutable(
     argument_layouts[i] = &result.xla_input_shapes[i];
   }
   xla::ExecutableBuildOptions build_options;
-  if (result.collective_reduce_info) {
-    build_options.set_num_replicas(result.collective_reduce_info->group_size);
+  if (result.collective_info) {
+    build_options.set_num_replicas(result.collective_info->group_size);
   }
   build_options.set_device_ordinal(options.device_ordinal != -1
                                        ? options.device_ordinal

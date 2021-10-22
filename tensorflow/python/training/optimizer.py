@@ -307,6 +307,79 @@ class Optimizer(
 
   This can be useful if you want to log debug a training algorithm, report stats
   about the slots, etc.
+
+  @compatibility(TF2)
+  `tf.compat.v1.train.Optimizer` can be used in eager mode and `tf.function`,
+  but it is not recommended. Please use the subclasses of
+  `tf.keras.optimizers.Optimizer` instead in TF2. Please see [Basic training
+  loops](https://www.tensorflow.org/guide/basic_training_loops) or
+  [Writing a training loop from scratch]
+  (https://www.tensorflow.org/guide/keras/writing_a_training_loop_from_scratch)
+  for examples.
+
+  If your TF1 code contains a `tf.compat.v1.train.Optimizer` symbol, whether it
+  is used with or without a `tf.estimator.Estimator`, you cannot simply replace
+  that with the corresponding `tf.keras.optimizers.Optimizer`s. To migrate to
+  TF2, it is advised the whole training program used with `Estimator` to be
+  migrated to Keras `Model.fit` based or TF2 custom training loops.
+
+  #### Structural Mapping to Native TF2
+
+  Before:
+
+  ```python
+  sgd_op = tf.compat.v1.train.GradientDescentOptimizer(3.0)
+  opt_op = sgd_op.minimize(cost, global_step, [var0, var1])
+  opt_op.run(session=session)
+  ```
+
+  After:
+
+  ```python
+  sgd = tf.keras.optimizers.SGD(3.0)
+  sgd.minimize(cost_fn, [var0, var1])
+  ```
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name    | Note                       |
+  | :-------------------- | :-------------- | :------------------------- |
+  | `use_locking`         | Not supported   | -                          |
+  | `name`                | `name. `        | -                          |
+
+  #### Before & After Usage Example
+
+  Before:
+
+  >>> g = tf.compat.v1.Graph()
+  >>> with g.as_default():
+  ...   var0 = tf.compat.v1.Variable([1.0, 2.0])
+  ...   var1 = tf.compat.v1.Variable([3.0, 4.0])
+  ...   cost = 5 * var0 + 3 * var1
+  ...   global_step = tf.compat.v1.Variable(
+  ...       tf.compat.v1.zeros([], tf.compat.v1.int64), name='global_step')
+  ...   init_op = tf.compat.v1.initialize_all_variables()
+  ...   sgd_op = tf.compat.v1.train.GradientDescentOptimizer(3.0)
+  ...   opt_op = sgd_op.minimize(cost, global_step, [var0, var1])
+  >>> session = tf.compat.v1.Session(graph=g)
+  >>> session.run(init_op)
+  >>> opt_op.run(session=session)
+  >>> print(session.run(var0))
+  [-14. -13.]
+
+
+  After:
+  >>> var0 = tf.Variable([1.0, 2.0])
+  >>> var1 = tf.Variable([3.0, 4.0])
+  >>> cost_fn = lambda: 5 * var0 + 3 * var1
+  >>> sgd = tf.keras.optimizers.SGD(3.0)
+  >>> sgd.minimize(cost_fn, [var0, var1])
+  >>> print(var0.numpy())
+  [-14. -13.]
+
+  @end_compatibility
+
+
   """
 
   # Values for gate_gradients.
@@ -429,6 +502,23 @@ class Optimizer(
     `IndexedSlices`, or `None` if there is no gradient for the
     given variable.
 
+    @compatibility(TF2)
+    `tf.keras.optimizers.Optimizer` in TF2 does not provide a
+    `compute_gradients` method, and you should use a `tf.GradientTape` to
+    obtain the gradients:
+
+    ```python
+    @tf.function
+    def train step(inputs):
+      batch_data, labels = inputs
+      with tf.GradientTape() as tape:
+        predictions = model(batch_data, training=True)
+        loss = tf.keras.losses.CategoricalCrossentropy(
+            reduction=tf.keras.losses.Reduction.NONE)(labels, predictions)
+      gradients = tape.gradient(loss, model.trainable_variables)
+      optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+    ```
+
     Args:
       loss: A Tensor containing the value to minimize or a callable taking
         no arguments which returns the value to minimize. When eager execution
@@ -537,6 +627,15 @@ class Optimizer(
 
     This is the second part of `minimize()`. It returns an `Operation` that
     applies gradients.
+
+    @compatibility(TF2)
+    #### How to Map Arguments
+
+    | TF1 Arg Name          | TF2 Arg Name    | Note                       |
+    | :-------------------- | :-------------- | :------------------------- |
+    | `grads_and_vars`      | `grads_and_vars`| -                          |
+    | `global_step`         | Not supported.  | Use `optimizer.iterations` |
+    | `name`                | `name. `        | -                          |
 
     Args:
       grads_and_vars: List of (gradient, variable) pairs as returned by

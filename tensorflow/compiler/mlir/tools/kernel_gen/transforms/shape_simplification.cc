@@ -138,20 +138,6 @@ struct BroadcastRemoveSubsumedOperandsPattern
   }
 };
 
-struct ExtractFromExtentTensorCanonicalizationPattern
-    : public OpRewritePattern<tensor::ExtractOp> {
-  using OpRewritePattern<tensor::ExtractOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(tensor::ExtractOp op,
-                                PatternRewriter &rewriter) const override {
-    auto shape_of_op = op.tensor().getDefiningOp<ShapeOfOp>();
-    if (!shape_of_op) return failure();
-    Value index = op.indices().front();
-    rewriter.replaceOpWithNewOp<tensor::DimOp>(op, shape_of_op.arg(), index);
-    return success();
-  }
-};
-
 // Convert cases like:
 // ```
 //  %1 = shape.shape_of %arg0 : tensor<?x?x?xf64> -> tensor<3xindex>
@@ -256,8 +242,8 @@ struct ShapeSimplification
     }
 
     patterns.insert<BroadcastRemoveSubsumedOperandsPattern,
-                    ExtractFromBroadcastedTensorCanonicalizationPattern,
-                    ExtractFromExtentTensorCanonicalizationPattern>(context);
+                    ExtractFromBroadcastedTensorCanonicalizationPattern>(
+        context);
 
     auto func = getFunction();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))

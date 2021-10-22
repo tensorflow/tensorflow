@@ -134,7 +134,9 @@ class ReshapeOp : public XlaOpKernel {
 
     std::vector<xla::XlaOp> output_dim_sizes;
     std::vector<bool> dims_are_dynamic;
-    for (int64_t i = 0; i < shape.dims(); ++i) {
+    const auto& dims = shape.dims();
+    dims_are_dynamic.reserve(dims);
+    for (int64_t i = 0; i < dims; ++i) {
       output_dim_sizes.push_back(
           xla::Reshape(xla::Slice(ctx->Input(1), {i}, {i + 1}, {1}), {}));
     }

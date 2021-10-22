@@ -32,6 +32,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteBatchToSpaceNDParams",
                                       "TfLiteBidirectionalSequenceLSTMParams",
                                       "TfLiteBidirectionalSequenceRNNParams",
+                                      "TfLiteBucketizeParams",
                                       "TfLiteCastParams",
                                       "TfLiteConcatenationParams",
                                       "TfLiteConvParams",
@@ -176,6 +177,7 @@ class OpOptionData {
     op_to_option_["MINIMUM"] = "MaximumMinimumOptions";
     op_to_option_["CONV_3D_TRANSPOSE"] = "Conv3DOptions";
     op_to_option_["RANDOM_STANDARD_NORMAL"] = "RandomOptions";
+    op_to_option_["RANDOM_UNIFORM"] = "RandomOptions";
 
     // These operators are not real ones.
     op_to_option_["CUSTOM"] = "";    // TODO(aselle): maybe something else.
@@ -356,6 +358,7 @@ void GenerateImportForOp(FILE* fp, const std::string& op_name,
   for (size_t i = 0; i < options->num_elems; i++) {
     std::string elem_name = options->names[i];
     bool is_int_vector = false;
+    bool is_float_vector = false;
     std::string vector_name = elem_name;
     std::string vector_size;
     // TODO(aselle): Irregular naming in builtins
@@ -384,12 +387,23 @@ void GenerateImportForOp(FILE* fp, const std::string& op_name,
     } else if (elem_name == "squeeze_dims") {
       is_int_vector = true;
       vector_size = "num_squeeze_dims";
+    } else if (elem_name == "boundaries") {
+      is_float_vector = true;
+      vector_size = "num_boundaries";
     }
 
     if (is_int_vector) {
       fprintf(fp,
               "    auto val%zu = fbb->CreateVector("
               "std::vector<int>(params->%s, params->%s + params->%s));\n",
+              i, vector_name.c_str(), vector_name.c_str(), vector_size.c_str());
+      continue;
+    }
+
+    if (is_float_vector) {
+      fprintf(fp,
+              "    auto val%zu = fbb->CreateVector("
+              "std::vector<float>(params->%s, params->%s + params->%s));\n",
               i, vector_name.c_str(), vector_name.c_str(), vector_size.c_str());
       continue;
     }

@@ -106,7 +106,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "ScanDatasetOp::Dataset"; }
 
-    int64_t Cardinality() const override {
+    int64_t CardinalityInternal() const override {
       if (preserve_cardinality_) {
         return input_->Cardinality();
       } else {

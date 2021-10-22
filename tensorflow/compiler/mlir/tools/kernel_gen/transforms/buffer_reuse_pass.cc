@@ -186,7 +186,7 @@ class BufferReuseAnalysis {
     auto old_buffer_ty = old_buffer.getType().dyn_cast<MemRefType>();
     auto new_buffer_ty = old_buffer.getType().dyn_cast<MemRefType>();
     if (!old_buffer_ty || !new_buffer_ty ||
-        old_buffer_ty.getAffineMaps() != new_buffer_ty.getAffineMaps())
+        old_buffer_ty.getLayout() != new_buffer_ty.getLayout())
       return false;
 
     if (auto generic_op = dyn_cast<linalg::GenericOp>(op)) {

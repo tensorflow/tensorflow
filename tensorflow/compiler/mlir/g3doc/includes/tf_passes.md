@@ -9,6 +9,7 @@ graph.
 ### `-tf-batch-matmul-to-tf-einsum`: Replace TF BatchMatMul op by TF Einsum op.
 ### `-tf-broadcast-fold`: Fold explicit broadcasts into the following operations if they support implicit broadcasting on their operand.
 ### `-tf-data-optimization`: Performs tf.data optimizations
+### `-tf-device-cluster-formation`: Form clusters from instructions assigned to same device
 ### `-tf-device-cluster-outlining`: Outlines regions of tf_device.cluster operations
 This pass outlines the body of a `tf_device.cluster` into a function and
 replaces the `tf_device.cluster` op with an equivalent `tf_device.cluster_func`
@@ -120,6 +121,7 @@ Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op only
 inside device cluster. This would allow shape inference pass to further
 refine operand/result shapes of these ops. This is only safe to do when
 compiling to XLA.
+### `-tf-einsum`: Transform Einsum to other TF Ops for the supported variants
 ### `-tf-executor-convert-control-to-data-outputs`: Chain control outputs of while loop body
 This pass converts the control outputs of a while loop body function to data
 outputs. Thus, inter iteration control dependencies are transformed to
@@ -259,6 +261,7 @@ func @my_fn(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>
   return %identity, %identity_n#0 : tensor<i32>, tensor<i32>
 }
 ```
+### `-tf-executor-tpu-v1-island-coarsening`: Merges TPU clusters IslandOps, intended for V1 compatibility mode
 ### `-tf-executor-tpu-v1-island-inlining`: Inline calls to the nested TPU module.
 This pass inlines the islands calling into the nested module that was
 outlined, thus reversing the effect of the
@@ -299,6 +302,7 @@ module  {
   }
 }
 ```
+### `-tf-executor-tpu-v1-island-outlining`: Outline TPU clusters from island into a nested module, so it can be processed like a V2 module, intended for V1 compatibility mode
 ### `-tf-functional-control-flow-to-cfg`: Transform from TF control dialect to TF executor dialect.
 ### `-tf-functional-control-flow-to-cfg`: Transform functional control flow Ops to MLIR Control Form Graph (CFG) form
 ### `-tf-functional-control-flow-to-regions`: Transforms functional control flow operations to their region-based counterparts
@@ -331,6 +335,7 @@ will be transformed into this region-based operation
 This pass is performing fusion specific to GPU targets. This is an ad-hoc
 pass for now, but should be integrated with some notion of "target" in the
 MLIR pipeline in the future.
+### `-tf-guarantee-all-funcs-one-use`: Guarantee all FuncOp's have only a single use.
 ### `-tf-hoist-replicate-invariant-resource-writes`: Hoists writes to replicate invariant resource variables.
 This pass hoists replicate invariant resource variable writes outside
 tf_device.replicate op. These may have been inserted by other passes such as
@@ -354,6 +359,7 @@ not required. We can use the output of first replica in such cases.
 ```
 -force-data-format : Force data format for all layout sensitive ops.
 ```
+### `-tf-legalize-hlo`: Legalize from HLO to the TF dialect
 ### `-tf-lower-quantized`: Lowers ops that require quantized input or output.
 This pass rewrites all ops that have at least one input or output that must
 be a quantized type to ops whose inputs and outputs allow non-quantized
@@ -475,9 +481,10 @@ Would become the following ops (unimportant attribute, type are omitted):
     tf_device.return
   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
 ```
+### `-tf-parallel-execute-to-islands`: Lowers device parallel_execute to executor islands
 ### `-tf-promote-resources-to-args`: Promote resources reads/writes to function inputs/outputs.
-This pass promotes resource accesses in the main function to input arguments
-and outputs of the main function.
+This pass promotes resource accesses in function(s) (by default, the main)
+to input arguments and outputs of the function(s).
 
 Two types of resources are supported:
 (1) A function argument of TF::ResourceType type (this pass).
@@ -509,8 +516,14 @@ Assumption of this pass:
  . Compound resource operations have already been decomposed.
  . Dead functions have already been removed, as resource arguments in dead
    functions can cause the pass to fail.
+
+#### Options
+```
+-functions : Comma separated list of functions whose resources read/writes should be promoted to function inputs/outputs.
+```
 ### `-tf-promote-var-handles-to-args`: Promote tf.VarHandleOps to function arguments.
-See joint description in promote resources to args.### `-tf-region-control-flow-to-functional`: Transforms region-based control flow operations to their functional counterparts
+See joint description in promote resources to args.### `-tf-readonly-references-to-resources`: Convert readonly reference variables to resource variables.
+### `-tf-region-control-flow-to-functional`: Transforms region-based control flow operations to their functional counterparts
 This pass transforms region-based control flow operations in the TensorFlow
 dialect to their functional counterparts, i.e., `tf.IfRegion` is transformed to
 `tf.If` and `tf.WhileRegion` is transformed to `tf.While`.
@@ -577,6 +590,8 @@ tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} 
   tf_device.return
 }
 ```
+### `-tf-replicate-to-island`: Lowers device replicate to executor islands
+### `-tf-resource-device-inference`: Propagates the device attribute on resources from callers to callees.
 ### `-tf-rewrite-tpu-embedding-ops`: Rewrites TPU embedding send/recv ops by adding TPU embedding deduplication data
 ### `-tf-shape-inference`: Simple Shape Inference on TensorFlow Dialect
 
@@ -590,6 +605,7 @@ tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} 
 ```
 -default-device : The default device to assign.
 ```
+### `-tf-stack-ops-decomposition`: Decompose stack operations into local variable operations. Needs static shapes.
 ### `-tf-tensor-array-ops-decomposition`: Decompose tensor array operations into local variable operations.
 A pass that converts tensor array operations to tensor operations and
 read/assign ops on local variables. A later resource lifting pass can further
@@ -737,6 +753,8 @@ func @tpu_computation(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, t
   return %replicate#0, %replicate#1 : tensor<i32>, tensor<i32>
 }
 ```
+### `-tf-tpu-colocate-composite-resource-ops`: Colocate resource with composite device assignment to TPU device.
+### `-tf-tpu-device-propagation`: Propagates TPU devices from ops to users
 ### `-tf-tpu-dynamic-layout-pass`: Adds ops that allow TPU program inputs to have layouts determined at JIT compile time.
 ### `-tf-tpu-extract-head-tail-outside-compilation`: Extracts TPU head or tail outside compilation to separate host launches before/after device cluster.
 This pass extracts a CPU computation cluster with `_xla_outside_compilation`
@@ -1075,6 +1093,7 @@ func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
   return %1 : tensor<8xi32>
 }
 ```
+### `-tf-tpu-sharding-identification`: Identifies and handles inputs/outputs of TPU computation that is sharded across logical cores.
 ### `-tf-tpu-space-to-depth-pass`: Applies automatic space to depth transform for the first or frontier convolutions consume host inputs on TPU.
 Automatic space to depth transform is done by adding space to depth transform op after host input
 and applying space to depth transform for the first convolution and its backprop filter on TPU.
@@ -1116,6 +1135,8 @@ to 12 feature dimension, which has better performance on TPU.
 ### `-tf-tpu-update-embedding-enqueue-op-inputs`: Updates inputs to TPU embedding enqueue ops depending on whether graph is in training mode or in evaluation mode.
 Updates inputs to TPU embedding enqueue ops depending on whether graph
 is in training mode or in evaluation mode.
+### `-tf-tpu-variable-runtime-reformatting`: Adds device variable formatting op to allow compilation-guided variable formatting.
+### `-tf-unroll-batch-matmul`: Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.
 ### `-tf-verify-for-export`: Verify module is suitable for export back to TF Graph
 Verifies whether all functions in module are of single tf_executor.graph and
 each tf_executor.island in tf_executor.graph only has a single op.

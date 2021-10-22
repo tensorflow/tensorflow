@@ -724,8 +724,8 @@ Example:
   }];
 
   let arguments = (ins
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name
+    DefaultValuedStrAttr<StrAttr, "">:$container,
+    DefaultValuedStrAttr<StrAttr, "">:$shared_name
   );
 
   let results = (outs
@@ -767,7 +767,7 @@ An op which shards the input based on the given sharding attribute.
   let arguments = (ins
     TF_Tensor:$input,
 
-    DefaultValuedAttr<StrAttr, "">:$sharding,
+    DefaultValuedStrAttr<StrAttr, "">:$sharding,
     OptionalAttr<StrAttr>:$_XlaSharding
   );
 
@@ -824,8 +824,8 @@ Formats a string template using a list of tensors, pretty-printing tensor summar
   let arguments = (ins
     Variadic<TF_Tensor>:$inputs,
 
-    DefaultValuedAttr<StrAttr, "%s">:$strtemplate,
-    DefaultValuedAttr<StrAttr, "%s">:$placeholder,
+    DefaultValuedStrAttr<StrAttr, "%s">:$strtemplate,
+    DefaultValuedStrAttr<StrAttr, "%s">:$placeholder,
     DefaultValuedAttr<I64Attr, "3">:$summarize
   );
 
@@ -1370,7 +1370,7 @@ summary_metadata: Serialized SummaryMetadata protocol buffer containing
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF__TPUDeviceOrdinalPlaceholderOp : TF_Op<"_TPUDeviceOrdinalPlaceholder", []> {
+def TF__TPUDeviceOrdinalPlaceholderOp : TF_Op<"_TPUDeviceOrdinalPlaceholder", [NoSideEffect]> {
   let summary = [{
 Placeholder device ordinal that represents device ordinal of a replicated op.
   }];
@@ -1449,8 +1449,8 @@ A pseudo-op to represent host-side computation in an XLA program.
     TF_ShapeAttrArray:$shapes,
     OptionalAttr<SymbolRefAttr>:$shape_inference_graph,
     StrAttr:$key,
-    DefaultValuedAttr<StrAttr, "">:$send_key,
-    DefaultValuedAttr<StrAttr, "">:$recv_key,
+    DefaultValuedStrAttr<StrAttr, "">:$send_key,
+    DefaultValuedStrAttr<StrAttr, "">:$recv_key,
     DefaultValuedAttr<I64Attr, "1000000">:$cost_estimate_ns,
     DefaultValuedAttr<I64Attr, "0">:$tpu_core
   );
@@ -1520,7 +1520,7 @@ topology.
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
-    DefaultValuedAttr<StrAttr, "">:$mlir_module,
+    DefaultValuedStrAttr<StrAttr, "">:$mlir_module,
     StrAttr:$metadata
   );
 

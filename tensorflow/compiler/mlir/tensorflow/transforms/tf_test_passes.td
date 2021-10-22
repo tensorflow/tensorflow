@@ -28,6 +28,18 @@ def FreezeVariablesTestPass : Pass<"tf-freeze-variables-test-pass",
   let constructor = "::mlir::tf_test::CreateFreezeVariableTestPass()";
 }
 
+def InitTextFileToImportTestPass : Pass<"tf-init-text-file-to-import-test",
+  "ModuleOp"> {
+  let summary = "generate a temporary file and invoke InitTextFileToImportPass";
+  let constructor = "::mlir::tf_test::CreateInitTextFileToImportTestPass()";
+}
+
+def InitTextFileToImportSavedModelTestPass : Pass<"tf-init-text-file-to-import-saved-model-test",
+  "ModuleOp"> {
+  let summary = "mimick a saved model and invoke InitTextFileToImportPass";
+  let constructor = "::mlir::tf_test::CreateInitTextFileToImportSavedModelTestPass()";
+}
+
 def TestTensorFlowLowerTFPass : Pass<"test-tf-lower-tf", "FuncOp"> {
   let summary = "Test pass for TF->TF lowerings";
   let constructor = "::mlir::tf_test::CreateTestTFLowerTFPass()";
@@ -77,4 +89,15 @@ def TestSideEffectAnalysisPass : Pass<"tf-test-side-effect-analysis", "ModuleOp"
     the SideEffectAnalysis result. For testing purpose only.
   }];
   let constructor = "::mlir::tf_test::CreateTestSideEffectAnalysisPass()";
+}
+
+def LiftVariablesInvalidSessionTestPass : Pass<"tf-saved-model-lift-variables-invalid-session-test", "ModuleOp"> {
+  let summary = "Lift variables and save them as global tensors with an invalid "
+           "session";
+  let constructor = "mlir::tf_test::CreateLiftVariablesInvalidSessionTestPass()";
+}
+
+def LiftVariablesTestPass : Pass<"tf-saved-model-lift-variables-test", "ModuleOp"> {
+  let summary = "Lift variables and save them as global tensors";
+  let constructor = "mlir::tf_test::CreateLiftVariablesTestPass()";
 }

@@ -924,7 +924,8 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const",
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
       [DeclareOpInterfaceMethods<InferTypeOpInterface>,
-       DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
+       DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
+       DynamicQuantizableOp]> {
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
@@ -985,7 +986,8 @@ def TFL_CumsumOp: TFL_Op<"cumsum", [
 
 def TFL_DepthwiseConv2DOp :
     TFL_ConvOp<"depthwise_conv_2d", "Depthwise-separable convolution", 3,
-                [DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
+                [DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
+                DynamicQuantizableOp]> {
   let arguments = (
     ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
@@ -1027,7 +1029,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     AffineQuantizedOpInterface,
     AffineOpCoefficient<-1, 1>,
     TFL_SparseOp,
-    DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
+    DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
+    DynamicQuantizableOp]> {
   let summary = "Fully connected op";
 
   let arguments = (ins
@@ -1072,7 +1075,8 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
        Or<[TFL_TCresVTEtIsSameAsOp<0, 0>,
            And<[CPred<"getElementTypeOrSelf($_op.getOperand(0)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getOperand(1)).isInteger(8)">,
-                CPred<"getElementTypeOrSelf($_op.getResult(0)).isInteger(32)">]>]>>]> {
+                CPred<"getElementTypeOrSelf($_op.getResult(0)).isInteger(32)">]>]>>,
+   DynamicQuantizableOp]> {
 
   let summary = "Batch Matrix Multiply Operator";
 
@@ -3156,11 +3160,11 @@ def TFL_TileOp: TFL_Op<"tile", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I32, I64, UI8, QUI8, TFL_Str]>:$input,
+    TFL_TensorOf<[F32, I1, I32, I64, UI8, QI8, QUI8, TFL_Str]>:$input,
     TFL_I32OrI64Tensor:$multiples);
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I32, I64, UI8, QUI8, TFL_Str]>:$output);
+    TFL_TensorOf<[F32, I1, I32, I64, UI8, QI8, QUI8, TFL_Str]>:$output);
 
   let hasOptions = 0;
 }
@@ -3919,12 +3923,12 @@ def TFL_BasicLSTMOp : TFL_Op<"basic_lstm", [NoSideEffect,
     TFL_TensorOf<[F32, QI16]>:$prev_state_input,
 
     // Attributes
-    DefaultValuedAttr<TFL_AFAttr, "TANH">:$fused_activation_function,
+    DefaultValuedStrAttr<TFL_AFAttr, "TANH">:$fused_activation_function,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the BASIC kernel only, constrain it.
     Confined<
-      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "BASIC">,
+      DefaultValuedStrAttr<TFL_LSTMKernelTypeAttr, "BASIC">,
       [TFL_LSTM_KT_BASIC]>:$kernel_type
   );
 
@@ -4028,7 +4032,7 @@ Ba et al. 'Layer Normalization'
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the FULL kernel only, constrain it.
     Confined<
-      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "FULL">,
+      DefaultValuedStrAttr<TFL_LSTMKernelTypeAttr, "FULL">,
       [TFL_LSTM_KT_FULL]>:$kernel_type,
 
     // Types of the optional intermediate tensors, which exist for fully
@@ -4822,8 +4826,8 @@ def TFL_VarHandleOp : TFL_Op<"var_handle", []> {
   }];
 
   let arguments = (ins
-    DefaultValuedAttr<StrAttr, "">:$container,
-    DefaultValuedAttr<StrAttr, "">:$shared_name
+    DefaultValuedStrAttr<StrAttr, "">:$container,
+    DefaultValuedStrAttr<StrAttr, "">:$shared_name
   );
 
   let results = (outs TFL_ResourceTensor:$resource_handle);
@@ -5118,6 +5122,28 @@ broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
 
   let results = (outs
     TFL_I32OrI64Tensor:$r0
+  );
+}
+
+def TFL_BucketizeOp
+    : TFL_Op<"bucketize", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Bucketizes 'input' based on 'boundaries'.";
+
+  let description = [{
+Example:
+
+If the inputs are `boundaries = [0, 10, 100]` and
+`input = [[-5, 10000][150, 10][5, 100]]`,
+then the output will be `output = [[0, 3][3, 2][1, 3]]`.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, F64, I32, I64]>:$input,
+    F32ArrayAttr:$boundaries
+  );
+
+  let results = (outs
+    TFL_TensorOf<[I32]>:$output
   );
 }
 

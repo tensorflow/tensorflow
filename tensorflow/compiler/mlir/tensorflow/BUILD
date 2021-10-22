@@ -34,6 +34,7 @@ package_group(
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//learning/brain/mobile/lite/tf_runtime/...",
         "//learning/brain/tfrt/tpu_runner/...",
+        "//learning/brain/tfrt/tpu/compiler/...",
         "//learning/pathways/data_parallel/serving/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//learning/serving/contrib/tfrt/mlir/...",
@@ -383,6 +384,7 @@ cc_library(
         "transforms/generated_legalize_hlo.inc",
         "transforms/legalize_hlo.cc",
         "transforms/passes.h",
+        "transforms/passes_detail.h",
     ],
     deps = [
         ":lower_tf_lib",
@@ -827,6 +829,7 @@ cc_library(
 cc_library(
     name = "unroll_batch_matmul_pass",
     srcs = [
+        "transforms/passes_detail.h",
         "transforms/unroll_batch_matmul.cc",
     ],
     hdrs = [
@@ -834,6 +837,7 @@ cc_library(
     ],
     deps = [
         ":tensorflow",
+        ":tf_pass_inc_gen",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
@@ -1214,6 +1218,7 @@ cc_library(
         ":tensorflow_optimize_inc_gen",
         ":tensorflow_types",
         ":tf_data_optimization",
+        ":tf_legalize_hlo",
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
         ":tpu_rewrite_device_util",
@@ -2004,7 +2009,6 @@ cc_library(
         ":tensorflow",
         ":translate_cl_options",
         "//tensorflow/compiler/mlir:string_container_utils",
-        "//tensorflow/compiler/mlir/xla:translate_cl_options",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/tf2xla:xla_argument",
         "//tensorflow/compiler/tf2xla:xla_helpers",

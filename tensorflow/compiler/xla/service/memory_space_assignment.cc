@@ -3253,7 +3253,7 @@ StatusOr<HloInstruction*> MemorySpaceAssignment::Allocation::ReplaceTupleWith(
   HloComputation* computation = new_instruction->parent();
   std::vector<HloInstruction*> tuple_args(tuple_shape.tuple_shapes_size());
   CHECK_GE(tuple_shape.tuple_shapes_size(), shape_index[0]);
-  for (int64_t i = 0; i < tuple_shape.tuple_shapes_size(); ++i) {
+  for (int i = 0; i < tuple_shape.tuple_shapes_size(); ++i) {
     const Shape& subshape = tuple_shape.tuple_shapes(i);
     // If tuple is a tuple instruction, we can get the tuple instruction's
     // operand to construct the new tuple to improve compilation time
@@ -3413,7 +3413,7 @@ Status MemorySpaceAssignment::ParentAllocation::Process() {
   // in the default memory space.
   HloInstruction* producing_instruction =
       original_allocation_.AddGetTupleElements();
-  int64_t new_tuple_index = calling_instruction_->shape().tuple_shapes_size();
+  int new_tuple_index = calling_instruction_->shape().tuple_shapes_size();
 
   TF_ASSIGN_OR_RETURN(HloInstruction * new_while_operand,
                       ReplaceTupleWith(producing_instruction,

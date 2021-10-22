@@ -39,10 +39,67 @@ def ClusterTFOpsByHostPass : Pass<"cluster-tf-ops-by-host", "ModuleOp"> {
   let constructor = "TF::CreateClusterTFOpsByHostPass()";
 }
 
+def ResourceDeviceInferencePass : Pass<"tf-resource-device-inference", "ModuleOp"> {
+  let summary = "Propagates the device attribute on resources from callers to "
+           "callees.";
+  let constructor = "TF::CreateResourceDeviceInferencePass()";
+}
+
+def StackOpsDecompositionPass : Pass<"tf-stack-ops-decomposition", "ModuleOp"> {
+  let summary = "Decompose stack operations into local variable operations. Needs "
+           "static shapes.";
+  let constructor = "TF::CreateStackOpsDecompositionPass()";
+}
+
+def TPUVariableRuntimeReformattingPass : Pass<"tf-tpu-variable-runtime-reformatting", "ModuleOp"> {
+  let summary = "Adds device variable formatting op to allow compilation-guided "
+           "variable formatting.";
+  let constructor = "TFTPU::CreateTPUVariableReformattingPass()";
+}
+
+def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "ModuleOp"> {
+  let summary = "Identifies and handles inputs/outputs of TPU computation that is "
+           "sharded across logical cores.";
+  let constructor = "TFTPU::CreateTPUShardingIdentificationPass()";
+}
+
+def UnrollBatchMatMulPass : FunctionPass<"tf-unroll-batch-matmul"> {
+  let summary = "Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.";
+  let constructor = "TF::CreateUnrollBatchMatMulPassPass()";
+}
+
+def ClusterFormationPass : FunctionPass<"tf-device-cluster-formation"> {
+  let summary = "Form clusters from instructions assigned to same device";
+  let constructor = "TFDevice::CreateClusterFormationPass()";
+  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
+}
+
 def MaterializePassthroughOp : FunctionPass<"tf-materialize-passthrough-op"> {
   let summary = "Materialize the MlirPassthroughOp by replacing it with the "
     "MLIR module attached as an attribute";
   let constructor = "TF::CreateMaterializePassthroughOpPass()";
+}
+
+def TransformEinsumPass : FunctionPass<"tf-einsum"> {
+  let summary = "Transform Einsum to other TF Ops for the supported variants";
+  let constructor = "TF::CreateTransformEinsumPass()";
+}
+
+def LegalizeHloToTfPass : FunctionPass<"tf-legalize-hlo"> {
+  let summary = "Legalize from HLO to the TF dialect";
+  let dependentDialects = ["TF::TensorFlowDialect"];
+  let constructor = "TF::CreateLegalizeHloToTfPass()";
+}
+
+def ReplicateToIslandPass : FunctionPass<"tf-replicate-to-island"> {
+  let summary = "Lowers device replicate to executor islands";
+  let constructor = "TFDevice::CreateReplicateToIslandPass()";
+}
+
+def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
+  FunctionPass<"tf-readonly-references-to-resources"> {
+  let summary = "Convert readonly reference variables to resource variables.";
+  let constructor = "TF::CreateConvertReadonlyReferenceVariablesToResourceVariablesPass()";
 }
 
 def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
@@ -226,6 +283,17 @@ def ExecutorIslandCoarseningPass : FunctionPass<"tf-executor-island-coarsening">
     Once analysis is completed, the pass merges all IslandOps in a single scan.
   }];
   let constructor = "tf_executor::CreateTFExecutorIslandCoarseningPass()";
+}
+
+def TpuV1BridgeExecutorIslandCoarseningPass : Pass<"tf-executor-tpu-v1-island-coarsening", "ModuleOp"> {
+  let summary = "Merges TPU clusters IslandOps, intended for V1 compatibility mode";
+  let constructor = "tf_executor::CreateTFExecutorTPUV1IslandCoarseningPass()";
+}
+
+def TPUBridgeExecutorIslandOutliningPass : Pass<"tf-executor-tpu-v1-island-outlining", "ModuleOp"> {
+  let summary = "Outline TPU clusters from island into a nested module, so it can "
+           "be processed like a V2 module, intended for V1 compatibility mode";
+  let constructor = "tf_executor::CreateTFExecutorTPUV1IslandOutliningPass()";
 }
 
 def ExecutorTPUV1IslandInliningPass : Pass<"tf-executor-tpu-v1-island-inlining", "ModuleOp"> {
@@ -998,8 +1066,8 @@ def TensorFlowOptimizePass : FunctionPass<"tf-optimize"> {
 def PromoteResourcesToArgsPass : Pass<"tf-promote-resources-to-args", "ModuleOp"> {
   let summary = "Promote resources reads/writes to function inputs/outputs.";
   let description = [{
-    This pass promotes resource accesses in the main function to input arguments
-    and outputs of the main function.
+    This pass promotes resource accesses in function(s) (by default, the main)
+    to input arguments and outputs of the function(s).
 
     Two types of resources are supported:
     (1) A function argument of TF::ResourceType type (this pass).
@@ -1034,6 +1102,13 @@ def PromoteResourcesToArgsPass : Pass<"tf-promote-resources-to-args", "ModuleOp"
   }];
 
   let constructor = "TF::CreatePromoteResourcesToArgsPass()";
+
+let options = [
+    ListOption<"functions_", "functions", "std::string",
+               "Comma separated list of functions whose resources "
+               "read/writes should be promoted to function inputs/outputs.",
+               "llvm::cl::MiscFlags::CommaSeparated">
+  ];
 }
 
 def PromoteVarHandlesToArgsPass : Pass<"tf-promote-var-handles-to-args", "ModuleOp"> {
@@ -1531,9 +1606,29 @@ def BroadcastFoldPass : FunctionPass<"tf-broadcast-fold"> {
   let constructor = "TF::CreateBroadcastFoldPass()";
 }
 
+def ParallelExecuteToIslandsPass : FunctionPass<"tf-parallel-execute-to-islands"> {
+  let summary = "Lowers device parallel_execute to executor islands";
+  let constructor = "TFDevice::CreateParallelExecuteToIslandsPass()";
+}
+
 def ConstantOpDeviceAssignmentPass : Pass<"constant-op-device-assignment", "ModuleOp"> {
   let summary = "Assign device for tf.Const ops";
   let constructor = "TF::CreateConstantOpDeviceAssignmentPass()";
+}
+
+def GuaranteeAllFuncsOneUsePass : Pass<"tf-guarantee-all-funcs-one-use", "ModuleOp"> {
+  let summary = "Guarantee all FuncOp's have only a single use.";
+  let constructor = "TF::CreateGuaranteeAllFuncsOneUsePass()";
+}
+
+def TPUColocateCompositeResourceOpsPass : FunctionPass<"tf-tpu-colocate-composite-resource-ops"> {
+  let summary = "Colocate resource with composite device assignment to TPU device.";
+  let constructor = "TFTPU::CreateTPUColocateCompositeResourceOps()";
+}
+
+def TPUDevicePropagationPass : FunctionPass<"tf-tpu-device-propagation"> {
+  let summary = "Propagates TPU devices from ops to users";
+  let constructor = "TFTPU::CreateTPUDevicePropagationPass()";
 }
 
 def TPUIdentityPruningPass : Pass<"tf-tpu-identity-pruning", "ModuleOp"> {

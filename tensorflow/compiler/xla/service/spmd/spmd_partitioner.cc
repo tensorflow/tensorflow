@@ -281,10 +281,14 @@ HloInstruction* SpmdBuilder::AddInstruction(
       }
       std::vector<int64_t> before_dim_size_stack;
       std::vector<int64_t> after_dim_size_stack;
-      for (int64_t i = hlo->operand(0)->shape().rank() - 1; i >= 0; --i) {
+      const int64_t operand0_rank = hlo->operand(0)->shape().rank();
+      const int64_t hlo_shape_rank = hlo->shape().rank();
+      before_dim_size_stack.reserve(operand0_rank);
+      after_dim_size_stack.reserve(hlo_shape_rank);
+      for (int64_t i = operand0_rank - 1; i >= 0; --i) {
         before_dim_size_stack.push_back(hlo->operand(0)->shape().dimensions(i));
       }
-      for (int64_t i = hlo->shape().rank() - 1; i >= 0; --i) {
+      for (int64_t i = hlo_shape_rank - 1; i >= 0; --i) {
         after_dim_size_stack.push_back(hlo->shape().dimensions(i));
       }
       while (!before_dim_size_stack.empty() && !after_dim_size_stack.empty()) {
@@ -1259,7 +1263,9 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
   // Split along the split dimension (target_dim) of the all-to-all
   // output.
   std::vector<int64_t> dimensions;
-  for (int64_t i = 0; i < base_shape_.rank(); ++i) {
+  const int64_t rank = base_shape_.rank();
+  dimensions.reserve(rank + 1);
+  for (int64_t i = 0; i < rank; ++i) {
     if (i == target_dim) {
       dimensions.push_back(group_size);
       dimensions.push_back(padded_hlo->shape().dimensions(i) / group_size);
@@ -2270,7 +2276,11 @@ Status SpmdPartitioningVisitor::HandleSingleDevice(const HloInstruction* hlo) {
 
   std::vector<HloInstruction*> operands;
   std::vector<Shape> operand_shapes;
-  for (const HloInstruction* operand : hlo->operands()) {
+  const auto& old_operands = hlo->operands();
+  const auto old_operands_size = old_operands.size();
+  operands.reserve(old_operands_size);
+  operand_shapes.reserve(old_operands_size);
+  for (const HloInstruction* operand : old_operands) {
     operands.push_back(GetPartitionedHlo(operand).Reshard(sharding).hlo());
     operand_shapes.push_back(operand->shape());
   }
@@ -3824,7 +3834,9 @@ StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
 
   // Add the parameters' and output's shardings to the module.
   std::vector<HloSharding> entry_params_shardings;
-  for (int64_t i = 0; i < module->entry_computation()->num_parameters(); ++i) {
+  const auto num_parameters = module->entry_computation()->num_parameters();
+  entry_params_shardings.reserve(num_parameters);
+  for (int64_t i = 0; i < num_parameters; ++i) {
     auto param = module->entry_computation()->parameter_instruction(i);
     CHECK(param->has_sharding()) << "Missing sharding in entry parameter " << i;
     entry_params_shardings.push_back(param->sharding());

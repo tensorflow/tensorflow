@@ -978,7 +978,10 @@ class DatasetBase : public core::RefCounted {
   virtual int64_t TotalBytes() const { return 0; }
 
   // Returns the cardinality of this dataset.
-  virtual int64_t Cardinality() const { return kUnknownCardinality; }
+  int64_t Cardinality() const { return cardinality_; }
+
+  // Internal implementation of cardinality for a dataset.
+  virtual int64_t CardinalityInternal() const { return kUnknownCardinality; }
 
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;

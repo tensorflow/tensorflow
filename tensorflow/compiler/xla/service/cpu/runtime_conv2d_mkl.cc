@@ -20,6 +20,7 @@ limitations under the License.
 
 #ifdef ENABLE_MKL
 #include <omp.h>
+
 #include "mkldnn.hpp"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 

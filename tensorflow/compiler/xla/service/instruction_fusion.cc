@@ -840,6 +840,12 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
                                    int64_t operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
+  // Don't fuse across a root instruction.
+  if (producer == producer->parent()->root_instruction()) {
+    VLOG(4) << "Not fusing into the output of the root instruction";
+    return false;
+  }
+
   // Cost condition: don't duplicate expensive instructions.
   if (FusionWouldDuplicate(*producer, *consumer) &&
       (!may_duplicate_ || is_expensive_(*producer)) &&

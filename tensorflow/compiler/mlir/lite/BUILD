@@ -636,6 +636,7 @@ cc_library(
         "transforms/modify_io_nodes.cc",
         "transforms/optimize_op_order.cc",
         "transforms/post_quantize.cc",
+        "transforms/prepare_dynamic_quantize.cc",
         "transforms/prepare_quantize.cc",
         "transforms/quantize.cc",
         "utils/generated_op_quant_spec_getters.inc",

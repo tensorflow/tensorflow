@@ -94,10 +94,19 @@ class TFRTypes(enum.Enum):
       return self.name.lower()
 
 
-_attribute_types = [
+_ATTRIBUTE_TYPES = (
     TFRTypes.I1, TFRTypes.I32, TFRTypes.I64, TFRTypes.F32, TFRTypes.INDEX,
     TFRTypes.ATTR
-]
+    )
+
+# TODO(b/203493652): implement the "rename_to" for the customization in
+# tensorflow/core/api_def/base_api/*
+# {op_name: {API's attribute name: OpDef's attribute name}}
+_ATTRIBUTE_RENAMES = {
+    'Mean': {'axis': 'reduction_indices'},
+    'Split': {'axis': 'split_dim'},
+    'SplitV': {'axis': 'split_dim'},
+}
 
 
 def _get_type_from_proto(arg_def=None, attr_def=None):
@@ -1236,7 +1245,9 @@ class TFRGen(transformer.CodeGenerator):
       cst_val = _get_val_from_proto(cst_ty, attr_def.default_value)
     except AttributeError:
       raise AttributeError(
-          f'attribute "{attr_def.name}" does not have default_value')
+          f'attribute "{attr_def.name}" does not have default_value. If the '
+          "attribute names from the API and OpDef don't match, please add it "
+          'to _ATTRIBUTE_RENAMES.')
     if cst_ty == TFRTypes.ATTR:
       self._emit_with_loc('\n{} = tfr.constant {} -> {}'.format(
           name, cst_val, cst_ty))
@@ -1304,10 +1315,9 @@ class TFRGen(transformer.CodeGenerator):
       value, (ssa_name, ty) = self.visit(arg)
       ty = self._get_inferred_type(arg.value, ty)
 
-      # TODO(fengliuai): implement the "rename_to" for the customization in
-      # tensorflow/core/api_def/base_api/*
-      if value == 'axis':
-        value = 'split_dim'
+      # TODO(b/203493652): see comment on _ATTRIBUTE_RENAMES
+      if op_name in _ATTRIBUTE_RENAMES and value in _ATTRIBUTE_RENAMES[op_name]:
+        value = _ATTRIBUTE_RENAMES[op_name][value]
 
       kw_args[value] = (ssa_name, ty)
 
@@ -1317,7 +1327,7 @@ class TFRGen(transformer.CodeGenerator):
       if attr_def.name in kw_args:
         value, ty = kw_args[attr_def.name]
         if attr_def in input_args:
-          if ty in _attribute_types:
+          if ty in _ATTRIBUTE_TYPES:
             # the argument shouldn't be used as tf op calls directly.
             value, ty = self._value_to_tensor(value, ty, node)
           if ty is TFRTypes.TENSOR_LIST and not _require_tensor_list(attr_def):
@@ -1418,7 +1428,7 @@ class TFRGen(transformer.CodeGenerator):
     for elt in node.elts:
       val, ty = self.visit(elt)
       ty = self._get_inferred_type(elt, ty)
-      if ty in _attribute_types and out_type == TFRTypes.TENSOR_LIST:
+      if ty in _ATTRIBUTE_TYPES and out_type == TFRTypes.TENSOR_LIST:
         # This list is a tensor list, then cast all the input values to tensors.
         val, ty = self._value_to_tensor(val, ty, node)
       else:

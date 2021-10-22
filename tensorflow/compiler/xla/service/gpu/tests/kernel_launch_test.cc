@@ -20,11 +20,11 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class KernelThunkTest : public GpuCodegenTest {};
+class KernelLaunchTest : public GpuCodegenTest {};
 
-TEST_F(KernelThunkTest, Basic) {
+TEST_F(KernelLaunchTest, Basic) {
   const char* hlo_text = R"(
-    HloModule Test
+    HloModule Test1
 
     add_F32 {
       lhs = f32[] parameter(0)
@@ -32,7 +32,7 @@ TEST_F(KernelThunkTest, Basic) {
       ROOT add = f32[] add(lhs, rhs)
     }
 
-    ENTRY main {
+    ENTRY Test1 {
       a = f32[2, 2]{1,0} parameter(0)
       b = f32[2, 2]{1,0} parameter(1)
       ROOT r1 = f32[2, 2]{1,0} map(a, b), dimensions={0, 1}, to_apply=add_F32
@@ -42,9 +42,9 @@ TEST_F(KernelThunkTest, Basic) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(KernelThunkTest, KernelWithConstants) {
+TEST_F(KernelLaunchTest, KernelWithConstants) {
   const char* hlo_text = R"(
-    HloModule Test
+    HloModule Test2
 
     add_F32 {
       lhs = f32[] parameter(0)
@@ -52,7 +52,7 @@ TEST_F(KernelThunkTest, KernelWithConstants) {
       ROOT add = f32[] add(lhs, rhs)
     }
 
-    ENTRY main {
+    ENTRY Test2 {
       a = f32[2, 2]{1,0} constant({{1, 2}, {3, 4}})
       b = f32[2, 2]{1,0} constant({{5, 6}, {7, 8}})
       ROOT r1 = f32[2, 2]{1,0} map(a, b), dimensions={0, 1}, to_apply=add_F32

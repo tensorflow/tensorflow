@@ -318,7 +318,9 @@ class TensorListElementShapeOp : public XlaOpKernel {
         break;
       case DT_INT32: {
         std::vector<int32> size;
-        for (int64_t s : list_shape.dimensions()) {
+        const auto& dimensions = list_shape.dimensions();
+        size.reserve(dimensions.size());
+        for (int64_t s : dimensions) {
           size.push_back(s);
         }
         ctx->SetOutput(0, xla::ConstantR1<int32>(b, size));

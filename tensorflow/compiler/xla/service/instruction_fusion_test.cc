@@ -567,4 +567,26 @@ TEST_F(InstructionFusionTest, InPlaceOpShouldFuseWithSameDynamicSlice) {
   EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
 }
 
+TEST_F(InstructionFusionTest, DontFuseAcrossRoot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY entry_computation {
+    p0 = f32[4,3]{1,0} parameter(0)
+    mul = f32[4,3]{1,0} multiply(p0, p0)
+    ROOT add = f32[4,3]{1,0} add(mul, p0)
+    sub = f32[4,3]{1,0} subtract(p0, add)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter()));
+  EXPECT_THAT(
+      root->fused_expression_root(),
+      op::Add(op::Multiply(op::Parameter(), op::Parameter()), op::Parameter()));
+}
+
 }  // namespace xla

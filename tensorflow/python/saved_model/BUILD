@@ -670,7 +670,6 @@ py_strict_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
-        "@enum34_archive//:enum",
         "@six_archive//:six",
     ],
 )

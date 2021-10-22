@@ -675,6 +675,54 @@ func @testStaticAndIdenticalTypeForNotEqualOp(%arg0: tensor<2xi32>, %arg1: tenso
   return %0: tensor<2xi1>
 }
 
+// CHECK-LABEL: func @testUnknownBroadcastForNotEqualOp
+func @testUnknownBroadcastForNotEqualOp(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<*xi1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = false
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<?xi32>, tensor<?xi32>) -> tensor<*xi1>
+  return %0: tensor<*xi1>
+}
+
+// CHECK-LABEL: func @testKnownGoodBroadcastForNotEqualOp
+func @testKnownGoodBroadcastForNotEqualOp(%arg0: tensor<1x?xi32>, %arg1: tensor<?x1xi32>) -> tensor<?x?xi1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = true
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<1x?xi32>, tensor<?x1xi32>) -> tensor<?x?xi1>
+  return %0: tensor<?x?xi1>
+}
+
+// CHECK-LABEL: func @testKnownBadBroadcastForNotEqualOp
+func @testKnownBadBroadcastForNotEqualOp(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<i1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = false
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<?xi32>, tensor<?xi32>) -> tensor<i1>
+  return %0: tensor<i1>
+}
+
+// CHECK-LABEL: func @testUnrankedRHSForNotEqualOp
+func @testUnrankedRHSForNotEqualOp(%arg0: tensor<i32>, %arg1: tensor<*xi32>) -> tensor<i1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = false
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<i32>, tensor<*xi32>) -> tensor<i1>
+  return %0: tensor<i1>
+}
+
+// CHECK-LABEL: func @testUnrankedLHSForNotEqualOp
+func @testUnrankedLHSForNotEqualOp(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> tensor<i1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = false
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
+  return %0: tensor<i1>
+}
+
+// CHECK-LABEL: func @testScalarForNotEqualOp
+func @testScalarForNotEqualOp(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = true
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %0: tensor<i1>
+}
+
 // CHECK-LABEL: testLogicalNotOfEqual
 func @testLogicalNotOfEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>

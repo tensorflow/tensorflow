@@ -825,13 +825,17 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
       return !edge.IsControlEdge() && edge_dtype() == DT_VARIANT;
     };
 
-    auto enter = [&](Node* n) -> void {
+    const bool requires_host_placement =
+        node->IsRetval() || node->IsIdentity() || node->IsControlFlow() ||
+        node->IsFunctionCall();
+    auto enter = [&is_host_data_type,
+                  requires_host_placement](Node* n) -> void {
       // TODO(b/199443424): Replace this logic with propagated type information.
       if (IsVariantWithUnsupportedDeviceCopy(n)) {
         // NOTE: Datasets are expected to live on the host. This code should be
         // updated if that changes. Under this assumption, however, we must
         // locate some ops on the host when the input is a dataset variant.
-        if (node->IsRetval() || node->IsIdentity() || node->IsControlFlow()) {
+        if (requires_host_placement) {
           is_host_data_type = true;
         }
       } else {

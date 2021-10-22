@@ -389,6 +389,18 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(a, b)
 
   @test_util.run_in_graph_and_eager_modes
+  def testAssertDictEqual(self):
+    a = 7
+    b = (2., 3.)
+    c = np.ones((3, 2, 4)) * 7.
+    d = "testing123"
+    expected = {"a": a, "b": b, "c": c, "d": d}
+    actual = {"a": a, "b": b, "c": constant_op.constant(c), "d": d}
+
+    self.assertDictEqual(expected, expected)
+    self.assertDictEqual(expected, actual)
+
+  @test_util.run_in_graph_and_eager_modes
   def testArrayNear(self):
     a = [1, 2]
     b = [1, 2, 5]

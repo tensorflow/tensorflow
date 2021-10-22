@@ -1023,6 +1023,7 @@ tf_xla_py_test(
         ":def_function",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:collective_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",

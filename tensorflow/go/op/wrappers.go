@@ -10290,6 +10290,10 @@ func DecodeProtoV2Sanitize(value bool) DecodeProtoV2Attr {
 
 // The op extracts fields from a serialized protocol buffers message into tensors.
 //
+// Note: This API is designed for orthogonality rather than human-friendliness. It
+// can be used to parse input protos by hand, but it is intended for use in
+// generated code.
+//
 // The `decode_proto` op extracts fields from a serialized protocol buffers
 // message into tensors.  The fields in `field_names` are decoded and converted
 // to the corresponding `output_types` if possible.
@@ -10320,6 +10324,14 @@ func DecodeProtoV2Sanitize(value bool) DecodeProtoV2Attr {
 // way). Unsigned int32 values can be represented exactly by specifying type
 // `DT_INT64`, or using twos-complement if the caller specifies `DT_INT32` in
 // the `output_types` attribute.
+//
+// - `map` fields are not directly decoded. They are treated as `repeated` fields,
+// of the appropriate entry type. The proto-compiler defines entry types for each
+// map field. The type-name is the field name, converted to "CamelCase" with
+// "Entry" appended. The `tf.train.Features.FeatureEntry` message is an example of
+// one of these implicit `Entry` types.
+//
+// - `enum` fields should be read as int32.
 //
 // Both binary and text proto serializations are supported, and can be
 // chosen using the `format` attribute.

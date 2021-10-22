@@ -296,21 +296,36 @@ class _SaveableView(object):
     return self.concrete_functions + self.gradient_functions
 
   def _add_function_to_graph(self, function):
-    """Adds function to serialize to object graph."""
-    # Updates self.nodes, self.node_ids, self.concrete_functions,
-    # and self._untraced_functions.
+    """Adds a function to serialize to the object graph.
+
+    If `function` is a concrete function, it will be added to the list of
+    concrete functions tracked by `_SaveableView`. If the function is a
+    tf.function, any underlying concrete functions will be added to the list of
+    concrete functions for later serialization.
+
+    Args:
+      function: a `def_function.Function` or `ConcreteFunction`
+    """
+    # Add the function to the graph
     if function not in self.node_ids:
       self.node_ids[function] = len(self.nodes)
-      # Add the function to nodes as well.
       self.nodes.append(function)
+
+    # Gather the concrete function(s)
     if isinstance(function, def_function.Function):
       concrete_functions = (
           function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
     else:
       concrete_functions = [function]
+
+    # Keep track of untraced functions for later reporting to the user
     if not concrete_functions:
       self._untraced_functions.append(function._name)  # pylint: disable=protected-access
+
+    # Add the concrete functions for later serialization
     for concrete_function in concrete_functions:
+      # Users can attach the same tf.function to their model multiple times,
+      # so we deduplicate their underlying concrete functions.
       if concrete_function.name not in self._seen_function_names:
         self.concrete_functions.append(concrete_function)
         self._seen_function_names.add(concrete_function.name)

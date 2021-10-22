@@ -20,6 +20,7 @@ package(
 pytype_library(
     name = "xla_client",
     srcs = ["xla_client.py"],
+    pytype_srcs = ["xla_client.pyi"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
@@ -27,6 +28,8 @@ pytype_library(
         "@absl_py//absl/logging",
     ],
 )
+
+exports_files(["xla_client.pyi"])
 
 pyx_library(
     name = "custom_call_for_test",

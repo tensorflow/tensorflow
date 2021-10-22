@@ -114,14 +114,13 @@ Value GetInitTensor(OpBuilder& b, Location loc, ShapedType type,
 }
 
 Value GetInitTensorFor(OpBuilder& b, Location loc, ShapedType result_type,
-                       Operation* op) {
+                       Operation* op, ArrayRef<Value> operands) {
   SmallVector<Value> dyn_sizes;
   if (result_type.hasRank() && !result_type.hasStaticShape()) {
     // Ask the op for its output shape.
     auto shape_source = cast<InferShapedTypeOpInterface>(op);
     SmallVector<Value, 1> reified_shapes;
-    (void)shape_source.reifyReturnTypeShapes(b, op->getOperands(),
-                                             reified_shapes);
+    (void)shape_source.reifyReturnTypeShapes(b, operands, reified_shapes);
     assert(reified_shapes.size() == 1 && "Expected one reified result");
 
     for (auto& en : llvm::enumerate(result_type.getShape())) {
@@ -267,21 +266,8 @@ struct RngUniformConversion : public OpConversionPattern<mhlo::RngUniformOp> {
       return rewriter.notifyMatchFailure(
           op, "expected target shape of rng op to be ShapedType");
     }
-    auto target_shape = target_ty.getShape();
-    SmallVector<Value, 2> dyn_sizes;
     auto loc = op.getLoc();
-    Value target_shape_val = args[2];
-    for (auto en : llvm::enumerate(target_shape)) {
-      if (en.value() != ShapedType::kDynamicSize) continue;
-      Value dyn_index =
-          rewriter.create<arith::ConstantIndexOp>(loc, en.index());
-      Value dyn_size_int =
-          rewriter.create<tensor::ExtractOp>(loc, target_shape_val, dyn_index);
-      dyn_sizes.push_back(rewriter.create<arith::IndexCastOp>(
-          loc, rewriter.getIndexType(), dyn_size_int));
-    }
-    Value init_tensor = rewriter.create<linalg::InitTensorOp>(
-        loc, dyn_sizes, target_shape, target_ty.getElementType());
+    Value init_tensor = GetInitTensorFor(rewriter, loc, target_ty, op, args);
     // Creates index map using target matrix's rank.
     auto target_rank = target_ty.getRank();
     SmallVector<AffineMap, 3> indexing_maps(
@@ -672,8 +658,9 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     // Find input/output values and types.
     auto loc = op.getLoc();
     ValueRange inputs = isLHLO ? args.drop_back() : args;
-    Value output =
-        isLHLO ? args.back() : GetInitTensorFor(rewriter, loc, *result_ty, op);
+    Value output = isLHLO
+                       ? args.back()
+                       : GetInitTensorFor(rewriter, loc, *result_ty, op, args);
 
     // Create indexing maps.
     AffineMap scalar_map = AffineMap::get(nloops, 0, rewriter.getContext());
@@ -766,7 +753,8 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
         /*inputs=*/args.front(),
         /*outputBuffers=*/
         isLHLO ? ValueRange{args.back()}
-               : ValueRange{GetInitTensorFor(rewriter, loc, result_type, op)},
+               : ValueRange{GetInitTensorFor(rewriter, loc, result_type, op,
+                                             args)},
         indexing_maps, GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
           nested_builder.create<linalg::YieldOp>(loc, *args.begin());
@@ -879,30 +867,11 @@ class HloDynamicBroadcastInDimConverter
     auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
     if (!operand_type || !operand_type.hasStaticShape()) return failure();
 
-    Value shape = adaptor.output_dimensions();
-    auto shape_type = shape.getType().cast<RankedTensorType>();
-    int64_t result_rank = shape_type.getDimSize(0);
-    // HLO dimension types can be any integer, as well as index.
-    bool convert_to_index =
-        shape_type.getElementType() != rewriter.getIndexType();
-
     auto result_type =
         typeConverter->convertType(op.getType()).dyn_cast<RankedTensorType>();
     if (!result_type) return failure();
 
-    SmallVector<Value, 2> dyn_dims;
     Location loc = op.getLoc();
-    for (int i = 0; i < result_rank; ++i) {
-      if (!result_type.isDynamicDim(i)) continue;
-      Value index = rewriter.create<arith::ConstantIndexOp>(loc, i);
-      Value dim = rewriter.create<tensor::ExtractOp>(loc, shape, index);
-      if (convert_to_index) {
-        dim = rewriter.create<arith::IndexCastOp>(loc, rewriter.getIndexType(),
-                                                  dim);
-      }
-      dyn_dims.push_back(dim);
-    }
-
     int64_t nloops = result_type.getRank();
     auto operand_shape = operand_type.getShape();
     SmallVector<AffineExpr, 4> dim_exprs;
@@ -918,10 +887,9 @@ class HloDynamicBroadcastInDimConverter
       }
     }
 
-    Value init = rewriter.create<linalg::InitTensorOp>(
-        loc, dyn_dims, result_type.getShape(), result_type.getElementType());
-    Operation* generic = rewriter.create<linalg::GenericOp>(
-        loc, TypeRange{init.getType()}, ValueRange{operand},
+    Value init = GetInitTensorFor(rewriter, loc, result_type, op, operands);
+    rewriter.replaceOpWithNewOp<linalg::GenericOp>(
+        op, TypeRange{init.getType()}, ValueRange{operand},
         /*outputBuffers=*/ValueRange{init},
         llvm::makeArrayRef(
             {AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0, dim_exprs,
@@ -932,7 +900,6 @@ class HloDynamicBroadcastInDimConverter
           nested_builder.create<linalg::YieldOp>(loc, *args.begin());
         },
         PruneAttributeList(op));
-    rewriter.replaceOp(op, generic->getResults());
     return success();
   }
 };
@@ -1288,7 +1255,7 @@ class IotaConverter : public OpConversionPattern<OpTy> {
         /*outputBuffers=*/
         isLHLO ? ValueRange{args.back()}
                : ValueRange{GetInitTensorFor(rewriter, loc, result_shaped_type,
-                                             iota_op)},
+                                             iota_op, args)},
         llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
         GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
@@ -1331,37 +1298,18 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
             .dyn_cast<RankedTensorType>();
     if (!result_type) return failure();
 
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     uint64_t dim = op.dimension();
-    int64_t rank = result_type.getRank();
-    Value zero = b.create<arith::ConstantIndexOp>(0);
-    SmallVector<Value, 3> sizes;
-    for (int64_t i = 0; i < rank; ++i) {
-      sizes.push_back(i == dim ? Value() : b.create<tensor::DimOp>(args[0], i));
-    }
-
-    // Calculate the size of the concatenated dimension.
-    Value result_dim_size;
-    for (auto arg : args) {
-      Value size = b.create<tensor::DimOp>(arg, dim);
-      result_dim_size = result_dim_size
-                            ? b.create<arith::AddIOp>(result_dim_size, size)
-                            : size;
-    }
-    sizes[dim] = result_dim_size;
+    Location loc = op.getLoc();
+    Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
 
     // Allocate the output tensor with init_tensor.
-    SmallVector<Value, 3> dyn_sizes;
-    for (int64_t i = 0; i < rank; ++i) {
-      if (result_type.isDynamicDim(i)) dyn_sizes.push_back(sizes[i]);
-    }
-    Value result = b.create<linalg::InitTensorOp>(
-        dyn_sizes, result_type.getShape(), result_type.getElementType());
+    Value result = GetInitTensorFor(rewriter, loc, result_type, op, args);
 
     // Generate a generic op to gather the elements of the concatenate. This is
     // awkward standalone but allows fusion with other generic ops.
     unsigned nloops = result_type.getRank();
-    auto linalg_op = b.create<linalg::GenericOp>(
+    rewriter.replaceOpWithNewOp<linalg::GenericOp>(
+        op,
         /*resultTensorTypes=*/result_type,
         /*inputs=*/ValueRange{}, /*outputBuffers=*/result,
         llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
@@ -1416,7 +1364,6 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
           nested_builder.create<linalg::YieldOp>(loc, result);
         },
         PruneAttributeList(op));
-    rewriter.replaceOp(op, linalg_op.result_tensors());
     return success();
   }
 };

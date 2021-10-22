@@ -21,7 +21,7 @@ bool IsContiguousMemref(mlir::Value value) {
   auto memref_type = value.getType().dyn_cast<mlir::MemRefType>();
   if (!memref_type) return false;
   mlir::MemRefType canonical_type = canonicalizeStridedLayout(memref_type);
-  return canonical_type.getAffineMaps().empty();
+  return canonical_type.getLayout().isIdentity();
 }
 
 }  // namespace tensorflow

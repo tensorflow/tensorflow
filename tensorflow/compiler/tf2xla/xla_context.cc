@@ -166,4 +166,23 @@ const xla::XlaComputation* XlaContext::LookupOrCreate(
   }
 }
 
+StatusOr<int64_t> XlaContext::RecordCollectiveInfo(int group_key,
+                                                   int group_size) {
+  if (!collective_info_) {
+    collective_info_ = {group_key, group_size, 0};
+  } else if (collective_info_->group_key != group_key ||
+             collective_info_->group_size != group_size) {
+    return errors::InvalidArgument(
+        "Only single configuration of CollectiveReduceV2Op is ",
+        "supported in a given cluster. Recorded group_key=",
+        collective_info_->group_key,
+        " attempting to insert group_key=", group_key);
+  }
+
+  // Create the channel_id to be used for the collective. Avoid having the
+  // same channel_id to be used for 2 or more collectives since XLA attempts
+  // to "gang schedule" all collectives with the same channel_id.
+  return (static_cast<int64_t>(group_key) << 32) | collective_info_->next_id++;
+}
+
 }  // namespace tensorflow

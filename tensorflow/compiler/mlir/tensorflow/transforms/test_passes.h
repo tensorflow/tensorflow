@@ -41,6 +41,15 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTestSideEffectAnalysisPass();
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTestResourceAliasAnalysisPass();
 
+std::unique_ptr<OperationPass<ModuleOp>> CreateInitTextFileToImportTestPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateInitTextFileToImportSavedModelTestPass();
+
+// Variable Lifting test passes: only useful for lit testing.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesTestPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateLiftVariablesInvalidSessionTestPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
 
