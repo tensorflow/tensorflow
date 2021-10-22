@@ -564,3 +564,17 @@ def LowerSeluGradOp : Pat<(TF_SeluGradOp AnyStaticShapeTensor:$gradients,
                           (TF_AddV2Op
                             $features,
                             (TF_ConstOp (getScaledAlpha $features)))))>;
+
+
+
+//===----------------------------------------------------------------------===//
+// Expm1 op patterns.
+//===----------------------------------------------------------------------===//
+
+// Expm1(x) = Exp(x) - 1
+def LowerExp1mOp : Pat<
+  (TF_Expm1Op $x),
+  (TF_SubOp
+    (TF_ExpOp $x),
+    (TF_ConstOp (GetScalarOfType<1> $x))
+  )>;

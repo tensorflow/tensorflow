@@ -1694,6 +1694,7 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
   // clang-format off
   patterns->insert<
       LowerAddNOp,
+      LowerExp1mOp,
       ConvertFakeQuantWithMinMaxVarsOp,
       LowerDynamicStitchOp<DynamicStitchOp>,
       LowerDynamicStitchOp<ParallelDynamicStitchOp>,

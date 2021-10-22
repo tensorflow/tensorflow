@@ -41,6 +41,7 @@ def mlir_only_generated_test_models():
         # copybara:uncomment_end
         "dynamic_rnn",
         "einsum",
+        "expm1",
         "identify_dilated_conv",
         "identify_dilated_conv1d",
         "imag",
