@@ -60,6 +60,14 @@ class InferenceContext {
     CalculationsPrecision precision;
     TensorStorageType storage_type;
     ModelHints hints;
+
+    // Some restrictions for preallocated:
+    //   1) ValueId must be input or output id of GraphFloat32
+    //   2) data_type must be equal to DeduceDataTypeFromPrecision(precision);
+    //      for example for precision F16, data_type must be FLOAT16
+    //   3) Layout must be without Batch dimension if tensor.shape.b == 1
+    //      Layout must be with Batch dimension if tensor.shape.b != 1
+    std::map<ValueId, TensorDescriptor> preallocated;
   };
 
   InferenceContext() = default;
@@ -128,8 +136,9 @@ class InferenceContext {
 
   absl::Status CompileOperations(MetalDevice* device);
 
-  absl::Status AllocateTensors(MetalDevice* device,
-                               const std::set<ValueId>& preallocated_ids);
+  absl::Status AllocateTensors(
+      MetalDevice* device,
+      const std::map<ValueId, TensorDescriptor>& preallocated);
   absl::Status AllocateMemoryForConstTensors(MetalDevice* device);
   absl::Status AllocateMemoryForBuffers(MetalDevice* device);
   absl::Status AllocateMemoryForStrongShapes(MetalDevice* device);
