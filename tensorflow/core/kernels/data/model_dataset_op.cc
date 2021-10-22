@@ -63,9 +63,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         cpu_budget_(cpu_budget),
         ram_budget_(ram_budget),
         traceme_metadata_(
-            {{"algorithm", algorithm == model::AutotuneAlgorithm::HILL_CLIMB
-                               ? "hill climb"
-                               : "gradient descent"},
+            {{"algorithm", model::AutotuneAlgorithm_Name(algorithm)},
              {"cpu_budget",
               strings::Printf("%lld", static_cast<long long>(cpu_budget))},
              {"ram_budget",
