@@ -666,7 +666,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    with self.assertRaisesRegex(ValueError, r'got.*set'):
+    # TODO(b/201533914): Remove this flag.
+    if function.USE_FULL_TRACE_TYPE:
+      expected_error = errors.InvalidArgumentError
+      expected_message = r'Could not determine tracing type of generic object'
+    else:
+      expected_error = ValueError
+      expected_message = r'got.*set'
+
+    with self.assertRaisesRegex(expected_error, expected_message):
       f(set([]))
 
   def testFuncName(self):
