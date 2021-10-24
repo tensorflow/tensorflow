@@ -26,7 +26,7 @@ below.
 
 4.  Tests should be included in `foo_grad_test.cc`. Please see
     [`array_grad_test.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/gradients/array_grad_test.cc)
-    for an many examples. Tests are as simple as, creating a placeholder input
+    for many examples. Tests are as simple as, creating a placeholder input
     for the op's inputs and calling `RunTest` (`RunTest` uses a [gradient
     checker](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/framework/gradient_checker.cc)
     to verify that the theoretical gradient matches the numeric gradient). For
