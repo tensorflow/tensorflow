@@ -32485,6 +32485,17 @@ func DataFormatDimMap(scope *Scope, x tf.Output, optional ...DataFormatDimMapAtt
 	return op.Output(0)
 }
 
+// AssignVariableOpAttr is an optional argument to AssignVariableOp.
+type AssignVariableOpAttr func(optionalAttr)
+
+// AssignVariableOpValidateShape sets the optional validate_shape attribute to value.
+// If not specified, defaults to false
+func AssignVariableOpValidateShape(value bool) AssignVariableOpAttr {
+	return func(m optionalAttr) {
+		m["validate_shape"] = value
+	}
+}
+
 // Assigns a new value to a variable.
 //
 // Any ReadVariableOp with a control dependency on this op is guaranteed to return
@@ -32495,15 +32506,20 @@ func DataFormatDimMap(scope *Scope, x tf.Output, optional ...DataFormatDimMapAtt
 //	value: the value to set the new tensor to use.
 //
 // Returns the created operation.
-func AssignVariableOp(scope *Scope, resource tf.Output, value tf.Output) (o *tf.Operation) {
+func AssignVariableOp(scope *Scope, resource tf.Output, value tf.Output, optional ...AssignVariableOpAttr) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "AssignVariableOp",
 		Input: []tf.Input{
 			resource, value,
 		},
+		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
 }
