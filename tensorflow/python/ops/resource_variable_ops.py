@@ -24,7 +24,6 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python.client import pywrap_tf_session
-from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import auto_control_deps_utils as acd
@@ -383,10 +382,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Args:
       trainable: If `True`, GradientTapes automatically watch uses of this
         Variable.
-      shape: The variable's shape. This shape can be set to tf.TensorShape(None)
-        in order to assign values of different shapes to this variable.
-        Otherwise (i.e. if the shape is fully determined), it will trigger run
-        time checks to ensure that each assignment is of the same shape.
+      shape: The variable's shape.
       dtype: The variable's dtype.
       handle: The variable's handle
       constraint: An optional projection function to be applied to the variable
@@ -940,14 +936,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
             (f"Cannot assign value to variable '{tensor_name}': Shape mismatch."
              f"The variable shape {self._shape}, and the "
              f"assigned value shape {value_tensor.shape} are incompatible."))
-      kwargs = {}
-      if forward_compat.forward_compatible(2021, 11, 15):
-        # If the shape is fully defined, we do a runtime check with the shape of
-        # value.
-        validate_shape = self._shape.is_fully_defined()
-        kwargs["validate_shape"] = validate_shape
       assign_op = gen_resource_variable_ops.assign_variable_op(
-          self.handle, value_tensor, name=name, **kwargs)
+          self.handle, value_tensor, name=name)
       if read_value:
         return self._lazy_read(assign_op)
     return assign_op

@@ -196,7 +196,6 @@ REGISTER_OP("AssignVariableOp")
     .Input("resource: resource")
     .Input("value: dtype")
     .Attr("dtype: type")
-    .Attr("validate_shape: bool = false")
     .SetShapeFn(CreateAssignShapeFn);
 
 REGISTER_OP("AssignAddVariableOp")
