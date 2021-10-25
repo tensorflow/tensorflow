@@ -312,7 +312,6 @@ py_strict_library(
         "save_context.py",
     ],
     srcs_version = "PY3",
-    deps = [],
 )
 
 tf_py_test(
