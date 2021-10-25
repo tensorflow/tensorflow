@@ -90,6 +90,14 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int64)
       self.assertAllEqual(1, v.numpy())
 
+  @test_util.run_gpu_only
+  def testGPUBfloat16(self):
+    with context.eager_mode(), ops.device("gpu:0"):
+      v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.bfloat16)
+      self.assertEqual("/job:localhost/replica:0/task:0/device:GPU:0",
+                       v.device)
+      self.assertAllEqual(1, v.numpy())
+
   def testEagerNameNotIdentity(self):
     with context.eager_mode():
       v0 = resource_variable_ops.ResourceVariable(1.0, name="a")
