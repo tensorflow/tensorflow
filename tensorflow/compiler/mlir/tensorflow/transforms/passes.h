@@ -113,6 +113,11 @@ CreateTensorDeviceCopyConversionPass();
 // have built in broadcasting support.
 std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass();
 
+void populateTfControlFlowToScfPatterns(MLIRContext* context,
+                                        OwningRewritePatternList* patterns);
+// Create a pass to convert TensorFlow control flow to SCF.
+std::unique_ptr<OperationPass<ModuleOp>> createConvertTfControlFlowToScfPass();
+
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
   Option<std::string> force_data_format{
