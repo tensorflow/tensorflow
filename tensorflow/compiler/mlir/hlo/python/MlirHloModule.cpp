@@ -13,6 +13,7 @@ limitations under the License.
 #include "mlir-c/Bindings/Python/Interop.h"
 #include "mlir-c/Registration.h"
 #include "mlir-hlo-c/Dialects.h"
+#include "mlir-hlo-c/Types.h"
 #include "mlir/Bindings/Python/PybindAdaptors.h"
 
 namespace py = pybind11;
@@ -41,4 +42,18 @@ PYBIND11_MODULE(_mlirHlo, m) {
         }
       },
       py::arg("context"), py::arg("load") = true);
+
+  //
+  // Types.
+  //
+
+  mlir::python::adaptors::mlir_type_subclass(m, "TokenType",
+                                             mlirMhloTypeIsAToken)
+      .def_classmethod(
+          "get",
+          [](py::object cls, MlirContext ctx) {
+            return cls(mlirMhloTokenTypeGet(ctx));
+          },
+          py::arg("cls"), py::arg("context") = py::none(),
+          "Creates a Token type.");
 }

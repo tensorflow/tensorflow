@@ -12,32 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Simple smoketest for the Python API."""
-
-# TODO(laurenzo): This should be a real test but we don't have enough build
-# support for it yet.
+"""Test for Python APIs accessing MHLO types."""
 
 # pylint: disable=wildcard-import,undefined-variable
 
-from mlir.dialects.chlo import *
 from mlir.dialects.mhlo import *
 from mlir.ir import *
 
-ASM = """
-func @dynamicBroadcast(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-  return %0 : tensor<?x?xf32>
-}
-"""
 
-with Context() as context:
-  register_chlo_dialect(context)
-  register_mhlo_dialect(context)
+def run(f):
+  with Context() as context:
+    register_mhlo_dialect(context)
+    f()
+  return f
 
-  m = Module.parse(ASM)
-  print(m)
-  add_op = m.body.operations[0].regions[0].blocks[0].operations[0]
-  print(repr(add_op))
-  print(add_op)
-  print("Everything works")
+
+@run
+def test_token_type():
+  """Check that the Token type is available."""
+  assert str(TokenType.get()) == "!mhlo.token"
