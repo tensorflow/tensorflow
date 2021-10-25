@@ -550,6 +550,13 @@ class Loader(object):
       for object_id, obj in dict(checkpoint.object_by_proto_id).items():
         position = base.CheckpointPosition(checkpoint=checkpoint,
                                            proto_id=object_id)
+        registered_saver = position.get_registered_saver_name()
+        if registered_saver:
+          raise NotImplementedError(
+              "Loading a SavedModel that uses registered checkpoint saver is "
+              f"not supported in graph mode. The loaded object {obj} uses the "
+              f"saver registered with the name {registered_saver}.")
+
         restore_ops = position.restore_ops()
         if restore_ops:
           if resource_variable_ops.is_resource_variable(obj):

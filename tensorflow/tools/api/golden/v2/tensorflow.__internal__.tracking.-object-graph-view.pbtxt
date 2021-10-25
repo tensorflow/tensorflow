@@ -23,6 +23,10 @@ tf_class {
     argspec: "args=[\'self\', \'object_map\', \'to_graph\', \'call_with_mapped_captures\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "frozen_saveables_and_savers"
+    argspec: "args=[\'self\', \'object_map\', \'to_graph\', \'call_with_mapped_captures\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "list_children"
     argspec: "args=[\'self\', \'obj\'], varargs=None, keywords=None, defaults=None"
   }
@@ -40,6 +44,10 @@ tf_class {
   }
   member_method {
     name: "serialize_object_graph"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "serialize_object_graph_with_registered_savers"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
 }

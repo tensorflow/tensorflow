@@ -551,9 +551,12 @@ tf_py_test(
     srcs = ["registration_saving_test.py"],
     deps = [
         ":registration",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/training/tracking",
         "@absl_py//absl/testing:parameterized",
