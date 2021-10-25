@@ -34,6 +34,7 @@ from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -684,6 +685,16 @@ class SessionBasedFileWriterTestCase(FileWriterTestBase, test.TestCase):
 
     # No more files
     self.assertRaises(StopIteration, lambda: next(event_paths))
+
+  def testSummaryFileWritersInvalidInput(self):
+    # Test case for GitHub issue 46909
+    logdir = self.get_temp_dir()
+    with session.Session() as sess:
+      with self.assertRaises(errors_impl.InvalidArgumentError):
+        writer = summary_ops_v2.create_file_writer(
+            logdir=logdir, flush_millis=[1, 2])
+        sess.run(writer.init())
+        sess.run(writer.flush())
 
 
 class FileWriterCacheTest(test.TestCase):
