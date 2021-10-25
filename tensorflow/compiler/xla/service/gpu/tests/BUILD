@@ -724,7 +724,6 @@ glob_lit_tests(
     tags_override = {
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
         "element_wise_row_vectorization.hlo": ["no_rocm"],
-        "reduce_unnested.hlo": ["no_rocm"],
     },
     test_file_exts = ["hlo"],
 )
