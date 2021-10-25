@@ -103,6 +103,7 @@
   * Extension types are supported by Keras, tf.data, TF-hub, SavedModel, tf.function, control flow ops, py_function, and distribution strategy.
   * Add "dispatch decorators" that can be used to override the default behavior of TensorFlow ops (such as `tf.add` or `tf.concat`) when they are applied to ExtensionType values.
   * The `BatchableExtensionType` API can be used to define extension types that support APIs that make use of batching, such as `tf.data.Dataset` and `tf.map_fn`.
+  * For more information, see the [Extension types guide](https://www.tensorflow.org/guide/extension_type).
 
 ## Bug Fixes and Other Changes
  
