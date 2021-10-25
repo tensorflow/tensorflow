@@ -186,16 +186,14 @@ def cc_proto_library(
       protolib_deps: the dependencies to proto libraries.
       **kwargs: other keyword arguments that are passed to cc_library.
     """
-
-    wkt_deps = ["@com_google_protobuf//:cc_wkt_protos"]
-    all_protolib_deps = protolib_deps + wkt_deps
-
     includes = []
     if include != None:
         includes = [include]
     if protolib_name == None:
         protolib_name = name
 
+    genproto_deps = ([s + "_genproto" for s in protolib_deps] +
+                     ["@com_google_protobuf//:cc_wkt_protos_genproto"])
     if internal_bootstrap_hack:
         # For pre-checked-in generated files, we add the internal_bootstrap_hack
         # which will skip the codegen action.
@@ -205,7 +203,7 @@ def cc_proto_library(
             includes = includes,
             protoc = protoc,
             visibility = ["//visibility:public"],
-            deps = [s + "_genproto" for s in all_protolib_deps],
+            deps = genproto_deps,
         )
 
         # An empty cc_library to make rule dependency consistent.
@@ -237,7 +235,7 @@ def cc_proto_library(
         plugin_options = plugin_options,
         protoc = protoc,
         visibility = ["//visibility:public"],
-        deps = [s + "_genproto" for s in all_protolib_deps],
+        deps = genproto_deps,
     )
 
     if use_grpc_plugin:
@@ -421,7 +419,7 @@ def tf_proto_library_cc(
         )
         native.cc_library(
             name = cc_name + "_impl",
-            deps = [s + "_impl" for s in cc_deps] + ["@com_google_protobuf//:cc_wkt_protos"],
+            deps = [s + "_impl" for s in cc_deps],
         )
 
         return
@@ -445,7 +443,7 @@ def tf_proto_library_cc(
         use_grpc_plugin = use_grpc_plugin,
         use_grpc_namespace = use_grpc_namespace,
         visibility = visibility,
-        deps = cc_deps + ["@com_google_protobuf//:cc_wkt_protos"],
+        deps = cc_deps,
         protolib_deps = protolib_deps,
     )
 
