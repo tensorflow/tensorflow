@@ -1,20 +1,3 @@
-1. Fix BUILD
-
-2. Import MutableSequence from collections.abc on Python 3. (#6272)
-
-   Fixes https://github.com/protocolbuffers/protobuf/issues/5335.
-
-   Backport https://github.com/protocolbuffers/protobuf/commit/9d61eada0f47d7be793983638c4a29707b192d0c
-
-   Signed-off-by: Benjamin Peterson <benjamin@python.org>
-
-Signed-off-by: Hongxu Jia <hongxu.jia@windriver.com>
----
- BUILD                                   | 4 +++-
- protobuf.bzl                            | 2 ++
- python/google/protobuf/pyext/message.cc | 6 +++++-
- 3 files changed, 10 insertions(+), 2 deletions(-)
-
 diff --git a/BUILD b/BUILD
 index dbae719..87dc384 100644
 --- a/BUILD
