@@ -976,7 +976,12 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_sub_kernels",
-    jit_types = ["i16"],
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+    ],
     op = "sub",
     tile_size = "1024",
     types = [
