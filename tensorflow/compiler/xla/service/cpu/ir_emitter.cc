@@ -1926,7 +1926,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
 
   // Determine the dimensions that get lowered as loops.
   llvm::SmallVector<int64_t> outer_dims;
-  const int64_t n = num_dims - inner_dims.size() ;
+  const int64_t n = num_dims - inner_dims.size() - 1;
   outer_dims.reserve(n + 1);
   for (int64_t i = 0; i < n; ++i) {
     outer_dims.push_back(LayoutUtil::Major(layout, i));
