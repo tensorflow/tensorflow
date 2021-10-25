@@ -142,6 +142,7 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
+    call_frame.args[0] = nullptr;  // reset kernel context argument
     b.executable->Execute(call_frame, b.exec_ctx);
     if (auto err =
             b.executable->ReturnResults(b.converter, b.exec_ctx, &call_frame))
