@@ -316,8 +316,6 @@ pytype_library(
 pytype_library(
     name = "tpu_function",
     srcs = ["tpu_function.py"],
-    deps = [
-    ],
 )
 
 pytype_library(
