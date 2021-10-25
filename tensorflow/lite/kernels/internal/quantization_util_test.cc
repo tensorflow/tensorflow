@@ -433,17 +433,11 @@ TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt32) {
   EXPECT_EQ(quant_and_multiply(0, 0.1), 0);
   EXPECT_EQ(quant_and_multiply(1, 0), 0);
   EXPECT_EQ(quant_and_multiply(10000, 0.00097656), 10);
-  EXPECT_EQ(quant_and_multiply(10000, -0.00097656), -10);
   EXPECT_EQ(quant_and_multiply(-10000, 0.00097656), -10);
-  EXPECT_EQ(quant_and_multiply(-10000, -0.00097656), 10);
   EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::min(), 0.00001),
             -21475);
-  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::min(), -0.00001),
-            21475);
   EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::max(), 0.00001),
             21475);
-  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::max(), -0.00001),
-            -21475);
 
   // Test with maximum possible x and quantized_multiplier
   const int32_t x = std::numeric_limits<int32_t>::max();

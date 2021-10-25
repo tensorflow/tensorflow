@@ -406,6 +406,22 @@ cc_library(
 cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
+    defines = [
+        "TFLITE_SINGLE_ROUNDING=0",
+    ],
+    deps = [
+        ":common",
+        ":quantization_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "quantization_util_test_single_rounding",
+    srcs = ["quantization_util_test.cc"],
+    defines = [
+        "TFLITE_SINGLE_ROUNDING=1",
+    ],
     deps = [
         ":common",
         ":quantization_util",
