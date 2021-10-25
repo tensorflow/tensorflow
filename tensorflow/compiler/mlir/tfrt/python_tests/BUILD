@@ -33,6 +33,21 @@ py_strict_test(
 )
 
 py_strict_test(
+    name = "tf_broadcast_to_test",
+    srcs = ["tf_broadcast_to_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],  # TODO(b/201803253): TFRT pybindings not in OSS.
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
     name = "tf_const_test",
     srcs = ["tf_const_test.py"],
     python_version = "PY3",

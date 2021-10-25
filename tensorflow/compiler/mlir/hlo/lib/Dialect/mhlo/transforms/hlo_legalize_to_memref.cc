@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
+#include <functional>
 #include <utility>
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -159,10 +160,10 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
  public:
   HloToMemrefDynamicBroadcastInDimOpConverter(
       TypeConverter& converter, RemoveSignTypeConverter* sign_converter,
-      MLIRContext* ctx, bool enforce_identity_maps)
+      MLIRContext* ctx, std::function<bool(Operation*)> enforce_identity_maps)
       : BaseOpConversion<mhlo::DynamicBroadcastInDimOp>(converter,
                                                         sign_converter, ctx),
-        enforce_identity_maps_(enforce_identity_maps) {}
+        enforce_identity_maps_(std::move(enforce_identity_maps)) {}
 
   Value signlessRewrite(mhlo::DynamicBroadcastInDimOp op,
                         ArrayRef<Value> operands, Type op_result_type,
@@ -171,7 +172,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     if (!result_type) return {};
     Value result = InsertDynamicMemrefCastOp(op, operands.front(), &rewriter);
 
-    if (enforce_identity_maps_) {
+    if (enforce_identity_maps_(op)) {
       result = CreateCopy(op, result, &rewriter);
     }
 
@@ -295,7 +296,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     return copy;
   }
 
-  bool enforce_identity_maps_;
+  std::function<bool(Operation*)> enforce_identity_maps_;
 };
 
 struct HloLegalizeToMemrefPass
@@ -331,10 +332,11 @@ struct HloLegalizeToMemrefPass
 
 void populateHLOToMemrefConversionPattern(
     BufferizeTypeConverter* converter, RemoveSignTypeConverter* sign_converter,
-    OwningRewritePatternList* patterns, bool enforce_identity_maps) {
+    OwningRewritePatternList* patterns,
+    std::function<bool(Operation*)> enforce_identity_maps) {
   MLIRContext* context = patterns->getContext();
   patterns->insert<HloToMemrefDynamicBroadcastInDimOpConverter>(
-      *converter, sign_converter, context, enforce_identity_maps);
+      *converter, sign_converter, context, std::move(enforce_identity_maps));
   patterns->insert<HloToMemrefDynamicReshapeConverter,
                    HloToMemrefReshapeUnrankedConverter>(
       *converter, sign_converter, context);
