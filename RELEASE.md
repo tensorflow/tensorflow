@@ -121,8 +121,9 @@
     *   Add support for user-defined names of tf.data core Python API, which can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
     *   Promote `tf.data.experimental.sample_from_datasets` API to `tf.data.Dataset.sample_from_datasets` and deprecate the experimental endpoint.
 *   TF SavedModel:
-    *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` 
-        to disable this.
+    *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
+    *   The saved_model_cli's `--input_examples` inputs are now restricted to
+        python literals to avoid code injection.
 *   XLA:
     * Add a new API that allows custom call functions to signal errors. The old API will be deprecated in a future release. See https://www.tensorflow.org/xla/custom_call for details.
     * XLA:GPU reductions are deterministic by default (reductions within `jit_compile=True` are now deterministic).
