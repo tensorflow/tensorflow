@@ -87,6 +87,14 @@ void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
     *shift = 0;
     q_fixed = 0;
   }
+#if TFLITE_SINGLE_ROUNDING
+  // Single-rounding MultiplyByQuantizedMultiplier doesn't support a shift > 30,
+  // saturate it.
+  if (*shift > 30) {
+    *shift = 30;
+    q_fixed = (1LL << 31) - 1;
+  }
+#endif
   *quantized_multiplier = static_cast<int32_t>(q_fixed);
 }
 
