@@ -5126,7 +5126,7 @@ broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
 }
 
 def TFL_BucketizeOp
-    : TFL_Op<"bucketize", [NoSideEffect, SameOperandsAndResultShape]> {
+    : TFL_Op<"bucketize", [NoSideEffect, NoQuantizableResult, SameOperandsAndResultShape]> {
   let summary = "Bucketizes 'input' based on 'boundaries'.";
 
   let description = [{
@@ -5145,6 +5145,8 @@ then the output will be `output = [[0, 3][3, 2][1, 3]]`.
   let results = (outs
     TFL_TensorOf<[I32]>:$output
   );
+
+  let hasOptions = 1;
 }
 
 #endif // TFL_OPS
