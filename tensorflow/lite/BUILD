@@ -691,6 +691,7 @@ config_setting(
 
 cc_library(
     name = "tflite_with_xnnpack_enabled",
+    compatible_with = get_compatible_with_portable(),
     defines = ["TFLITE_BUILD_WITH_XNNPACK_DELEGATE"],
     visibility = ["//visibility:private"],
     deps = [
