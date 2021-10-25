@@ -70,6 +70,15 @@ class InferenceContext {
     std::map<ValueId, TensorDescriptor> preallocated;
   };
 
+  struct GpuModel {
+    std::vector<std::pair<ValueId, ValueId>> input_ids_and_refs;
+    std::vector<std::pair<ValueId, ValueId>> variable_ids_and_refs;
+    std::vector<std::pair<ValueId, ValueId>> output_ids_and_refs;
+    std::vector<MetalNode> nodes;
+    absl::flat_hash_map<ValueId, TensorDescriptor> tensors;
+    absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors;
+  };
+
   InferenceContext() = default;
 
   // IMPORTANT: If InitFromGraph used, RunGraphTransforms must be applied for
