@@ -150,12 +150,11 @@ bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding) {
 }
 
 Shape MakePartitionedShape(const Shape& shape, const HloSharding& sharding) {
-  if (sharding.IsTileMaximal()) {
-    return shape;
-  }
   if (sharding.IsTuple()) {
     std::vector<Shape> subshapes;
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const int64_t shape_n = ShapeUtil::TupleElementCount(shape);
+    subshapes.reserve(shape_n);
+    for (int64_t i = 0; i < shape_n; ++i) {
       subshapes.push_back(
           MakePartitionedShape(ShapeUtil::GetTupleElementShape(shape, i),
                                sharding.GetSubSharding(shape, {i})));
@@ -175,7 +174,9 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
                                           int64_t partition_id) {
   if (sharding.IsTuple()) {
     std::vector<Shape> subshapes;
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const int64_t shape_n = ShapeUtil::TupleElementCount(shape);
+    subshapes.reserve(shape_n);
+    for (int64_t i = 0; i < shape_n; ++i) {
       subshapes.push_back(MakeNonPaddedShapeForGivenPartition(
           ShapeUtil::GetTupleElementShape(shape, i),
           sharding.GetSubSharding(shape, {i}), partition_id));

@@ -60,6 +60,23 @@ class InferenceContext {
     CalculationsPrecision precision;
     TensorStorageType storage_type;
     ModelHints hints;
+
+    // Some restrictions for preallocated:
+    //   1) ValueId must be input or output id of GraphFloat32
+    //   2) data_type must be equal to DeduceDataTypeFromPrecision(precision);
+    //      for example for precision F16, data_type must be FLOAT16
+    //   3) Layout must be without Batch dimension if tensor.shape.b == 1
+    //      Layout must be with Batch dimension if tensor.shape.b != 1
+    std::map<ValueId, TensorDescriptor> preallocated;
+  };
+
+  struct GpuModel {
+    std::vector<std::pair<ValueId, ValueId>> input_ids_and_refs;
+    std::vector<std::pair<ValueId, ValueId>> variable_ids_and_refs;
+    std::vector<std::pair<ValueId, ValueId>> output_ids_and_refs;
+    std::vector<MetalNode> nodes;
+    absl::flat_hash_map<ValueId, TensorDescriptor> tensors;
+    absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors;
   };
 
   InferenceContext() = default;
@@ -128,8 +145,9 @@ class InferenceContext {
 
   absl::Status CompileOperations(MetalDevice* device);
 
-  absl::Status AllocateTensors(MetalDevice* device,
-                               const std::set<ValueId>& preallocated_ids);
+  absl::Status AllocateTensors(
+      MetalDevice* device,
+      const std::map<ValueId, TensorDescriptor>& preallocated);
   absl::Status AllocateMemoryForConstTensors(MetalDevice* device);
   absl::Status AllocateMemoryForBuffers(MetalDevice* device);
   absl::Status AllocateMemoryForStrongShapes(MetalDevice* device);

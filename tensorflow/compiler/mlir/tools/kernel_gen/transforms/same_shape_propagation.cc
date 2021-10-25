@@ -343,15 +343,11 @@ struct PropagateShapeKnowledgeToKernels
           // We use the first equality found and replace uses of corresponding
           // size and (potentially) stride information here.
           auto args_to_replace = memref.getRank();
-          auto all_maps_are_identity = [](ArrayRef<AffineMap> maps) {
-            return llvm::all_of(maps,
-                                [](AffineMap map) { return map.isIdentity(); });
-          };
-          // If both memrefs have identity maps, we can also reuse the strides
-          // here, as they are the identity strides and hence fully determinded
-          // by the shape.
-          if (all_maps_are_identity(previous_type.getAffineMaps()) &&
-              all_maps_are_identity(memref.getAffineMaps())) {
+          // If both memrefs have identity layouts, we can also reuse the
+          // strides here, as they are the identity strides and hence fully
+          // determinded by the shape.
+          if (previous_type.getLayout().isIdentity() &&
+              memref.getLayout().isIdentity()) {
             args_to_replace *= 2;
           }
           int previous_args_pos = previous.second;

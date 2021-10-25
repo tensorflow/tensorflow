@@ -13,4 +13,8 @@ tf_class {
     name: "HILL_CLIMB"
     mtype: "<enum \'AutotuneAlgorithm\'>"
   }
+  member {
+    name: "MAX_PARALLELISM"
+    mtype: "<enum \'AutotuneAlgorithm\'>"
+  }
 }

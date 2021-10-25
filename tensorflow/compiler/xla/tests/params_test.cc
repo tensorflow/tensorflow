@@ -295,6 +295,8 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
   int32 target = 0;
   constexpr int kParamCount = 3000;
   std::vector<XlaOp> params;
+  param_data_owner.reserve(kParamCount);
+  params.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
     target += i;
     Literal literal = LiteralUtil::CreateR1<int32>({i, i});
@@ -306,6 +308,7 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
   }
 
   std::vector<XlaOp> outputs;
+  outputs.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
     outputs.push_back(Add(params[i], sum_handle));
   }
@@ -353,6 +356,9 @@ XLA_TEST_F(ParamsTest,
   constexpr int kParamCount = 1900;
   std::vector<XlaOp> params;
   std::vector<Shape> parameter_shapes;
+  param_data_owner.reserve(kParamCount);
+  params.reserve(kParamCount);
+  parameter_shapes.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
     Literal literal = LiteralUtil::CreateR1<int32>({i, i});
     param_data_owner.push_back(
@@ -392,6 +398,7 @@ XLA_TEST_F(ParamsTest,
     XlaBuilder builder("body");
     auto body_parameter = Parameter(&builder, 0, while_shape, "body_parameter");
     std::vector<XlaOp> updates;
+    updates.reserve(kParamCount + 1);
     for (int i = 0; i < kParamCount; ++i) {
       auto add = Add(GetTupleElement(body_parameter, i),
                      ConstantR1<int32>(&builder, {1, 1}));
@@ -407,6 +414,7 @@ XLA_TEST_F(ParamsTest,
   auto loop = While(condition, body, init);
 
   std::vector<XlaOp> outputs;
+  outputs.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
     outputs.push_back(GetTupleElement(loop, i));
   }

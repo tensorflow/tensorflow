@@ -160,10 +160,9 @@ func @test_exp(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // -----
 
 // CHECK-LABEL: test_rcp
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<f32>}
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1x1x1xf32>}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reciprocal"(%arg0)
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
-// CHECK: %[[VAR3:.*]] = "tosa.mul"(%[[VAR1]], %[[VAR2]]) {shift = 0 : i32}
+// CHECK: %[[VAR3:.*]] = "tosa.mul"(%[[VAR1]], %[[VAR0]]) {shift = 0 : i32}
 func @test_rcp(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<1.000000e+00> : tensor<f32>
   %0 = "tfl.div"(%cst, %arg0)  {fused_activation_function = "NONE"}  : (tensor<f32>, tensor<13x21x3xf32>) -> tensor<*xf32>
@@ -212,12 +211,10 @@ func @test_relu6_dynamic(%arg0: tensor<?x21x3xf32>) -> tensor<?x?x?xf32> {
 // -----
 
 // CHECK-LABEL: test_leaky_relu
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<f32>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.707330704> : tensor<f32>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.reshape"(%[[VAR1]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.mul"(%arg0, %[[VAR2]]) {shift = 0 : i32}
-// CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR5:.*]] = "tosa.greater_equal"(%arg0, %[[VAR4]])
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.707330704> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.mul"(%arg0, %[[VAR1]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.greater_equal"(%arg0, %[[VAR0]])
 // CHECK: %[[VAR6:.*]] = "tosa.select"(%[[VAR5]], %arg0, %[[VAR3]])
 func @test_leaky_relu(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %0 = "tfl.leaky_relu"(%arg0)  {alpha = 0.707330704 : f32}  : (tensor<13x21x3xf32>) -> tensor<*xf32>
@@ -298,11 +295,10 @@ func @test_reduce_sum(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_reduce_mean
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0.0769230798> : tensor<f32>}
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0.0769230798> : tensor<1x1xf32>}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reduce_sum"(%arg0) {axis = 0 : i64}
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.reshape"(%[[VAR1]]) {new_shape = [21, 3]}
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1]}
-// CHECK: %[[VAR4:.*]] = "tosa.mul"(%[[VAR2]], %[[VAR3]]) {shift = 0 : i32}
+// CHECK: %[[VAR4:.*]] = "tosa.mul"(%[[VAR2]], %[[VAR0]]) {shift = 0 : i32}
 func @test_reduce_mean(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
   %cst = arith.constant dense<0> : tensor<1xi32>
   %0 = "tfl.mean"(%arg0, %cst)  {keep_dims = false}  : (tensor<13x21x3xf32>, tensor<1xi32>) -> tensor<21x3xf32>
@@ -612,12 +608,13 @@ func @test_strided_slice_simple(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 
 // CHECK-LABEL: test_strided_slice_unstrided
 // CHECK: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [9, 21, 2], start = [4, 0, 1]}
-// CHECK: %[[VAR1:.*]] = tensor.cast %0 : tensor<9x21x2xf32> to tensor<*xf32>
-// CHECK: return %[[VAR1]]
+// CHECK: %[[VAR1:.*]] = "tosa.reverse"(%[[VAR0]]) {axis = 2 : i64}
+// CHECK: %[[VAR2:.*]] = tensor.cast %[[VAR1]] : tensor<9x21x2xf32> to tensor<*xf32>
+// CHECK: return %[[VAR2]]
 func @test_strided_slice_unstrided(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<[4, 0, 1]> : tensor<3xi32>
   %cst_0 = arith.constant dense<[13, 21, 3]> : tensor<3xi32>
-  %cst_1 = arith.constant dense<[1, 1, 1]> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[1, 1, -1]> : tensor<3xi32>
   %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -626,12 +623,13 @@ func @test_strided_slice_unstrided(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> 
 
 // CHECK-LABEL: test_strided_slice_unstrided_shorter
 // CHECK: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [9, 21, 3], start = [4, 0, 0]}
-// CHECK: %[[VAR1:.*]] = tensor.cast %0 : tensor<9x21x3xf32> to tensor<*xf32>
-// CHECK: return %[[VAR1]]
+// CHECK: %[[VAR1:.*]] = "tosa.reverse"(%[[VAR0]]) {axis = 1 : i64}
+// CHECK: %[[VAR2:.*]] = tensor.cast %[[VAR1]] : tensor<9x21x3xf32> to tensor<*xf32>
+// CHECK: return %[[VAR2]]
 func @test_strided_slice_unstrided_shorter(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<[4, 0]> : tensor<2xi32>
   %cst_0 = arith.constant dense<[13, 21]> : tensor<2xi32>
-  %cst_1 = arith.constant dense<[1, 1]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<[1, -1]> : tensor<2xi32>
   %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<13x21x3xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -639,11 +637,13 @@ func @test_strided_slice_unstrided_shorter(%arg0: tensor<13x21x3xf32>) -> tensor
 // -----
 
 // CHECK-LABEL: test_strided_slice_dynamic_masked
-// CHECK: %[[VAR0:.*]] = tensor.cast %arg0 : tensor<10x?x?xf32> to tensor<*xf32>
-// CHECK: return %[[VAR0]]
+// CHECK: %[[VAR0:.*]] = "tosa.reverse"(%arg0) {axis = 1 : i64}
+// CHECK: %[[VAR1:.*]] = "tosa.reverse"(%[[VAR0]]) {axis = 2 : i64}
+// CHECK: %[[VAR2:.*]] = tensor.cast %[[VAR1]] : tensor<10x?x?xf32> to tensor<*xf32>
+// CHECK: return %[[VAR2]]
 func @test_strided_slice_dynamic_masked(%arg0: tensor<10x?x?xf32>, %arg1: tensor<3xi32>) -> tensor<*xf32> {
   %cst_0 = arith.constant dense<[13, -1, 3]> : tensor<3xi32>
-  %cst_1 = arith.constant dense<[1, 1, 1]> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[1, -1, -1]> : tensor<3xi32>
   %0 = "tfl.strided_slice"(%arg0, %arg1, %cst_0, %cst_1)  {begin_mask = 7 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -658,9 +658,11 @@ func @test_strided_slice_dynamic_masked(%arg0: tensor<10x?x?xf32>, %arg1: tensor
 func @test_strided_slice_dynamic_begin(%arg0: tensor<10x?x?xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<[0, 2, 0]> : tensor<3xi32>
   %cst_0 = arith.constant dense<[13, -1, 3]> : tensor<3xi32>
-  %cst_1 = arith.constant dense<[1, 1, 1]> : tensor<3xi32>
-  // CHECK: %[[VAR0:.*]] = tensor.cast %arg0 : tensor<10x?x?xf32> to tensor<*xf32>
-  // CHECK: return %[[VAR0]]
+  %cst_1 = arith.constant dense<[1, -1, -1]> : tensor<3xi32>
+  // CHECK: %[[VAR0:.*]] = "tosa.reverse"(%arg0) {axis = 1 : i64}
+  // CHECK: %[[VAR1:.*]] = "tosa.reverse"(%[[VAR0]]) {axis = 2 : i64}
+  // CHECK: %[[VAR2:.*]] = tensor.cast %[[VAR1]] : tensor<10x?x?xf32> to tensor<*xf32>
+  // CHECK: return %[[VAR2]]
   %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -668,9 +670,8 @@ func @test_strided_slice_dynamic_begin(%arg0: tensor<10x?x?xf32>) -> tensor<*xf3
 // -----
 
 // CHECK-LABEL: test_select
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<false> : tensor<1xi1>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
-// CHECK: %[[VAR2:.*]] = "tosa.select"(%[[VAR1]], %arg0, %arg1)
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<false> : tensor<1x1x1xi1>}
+// CHECK: %[[VAR2:.*]] = "tosa.select"(%[[VAR0]], %arg0, %arg1)
 func @test_select(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %cst = arith.constant dense<false> : tensor<1xi1>
   %0 = "tfl.select_v2"(%cst, %arg0, %arg1) : (tensor<1xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
@@ -778,13 +779,11 @@ func @test_rank() -> tensor<i32> {
 // -----
 
 // CHECK-LABEL: test_elu
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<f32>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<f32>}
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1x1xf32>}
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.exp"(%arg0)
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR4:.*]] = "tosa.sub"(%[[VAR2]], %[[VAR3]])
-// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%[[VAR1]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR6:.*]] = "tosa.greater_equal"(%arg0, %[[VAR5]])
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.sub"(%[[VAR2]], %[[VAR0]])
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.greater_equal"(%arg0, %[[VAR1]])
 // CHECK: %[[VAR7:.*]] = "tosa.select"(%[[VAR6]], %arg0, %[[VAR4]])
 func @test_elu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %0 = "tfl.elu"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
@@ -807,11 +806,10 @@ func @test_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 
 // CHECK-LABEL: test_l2normalization
 func @test_l2normalization(%arg0: tensor<16x16xf32>) -> (tensor<16x16xf32>) {
-  // CHECK-DAG: %[[MIN:.+]] = "tosa.const"() {value = dense<1.08420217E-19> : tensor<f32>}
+  // CHECK-DAG: %[[MIN:.+]] = "tosa.const"() {value = dense<1.08420217E-19> : tensor<1x1xf32>}
   // CHECK-DAG: %[[SQR:.+]] = "tosa.mul"(%arg0, %arg0) {shift = 0 : i32}
   // CHECK-DAG: %[[SUM:.+]] = "tosa.reduce_sum"(%[[SQR]]) {axis = 1 : i64}
-  // CHECK-DAG: %[[RESHAPE:.+]] = "tosa.reshape"(%[[MIN]]) {new_shape = [1, 1]}
-  // CHECK-DAG: %[[MAX:.+]] = "tosa.maximum"(%[[SUM]], %[[RESHAPE]])
+  // CHECK-DAG: %[[MAX:.+]] = "tosa.maximum"(%[[SUM]], %[[MIN]])
   // CHECK-DAG: %[[RSQRT:.+]] = "tosa.rsqrt"(%[[MAX]])
   // CHECK-DAG: %[[MUL:.+]] = "tosa.mul"(%[[RSQRT]], %arg0)
   // CHECK: %[[CLAMP:.+]] = "tosa.clamp"(%[[MUL]]) {max_fp = 3.40282347E+38 : f32, max_int = 2147483647 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64}
@@ -919,9 +917,8 @@ func @test_batch_matmul_transpose(%arg0: tensor<1x16x128xf32>, %arg1: tensor<1x1
 // -----
 
 // CHECK-LABEL: test_add_scalar
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<f32>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
-// CHECK: %[[VAR2:.*]] = "tosa.add"(%arg0, %[[VAR1]])
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1x1x1xf32>}
+// CHECK: %[[VAR2:.*]] = "tosa.add"(%arg0, %[[VAR0]])
 func @test_add_scalar(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<1.000000e+00> : tensor<f32>
   %0 = "tfl.add"(%arg0, %cst)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xf32>, tensor<f32>) -> tensor<*xf32>
@@ -1068,19 +1065,15 @@ func @test_one_hot(%arg0: tensor<4x4xi32>, %arg1: tensor<f32>, %arg2: tensor<f32
 // -----
 
 // CHECK-LABEL: test_fakequant_with_min_max_args
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<16383.75> : tensor<f32>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<f32>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<6.10360876E-5> : tensor<f32>}
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR4:.*]] = "tosa.mul"(%arg0, %[[VAR3]]) {shift = 0 : i32}
-// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%[[VAR1]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR6:.*]] = "tosa.add"(%[[VAR4]], %[[VAR5]])
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<16383.75> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<6.10360876E-5> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.mul"(%arg0, %[[VAR0]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.add"(%[[VAR4]], %[[VAR1]])
 // CHECK-DAG: %[[VAR7:.*]] = "tosa.cast"(%[[VAR6]])
 // CHECK-DAG: %[[VAR8:.*]] = "tosa.cast"(%[[VAR7]])
-// CHECK-DAG: %[[VAR9:.*]] = "tosa.reshape"(%[[VAR1]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR10:.*]] = "tosa.sub"(%[[VAR8]], %[[VAR9]])
-// CHECK-DAG: %[[VAR11:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [1, 1, 1]}
-// CHECK: %[[VAR12:.*]] = "tosa.mul"(%[[VAR10]], %[[VAR11]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR10:.*]] = "tosa.sub"(%[[VAR8]], %[[VAR1]])
+// CHECK: %[[VAR12:.*]] = "tosa.mul"(%[[VAR10]], %[[VAR2]]) {shift = 0 : i32}
 func @test_fakequant_with_min_max_args(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %0 = "tfl.quantize"(%arg0)  {qtype = tensor<13x21x3x!quant.uniform<u16:f32, 6.1036087586785687E-5:32768>>}  : (tensor<13x21x3xf32>) -> tensor<*x!quant.uniform<u16:f32, 6.1036087586785687E-5:32768>>
   %1 = "tfl.dequantize"(%0) : (tensor<*x!quant.uniform<u16:f32, 6.1036087586785687E-5:32768>>) -> tensor<13x21x3xf32>
@@ -1101,13 +1094,11 @@ func @test_dequantize_float(%arg0: tensor<10xf16>) -> tensor<*xf32> {
 
 // CHECK-LABEL: @test_dequantize_quant_uniform
 func @test_dequantize_quant_uniform(%arg0: tensor<4x!quant.uniform<i8:f32, 1.0:-1>>) -> tensor<*xf32> {
-  // CHECK-DAG: %[[VAL0:.+]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<f32>}
-  // CHECK-DAG: %[[VAL1:.+]] = "tosa.const"() {value = dense<-1.000000e+00> : tensor<f32>}
+  // CHECK-DAG: %[[VAL0:.+]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<1xf32>}
+  // CHECK-DAG: %[[VAL1:.+]] = "tosa.const"() {value = dense<-1.000000e+00> : tensor<1xf32>}
   // CHECK-DAG: %[[VAL2:.+]] = "tosa.cast"(%arg0)
-  // CHECK-DAG: %[[VAL3:.+]] = "tosa.reshape"(%[[VAL1]]) {new_shape = [1]}
-  // CHECK-DAG: %[[VAL4:.+]] = "tosa.sub"(%[[VAL2]], %[[VAL3]])
-  // CHECK-DAG: %[[VAL5:.+]] = "tosa.reshape"(%[[VAL0]]) {new_shape = [1]}
-  // CHECK: %[[VAL6:.+]] = "tosa.mul"(%[[VAL4]], %[[VAL5]]) {shift = 0 : i32}
+  // CHECK-DAG: %[[VAL4:.+]] = "tosa.sub"(%[[VAL2]], %[[VAL1]])
+  // CHECK: %[[VAL6:.+]] = "tosa.mul"(%[[VAL4]], %[[VAL0]]) {shift = 0 : i32}
   %0 = "tfl.dequantize"(%arg0) : (tensor<4x!quant.uniform<i8:f32, 1.0:-1>>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -1210,64 +1201,50 @@ func @test_max_pool2d_qi8(%arg0: tensor<1x32x32x8x!quant.uniform<i8:f32, 0.01568
 // CHECK-LABEL: test_softmax_qi8
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<"0x5{{.*}}> : tensor<513xi16>}
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<"0xE{{.*}}> : tensor<513xi16>}
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.const"() {value = dense<9> : tensor<i32>}
-// CHECK-DAG: %[[VAR4:.*]] = "tosa.const"() {value = dense<7> : tensor<i32>}
-// CHECK-DAG: %[[VAR5:.*]] = "tosa.const"() {value = dense<32768> : tensor<i32>}
-// CHECK-DAG: %[[VAR6:.*]] = "tosa.const"() {value = dense<12> : tensor<i32>}
-// CHECK-DAG: %[[VAR7:.*]] = "tosa.const"() {value = dense<1> : tensor<i32>}
-// CHECK-DAG: %[[VAR8:.*]] = "tosa.const"() {value = dense<4> : tensor<i32>}
-// CHECK-DAG: %[[VAR9:.*]] = "tosa.const"() {value = dense<536870912> : tensor<i32>}
-// CHECK-DAG: %[[VAR10:.*]] = "tosa.const"() {value = dense<1515870810> : tensor<i32>}
-// CHECK-DAG: %[[VAR11:.*]] = "tosa.const"() {value = dense<-1010580540> : tensor<i32>}
-// CHECK-DAG: %[[VAR12:.*]] = "tosa.const"() {value = dense<35> : tensor<i32>}
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.const"() {value = dense<9> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.const"() {value = dense<7> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.const"() {value = dense<32768> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.const"() {value = dense<12> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.const"() {value = dense<1> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR8:.*]] = "tosa.const"() {value = dense<4> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR9:.*]] = "tosa.const"() {value = dense<536870912> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR10:.*]] = "tosa.const"() {value = dense<1515870810> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR11:.*]] = "tosa.const"() {value = dense<-1010580540> : tensor<1x1x1xi32>}
+// CHECK-DAG: %[[VAR12:.*]] = "tosa.const"() {value = dense<35> : tensor<1x1x1xi32>}
 // CHECK-DAG: %[[VAR13:.*]] = "tosa.rescale"(%arg0) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
 // CHECK-DAG: %[[VAR14:.*]] = "tosa.reduce_max"(%[[VAR13]]) {axis = 2 : i64}
 // CHECK-DAG: %[[VAR15:.*]] = "tosa.sub"(%[[VAR13]], %[[VAR14]])
 // CHECK-DAG: %[[VAR16:.*]] = "tosa.rescale"(%[[VAR15]]) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [23 : i32]}
 // CHECK-DAG: %[[VAR17:.*]] = "tosa.table"(%[[VAR16]], %[[VAR1]])
 // CHECK-DAG: %[[VAR18:.*]] = "tosa.table"(%[[VAR16]], %[[VAR2]])
-// CHECK-DAG: %[[VAR19:.*]] = "tosa.reshape"(%[[VAR3]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR20:.*]] = "tosa.logical_left_shift"(%[[VAR17]], %[[VAR19]])
-// CHECK-DAG: %[[VAR21:.*]] = "tosa.reshape"(%[[VAR4]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR22:.*]] = "tosa.arithmetic_right_shift"(%[[VAR18]], %[[VAR21]]) {round = true}
-// CHECK-DAG: %[[VAR23:.*]] = "tosa.reshape"(%[[VAR5]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR24:.*]] = "tosa.add"(%[[VAR22]], %[[VAR23]])
+// CHECK-DAG: %[[VAR20:.*]] = "tosa.logical_left_shift"(%[[VAR17]], %[[VAR3]])
+// CHECK-DAG: %[[VAR22:.*]] = "tosa.arithmetic_right_shift"(%[[VAR18]], %[[VAR4]]) {round = true}
+// CHECK-DAG: %[[VAR24:.*]] = "tosa.add"(%[[VAR22]], %[[VAR5]])
 // CHECK-DAG: %[[VAR25:.*]] = "tosa.add"(%[[VAR20]], %[[VAR24]])
-// CHECK-DAG: %[[VAR26:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR27:.*]] = "tosa.arithmetic_right_shift"(%[[VAR25]], %[[VAR26]]) {round = true}
+// CHECK-DAG: %[[VAR27:.*]] = "tosa.arithmetic_right_shift"(%[[VAR25]], %[[VAR6]]) {round = true}
 // CHECK-DAG: %[[VAR28:.*]] = "tosa.reduce_sum"(%[[VAR27]]) {axis = 2 : i64}
 // CHECK-DAG: %[[VAR29:.*]] = "tosa.clz"(%[[VAR28]])
-// CHECK-DAG: %[[VAR30:.*]] = "tosa.reshape"(%[[VAR7]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR31:.*]] = "tosa.sub"(%[[VAR29]], %[[VAR30]])
+// CHECK-DAG: %[[VAR31:.*]] = "tosa.sub"(%[[VAR29]], %[[VAR7]])
 // CHECK-DAG: %[[VAR32:.*]] = "tosa.logical_left_shift"(%[[VAR28]], %[[VAR31]])
-// CHECK-DAG: %[[VAR33:.*]] = "tosa.reshape"(%[[VAR11]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR34:.*]] = "tosa.mul"(%[[VAR32]], %[[VAR33]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR35:.*]] = "tosa.reshape"(%[[VAR10]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR36:.*]] = "tosa.add"(%[[VAR34]], %[[VAR35]])
+// CHECK-DAG: %[[VAR34:.*]] = "tosa.mul"(%[[VAR32]], %[[VAR11]]) {shift = 31 : i32}
+// CHECK-DAG: %[[VAR36:.*]] = "tosa.add"(%[[VAR34]], %[[VAR10]])
 // CHECK-DAG: %[[VAR37:.*]] = "tosa.mul"(%[[VAR36]], %[[VAR32]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR38:.*]] = "tosa.reshape"(%[[VAR9]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR39:.*]] = "tosa.sub"(%[[VAR38]], %[[VAR37]])
+// CHECK-DAG: %[[VAR39:.*]] = "tosa.sub"(%[[VAR9]], %[[VAR37]])
 // CHECK-DAG: %[[VAR40:.*]] = "tosa.mul"(%[[VAR36]], %[[VAR39]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR41:.*]] = "tosa.reshape"(%[[VAR8]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR42:.*]] = "tosa.mul"(%[[VAR40]], %[[VAR41]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR42:.*]] = "tosa.mul"(%[[VAR40]], %[[VAR8]]) {shift = 0 : i32}
 // CHECK-DAG: %[[VAR43:.*]] = "tosa.add"(%[[VAR36]], %[[VAR42]])
 // CHECK-DAG: %[[VAR44:.*]] = "tosa.mul"(%[[VAR43]], %[[VAR32]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR45:.*]] = "tosa.reshape"(%[[VAR9]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR46:.*]] = "tosa.sub"(%[[VAR45]], %[[VAR44]])
+// CHECK-DAG: %[[VAR46:.*]] = "tosa.sub"(%[[VAR9]], %[[VAR44]])
 // CHECK-DAG: %[[VAR47:.*]] = "tosa.mul"(%[[VAR43]], %[[VAR46]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR48:.*]] = "tosa.reshape"(%[[VAR8]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR49:.*]] = "tosa.mul"(%[[VAR47]], %[[VAR48]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR49:.*]] = "tosa.mul"(%[[VAR47]], %[[VAR8]]) {shift = 0 : i32}
 // CHECK-DAG: %[[VAR50:.*]] = "tosa.add"(%[[VAR43]], %[[VAR49]])
 // CHECK-DAG: %[[VAR51:.*]] = "tosa.mul"(%[[VAR50]], %[[VAR32]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR52:.*]] = "tosa.reshape"(%[[VAR9]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR53:.*]] = "tosa.sub"(%[[VAR52]], %[[VAR51]])
+// CHECK-DAG: %[[VAR53:.*]] = "tosa.sub"(%[[VAR9]], %[[VAR51]])
 // CHECK-DAG: %[[VAR54:.*]] = "tosa.mul"(%[[VAR50]], %[[VAR53]]) {shift = 31 : i32}
-// CHECK-DAG: %[[VAR55:.*]] = "tosa.reshape"(%[[VAR8]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR56:.*]] = "tosa.mul"(%[[VAR54]], %[[VAR55]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR56:.*]] = "tosa.mul"(%[[VAR54]], %[[VAR8]]) {shift = 0 : i32}
 // CHECK-DAG: %[[VAR57:.*]] = "tosa.add"(%[[VAR50]], %[[VAR56]])
 // CHECK-DAG: %[[VAR58:.*]] = "tosa.mul"(%[[VAR25]], %[[VAR57]]) {shift = 30 : i32}
-// CHECK-DAG: %[[VAR59:.*]] = "tosa.reshape"(%[[VAR12]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR60:.*]] = "tosa.sub"(%[[VAR59]], %[[VAR29]])
+// CHECK-DAG: %[[VAR60:.*]] = "tosa.sub"(%[[VAR12]], %[[VAR29]])
 // CHECK-DAG: %[[VAR61:.*]] = "tosa.arithmetic_right_shift"(%[[VAR58]], %[[VAR60]]) {round = true}
 // CHECK: %[[VAR62:.*]] = "tosa.rescale"(%[[VAR61]]) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = -128 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
 func @test_softmax_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.0156164625659585>>) -> tensor<13x21x3x!quant.uniform<i8:f32, 3.906250e-03:-128>> {
@@ -1330,10 +1307,9 @@ func @test_relu6_qu8(%arg0: tensor<13x21x3x!quant.uniform<u8:f32, 0.04>>) -> ten
 // -----
 
 // CHECK-LABEL: test_leaky_relu_qi8
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0> : tensor<i32>}
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0> : tensor<1x1xi32>}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.rescale"(%arg0)
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1]}
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.greater_equal"(%[[VAR1]], %[[VAR2]])
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.greater_equal"(%[[VAR1]], %[[VAR0]])
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.rescale"(%arg0)
 // CHECK-DAG: %[[VAR5:.*]] = "tosa.rescale"(%arg0)
 // CHECK: %[[VAR6:.*]] = "tosa.select"(%[[VAR3]], %[[VAR5]], %[[VAR4]])
@@ -1354,12 +1330,25 @@ func @test_resize_bilinear_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.
 }
 
 // -----
+// CHECK-LABEL: test_gather
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<1x49xi32>}
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 13, 63]}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR0]])
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [7, 7, 21, 3]}
+// CHECK-DAG: %[[VAR8:.*]] = tensor.cast %[[VAR7]]
+// CHECK: return %[[VAR8]]
+func @test_gather(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %1 = arith.constant dense<[[9, 8, 11, 10, 11, 0, 12], [7, 0, 1, 5, 2, 9, 6], [7, 9, 10, 8, 0, 3, 0], [8, 9, 10, 4, 9, 12, 6], [0, 2, 4, 3, 6, 11, 8], [5, 8, 7, 2, 4, 10, 5], [4, 12, 8, 3, 12, 9, 1]]>  : tensor<7x7xi32>
+  %2 = "tfl.gather"(%arg0, %1) {axis = 0 : i32} : (tensor<13x21x3xf32>, tensor<7x7xi32>) -> tensor<*xf32>
+  return %2 : tensor<*xf32>
+}
+
+// -----
 // CHECK-LABEL: test_gather_nd
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<[21, 1]> : tensor<2xi32>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 273, 3]}
 // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%arg1) {new_shape = [42, 2]}
-// CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%[[VAR1]]) {new_shape = [1, 2]}
-// CHECK-DAG: %[[VAR5:.*]] = "tosa.mul"(%[[VAR3]], %[[VAR4]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.mul"(%[[VAR3]], %[[VAR1]]) {shift = 0 : i32}
 // CHECK-DAG: %[[VAR6:.*]] = "tosa.reduce_sum"(%[[VAR5]]) {axis = 1 : i64}
 // CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [1, 42]}
 // CHECK-DAG: %[[VAR8:.*]] = "tosa.gather"(%[[VAR2]], %[[VAR7]])
@@ -1382,26 +1371,19 @@ func @test_arg_max(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // -----
 
 // CHECK-LABEL: test_fakequant
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<-2.00003052> : tensor<f32>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<1.99996948> : tensor<f32>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<6.10360876E-5> : tensor<f32>}
-// CHECK-DAG: %[[VAR3:.*]] = "tosa.const"() {value = dense<16383.75> : tensor<f32>}
-// CHECK-DAG: %[[VAR4:.*]] = "tosa.const"() {value = dense<5.000000e-01> : tensor<f32>}
-// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%[[VAR1]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR6:.*]] = "tosa.minimum"(%arg0, %[[VAR5]])
-// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR8:.*]] = "tosa.maximum"(%[[VAR6]], %[[VAR7]])
-// CHECK-DAG: %[[VAR9:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR10:.*]] = "tosa.sub"(%[[VAR8]], %[[VAR9]])
-// CHECK-DAG: %[[VAR11:.*]] = "tosa.reshape"(%[[VAR3]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR12:.*]] = "tosa.mul"(%[[VAR10]], %[[VAR11]]) {shift = 0 : i32}
-// CHECK-DAG: %[[VAR13:.*]] = "tosa.reshape"(%[[VAR4]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR14:.*]] = "tosa.add"(%[[VAR12]], %[[VAR13]])
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<-2.00003052> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<1.99996948> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<6.10360876E-5> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.const"() {value = dense<16383.75> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.const"() {value = dense<5.000000e-01> : tensor<1x1x1xf32>}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.minimum"(%arg0, %[[VAR1]])
+// CHECK-DAG: %[[VAR8:.*]] = "tosa.maximum"(%[[VAR6]], %[[VAR0]])
+// CHECK-DAG: %[[VAR10:.*]] = "tosa.sub"(%[[VAR8]], %[[VAR0]])
+// CHECK-DAG: %[[VAR12:.*]] = "tosa.mul"(%[[VAR10]], %[[VAR3]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR14:.*]] = "tosa.add"(%[[VAR12]], %[[VAR4]])
 // CHECK-DAG: %[[VAR15:.*]] = "tosa.floor"(%[[VAR14]])
-// CHECK-DAG: %[[VAR16:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [1, 1, 1]}
-// CHECK-DAG: %[[VAR17:.*]] = "tosa.mul"(%[[VAR15]], %[[VAR16]]) {shift = 0 : i32}
-// CHECK-DAG: %[[VAR18:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 1]}
-// CHECK: %[[VAR19:.*]] = "tosa.add"(%[[VAR17]], %[[VAR18]])
+// CHECK-DAG: %[[VAR17:.*]] = "tosa.mul"(%[[VAR15]], %[[VAR2]]) {shift = 0 : i32}
+// CHECK: %[[VAR19:.*]] = "tosa.add"(%[[VAR17]], %[[VAR0]])
 func @test_fakequant(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %2 = "tfl.fake_quant"(%arg0)  {max = 2.000000e+00 : f32, min = -2.000000e+00 : f32, narrow_range = false, num_bits = 16 : i32}  : (tensor<13x21x3xf32>) -> tensor<*xf32>
   return %2 : tensor<*xf32>

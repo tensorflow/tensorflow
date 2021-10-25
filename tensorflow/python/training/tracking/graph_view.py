@@ -60,10 +60,10 @@ def _escape_local_name(name):
           .replace(r"/", _ESCAPE_CHAR + "S"))
 
 
-def _object_prefix_from_path(path_to_root):
+def _object_prefix_from_path(node_paths):
   return "/".join(
       (_escape_local_name(trackable.name)
-       for trackable in path_to_root))
+       for trackable in node_paths))
 
 
 def _slot_variable_naming_for_optimizer(optimizer_path):
@@ -249,18 +249,18 @@ class ObjectGraphView(object):
     """Find shortest paths to all dependencies of self.root."""
     bfs_sorted = []
     to_visit = collections.deque([self.root])
-    path_to_root = object_identity.ObjectIdentityDictionary()
-    path_to_root[self.root] = ()
+    node_paths = object_identity.ObjectIdentityDictionary()
+    node_paths[self.root] = ()
     while to_visit:
       current_trackable = to_visit.popleft()
       bfs_sorted.append(current_trackable)
       for name, dependency in self.list_children(current_trackable):
-        if dependency not in path_to_root:
-          path_to_root[dependency] = (
-              path_to_root[current_trackable] + (
+        if dependency not in node_paths:
+          node_paths[dependency] = (
+              node_paths[current_trackable] + (
                   base.TrackableReference(name, dependency),))
           to_visit.append(dependency)
-    return bfs_sorted, path_to_root
+    return bfs_sorted, node_paths
 
   def _add_attributes_to_object_graph(
       self, trackable_objects, object_graph_proto, node_ids, object_names,
@@ -392,12 +392,12 @@ class ObjectGraphView(object):
         child_proto.local_name = child.name
     return object_graph_proto
 
-  def _serialize_gathered_objects(self, trackable_objects, path_to_root,
+  def _serialize_gathered_objects(self, trackable_objects, node_paths,
                                   object_map=None,
                                   call_with_mapped_captures=None):
     """Create SaveableObjects and protos for gathered objects."""
     object_names = object_identity.ObjectIdentityDictionary()
-    for obj, path in path_to_root.items():
+    for obj, path in node_paths.items():
       object_names[obj] = _object_prefix_from_path(path)
     node_ids = object_identity.ObjectIdentityDictionary()
     for node_id, node in enumerate(trackable_objects):
@@ -441,14 +441,14 @@ class ObjectGraphView(object):
     Raises:
       ValueError: If there are invalid characters in an optimizer's slot names.
     """
-    trackable_objects, path_to_root = self._breadth_first_traversal()
+    trackable_objects, node_paths = self._breadth_first_traversal()
     return self._serialize_gathered_objects(
-        trackable_objects, path_to_root)
+        trackable_objects, node_paths)
 
   def frozen_saveable_objects(self, object_map=None, to_graph=None,
                               call_with_mapped_captures=None):
     """Creates SaveableObjects with the current object graph frozen."""
-    trackable_objects, path_to_root = self._breadth_first_traversal()
+    trackable_objects, node_paths = self._breadth_first_traversal()
     if to_graph:
       target_context = to_graph.as_default
     else:
@@ -456,7 +456,7 @@ class ObjectGraphView(object):
     with target_context():
       named_saveable_objects, graph_proto, _ = self._serialize_gathered_objects(
           trackable_objects,
-          path_to_root,
+          node_paths,
           object_map,
           call_with_mapped_captures)
       with ops.device("/cpu:0"):
@@ -480,9 +480,9 @@ class ObjectGraphView(object):
       A tuple of (trackable objects, paths from root for each object,
                   object -> node id, slot variables, object_names)
     """
-    trackable_objects, path_to_root = self._breadth_first_traversal()
+    trackable_objects, node_paths = self._breadth_first_traversal()
     object_names = object_identity.ObjectIdentityDictionary()
-    for obj, path in path_to_root.items():
+    for obj, path in node_paths.items():
       object_names[obj] = _object_prefix_from_path(path)
     node_ids = object_identity.ObjectIdentityDictionary()
     for node_id, node in enumerate(trackable_objects):
@@ -491,7 +491,7 @@ class ObjectGraphView(object):
         trackable_objects=trackable_objects,
         node_ids=node_ids,
         object_names=object_names)
-    return (trackable_objects, path_to_root, node_ids, slot_variables,
+    return (trackable_objects, node_paths, node_ids, slot_variables,
             object_names)
 
   def objects_ids_and_slot_variables(self):

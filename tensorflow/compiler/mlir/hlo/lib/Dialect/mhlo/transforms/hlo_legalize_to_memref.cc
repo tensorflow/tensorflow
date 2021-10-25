@@ -80,9 +80,8 @@ class SignlessOpConversion : public OpConversionPattern<T> {
              actual_element_type);
       Type new_type;
       if (auto ranked = result_type.dyn_cast<MemRefType>()) {
-        new_type =
-            MemRefType::get(ranked.getShape(), expected_element_type,
-                            ranked.getAffineMaps(), ranked.getMemorySpace());
+        new_type = MemRefType::get(ranked.getShape(), expected_element_type,
+                                   ranked.getLayout(), ranked.getMemorySpace());
       } else {
         new_type = UnrankedMemRefType::get(expected_element_type,
                                            result_type.getMemorySpace());

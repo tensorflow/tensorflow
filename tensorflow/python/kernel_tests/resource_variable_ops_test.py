@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import tensor_pb2
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -808,6 +809,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       self.assertIsInstance(assign_without_read, ops.Operation)
     self.evaluate(assign_without_read)
     self.assertEqual(4.0, self.evaluate(v.value()))
+
+  def testAssignRuntimeShapeCheck(self):
+    with forward_compat.forward_compatibility_horizon(2021, 11, 20):
+      v = resource_variable_ops.ResourceVariable([1.0, 1.0], name="var0")
+
+      @def_function.function
+      def f(shape):
+        t = array_ops.zeros(shape)
+        v.assign(t)
+
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        f(constant_op.constant([3]))
 
   @test_util.run_in_graph_and_eager_modes
   def testLoad(self):

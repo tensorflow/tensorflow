@@ -72,6 +72,7 @@ StatusOr<bool> DynamicIndexSplitter::Run(HloModule* module) {
       TF_RET_CHECK(index_operand->shape().rank() == 1);
       auto index_element_type = index_operand->shape().element_type();
       std::vector<HloInstruction*> index_array;
+      index_array.reserve(num_indices);
       for (int64_t dim = 0; dim < num_indices; ++dim) {
         auto slice = parent->AddInstruction(HloInstruction::CreateSlice(
             ShapeUtil::MakeShape(index_element_type, {1}), index_operand, {dim},

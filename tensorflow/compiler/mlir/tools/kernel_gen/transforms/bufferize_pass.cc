@@ -99,7 +99,7 @@ class CustomBufferizeTypeConverter : public BufferizeTypeConverter {
       // TODO(pifon) : Change how target materialization is invoked in dialect
       // conversion.
       if (auto memref_type = inputs[0].getType().dyn_cast<MemRefType>()) {
-        assert(!memref_type.getAffineMaps().empty());
+        assert(!memref_type.getLayout().isIdentity());
         return inputs[0];
       }
       assert(inputs[0].getType().isa<TensorType>());

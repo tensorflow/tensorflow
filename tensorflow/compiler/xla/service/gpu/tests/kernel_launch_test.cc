@@ -20,9 +20,9 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class KernelThunkTest : public GpuCodegenTest {};
+class KernelLaunchTest : public GpuCodegenTest {};
 
-TEST_F(KernelThunkTest, Basic) {
+TEST_F(KernelLaunchTest, Basic) {
   const char* hlo_text = R"(
     HloModule Test1
 
@@ -42,7 +42,7 @@ TEST_F(KernelThunkTest, Basic) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(KernelThunkTest, KernelWithConstants) {
+TEST_F(KernelLaunchTest, KernelWithConstants) {
   const char* hlo_text = R"(
     HloModule Test2
 

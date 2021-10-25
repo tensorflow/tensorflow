@@ -312,7 +312,6 @@ py_strict_library(
         "save_context.py",
     ],
     srcs_version = "PY3",
-    deps = [],
 )
 
 tf_py_test(
@@ -671,7 +670,6 @@ py_strict_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
-        "@enum34_archive//:enum",
         "@six_archive//:six",
     ],
 )

@@ -904,7 +904,7 @@ namespace {
 REGISTER_DATASET_EXPERIMENT("parallelize_batch_copy", 100);
 REGISTER_DATASET_EXPERIMENT("max_parallelism", 100);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
-REGISTER_DATASET_EXPERIMENT("inject_prefetch", 50);
+REGISTER_DATASET_EXPERIMENT("inject_prefetch", 0);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

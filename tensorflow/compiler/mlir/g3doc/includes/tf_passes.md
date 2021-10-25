@@ -483,8 +483,8 @@ Would become the following ops (unimportant attribute, type are omitted):
 ```
 ### `-tf-parallel-execute-to-islands`: Lowers device parallel_execute to executor islands
 ### `-tf-promote-resources-to-args`: Promote resources reads/writes to function inputs/outputs.
-This pass promotes resource accesses in the main function to input arguments
-and outputs of the main function.
+This pass promotes resource accesses in function(s) (by default, the main)
+to input arguments and outputs of the function(s).
 
 Two types of resources are supported:
 (1) A function argument of TF::ResourceType type (this pass).
@@ -516,6 +516,11 @@ Assumption of this pass:
  . Compound resource operations have already been decomposed.
  . Dead functions have already been removed, as resource arguments in dead
    functions can cause the pass to fail.
+
+#### Options
+```
+-functions : Comma separated list of functions whose resources read/writes should be promoted to function inputs/outputs.
+```
 ### `-tf-promote-var-handles-to-args`: Promote tf.VarHandleOps to function arguments.
 See joint description in promote resources to args.### `-tf-readonly-references-to-resources`: Convert readonly reference variables to resource variables.
 ### `-tf-region-control-flow-to-functional`: Transforms region-based control flow operations to their functional counterparts

@@ -15,15 +15,17 @@
 """Tests for function_trace_type."""
 
 import timeit
-from absl.testing import parameterized
 
+from absl.testing import parameterized
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import function
 from tensorflow.python.eager import function_trace_type
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
@@ -31,6 +33,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.types import trace
 
 
 class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
@@ -49,6 +52,13 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
     self.assertNotEqual(
         function_trace_type.get_arg_spec((it1, it1), False, False, True),
         function_trace_type.get_arg_spec((it1, it2), False, False, True))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testIteratorTypesImplementTracing(self):
+    self.assertTrue(
+        issubclass(iterator_ops.OwnedIterator, trace.SupportsTracingType))
+    self.assertTrue(
+        issubclass(iterator_ops.IteratorSpec, trace.SupportsTracingType))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testCompositeAndSpec(self):
@@ -292,6 +302,94 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
             'name': 'nested_struct_cache_key_generation_time',
             'value': t
         }])
+
+
+class TraceTypeEncodingTest(test.TestCase):
+
+  def testCustomUnhashableTypeFailsGracefully(self):
+
+    class CustomUnhashable:
+
+      def __eq__(self, o):
+        return True
+
+    obj = CustomUnhashable()
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r'Could not determine tracing type of generic object'):
+      function_trace_type.get_arg_spec(obj, False, True, True)
+
+  def testOrderedCollectionTypeEquality(self):
+    collection = function_trace_type.OrderedCollectionType
+    generic = function_trace_type.GenericType
+    collection_a = collection(generic(1), generic(2), generic(3))
+    collection_b = collection(generic(1), generic(2), generic(1))
+    collection_c = collection(generic(1), generic(2), generic(3))
+
+    self.assertNotEqual(collection_a, collection_b)
+    self.assertEqual(collection_a, collection_c)
+    self.assertEqual(hash(collection_a), hash(collection_c))
+
+  def testOrderedCollectionTypeSubtype(self):
+
+    class Subtypable(function_trace_type.GenericType):
+
+      def is_subtype_of(self, other):
+        return self._object == 2 or other._object == 3
+
+    collection = function_trace_type.OrderedCollectionType
+    collection_a = collection(Subtypable(1), Subtypable(2), Subtypable(3))
+    collection_b = collection(Subtypable(2), Subtypable(1), Subtypable(2))
+    collection_c = collection(Subtypable(1), Subtypable(3), Subtypable(3))
+
+    self.assertTrue(collection_b.is_subtype_of(collection_c))
+    self.assertFalse(collection_a.is_subtype_of(collection_b))
+    self.assertFalse(collection_c.is_subtype_of(collection_a))
+
+  def testOrderedCollectionTypeSupertype(self):
+
+    class Supertypable(function_trace_type.GenericType):
+
+      def most_specific_common_supertype(self, others):
+        if self._object == 2 and isinstance(others[0]._object, int):
+          return Supertypable(3)
+        else:
+          return None
+
+    collection = function_trace_type.OrderedCollectionType
+    collection_a = collection(Supertypable(1), Supertypable(2), Supertypable(3))
+    collection_b = collection(Supertypable(2), Supertypable(2), Supertypable(2))
+
+    self.assertIsNone(
+        collection_a.most_specific_common_supertype([collection_b]))
+    self.assertEqual(
+        collection_b.most_specific_common_supertype([collection_a]),
+        collection(Supertypable(3), Supertypable(3), Supertypable(3)))
+
+  def testListTupleInequality(self):
+    generic = function_trace_type.GenericType
+
+    list_a = function_trace_type.ListType(generic(1), generic(2), generic(3))
+    list_b = function_trace_type.ListType(generic(1), generic(2), generic(3))
+
+    tuple_a = function_trace_type.TupleType(generic(1), generic(2), generic(3))
+    tuple_b = function_trace_type.TupleType(generic(1), generic(2), generic(3))
+
+    self.assertEqual(list_a, list_b)
+    self.assertEqual(tuple_a, tuple_b)
+    self.assertNotEqual(list_a, tuple_a)
+    self.assertNotEqual(tuple_a, list_a)
+
+  def testDictTypeEquality(self):
+    dict_type = function_trace_type.DictType
+    generic = function_trace_type.GenericType
+
+    dict_a = dict_type({generic(1): generic(2), generic(3): generic(4)})
+    dict_b = dict_type({generic(1): generic(2)})
+    dict_c = dict_type({generic(3): generic(4), generic(1): generic(2)})
+
+    self.assertEqual(dict_a, dict_c)
+    self.assertNotEqual(dict_a, dict_b)
 
 
 if __name__ == '__main__':

@@ -2086,6 +2086,31 @@ func @conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> ten
   return %0 : tensor<1x8x8x16xf32>
 }
 
+// CHECK: func @conv_empty_spatial_dimensions
+// CHECK: mhlo.convolution
+// CHECK-SAME: dim_numbers = [b, f]x[i, o]->[b, f]
+// CHECK-SAME{LITERAL}: window = {stride = [], pad = [], lhs_dilate = [], rhs_dilate = [], reverse = []}
+func @conv_empty_spatial_dimensions(%arg0: tensor<3x2xf16>, %arg1: tensor<2x2xf16>) -> tuple<tensor<3x2xf16>> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+         dim_numbers = [b, f]x[i, o]->[b, f],
+         window = {stride = [], pad = [], lhs_dilate = [], rhs_dilate = [], reverse = []}
+         {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = ["DEFAULT", "DEFAULT"]}
+       : (tensor<3x2xf16>, tensor<2x2xf16>) -> tensor<3x2xf16>
+  %1 = "mhlo.tuple"(%0) : (tensor<3x2xf16>) -> tuple<tensor<3x2xf16>>
+  return %1 : tuple<tensor<3x2xf16>>
+}
+// -----
+
+func @conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {
+  // expected-error @+3 {{'mhlo.convolution' Expected array with 2 elements, got 3 elements instead}}
+  %0 = mhlo.convolution(%arg0, %arg1)
+         dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+         window = {stride = [1, 1], pad = [[1, 1, 1], [1, 1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
+         {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = ["DEFAULT", "DEFAULT"]} :
+       (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
+  return %0 : tensor<1x8x8x16xf32>
+}
+
 // -----
 
 // CHECK: func @lt_loop

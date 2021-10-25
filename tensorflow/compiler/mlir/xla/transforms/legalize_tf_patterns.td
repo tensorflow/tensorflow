@@ -139,11 +139,7 @@ def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
 // BroadcastToDimensions is used to compute the broadcast attr to higher
 // dimensions. This computes the broadcast of 'l' to broadcast('l', 'r')
 // without returning the broadcast of 'r' to broadcast('l', 'r').
-//
-// NOTE: This should be optimized for unsigned integers.
-// Requires static shaped inputs to create constant splats and computation of
-// broadcast attributes.
-def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
       (HLO_SelectOp
        (HLOClient_BroadcastAndOp
         (HLOClient_BroadcastCompareOp
@@ -169,6 +165,11 @@ def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
         (HLO_ConstOp:$ones (GetScalarOfType<1> $div)),
         (NullDenseIntElementsAttr)), $div),
       [(SignedIntTensor $l)]>;
+
+// FloorDiv of unsigned is just div.
+def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
+          (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
+          [(UnsignedIntTensor $l)]>;
 
 // Performs a substitution of FloorMod designed to correct for possibly negative
 // values. Pseudocode shown below:

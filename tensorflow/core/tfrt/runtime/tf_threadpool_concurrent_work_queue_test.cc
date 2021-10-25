@@ -20,7 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status_matchers.h"
-#include "tensorflow/core/tfrt/utils/test_util.h"
+#include "tensorflow/core/tfrt/utils/thread_pool.h"
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/support/latch.h"  // from @tf_runtime
@@ -36,11 +36,11 @@ const int32_t kNumThreads = 2;
 class TfThreadpoolWorkQueueTest : public ::testing::Test {
  protected:
   TfThreadpoolWorkQueueTest()
-      : intra_op_threadpool_(kNumThreads),
-        inter_op_threadpool_(kNumThreads),
+      : intra_op_threadpool_(/*name=*/"intra", kNumThreads),
+        inter_op_threadpool_(/*name=*/"inter", kNumThreads),
         tf_threadpool_cwq_(&intra_op_threadpool_, &inter_op_threadpool_) {}
-  tensorflow::tfd::TestThreadPool intra_op_threadpool_;
-  tensorflow::tfd::TestThreadPool inter_op_threadpool_;
+  TfThreadPool intra_op_threadpool_;
+  TfThreadPool inter_op_threadpool_;
   TfThreadPoolWorkQueue tf_threadpool_cwq_;
 };
 

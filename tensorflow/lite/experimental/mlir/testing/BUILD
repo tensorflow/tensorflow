@@ -2,6 +2,7 @@ load(
     ":build_def.bzl",
     "gen_zip_test",
     "generated_test_models_all",
+    "merged_test_models",
 )
 
 package(
@@ -34,6 +35,16 @@ py_library(
     name = "zip_test_%s" % test_name,
     size = "medium",
     srcs = ["generated_examples_zip_test.cc"],
+    additional_test_tags_args = {
+        "xnnpack": (
+            [
+                # TODO(b/162696268): remove 'notap' and 'no_oss' once the bug is fixed.
+                "notap",
+                "no_oss",
+            ],
+            ["--use_xnnpack=true"],
+        ),
+    },
     args = args + select({
         "//tensorflow:android": [],
         "//conditions:default": [
@@ -62,6 +73,7 @@ py_library(
     ],
     test_name = test_name,
     deps = [
+        "//tensorflow/lite/testing:tflite_driver_delegate_providers",
         "//tensorflow/lite/testing:parse_testdata_lib",
         "//tensorflow/lite/testing:tflite_driver",
         "//tensorflow/lite/testing:util",
@@ -81,7 +93,7 @@ py_library(
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, test_name, tags, args in generated_test_models_all()]
+) for conversion_mode, test_name, tags, args in generated_test_models_all() + merged_test_models()]
 
 py_library(
     name = "op_tests",

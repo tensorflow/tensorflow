@@ -2755,6 +2755,13 @@ op {
     name: "dtype"
     type: "type"
   }
+  attr {
+    name: "validate_shape"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   is_stateful: true
 }
 op {

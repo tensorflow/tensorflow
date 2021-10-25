@@ -27,8 +27,15 @@ message ComputeCapability {
 message AutotuneResult {
   enum FailureKind {
     UNKNOWN = 0;
+
+    // Algorithm wrote memory outside its output buffers.
     REDZONE_MODIFIED = 1;
+
+    // Algorithm gave a different result from a reference algorithm.
     WRONG_RESULT = 2;
+
+    // Algorithm was rejected for failing to run or for known bugs.
+    DISQUALIFIED = 3;
   }
 
   message FailureResult {

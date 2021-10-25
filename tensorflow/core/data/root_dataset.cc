@@ -254,7 +254,9 @@ string RootDataset::DebugString() const {
   return name_utils::DatasetDebugString(kDatasetType);
 }
 
-int64_t RootDataset::Cardinality() const { return input_->Cardinality(); }
+int64_t RootDataset::CardinalityInternal() const {
+  return input_->Cardinality();
+}
 
 Status RootDataset::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {

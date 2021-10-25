@@ -60,7 +60,7 @@ string TakeDataset::DebugString() const {
   return name_utils::DatasetDebugString(TakeDatasetOp::kDatasetType);
 }
 
-int64_t TakeDataset::Cardinality() const {
+int64_t TakeDataset::CardinalityInternal() const {
   int64_t n = input_->Cardinality();
   if (n == kUnknownCardinality) {
     return kUnknownCardinality;

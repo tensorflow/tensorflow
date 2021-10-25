@@ -65,6 +65,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:attribute_exporter",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
@@ -91,7 +92,7 @@ cc_library(
 cc_library(
     name = "lmhlo_to_gpu_binary",
     srcs = [
-        "fusion_pattern.cc",
+        "kernel_ops_pattern.cc",
         "lmhlo_to_gpu_binary.cc",
     ],
     hdrs = [
@@ -126,6 +127,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@tf_runtime//backends/gpu:gpu_passes",
     ],
     alwayslink = 1,
 )

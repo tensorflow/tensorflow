@@ -61,7 +61,7 @@ upper_tabs:
         path: https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0
         status: external
       - title: "Person detection"
-        path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection
+        path: https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/person_detection
         status: external
 
     - name: "Guide"

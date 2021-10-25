@@ -434,6 +434,12 @@ bool getTransposeConv2dPaddingValues(
     int64_t dim_dilation = dilations[i].template cast<IntegerAttr>().getInt();
     int64_t dim_stride = strides[i].template cast<IntegerAttr>().getInt();
 
+    // These dimensions need to be static to legalize.
+    if (ShapedType::isDynamic(filter_size) || ShapedType::isDynamic(ifm_size) ||
+        ShapedType::isDynamic(ofm_size)) {
+      return false;
+    }
+
     int effective_filter_size = (filter_size - 1) * dim_dilation + 1;
     int total_padding =
         ((ifm_size - 1) * dim_stride + effective_filter_size - ofm_size);

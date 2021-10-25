@@ -702,6 +702,10 @@ class Model {
                      OptimizationParams* optimization_params);
 
  private:
+  // Determines whether optimization should stop given total processing time,
+  // estimated output time, and estimated number of buffers bytes.
+  using StopPredicate = std::function<bool(double, double, double)>;
+
   static constexpr int64_t kOptimizationPeriodMinMs = 10;
   static constexpr int64_t kOptimizationPeriodMaxMs =
       60 * EnvTime::kSecondsToMillis;
@@ -714,16 +718,6 @@ class Model {
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
 
   // This optimization algorithm starts by setting all tunable parallelism
-  // parameters to the minimum value. It then repeatedly identifies the
-  // parameter whose increase in parallelism decreases the output time the most.
-  // This process is repeated until all parameters reach their maximum values or
-  // the projected output time is less than or equal to the processing time
-  // needed to produce an element divided by CPU budget.
-  void OptimizeHillClimb(std::shared_ptr<Node> snapshot,
-                         const OptimizationParams& optimization_params,
-                         CancellationManager* cancellation_manager);
-
-  // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then improves current parameters by
   // making a step in the direction opposite to the gradient of `OutputTime` and
   // projecting resulting values on the feasible intervals. Improvement step is
@@ -733,6 +727,30 @@ class Model {
   void OptimizeGradientDescent(std::shared_ptr<Node> snapshot,
                                const OptimizationParams& optimization_params,
                                CancellationManager* cancellation_manager);
+
+  // Helper method for implementing hill-climb optimization that can be
+  // parametrized by a predicate to use for stopping the optimization.
+  void OptimizeHillClimbHelper(std::shared_ptr<Node> snapshot,
+                               const OptimizationParams& optimization_params,
+                               CancellationManager* cancellation_manager,
+                               StopPredicate should_stop);
+
+  // This optimization algorithm starts by setting all tunable parallelism
+  // parameters to the minimum value. It then repeatedly identifies the
+  // parameter whose increase in parallelism decreases the output time the most.
+  // This process is repeated until all parameters reach their maximum values or
+  // the projected output time is less than or equal to the processing time
+  // needed to produce an element divided by CPU budget.
+  void OptimizeHillClimb(std::shared_ptr<Node> snapshot,
+                         const OptimizationParams& optimization_params,
+                         CancellationManager* cancellation_manager);
+
+  // This optimization behaves similarly to the hill climb optimization but uses
+  // a relaxed stoping condition, allowing the optimization to oversubscribe
+  // CPU.
+  void OptimizeMaxParallelism(std::shared_ptr<Node> snapshot,
+                              const OptimizationParams& optimization_params,
+                              CancellationManager* cancellation_manager);
 
   // Determines if we should stop the gradient descent optimization iterations
   // based on number of increasable parameters, CPU budget, RAM budget and

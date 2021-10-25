@@ -83,8 +83,17 @@ tf_py_test(
 )
 
 py_library(
-    name = "tracking",
-    srcs = ["tracking.py"],
+    name = "asset",
+    srcs = ["asset.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":base",
+    ],
+)
+
+py_library(
+    name = "autotrackable",
+    srcs = ["autotrackable.py"],
     srcs_version = "PY3",
     deps = [
         ":base",
@@ -93,12 +102,42 @@ py_library(
 )
 
 tf_py_test(
-    name = "tracking_test",
-    srcs = ["tracking_test.py"],
+    name = "autotrackable_test",
+    srcs = ["autotrackable_test.py"],
+    deps = [
+        ":autotrackable",
+        ":data_structures",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "resource",
+    srcs = ["resource.py"],
+    srcs_version = "PY3",
     deps = [
         ":base",
-        ":tracking",
+    ],
+)
+
+tf_py_test(
+    name = "resource_test",
+    srcs = ["resource_test.py"],
+    deps = [
+        ":base",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "tracking",
+    srcs = ["tracking.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":asset",
+        ":autotrackable",
+        ":data_structures",
+        ":resource",
     ],
 )
 

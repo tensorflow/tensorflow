@@ -1,27 +1,25 @@
-From 1ebfdd7ba05aa861df0397caf4c910c4d6a2690f Mon Sep 17 00:00:00 2001
-From: Rahul Joshi <jurahul@google.com>
-Date: Wed, 29 Sep 2021 11:13:44 -0700
-Subject: [PATCH] Revert "[Bazel] Add support for targeting macOS arm64"
+From 899020a6afcf10c42cd4d170b74a8bb66fab6c42 Mon Sep 17 00:00:00 2001
+From: yashkatariya <yashkatariya@google.com>
+Date: Thu, 21 Oct 2021 09:19:28 -0700
+Subject: [PATCH] Add new select for darwin which is needed for TF
 
-This reverts commit 33e1713a00a5291e5de658d0eb0aebdbf1d3aa03.
 ---
- utils/bazel/llvm-project-overlay/llvm/config.bzl | 3 +--
- 1 file changed, 1 insertion(+), 2 deletions(-)
+ utils/bazel/llvm-project-overlay/llvm/config.bzl | 3 +++
+ 1 file changed, 3 insertions(+)
 
 diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
-index ff64df694048..55f3077bff74 100644
+index ff64df694048..5809caa2e4ff 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
 +++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
-@@ -76,8 +76,7 @@ os_defines = select({
- # TODO: We should split out host vs. target here.
- llvm_config_defines = os_defines + select({
-     "@bazel_tools//src/conditions:windows": native_arch_defines("X86", "x86_64-pc-win32"),
--    "@bazel_tools//src/conditions:darwin_arm64": native_arch_defines("AArch64", "arm64-apple-darwin"),
--    "@bazel_tools//src/conditions:darwin_x86_64": native_arch_defines("X86", "x86_64-unknown-darwin"),
-+    "@bazel_tools//src/conditions:darwin": native_arch_defines("X86", "x86_64-unknown-darwin"),
+@@ -80,6 +80,9 @@ llvm_config_defines = os_defines + select({
+     "@bazel_tools//src/conditions:darwin_x86_64": native_arch_defines("X86", "x86_64-unknown-darwin"),
      "@bazel_tools//src/conditions:linux_aarch64": native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
      "//conditions:default": native_arch_defines("X86", "x86_64-unknown-linux-gnu"),
++}) + select({
++    "@bazel_tools//src/conditions:darwin": native_arch_defines("X86", "x86_64-unknown-darwin"),
++    "//conditions:default": [],
  }) + [
--- 
-2.33.0.685.g46640cef36-goog
-
+     # These shouldn't be needed by the C++11 standard, but are for some
+     # platforms (e.g. glibc < 2.18. See
+--
+2.33.0.1079.g6e70778dc9-goog

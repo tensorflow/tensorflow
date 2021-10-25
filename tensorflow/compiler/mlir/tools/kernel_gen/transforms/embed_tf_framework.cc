@@ -112,7 +112,7 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
 
     // Operand with no layout is expected.
     auto operand_memref_type = dealloc.memref().getType().cast<MemRefType>();
-    if (!operand_memref_type.getAffineMaps().empty()) {
+    if (!operand_memref_type.getLayout().isIdentity()) {
       return failure();
     }
     rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx, adaptor.memref());

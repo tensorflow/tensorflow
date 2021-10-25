@@ -43,6 +43,31 @@ PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32_t x) {
   return result - 1.0f;
 }
 
+// Helper function to convert two 32-bit uniform integers to two floats
+// under the unit normal distribution.
+PHILOX_DEVICE_INLINE
+void BoxMullerFloat(uint32_t x0, uint32_t x1, float* f0, float* f1) {
+  // This function implements the Box-Muller transform:
+  // http://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform#Basic_form
+  // Do not send a really small number to log().
+  // We cannot mark "epsilon" as "static const" because NVCC would complain
+  const float epsilon = 1.0e-7f;
+  float u1 = Uint32ToFloat(x0);
+  if (u1 < epsilon) {
+    u1 = epsilon;
+  }
+  const float v1 = 2.0f * M_PI * Uint32ToFloat(x1);
+  const float u2 = sqrt(-2.0f * log(u1));
+#if !defined(__linux__)
+  *f0 = sin(v1);
+  *f1 = cos(v1);
+#else
+  sincosf(v1, f0, f1);
+#endif
+  *f0 *= u2;
+  *f1 *= u2;
+}
+
 }  // namespace random
 }  // namespace tensorflow
 

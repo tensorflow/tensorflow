@@ -294,7 +294,6 @@ pytype_library(
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
-        "@enum34_archive//:enum",
         "@six_archive//:six",
     ],
 )

@@ -66,7 +66,6 @@ distribute_py_test(
     disable_v3 = True,  # Not needed. Save some resources and test time.
     python_version = "PY3",
     tags = [
-        "manual",  # TODO(b/203175246): consistently failing right now.
         "no_cuda_asan",  # Not needed, and there were issues with timeouts.
         "no_oss",  # Avoid downloading mnist data set in oss.
         "nomultivm",  # Not needed. Save some resources and test time.

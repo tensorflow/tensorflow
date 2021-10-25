@@ -392,7 +392,7 @@ struct ShapeVisitor {
     backwards_worklist.push_back(ShapeOrValueOfTensor::getShapeOf(
         cast<shape::AssumingYieldOp>(
             assumingOp.doRegion().back().getTerminator())
-            .operands()[number]));
+            .getOperand(number)));
   }
   void forwardAssumingShape(Value op) {
     auto assumingOp = op.getDefiningOp<shape::AssumingOp>();
@@ -401,7 +401,7 @@ struct ShapeVisitor {
     dims = lookup(ShapeOrValueOfTensor::getShapeOf(
         cast<shape::AssumingYieldOp>(
             assumingOp.doRegion().back().getTerminator())
-            .operands()[number]));
+            .getOperand(number)));
   }
   void backwardDynamicBroadcastInDimShape(mhlo::DynamicBroadcastInDimOp op) {
     forwards_worklist.push_back(ShapeOrValueOfTensor::getShapeOf(op));

@@ -2276,11 +2276,11 @@ Status SpmdPartitioningVisitor::HandleSingleDevice(const HloInstruction* hlo) {
 
   std::vector<HloInstruction*> operands;
   std::vector<Shape> operand_shapes;
-  const auto _operands = hlo->operands();
-  const auto _operands_size = _operands.size();
-  operands.reserve(_operands_size);
-  operand_shapes.reserve(_operands_size);
-  for (const HloInstruction* operand : _operands) {
+  const auto& old_operands = hlo->operands();
+  const auto old_operands_size = old_operands.size();
+  operands.reserve(old_operands_size);
+  operand_shapes.reserve(old_operands_size);
+  for (const HloInstruction* operand : old_operands) {
     operands.push_back(GetPartitionedHlo(operand).Reshard(sharding).hlo());
     operand_shapes.push_back(operand->shape());
   }

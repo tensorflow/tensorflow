@@ -696,7 +696,7 @@ class IteratorType(trace.TraceType):
         other, IteratorType) and self._components == other._components
 
 
-class OwnedIterator(IteratorBase, trace.SupportsTracingType):
+class OwnedIterator(IteratorBase):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset.
 
   The iterator resource  created through `OwnedIterator` is owned by the Python
@@ -907,7 +907,7 @@ class OwnedIterator(IteratorBase, trace.SupportsTracingType):
 
 
 @tf_export("data.IteratorSpec", v1=[])
-class IteratorSpec(type_spec.TypeSpec, trace.SupportsTracingType):
+class IteratorSpec(type_spec.TypeSpec):
   """Type specification for `tf.data.Iterator`.
 
   For instance, `tf.data.IteratorSpec` can be used to define a tf.function that

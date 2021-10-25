@@ -127,7 +127,9 @@ class InitializeTRTResource : public OpKernel {
       TRTEngineInstance engine_instance;
       engine_instance.ParseFromString(record);
       std::vector<TensorShape> engine_input_shapes;
-      for (const TensorShapeProto& shape : engine_instance.input_shapes()) {
+      const auto& input_shapes = engine_instance.input_shapes();
+      engine_input_shapes.reserve(input_shapes.size());
+      for (const TensorShapeProto& shape : input_shapes) {
         engine_input_shapes.emplace_back(shape);
       }
 
