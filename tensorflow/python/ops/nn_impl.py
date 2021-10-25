@@ -539,7 +539,7 @@ def relu_layer(x, weights, biases, name=None):
 @tf_export("nn.silu", "nn.swish")
 @dispatch.add_dispatch_support
 @custom_gradient.custom_gradient
-def swish(features, beta = 0.1):
+def swish(features, beta = 1.0):
   # pylint: disable=g-doc-args
   """Computes the SiLU or Swish activation function: `x * sigmoid(βx)`.
   β: Hyperparamter for Swish activation function. Default value 1.0.
@@ -573,7 +573,7 @@ def swish(features, beta = 0.1):
     # after use during the forward pass.
     with ops.control_dependencies([dy]):
       sigmoid_features = math_ops.sigmoid(beta * features)
-      activation_grad = (
+    activation_grad = (
         sigmoid_features * (1.0 + (beta * features) * (1.0 - sigmoid_features)))
     return dy * activation_grad
 
