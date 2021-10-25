@@ -31,7 +31,7 @@ using Eigen::operator==;
 
 template <typename T>
 void Sparsify(Tensor* t, float sparsity) {
-  const int64 N = t->NumElements();
+  const int64_t N = t->NumElements();
   CHECK_LE(sparsity, 1);
   auto flat = t->flat<T>();
   if (sparsity == 1) {
@@ -39,7 +39,7 @@ void Sparsify(Tensor* t, float sparsity) {
     return;
   }
   static const uint32 K = 10000;
-  for (int64 i = 0; i < N; ++i) {
+  for (int64_t i = 0; i < N; ++i) {
     if (rnd.Uniform(K) < sparsity * K) {
       flat(i) = T(0);
     } else if (flat(i) == T(0)) {
@@ -317,6 +317,9 @@ class SparseMatmulOpTest : public ::testing::Test {
   // bfloat16 representation of data3
   EIGEN_ALIGN_MAX float data3_bfloat16[kMaxPacketSize];
   EIGEN_ALIGN_MAX float ref[kMaxPacketSize];
+
+ public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
 TEST_F(SparseMatmulOpTest, BroadcastPacketTest) {

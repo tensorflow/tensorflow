@@ -43,15 +43,15 @@ class LookupTableOp : public OpKernel {
  public:
   // ctx is not owned by this class.
   explicit LookupTableOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx), table_handle_set_(false) {
+      : OpKernel(ctx), table_set_(false) {
     if (ctx->output_type(0) == DT_RESOURCE) {
-      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_RESOURCE,
-                                                   tensorflow::TensorShape({}),
-                                                   &table_handle_, nullptr));
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(tensorflow::DT_RESOURCE,
+                                        tensorflow::TensorShape({}), &table_));
     } else {
-      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_STRING,
-                                                   tensorflow::TensorShape({2}),
-                                                   &table_handle_, nullptr));
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(tensorflow::DT_STRING,
+                                        tensorflow::TensorShape({2}), &table_));
     }
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("use_node_name_sharing", &use_node_name_sharing_));
@@ -61,7 +61,7 @@ class LookupTableOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     mutex_lock l(mu_);
 
-    if (!table_handle_set_) {
+    if (!table_set_) {
       OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def(),
                                       use_node_name_sharing_));
     }
@@ -76,7 +76,7 @@ class LookupTableOp : public OpKernel {
               }
               if (ctx->track_allocations()) {
                 ctx->record_persistent_memory_allocation(
-                    container->MemoryUsed() + table_handle_.AllocatedBytes());
+                    container->MemoryUsed() + table_.AllocatedBytes());
               }
               *ret = container;
               return Status::OK();
@@ -94,27 +94,26 @@ class LookupTableOp : public OpKernel {
                             DataTypeToEnum<value_dtype>::v(), cinfo_.name()));
 
     if (ctx->expected_output_dtype(0) == DT_RESOURCE) {
-      if (!table_handle_set_) {
-        auto h =
-            table_handle_.AccessTensor(ctx)->template scalar<ResourceHandle>();
+      if (!table_set_) {
+        auto h = table_.template scalar<ResourceHandle>();
         h() = MakeResourceHandle<lookup::LookupInterface>(
             ctx, cinfo_.container(), cinfo_.name());
       }
-      ctx->set_output(0, *table_handle_.AccessTensor(ctx));
+      ctx->set_output(0, table_);
     } else {
-      if (!table_handle_set_) {
-        auto h = table_handle_.AccessTensor(ctx)->template flat<tstring>();
+      if (!table_set_) {
+        auto h = table_.template flat<tstring>();
         h(0) = cinfo_.container();
         h(1) = cinfo_.name();
       }
-      ctx->set_output_ref(0, &mu_, table_handle_.AccessTensor(ctx));
+      ctx->set_output_ref(0, &mu_, &table_);
     }
-    table_handle_set_ = true;
+    table_set_ = true;
   }
 
   ~LookupTableOp() override {
     // If the table object was not shared, delete it.
-    if (table_handle_set_ && cinfo_.resource_is_private_to_kernel()) {
+    if (table_set_ && cinfo_.resource_is_private_to_kernel()) {
       if (!cinfo_.resource_manager()
                ->template Delete<lookup::LookupInterface>(cinfo_.container(),
                                                           cinfo_.name())
@@ -126,12 +125,46 @@ class LookupTableOp : public OpKernel {
 
  private:
   mutex mu_;
-  PersistentTensor table_handle_ TF_GUARDED_BY(mu_);
-  bool table_handle_set_ TF_GUARDED_BY(mu_);
+  Tensor table_ TF_GUARDED_BY(mu_);
+  bool table_set_ TF_GUARDED_BY(mu_);
   ContainerInfo cinfo_;
   bool use_node_name_sharing_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(LookupTableOp);
+};
+
+// An anonymous version of LookupTableOp, which creates a new table resource
+// everytime `Compute` is called. The resource can only be accessed by the
+// returned resource handle (e.g. it can't be looked up by a name in a resource
+// manager). The resource will be automatically deleted when all resource
+// handles pointing to it are gone.
+template <class Container, class key_dtype, class value_dtype>
+class AnonymousLookupTableOp : public OpKernel {
+ public:
+  explicit AnonymousLookupTableOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::LookupInterface* table = new Container(ctx, this);
+    if (!ctx->status().ok()) {
+      table->Unref();
+      return;
+    }
+    Tensor table_tensor;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(tensorflow::DT_RESOURCE,
+                                tensorflow::TensorShape({}), &table_tensor));
+    if (ctx->track_allocations()) {
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() +
+                                               table_tensor.AllocatedBytes());
+    }
+    table_tensor.scalar<ResourceHandle>()() =
+        ResourceHandle::MakeRefCountingHandle<lookup::LookupInterface>(
+            table, ctx->device()->name());
+    ctx->set_output(0, table_tensor);
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(AnonymousLookupTableOp);
 };
 
 namespace lookup {
@@ -231,7 +264,7 @@ class HashTable : public InitializableLookupTable {
       return errors::Aborted("HashTable is not initialized.");
     }
 
-    const int64 size = table_.size();
+    const int64_t size = table_.size();
 
     Tensor* keys;
     Tensor* values;
@@ -242,7 +275,7 @@ class HashTable : public InitializableLookupTable {
 
     auto keys_data = keys->flat<K>();
     auto values_data = values->flat<V>();
-    int64 i = 0;
+    int64_t i = 0;
     for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
       keys_data(i) = it->first;
       values_data(i) = it->second;
@@ -272,7 +305,7 @@ class HashTable : public InitializableLookupTable {
   Status DoInsert(const Tensor& keys, const Tensor& values) override {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
-    for (int64 i = 0; i < key_values.size(); ++i) {
+    for (int64_t i = 0; i < key_values.size(); ++i) {
       auto&& key = SubtleMustCopyIfIntegral(key_values(i));
       auto&& value = SubtleMustCopyIfIntegral(value_values(i));
       auto result = table_.try_emplace(key, value);
@@ -291,18 +324,18 @@ class HashTable : public InitializableLookupTable {
     const auto key_values = key.flat<K>();
     auto value_values = value->flat<V>();
 
-    for (int64 i = 0; i < key_values.size(); ++i) {
+    for (int64_t i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
           table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
     }
     return Status::OK();
   }
 
-  int64 MemoryUsed() const override {
+  int64_t MemoryUsed() const override {
     if (!is_initialized()) {
       return 0;
     }
-    const int64 num_elements = table_.size();
+    const int64_t num_elements = table_.size();
     return num_elements * (sizeof(K) + sizeof(V));
   }
 

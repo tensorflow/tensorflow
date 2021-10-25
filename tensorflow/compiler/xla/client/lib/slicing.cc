@@ -27,27 +27,28 @@ limitations under the License.
 namespace xla {
 
 XlaOp DynamicStridedSlice(XlaOp input, absl::Span<const XlaOp> base_indices,
-                          absl::Span<const int64> window_sizes,
-                          absl::Span<const int64> strides) {
+                          absl::Span<const int64_t> window_sizes,
+                          absl::Span<const int64_t> strides) {
   XlaOp sliced_input = DynamicSlice(input, base_indices, window_sizes);
   if (std::any_of(strides.begin(), strides.end(),
-                  [](int64 stride) { return stride != 1; })) {
-    sliced_input = Slice(sliced_input, std::vector<int64>(window_sizes.size()),
-                         window_sizes, strides);
+                  [](int64_t stride) { return stride != 1; })) {
+    sliced_input =
+        Slice(sliced_input, std::vector<int64_t>(window_sizes.size()),
+              window_sizes, strides);
   }
   return sliced_input;
 }
 
-XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64> start,
-                       absl::Span<const int64> end) {
+XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64_t> start,
+                       absl::Span<const int64_t> end) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_RET_CHECK(start.size() == end.size());
-    int64 n_minor_dims = start.size();
+    int64_t n_minor_dims = start.size();
 
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
 
-    const int64 n_dims = shape.rank();
+    const int64_t n_dims = shape.rank();
     TF_RET_CHECK(n_minor_dims <= n_dims);
     auto major_dims = AsInt64Slice(shape.dimensions())
                           .subspan(
@@ -55,29 +56,29 @@ XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64> start,
                               /*len=*/n_dims - n_minor_dims);
 
     // Prepends 0s in the major dim
-    std::vector<int64> padded_start(n_dims, 0);
+    std::vector<int64_t> padded_start(n_dims, 0);
     std::copy(start.begin(), start.end(),
               padded_start.begin() + major_dims.size());
 
     // Prepends the shape of the major dims.
-    std::vector<int64> padded_end(n_dims);
+    std::vector<int64_t> padded_end(n_dims);
     std::copy(major_dims.begin(), major_dims.end(), padded_end.begin());
     std::copy(end.begin(), end.end(), padded_end.begin() + major_dims.size());
 
-    std::vector<int64> strides(n_dims, 1);
+    std::vector<int64_t> strides(n_dims, 1);
     return Slice(x, padded_start, padded_end, strides);
   });
 }
 
-XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64> start) {
+XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64_t> start) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = shape.rank();
-    const int64 start_size = start.size();
+    const int64_t n_dims = shape.rank();
+    const int64_t start_size = start.size();
     TF_RET_CHECK(start_size == n_dims);
 
-    // TODO(phawkins): make int64 work on all backends, remove the int32 cast.
+    // TODO(phawkins): make int64_t work on all backends, remove the int32 cast.
     std::vector<int32> start_as_int32(start.begin(), start.end());
     std::vector<XlaOp> start_ops(start.size());
     for (int i = 0, end = start.size(); i < end; ++i) {
@@ -88,14 +89,14 @@ XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64> start) {
 }
 
 XlaOp UpdateSliceInMinorDims(XlaOp x, XlaOp update,
-                             absl::Span<const int64> start) {
+                             absl::Span<const int64_t> start) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = shape.rank();
-    const int64 n_minor_dims = start.size();
+    const int64_t n_dims = shape.rank();
+    const int64_t n_minor_dims = start.size();
     TF_RET_CHECK(n_minor_dims <= n_dims);
-    std::vector<int64> padded_start(n_dims, 0);
+    std::vector<int64_t> padded_start(n_dims, 0);
     std::copy(start.begin(), start.end(),
               padded_start.begin() + (n_dims - n_minor_dims));
     return UpdateSlice(x, update, padded_start);
@@ -104,9 +105,9 @@ XlaOp UpdateSliceInMinorDims(XlaOp x, XlaOp update,
 
 namespace {
 
-std::vector<int64> ConcatVectors(absl::Span<const int64> xs,
-                                 absl::Span<const int64> ys) {
-  std::vector<int64> output(xs.size() + ys.size());
+std::vector<int64_t> ConcatVectors(absl::Span<const int64_t> xs,
+                                   absl::Span<const int64_t> ys) {
+  std::vector<int64_t> output(xs.size() + ys.size());
   std::copy(xs.begin(), xs.end(), output.begin());
   std::copy(ys.begin(), ys.end(), output.begin() + xs.size());
   return output;
@@ -116,7 +117,7 @@ StatusOr<std::vector<XlaOp>> PrependZerosInMajorDims(
     XlaOp x, absl::Span<const XlaOp> starts) {
   XlaBuilder* builder = x.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-  const int64 n_dims = shape.rank();
+  const int64_t n_dims = shape.rank();
   auto zero = ConstantR0<int32>(builder, 0);
   std::vector<XlaOp> padded_starts(n_dims, zero);
   for (int i = 0; i < starts.size(); ++i) {
@@ -128,12 +129,12 @@ StatusOr<std::vector<XlaOp>> PrependZerosInMajorDims(
 }  // namespace
 
 XlaOp DynamicSliceInMinorDims(XlaOp x, absl::Span<const XlaOp> starts,
-                              absl::Span<const int64> sizes) {
+                              absl::Span<const int64_t> sizes) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = shape.rank();
-    int64 n_minor_dims = starts.size();
+    const int64_t n_dims = shape.rank();
+    int64_t n_minor_dims = starts.size();
     TF_RET_CHECK(n_minor_dims == sizes.size());
     TF_RET_CHECK(n_minor_dims <= n_dims);
     auto major_dims = AsInt64Slice(shape.dimensions())
@@ -155,7 +156,7 @@ XlaOp DynamicUpdateSliceInMinorDims(XlaOp x, XlaOp update,
   });
 }
 
-XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
+XlaOp TorchGather(XlaOp input, XlaOp index, int64_t dim, bool sparse) {
   XlaBuilder* builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
@@ -169,10 +170,11 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
       return TorchIndexSelect(input, index, 0);
     }
     if (!sparse) {
-      std::vector<int64> index_broadcast_dims;
-      std::vector<int64> input_broadcast_dims;
-      std::vector<int64> sizes;
-      for (int64 i = 0; i < index_shape.rank(); ++i) {
+      std::vector<int64_t> index_broadcast_dims;
+      std::vector<int64_t> input_broadcast_dims;
+      std::vector<int64_t> sizes;
+      sizes.reserve(index_shape.rank());
+      for (int64_t i = 0; i < index_shape.rank(); ++i) {
         if (i < dim) {
           input_broadcast_dims.push_back(i);
           index_broadcast_dims.push_back(i);
@@ -204,7 +206,7 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
     std::vector<XlaOp> to_concat;
 
     to_concat.reserve(input_shape.rank());
-    for (int64 i = 0; i < input_shape.rank(); ++i) {
+    for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (i == dim) {
         to_concat.push_back(Reshape(index, index_shape.dimensions()));
       } else {
@@ -212,10 +214,10 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
       }
     }
     XlaOp gather_indices = ConcatInDim(builder, to_concat, input_shape.rank());
-    std::vector<int64> slice_sizes(input_shape.rank(), 1);
+    std::vector<int64_t> slice_sizes(input_shape.rank(), 1);
     GatherDimensionNumbers gather_dnums;
     gather_dnums.set_index_vector_dim(input_shape.rank());
-    for (int64 i = 0; i < input_shape.rank(); ++i) {
+    for (int64_t i = 0; i < input_shape.rank(); ++i) {
       gather_dnums.add_collapsed_slice_dims(i);
       gather_dnums.add_start_index_map(i);
     }
@@ -223,15 +225,17 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
   });
 }
 
-XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64 dim,
+XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64_t dim,
                         const std::function<XlaOp(XlaOp, XlaOp)>& combiner) {
   XlaBuilder* builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
-    std::vector<int64> index_broadcast_dims;
-    std::vector<int64> sizes;
-    for (int64 i = 0; i < index_shape.rank(); ++i) {
+    std::vector<int64_t> index_broadcast_dims;
+    std::vector<int64_t> sizes;
+    const auto rank = index_shape.rank();
+    sizes.reserve(rank + 1);
+    for (int64_t i = 0; i < index_shape.rank(); ++i) {
       if (i < dim) {
         index_broadcast_dims.push_back(i);
       } else {
@@ -260,7 +264,8 @@ XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64 dim,
   });
 }
 
-XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim, int64 batch_dims) {
+XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64_t dim,
+                       int64_t batch_dims) {
   XlaBuilder* builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
@@ -275,22 +280,22 @@ XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim, int64 batch_dims) {
       index = ConvertElementType(index, U32);
       index_shape.set_element_type(U32);
     }
-    std::vector<int64> slice_sizes = SpanToVector(input_shape.dimensions());
+    std::vector<int64_t> slice_sizes = SpanToVector(input_shape.dimensions());
     GatherDimensionNumbers gather_dnums;
     gather_dnums.set_index_vector_dim(index_shape.rank());
     if (batch_dims > 0) {
       ShapeUtil::AppendMajorDimension(1, &index_shape);
       std::vector<XlaOp> to_concat;
       to_concat.reserve(batch_dims + 1);
-      for (int64 batch_dim = 0; batch_dim < batch_dims; ++batch_dim) {
+      for (int64_t batch_dim = 0; batch_dim < batch_dims; ++batch_dim) {
         to_concat.push_back(Iota(builder, index_shape, batch_dim));
       }
       to_concat.push_back(Reshape(index, index_shape.dimensions()));
       index = ConcatInDim(builder, to_concat, gather_dnums.index_vector_dim());
     }
-    for (int64 i = 0; i < input_shape.rank(); ++i) {
+    for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (i < batch_dims || i == dim) {
-        slice_sizes[i] = std::min<int64>(slice_sizes[i], 1);
+        slice_sizes[i] = std::min<int64_t>(slice_sizes[i], 1);
         gather_dnums.add_collapsed_slice_dims(i);
         gather_dnums.add_start_index_map(i);
       } else {

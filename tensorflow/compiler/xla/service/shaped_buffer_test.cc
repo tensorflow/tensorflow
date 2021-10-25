@@ -58,7 +58,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
 
   StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
                                             bool /*retry_on_failure*/,
-                                            int64 /*memory_space*/) override {
+                                            int64_t /*memory_space*/) override {
     // By contract, we must return null if size == 0.
     if (size == 0) {
       return se::OwningDeviceMemory();
@@ -91,7 +91,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
   }
 
  private:
-  std::set<std::pair</*device_ordinal*/ int64, void*>> allocations_;
+  std::set<std::pair</*device_ordinal*/ int64_t, void*>> allocations_;
 };
 
 TEST(ScopedShapedBufferTest, TestMoveAssignmentOperator) {

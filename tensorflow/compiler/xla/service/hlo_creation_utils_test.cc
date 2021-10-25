@@ -28,8 +28,8 @@ namespace {
 class HloCreationUtilsTest : public HloTestBase {
  protected:
   std::unique_ptr<VerifiedHloModule> CreateModuleWithProgramShape(
-      PrimitiveType primitive_type, absl::Span<const int64> input_shape_dims,
-      absl::Span<const int64> output_shape_dims, HloInstruction** param,
+      PrimitiveType primitive_type, absl::Span<const int64_t> input_shape_dims,
+      absl::Span<const int64_t> output_shape_dims, HloInstruction** param,
       HloComputation** entry_computation) {
     Shape input_shape = ShapeUtil::MakeShape(primitive_type, input_shape_dims);
     Shape output_shape =
@@ -43,8 +43,8 @@ class HloCreationUtilsTest : public HloTestBase {
   }
 
   std::unique_ptr<VerifiedHloModule> CreateModuleWithProgramShape(
-      PrimitiveType primitive_type, absl::Span<const int64> input_shape_dims,
-      absl::Span<const int64> output_shape_dims, HloInstruction** param,
+      PrimitiveType primitive_type, absl::Span<const int64_t> input_shape_dims,
+      absl::Span<const int64_t> output_shape_dims, HloInstruction** param,
       HloComputation** entry_computation, PrimitiveType primitive_type_output) {
     Shape input_shape = ShapeUtil::MakeShape(primitive_type, input_shape_dims);
     Shape output_shape =

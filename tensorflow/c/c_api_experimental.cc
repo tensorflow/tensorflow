@@ -508,9 +508,7 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
         "Invalid tensorflow.ServerDef protocol buffer");
     return;
   }
-  status->status =
-      tensorflow::unwrap(ctx)->GetDistributedManager()->EnableCollectiveOps(
-          server_def);
+  status->status = tensorflow::unwrap(ctx)->EnableCollectiveOps(server_def);
 }
 
 TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,

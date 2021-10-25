@@ -10,7 +10,6 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//tensorflow/compiler/mlir/tfr/...",
     ],

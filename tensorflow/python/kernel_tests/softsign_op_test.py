@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Softsign and SoftsignGrad."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -42,7 +38,7 @@ class SoftsignTest(test.TestCase):
     self.assertShapeEqual(np_softsign, softsign)
 
   def testNumbers(self):
-    for t in [np.float, np.double]:
+    for t in [np.float64, np.double]:
       self._testSoftsign(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
           use_gpu=False)

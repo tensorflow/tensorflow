@@ -192,13 +192,13 @@ func @replicate_with_packed_input(%arg0: tensor<i1>, %arg1: tensor<i1>) {
 
 // Tests replica id is added correctly.
 // CHECK-LABEL: func @replica_id_attr_added
-func @replica_id_attr_added(%arg0: tensor<!tf.string>, %arg1: tensor<!tf.string>) {
+func @replica_id_attr_added(%arg0: tensor<!tf_type.string>, %arg1: tensor<!tf_type.string>) {
   tf_executor.graph {
     %0 = tf_executor.island {
-      tf_device.replicate([%arg0, %arg1] as %arg2: tensor<!tf.string>) {n = 2 : i32} {
-        "tf.EnqueueTPUEmbeddingSparseTensorBatch"(%arg2){table_ids = [1, 2]} : (tensor<!tf.string>) -> ()
-        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg2){table_ids = [1, 2]} : (tensor<!tf.string>) -> ()
-        "tf.A"(%arg2) : (tensor<!tf.string>) -> ()
+      tf_device.replicate([%arg0, %arg1] as %arg2: tensor<!tf_type.string>) {n = 2 : i32} {
+        "tf.EnqueueTPUEmbeddingSparseTensorBatch"(%arg2){table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg2){table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
+        "tf.A"(%arg2) : (tensor<!tf_type.string>) -> ()
         tf_device.return
       }
       tf_executor.yield

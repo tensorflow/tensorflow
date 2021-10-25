@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.test_util."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import random
@@ -32,6 +28,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -40,6 +37,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
@@ -49,6 +47,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
 
 
@@ -145,6 +144,22 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       print("MKL is enabled")
     else:
       print("MKL is disabled")
+
+  @test_util.disable_asan("Skip test if ASAN is enabled.")
+  def testDisableAsan(self):
+    self.assertFalse(pywrap_sanitizers.is_asan_enabled())
+
+  @test_util.disable_msan("Skip test if MSAN is enabled.")
+  def testDisableMsan(self):
+    self.assertFalse(pywrap_sanitizers.is_msan_enabled())
+
+  @test_util.disable_tsan("Skip test if TSAN is enabled.")
+  def testDisableTsan(self):
+    self.assertFalse(pywrap_sanitizers.is_tsan_enabled())
+
+  @test_util.disable_ubsan("Skip test if UBSAN is enabled.")
+  def testDisableUbsan(self):
+    self.assertFalse(pywrap_sanitizers.is_ubsan_enabled())
 
   @test_util.run_in_graph_and_eager_modes
   def testAssertProtoEqualsStr(self):
@@ -272,11 +287,18 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self._WeMustGoDeeper("name")
     self._WeMustGoDeeper("orig")
 
+  @parameterized.named_parameters(
+      dict(testcase_name="tensors", ragged_tensors=False),
+      dict(testcase_name="ragged_tensors", ragged_tensors=True))
   @test_util.run_in_graph_and_eager_modes
-  def testAllCloseTensors(self):
+  def testAllCloseTensors(self, ragged_tensors: bool):
     a_raw_data = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
     a = constant_op.constant(a_raw_data)
     b = math_ops.add(1, constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8]]))
+    if ragged_tensors:
+      a = ragged_tensor.RaggedTensor.from_tensor(a)
+      b = ragged_tensor.RaggedTensor.from_tensor(b)
+
     self.assertAllClose(a, b)
     self.assertAllClose(a, a_raw_data)
 
@@ -373,6 +395,18 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(AssertionError,
                                 r"\[y\]\[1\]\[0\]\[nested\]\[n\]"):
       self.assertAllClose(a, b)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssertDictEqual(self):
+    a = 7
+    b = (2., 3.)
+    c = np.ones((3, 2, 4)) * 7.
+    d = "testing123"
+    expected = {"a": a, "b": b, "c": c, "d": d}
+    actual = {"a": a, "b": b, "c": constant_op.constant(c), "d": d}
+
+    self.assertDictEqual(expected, expected)
+    self.assertDictEqual(expected, actual)
 
   @test_util.run_in_graph_and_eager_modes
   def testArrayNear(self):
@@ -716,7 +750,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     f = test_util.run_in_graph_and_eager_modes(inc)
     f(self, with_brackets=False)
-    f = test_util.run_in_graph_and_eager_modes()(inc)
+    f = test_util.run_in_graph_and_eager_modes()(inc)  # pylint: disable=assignment-from-no-return
     f(self, with_brackets=True)
 
     self.assertEqual(len(l), 4)
@@ -821,6 +855,13 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     test_object.test_modes_function()
     self.assertTrue(test_object.graph_mode_tested)
     self.assertTrue(test_object.inside_function_tested)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_consistent_random_seed_in_assert_all_equal(self):
+    random_seed.set_seed(1066)
+    index = random_ops.random_shuffle([0, 1, 2, 3, 4], seed=2021)
+    # This failed when `a` and `b` were evaluated in separate sessions.
+    self.assertAllEqual(index, index)
 
   def test_with_forward_compatibility_horizons(self):
 

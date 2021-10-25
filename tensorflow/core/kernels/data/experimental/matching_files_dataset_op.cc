@@ -232,7 +232,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        int64 current_pattern_index;
+        int64_t current_pattern_index;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             full_name("current_pattern_index"), &current_pattern_index));
         current_pattern_index_ = size_t(current_pattern_index);
@@ -242,23 +242,23 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                                               &current_pattern_tstr));
         current_pattern_ = current_pattern_tstr;
 
-        int64 hasMatch;
+        int64_t hasMatch;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name("hasMatch"), &hasMatch));
         hasMatch_ = static_cast<bool>(hasMatch);
 
-        int64 isWindows;
+        int64_t isWindows;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name("isWindows"), &isWindows));
         isWindows_ = static_cast<bool>(isWindows);
 
         if (reader->Contains(full_name("queue_size"))) {
-          int64 queue_size;
+          int64_t queue_size;
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name("queue_size"), &queue_size));
           for (int i = 0; i < queue_size; i++) {
             tstring path;
-            int64 path_status;
+            int64_t path_status;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
                 full_name(strings::StrCat("path_", i)), &path));
             TF_RETURN_IF_ERROR(reader->ReadScalar(

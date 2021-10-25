@@ -12,6 +12,7 @@ package(
         "//tensorflow/core/framework:__subpackages__",
         # tensorflow/core/platform still references some of the headers in this package
         "//tensorflow/core/platform:__subpackages__",
+        "//tensorflow/core/tpu:__subpackages__",
     ],
     licenses = ["notice"],
 )

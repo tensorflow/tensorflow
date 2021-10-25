@@ -15,10 +15,6 @@
 
 """API for enabling v2 control flow."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
@@ -44,9 +40,7 @@ def enable_control_flow_v2():  # pylint: disable=invalid-name
   function is not required.
   """
   # pylint: disable=protected-access
-  # copybara:comment_begin(Reduce verbosity for OSS users)
-  logging.info("Enabling control flow v2")
-  # copybara:comment_end
+  logging.vlog(1, "Enabling control flow v2")
   ops._control_flow_api_gauge.get_cell().set(True)
   control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
 
@@ -62,9 +56,7 @@ def disable_control_flow_v2():  # pylint: disable=invalid-name
   properly please file a bug.
   """
   # pylint: disable=protected-access
-  # copybara:comment_begin(Reduce verbosity for OSS users)
-  logging.info("Disabling control flow v2")
-  # copybara:comment_end
+  logging.vlog(1, "Disabling control flow v2")
   ops._control_flow_api_gauge.get_cell().set(False)
   control_flow_util.ENABLE_CONTROL_FLOW_V2 = False
 

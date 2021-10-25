@@ -21,7 +21,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'head\', \'model_dir\', \'linear_feature_columns\', \'linear_optimizer\', \'dnn_feature_columns\', \'dnn_optimizer\', \'dnn_hidden_units\', \'dnn_activation_fn\', \'dnn_dropout\', \'input_layer_partitioner\', \'config\', \'linear_sparse_combiner\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'Ftrl\', \'None\', \'Adagrad\', \'None\', \'<function relu instance>\', \'None\', \'None\', \'None\', \'sum\'], "
+    argspec: "args=[\'self\', \'head\', \'model_dir\', \'linear_feature_columns\', \'linear_optimizer\', \'dnn_feature_columns\', \'dnn_optimizer\', \'dnn_hidden_units\', \'dnn_activation_fn\', \'dnn_dropout\', \'input_layer_partitioner\', \'config\', \'batch_norm\', \'linear_sparse_combiner\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'Ftrl\', \'None\', \'Adagrad\', \'None\', \'<function relu instance>\', \'None\', \'None\', \'None\', \'False\', \'sum\'], "
   }
   member_method {
     name: "eval_dir"

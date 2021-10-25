@@ -16,13 +16,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/stats_utils.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
-#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -233,8 +233,8 @@ class FilterDatasetOp::Dataset : public DatasetBase {
    private:
     mutex mu_;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
-    int64 filtered_elements_ TF_GUARDED_BY(mu_);
-    int64 dropped_elements_ TF_GUARDED_BY(mu_);
+    int64_t filtered_elements_ TF_GUARDED_BY(mu_);
+    int64_t dropped_elements_ TF_GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
   };
 

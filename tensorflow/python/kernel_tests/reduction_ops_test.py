@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for reduction ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 import numbers
 
@@ -657,9 +653,16 @@ class ProdReductionTest(BaseReductionTest):
   def testInt32(self):
     # Numpy automatically upgrades the type of np.prod from int32 to int64, so
     # Numpy does not overflow an int32 np.prod while TensorFlow does. To avoid
-    # overflow, divide the incremental int32 array by 2.
-    for rank in range(1, _MAX_RANK + 1):
-      np_arr = self._makeIncremental((2,) * rank, dtypes.int32) / 2
+    # overflow, limit array values.
+    for rank in range(1, _MAX_RANK):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.int32) % 5 + 1
+      self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
+  def testInt64(self):
+    for rank in range(1, _MAX_RANK):
+      # Avoid overflow by limiting array values.
+      np_arr = self._makeIncremental((2,) * rank, dtypes.int64) % 11 + 1
       self._compareAllAxes(np_arr)
 
   @test_util.run_deprecated_v1
@@ -755,6 +758,7 @@ class MinReductionTest(test.TestCase):
         tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
+  @test_util.disable_xla("b/168718272")  # XLA handling of NaN is inconsistent
   def testSpecialValues(self):
     for dtype in [np.float32, np.float64]:
       for size in range(1, 4):
@@ -871,6 +875,7 @@ class MaxReductionTest(test.TestCase):
         tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
+  @test_util.disable_xla("b/168718272")  # XLA handling of NaN is inconsistent
   def testSpecialValues(self):
     for dtype in [np.float32, np.float64]:
       for size in range(1, 4):
@@ -1157,12 +1162,12 @@ class CountNonzeroReductionTest(test.TestCase):
   def testStringReduce1D(self):
     # Create a 1D array of strings
     x = np.asarray(["", "", "a", "", "", "b"])
-    self._compare(x, None, keepdims=False, zero=np.str(""))
-    self._compare(x, [], keepdims=False, zero=np.str(""))
-    self._compare(x, [0], keepdims=False, zero=np.str(""))
-    self._compare(x, None, keepdims=True, zero=np.str(""))
-    self._compare(x, [], keepdims=True, zero=np.str(""))
-    self._compare(x, [0], keepdims=True, zero=np.str(""))
+    self._compare(x, None, keepdims=False, zero=np.str_(""))
+    self._compare(x, [], keepdims=False, zero=np.str_(""))
+    self._compare(x, [0], keepdims=False, zero=np.str_(""))
+    self._compare(x, None, keepdims=True, zero=np.str_(""))
+    self._compare(x, [], keepdims=True, zero=np.str_(""))
+    self._compare(x, [0], keepdims=True, zero=np.str_(""))
 
   @test_util.run_deprecated_v1
   def testStringReduce2D(self):
@@ -1170,15 +1175,15 @@ class CountNonzeroReductionTest(test.TestCase):
     x = np.asarray([["", "", "a", "", "", "b"],
                     ["", "c", "", "d", "", ""],
                     ["e", "", "f", "", "", ""]])
-    self._compare(x, None, keepdims=False, zero=np.str(""))
-    self._compare(x, [], keepdims=False, zero=np.str(""))
-    self._compare(x, [0], keepdims=False, zero=np.str(""))
-    self._compare(x, [1], keepdims=False, zero=np.str(""))
-    self._compare(x, [0, 1], keepdims=False, zero=np.str(""))
-    self._compare(x, None, keepdims=True, zero=np.str(""))
-    self._compare(x, [], keepdims=True, zero=np.str(""))
-    self._compare(x, [0], keepdims=True, zero=np.str(""))
-    self._compare(x, [0, 1], keepdims=True, zero=np.str(""))
+    self._compare(x, None, keepdims=False, zero=np.str_(""))
+    self._compare(x, [], keepdims=False, zero=np.str_(""))
+    self._compare(x, [0], keepdims=False, zero=np.str_(""))
+    self._compare(x, [1], keepdims=False, zero=np.str_(""))
+    self._compare(x, [0, 1], keepdims=False, zero=np.str_(""))
+    self._compare(x, None, keepdims=True, zero=np.str_(""))
+    self._compare(x, [], keepdims=True, zero=np.str_(""))
+    self._compare(x, [0], keepdims=True, zero=np.str_(""))
+    self._compare(x, [0, 1], keepdims=True, zero=np.str_(""))
 
 
 if __name__ == "__main__":

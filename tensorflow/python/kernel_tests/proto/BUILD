@@ -11,7 +11,6 @@ package(
 )
 
 exports_files([
-    "LICENSE",
     "test_example.proto",
 ])
 

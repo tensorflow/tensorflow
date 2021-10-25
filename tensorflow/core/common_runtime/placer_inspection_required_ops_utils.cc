@@ -48,10 +48,6 @@ Status Set(const Node& node, bool value, bool* is_deep,
 }  // namespace
 
 PlacerInspectionRequiredOpChecker::PlacerInspectionRequiredOpChecker(
-    const Graph* graph)
-    : PlacerInspectionRequiredOpChecker(graph, &graph->flib_def()) {}
-
-PlacerInspectionRequiredOpChecker::PlacerInspectionRequiredOpChecker(
     const Graph* graph, const FunctionLibraryDefinition* flib_def)
     : graph_(*graph), flib_def_(*flib_def) {
   cache_.resize(graph_.num_node_ids());

@@ -53,6 +53,9 @@ class TpuProgramGroupInterface {
   // Logs program memory summary.
   virtual bool LogProgramMemorySummary() = 0;
 
+  // Program fingerprints.
+  virtual const std::string& fingerprint(int index) const = 0;
+
   // Logs TPU Compilation statistics.
   virtual Status LogCompilationStats(const TpuCompilationCacheKey& key,
                                      absl::Duration duration) = 0;

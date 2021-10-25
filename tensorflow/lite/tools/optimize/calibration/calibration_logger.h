@@ -16,8 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_LOGGER_H_
 
 #include <limits>
-#include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 
@@ -49,20 +49,22 @@ class MinMax {
 class Logger {
  public:
   // Log the value for tensor at |tensor_index| which has |tensor_values|
-  TfLiteStatus LogTensorValue(int tensor_index, const float* tensor_values,
-                              size_t tensor_size,
+  TfLiteStatus LogTensorValue(int subgraph_index, int tensor_index,
+                              const float* tensor_values, size_t tensor_size,
                               ErrorReporter* error_reporter) {
-    return tensor_id_to_stats_map_[tensor_index].Update(
-        tensor_values, tensor_size, error_reporter);
+    std::tuple<int, int> key{subgraph_index, tensor_index};
+    return tensor_id_to_stats_map_[key].Update(tensor_values, tensor_size,
+                                               error_reporter);
   }
 
   // Returns a map from tensor_index -> observed min max values.
-  const std::unordered_map<int, MinMax>& GetCalibrationValues() const {
+  const absl::flat_hash_map<std::tuple<int, int>, MinMax>&
+  GetCalibrationValues() const {
     return tensor_id_to_stats_map_;
   }
 
  private:
-  std::unordered_map<int, MinMax> tensor_id_to_stats_map_;
+  absl::flat_hash_map<std::tuple<int, int>, MinMax> tensor_id_to_stats_map_;
 };
 
 }  // namespace calibration

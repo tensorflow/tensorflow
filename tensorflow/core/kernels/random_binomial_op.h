@@ -47,8 +47,8 @@ namespace functor {
 // uniform random variates as counts * probs becomes large.
 template <typename Device, typename T, typename U>
 struct RandomBinomialFunctor {
-  void operator()(OpKernelContext* ctx, const Device& d, int64 num_batches,
-                  int64 samples_per_batch, int64 num_elements,
+  void operator()(OpKernelContext* ctx, const Device& d, int64_t num_batches,
+                  int64_t samples_per_batch, int64_t num_elements,
                   typename TTypes<T>::ConstFlat counts,
                   typename TTypes<T>::ConstFlat probs,
                   const random::PhiloxRandom& gen,

@@ -14,10 +14,6 @@
 # ======================================
 """Library of TPU helper functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import math
 from typing import List, Optional, Text, Tuple
@@ -89,16 +85,16 @@ class DeviceAssignment(object):
 
     if core_assignment.ndim != 3:
       raise ValueError("core_assignment must be a rank 3 numpy array, "
-                       "got shape {}".format(core_assignment.shape))
+                       f"got shape {core_assignment.shape}")
 
     self._num_replicas = core_assignment.shape[0]
     self._num_cores_per_replica = core_assignment.shape[1]
 
     if core_assignment.shape[-1] != topology.mesh_rank:
       raise ValueError(
-          "minor dimension of core_assignment must have size equal to topology "
-          "rank ({}), got shape {}".format(topology.mesh_rank,
-                                           core_assignment.shape))
+          "core_assignment.shape[-1] must have size equal to topology "
+          f"rank ({topology.mesh_rank}), got "
+          f"core_assignment.shape={core_assignment.shape}")
 
     self._core_assignment = core_assignment
     self._task_and_cores_to_replicas = _compute_task_and_cores_to_replicas(
@@ -386,8 +382,8 @@ def device_assignment(
     topology = Topology(serialized=topology)
 
   if not isinstance(topology, Topology):
-    raise ValueError("`topology` is not a Topology object; got {}".format(
-        type(topology)))
+    raise ValueError(
+        f"`topology` is not a Topology object; got {type(topology)}")
 
   topology_rank = len(topology.mesh_shape)
   mesh_shape = topology.mesh_shape
@@ -402,11 +398,15 @@ def device_assignment(
     computation_stride = np.asarray(computation_stride, dtype=np.int32)
 
   if computation_shape.shape != (topology_rank,):
-    raise ValueError("computation_shape must have shape [{}]; got {}".format(
-        topology_rank, computation_shape.shape))
+    raise ValueError(
+        f"computation_shape must have shape [{topology_rank}]; "
+        f"got {computation_shape.shape}"
+    )
   if computation_stride.shape != (topology_rank,):
-    raise ValueError("computation_stride must have shape [{}]; got {}".format(
-        topology_rank, computation_stride.shape))
+    raise ValueError(
+        f"computation_stride must have shape [{topology_rank}]; "
+        f"got {computation_stride.shape}"
+    )
 
   if any(computation_shape < 1):
     raise ValueError(
@@ -475,13 +475,17 @@ def device_assignment(
 
     enable_3d_tiling = (
         topology_rank == 4 and
-        computation_shape[-1] == 2  # Only handle 3D case.
+        computation_shape[-1] == mesh_shape[-1]  # Only handle 3D case.
         and np.prod(computation_stride) == 1  # Ensure no stride.
         and num_replicas == max_replicas)  # Full replication.
 
     if device_order_mode != DeviceOrderMode.AUTO:
       if device_order_mode == DeviceOrderMode.RING and not enable_3d_tiling:
-        raise ValueError("cannot assign ring order in the given topology")
+        raise ValueError(
+            "device_order_mode=DeviceOrderMode.RING is not compatible with the "
+            "3D tiling current topology.  Try setting "
+            "device_order_mode=DeviceOrderMode.AUTO"
+        )
       enable_3d_tiling = device_order_mode == DeviceOrderMode.RING
 
     if enable_3d_tiling:
@@ -495,11 +499,11 @@ def device_assignment(
         outer_x, outer_y, outer_z = outer_ring[replica]
         per_replica_assignment = []
         for index in xrange(np.prod(computation_shape)):
-          inner_x, inner_y, inner_z = inner_ring[index // 2]
+          inner_x, inner_y, inner_z = inner_ring[index // mesh_shape[-1]]
           px = outer_x * computation_shape[0] + inner_x
           py = outer_y * computation_shape[1] + inner_y
           pz = outer_z * computation_shape[2] + inner_z
-          pi = index % 2
+          pi = index % mesh_shape[-1]
           per_replica_assignment.append([px, py, pz, pi])
         assignment.append(per_replica_assignment)
     else:

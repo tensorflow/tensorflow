@@ -29,10 +29,6 @@ For more information, see the
 and the [tf.function guide](https://www.tensorflow.org/guide/function#autograph_transformations).
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # TODO(mdan): Bring only the relevant symbols to the top level.
 from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils

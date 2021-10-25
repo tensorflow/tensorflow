@@ -511,7 +511,7 @@ run_test_with_bazel() {
 
   # Figure out how many concurrent tests we can run and do run the tests.
   BAZEL_PARALLEL_TEST_FLAGS=""
-  if [[ $CONTAINER_TYPE == "gpu" ]]; then
+  if [[ $CONTAINER_TYPE == "gpu" ]] || [[ $CONTAINER_TYPE == "rocm" ]]; then
     # Number of test threads is the number of GPU cards available.
     if [[ $OS_TYPE == "macos" ]]; then
       BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
@@ -626,6 +626,18 @@ if [[ ${CONTAINER_TYPE} == "gpu" ]]; then
   fi
 fi
 
+if [[ ${CONTAINER_TYPE} == "rocm" ]]; then
+  GPU_FLAG="--rocm"
+  if ! [[ $PROJECT_NAME == *"rocm"* ]]; then
+    # Only update PROJECT_NAME if TF_PROJECT_NAME is not set
+    if [[ -z "${TF_PROJECT_NAME}" ]]; then
+      echo "WARNING: ROCM is specified but requested project name (PROJECT_NAME=${PROJECT_NAME}) \
+      does not include 'rocm'. Appending '_rocm' to the project name."
+      PROJECT_NAME="${PROJECT_NAME}_rocm"
+    fi
+  fi
+fi
+
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${PROJECT_NAME} || die "build_pip_package FAILED"
 
 PY_DOTLESS_MAJOR_MINOR_VER=$(echo $PY_MAJOR_MINOR_VER | tr -d '.')
@@ -687,7 +699,8 @@ fi
 run_all_tests
 
 
-if [[ ${OS_TYPE} == "ubuntu" ]]; then
+if [[ ${OS_TYPE} == "ubuntu" ]] && \
+   ! [[ ${CONTAINER_TYPE} == "rocm" ]] ; then
   # Avoid Python3.6 abnormality by installing auditwheel here.
   set +e
   pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel

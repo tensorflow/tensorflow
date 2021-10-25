@@ -69,6 +69,10 @@ tf_module {
     argspec: "args=[\'device_type\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "reset_memory_stats"
+    argspec: "args=[\'device\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "set_device_policy"
     argspec: "args=[\'device_policy\'], varargs=None, keywords=None, defaults=None"
   }

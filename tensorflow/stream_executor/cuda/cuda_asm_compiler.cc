@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 
 namespace stream_executor {
@@ -34,14 +35,35 @@ namespace stream_executor {
 
 port::StatusOr<std::vector<uint8>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images) {
+  const bool linking_supported = [] {
+    if (CUDA_VERSION < 11030) {
+      return true;
+    }
+    auto version_or_status = gpu::Diagnostician::FindKernelDriverVersion();
+    if (!version_or_status.ok()) {
+      LOG(WARNING) << "Couldn't read CUDA driver version.";
+      return false;
+    }
+    return std::get<0>(*version_or_status) >= 465;
+  }();
+
+  if (!linking_supported) {
+    return tensorflow::errors::Unimplemented("Linking is unsupported");
+  }
+
   gpu::ScopedActivateContext activation(context);
 
   CUlinkState link_state;
   RETURN_IF_CUDA_ERROR(cuLinkCreate(0, nullptr, nullptr, &link_state));
   for (auto& image : images) {
-    RETURN_IF_CUDA_ERROR(cuLinkAddData(
-        link_state, CU_JIT_INPUT_CUBIN, static_cast<void*>(image.bytes.data()),
-        image.bytes.size(), "", 0, nullptr, nullptr));
+    auto status = cuLinkAddData(link_state, CU_JIT_INPUT_CUBIN,
+                                static_cast<void*>(image.bytes.data()),
+                                image.bytes.size(), "", 0, nullptr, nullptr);
+    if (status != CUDA_SUCCESS) {
+      LOG(ERROR) << "cuLinkAddData fails. This is usually caused by stale "
+                    "driver version.";
+    }
+    RETURN_IF_CUDA_ERROR(status);
   }
   void* cubin_out;
   size_t cubin_size;

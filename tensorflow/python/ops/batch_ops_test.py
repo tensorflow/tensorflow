@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Tests for the currently experimental in-graph batch ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 import time
 import numpy as np
@@ -309,7 +305,7 @@ class BatchOpsTest(test.TestCase):
                     for _ in range(num_calls)]
     results = []
     for p in placeholders:
-      (result,) = f(p)
+      result = f(p)
       results.append(result)
     inputs = [[float(i)] for i in range(num_calls)]
     expected = [[float(i + 2)] for i in range(num_calls)]

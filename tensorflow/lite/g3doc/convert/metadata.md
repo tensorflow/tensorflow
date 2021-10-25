@@ -54,9 +54,14 @@ additional tooling:
 pip install tflite-support
 ```
 
-TensorFlow Lite metadata tooling supports both Python 2 and Python 3.
+TensorFlow Lite metadata tooling supports Python 3.
 
-## Adding metadata
+## Adding metadata using Flatbuffers Python API
+
+Note: to create metadata for the popular ML tasks supported in
+[TensorFlow Lite Task Library](../inference_with_metadata/task_library/overview),
+use the high-level API in the
+[TensorFlow Lite Metadata Writer Library](metadata_writer_tutorial.ipynb).
 
 There are three parts to the model metadata in the
 [schema](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs):
@@ -104,7 +109,7 @@ Python library. The new TensorFlow Lite model becomes a zip file that contains
 both the model and the associated files. It can be unpacked with common zip
 tools. This new model format keeps using the same file extension, `.tflite`. It
 is compatible with existing TFLite framework and Interpreter. See
-[Pack mtadata and associated files into the model](#pack-metadata-and-associated-files-into-the-model)
+[Pack metadata and associated files into the model](#pack-metadata-and-associated-files-into-the-model)
 for more details.
 
 The associated file information can be recorded in the metadata. Depending on
@@ -192,6 +197,10 @@ When processing image data for uint8 models, normalization and quantization are
 sometimes skipped. It is fine to do so when the pixel values are in the range of
 [0, 255]. But in general, you should always process the data according to the
 normalization and quantization parameters when applicable.
+
+[TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/overview)
+can handle normalization for you if you set up `NormalizationOptions` in
+metadata. Quantization and dequantization processing is always encapluated.
 
 ### Examples
 
@@ -397,7 +406,7 @@ added after version `1.0.0`.
 
 Semantic versioning guarantees the compatibility if following the rules, but it
 does not imply the true incompatibility. When bumping up the MAJOR number, it
-does not necessarily mean the backwards compatibility is broken. Therefore, we
+does not necessarily mean the backward compatibility is broken. Therefore, we
 use the
 [Flatbuffers file identification](https://google.github.io/flatbuffers/md__schemas.html),
 [file_identifier](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L61),
@@ -435,7 +444,7 @@ Flatbuffers library.
 
 To use the Metadata Extractor library in your Android app, we recommend using
 the
-[TensorFlow Lite Metadata AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-metadata).
+[TensorFlow Lite Metadata AAR hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-metadata).
 It contains the `MetadataExtractor` class, as well as the FlatBuffers Java
 bindings for the
 [metadata schema](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs)
@@ -449,6 +458,9 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite-metadata:0.1.0'
 }
 ```
+
+To use nightly snapshots, make sure that you have added
+[Sonatype snapshot repository](../guide/build_android#use_nightly_snapshots).
 
 You can initialize a `MetadataExtractor` object with a `ByteBuffer` that points
 to the model:
@@ -464,7 +476,7 @@ identifier of the model metadata does not match that of the metadata parser. See
 
 With matching file identifiers, the metadata extractor will successfully read
 metadata generated from all past and future schema due to the Flatbuffers'
-forwards and backwards compatibility mechanism. However, fields from future
+forwards and backward compatibility mechanism. However, fields from future
 schemas cannot be extracted by older metadata extractors. The
 [minimum necessary parser version](#the-minimum-necessary-metadata-parser-version)
 of the metadata indicates the minimum version of metadata parser that can read

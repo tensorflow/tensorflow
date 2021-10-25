@@ -240,6 +240,10 @@ StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
 // logical core.
 std::string GetDeviceAliasForLogicalCore(int core_index);
 
+// Returns true if cluster contains model parallelism based on
+// `num_cores_per_replica_attribute`. Otherwise returns false.
+bool HasModelParallelism(mlir::tf_device::ClusterOp cluster);
+
 // Parses TPU compilation and execution devices from a TPU cluster and returns
 // the host device for the head and tail computations. If the TPU computation is
 // replicated, kTPUReplicatedHost is returned instead.

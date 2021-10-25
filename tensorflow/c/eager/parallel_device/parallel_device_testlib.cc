@@ -225,18 +225,23 @@ void BasicTestsForTwoDevices(TFE_Context* context, const char* first_device,
       variable_deleter);
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
-  // Assign an initial value to the variable, implicitly mirroring it to each
-  // component device.
+  // Assign an initial value to the variable, mirroring it to each component
+  // device.
   {
-    TensorHandlePtr initial_value = FloatTensorHandle(20., status.get());
+    TensorHandlePtr initial_value_cpu = FloatTensorHandle(20., status.get());
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-
+    std::array<TFE_TensorHandle*, 2> components{initial_value_cpu.get(),
+                                                initial_value_cpu.get()};
+    TensorHandlePtr initial_value =
+        CreatePerDeviceValues(context, components, device_name, status.get());
     variable->Assign(context, initial_value.get(), status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   }
 
   // Read from the variable and verify that we have a parallel tensor.
   {
     TensorHandlePtr read = variable->Read(context, status.get());
+    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
     std::array<TensorHandlePtr, 2> components;
     ExtractPerDeviceValues(context, read.get(), &components, status.get());
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());

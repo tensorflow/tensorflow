@@ -34,9 +34,8 @@ class TestDriver : public TfDriver {
                           const string& values) {
     tensorflow::Tensor t = {
         type,
-        tensorflow::TensorShape{tensorflow::gtl::ArraySlice<tensorflow::int64>{
-            reinterpret_cast<const tensorflow::int64*>(shape.data()),
-            shape.size()}}};
+        tensorflow::TensorShape{tensorflow::gtl::ArraySlice<int64_t>{
+            reinterpret_cast<const int64_t*>(shape.data()), shape.size()}}};
     SetInput(values, &t);
     return ReadOutput(t);
   }

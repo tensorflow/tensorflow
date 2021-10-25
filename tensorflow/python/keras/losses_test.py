@@ -88,6 +88,17 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
         backend.eval(output_from_softmax),
         atol=1e-5)
 
+    axis = 0
+    output_from_logit_axis = losses.categorical_crossentropy(
+        target, logits, from_logits=True, axis=axis)
+    output_from_softmax_axis = losses.categorical_crossentropy(
+        target, softmax_output, axis=axis)
+
+    np.testing.assert_allclose(
+        backend.eval(output_from_logit_axis),
+        backend.eval(output_from_softmax_axis),
+        atol=1e-5)
+
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
     t = backend.placeholder()
@@ -164,6 +175,17 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
     np.testing.assert_allclose(
         backend.eval(output_from_logit),
         backend.eval(output_from_sigmoid),
+        atol=1e-5)
+
+    axis = 0
+    output_from_logit_axis = losses.binary_crossentropy(
+        target, logits, from_logits=True, axis=axis)
+    output_from_sigmoid_axis = losses.binary_crossentropy(
+        target, sigmoid_output, axis=axis)
+
+    np.testing.assert_allclose(
+        backend.eval(output_from_logit_axis),
+        backend.eval(output_from_sigmoid_axis),
         atol=1e-5)
 
   def test_get_bce(self):
@@ -1165,6 +1187,27 @@ class SparseCategoricalCrossentropyTest(test.TestCase):
     # Test with logits.
     logits = ragged_factory_ops.constant([[[8., 1., 1.], [0., 9., 1.]],
                                           [[2., 3., 5.]]])
+    cce_obj = losses.SparseCategoricalCrossentropy(from_logits=True)
+    # batch losses [[0.0018, 0.0004], [0.1698]]
+    loss = cce_obj(y_true, logits, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 0.1934, 3)
+
+  def test_ragged_tensors_rank_1(self):
+    cce_obj = losses.SparseCategoricalCrossentropy()
+    y_true = ragged_factory_ops.constant([[0, 1], [2]])
+    y_pred = ragged_factory_ops.constant(
+        [[[.9, .05, .05], [.5, .89, .6]], [[.05, .01, .94]]],
+        ragged_rank=1,
+        dtype=dtypes.float32)
+    # batch losses [[0.1054, 0.8047], [0.0619]]
+    sample_weight = constant_op.constant([[1.2], [3.4]], shape=(2, 1))
+    loss = cce_obj(y_true, y_pred, sample_weight=sample_weight)
+    # sum([0.1054, 0.8047, 0.0619]) / 3
+    self.assertAlmostEqual(self.evaluate(loss), 0.4341, 3)
+
+    # Test with logits.
+    logits = ragged_factory_ops.constant(
+        [[[8., 1., 1.], [0., 9., 1.]], [[2., 3., 5.]]], ragged_rank=1)
     cce_obj = losses.SparseCategoricalCrossentropy(from_logits=True)
     # batch losses [[0.0018, 0.0004], [0.1698]]
     loss = cce_obj(y_true, logits, sample_weight=sample_weight)

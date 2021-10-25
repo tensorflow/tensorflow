@@ -16,36 +16,13 @@
 """Utilities related to disk I/O."""
 
 import os
-import sys
-
-if sys.version_info >= (3, 6):
-
-  def _path_to_string(path):
-    if isinstance(path, os.PathLike):
-      return os.fspath(path)
-    return path
-elif sys.version_info >= (3, 4):
-
-  def _path_to_string(path):
-    import pathlib
-    if isinstance(path, pathlib.Path):
-      return str(path)
-    return path
-else:
-
-  def _path_to_string(path):
-    return path
 
 
 def path_to_string(path):
   """Convert `PathLike` objects to their string representation.
 
   If given a non-string typed path object, converts it to its string
-  representation. Depending on the python version used, this function
-  can handle the following arguments:
-  python >= 3.6: Everything supporting the fs path protocol
-    https://www.python.org/dev/peps/pep-0519
-  python >= 3.4: Only `pathlib.Path` objects
+  representation.
 
   If the object passed to `path` is not among the above, then it is
   returned unchanged. This allows e.g. passthrough of file objects
@@ -57,7 +34,9 @@ def path_to_string(path):
   Returns:
     A string representation of the path argument, if Python support exists.
   """
-  return _path_to_string(path)
+  if isinstance(path, os.PathLike):
+    return os.fspath(path)
+  return path
 
 
 def ask_to_proceed_with_overwrite(filepath):

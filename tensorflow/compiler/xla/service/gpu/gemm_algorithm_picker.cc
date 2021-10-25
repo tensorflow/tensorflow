@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -48,8 +49,8 @@ static tensorflow::mutex autotune_cache_mu(tensorflow::LINKER_INITIALIZED);
 static auto& autotune_cache TF_GUARDED_BY(autotune_cache_mu) =
     *new absl::flat_hash_map<GemmCacheKey,
                              absl::optional<se::blas::AlgorithmType>>();
-static int64 cache_hits TF_GUARDED_BY(autotune_cache_mu) = 0;
-static int64 cache_misses TF_GUARDED_BY(autotune_cache_mu) = 0;
+static int64_t cache_hits TF_GUARDED_BY(autotune_cache_mu) = 0;
+static int64_t cache_misses TF_GUARDED_BY(autotune_cache_mu) = 0;
 
 // Experimentally tries to pick the best algorithm for the given gemm.
 //
@@ -65,15 +66,23 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
   }
 
   const HloModuleConfig& hlo_module_config = gemm->GetModule()->config();
-  const bool init_cublas_data =
-      hlo_module_config.debug_options().xla_gpu_autotune_level() > 1;
+  const int32_t cublas_autotune_level =
+      gemm->GetModule()->config().debug_options().xla_gpu_autotune_level();
+  const bool init_cublas_data = cublas_autotune_level >= 2;
+  const bool reinit_cublas_data = cublas_autotune_level >= 3;
+  const bool check_cublas = cublas_autotune_level >= 4;
+
+  const int64_t redzone_size =
+      check_cublas ? se::RedzoneAllocator::kDefaultRedzoneSize : 0;
   se::RedzoneAllocator input_output_allocator(
-      stream, allocator, PtxOptsFromConfig(hlo_module_config),
-      /*memory_limit=*/std::numeric_limits<int64>::max());
+      stream, allocator,
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+      /*redzone_size=*/redzone_size);
 
   BufferComparator comparator(gemm->shape(), hlo_module_config);
 
-  int64 rng_state = 0;
+  int64_t rng_state = 0;
   auto get_initialized_buffer =
       [&](const HloInstruction* op) -> StatusOr<se::DeviceMemoryBase> {
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
@@ -102,10 +111,6 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
 
   GemmBackendConfig backend_config =
       gemm->backend_config<GemmBackendConfig>().ValueOrDie();
-  const int32 cublas_autotune_level =
-      gemm->GetModule()->config().debug_options().xla_gpu_autotune_level();
-  const bool reinit_cublas_data = cublas_autotune_level > 2;
-  const bool check_cublas = cublas_autotune_level > 3;
 
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
 
@@ -121,7 +126,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     // Make sure the output buffer always has the same value if we use
     // the bias parameter.
     if (reinit_cublas_data && backend_config.beta() != 0) {
-      int64 rng_state = 0;
+      int64_t rng_state = 0;
       InitializeBuffer(stream, gemm->shape().element_type(), &rng_state,
                        output_buffer);
     }
@@ -131,12 +136,11 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     // for all algorithms if we're targeting < sm_50.  But because we pass a
     // non-null ProfileResult, DoGemmWithAlgorithm should always return true,
     // and the actual success-ness is returned in ProfileResult::is_valid.
-    CHECK(RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
-                  /*implements_whole_instruction=*/true,
-                  /*profile_index=*/-1,
-                  /*profiler=*/nullptr,
-                  /*profile_result=*/&profile_result, algorithm)
-              .ok());
+    Status st = RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
+                        /*implements_whole_instruction=*/true,
+                        /*profile_index=*/-1,
+                        /*profile_result=*/&profile_result, algorithm);
+    CHECK(st.ok()) << st.ToString();
 
     if (!profile_result.is_valid()) {
       // Unsupported algorithm.
@@ -201,31 +205,15 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     tensorflow::Logger::GetSingleton()->LogProto(log);
   }
 
-  // Choose fastest correct GEMM, but allow for incorrect results (since the
-  // reference result is chosen arbitrary).
-  auto has_failure = [](const AutotuneResult& r) {
-    return r.has_failure() &&
-           r.failure().kind() != AutotuneResult::WRONG_RESULT;
-  };
-
-  auto result_comparison_key = [&has_failure](const AutotuneResult& r) {
-    return std::make_tuple(
-        has_failure(r),
-        tensorflow::proto_utils::FromDurationProto(r.run_time()));
-  };
-  const auto& best_result = absl::c_min_element(
-      profile_results,
-      [&](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-        return result_comparison_key(lhs) < result_comparison_key(rhs);
-      });
-
-  if (best_result != profile_results.end() && !has_failure(*best_result)) {
-    return {best_result->gemm().algorithm()};
+  StatusOr<AutotuneResult> autotune_result =
+      PickBestResult(profile_results, *gemm);
+  if (!autotune_result.ok()) {
+    LOG(WARNING) << "Failed to find best cuBLAS algorithm, GEMM performance "
+                    "might be suboptimal: "
+                 << autotune_result.status();
+    return {absl::nullopt};
   }
-
-  VLOG(1) << "Unable to autotune cuBLAS gemm on stream " << stream
-          << " none of the " << algorithms.size() << " ran successfully";
-  return {absl::nullopt};
+  return {autotune_result->gemm().algorithm()};
 }
 
 static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
@@ -243,7 +231,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 
   tensorflow::mutex_lock cache_lock(autotune_cache_mu);
   auto it = autotune_cache.find(key);
-  int64 autotuning_requests = cache_hits + cache_misses;
+  int64_t autotuning_requests = cache_hits + cache_misses;
   if (autotuning_requests && autotuning_requests % 10 == 0) {
     VLOG(2) << "Autotuning cache hits/(hits + misses): " << cache_hits << "/"
             << autotuning_requests;
@@ -259,16 +247,18 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   cache_misses++;
   VLOG(4) << "Autotuning cache miss";
 
-  int64 batch_size = gemm_config.batch_size();
-  absl::optional<se::blas::AlgorithmType> result;
-  if (batch_size != 1) {
-    // TODO(b/112111608): Implement auto tune for batched gemm.
-    VLOG(2) << "Batch size is non-singular, using generic algorithm";
-    result = absl::nullopt;
-  } else {
-    TF_ASSIGN_OR_RETURN(result,
-                        DoUncachedGemmAutotune(instr, stream, allocator));
+  // Make sure any previous activity on this executor is done. We don't want
+  // other work still running on the GPU to interfere with autotuning.
+  if (!stream->parent()->SynchronizeAllActivity()) {
+    auto options = HloPrintOptions::Canonical();
+    options.set_print_backend_config(true);
+    return InternalError(
+        "Failed to synchronize GPU for autotuning gemm instruction: %s",
+        instr->ToString(options));
   }
+
+  TF_ASSIGN_OR_RETURN(absl::optional<se::blas::AlgorithmType> result,
+                      DoUncachedGemmAutotune(instr, stream, allocator));
 
   CHECK(autotune_cache.emplace(key, result).second);
   return result;
@@ -293,6 +283,7 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
   // a different API is used, which does not require specifying an algorithm.
   GemmBackendConfig updated_config = gemm_config;
   if (gemm_algorithm) {
+    VLOG(4) << "GEMM autotuning picked algorithm = " << *gemm_algorithm;
     updated_config.set_selected_algorithm(*gemm_algorithm);
   }
   TF_RETURN_IF_ERROR(instr->set_backend_config(updated_config));

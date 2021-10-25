@@ -68,9 +68,16 @@ class TraceMeWrapper {
     name->push_back('#');
     for (const auto& kv : kwargs) {
       absl::StrAppend(name, std::string(pybind11::str(kv.first)), "=",
-                      std::string(pybind11::str(kv.second)), ",");
+                      EncodePyObject(kv.second), ",");
     }
     name->back() = '#';
+  }
+
+  static std::string EncodePyObject(const pybind11::handle& handle) {
+    if (pybind11::isinstance<pybind11::bool_>(handle)) {
+      return handle.cast<bool>() ? "1" : "0";
+    }
+    return std::string(pybind11::str(handle));
   }
 
   tensorflow::profiler::TraceMe traceme_;

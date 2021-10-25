@@ -34,6 +34,7 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
@@ -264,7 +265,8 @@ class CallbackCountsTest(keras_parameterized.TestCase):
 
 class KerasCallbacksTest(keras_parameterized.TestCase):
 
-  def _get_model(self, input_shape=None):
+  def _get_model(self, input_shape=None, additional_metrics=None):
+    additional_metrics = additional_metrics or []
     layers = [
         keras.layers.Dense(3, activation='relu'),
         keras.layers.Dense(2, activation='softmax')
@@ -273,7 +275,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        metrics=[keras.metrics.CategoricalAccuracy(name='my_acc')],
+        metrics=[keras.metrics.CategoricalAccuracy(name='my_acc')] +
+        additional_metrics,
         run_eagerly=testing_utils.should_run_eagerly())
     return model
 
@@ -290,6 +293,45 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(dataset, epochs=2, steps_per_epoch=10)
       self.assertRegex(printed.contents(), expected_log)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_progbar_logging_with_stateful_metrics(self):
+
+    class AddAllOnes(keras.metrics.Metric):
+      """A simple metric that adds all the one's in `y_true`."""
+
+      def __init__(self, name='add_all_ones', **kwargs):
+        super(AddAllOnes, self).__init__(name=name, **kwargs)
+        self.total = self.add_weight(name='total', initializer='zeros')
+
+      def update_state(self, y_true, y_pred, sample_weight=None):
+        self.total.assign_add(
+            math_ops.cast(math_ops.reduce_sum(y_true), dtype=dtypes.float32))
+
+      def result(self):
+        return self.total
+
+    x_train = np.array([[0, 1, 0, 1, 0, 1, 0, 1]] * 8).astype(float)
+    y_train = np.array([[1, 0], [0, 0], [1, 1], [1, 0], [0, 1], [1, 0], [1, 0],
+                        [0, 0]])
+    # There are 7 ones in total in `y_train` after two batches.
+    expected_log = r'(.*- loss:.*- my_acc:.*- add_all_ones: 7.0000)+'
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model = self._get_model(
+          input_shape=(8,), additional_metrics=[AddAllOnes()])
+      model.fit(x_train, y_train, verbose=1, batch_size=4, shuffle=False)
+      self.assertRegex(printed.contents(), expected_log)
+
+    # When not executing eagerly, `model.evaluate` does not have the metrics
+    # results printed.
+    if context.executing_eagerly():
+      with self.captureWritesToStream(sys.stdout) as printed:
+        model = self._get_model(
+            input_shape=(8,), additional_metrics=[AddAllOnes()])
+        model.evaluate(x_train, y_train, verbose=1, batch_size=4)
+        self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_all_keras_modes
   def test_trivial_backup_restore(self):

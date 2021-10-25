@@ -65,11 +65,11 @@ StatusOr<bool> SliceConcatForwarding(HloInstruction* slice) {
     return false;
   }
 
-  int64 concat_dim = concat->concatenate_dimension();
+  int64_t concat_dim = concat->concatenate_dimension();
 
   std::vector<HloInstruction*> new_operands;
-  int64 size_so_far = 0;
-  int64 slice_size = slice->shape().dimensions(concat_dim);
+  int64_t size_so_far = 0;
+  int64_t slice_size = slice->shape().dimensions(concat_dim);
   if (slice_size != slice->slice_limits(0) - slice->slice_starts(0)) {
     return false;
   }

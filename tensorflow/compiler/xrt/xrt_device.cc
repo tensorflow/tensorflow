@@ -19,11 +19,12 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/jit/xla_device.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 namespace {
@@ -61,7 +62,7 @@ class ResourceMgrArena {
 
 /* static */ xla::StatusOr<RefPtr<XRTCompilationCache>>
 XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
-    OpKernelContext* ctx, int64 max_number_of_entries) {
+    OpKernelContext* ctx, int64_t max_number_of_entries) {
   ResourceMgr* rm;
   TF_RETURN_IF_ERROR(GetResourceManager(ctx, &rm));
   return tensorflow::GetOrCreateCompilationCache(rm, max_number_of_entries);
@@ -76,7 +77,8 @@ XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
                             " on device with ordinal ",
                             metadata->device_ordinal());
   }
-  scoped_ref->Acquire(metadata->client(), device_ordinal);
+  scoped_ref->Acquire(metadata->client(), device_ordinal,
+                      metadata->platform()->Name(), ctx);
   return Status::OK();
 }
 
@@ -84,8 +86,44 @@ XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
     OpKernelContext* ctx, ScopedRef* scoped_ref) {
   const XlaDevice::Metadata* metadata;
   TF_RETURN_IF_ERROR(XlaDevice::GetMetadata(ctx, &metadata));
-  scoped_ref->Acquire(metadata->client(), metadata->device_ordinal());
+  scoped_ref->Acquire(metadata->client(), metadata->device_ordinal(),
+                      metadata->platform()->Name(), ctx);
   return Status::OK();
 }
 
+/* static */ tensorflow::mutex
+    XRTGenericDeviceAccessor::ScopedRef::cuda_allocator_mutex_(
+        tensorflow::LINKER_INITIALIZED);
+/* static */ absl::flat_hash_map<stream_executor::Stream*,
+                                 std::unique_ptr<se::TfAllocatorAdapter>>*
+    XRTGenericDeviceAccessor::ScopedRef::cuda_allocators_ =
+        new absl::flat_hash_map<stream_executor::Stream*,
+                                std::unique_ptr<se::TfAllocatorAdapter>>;
+
+void XRTGenericDeviceAccessor::ScopedRef::Acquire(
+    xla::LocalClient* client, int ordinal, const std::string& platform_name,
+    OpKernelContext* ctx) {
+  client_ = client;
+  ordinal_ = ordinal;
+  allocator_ = client_->mutable_backend()->memory_allocator();
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+  if (platform_name == "CUDA") {
+    // Use BfcAllocator for the CUDA.
+    auto stream = ctx->op_device_context()->stream();
+    if (!cuda_allocators_->count(stream)) {
+      mutex_lock lock(cuda_allocator_mutex_);
+      if (!cuda_allocators_->count(stream)) {
+        GPUOptions gpu_options;
+        Allocator* raw_allocator =
+            GPUProcessState::singleton()->GetGPUAllocator(TfDeviceId(ordinal_));
+        (*cuda_allocators_)[stream] =
+            std::make_unique<se::TfAllocatorAdapter>(raw_allocator, stream);
+      }
+    }
+    allocator_ = static_cast<se::DeviceMemoryAllocator*>(
+        (*cuda_allocators_)[stream].get());
+  }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+}
 }  // namespace tensorflow

@@ -55,25 +55,26 @@ bool AllToAllDecomposer::InstructionMatchesPattern(
 StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
     HloInstruction* instruction) {
   auto* all_to_all = Cast<HloAllToAllInstruction>(instruction);
-  int64 split_dim = *all_to_all->split_dimension();
-  int64 all_to_all_group_size =
+  int64_t split_dim = *all_to_all->split_dimension();
+  int64_t all_to_all_group_size =
       all_to_all->replica_groups().empty()
           ? instruction->parent()->parent()->config().replica_count()
           : all_to_all->replica_groups()[0].replica_ids_size();
-  int64 split_size =
+  int64_t split_size =
       all_to_all->shape().dimensions(split_dim) / all_to_all_group_size;
   if (!decompose_to_tuple_) {
     Shape new_all_to_all_shape;
     new_all_to_all_shape.set_element_type(
         instruction->operand(0)->shape().element_type());
-    for (int64 i = 0; i < instruction->shape().rank(); ++i) {
+    for (int64_t i = 0; i < instruction->shape().rank(); ++i) {
       if (i != split_dim) {
         new_all_to_all_shape.add_dimensions(all_to_all->shape().dimensions(i));
         continue;
       }
       new_all_to_all_shape.add_dimensions(all_to_all_group_size);
       new_all_to_all_shape.add_dimensions(split_size);
-      for (int64 j = all_to_all->shape().rank() + 1; j < min_array_rank_; ++j) {
+      for (int64_t j = all_to_all->shape().rank() + 1; j < min_array_rank_;
+           ++j) {
         new_all_to_all_shape.add_dimensions(1);
       }
     }
@@ -101,7 +102,7 @@ StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
   std::vector<HloInstruction*> slices;
   slices.reserve(all_to_all_group_size);
   HloInstruction* operand = all_to_all->mutable_operand(0);
-  for (int64 i = 0; i < all_to_all_group_size; ++i) {
+  for (int64_t i = 0; i < all_to_all_group_size; ++i) {
     slices.push_back(
         all_to_all->parent()->AddInstruction(HloInstruction::CreateSlice(
             slice_shape, operand, slice_starts, slice_limits, slice_strides)));
@@ -117,7 +118,7 @@ StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
           all_to_all->channel_id(), absl::nullopt));
   std::vector<HloInstruction*> gtes;
   gtes.reserve(all_to_all_group_size);
-  for (int64 i = 0; i < all_to_all_group_size; ++i) {
+  for (int64_t i = 0; i < all_to_all_group_size; ++i) {
     gtes.push_back(all_to_all->parent()->AddInstruction(
         HloInstruction::CreateGetTupleElement(slice_shape, new_all_to_all, i)));
     all_to_all->SetupDerivedInstruction(new_all_to_all);

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -115,6 +116,12 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
     // out.size()?  Perhaps p * nnz ?
     GpuLaunchConfig config = GetGpuLaunchConfig(p * nnz, d);
 
+    if (OpDeterminismRequired()) {
+      return errors::Unimplemented(
+          "A deterministic GPU implementation of "
+          "SparseTensorDenseMatmulOp is not currently available.");
+    }
+
     TF_CHECK_OK(GpuLaunchKernel(
         SparseTensorDenseMatMulKernel<T, Tsum, Tindices, ADJ_A, ADJ_B>,
         config.block_count, config.thread_per_block, 0, d.stream(), nnz, m,
@@ -148,12 +155,8 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
 DEFINE_ALL_INDEX_TYPES(Eigen::half);
 DEFINE_ALL_INDEX_TYPES(float);
 DEFINE_ALL_INDEX_TYPES(double);
-
-// ROCm's GpuAtomicAdd doesn't support std::complex yet.
-#ifndef TENSORFLOW_USE_ROCM
 DEFINE_ALL_INDEX_TYPES(complex64);
 DEFINE_ALL_INDEX_TYPES(complex128);
-#endif
 
 #undef DEFINE_ALL_INDEX_TYPES
 #undef DEFINE

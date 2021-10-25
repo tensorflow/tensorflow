@@ -13,10 +13,6 @@
 # limitations under the License.
 # ===================================================================
 """TPU Feature Column Library."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 from tensorflow.python.feature_column import feature_column as fc
@@ -378,6 +374,7 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
     # are not supported on TPU. They are solely for matching the signature of
     # __new__ of parent class fc._EmbeddingColumn.
     del bypass_scope_validation
+    # pylint: disable=redundant-keyword-arg
     return fc._EmbeddingColumn.__new__(
         cls,
         categorical_column,

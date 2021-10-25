@@ -122,10 +122,10 @@ TEST(AlgorithmTest, ReversePostOrder) {
 }
 
 TEST(AlgorithmTest, ReversePostOrderStable) {
-  int64 run_count = 100;
+  int64_t run_count = 100;
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
-  for (int64 i = 0; i < run_count; ++i) {
+  for (int64_t i = 0; i < run_count; ++i) {
     // One source of nondeterminism comes from unordered set with key of a
     // pointer type, for example the order of FlatSet<Node*> depends on the
     // raw pointer value of Node. Stable post order suppose to remove this
@@ -140,7 +140,7 @@ TEST(AlgorithmTest, ReversePostOrderStable) {
     // this creates enough entropy in the memory distance between t2 and t3 thus
     // forces them to have randomized ordering had stable DFS was not
     // implemented correctly.
-    for (int64 j = 0; j < i; ++j) {
+    for (int64_t j = 0; j < i; ++j) {
       BinaryOp("TestMul", w1, {input, 1},
                b.opts().WithName(strings::StrCat("internal", j)));
     }

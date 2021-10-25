@@ -81,7 +81,7 @@ class RecvAtHostOp : public AsyncOpKernel {
           errors::InvalidArgument("device_ordinal must be a scalar, not ",
                                   device_ordinal_tensor.shape().DebugString()),
           done);
-      const int device_ordinal = device_ordinal_tensor.flat<int64>()(0);
+      const int device_ordinal = device_ordinal_tensor.flat<int64_t>()(0);
       OP_REQUIRES_ASYNC(
           ctx, device_ordinal >= 0,
           errors::Internal("RecvAtHost device_ordinal must be non negative"),
@@ -237,7 +237,7 @@ class SendFromHostOp : public OpKernel {
           ctx, TensorShapeUtils::IsScalar(device_ordinal_tensor.shape()),
           errors::InvalidArgument("device_ordinal must be a scalar, not ",
                                   device_ordinal_tensor.shape().DebugString()));
-      const int device_ordinal = device_ordinal_tensor.flat<int64>()(0);
+      const int device_ordinal = device_ordinal_tensor.flat<int64_t>()(0);
       OP_REQUIRES(
           ctx, device_ordinal >= 0,
           errors::Internal("SendFromHost device_ordinal must be non negative"));

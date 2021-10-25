@@ -301,5 +301,12 @@ TYPED_TEST(BroadcastToOpTest, Int64ShapeDDynamicTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 4, 4}));
 }
 
+TYPED_TEST(BroadcastToOpTest, BroadcastToEmtpyShapeTest) {
+  BroadcastToOpModel<TypeParam> m({3, 1, 2}, {3}, {3, 0, 2});
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 0, 2}));
+}
+
 }  // namespace
 }  // namespace tflite

@@ -102,7 +102,7 @@ StatusOr<Literal> HloRunnerInterface::Execute(
 }
 
 StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
-    std::unique_ptr<Executable> executable, absl::Span<const Literal> arguments,
+    Executable* executable, absl::Span<const Literal> arguments,
     ExecutionProfile* profile) {
   // Construct a vector of plain pointers for the arguments.
   std::vector<const Literal*> argument_pointers;
@@ -110,8 +110,7 @@ StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
   for (const auto& argument : arguments) {
     argument_pointers.push_back(&argument);
   }
-  return ExecuteWithExecutable(std::move(executable), argument_pointers,
-                               nullptr);
+  return ExecuteWithExecutable(executable, argument_pointers, nullptr);
 }
 
 void HloRunnerInterface::UpdateEntryComputationLayout(

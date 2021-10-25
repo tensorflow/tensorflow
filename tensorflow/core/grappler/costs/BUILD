@@ -60,7 +60,7 @@ filegroup(
         "virtual_scheduler.h",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/grappler:__pkg__",
     ],
 )
 
@@ -91,7 +91,7 @@ cc_library(
 tf_cc_test(
     name = "graph_properties_test",
     srcs = ["graph_properties_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory. TODO(b/185483595): use a dependency instead of a flag
     data = [":graph_properties_testdata"],
     tags = [
         "nomsan",  # TODO(b/160921160): broken by NOAUTOROLLBACK CL
@@ -136,7 +136,7 @@ cc_library(
 tf_cc_test(
     name = "graph_memory_test",
     srcs = ["graph_memory_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory. TODO(b/185483595): use a dependency instead of a flag
     deps = [
         ":graph_memory",
         "//tensorflow/cc:cc_ops",
@@ -258,6 +258,7 @@ cc_library(
     hdrs = ["op_context.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:protos_all_cc",
     ] + tf_protos_grappler(),
 )
@@ -290,6 +291,7 @@ tf_cc_test(
     name = "virtual_scheduler_test",
     srcs = ["virtual_scheduler_test.cc"],
     deps = [
+        ":graph_properties",
         ":utils",
         ":virtual_placer",
         ":virtual_scheduler",
@@ -373,6 +375,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/util:overflow",
     ] + tf_protos_grappler(),
     alwayslink = 1,
 )

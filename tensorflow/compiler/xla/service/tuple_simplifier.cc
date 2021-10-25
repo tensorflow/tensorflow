@@ -37,7 +37,7 @@ StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
   bool changed = false;
   HloInstruction* top_tuple = nullptr;
   bool can_simplify = true;
-  for (int64 operand_number = 0; operand_number < tuple->operand_count();
+  for (int64_t operand_number = 0; operand_number < tuple->operand_count();
        ++operand_number) {
     HloInstruction* operand = tuple->mutable_operand(operand_number);
     if (operand->opcode() != HloOpcode::kGetTupleElement ||

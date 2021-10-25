@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Gradients for operators defined in control_flow_ops.py."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
@@ -27,7 +23,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
-# pylint: disable=wildcard-import,undefined-variable
+# pylint: disable=wildcard-import,undefined-variable,redefined-builtin
 from tensorflow.python.ops.control_flow_ops import *
 # pylint: enable=wildcard-import
 
@@ -164,7 +160,8 @@ def _ExitGrad(op, grad):
     grad_ctxt.AddName(grad.name)
   else:
     if not isinstance(grad, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
-      raise TypeError("Type %s not supported" % type(grad))
+      raise TypeError(f"Type {type(grad)} not supported, must be either"
+                      "`ops.IndexedSlices` or `SparseTensor`.")
     grad_ctxt.AddName(grad.values.name)
     grad_ctxt.AddName(grad.indices.name)
     dense_shape = grad.dense_shape
@@ -226,7 +223,8 @@ def _EnterGrad(op, grad):
       result = grad_ctxt.AddBackpropIndexedSlicesAccumulator(op, grad)
     else:
       # TODO(yuanbyu, lukasr): Add support for SparseTensor.
-      raise TypeError("Type %s not supported" % type(grad))
+      raise TypeError(f"Type {type(grad)} not supported,"
+                      "must be Tensor or Indexed Slices")
   else:
     result = exit(grad)
     grad_ctxt.loop_exits.append(result)

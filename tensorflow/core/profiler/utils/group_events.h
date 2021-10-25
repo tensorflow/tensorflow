@@ -39,10 +39,10 @@ namespace profiler {
 // the event types, both events should have stats of the stat types specified
 // in stat_types and their values should be the same.
 struct InterThreadConnectInfo {
-  int64 parent_event_type;
-  int64 child_event_type;
-  std::vector<int64> parent_stat_types;
-  std::vector<int64> child_stat_types;
+  int64_t parent_event_type;
+  int64_t child_event_type;
+  std::vector<int64_t> parent_stat_types;
+  std::vector<int64_t> child_stat_types;
 };
 
 struct ContextInfo {
@@ -54,11 +54,12 @@ struct ContextInfo {
 struct GroupMetadata {
   std::string name;
   std::string model_id;  // inference only.
-  absl::flat_hash_set<int64> parents;
-  absl::flat_hash_set<int64> children;
+  absl::flat_hash_set<int64_t> parents;
+  absl::flat_hash_set<int64_t> children;
 };
 
-using GroupMetadataMap = absl::flat_hash_map<int64 /*group_id*/, GroupMetadata>;
+using GroupMetadataMap =
+    absl::flat_hash_map<int64_t /*group_id*/, GroupMetadata>;
 
 // A wrapper for XEvent with parent and children pointers. Through these
 // pointers, a tree of EventNode is formed.
@@ -78,20 +79,20 @@ class EventNode {
     child->parents_.push_back(this);
   }
 
-  absl::optional<int64> GetGroupId() const { return group_id_; }
+  absl::optional<int64_t> GetGroupId() const { return group_id_; }
 
   std::string GetGroupName() const;
 
-  void SetGroupId(int64 group_id);
+  void SetGroupId(int64_t group_id);
 
   // Sets group_id for this node and its descendants.
-  void PropagateGroupId(int64 group_id, GroupMetadataMap* group_metadata_map);
+  void PropagateGroupId(int64_t group_id, GroupMetadataMap* group_metadata_map);
 
   const XPlaneVisitor& GetPlaneVisitor() const { return *plane_; }
 
   const XEventVisitor& GetEventVisitor() const { return visitor_; }
 
-  absl::optional<XStatVisitor> GetContextStat(int64 stat_type) const;
+  absl::optional<XStatVisitor> GetContextStat(int64_t stat_type) const;
 
   void AddStepName(absl::string_view step_name);
 
@@ -107,7 +108,7 @@ class EventNode {
   bool IsNestedIn(EventNode* parent);
 
   // Returns the closest parent (including itself) of the given event type.
-  const EventNode* FindParent(int64 event_type) const;
+  const EventNode* FindParent(int64_t event_type) const;
 
   absl::optional<ContextInfo> GetProducerContext() const {
     return producer_context_;
@@ -123,10 +124,14 @@ class EventNode {
 
   bool IsAsync() const { return is_async_; }
 
-  bool StartsBefore(const EventNode& other) const;
+  // Compare two EventNodes based on start timestamp.
+  bool operator<(const EventNode& other) const {
+    return GetEventVisitor().TimestampPs() <
+           other.GetEventVisitor().TimestampPs();
+  }
 
  private:
-  XStat* FindOrAddStatByType(int64 stat_type);
+  XStat* FindOrAddStatByType(int64_t stat_type);
 
   const XPlaneVisitor* plane_;
   XEventVisitor visitor_;
@@ -134,7 +139,7 @@ class EventNode {
   XEvent* raw_event_;
   std::vector<EventNode*> parents_;
   std::vector<EventNode*> children_;
-  absl::optional<int64> group_id_;
+  absl::optional<int64_t> group_id_;
   absl::optional<ContextInfo> producer_context_;
   absl::optional<ContextInfo> consumer_context_;
   // Root event level.
@@ -145,7 +150,7 @@ class EventNode {
 };
 
 using EventNodeMap =
-    absl::flat_hash_map<int64 /*event_type*/,
+    absl::flat_hash_map<int64_t /*event_type*/,
                         std::vector<std::unique_ptr<EventNode>>>;
 
 using EventList = std::vector<EventNode*>;
@@ -213,6 +218,11 @@ class EventForest {
   // Sets the is_eager stat to true for the eagerly executed CPU TF op events.
   void MarkEagerlyExecutedCpuTfOps();
 
+  // Populate all the step ids that associated with tf.data pipeline.
+  // Because FunctionRun is considered as root, but we want to exclude those
+  // FunctionRuns from tf.data.
+  void ProcessTfDataSteps();
+
   // Processes the TF loops and registers the first TF executor event of each
   // iteraton to `tf_loop_root_events_`.
   void ProcessTensorFlowLoop();
@@ -228,10 +238,11 @@ class EventForest {
   std::vector<XPlaneVisitor> visitors_;
   // std::deque for pointer stability.
   std::deque<std::pair<XPlane*, XPlaneVisitor>> planes_;
-  EventList root_events_;
+  // The "step" id (actually it is "function" id that are associated with
+  // the tf.data pipeline.
+  absl::flat_hash_set<int64_t> tf_data_step_ids_;
   EventList tf_loop_root_events_;
   GroupMetadataMap group_metadata_map_;
-  int64 next_group_id_ = 0;
 };
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList();

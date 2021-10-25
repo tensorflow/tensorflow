@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/unique_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -44,8 +44,9 @@ class UniqueDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attributes) const override {
-    *attributes = {{UniqueDatasetOp::kOutputTypes, output_dtypes_},
-                   {UniqueDatasetOp::kOutputShapes, output_shapes_}};
+    *attributes = {{"output_types", output_dtypes_},
+                   {"output_shapes", output_shapes_},
+                   {"metadata", ""}};
     return Status::OK();
   }
 
@@ -57,8 +58,8 @@ class UniqueDatasetOpTest : public DatasetOpsTestBase {};
 UniqueDatasetParams NormalCaseParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{12, 1},
-                           {1, 1, 2, 3, 5, 8, 13, 3, 21, 8, 8, 34})},
+      {CreateTensor<int64_t>(TensorShape{12, 1},
+                             {1, 1, 2, 3, 5, 8, 13, 3, 21, 8, 8, 34})},
       /*node_name=*/"tensor_slice_dataset");
   return UniqueDatasetParams(tensor_slice_dataset_params,
                              /*output_dtypes=*/{DT_INT64},
@@ -68,8 +69,8 @@ UniqueDatasetParams NormalCaseParams() {
 UniqueDatasetParams LastRecordIsDuplicateParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{11, 1},
-                           {1, 1, 2, 3, 5, 8, 13, 3, 21, 8, 8})},
+      {CreateTensor<int64_t>(TensorShape{11, 1},
+                             {1, 1, 2, 3, 5, 8, 13, 3, 21, 8, 8})},
       /*node_name=*/"tensor_slice_dataset");
   return UniqueDatasetParams(std::move(tensor_slice_dataset_params),
                              /*output_dtypes=*/{DT_INT64},
@@ -79,7 +80,7 @@ UniqueDatasetParams LastRecordIsDuplicateParams() {
 UniqueDatasetParams AllRecordsTheSameParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{5, 1}, {1, 1, 1, 1, 1})},
+      {CreateTensor<int64_t>(TensorShape{5, 1}, {1, 1, 1, 1, 1})},
       /*node_name=*/"tensor_slice_dataset");
   return UniqueDatasetParams(std::move(tensor_slice_dataset_params),
                              /*output_dtypes=*/{DT_INT64},
@@ -89,7 +90,7 @@ UniqueDatasetParams AllRecordsTheSameParams() {
 UniqueDatasetParams EmptyInputParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{0, 1}, {})},
+      {CreateTensor<int64_t>(TensorShape{0, 1}, {})},
       /*node_name=*/"tensor_slice_dataset");
   return UniqueDatasetParams(std::move(tensor_slice_dataset_params),
                              /*output_dtypes=*/{DT_INT64},
@@ -115,8 +116,8 @@ UniqueDatasetParams TwoComponentsParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
       {
-          CreateTensor<int64>(TensorShape{1, 1}, {1}),
-          CreateTensor<int64>(TensorShape{1, 1}, {42}),
+          CreateTensor<int64_t>(TensorShape{1, 1}, {1}),
+          CreateTensor<int64_t>(TensorShape{1, 1}, {42}),
       },
       /*node_name=*/"tensor_slice_dataset");
   return UniqueDatasetParams(
@@ -150,18 +151,18 @@ UniqueDatasetParams FP32Params() {
 std::vector<GetNextTestCase<UniqueDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/NormalCaseParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({1}),
-                                {{1}, {2}, {3}, {5}, {8}, {13}, {21}, {34}})},
+           CreateTensors<int64_t>(TensorShape({1}),
+                                  {{1}, {2}, {3}, {5}, {8}, {13}, {21}, {34}})},
           {/*dataset_params=*/LastRecordIsDuplicateParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({1}),
-                                {{1}, {2}, {3}, {5}, {8}, {13}, {21}})},
+           CreateTensors<int64_t>(TensorShape({1}),
+                                  {{1}, {2}, {3}, {5}, {8}, {13}, {21}})},
           {/*dataset_params=*/AllRecordsTheSameParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({1}), {{1}})},
+           CreateTensors<int64_t>(TensorShape({1}), {{1}})},
           {/*dataset_params=*/EmptyInputParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({1}), {})},
+           CreateTensors<int64_t>(TensorShape({1}), {})},
           {/*dataset_params=*/StringParams(),
            /*expected_outputs=*/
            CreateTensors<tstring>(TensorShape({1}), {{"one"},
@@ -249,13 +250,13 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/NormalCaseParams(),
            /*breakpoints=*/{0, 2, 6, 8},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({1}),
-                                {{1}, {2}, {3}, {5}, {8}, {13}, {21}, {34}})},
+           CreateTensors<int64_t>(TensorShape({1}),
+                                  {{1}, {2}, {3}, {5}, {8}, {13}, {21}, {34}})},
           {/*dataset_params=*/LastRecordIsDuplicateParams(),
            /*breakpoints=*/{0, 2, 6, 8},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({1}),
-                                {{1}, {2}, {3}, {5}, {8}, {13}, {21}})}};
+           CreateTensors<int64_t>(TensorShape({1}),
+                                  {{1}, {2}, {3}, {5}, {8}, {13}, {21}})}};
 }
 
 ITERATOR_SAVE_AND_RESTORE_TEST_P(UniqueDatasetOpTest, UniqueDatasetParams,

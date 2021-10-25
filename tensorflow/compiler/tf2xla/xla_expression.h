@@ -102,6 +102,16 @@ class XlaExpression {
 
   // Return the bound of the expression, if available.
   absl::optional<Tensor> value_bound() const { return value_bound_; }
+
+  // Set the dynamism of the expression, indicating whether or not each value in
+  // this expression is dynamic.
+  void set_value_dynamism(Tensor tensor) {
+    value_dynamism_.emplace(std::move(tensor));
+  }
+
+  // Return the dynamism of the expression, if available.
+  absl::optional<Tensor> value_dynamism() const { return value_dynamism_; }
+
   XlaResource* resource() const { return resource_; }
 
   // Returns a human-readable summary of the expression.
@@ -115,18 +125,18 @@ class XlaExpression {
   // constant, returns the value as a host-memory Tensor. Returns an empty
   // optional if it cannot be resolved. Returns an error if passed a resource
   // expression.
-  xla::StatusOr<absl::optional<Tensor>> ResolveConstant(
+  StatusOr<absl::optional<Tensor>> ResolveConstant(
       xla::Client* client, bool dynamic_dimension_is_minus_one = false,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue) const;
 
   // ResolveDynamism computes where a value inside this op is dynamic or can be
   // inferred at compile time.
-  xla::StatusOr<Tensor> ResolveDynamism(xla::Client* client) const;
+  StatusOr<Tensor> ResolveDynamism(xla::Client* client) const;
 
   // Returns the shape of the tensor.
   // The shape of a resource is the shape of a resource handle (i.e., a scalar),
   // not the shape of the resource's value.
-  xla::StatusOr<TensorShape> GetShape() const;
+  StatusOr<TensorShape> GetShape() const;
 
   // Retrieves an XlaExpression that was allocated by a previous Op.
   static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);
@@ -149,6 +159,9 @@ class XlaExpression {
 
   // The bound of the expression, if available.
   absl::optional<Tensor> value_bound_;
+
+  // Indicate whether each value inside a tensor is dynamic or not.
+  absl::optional<Tensor> value_dynamism_;
 
   // The resource, if kind_ == kResource. Not owned.
   XlaResource* resource_ = nullptr;

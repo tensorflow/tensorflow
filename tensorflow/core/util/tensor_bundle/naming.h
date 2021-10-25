@@ -40,7 +40,7 @@ limitations under the License.
 namespace tensorflow {
 
 string MetaFilename(StringPiece prefix);
-string DataFilename(StringPiece prefix, int32 shard_id, int32 num_shards);
+string DataFilename(StringPiece prefix, int32_t shard_id, int32_t num_shards);
 
 }  // namespace tensorflow
 

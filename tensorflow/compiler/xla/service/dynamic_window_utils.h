@@ -35,15 +35,15 @@ struct DynamicWindowDims {
 // This mirrors the logic in GetWindowedOutputSizeVerboseV2 but with HLOs as
 // inputs and outputs.
 DynamicWindowDims GetWindowedOutputSize(HloInstruction* input_size,
-                                        int64 window_size,
-                                        int64 window_dilation,
-                                        int64 window_stride,
+                                        int64_t window_size,
+                                        int64_t window_dilation,
+                                        int64_t window_stride,
                                         PaddingType padding_type);
 
 DynamicWindowDims GetWindowedInputGradSize(HloInstruction* input_size,
-                                           int64 window_size,
-                                           int64 window_dilation,
-                                           int64 window_stride,
+                                           int64_t window_size,
+                                           int64_t window_dilation,
+                                           int64_t window_stride,
                                            PaddingType padding_type);
 
 }  // namespace xla

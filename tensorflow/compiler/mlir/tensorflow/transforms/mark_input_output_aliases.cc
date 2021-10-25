@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Debug.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"

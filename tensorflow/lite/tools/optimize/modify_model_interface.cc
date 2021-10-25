@@ -16,9 +16,12 @@ limitations under the License.
 
 #include <memory>
 #include <sstream>
+#include <string>
 #include <unordered_set>
+#include <utility>
 
 #include "flatbuffers/flexbuffers.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/error_reporter.h"
@@ -53,7 +56,7 @@ std::vector<TensorOpTensor> GetInputTensors(const TensorType& input_type,
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
-    std::unordered_map<TensorT*, int> input_tensors;
+    absl::flat_hash_map<TensorT*, int> input_tensors;
     for (size_t input_idx = 0; input_idx < subgraph->inputs.size();
          input_idx++) {
       TensorT* tensor = subgraph->tensors[subgraph->inputs[input_idx]].get();
@@ -128,7 +131,7 @@ std::vector<TensorOpTensor> GetOutputTensors(const TensorType& output_type,
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
-    std::unordered_map<TensorT*, int> output_tensors;
+    absl::flat_hash_map<TensorT*, int> output_tensors;
     for (size_t output_idx = 0; output_idx < subgraph->outputs.size();
          output_idx++) {
       TensorT* tensor = subgraph->tensors[subgraph->outputs[output_idx]].get();

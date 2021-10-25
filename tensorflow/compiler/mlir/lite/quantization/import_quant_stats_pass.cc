@@ -60,6 +60,16 @@ class ImportQuantStatsPass
   explicit ImportQuantStatsPass(OperationToName op_to_name)
       : op_to_name_(op_to_name) {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "quant-import-stats";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Import quantization stats to the model";
+  }
+
   void runOnFunction() override;
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -228,10 +238,9 @@ CreateImportQuantStatsPassForTFControlDialect(const std::string &stats_str) {
 }
 
 // Registers this pass with default values, only for test
-static PassRegistration<ImportQuantStatsPass> pass(
-    "quant-import-stats", "Import quantization stats to the model", [] {
-      return CreateImportQuantStatsPassForTFControlDialect(quantize_stats);
-    });
+static PassRegistration<ImportQuantStatsPass> pass([] {
+  return CreateImportQuantStatsPassForTFControlDialect(quantize_stats);
+});
 
 }  // namespace quant
 }  // namespace mlir

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for third_party.tensorflow.python.ops.ragged_tensor."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
 from absl.testing import parameterized
@@ -565,7 +561,7 @@ class RaggedGetItemTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self._TestGetItem(rt, slice_spec, expected, expected_shape)
 
     # If the result is 3D, then check that it still has a uniform row length:
-    actual = rt.__getitem__(slice_spec)
+    actual = rt.__getitem__(slice_spec)  # pylint: disable=assignment-from-no-return
     if actual.shape.rank == 3:
       self.assertIsNot(actual.uniform_row_length, None)
       self.assertAllEqual(actual.uniform_row_length, expected_shape[1])

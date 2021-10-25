@@ -62,6 +62,7 @@ REGISTER_OP("_Recv")
     .Attr("recv_device: string")
     .Attr("client_terminated: bool = false")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Receives the named tensor from send_device on recv_device.
@@ -86,6 +87,7 @@ REGISTER_OP("Recv")
     .Attr("recv_device: string")
     .Attr("client_terminated: bool = false")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("_HostSend")
@@ -124,6 +126,7 @@ REGISTER_OP("_HostRecv")
     .Attr("recv_device: string")
     .Attr("client_terminated: bool = false")
     .SetIsStateful()
+    .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Receives the named tensor from send_device on recv_device.

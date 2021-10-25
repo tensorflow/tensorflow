@@ -87,7 +87,7 @@ int UnaryOpTest::inf<int>() {
 }
 
 template <>
-int64 UnaryOpTest::inf<int64>() {
+int64_t UnaryOpTest::inf<int64_t>() {
   return 0x7FFFFFFFFFFFFFFFl;
 }
 
@@ -179,7 +179,7 @@ XLA_TEST_F(UnaryOpTest, SignTestR0) {
 
 XLA_TEST_F(UnaryOpTest, SignTestR1) {
   SignTestHelper<int>();
-  SignTestHelper<int64>();
+  SignTestHelper<int64_t>();
   SignTestHelper<float>();
   SignTestHelper<complex64>();
 }

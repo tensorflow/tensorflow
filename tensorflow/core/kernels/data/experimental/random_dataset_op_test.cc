@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/random_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 
@@ -30,27 +30,28 @@ constexpr int kCount = 10;
 // for a given seed/seed2 combo.
 // For compatibility with the test harness, return value is a vector of scalar
 // Tensors.
-std::vector<Tensor> GenerateExpectedData(int64 seed, int64 seed2, int count) {
+std::vector<Tensor> GenerateExpectedData(int64_t seed, int64_t seed2,
+                                         int count) {
   std::vector<Tensor> ret;
   auto parent_generator = random::PhiloxRandom(seed, seed2);
   auto generator =
       random::SingleSampleAdapter<random::PhiloxRandom>(&parent_generator);
 
   for (int i = 0; i < count; ++i) {
-    ret.push_back(CreateTensor<int64>(TensorShape({}), {generator()}));
+    ret.push_back(CreateTensor<int64_t>(TensorShape({}), {generator()}));
   }
   return ret;
 }
 
 class RandomDatasetParams : public DatasetParams {
  public:
-  RandomDatasetParams(int64 seed, int64 seed2, DataTypeVector output_dtypes,
+  RandomDatasetParams(int64_t seed, int64_t seed2, DataTypeVector output_dtypes,
                       std::vector<PartialTensorShape> output_shapes,
                       string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
-        seed_(CreateTensor<int64>(TensorShape({}), {seed})),
-        seed2_(CreateTensor<int64>(TensorShape({}), {seed2})) {}
+        seed_(CreateTensor<int64_t>(TensorShape({}), {seed})),
+        seed2_(CreateTensor<int64_t>(TensorShape({}), {seed2})) {}
 
   virtual std::vector<Tensor> GetInputTensors() const override {
     return {seed_, seed2_};
@@ -63,8 +64,9 @@ class RandomDatasetParams : public DatasetParams {
   }
 
   virtual Status GetAttributes(AttributeVector* attributes) const override {
-    *attributes = {{RandomDatasetOp::kOutputTypes, output_dtypes_},
-                   {RandomDatasetOp::kOutputShapes, output_shapes_}};
+    *attributes = {{"output_types", output_dtypes_},
+                   {"output_shapes", output_shapes_},
+                   {"metadata", ""}};
     return Status::OK();
   }
 

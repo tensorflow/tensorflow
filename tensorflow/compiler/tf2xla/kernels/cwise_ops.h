@@ -57,9 +57,9 @@ class XlaBinaryOp : public XlaOpKernel {
   // in the XLA documentation.
   virtual xla::XlaOp Computation(
       XlaOpKernelContext* ctx, const xla::XlaOp& lhs,
-      const absl::Span<const int64>& lhs_shape, const xla::XlaOp& rhs,
-      const absl::Span<const int64>& rhs_shape, const BCast& broadcast_helper,
-      const std::vector<int64>& extend_dimensions) = 0;
+      const absl::Span<const int64_t>& lhs_shape, const xla::XlaOp& rhs,
+      const absl::Span<const int64_t>& rhs_shape, const BCast& broadcast_helper,
+      const std::vector<int64_t>& extend_dimensions) = 0;
 
   void Compile(XlaOpKernelContext* ctx) override;
 

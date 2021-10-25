@@ -107,6 +107,7 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuTransferManager_TransferBuffersToInfeed);
   TFTPU_SET_FN(executor_fn, TpuTransferManager_TransferLiteralFromOutfeed);
   TFTPU_SET_FN(executor_fn, TpuTransferManager_ResetDevices);
+  TFTPU_SET_FN(executor_fn, TpuTransferManager_ReadDynamicShapes);
 
   TFTPU_SET_FN(executor_fn, TpuComputationPlacer_New);
   TFTPU_SET_FN(executor_fn, TpuComputationPlacer_Free);
@@ -148,6 +149,11 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuExecutable_FreeXlaShapeIndexArray);
   TFTPU_SET_FN(executor_fn, TpuExecutable_FreeMaybeOwningDeviceMemoryArray);
   TFTPU_SET_FN(executor_fn, TpuExecutable_Fingerprint);
+  TFTPU_SET_FN(executor_fn, TpuExecutable_Serialize);
+  TFTPU_SET_FN(executor_fn, TpuExecutableSerialize_GetByteSize);
+  TFTPU_SET_FN(executor_fn, TpuExecutableSerialize_WriteToArray);
+  TFTPU_SET_FN(executor_fn, TpuExecutableSerialize_FreeHandle);
+  TFTPU_SET_FN(executor_fn, TpuExecutable_Deserialize);
   TFTPU_SET_FN(executor_fn, TpuExecutable_HloModule);
   TFTPU_SET_FN(executor_fn, TpuExecutable_Free);
 

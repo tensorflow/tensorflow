@@ -28,6 +28,7 @@ list(APPEND TFLITE_LABEL_IMAGE_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/time.cc
   ${TFLITE_SOURCE_DIR}/tools/command_line_flags.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/default_execution_provider.cc
+  ${TFLITE_SOURCE_DIR}/tools/delegates/delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
 )
@@ -64,5 +65,4 @@ target_compile_options(label_image
 )
 target_link_libraries(label_image
   tensorflow-lite
-  ${CMAKE_DL_LIBS}
 )

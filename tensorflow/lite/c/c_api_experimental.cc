@@ -80,4 +80,24 @@ void TfLiteInterpreterOptionsSetEnableDelegateFallback(
   options->enable_delegate_fallback = enable;
 }
 
+void TfLiteSetAllowBufferHandleOutput(const TfLiteInterpreter* interpreter,
+                                      bool allow_buffer_handle_output) {
+  interpreter->impl->SetAllowBufferHandleOutput(allow_buffer_handle_output);
+}
+
+TfLiteStatus TfLiteInterpreterModifyGraphWithDelegate(
+    const TfLiteInterpreter* interpreter, TfLiteDelegate* delegate) {
+  return interpreter->impl->ModifyGraphWithDelegate(delegate);
+}
+
+int32_t TfLiteInterpreterGetInputTensorIndex(
+    const TfLiteInterpreter* interpreter, int32_t input_index) {
+  return interpreter->impl->inputs()[input_index];
+}
+
+int32_t TfLiteInterpreterGetOutputTensorIndex(
+    const TfLiteInterpreter* interpreter, int32_t output_index) {
+  return interpreter->impl->outputs()[output_index];
+}
+
 }  // extern "C"

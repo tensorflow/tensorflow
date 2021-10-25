@@ -43,7 +43,7 @@ Status AddDenseOutputShapes(const std::vector<TensorShapeType>& dense_shapes,
 
 // Adds output shapes for sparse tensors in Parse*Example ops.
 void AddSparseOutputShapes(int num_sparse, const ShapeHandle input_shape,
-                           int64 rank_delta, InferenceContext* c,
+                           int64_t rank_delta, InferenceContext* c,
                            int* output_idx) {
   // Rank of SparseTensor is rank of input tensor plus rank_delta.
   shape_inference::DimensionOrConstant rank(c->UnknownDim());
@@ -100,7 +100,7 @@ REGISTER_OP("DecodeRaw")
     .Attr(
         "out_type: "
         "{half,float,double,int32,uint16,uint8,int16,int8,int64,complex64,"
-        "complex128,bool}")
+        "complex128,bool,bfloat16}")
     .Attr("little_endian: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       // Note: last dimension is data dependent.
@@ -115,7 +115,9 @@ REGISTER_OP("DecodePaddedRaw")
     .Input("input_bytes: string")
     .Input("fixed_length: int32")
     .Output("output: out_type")
-    .Attr("out_type: {half,float,double,int32,uint16,uint8,int16,int8,int64}")
+    .Attr(
+        "out_type: {half,float,double,int32,uint16,uint8,int16,int8,int64,"
+        "bfloat16}")
     .Attr("little_endian: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       DimensionHandle fixed_length;
@@ -124,7 +126,7 @@ REGISTER_OP("DecodePaddedRaw")
       DataType out_type;
       TF_RETURN_IF_ERROR(c->GetAttr("out_type", &out_type));
 
-      int32 data_type_size = DataTypeSize(out_type);
+      int32_t data_type_size = DataTypeSize(out_type);
 
       DimensionHandle width;
       TF_RETURN_IF_ERROR(c->Divide(fixed_length, data_type_size, true, &width));

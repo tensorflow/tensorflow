@@ -18,7 +18,7 @@ limitations under the License.
 
 #if !defined(PLATFORM_POSIX) && !defined(PLATFORM_GOOGLE) &&                 \
     !defined(PLATFORM_POSIX_ANDROID) && !defined(PLATFORM_GOOGLE_ANDROID) && \
-    !defined(PLATFORM_WINDOWS)
+    !defined(PLATFORM_WINDOWS) && !defined(PLATFORM_CHROMIUMOS)
 
 // Choose which platform we are on.
 #if defined(ANDROID) || defined(__ANDROID__)
@@ -29,6 +29,9 @@ limitations under the License.
 
 #elif defined(_WIN32)
 #define PLATFORM_WINDOWS
+
+#elif defined(__TF_CHROMIUMOS__)
+#define PLATFORM_CHROMIUMOS
 
 #else
 // If no platform specified, use:

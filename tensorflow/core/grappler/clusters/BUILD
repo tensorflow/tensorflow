@@ -61,7 +61,7 @@ filegroup(
         "virtual_cluster.h",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/grappler:__pkg__",
     ],
 )
 
@@ -143,7 +143,7 @@ cc_library(
 tf_cc_test(
     name = "single_machine_test",
     srcs = ["single_machine_test.cc"],
-    args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    args = ["--heap_check="],  # The GPU tracer leaks memory. TODO(b/185483595): use a dependency instead of a flag
     tags = [
         "no_cuda_on_cpu_tap",
         "no_gpu",

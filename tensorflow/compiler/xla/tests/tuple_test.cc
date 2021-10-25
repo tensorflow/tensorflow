@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -497,7 +498,8 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
                                         {{1011, 2022}, {3031, 4042}},
                                         {{10011, 20022}, {30031, 40042}}});
   Literal prod(sum.shape());
-  ASSERT_TRUE(prod.Populate<complex64>([&sum](absl::Span<const int64> indexes) {
+  ASSERT_TRUE(prod.Populate<complex64>([&sum](
+                                           absl::Span<const int64_t> indexes) {
                     return sum.Get<complex64>(indexes) *
                            (indexes[indexes.size() - 1] == 0
                                 ? complex64(1, 2)
@@ -512,6 +514,26 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
 }
 
 class TupleHloTest : public HloTestBase {};
+
+XLA_TEST_F(TupleHloTest, BadTupleShapeFailsGracefully) {
+  const char* testcase = R"(
+    HloModule m, is_scheduled=true
+
+    ENTRY test {
+      parameter = f32[3]{0} parameter(0)
+      ROOT tuple = (f32[3]{0}, f32[3]{0}) tuple(parameter)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(testcase));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      ::testing::HasSubstr("Expected instruction to have shape equal to"));
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("actual shape is"));
+}
 
 XLA_TEST_F(TupleHloTest, BitcastAfterGTE) {
   const char* testcase = R"(

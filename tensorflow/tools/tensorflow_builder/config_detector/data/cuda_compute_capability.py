@@ -32,10 +32,6 @@ Output:
   original golden file (`./golden/compute_capability_golden.csv`) with the
   same file name and path.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import difflib
 import os

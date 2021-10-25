@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -73,7 +73,8 @@ class ReduceDatasetParams : public DatasetParams {
                     {"Targuments", type_arguments_},
                     {"output_types", output_dtypes_},
                     {"output_shapes", output_shapes_},
-                    {"use_inter_op_parallelism", use_inter_op_parallelism_}};
+                    {"use_inter_op_parallelism", use_inter_op_parallelism_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 
@@ -97,7 +98,7 @@ class ReduceDatasetOpTest : public DatasetOpsTestBase {};
 ReduceDatasetParams ReduceDatasetParams1() {
   return ReduceDatasetParams(
       /*input_dataset_params=*/RangeDatasetParams(0, 10, 1),
-      /*initial_state=*/CreateTensors<int64>(TensorShape({}), {{1}}),
+      /*initial_state=*/CreateTensors<int64_t>(TensorShape({}), {{1}}),
       /*other_arguments=*/{},
       /*func=*/FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}}),
       /*func_lib=*/{test::function::XAddY()},
@@ -118,7 +119,7 @@ ReduceDatasetParams ReduceDatasetParams1() {
 ReduceDatasetParams ReduceDatasetParams2() {
   return ReduceDatasetParams(
       /*input_dataset_params=*/RangeDatasetParams(1, 10, 1),
-      /*initial_state=*/CreateTensors<int64>(TensorShape({}), {{1}, {1}}),
+      /*initial_state=*/CreateTensors<int64_t>(TensorShape({}), {{1}, {1}}),
       /*other_arguments=*/{},
       /*func=*/
       FunctionDefHelper::FunctionRef("XPlusOneXTimesY", {{"T", DT_INT64}}),
@@ -136,7 +137,7 @@ ReduceDatasetParams ReduceDatasetParams2() {
 ReduceDatasetParams ReduceDatasetParams3() {
   return ReduceDatasetParams(
       /*input_dataset_params=*/RangeDatasetParams(0, 0, 1),
-      /*initial_state=*/CreateTensors<int64>(TensorShape({}), {{1}, {3}}),
+      /*initial_state=*/CreateTensors<int64_t>(TensorShape({}), {{1}, {3}}),
       /*other_arguments=*/{},
       /*func=*/
       FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}}),
@@ -153,15 +154,15 @@ std::vector<GetNextTestCase<ReduceDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/
            ReduceDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{46}})},
+           CreateTensors<int64_t>(TensorShape({}), {{46}})},
           {/*dataset_params=*/ReduceDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}),
-                                {{10}, {1 * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9}})},
+           CreateTensors<int64_t>(TensorShape({}),
+                                  {{10}, {1 * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9}})},
           {/*dataset_params=*/
            ReduceDatasetParams3(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{1}, {3}})}};
+           CreateTensors<int64_t>(TensorShape{}, {{1}, {3}})}};
 }
 
 class ParameterizedReduceDatasetOpTest

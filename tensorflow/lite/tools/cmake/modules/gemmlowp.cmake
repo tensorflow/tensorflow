@@ -22,6 +22,7 @@ include(OverridableFetchContent)
 OverridableFetchContent_Declare(
   gemmlowp
   GIT_REPOSITORY https://github.com/google/gemmlowp
+  # Sync with tensorflow/third_party/gemmlowp/workspace.bzl
   GIT_TAG fda83bdc38b118cc6b56753bd540caa49e570745
   # It's not currently (cmake 3.17) possible to shallow clone with a GIT TAG
   # as cmake attempts to git checkout the commit hash after the clone

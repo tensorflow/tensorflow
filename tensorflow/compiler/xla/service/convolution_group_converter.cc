@@ -100,9 +100,9 @@ bool ConvolutionVisitor::Run(
   return visitor.changed_;
 }
 
-Shape ExpandedFilterShape(const Shape& shape, int64 group_count,
-                          int64 input_feature_dim) {
-  int64 num_dims = shape.dimensions_size();
+Shape ExpandedFilterShape(const Shape& shape, int64_t group_count,
+                          int64_t input_feature_dim) {
+  int64_t num_dims = shape.dimensions_size();
   CHECK_GE(num_dims, 2);
   Shape expanded_shape = shape;
   expanded_shape.set_dimensions(
@@ -112,8 +112,9 @@ Shape ExpandedFilterShape(const Shape& shape, int64 group_count,
 
 // Returns a vector with 'group_count' many groups, where the i-th group
 // consists of 'group_size' times the value i.
-std::vector<int32> GetMaskIds(int64 group_size, int64 group_count) {
+std::vector<int32> GetMaskIds(int64_t group_size, int64_t group_count) {
   std::vector<int32> values;
+  values.reserve(group_count * group_size);
   for (int i = 0; i < group_count; ++i) {
     for (int j = 0; j < group_size; ++j) {
       values.push_back(i);
@@ -160,16 +161,16 @@ std::vector<int32> GetMaskIds(int64 group_size, int64 group_count) {
 // Finally we use the Eq op of these two broadcasted constants and get the
 // desired mask.
 HloInstruction* GetExpandedFilterMask(
-    const Shape& filter_shape, int64 kernel_input_feature_dim,
-    int64 kernel_output_feature_dim, int64 group_count,
+    const Shape& filter_shape, int64_t kernel_input_feature_dim,
+    int64_t kernel_output_feature_dim, int64_t group_count,
     const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
         add_instruction) {
   Shape expanded_filter_shape =
       ExpandedFilterShape(filter_shape, group_count, kernel_input_feature_dim);
   Shape mask_shape = ShapeUtil::MakeShape(
       S32, AsInt64Slice(expanded_filter_shape.dimensions()));
-  int64 output_feature = filter_shape.dimensions(kernel_output_feature_dim);
-  int64 group_size = filter_shape.dimensions(kernel_input_feature_dim);
+  int64_t output_feature = filter_shape.dimensions(kernel_output_feature_dim);
+  int64_t group_size = filter_shape.dimensions(kernel_input_feature_dim);
 
   // Create a 'input_feature' sized linspace and 'output_feature' sized linspace
   // that will be broadcasted into perpendicular dimensions and compared.
@@ -201,7 +202,7 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
   auto dim_numbers = convolution->convolution_dimension_numbers();
   auto activation = convolution->mutable_operand(0);
   auto filter = convolution->mutable_operand(1);
-  int64 batch_group_count = convolution->batch_group_count();
+  int64_t batch_group_count = convolution->batch_group_count();
 
   if (batch_group_count == 1) {
     return Status::OK();
@@ -214,27 +215,27 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
     return computation_->AddInstruction(std::move(inst));
   };
 
-  int64 input_batch_dimension = dim_numbers.input_batch_dimension();
-  const int64 input_feature_dimension = dim_numbers.input_feature_dimension();
+  int64_t input_batch_dimension = dim_numbers.input_batch_dimension();
+  const int64_t input_feature_dimension = dim_numbers.input_feature_dimension();
 
-  int64 output_batch_dimension = dim_numbers.output_batch_dimension();
-  int64 output_feature_dimension = dim_numbers.output_feature_dimension();
+  int64_t output_batch_dimension = dim_numbers.output_batch_dimension();
+  int64_t output_feature_dimension = dim_numbers.output_feature_dimension();
 
-  const int64 kernel_input_feature_dimension =
+  const int64_t kernel_input_feature_dimension =
       dim_numbers.kernel_input_feature_dimension();
-  const int64 kernel_output_feature_dimension =
+  const int64_t kernel_output_feature_dimension =
       dim_numbers.kernel_output_feature_dimension();
 
-  const int64 input_batch =
+  const int64_t input_batch =
       activation->shape().dimensions(input_batch_dimension);
-  const int64 output_feature =
+  const int64_t output_feature =
       filter->shape().dimensions(kernel_output_feature_dimension);
 
   if (output_feature != batch_group_count || input_batch != batch_group_count) {
     // Insert a spatial dimension to the activation before the input batch
     // dimension to represent the batch group.
-    std::vector<int64> input_sizes(activation->shape().dimensions().begin(),
-                                   activation->shape().dimensions().end());
+    std::vector<int64_t> input_sizes(activation->shape().dimensions().begin(),
+                                     activation->shape().dimensions().end());
     input_sizes[input_batch_dimension] /= batch_group_count;
     input_sizes.insert(input_sizes.begin() + input_batch_dimension,
                        batch_group_count);
@@ -252,8 +253,8 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
 
     // Insert a spatial dimension to the kernel before the output feature
     // dimension to represent the batch group.
-    std::vector<int64> kernel_sizes(filter->shape().dimensions().begin(),
-                                    filter->shape().dimensions().end());
+    std::vector<int64_t> kernel_sizes(filter->shape().dimensions().begin(),
+                                      filter->shape().dimensions().end());
     kernel_sizes[kernel_output_feature_dimension] /= batch_group_count;
     kernel_sizes.insert(kernel_sizes.begin() + kernel_output_feature_dimension,
                         batch_group_count);
@@ -380,7 +381,7 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
 
     // Create the reduce window.
     Window window;
-    for (int64 i = 0; i < new_convolution->shape().dimensions_size(); ++i) {
+    for (int64_t i = 0; i < new_convolution->shape().dimensions_size(); ++i) {
       auto* dim = window.add_dimensions();
       dim->set_padding_low(0);
       dim->set_padding_high(0);
@@ -422,7 +423,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     return computation_->AddInstruction(std::move(inst));
   };
 
-  int64 group_count = convolution->feature_group_count();
+  int64_t group_count = convolution->feature_group_count();
   if (group_count == 1) {
     return Status::OK();
   }
@@ -431,9 +432,10 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
   ConvolutionDimensionNumbers dim_numbers =
       convolution->convolution_dimension_numbers();
   auto filter = convolution->mutable_operand(1);
-  int64 kernel_input_feature_dim = dim_numbers.kernel_input_feature_dimension();
-  int64 group_size = filter->shape().dimensions(kernel_input_feature_dim);
-  int64 kernel_output_feature_dim =
+  int64_t kernel_input_feature_dim =
+      dim_numbers.kernel_input_feature_dimension();
+  int64_t group_size = filter->shape().dimensions(kernel_input_feature_dim);
+  int64_t kernel_output_feature_dim =
       dim_numbers.kernel_output_feature_dimension();
   auto expanded_filter_shape = ExpandedFilterShape(filter->shape(), group_count,
                                                    kernel_input_feature_dim);
@@ -459,8 +461,8 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
           ShapeUtil::DeleteDimension(kernel_input_feature_dim, filter->shape());
       auto reshaped_filter =
           add(HloInstruction::CreateReshape(reshaped_filter_shape, filter));
-      std::vector<int64> broadcast_dims;
-      for (int64 i = 0; i < filter->shape().dimensions_size(); ++i) {
+      std::vector<int64_t> broadcast_dims;
+      for (int64_t i = 0; i < filter->shape().dimensions_size(); ++i) {
         if (i == kernel_input_feature_dim) {
           continue;
         }
@@ -486,13 +488,13 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     }
     // Add a spatial dimension to emulate a larger output feature dimension
     // to avoid creating a convolution with group_count = 1.
-    std::vector<int64> new_filter_dimension;
+    std::vector<int64_t> new_filter_dimension;
     new_filter_dimension.reserve(filter->shape().rank() + 1);
-    const int64 depthwise_multiplier =
+    const int64_t depthwise_multiplier =
         filter->shape().dimensions(kernel_output_feature_dim) / group_count;
     // Split the kernel output feature dimension into group count and
     // depthwise mutilipler.
-    for (int64 i = 0; i < filter->shape().rank(); ++i) {
+    for (int64_t i = 0; i < filter->shape().rank(); ++i) {
       if (i == kernel_output_feature_dim) {
         new_filter_dimension.push_back(group_count);
         new_filter_dimension.push_back(depthwise_multiplier);
@@ -539,9 +541,9 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
 
     // Split the output feature dimension into and output feature of group
     // count and depthwise multipler as an output spatial dimension.
-    std::vector<int64> new_output_dimension;
+    std::vector<int64_t> new_output_dimension;
     new_output_dimension.reserve(convolution->shape().rank() + 1);
-    for (int64 i = 0; i < convolution->shape().rank(); ++i) {
+    for (int64_t i = 0; i < convolution->shape().rank(); ++i) {
       if (i == dim_numbers.output_feature_dimension()) {
         new_output_dimension.push_back(group_count);
         new_output_dimension.push_back(depthwise_multiplier);
@@ -579,9 +581,9 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
   // Insert a spatial dimension to the input before the input feature
   // dimension to represent the feature group.
   HloInstruction* activation = convolution->mutable_operand(0);
-  std::vector<int64> input_sizes(activation->shape().dimensions().begin(),
-                                 activation->shape().dimensions().end());
-  const int64 input_feature_dimension = dim_numbers.input_feature_dimension();
+  std::vector<int64_t> input_sizes(activation->shape().dimensions().begin(),
+                                   activation->shape().dimensions().end());
+  const int64_t input_feature_dimension = dim_numbers.input_feature_dimension();
   input_sizes[input_feature_dimension] /= group_count;
   input_sizes.insert(input_sizes.begin() + input_feature_dimension,
                      group_count);
@@ -600,9 +602,9 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
 
   // Insert a spatial dimension to the kernel before the output feature
   // dimension to represent the feature group.
-  std::vector<int64> kernel_sizes(filter->shape().dimensions().begin(),
-                                  filter->shape().dimensions().end());
-  const int64 kernel_output_feature_dimension =
+  std::vector<int64_t> kernel_sizes(filter->shape().dimensions().begin(),
+                                    filter->shape().dimensions().end());
+  const int64_t kernel_output_feature_dimension =
       dim_numbers.kernel_output_feature_dimension();
   kernel_sizes[kernel_output_feature_dimension] /= group_count;
   kernel_sizes.insert(kernel_sizes.begin() + kernel_output_feature_dimension,
@@ -624,7 +626,8 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
 
   // Insert a spatial dimension to the output before the output feature
   // dimension to represent the feature group.
-  const int64 output_feature_dimension = dim_numbers.output_feature_dimension();
+  const int64_t output_feature_dimension =
+      dim_numbers.output_feature_dimension();
   for (auto& d : *dim_numbers.mutable_output_spatial_dimensions()) {
     if (d > output_feature_dimension) {
       ++d;

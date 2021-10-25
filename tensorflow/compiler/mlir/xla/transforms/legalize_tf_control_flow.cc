@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 
 using mlir::PassRegistration;
 
@@ -44,7 +45,7 @@ namespace mlir {
 namespace mhlo {
 namespace {
 class LegalizeTFControlFlow
-    : public PassWrapper<LegalizeTFControlFlow, OperationPass<ModuleOp>> {
+    : public LegalizeTFControlFlowBase<LegalizeTFControlFlow> {
  public:
   void runOnOperation() override;
 };
@@ -168,8 +169,11 @@ void LowerWhile(TF::WhileOp op) {
   ImportXlaRegion(op.cond_function(), &while_op.cond(), loc,
                   /*tuple_return=*/false);
 
-  // De-tuple the results of the `mhlo.while`.
-  Detuple(while_op.getResult(), op.getResults(), &builder);
+  // De-tuple the results of the `mhlo.while` if needed.
+  if (while_op.getNumResults() == 1 && while_op.getType(0).isa<TupleType>())
+    Detuple(while_op.getResult(0), op.getResults(), &builder);
+  else
+    op->replaceAllUsesWith(while_op);
   op.erase();
 }
 
@@ -361,7 +365,10 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
 
   // De-tuple the results of the `mhlo.while`.
   builder.setInsertionPoint(op);
-  Detuple(while_op.getResult(), op.getResults(), &builder);
+  if (while_op.getNumResults() == 1 && while_op.getType(0).isa<TupleType>())
+    Detuple(while_op.getResult(0), op.getResults(), &builder);
+  else
+    op->replaceAllUsesWith(while_op);
   op.erase();
 }
 }  // namespace
@@ -396,7 +403,3 @@ void LegalizeTFControlFlow::runOnOperation() {
 }
 }  // namespace mhlo
 }  // namespace mlir
-
-static PassRegistration<mlir::mhlo::LegalizeTFControlFlow> cfpass(
-    "xla-legalize-tf-control-flow",
-    "Legalize TensorFlow control flow to the XLA dialect");

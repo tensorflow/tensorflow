@@ -14,10 +14,6 @@
 # ==============================================================================
 """Script to test TF-TRT INT8 conversion without calibration on Mnist model."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
@@ -81,7 +77,7 @@ class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
         expected_output_dims=expected_output_dims)
 
   def setUp(self):
-    super(trt_test.TfTrtIntegrationTestBase, self).setUp()
+    super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
     # Disable layout optimizer, since it will convert BiasAdd with NHWC
     # format to NCHW format under four dimentional input.
     self.DisableNonTrtOptimizers()

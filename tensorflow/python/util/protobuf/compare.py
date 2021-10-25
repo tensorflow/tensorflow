@@ -58,10 +58,6 @@ Alternatively:
       self.assertProtoEqual(a, b)
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import difflib
 
 import six
@@ -113,9 +109,10 @@ def assertProtoEqual(self, a, b, check_initialized=True,  # pylint: disable=inva
   if len(a_str) < 2**16 and len(b_str) < 2**16:
     self.assertMultiLineEqual(a_str, b_str, msg=msg)
   else:
-    diff = '\n' + ''.join(difflib.unified_diff(a_str.splitlines(True),
-                                               b_str.splitlines(True)))
-    self.fail('%s : %s' % (msg, diff))
+    diff = ''.join(
+        difflib.unified_diff(a_str.splitlines(True), b_str.splitlines(True)))
+    if diff:
+      self.fail('%s :\n%s' % (msg, diff))
 
 
 def NormalizeNumberFields(pb):
@@ -138,7 +135,7 @@ def NormalizeNumberFields(pb):
   """
   for desc, values in pb.ListFields():
     is_repeated = True
-    if desc.label is not descriptor.FieldDescriptor.LABEL_REPEATED:
+    if desc.label != descriptor.FieldDescriptor.LABEL_REPEATED:
       is_repeated = False
       values = [values]
 

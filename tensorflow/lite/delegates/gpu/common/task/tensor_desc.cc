@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 #include <cstdint>
+#include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -94,16 +96,11 @@ TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
   return *this;
 }
 
-GPUResources TensorDescriptor::GetGPUResources() const {
+GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
   GPUResources resources;
   resources.ints.push_back("slice_stride");
   if (HasAxis(Axis::WIDTH)) {
     resources.ints.push_back("width");
-    resources.ints.push_back("width_div2");
-    resources.ints.push_back("width_div4");
-    resources.ints.push_back("width_batched");
-    resources.ints.push_back("width_batched_div2");
-    resources.ints.push_back("width_batched_div4");
   }
   if (HasAxis(Axis::HEIGHT)) {
     resources.ints.push_back("height");
@@ -171,7 +168,7 @@ absl::Status TensorDescriptor::PerformSelector(
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Width") {
-    *result = GetWidth();
+    *result = "width";
     return absl::OkStatus();
   } else if (selector == "Height") {
     *result = "height";
@@ -343,6 +340,15 @@ std::string TensorDescriptor::Read(
       read_as_type == DataType::FLOAT32 ? "float4" : "half4";
   switch (storage_type) {
     case TensorStorageType::BUFFER:
+      if (gpu_info.IsGlsl()) {
+        if (data_type == DataType::FLOAT16) {
+          return absl::StrCat("vec4(unpackHalf2x16(buffer[", coords[0],
+                              "].x), unpackHalf2x16(buffer[", coords[0],
+                              "].y))");
+        } else {
+          return absl::StrCat("buffer[", coords[0], "]");
+        }
+      }
       if (read_as_type == data_type) {
         return absl::StrCat("buffer[", coords[0], "]");
       } else {
@@ -371,6 +377,9 @@ std::string TensorDescriptor::Read(
           result = metal_type + "(" + result + ")";
         }
         return result;
+      } else if (gpu_info.IsGlsl()) {
+        return "texelFetch(image2d, ivec2(" + coords[0] + ", " + coords[1] +
+               "), 0)";
       } else {
         return "";
       }
@@ -388,6 +397,9 @@ std::string TensorDescriptor::Read(
           result = metal_type + "(" + result + ")";
         }
         return result;
+      } else if (gpu_info.IsGlsl()) {
+        return "texelFetch(image3d, ivec3(" + coords[0] + ", " + coords[1] +
+               ", " + coords[2] + "), 0)";
       } else {
         return "";
       }
@@ -405,6 +417,9 @@ std::string TensorDescriptor::Read(
           result = metal_type + "(" + result + ")";
         }
         return result;
+      } else if (gpu_info.IsGlsl()) {
+        return "texelFetch(image2d_array, ivec3(" + coords[0] + ", " +
+               coords[1] + ", " + coords[2] + "), 0)";
       } else {
         return "";
       }
@@ -418,6 +433,8 @@ std::string TensorDescriptor::Read(
           result = metal_type + "(" + result + ")";
         }
         return result;
+      } else if (gpu_info.IsGlsl()) {
+        return "texelFetch(image_buffer, " + coords[0] + ")";
       } else {
         return "";
       }
@@ -432,6 +449,15 @@ std::string TensorDescriptor::Write(
   switch (storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
+      if (gpu_info.IsGlsl()) {
+        if (data_type == DataType::FLOAT16) {
+          return absl::StrCat("buffer[", coords[0], "] = uvec2(packHalf2x16(",
+                              var_name, ".xy), packHalf2x16(", var_name,
+                              ".zw))");
+        } else {
+          return absl::StrCat("buffer[", coords[0], "] = ", var_name);
+        }
+      }
       return absl::StrCat("buffer[", coords[0], "] = ", var_name);
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_2D:
@@ -442,6 +468,9 @@ std::string TensorDescriptor::Write(
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image2d.write($0, ushort2($1, $2))", var_name,
                                 coords[0], coords[1]);
+      } else if (gpu_info.IsGlsl()) {
+        return absl::Substitute("imageStore(image2d, ivec2($0, $1), $2)",
+                                coords[0], coords[1], var_name);
       } else {
         return "";
       }
@@ -453,6 +482,9 @@ std::string TensorDescriptor::Write(
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image3d.write($0, ushort3($1, $2, $3))",
                                 var_name, coords[0], coords[1], coords[2]);
+      } else if (gpu_info.IsGlsl()) {
+        return absl::Substitute("imageStore(image3d, ivec3($0, $1, $2), $3)",
+                                coords[0], coords[1], coords[2], var_name);
       } else {
         return "";
       }
@@ -464,6 +496,10 @@ std::string TensorDescriptor::Write(
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image2d_array.write($0, ushort2($1, $2), $3)",
                                 var_name, coords[0], coords[1], coords[2]);
+      } else if (gpu_info.IsGlsl()) {
+        return absl::Substitute(
+            "imageStore(image2d_array, ivec3($0, $1, $2), $3)", coords[0],
+            coords[1], coords[2], var_name);
       } else {
         return "";
       }
@@ -525,11 +561,10 @@ absl::Status TensorDescriptor::PerformGetWHOffsetSelector(
     } else {
       batch_id = it->second;
     }
-    *result = absl::StrCat("((", args[1], ") * ", GetWidth(), " + (", args[0],
+    *result = absl::StrCat("((", args[1], ") * width + (", args[0],
                            ")) * batch + (", batch_id, ")");
   } else {
-    *result =
-        absl::StrCat("(", args[1], ") * ", GetWidth(), " + (", args[0], ")");
+    *result = absl::StrCat("(", args[1], ") * width + (", args[0], ")");
   }
   return absl::OkStatus();
 }
@@ -594,8 +629,8 @@ std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHS(
   switch (storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      return {absl::Substitute("((($2) * height + ($1)) * $3 + ($0))", x, y, s,
-                               GetWidth())};
+      return {
+          absl::Substitute("((($2) * height + ($1)) * width + ($0))", x, y, s)};
     case TensorStorageType::TEXTURE_2D:
       return {absl::Substitute("($0)", x),
               absl::Substitute("(($0) * slices + ($1))", y, s)};
@@ -645,8 +680,8 @@ std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHDS(
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
       return {absl::Substitute(
-          "(((($3) * slices + ($2)) * height + ($1)) * $4 + ($0))", x, y, s, z,
-          GetWidth())};
+          "(((($3) * slices + ($2)) * height + ($1)) * width + ($0))", x, y, s,
+          z)};
     case TensorStorageType::TEXTURE_2D:
       return {absl::Substitute("(($0) * depth + ($1))", x, z),
               absl::Substitute("(($0) * slices + ($1))", y, s)};
@@ -771,6 +806,10 @@ bool TensorDescriptor::HasAxis(Axis axis) const {
 
 int TensorDescriptor::GetWidthSize(BHWDC shape) const {
   int width = shape.w;
+  auto it = state_vars_.find("BatchedWidth");
+  if (it != state_vars_.end() && it->second == "true") {
+    width *= shape.b;
+  }
   auto it1 = state_vars_.find("ElementsX2");
   if (it1 != state_vars_.end() && it1->second == "true") {
     width /= 2;
@@ -778,10 +817,6 @@ int TensorDescriptor::GetWidthSize(BHWDC shape) const {
   auto it2 = state_vars_.find("ElementsX4");
   if (it2 != state_vars_.end() && it2->second == "true") {
     width /= 4;
-  }
-  auto it = state_vars_.find("BatchedWidth");
-  if (it != state_vars_.end() && it->second == "true") {
-    width *= shape.b;
   }
   return width;
 }
@@ -853,24 +888,6 @@ bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
 bool TensorDescriptor::IsBatchedWidth() const {
   auto it = state_vars_.find("BatchedWidth");
   return it != state_vars_.end() && it->second == "true";
-}
-
-std::string TensorDescriptor::GetWidth() const {
-  std::string div;
-  auto it1 = state_vars_.find("ElementsX2");
-  if (it1 != state_vars_.end() && it1->second == "true") {
-    div = "_div2";
-  }
-  auto it2 = state_vars_.find("ElementsX4");
-  if (it2 != state_vars_.end() && it2->second == "true") {
-    div = "_div4";
-  }
-  auto it = state_vars_.find("BatchedWidth");
-  if (it != state_vars_.end() && it->second == "true") {
-    return "width_batched" + div;
-  } else {
-    return "width" + div;
-  }
 }
 
 AddressMode TensorDescriptor::AddressModeFromState() const {

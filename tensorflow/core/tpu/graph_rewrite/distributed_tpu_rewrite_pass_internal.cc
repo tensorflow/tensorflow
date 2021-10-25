@@ -22,13 +22,13 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-static int64 overridden_node_id = -1;
+static int64_t overridden_node_id = -1;
 
 }  // namespace
 
 namespace internal {
 
-void OverrideNodeIdForTesting(const int64 node_id) {
+void OverrideNodeIdForTesting(const int64_t node_id) {
   overridden_node_id = node_id;
 }
 

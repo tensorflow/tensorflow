@@ -17,11 +17,11 @@ limitations under the License.
 #include <iterator>
 #include <vector>
 
+#include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {

@@ -14,14 +14,9 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow Lite Python Interface: Sanity check."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ctypes
 import io
 import sys
-
 from unittest import mock
 
 import numpy as np
@@ -35,16 +30,11 @@ if hasattr(sys, 'setdlopenflags') and hasattr(sys, 'getdlopenflags'):
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.lite.python import interpreter as interpreter_wrapper
+from tensorflow.lite.python.metrics import metrics
 from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_registerer
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
-try:
-  from tensorflow.lite.python import metrics_portable
-  metrics = metrics_portable
-except ImportError:
-  from tensorflow.lite.python import metrics_nonportable
-  metrics = metrics_nonportable
 # pylint: enable=g-import-not-at-top
 
 
@@ -357,6 +347,7 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
 class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
+    super(InterpreterTensorAccessorTest, self).setUp()
     self.interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile(
             'testdata/permute_float.tflite'))
@@ -401,7 +392,7 @@ class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
       _ = self.interpreter.allocate_tensors()
     # Make sure we get an exception if we try to run an unsafe operation
     with self.assertRaisesRegex(RuntimeError, 'There is at least 1 reference'):
-      _ = self.interpreter.invoke()
+      _ = self.interpreter.invoke()  # pylint: disable=assignment-from-no-return
     # Now test that we can run
     del in0  # this is our only buffer reference, so now it is safe to change
     in0safe = self.interpreter.tensor(self.input0)
@@ -412,6 +403,7 @@ class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
 class InterpreterDelegateTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
+    super(InterpreterDelegateTest, self).setUp()
     self._delegate_file = resource_loader.get_path_to_datafile(
         'testdata/test_delegate.so')
     self._model_file = resource_loader.get_path_to_datafile(
@@ -543,10 +535,9 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
 
   def testFail(self):
     with self.assertRaisesRegex(
-        # Due to exception chaining in PY3, we can't be more specific here and check that
-        # the phrase 'Fail argument sent' is present.
-        ValueError,  #
-        r'Failed to load delegate from'):
+        # Due to exception chaining in PY3, we can't be more specific here and
+        # check that the phrase 'Fail argument sent' is present.
+        ValueError, 'Failed to load delegate from'):
       interpreter_wrapper.load_delegate(
           self._delegate_file, options={'fail': 'fail'})
 

@@ -19,11 +19,8 @@ https://www.tensorflow.org/guide/saved_model#cli_to_inspect_and_execute_savedmod
 
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
+import ast
 import os
 import re
 import sys
@@ -109,7 +106,14 @@ def _get_inputs_tensor_info_from_meta_graph_def(meta_graph_def,
 
   Returns:
     A dictionary that maps input tensor keys to TensorInfos.
+
+  Raises:
+    ValueError if `signature_def_key` is not found in the MetaGraphDef.
   """
+  if signature_def_key not in meta_graph_def.signature_def:
+    raise ValueError(
+        f'Could not find signature "{signature_def_key}". Please choose from: '
+        f'{", ".join(meta_graph_def.signature_def.keys())}')
   return meta_graph_def.signature_def[signature_def_key].inputs
 
 
@@ -518,7 +522,7 @@ def preprocess_inputs_arg_string(inputs_str):
   return input_dict
 
 
-def preprocess_input_exprs_arg_string(input_exprs_str):
+def preprocess_input_exprs_arg_string(input_exprs_str, safe=True):
   """Parses input arg into dictionary that maps input key to python expression.
 
   Parses input string in the format of 'input_key=<python expression>' into a
@@ -526,8 +530,10 @@ def preprocess_input_exprs_arg_string(input_exprs_str):
 
   Args:
     input_exprs_str: A string that specifies python expression for input keys.
-    Each input is separated by semicolon. For each input key:
+      Each input is separated by semicolon. For each input key:
         'input_key=<python expression>'
+    safe: Whether to evaluate the python expression as literals or allow
+      arbitrary calls (e.g. numpy usage).
 
   Returns:
     A dictionary that maps input keys to their values.
@@ -542,8 +548,15 @@ def preprocess_input_exprs_arg_string(input_exprs_str):
       raise RuntimeError('--input_exprs "%s" format is incorrect. Please follow'
                          '"<input_key>=<python expression>"' % input_exprs_str)
     input_key, expr = input_raw.split('=', 1)
-    # ast.literal_eval does not work with numpy expressions
-    input_dict[input_key] = eval(expr)  # pylint: disable=eval-used
+    if safe:
+      try:
+        input_dict[input_key] = ast.literal_eval(expr)
+      except:
+        raise RuntimeError(
+            f'Expression "{expr}" is not a valid python literal.')
+    else:
+      # ast.literal_eval does not work with numpy expressions
+      input_dict[input_key] = eval(expr)  # pylint: disable=eval-used
   return input_dict
 
 
@@ -656,11 +669,11 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   tensor_key_feed_dict = {}
 
   inputs = preprocess_inputs_arg_string(inputs_str)
-  input_exprs = preprocess_input_exprs_arg_string(input_exprs_str)
+  input_exprs = preprocess_input_exprs_arg_string(input_exprs_str, safe=False)
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
-    data = np.load(file_io.FileIO(filename, mode='rb'), allow_pickle=True)
+    data = np.load(file_io.FileIO(filename, mode='rb'), allow_pickle=True)  # pylint: disable=unexpected-keyword-arg
 
     # When a variable_name key is specified for the input file
     if variable_name:
@@ -920,8 +933,10 @@ def add_run_subparser(subparsers):
   parser_run.add_argument('--inputs', type=str, default='', help=msg)
   msg = ('Specifying inputs by python expressions, in the format of'
          ' "<input_key>=\'<python expression>\'", separated by \';\'. '
-         'numpy module is available as \'np\'. '
-         'Will override duplicate input keys from --inputs option.')
+         'numpy module is available as \'np\'. Please note that the expression '
+         'will be evaluated as-is, and is susceptible to code injection. '
+         'When this is set, the value will override duplicate input keys from '
+         '--inputs option.')
   parser_run.add_argument('--input_exprs', type=str, default='', help=msg)
   msg = (
       'Specifying tf.Example inputs as list of dictionaries. For example: '

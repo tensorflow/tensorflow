@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.client.Timeline."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 
 from tensorflow.core.protobuf import config_pb2
@@ -104,10 +100,7 @@ class TimelineTest(test.TestCase):
     step_stats = run_metadata.step_stats
     devices = [d.device for d in step_stats.dev_stats]
     self.assertTrue('/job:localhost/replica:0/task:0/device:GPU:0' in devices)
-    if not test.is_built_with_rocm():
-      # skip this check for the ROCm platform
-      # stream level tracing is not yet supported on the ROCm platform
-      self.assertTrue('/device:GPU:0/stream:all' in devices)
+    self.assertIn('/device:GPU:0/stream:all', devices)
     tl = timeline.Timeline(step_stats)
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)

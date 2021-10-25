@@ -1,0 +1,25 @@
+From 899020a6afcf10c42cd4d170b74a8bb66fab6c42 Mon Sep 17 00:00:00 2001
+From: yashkatariya <yashkatariya@google.com>
+Date: Thu, 21 Oct 2021 09:19:28 -0700
+Subject: [PATCH] Add new select for darwin which is needed for TF
+
+---
+ utils/bazel/llvm-project-overlay/llvm/config.bzl | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/utils/bazel/llvm-project-overlay/llvm/config.bzl b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+index ff64df694048..5809caa2e4ff 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/config.bzl
++++ b/utils/bazel/llvm-project-overlay/llvm/config.bzl
+@@ -80,6 +80,9 @@ llvm_config_defines = os_defines + select({
+     "@bazel_tools//src/conditions:darwin_x86_64": native_arch_defines("X86", "x86_64-unknown-darwin"),
+     "@bazel_tools//src/conditions:linux_aarch64": native_arch_defines("AArch64", "aarch64-unknown-linux-gnu"),
+     "//conditions:default": native_arch_defines("X86", "x86_64-unknown-linux-gnu"),
++}) + select({
++    "@bazel_tools//src/conditions:darwin": native_arch_defines("X86", "x86_64-unknown-darwin"),
++    "//conditions:default": [],
+ }) + [
+     # These shouldn't be needed by the C++11 standard, but are for some
+     # platforms (e.g. glibc < 2.18. See
+--
+2.33.0.1079.g6e70778dc9-goog

@@ -535,6 +535,27 @@ TEST(Prelu, FP16Weights) {
       .Test(xnnpack_delegate.get());
 }
 
+TEST(Prelu, INT8Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  PreluTester()
+      .InputShape({batch, height, width, channels})
+      .SlopeShape({channels})
+      .INT8Weights()
+      .Test(xnnpack_delegate.get());
+}
+
 TEST(Prelu, SparseWeights) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),

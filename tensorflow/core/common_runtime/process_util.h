@@ -53,7 +53,8 @@ void SchedClosure(std::function<void()> closure);
 
 // Schedule "closure" after the given number of microseconds in the
 // fixed-size ThreadPool used for non-blocking compute tasks.
-void SchedNonBlockingClosureAfter(int64 micros, std::function<void()> closure);
+void SchedNonBlockingClosureAfter(int64_t micros,
+                                  std::function<void()> closure);
 
 }  // namespace tensorflow
 

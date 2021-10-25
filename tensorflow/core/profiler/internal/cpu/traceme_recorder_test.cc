@@ -41,8 +41,8 @@ using ::testing::ElementsAre;
 MATCHER_P(Named, name, "") { return arg.name == name; }
 
 TEST(RecorderTest, SingleThreaded) {
-  int64 start_time = GetCurrentTimeNanos();
-  int64 end_time = start_time + SecondsToNanos(1);
+  int64_t start_time = GetCurrentTimeNanos();
+  int64_t end_time = start_time + SecondsToNanos(1);
 
   TraceMeRecorder::Record({"before", start_time, end_time});
   TraceMeRecorder::Start(/*level=*/1);
@@ -81,8 +81,8 @@ TEST(RecorderTest, Multithreaded) {
       uint64 j = 0;
       bool was_active = false;
       auto record_event = [&j]() {
-        int64 start_time = GetCurrentTimeNanos();
-        int64 end_time = start_time + SecondsToNanos(1);
+        int64_t start_time = GetCurrentTimeNanos();
+        int64_t end_time = start_time + SecondsToNanos(1);
         TraceMeRecorder::Record(
             {/*name=*/absl::StrCat(j++), start_time, end_time});
       };

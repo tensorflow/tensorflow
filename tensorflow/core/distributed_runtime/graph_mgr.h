@@ -77,7 +77,7 @@ class GraphMgr {
   Status Register(const string& handle, const GraphDef& gdef,
                   WorkerSession* session, const GraphOptions& graph_options,
                   const DebugOptions& debug_options,
-                  const ConfigProto& config_proto, int64 collective_graph_key,
+                  const ConfigProto& config_proto, int64_t collective_graph_key,
                   DistributedFunctionLibraryRuntime* cluster_flr,
                   string* graph_handle);
 
@@ -87,16 +87,16 @@ class GraphMgr {
   // should receive upon finish.
   typedef std::map<string, Tensor> NamedTensors;
   typedef std::function<void(const Status&)> StatusCallback;
-  void ExecuteAsync(const string& handle, const int64 step_id,
+  void ExecuteAsync(const string& handle, const int64_t step_id,
                     WorkerSession* session, const ExecutorOpts& opts,
                     StepStatsCollector* collector,
                     MutableRunGraphResponseWrapper* response,
                     CancellationManager* cancellation_manager,
                     const NamedTensors& in, StatusCallback done);
 
-  Status SendInputs(const int64 step_id, const NamedTensors& in);
-  Status RecvOutputs(const int64 step_id, NamedTensors* out);
-  void RecvOutputsAsync(const int64 step_id, NamedTensors* out,
+  Status SendInputs(const int64_t step_id, const NamedTensors& in);
+  Status RecvOutputs(const int64_t step_id, NamedTensors* out);
+  void RecvOutputsAsync(const int64_t step_id, NamedTensors* out,
                         StatusCallback done);
 
   // Deregisters a graph.
@@ -114,7 +114,7 @@ class GraphMgr {
     Executor* root = nullptr;               // not owned.
     FunctionLibraryRuntime* lib = nullptr;  // not owned.
     // Build the cost model if this value is strictly positive.
-    int64 build_cost_model = 0;
+    int64_t build_cost_model = 0;
   };
 
   struct Item : public core::RefCounted {
@@ -141,7 +141,7 @@ class GraphMgr {
     // manager.
     GraphMgr* graph_mgr;
 
-    int64 collective_graph_key;
+    int64_t collective_graph_key;
   };
 
   const WorkerEnv* worker_env_;  // Not owned.
@@ -151,7 +151,7 @@ class GraphMgr {
 
   // Owned.
   mutex mu_;
-  int64 next_id_ TF_GUARDED_BY(mu_) = 0;
+  int64_t next_id_ TF_GUARDED_BY(mu_) = 0;
 
   // If true, blocks until device has finished all queued operations in a step.
   bool sync_on_finish_ = true;
@@ -163,13 +163,11 @@ class GraphMgr {
   // mechanism to gc these graphs.
   std::unordered_map<string, Item*> table_;
 
-  void StartParallelExecutors(const string& handle, int64 step_id, Item* item,
-                              Rendezvous* rendezvous,
-                              CollectiveExecutor::Handle* ce_handle,
-                              StepStatsCollector* collector,
-                              CostGraphDef* cost_graph,
-                              CancellationManager* cancellation_manager,
-                              WorkerSession* session, StatusCallback done);
+  void StartParallelExecutors(
+      const string& handle, int64_t step_id, Item* item, Rendezvous* rendezvous,
+      CollectiveExecutor::Handle* ce_handle, StepStatsCollector* collector,
+      CostGraphDef* cost_graph, CancellationManager* cancellation_manager,
+      WorkerSession* session, int64_t start_time_usecs, StatusCallback done);
 
   // Don't attempt to process cost models unless explicitly requested for at
   // least one of the items.
@@ -181,7 +179,7 @@ class GraphMgr {
   Status InitItem(const string& handle, const GraphDef& gdef,
                   WorkerSession* session, const GraphOptions& graph_options,
                   const DebugOptions& debug_options,
-                  const ConfigProto& config_proto, int64 collective_graph_key,
+                  const ConfigProto& config_proto, int64_t collective_graph_key,
                   DistributedFunctionLibraryRuntime* cluster_flr, Item* item);
 
   Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,

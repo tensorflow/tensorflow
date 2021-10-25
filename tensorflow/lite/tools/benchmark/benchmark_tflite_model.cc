@@ -28,8 +28,10 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -56,9 +58,9 @@ namespace {
 
 // Backward compat with previous approach to enabling op profiling.
 #if defined(TFLITE_PROFILING_ENABLED)
-constexpr int kOpProfilingEnabledDefault = true;
+constexpr bool kOpProfilingEnabledDefault = true;
 #else
-constexpr int kOpProfilingEnabledDefault = false;
+constexpr bool kOpProfilingEnabledDefault = false;
 #endif
 
 // Dumps ruy profiling events if the ruy profiler is enabled.
@@ -112,11 +114,10 @@ class InterpreterStatePrinter : public BenchmarkListener {
 };
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
-  std::vector<std::string> results;
-  if (!util::SplitAndParse(str, delim, &results)) {
-    results.clear();
+  if (str.empty()) {
+    return {};
   }
-  return results;
+  return absl::StrSplit(str, delim);
 }
 
 int GetNumElements(const TfLiteIntArray* dim_array) {
@@ -292,10 +293,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("print_postinvoke_state",
                           BenchmarkParam::Create<bool>(false));
 
-  for (const auto& delegate_provider :
-       tools::GetRegisteredDelegateProviders()) {
-    default_params.Merge(delegate_provider->DefaultParams());
-  }
+  tools::ProvidedDelegateList delegate_providers(&default_params);
+  delegate_providers.AddAllDelegateParams();
 
   return default_params;
 }
@@ -364,11 +363,8 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
-  for (const auto& delegate_provider :
-       tools::GetRegisteredDelegateProviders()) {
-    auto delegate_flags = delegate_provider->CreateFlags(&params_);
-    flags.insert(flags.end(), delegate_flags.begin(), delegate_flags.end());
-  }
+  tools::ProvidedDelegateList delegate_providers(&params_);
+  delegate_providers.AppendCmdlineFlags(&flags);
 
   return flags;
 }
@@ -407,6 +403,8 @@ void BenchmarkTfLiteModel::LogParams() {
 }
 
 TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
+  TF_LITE_ENSURE_STATUS(BenchmarkModel::ValidateParams());
+
   if (params_.Get<std::string>("graph").empty()) {
     TFLITE_LOG(ERROR)
         << "Please specify the name of your TF Lite input file with --graph";
@@ -493,6 +491,10 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
   }
   int num_elements = GetNumElements(t.dims);
   switch (t.type) {
+    case kTfLiteComplex64: {
+      return CreateInputTensorData<std::complex<float>>(
+          num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
+    }
     case kTfLiteFloat32: {
       return CreateInputTensorData<float>(
           num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
@@ -562,7 +564,8 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
           num_elements, std::uniform_int_distribution<int32_t>(low, high));
     }
     case kTfLiteString: {
-      // TODO(haoliang): No need to cache string tensors right now.
+      // Don't populate input for string. Instead, return a default-initialized
+      // `InputTensorData` object directly.
       break;
     }
     case kTfLiteBool: {
@@ -585,7 +588,7 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
   // Note the corresponding relation between 'interpreter_inputs' and 'inputs_'
   // (i.e. the specified input layer info) has been checked in
   // BenchmarkTfLiteModel::Init() before calling this function. So, we simply
-  // use the corresponding input layer info to initializethe input data value
+  // use the corresponding input layer info to initialize the input data value
   // properly.
   auto interpreter_inputs = interpreter_->inputs();
   for (int i = 0; i < interpreter_inputs.size(); ++i) {
@@ -666,12 +669,22 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   // Install profilers if necessary right after interpreter is created so that
   // any memory allocations inside the TFLite runtime could be recorded if the
   // installed profiler profile memory usage information.
-  profiling_listener_ = MayCreateProfilingListener();
-  if (profiling_listener_) AddListener(profiling_listener_.get());
 
-  interpreter_state_printer_ = std::unique_ptr<BenchmarkListener>(
-      new InterpreterStatePrinter(interpreter_.get()));
-  AddListener(interpreter_state_printer_.get());
+  // Adjust "max_profiling_buffer_entries" according to the loaded model.
+  int total_nodes = 0;
+  for (int i = 0; i < interpreter_->subgraphs_size(); ++i) {
+    // subgraph(...) is non-const member method.
+    total_nodes += static_cast<int>(interpreter_->subgraph(i)->nodes_size());
+  }
+  if (total_nodes > params_.Get<int32_t>("max_profiling_buffer_entries")) {
+    constexpr int kProfilingBufferHeadrooms = 512;
+    params_.Set<int32_t>("max_profiling_buffer_entries",
+                         total_nodes + kProfilingBufferHeadrooms);
+  }
+
+  AddOwnedListener(MayCreateProfilingListener());
+  AddOwnedListener(std::unique_ptr<BenchmarkListener>(
+      new InterpreterStatePrinter(interpreter_.get())));
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
@@ -680,12 +693,17 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   // Contains all ids of TfLiteNodes that have been checked to see whether it's
   // delegated or not.
   std::unordered_set<int> checked_node_ids;
-  for (const auto& delegate_provider :
-       tools::GetRegisteredDelegateProviders()) {
-    auto delegate = delegate_provider->CreateTfLiteDelegate(params_);
-    // It's possible that a delegate of certain type won't be created as
-    // user-specified benchmark params tells not to.
-    if (delegate == nullptr) continue;
+  tools::ProvidedDelegateList delegate_providers(&params_);
+  auto created_delegates = delegate_providers.CreateAllRankedDelegates();
+  TFLITE_MAY_LOG(INFO, (created_delegates.size() >= 2))
+      << "Going to apply " << created_delegates.size()
+      << " delegates one after another.";
+  for (auto& created_delegate : created_delegates) {
+    const auto* delegate_provider = created_delegate.provider;
+    tools::TfLiteDelegatePtr delegate = std::move(created_delegate.delegate);
+    TFLITE_TOOLS_CHECK(delegate != nullptr)
+        << "The created delegate by the delegate provider should not be "
+           "nullptr!";
     if (interpreter_->ModifyGraphWithDelegate(delegate.get()) != kTfLiteOk) {
       TFLITE_LOG(ERROR) << "Failed to apply " << delegate_provider->GetName()
                         << " delegate.";
@@ -748,8 +766,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   }
 
   // Check if the tensor names match, and log a warning if it doesn't.
-  // TODO(ycling): Consider to make this an error again when the new converter
-  // create tensors with consistent naming.
   for (int j = 0; j < inputs_.size(); ++j) {
     const InputLayerInfo& input = inputs_[j];
     int i = interpreter_inputs[j];
@@ -759,7 +775,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
                        << " but flags call it " << input.name;
     }
 
-    if (input.shape.size() != t->dims->size) {
+    if (t->type != kTfLiteString && input.shape.size() != t->dims->size) {
       TFLITE_LOG(ERROR) << "Input tensor #" << i << " should have "
                         << t->dims->size << " dimensions!";
       return kTfLiteError;
@@ -781,8 +797,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     return kTfLiteError;
   }
 
-  ruy_profiling_listener_.reset(new RuyProfileListener());
-  AddListener(ruy_profiling_listener_.get());
+  AddOwnedListener(
+      std::unique_ptr<BenchmarkListener>(new RuyProfileListener()));
 
   return kTfLiteOk;
 }
@@ -800,7 +816,18 @@ TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
 
 std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
     const {
-  auto resolver = new tflite::ops::builtin::BuiltinOpResolver();
+  tflite::ops::builtin::BuiltinOpResolver* resolver = nullptr;
+  // When --use_xnnpack is explicitly set to false, skip applying the default
+  // XNNPACK delegate in TfLite runtime so that the original execution path
+  // based on the unmodified model graph is still excercised.
+  if (params_.HasParam("use_xnnpack") &&
+      params_.HasValueSet<bool>("use_xnnpack") &&
+      !params_.Get<bool>("use_xnnpack")) {
+    resolver =
+        new tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
+  } else {
+    resolver = new tflite::ops::builtin::BuiltinOpResolver();
+  }
   RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);
 }

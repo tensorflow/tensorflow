@@ -80,12 +80,16 @@ typedef struct TfLiteExternalContext {
 // indices
 typedef struct TfLiteIntArray {
   int size;
-// gcc 6.1+ have a bug where flexible members aren't properly handled
-// https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
-#if (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
-     __GNUC_MINOR__ >= 1) ||                                      \
-    defined(HEXAGON) ||                                           \
+
+#if defined(_MSC_VER)
+  // Context for why this is needed is in http://b/189926408#comment21
+  int data[1];
+#elif (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
+       __GNUC_MINOR__ >= 1) ||                                      \
+    defined(HEXAGON) ||                                             \
     (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
+  // gcc 6.1+ have a bug where flexible members aren't properly handled
+  // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
   int data[0];
 #else
   int data[];
@@ -121,11 +125,15 @@ void TfLiteIntArrayFree(TfLiteIntArray* a);
 // Fixed size list of floats. Used for per-channel quantization.
 typedef struct TfLiteFloatArray {
   int size;
-// gcc 6.1+ have a bug where flexible members aren't properly handled
-// https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
-// This also applies to the toolchain used for Qualcomm Hexagon DSPs.
-#if !defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
-    __GNUC_MINOR__ >= 1
+#if defined(_MSC_VER)
+  // Context for why this is needed is in http://b/189926408#comment21
+  float data[1];
+#elif (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
+       __GNUC_MINOR__ >= 1) ||                                      \
+    defined(HEXAGON) ||                                             \
+    (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
+  // gcc 6.1+ have a bug where flexible members aren't properly handled
+  // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
   float data[0];
 #else
   float data[];
@@ -456,8 +464,8 @@ typedef struct TfLiteTensor {
 } TfLiteTensor;
 
 // A structure representing an instance of a node.
-// This structure only exhibits the inputs, outputs and user defined data, not
-// other features like the type.
+// This structure only exhibits the inputs, outputs, user defined data and some
+// node properties (like statefulness), not other features like the type.
 typedef struct TfLiteNode {
   // Inputs to this node expressed as indices into the simulator's tensors.
   TfLiteIntArray* inputs;
@@ -490,6 +498,9 @@ typedef struct TfLiteNode {
   // created by calling `interpreter.ModifyGraphWithDelegate`.
   // WARNING: This is an experimental interface that is subject to change.
   struct TfLiteDelegate* delegate;
+
+  // Whether this op might have side effect (e.g. stateful op).
+  bool might_have_side_effect;
 } TfLiteNode;
 #else   // defined(TF_LITE_STATIC_MEMORY)?
 // NOTE: This flag is opt-in only at compile time.
@@ -558,6 +569,10 @@ typedef struct TfLiteNode {
 
   // Outputs to this node expressed as indices into the simulator's tensors.
   TfLiteIntArray* outputs;
+
+  // intermediate tensors to this node expressed as indices into the simulator's
+  // tensors.
+  TfLiteIntArray* intermediates;
 
   // Opaque data provided by the node implementer through `Registration.init`.
   void* user_data;
@@ -640,6 +655,7 @@ typedef struct TfLiteContext {
   // TfLiteDelegates can traverse the current execution plan by iterating
   // through each member of this array and using GetNodeAndRegistration() to
   // access details about a node. i.e.
+  //
   // TfLiteIntArray* execution_plan;
   // TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &execution_plan));
   // for (int exec_index = 0; exec_index < execution_plan->size; exec_index++) {
@@ -648,6 +664,28 @@ typedef struct TfLiteContext {
   //    TfLiteRegistration* reg;
   //    context->GetNodeAndRegistration(context, node_index, &node, &reg);
   // }
+  // Note: the memory pointed by '`*execution_plan` is OWNED by TfLite runtime.
+  // Future calls to GetExecutionPlan invalidates earlier outputs. The following
+  // code snippet shows the issue of such an invocation pattern. After calling
+  // CheckNode, subsequent access to `plan_1st` is undefined.
+  //
+  // void CheckNode(const TfLiteNode* node) {
+  //   ...
+  //   TfLiteIntArray* plan_2nd;
+  //   TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan_2nd));
+  //   ...
+  // }
+  //
+  // TfLiteIntArray* plan_1st;
+  // TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan_1st));
+  // for (int exec_index = 0; exec_index < plan_1st->size; exec_index++) {
+  //    int node_index = plan_1st->data[exec_index];
+  //    TfLiteNode* node;
+  //    TfLiteRegistration* reg;
+  //    context->GetNodeAndRegistration(context, node_index, &node, &reg);
+  //    CheckNode(node);
+  // }
+  //
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus (*GetExecutionPlan)(struct TfLiteContext* context,
                                    TfLiteIntArray** execution_plan);
@@ -777,6 +815,18 @@ typedef struct TfLiteContext {
   // WARNING: This method may not be available on all platforms.
   TfLiteEvalTensor* (*GetEvalTensor)(const struct TfLiteContext* context,
                                      int tensor_idx);
+
+  // Retrieves named metadata buffer from the TFLite model.
+  // Returns kTfLiteOk if metadata is successfully obtained from the flatbuffer
+  // Model: that is, there exists a `metadata` entry with given `name` string.
+  // (see TFLite's schema.fbs).
+  // The corresponding `buffer` information is populated in `ptr` & `bytes`.
+  // The data from `ptr` is valid for the lifetime of the Interpreter.
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*GetModelMetadata)(const struct TfLiteContext* context,
+                                   const char* name, const char** ptr,
+                                   size_t* bytes);
 } TfLiteContext;
 
 typedef struct TfLiteRegistration {
@@ -918,7 +968,7 @@ typedef struct TfLiteDelegate {
 
 // Build a 'null' delegate, with all the fields properly set to their default
 // values.
-TfLiteDelegate TfLiteDelegateCreate();
+TfLiteDelegate TfLiteDelegateCreate(void);
 
 #ifdef __cplusplus
 }  // extern "C"

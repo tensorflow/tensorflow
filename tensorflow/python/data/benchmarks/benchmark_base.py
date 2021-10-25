@@ -13,16 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Test utilities for tf.data benchmarking functionality."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
 from tensorflow.python.eager import context
 from tensorflow.python.platform import test
@@ -171,7 +168,7 @@ class DatasetBenchmarkBase(test.Benchmark):
 
     # The options that have been applied to the dataset are preserved so that
     # they are not overwritten while benchmarking.
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = (
         apply_default_optimizations)
     dataset = dataset.with_options(options)

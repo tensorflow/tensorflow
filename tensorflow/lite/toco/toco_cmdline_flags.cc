@@ -191,7 +191,15 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.force_select_tf_ops.default_value(), ""),
       // WARNING: Experimental interface, subject to change
       Flag("unfold_batchmatmul", parsed_flags.unfold_batchmatmul.bind(),
-           parsed_flags.unfold_batchmatmul.default_value(), "")};
+           parsed_flags.unfold_batchmatmul.default_value(), ""),
+      // WARNING: Experimental interface, subject to change
+      Flag("accumulation_type", parsed_flags.accumulation_type.bind(),
+           parsed_flags.accumulation_type.default_value(),
+           "Accumulation type to use with quantize_to_float16"),
+      // WARNING: Experimental interface, subject to change
+      Flag("allow_bfloat16", parsed_flags.allow_bfloat16.bind(),
+           parsed_flags.allow_bfloat16.default_value(), "")};
+
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
   if (asked_for_help) {
@@ -290,6 +298,8 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(enable_select_tf_ops, FlagRequirement::kNone);
   READ_TOCO_FLAG(force_select_tf_ops, FlagRequirement::kNone);
   READ_TOCO_FLAG(unfold_batchmatmul, FlagRequirement::kNone);
+  PARSE_TOCO_FLAG(IODataType, accumulation_type, FlagRequirement::kNone);
+  READ_TOCO_FLAG(allow_bfloat16, FlagRequirement::kNone);
 
   if (parsed_toco_flags.force_select_tf_ops.value() &&
       !parsed_toco_flags.enable_select_tf_ops.value()) {

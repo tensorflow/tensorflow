@@ -31,11 +31,13 @@ namespace xla {
 LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
                                    LocalClient* client,
                                    AllocationModel allocation_model,
-                                   bool asynchronous, bool allow_event_reuse,
+                                   int max_inflight_computations,
+                                   bool allow_event_reuse,
                                    bool use_callback_stream)
     : allocation_model_(allocation_model),
       event_pool_(allow_event_reuse),
-      compute_semaphore_(/*capacity=*/asynchronous ? 32 : 1),
+      compute_semaphore_(
+          /*capacity=*/max_inflight_computations),
       executor_(executor),
       client_(client),
       prng_seed_generator_(prng_seed_device_()),
@@ -46,8 +48,8 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   compute_stream_->Init();
   host_to_device_stream_->Init();
   if (use_callback_stream) {
-    callback_stream_ = std::make_unique<se::Stream>(executor);
-    callback_stream_->Init();
+    callback_stream_map_ =
+        absl::flat_hash_map<se::Stream*, std::unique_ptr<se::Stream>>();
   }
   device_to_host_streams_.reserve(kNumDeviceToHostStreams);
   for (int i = 0; i < kNumDeviceToHostStreams; ++i) {
@@ -82,8 +84,10 @@ Status LocalDeviceState::SynchronizeAllActivity() {
   // stopped, also block on the compute stream. If SynchronizeAllActivity is
   // fixed, we could remove the BlockHostUntilDone call.
   status.Update(compute_stream_->BlockHostUntilDone());
-  if (callback_stream_) {
-    status.Update(callback_stream_->BlockHostUntilDone());
+  if (callback_stream_map_.has_value()) {
+    for (auto& callback_stream : callback_stream_map_.value()) {
+      status.Update(callback_stream.second->BlockHostUntilDone());
+    }
   }
   bool ok = compute_stream_->parent()->SynchronizeAllActivity();
   if (!ok) {
@@ -102,12 +106,21 @@ Status LocalDeviceState::ThenMemcpyDeviceToDevice(
   return Status::OK();
 }
 
-void LocalDeviceState::ThenExecuteCallback(
-    se::Stream* stream, std::function<void()> callback) const {
+void LocalDeviceState::ThenExecuteCallback(se::Stream* stream,
+                                           std::function<void()> callback) {
   tensorflow::profiler::TraceMe traceme("ThenExecuteCallback");
-  if (callback_stream_ && callback_stream_.get() != stream) {
-    callback_stream_->ThenWaitFor(stream);
-    stream = callback_stream_.get();
+  if (callback_stream_map_.has_value()) {
+    // Prevent concurrent updates to the callback stream map.
+    absl::MutexLock lock(&mu_);
+    auto callback_stream = callback_stream_map_->find(stream);
+    if (callback_stream == callback_stream_map_->end()) {
+      auto new_stream = std::make_unique<se::Stream>(executor_);
+      new_stream->Init();
+      callback_stream =
+          callback_stream_map_->insert({stream, std::move(new_stream)}).first;
+    }
+    callback_stream->second->ThenWaitFor(stream);
+    stream = callback_stream->second.get();
   }
   stream->ThenDoHostCallback([this, callback{std::move(callback)}]() mutable {
     callback_thread_->Schedule(std::move(callback));

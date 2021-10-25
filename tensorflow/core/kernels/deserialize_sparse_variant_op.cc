@@ -46,7 +46,7 @@ class DeserializeSparseOp : public OpKernel {
 
     // `input_dims_to_stack` is the number of dimensions that will be added to
     // each of the elements before they are concatenated into the output.
-    const int64 input_dims_to_stack = input.dims() - 1;
+    const int64_t input_dims_to_stack = input.dims() - 1;
     int num_sparse_tensors = 1;
     for (int i = 0; i < input_dims_to_stack; ++i) {
       num_sparse_tensors *= input.shape().dim_size(i);
@@ -60,7 +60,7 @@ class DeserializeSparseOp : public OpKernel {
       const Tensor* output_values;
       const Tensor* output_shape;
       const auto& input_as_vec = input.vec<Variant>();
-      int64 total_non_zeros;
+      int64_t total_non_zeros;
       OP_REQUIRES_OK(context, GetAndValidateSparseTensorShape(
                                   input_as_vec(1), input_as_vec(2), 0,
                                   &output_shape, &total_non_zeros));
@@ -89,7 +89,7 @@ class DeserializeSparseOp : public OpKernel {
     // E_n), the output dense shape will be (S_0, ...,
     // S_{input_dims_to_stack-1}, E_0, ..., E_n).
     Tensor* output_shape;
-    int64 total_non_zeros = 0;
+    int64_t total_non_zeros = 0;
 
     // Allocate and build the initial output shape based on the element shape of
     // the 0th sparse tensor in the input.
@@ -107,13 +107,13 @@ class DeserializeSparseOp : public OpKernel {
                    context->allocate_output(
                        2, {input_dims_to_stack + element_shape->NumElements()},
                        &output_shape));
-    const auto element_shape_vec = element_shape->vec<int64>();
-    auto output_shape_vec = output_shape->vec<int64>();
+    const auto element_shape_vec = element_shape->vec<int64_t>();
+    auto output_shape_vec = output_shape->vec<int64_t>();
     output_shape_vec(0) = num_sparse_tensors;
-    for (int64 j = 0; j < input_dims_to_stack; ++j) {
+    for (int64_t j = 0; j < input_dims_to_stack; ++j) {
       output_shape_vec(j) = input.dim_size(j);
     }
-    for (int64 j = 0; j < element_shape->NumElements(); ++j) {
+    for (int64_t j = 0; j < element_shape->NumElements(); ++j) {
       output_shape_vec(j + input_dims_to_stack) = element_shape_vec(j);
     }
 
@@ -126,7 +126,7 @@ class DeserializeSparseOp : public OpKernel {
     // we compute the maximum in each dimension to find the smallest dense_shape
     // that bounds all of the input SparseTensors.
     for (int i = 1; i < num_sparse_tensors; ++i) {
-      int64 num_non_zeros;
+      int64_t num_non_zeros;
       OP_REQUIRES_OK(context, GetAndValidateSparseTensorShape(
                                   input_as_matrix(i, 1), input_as_matrix(i, 2),
                                   i, &element_shape, &num_non_zeros));
@@ -141,7 +141,7 @@ class DeserializeSparseOp : public OpKernel {
               i, "] was: ", output_shape->NumElements() - input_dims_to_stack,
               " but rank of SparseTensor[", i,
               "] is: ", element_shape->NumElements()));
-      const auto element_shape_vec = element_shape->vec<int64>();
+      const auto element_shape_vec = element_shape->vec<int64_t>();
       for (int j = 0; j < element_shape->NumElements(); ++j) {
         output_shape_vec(j + input_dims_to_stack) = std::max(
             output_shape_vec(j + input_dims_to_stack), element_shape_vec(j));
@@ -155,18 +155,18 @@ class DeserializeSparseOp : public OpKernel {
     const int output_rank = output_shape->NumElements();
     OP_REQUIRES_OK(context,
                    context->allocate_output(
-                       0, {static_cast<int64>(total_non_zeros), output_rank},
+                       0, {static_cast<int64_t>(total_non_zeros), output_rank},
                        &output_indices));
-    OP_REQUIRES_OK(
-        context, context->allocate_output(
-                     1, {static_cast<int64>(total_non_zeros)}, &output_values));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                1, {static_cast<int64_t>(total_non_zeros)},
+                                &output_values));
 
     // The bulk of the work in this method involves building the output indices
     // in a tight loop. For cache friendliness, we generate the indices in the
     // order that they will be laid out in memory. We use raw pointers instead
     // of Eigen element/slice indexing methods, to access the underlying index
     // buffer to minimize the amount of work in that tight loop.
-    int64* output_indices_data = output_indices->matrix<int64>().data();
+    int64_t* output_indices_data = output_indices->matrix<int64_t>().data();
     size_t current_row = 0;
 
     for (int i = 0; i < num_sparse_tensors; ++i) {
@@ -192,8 +192,8 @@ class DeserializeSparseOp : public OpKernel {
       // `element_indices` will be an empty tensor, and this pointer will not
       // be valid. However, we will not dereference the pointer in that case,
       // because `input_dims_to_stack == output_rank`.
-      const int64* element_indices_data =
-          element_indices->matrix<int64>().data();
+      const int64_t* element_indices_data =
+          element_indices->matrix<int64_t>().data();
 
       // Build the submatrix of `output_indices` for the i^th sparse tensor
       // in the input.
@@ -224,7 +224,7 @@ class DeserializeSparseOp : public OpKernel {
         // to outermost/major dimension). The `cumulative_product` represents
         // the size of the inner subtensor for which `sparse_tensor_index` has
         // already been built.
-        gtl::InlinedVector<int64, 4> sparse_tensor_index(input_dims_to_stack);
+        gtl::InlinedVector<int64_t, 4> sparse_tensor_index(input_dims_to_stack);
         int cumulative_product = 1;
         for (size_t j = 0; j < sparse_tensor_index.size(); ++j) {
           size_t reverse_index = sparse_tensor_index.size() - j - 1;
@@ -233,7 +233,7 @@ class DeserializeSparseOp : public OpKernel {
           cumulative_product *= input.dim_size(reverse_index);
         }
         for (; current_row < next_start_row; ++current_row) {
-          for (int64 sparse_tensor_index_component : sparse_tensor_index) {
+          for (int64_t sparse_tensor_index_component : sparse_tensor_index) {
             *output_indices_data++ = sparse_tensor_index_component;
           }
           for (size_t k = input_dims_to_stack; k < output_rank; ++k) {
@@ -276,7 +276,7 @@ class DeserializeSparseOp : public OpKernel {
   Status GetAndValidateSparseTensorShape(const Variant& serialized_values,
                                          const Variant& serialized_shape,
                                          int index, const Tensor** output_shape,
-                                         int64* output_num_non_zeros) {
+                                         int64_t* output_num_non_zeros) {
     // Deserialize and validate the shape.
     *output_shape = serialized_shape.get<Tensor>();
     if (*output_shape == nullptr) {
@@ -321,7 +321,7 @@ class DeserializeSparseOp : public OpKernel {
           ", 0] to represent an index matrix but received shape ",
           (*output_indices)->shape().DebugString());
     }
-    int64 num_entries = (*output_indices)->dim_size(0);
+    int64_t num_entries = (*output_indices)->dim_size(0);
     int rank = (*output_indices)->dim_size(1);
     if (rank != expected_rank) {
       return errors::InvalidArgument(

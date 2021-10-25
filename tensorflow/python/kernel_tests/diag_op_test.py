@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 
 import numpy as np
@@ -437,7 +433,7 @@ class MatrixDiagTest(test.TestCase):
     self._testVectorBatch(np.float64)
     self._testVectorBatch(np.int32)
     self._testVectorBatch(np.int64)
-    self._testVectorBatch(np.bool)
+    self._testVectorBatch(np.bool_)
 
   @test_util.run_deprecated_v1
   def testRectangularBatch(self):
@@ -664,7 +660,7 @@ class MatrixSetDiagTest(test.TestCase):
     self._testSquareBatch(np.float64)
     self._testSquareBatch(np.int32)
     self._testSquareBatch(np.int64)
-    self._testSquareBatch(np.bool)
+    self._testSquareBatch(np.bool_)
 
   @test_util.run_deprecated_v1
   def testRectangularBatch(self):
@@ -849,7 +845,7 @@ class MatrixDiagPartTest(test.TestCase):
     self._testSquareBatch(np.float64)
     self._testSquareBatch(np.int32)
     self._testSquareBatch(np.int64)
-    self._testSquareBatch(np.bool)
+    self._testSquareBatch(np.bool_)
 
   @test_util.run_deprecated_v1
   def testRectangularBatch(self):

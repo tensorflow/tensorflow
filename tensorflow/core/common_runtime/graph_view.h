@@ -83,6 +83,8 @@ struct NodeItem {
                                                      // node.
   bool is_any_input_ref_typed : 1;  // True iff any IsRefType(dt) for dt in this
                                     // node's input types.
+  bool is_distributed_communication : 1;  // True iff the op is registered to
+                                          // use distributed communication.
 
   // The kernel for this node.
   OpKernel* kernel = nullptr;
@@ -215,7 +217,7 @@ class GraphView {
 
   // Returns a mutable pointer to the `NodeItem` with the given `id` if it
   // exists in the graph, or `nullptr` if it does not.
-  NodeItem* node(int32 id) const {
+  NodeItem* node(int32_t id) const {
     DCHECK_GE(id, 0);
     DCHECK_LT(id, num_nodes_);
     uint32 offset = node_offsets_[id];
@@ -227,7 +229,7 @@ class GraphView {
   // Returns the `NodeItem` with the given `id`.
   //
   // REQUIRES: `id` must be the ID of a valid node in the graph.
-  const NodeItem& node_ref(int32 id) const {
+  const NodeItem& node_ref(int32_t id) const {
     DCHECK_GE(id, 0);
     DCHECK_LT(id, num_nodes_);
     uint32 offset = node_offsets_[id];

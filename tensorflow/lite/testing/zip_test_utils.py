@@ -13,28 +13,28 @@
 # limitations under the License.
 # ==============================================================================
 """Utils for make_zip tests."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import collections
 import functools
 import itertools
 import operator
 import os
 import re
 import string
+import tempfile
 import traceback
 import zipfile
 
 import numpy as np
 from six import StringIO
-
-# pylint: disable=g-import-not-at-top
 import tensorflow.compat.v1 as tf
+
 from google.protobuf import text_format
 from tensorflow.lite.testing import _pywrap_string_util
 from tensorflow.lite.testing import generate_examples_report as report_lib
 from tensorflow.python.framework import graph_util as tf_graph_util
+from tensorflow.python.saved_model import signature_constants
+
+# pylint: disable=g-import-not-at-top
 
 # A map from names to functions which make test cases.
 _MAKE_TEST_FUNCTIONS_MAP = {}
@@ -75,12 +75,13 @@ RANDOM_SEED = 342
 TF_TYPE_INFO = {
     tf.float32: (np.float32, "FLOAT"),
     tf.float16: (np.float16, "FLOAT"),
-    tf.float64: (np.double, "FLOAT64"),
+    tf.float64: (np.float64, "FLOAT64"),
     tf.int32: (np.int32, "INT32"),
+    tf.uint32: (np.uint32, "UINT32"),
     tf.uint8: (np.uint8, "QUANTIZED_UINT8"),
     tf.int16: (np.int16, "QUANTIZED_INT16"),
     tf.int64: (np.int64, "INT64"),
-    tf.bool: (np.bool, "BOOL"),
+    tf.bool: (np.bool_, "BOOL"),
     tf.string: (np.string_, "STRING"),
 }
 
@@ -101,6 +102,8 @@ class ExtraTocoOptions(object):
     self.inference_input_type = None
     # The inference output type passed to TFLiteConvert.
     self.inference_output_type = None
+    # Converts from GraphDef instead of SavedModel.
+    self.convert_from_graphdef = False
 
 
 def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
@@ -115,7 +118,7 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
     real = (max_value - min_value) * np.random.random_sample(shape) + min_value
     imag = (max_value - min_value) * np.random.random_sample(shape) + min_value
     value = real + imag * 1j
-  elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
+  elif dtype in (tf.uint32, tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1, shape)
   elif dtype == tf.bool:
     value = np.random.choice([True, False], size=shape)
@@ -182,8 +185,9 @@ def write_examples(fp, examples):
     examples: Example dictionary consisting of keys "inputs" and "outputs"
   """
 
-  def write_tensor(fp, x):
+  def write_tensor(fp, name, x):
     """Write tensor in file format supported by TFLITE example."""
+    fp.write("name,%s\n" % name)
     fp.write("dtype,%s\n" % x.dtype)
     fp.write("shape," + ",".join(map(str, x.shape)) + "\n")
     fp.write("values," + format_result(x) + "\n")
@@ -191,11 +195,12 @@ def write_examples(fp, examples):
   fp.write("test_cases,%d\n" % len(examples))
   for example in examples:
     fp.write("inputs,%d\n" % len(example["inputs"]))
-    for i in example["inputs"]:
-      write_tensor(fp, i)
+    for name, value in example["inputs"].items():
+      if value is not None:
+        write_tensor(fp, name, value)
     fp.write("outputs,%d\n" % len(example["outputs"]))
-    for i in example["outputs"]:
-      write_tensor(fp, i)
+    for name, value in example["outputs"].items():
+      write_tensor(fp, name, value)
 
 
 def write_test_cases(fp, model_name, examples):
@@ -213,17 +218,19 @@ def write_test_cases(fp, model_name, examples):
   fp.write("load_model: %s\n" % os.path.basename(model_name))
   for example in examples:
     fp.write("reshape {\n")
-    for t in example["inputs"]:
-      fp.write("  input: \"" + ",".join(map(str, t.shape)) + "\"\n")
+    for _, value in example["inputs"].items():
+      if value is not None:
+        fp.write("  input: \"" + ",".join(map(str, value.shape)) + "\"\n")
     fp.write("}\n")
-    fp.write("invoke {\n")
 
-    for t in example["inputs"]:
-      fp.write("  input: \"" + format_result(t) + "\"\n")
-    for t in example["outputs"]:
-      fp.write("  output: \"" + format_result(t) + "\"\n")
-      fp.write("  output_shape: \"" + ",".join([str(dim) for dim in t.shape]) +
-               "\"\n")
+    fp.write("invoke {\n")
+    for _, value in example["inputs"].items():
+      if value is not None:
+        fp.write("  input: \"" + format_result(value) + "\"\n")
+    for _, value in example["outputs"].items():
+      fp.write("  output: \"" + format_result(value) + "\"\n")
+      fp.write("  output_shape: \"" +
+               ",".join([str(dim) for dim in value.shape]) + "\"\n")
     fp.write("}\n")
 
 
@@ -253,10 +260,29 @@ def get_input_shapes_map(input_tensors):
   return input_shapes
 
 
+def _normalize_input_name(input_name):
+  """Remove :i suffix from input tensor names."""
+  return input_name.split(":")[0]
+
+
 def _normalize_output_name(output_name):
-  """Remove :0 suffix from tensor names."""
+  """Remove :0 suffix from output tensor names."""
   return output_name.split(":")[0] if output_name.endswith(
       ":0") else output_name
+
+
+def _get_tensor_info(tensors, default_name_prefix, normalize_func):
+  """Get the list of tensor name and info."""
+  tensor_names = []
+  tensor_info_map = {}
+  for idx, tensor in enumerate(tensors):
+    if not tensor.name:
+      tensor.name = default_name_prefix + str(idx)
+    tensor_info = tf.saved_model.utils.build_tensor_info(tensor)
+    tensor_name = normalize_func(tensor.name)
+    tensor_info_map[tensor_name] = tensor_info
+    tensor_names.append(tensor_name)
+  return tensor_names, tensor_info_map
 
 
 # How many test cases we may have in a zip file. Too many test cases will
@@ -327,6 +353,16 @@ def make_zip_of_tests(options,
 
   processed_labels = set()
 
+  if options.make_tf_ptq_tests:
+    # For cases with fully_quantize is True, also generates a case with
+    # fully_quantize is False. Marks these cases as suitable for PTQ tests.
+    parameter_count = 0
+    for parameters in test_parameters:
+      if True in parameters.get("fully_quantize", []):
+        parameters.update({"fully_quantize": [True, False], "tf_ptq": [True]})
+        parameter_count += functools.reduce(
+            operator.mul, [len(values) for values in parameters.values()])
+
   if options.make_edgetpu_tests:
     extra_toco_options.inference_input_type = tf.uint8
     extra_toco_options.inference_output_type = tf.uint8
@@ -368,6 +404,9 @@ def make_zip_of_tests(options,
 
       param_dict = dict(zip(keys, curr))
 
+      if options.make_tf_ptq_tests and not param_dict.get("tf_ptq", False):
+        continue
+
       if options.make_edgetpu_tests and (not param_dict.get(
           "fully_quantize", False) or param_dict.get("quant_16x8", False)):
         continue
@@ -383,13 +422,14 @@ def make_zip_of_tests(options,
           max_value: max value for the input tensor.
 
         Returns:
-          (input_values, output_values): input values and output values built.
+          (input_values, output_values): Maps of input values and output values
+          built.
         """
         interpreter = tf.lite.Interpreter(model_content=tflite_model_binary)
         interpreter.allocate_tensors()
 
         input_details = interpreter.get_input_details()
-        input_values = []
+        input_values = {}
         for input_detail in input_details:
           input_value = create_tensor_data(
               input_detail["dtype"],
@@ -397,14 +437,18 @@ def make_zip_of_tests(options,
               min_value=min_value,
               max_value=max_value)
           interpreter.set_tensor(input_detail["index"], input_value)
-          input_values.append(input_value)
+          input_values.update(
+              {_normalize_input_name(input_detail["name"]): input_value})
 
         interpreter.invoke()
 
         output_details = interpreter.get_output_details()
-        output_values = []
+        output_values = {}
         for output_detail in output_details:
-          output_values.append(interpreter.get_tensor(output_detail["index"]))
+          output_values.update({
+              _normalize_output_name(output_detail["name"]):
+                  interpreter.get_tensor(output_detail["index"])
+          })
 
         return input_values, output_values
 
@@ -437,6 +481,7 @@ def make_zip_of_tests(options,
           with tf.device("/cpu:0"):
             try:
               inputs, outputs = make_graph(param_dict_real)
+              inputs = [x for x in inputs if x is not None]
             except (tf.errors.UnimplementedError,
                     tf.errors.InvalidArgumentError, ValueError):
               report["tf_log"] += traceback.format_exc()
@@ -446,16 +491,54 @@ def make_zip_of_tests(options,
           try:
             baseline_inputs, baseline_outputs = (
                 make_test_inputs(param_dict_real, sess, inputs, outputs))
+            baseline_inputs = [x for x in baseline_inputs if x is not None]
+            # Converts baseline inputs/outputs to maps. The signature input and
+            # output names are set to be the same as the tensor names.
+            input_names = [_normalize_input_name(x.name) for x in inputs]
+            output_names = [_normalize_output_name(x.name) for x in outputs]
+            baseline_input_map = dict(zip(input_names, baseline_inputs))
+            baseline_output_map = dict(zip(output_names, baseline_outputs))
           except (tf.errors.UnimplementedError, tf.errors.InvalidArgumentError,
                   ValueError):
             report["tf_log"] += traceback.format_exc()
             return None, report
           report["converter"] = report_lib.FAILED
           report["tf"] = report_lib.SUCCESS
-          # Convert graph to toco
-          input_tensors = [(input_tensor.name.split(":")[0], input_tensor.shape,
-                            input_tensor.dtype) for input_tensor in inputs]
-          output_tensors = [_normalize_output_name(out.name) for out in outputs]
+
+          # Sorts the lists to make the order of input/output the same as order
+          # of the signature names.
+          # TODO(b/192473002): Remove sorting after TFLiteDriver can run with
+          # signatures.
+          inputs = sorted(inputs, key=lambda x: _normalize_input_name(x.name))
+          outputs = sorted(
+              outputs, key=lambda x: _normalize_output_name(x.name))
+
+          # Builds a saved model with the default signature key.
+          input_names, tensor_info_inputs = _get_tensor_info(
+              inputs, "input_", _normalize_input_name)
+          output_tensors, tensor_info_outputs = _get_tensor_info(
+              outputs, "output_", _normalize_output_name)
+          input_tensors = [
+              (name, t.shape, t.dtype) for name, t in zip(input_names, inputs)
+          ]
+
+          inference_signature = (
+              tf.saved_model.signature_def_utils.build_signature_def(
+                  inputs=tensor_info_inputs,
+                  outputs=tensor_info_outputs,
+                  method_name="op_test"))
+          saved_model_dir = tempfile.mkdtemp("op_test")
+          saved_model_tags = [tf.saved_model.tag_constants.SERVING]
+          signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+          builder = tf.saved_model.builder.SavedModelBuilder(saved_model_dir)
+          builder.add_meta_graph_and_variables(
+              sess,
+              saved_model_tags,
+              signature_def_map={
+                  signature_key: inference_signature,
+              },
+              strip_default_attrs=True)
+          builder.save(as_text=False)
           # pylint: disable=g-long-ternary
           graph_def = freeze_graph(
               sess,
@@ -467,7 +550,7 @@ def make_zip_of_tests(options,
               "split_tflite_lstm_inputs"]
         tflite_model_binary, toco_log = options.tflite_convert_function(
             options,
-            graph_def,
+            saved_model_dir,
             input_tensors,
             output_tensors,
             extra_toco_options=extra_toco_options,
@@ -485,11 +568,21 @@ def make_zip_of_tests(options,
         if tflite_model_binary:
           if options.make_edgetpu_tests:
             # Set proper min max values according to input dtype.
-            baseline_inputs, baseline_outputs = generate_inputs_outputs(
+            baseline_input_map, baseline_output_map = generate_inputs_outputs(
                 tflite_model_binary, min_value=0, max_value=255)
           zipinfo = zipfile.ZipInfo(zip_path_label + ".bin")
           archive.writestr(zipinfo, tflite_model_binary, zipfile.ZIP_DEFLATED)
-          example = {"inputs": baseline_inputs, "outputs": baseline_outputs}
+
+          # TODO(b/192473002): Remove sorting after TFLiteDriver can run with
+          # signatures.
+          baseline_input_map = collections.OrderedDict(
+              sorted(baseline_input_map.items()))
+          baseline_output_map = collections.OrderedDict(
+              sorted(baseline_output_map.items()))
+          example = {
+              "inputs": baseline_input_map,
+              "outputs": baseline_output_map
+          }
 
           example_fp = StringIO()
           write_examples(example_fp, [example])
@@ -563,7 +656,8 @@ def make_zip_of_tests(options,
                         "TensorFlow fails in %d percent of the cases.") %
                        (zip_path, int(100 * tf_failures / parameter_count)))
 
-  if not options.make_edgetpu_tests and tf_failures != expected_tf_failures:
+  if tf_failures != expected_tf_failures and not (options.make_edgetpu_tests or
+                                                  options.make_tf_ptq_tests):
     raise RuntimeError(("Expected TF to fail %d times while generating '%s', "
                         "but that happened %d times") %
                        (expected_tf_failures, zip_path, tf_failures))

@@ -183,6 +183,27 @@ class MultiplyLayer(AssertTypeLayer):
     return config
 
 
+class MultiplyLayerWithoutAutoCast(MultiplyLayer):
+  """Same as MultiplyLayer, but does not use AutoCastVariables."""
+
+  def build(self, _):
+    dtype = self.dtype
+    if dtype in ('float16', 'bfloat16'):
+      dtype = 'float32'
+    self.v = self.add_weight(
+        'v', (),
+        initializer='ones',
+        dtype=dtype,
+        experimental_autocast=False,
+        regularizer=self._regularizer)
+    self.built = True
+
+  def call(self, inputs):
+    self.assert_input_types(inputs)
+    assert self.v.dtype in (dtypes.float32, dtypes.float64)
+    return self._multiply(inputs, math_ops.cast(self.v, inputs.dtype))
+
+
 class IdentityRegularizer(regularizers.Regularizer):
 
   def __call__(self, x):

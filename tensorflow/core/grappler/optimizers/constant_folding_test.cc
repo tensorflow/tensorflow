@@ -800,6 +800,7 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Output mul6 = ops::MulNoNan(s.WithOpName("mul6"), zeros_1d, y);
     Output div1 = ops::Div(s.WithOpName("div1"), x, ones);
     Output div2 = ops::Div(s.WithOpName("div2"), ones, y);
+    Output floordiv = ops::FloorDiv(s.WithOpName("floordiv"), x, ones);
     Output matmul1 = ops::MatMul(s.WithOpName("matmul1"), x, zeros);
     Output matmul2 = ops::MatMul(s.WithOpName("matmul2"), zeros, y);
     Output matmul3 = ops::MatMul(s.WithOpName("matmul3"), a, zeros);
@@ -814,10 +815,10 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     Output bias_add2 = ops::BiasAdd(s.WithOpName("bias_add2"), zeros, bias);
     Output sub1 = ops::Sub(s.WithOpName("sub1"), x, zeros);
     Output sub2 = ops::Sub(s.WithOpName("sub2"), zeros, y);
-    Output concat =
-        ops::Stack(s.WithOpName("stack"),
-                   {mul1, mul2, mul3, mul4, mul5, mul6, div1, div2, matmul1,
-                    matmul2, add1, add2, bias_add1, bias_add2, sub1, sub2});
+    Output concat = ops::Stack(
+        s.WithOpName("stack"),
+        {mul1, mul2, mul3, mul4, mul5, mul6, div1, div2, floordiv, matmul1,
+         matmul2, add1, add2, bias_add1, bias_add2, sub1, sub2});
     GrapplerItem item;
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
     item.fetch = {"stack",      "matmul3",    "matmul4",   "mul1_bcast",
@@ -836,7 +837,7 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
     const string ctrl_zeros_name = strings::StrCat("^zeros", suffix);
     const string ctrl_ones_name = strings::StrCat("^ones", suffix);
 
-    EXPECT_EQ(const_type == kFill ? 42 : 38, output.node_size());
+    EXPECT_EQ(const_type == kFill ? 43 : 39, output.node_size());
     for (int i = 0; i < output.node_size(); ++i) {
       const NodeDef& node = output.node(i);
       const string& name = node.name();
@@ -880,6 +881,10 @@ TEST_F(ConstantFoldingTest, NeutralElement) {
         EXPECT_EQ("Reciprocal", node.op());
         EXPECT_EQ("y", node.input(0));
         EXPECT_EQ(ctrl_ones_name, node.input(1));
+      } else if (name == "floordiv") {
+        EXPECT_EQ("FloorDiv", node.op());
+        EXPECT_EQ("x", node.input(0));
+        EXPECT_EQ(ones_name, node.input(1));
       } else if (name == "matmul1") {
         EXPECT_EQ("Const", node.op());
         EXPECT_EQ("^x", node.input(0));
@@ -1210,7 +1215,7 @@ TEST_F(ConstantFoldingTest, CreateConstNodes) {
 
   MAKE_TEST_GRAPH(float);
   MAKE_TEST_GRAPH(double);
-  MAKE_TEST_GRAPH(int64);
+  MAKE_TEST_GRAPH(int64_t);
   MAKE_TEST_GRAPH(int32);
   MAKE_TEST_GRAPH(int16);
   MAKE_TEST_GRAPH(int8);
@@ -2672,7 +2677,7 @@ TEST_F(ConstantFoldingTest, MergeConcat_PartialFolding) {
 
 TEST_F(ConstantFoldingTest, PaddingWithZeroSize) {
   PaddingWithZeroSize<int32>();
-  PaddingWithZeroSize<int64>();
+  PaddingWithZeroSize<int64_t>();
 }
 
 TEST_F(ConstantFoldingTest, SqueezeWithAllDimensionsGreaterThanOne) {
@@ -3001,7 +3006,7 @@ TEST_F(ConstantFoldingTest, LargeConstantNoSizeIncrease) {
   // kMaxConstantSize that can be folded because the resulting size does not
   // increase.
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
-  const int64 large_constant_size = kMaxConstantSize + 1;
+  const int64_t large_constant_size = kMaxConstantSize + 1;
   Output a = ops::Variable(scope.WithOpName("a"), {1, 1}, DT_FLOAT);
   Output b_const =
       ops::Const(scope.WithOpName("b_const"), 3.14f, {1, large_constant_size});
@@ -4122,10 +4127,10 @@ TEST_F(ConstantFoldingTest, BitcastDenormalFloats) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
   Tensor x_t(DT_INT64, TensorShape({2, 2}));
-  x_t.flat<int64>()(0) = 9223372036854775807L;
-  x_t.flat<int64>()(1) = 1L;
-  x_t.flat<int64>()(2) = 9223372036854775807L;
-  x_t.flat<int64>()(3) = 1L;
+  x_t.flat<int64_t>()(0) = 9223372036854775807L;
+  x_t.flat<int64_t>()(1) = 1L;
+  x_t.flat<int64_t>()(2) = 9223372036854775807L;
+  x_t.flat<int64_t>()(3) = 1L;
   Output x = ops::Const(scope.WithOpName("x"), x_t);
   Output y = ops::Bitcast(scope.WithOpName("y"), x, DT_FLOAT);
   Output z = ops::Bitcast(scope.WithOpName("z"), y, DT_INT64);
@@ -4148,7 +4153,7 @@ TEST_F(ConstantFoldingTest, BitcastDenormalFloats) {
   auto tensors = EvaluateNodes(output, item.fetch, {});
   ASSERT_EQ(tensors.size(), 1);
   ASSERT_EQ(tensors_expected.size(), 1);
-  test::ExpectTensorEqual<int64>(tensors[0], tensors_expected[0]);
+  test::ExpectTensorEqual<int64_t>(tensors[0], tensors_expected[0]);
 }
 
 TEST_F(ConstantFoldingTest, SimplifyCase) {

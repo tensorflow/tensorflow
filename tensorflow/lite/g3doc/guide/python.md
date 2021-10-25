@@ -26,6 +26,10 @@ Python class. This small package is ideal when all you want to do is execute
 Note: If you need access to other Python APIs, such as the
 [TensorFlow Lite Converter](../convert/), you must install the
 [full TensorFlow package](https://www.tensorflow.org/install/).
+For example, the [Select TF ops]
+(https://www.tensorflow.org/lite/guide/ops_select) are not included in the
+`tflite_runtime` package. If your models have any dependencies to the Select TF
+ops, you need to use the full TensorFlow package instead.
 
 ## Install TensorFlow Lite for Python
 
@@ -108,7 +112,7 @@ If you're using a Coral ML accelerator, check out the
 [Coral examples on GitHub](https://github.com/google-coral/tflite/tree/master/python/examples).
 
 To convert other TensorFlow models to TensorFlow Lite, read about the
-the [TensorFlow Lite Converter](../convert/).
+[TensorFlow Lite Converter](../convert/).
 
 If you want to build `tflite_runtime` wheel, read
 [Build TensorFlow Lite Python Wheel Package](build_cmake_pip.md)

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for padv2."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
@@ -30,6 +26,15 @@ def make_padv2_tests(options):
 
   # TODO(nupurgarg): Add test for tf.uint8.
   test_parameters = [
+      # 5D:
+      {
+          "dtype": [tf.int32, tf.int64, tf.float32],
+          "input_shape": [[1, 1, 2, 1, 1], [2, 1, 1, 1, 1]],
+          "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0], [1, 0]],
+                       [[0, 1], [0, 0], [0, 0], [2, 3], [1, 0]]],
+          "constant_paddings": [True, False],
+          "constant_values": [0, 2],
+      },
       # 4D:
       {
           "dtype": [tf.int32, tf.int64, tf.float32],

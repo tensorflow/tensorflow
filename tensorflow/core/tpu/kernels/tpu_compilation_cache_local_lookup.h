@@ -36,7 +36,7 @@ class TpuCompilationCacheLocalLookup : public TpuCompilationCacheLookup {
                 std::unique_ptr<CompilationCacheEntryRef>* entry,
                 CompilationCacheFetchTarget fetch_target) override;
 
-  Status Lookup(int64 uid, int proto_index,
+  Status Lookup(int64_t uid, int proto_index,
                 std::unique_ptr<CompilationCacheEntryRef>* entry,
                 CompilationCacheFetchTarget fetch_target) override;
 

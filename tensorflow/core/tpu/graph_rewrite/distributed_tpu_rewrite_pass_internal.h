@@ -26,7 +26,7 @@ namespace internal {
 
 // When set to a value >= 0, overrides the node_id. Used for getting
 // deterministic node_ids during testing.
-void OverrideNodeIdForTesting(int64 node_id);
+void OverrideNodeIdForTesting(int64_t node_id);
 
 // Retrieves the node id, used to make some node names unique in the rewrite
 // pass.

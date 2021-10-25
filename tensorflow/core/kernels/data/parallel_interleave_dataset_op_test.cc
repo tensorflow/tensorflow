@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/parallel_interleave_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -25,9 +25,9 @@ class ParallelInterleaveDatasetParams : public DatasetParams {
   template <typename T>
   ParallelInterleaveDatasetParams(
       T input_dataset_params, std::vector<Tensor> other_arguments,
-      int64 cycle_length, int64 block_length, int64 buffer_output_elements,
-      int64 prefetch_input_elements, int64 num_parallel_calls,
-      FunctionDefHelper::AttrValueWrapper func,
+      int64_t cycle_length, int64_t block_length,
+      int64_t buffer_output_elements, int64_t prefetch_input_elements,
+      int64_t num_parallel_calls, FunctionDefHelper::AttrValueWrapper func,
       std::vector<FunctionDef> func_lib, DataTypeVector type_arguments,
       const DataTypeVector& output_dtypes,
       const std::vector<PartialTensorShape>& output_shapes,
@@ -56,15 +56,15 @@ class ParallelInterleaveDatasetParams : public DatasetParams {
   std::vector<Tensor> GetInputTensors() const override {
     auto input_tensors = other_arguments_;
     input_tensors.emplace_back(
-        CreateTensor<int64>(TensorShape({}), {cycle_length_}));
+        CreateTensor<int64_t>(TensorShape({}), {cycle_length_}));
     input_tensors.emplace_back(
-        CreateTensor<int64>(TensorShape({}), {block_length_}));
+        CreateTensor<int64_t>(TensorShape({}), {block_length_}));
     input_tensors.emplace_back(
-        CreateTensor<int64>(TensorShape({}), {buffer_output_elements_}));
+        CreateTensor<int64_t>(TensorShape({}), {buffer_output_elements_}));
     input_tensors.emplace_back(
-        CreateTensor<int64>(TensorShape({}), {prefetch_input_elements_}));
+        CreateTensor<int64_t>(TensorShape({}), {prefetch_input_elements_}));
     input_tensors.emplace_back(
-        CreateTensor<int64>(TensorShape({}), {num_parallel_calls_}));
+        CreateTensor<int64_t>(TensorShape({}), {num_parallel_calls_}));
     return input_tensors;
   }
 
@@ -85,12 +85,12 @@ class ParallelInterleaveDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {
-        {ParallelInterleaveDatasetOp::kFunc, func_},
-        {ParallelInterleaveDatasetOp::kDeterministic, deterministic_},
-        {ParallelInterleaveDatasetOp::kTarguments, type_arguments_},
-        {ParallelInterleaveDatasetOp::kOutputShapes, output_shapes_},
-        {ParallelInterleaveDatasetOp::kOutputTypes, output_dtypes_}};
+    *attr_vector = {{"f", func_},
+                    {"deterministic", deterministic_},
+                    {"Targuments", type_arguments_},
+                    {"output_shapes", output_shapes_},
+                    {"output_types", output_dtypes_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 
@@ -102,11 +102,11 @@ class ParallelInterleaveDatasetParams : public DatasetParams {
 
  private:
   std::vector<Tensor> other_arguments_;
-  int64 cycle_length_;
-  int64 block_length_;
-  int64 buffer_output_elements_;
-  int64 prefetch_input_elements_;
-  int64 num_parallel_calls_;
+  int64_t cycle_length_;
+  int64_t block_length_;
+  int64_t buffer_output_elements_;
+  int64_t prefetch_input_elements_;
+  int64_t num_parallel_calls_;
   FunctionDefHelper::AttrValueWrapper func_;
   std::vector<FunctionDef> func_lib_;
   DataTypeVector type_arguments_;
@@ -126,8 +126,8 @@ FunctionDefHelper::AttrValueWrapper MakeTensorSliceDatasetFunc(
 
 ParallelInterleaveDatasetParams ParallelInterleaveDatasetParams1() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   return ParallelInterleaveDatasetParams(
       tensor_slice_dataset_params,
@@ -151,8 +151,8 @@ ParallelInterleaveDatasetParams ParallelInterleaveDatasetParams1() {
 
 ParallelInterleaveDatasetParams ParallelInterleaveDatasetParams2() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   return ParallelInterleaveDatasetParams(
       tensor_slice_dataset_params,
@@ -176,8 +176,8 @@ ParallelInterleaveDatasetParams ParallelInterleaveDatasetParams2() {
 
 ParallelInterleaveDatasetParams ParallelInterleaveDatasetParams3() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   return ParallelInterleaveDatasetParams(
       tensor_slice_dataset_params,
@@ -201,8 +201,8 @@ ParallelInterleaveDatasetParams ParallelInterleaveDatasetParams3() {
 
 ParallelInterleaveDatasetParams ParallelInterleaveDatasetParams4() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   return ParallelInterleaveDatasetParams(
       tensor_slice_dataset_params,
@@ -402,8 +402,8 @@ ParallelInterleaveDatasetParams LongCycleDeterministicParams() {
 ParallelInterleaveDatasetParams
 ParallelInterleaveDatasetParamsWithInvalidCycleLength() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   return ParallelInterleaveDatasetParams(
       tensor_slice_dataset_params,
@@ -428,8 +428,8 @@ ParallelInterleaveDatasetParamsWithInvalidCycleLength() {
 ParallelInterleaveDatasetParams
 ParallelInterleaveDatasetParamsWithInvalidBlockLength() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   return ParallelInterleaveDatasetParams(
       tensor_slice_dataset_params,
@@ -454,8 +454,8 @@ ParallelInterleaveDatasetParamsWithInvalidBlockLength() {
 ParallelInterleaveDatasetParams
 ParallelInterleaveDatasetParamsWithInvalidNumParallelCalls() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   return ParallelInterleaveDatasetParams(
       tensor_slice_dataset_params,
@@ -480,8 +480,8 @@ ParallelInterleaveDatasetParamsWithInvalidNumParallelCalls() {
 ParallelInterleaveDatasetParams
 ParallelInterleaveDatasetParamsWithInvalidBufferOutputElements() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   return ParallelInterleaveDatasetParams(
       tensor_slice_dataset_params,
@@ -506,8 +506,8 @@ ParallelInterleaveDatasetParamsWithInvalidBufferOutputElements() {
 ParallelInterleaveDatasetParams
 ParallelInterleaveDatasetParamsWithInvalidPrefetchInputElements() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   return ParallelInterleaveDatasetParams(
       tensor_slice_dataset_params,
@@ -533,23 +533,23 @@ std::vector<GetNextTestCase<ParallelInterleaveDatasetParams>>
 GetNextTestCases() {
   return {{/*dataset_params=*/ParallelInterleaveDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{1},
-                                {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}}),
+           CreateTensors<int64_t>(
+               TensorShape{1}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelInterleaveDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{1},
-                                {{0}, {3}, {1}, {4}, {2}, {5}, {6}, {7}, {8}}),
+           CreateTensors<int64_t>(
+               TensorShape{1}, {{0}, {3}, {1}, {4}, {2}, {5}, {6}, {7}, {8}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelInterleaveDatasetParams3(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{1},
-                                {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}}),
+           CreateTensors<int64_t>(
+               TensorShape{1}, {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}}),
            /*compare_order=*/false},
           {/*dataset_params=*/ParallelInterleaveDatasetParams4(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{1},
-                                {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}}),
+           CreateTensors<int64_t>(
+               TensorShape{1}, {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}}),
            /*compare_order=*/false},
           {/*dataset_params=*/ParallelInterleaveDatasetParams5(),
            /*expected_outputs=*/
@@ -686,26 +686,26 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/ParallelInterleaveDatasetParams1(),
            /*breakpoints=*/{0, 4, 11},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{1},
-                                {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}}),
+           CreateTensors<int64_t>(
+               TensorShape{1}, {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelInterleaveDatasetParams2(),
            /*breakpoints=*/{0, 4, 11},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{1},
-                                {{0}, {3}, {1}, {4}, {2}, {5}, {6}, {7}, {8}}),
+           CreateTensors<int64_t>(
+               TensorShape{1}, {{0}, {3}, {1}, {4}, {2}, {5}, {6}, {7}, {8}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelInterleaveDatasetParams3(),
            /*breakpoints=*/{0, 4, 11},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{1},
-                                {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}}),
+           CreateTensors<int64_t>(
+               TensorShape{1}, {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}}),
            /*compare_order=*/false},
           {/*dataset_params=*/ParallelInterleaveDatasetParams4(),
            /*breakpoints=*/{0, 4, 11},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{1},
-                                {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}}),
+           CreateTensors<int64_t>(
+               TensorShape{1}, {{0}, {3}, {6}, {1}, {4}, {7}, {2}, {5}, {8}}),
            /*compare_order=*/false},
           {/*dataset_params=*/ParallelInterleaveDatasetParams5(),
            /*breakpoints=*/{0, 4, 11},

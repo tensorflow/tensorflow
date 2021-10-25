@@ -55,8 +55,8 @@ void SetAttrValue(const std::string& value, AttrValue* out);
 void SetAttrValue(const tstring& value, AttrValue* out);
 void SetAttrValue(const char* value, AttrValue* out);
 void SetAttrValue(StringPiece value, AttrValue* out);
-void SetAttrValue(int64 value, AttrValue* out);
-void SetAttrValue(int32 value, AttrValue* out);
+void SetAttrValue(int64_t value, AttrValue* out);
+void SetAttrValue(int32_t value, AttrValue* out);
 void SetAttrValue(float value, AttrValue* out);
 void SetAttrValue(double value, AttrValue* out);
 void SetAttrValue(bool value, AttrValue* out);
@@ -72,7 +72,7 @@ void SetAttrValue(gtl::ArraySlice<string> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<tstring> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<const char*> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<StringPiece> value, AttrValue* out);
-void SetAttrValue(gtl::ArraySlice<int64> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<int64_t> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<int32> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<float> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<double> value, AttrValue* out);
@@ -90,9 +90,6 @@ void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out);
 void SetAttrValue(const AttrValue& value, AttrValue* out);
 
 void MoveAttrValue(std::vector<string>&& value, AttrValue* out);
-
-// Returns true if a and b have the same value.
-bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
 
 // Returns a hash of `a` that is consistent with AreAttrValuesEqual. In other
 // words, if two AttrValues compare equal according to AreAttrValuesEqual,
@@ -113,7 +110,11 @@ uint64 AttrValueHash(const AttrValue& a);
 // Small (less than 32mb) tensors with different TensorProto representations
 // hashed/compared by their tensor content.
 uint64 FastAttrValueHash(const AttrValue& a);
-bool FastAreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
+// Returns true if a and b have the same value. If false negatives are allowed,
+// then compares proto representation to avoid construction of large (> 32mb)
+// tensors.
+bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
+                        bool allow_false_negatives = false);
 
 // Returns true if "val" has a placeholder.
 bool HasPlaceHolder(const AttrValue& val);

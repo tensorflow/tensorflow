@@ -64,7 +64,7 @@ class CLArguments : public ArgumentsBinder {
 
  private:
   absl::Status AllocateObjects(const Arguments& args, CLContext* context);
-  absl::Status AddObjectArgs(Arguments* args);
+  absl::Status AddObjectArgs(const GpuInfo& gpu_info, Arguments* args);
 
   absl::Status ResolveSelectorsPass(
       const GpuInfo& gpu_info, const Arguments& args,

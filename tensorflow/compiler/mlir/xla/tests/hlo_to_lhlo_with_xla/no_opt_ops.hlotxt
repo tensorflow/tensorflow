@@ -17,17 +17,17 @@ HloModule indexed_conditional
   ROOT %floor = f32[] floor(f32[] %z)
 }
 
-// CHECK: "lmhlo.case"(%arg0) ( {
-// CHECK:   %1 = memref.view
-// CHECK:   "lmhlo.negate"
+// CHECK: "lmhlo.case"(%{{.*}}) ( {
+// CHECK:   %{{.*}} = memref.view
+// CHECK:   "mhlo.negate"
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
-// CHECK:   %1 = memref.view
-// CHECK:   "lmhlo.copy"
+// CHECK:   %{{.*}} = memref.view
+// CHECK:   "mhlo.copy"
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
-// CHECK:   %1 = memref.view
-// CHECK:   "lmhlo.floor"
+// CHECK:   %{{.*}} = memref.view
+// CHECK:   "mhlo.floor"
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: }) : (memref<i32>) -> ()
 
@@ -57,11 +57,11 @@ HloModule WhileWithScalarS32Result_module
 }
 
 // CHECK: "lmhlo.while"(%{{.*}}) ( {
-// CHECK:   %3 = memref.view
-// CHECK:   "lmhlo.compare"
+// CHECK:   %{{.*}} = memref.view
+// CHECK:   "mhlo.compare"
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
-// CHECK:   "lmhlo.add"
+// CHECK:   mhlo.add
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: }) : (memref<i1>) -> ()
 ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {

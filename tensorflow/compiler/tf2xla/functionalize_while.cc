@@ -41,8 +41,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using xla::StatusOr;
-
 // Copies a subgraph from `graph` to `output` by performing a reverse DFS
 // starting at nodes in vector `stack`.
 // `node_map` is a vector indexed by source node ID to dest nodes.
@@ -229,6 +227,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   // maintain the invariant of a unique Enter node per argument of the final
   // loop.
   std::vector<WhileLoopArg> args;
+  args.reserve(frame->args.size());
   for (const WhileLoopArg& arg : frame->args) {
     if (arg.is_loop_invariant) {
       args.push_back(arg);

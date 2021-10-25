@@ -14,10 +14,6 @@
 # ==============================================================================
 """`LinearOperator` acting like a diagonal matrix."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -31,6 +27,7 @@ __all__ = ["LinearOperatorDiag",]
 
 
 @tf_export("linalg.LinearOperatorDiag")
+@linear_operator.make_composite_tensor
 class LinearOperatorDiag(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] square diagonal matrix.
 
@@ -265,3 +262,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     abs_diag = math_ops.abs(self.diag)
     return (math_ops.reduce_max(abs_diag, axis=-1) /
             math_ops.reduce_min(abs_diag, axis=-1))
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("diag",)

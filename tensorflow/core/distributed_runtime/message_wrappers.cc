@@ -95,7 +95,7 @@ bool InMemoryRunStepRequest::store_errors_in_response_body() const {
   return store_errors_in_response_body_;
 }
 
-int64 InMemoryRunStepRequest::request_id() const {
+int64_t InMemoryRunStepRequest::request_id() const {
   return 0;  // no need to track request id for local version.
 }
 
@@ -212,7 +212,7 @@ void MutableProtoRunStepRequest::set_store_errors_in_response_body(
   request_.set_store_errors_in_response_body(store_errors);
 }
 
-int64 MutableProtoRunStepRequest::request_id() const {
+int64_t MutableProtoRunStepRequest::request_id() const {
   return request_.request_id();
 }
 
@@ -278,7 +278,9 @@ bool ProtoRunStepRequest::store_errors_in_response_body() const {
   return request_->store_errors_in_response_body();
 }
 
-int64 ProtoRunStepRequest::request_id() const { return request_->request_id(); }
+int64_t ProtoRunStepRequest::request_id() const {
+  return request_->request_id();
+}
 
 string ProtoRunStepRequest::DebugString() const {
   return request_->DebugString();
@@ -310,9 +312,11 @@ void InMemoryRunGraphRequest::set_graph_handle(const string& handle) {
   graph_handle_ = handle;
 }
 
-int64 InMemoryRunGraphRequest::step_id() const { return step_id_; }
+int64_t InMemoryRunGraphRequest::step_id() const { return step_id_; }
 
-void InMemoryRunGraphRequest::set_step_id(int64 step_id) { step_id_ = step_id; }
+void InMemoryRunGraphRequest::set_step_id(int64_t step_id) {
+  step_id_ = step_id;
+}
 
 const ExecutorOpts& InMemoryRunGraphRequest::exec_opts() const {
   return exec_opts_;
@@ -342,9 +346,6 @@ Status InMemoryRunGraphRequest::AddSendFromRunStepRequest(
   return Status::OK();
 }
 
-// TODO(b/74355905): Add a specialized implementation that avoids
-// copying the tensor when at least two of the {client, master,
-// worker} are in the same process.
 Status InMemoryRunGraphRequest::AddSendFromRunCallableRequest(
     const RunCallableRequest& run_callable_request, size_t i,
     const string& send_key) {
@@ -390,9 +391,9 @@ void InMemoryRunGraphRequest::set_store_errors_in_response_body(
   store_errors_in_response_body_ = store_errors;
 }
 
-int64 InMemoryRunGraphRequest::request_id() const { return request_id_; }
+int64_t InMemoryRunGraphRequest::request_id() const { return request_id_; }
 
-void InMemoryRunGraphRequest::set_request_id(int64 request_id) {
+void InMemoryRunGraphRequest::set_request_id(int64_t request_id) {
   request_id_ = request_id;
 }
 
@@ -447,11 +448,11 @@ void MutableProtoRunGraphRequest::set_graph_handle(const string& handle) {
   request_.set_graph_handle(handle);
 }
 
-int64 MutableProtoRunGraphRequest::step_id() const {
+int64_t MutableProtoRunGraphRequest::step_id() const {
   return request_.step_id();
 }
 
-void MutableProtoRunGraphRequest::set_step_id(int64 step_id) {
+void MutableProtoRunGraphRequest::set_step_id(int64_t step_id) {
   request_.set_step_id(step_id);
 }
 
@@ -489,9 +490,6 @@ Status MutableProtoRunGraphRequest::AddSendFromRunStepRequest(
   return Status::OK();
 }
 
-// TODO(b/74355905): Add a specialized implementation that avoids
-// copying the tensor when at least two of the {client, master,
-// worker} are in the same process.
 Status MutableProtoRunGraphRequest::AddSendFromRunCallableRequest(
     const RunCallableRequest& run_callable_request, size_t i,
     const string& send_key) {
@@ -539,11 +537,11 @@ void MutableProtoRunGraphRequest::set_store_errors_in_response_body(
   request_.set_store_errors_in_response_body(store_errors);
 }
 
-int64 MutableProtoRunGraphRequest::request_id() const {
+int64_t MutableProtoRunGraphRequest::request_id() const {
   return request_.request_id();
 }
 
-void MutableProtoRunGraphRequest::set_request_id(int64 request_id) {
+void MutableProtoRunGraphRequest::set_request_id(int64_t request_id) {
   request_.set_request_id(request_id);
 }
 
@@ -566,7 +564,7 @@ const string& ProtoRunGraphRequest::graph_handle() const {
   return request_->graph_handle();
 }
 
-int64 ProtoRunGraphRequest::step_id() const { return request_->step_id(); }
+int64_t ProtoRunGraphRequest::step_id() const { return request_->step_id(); }
 
 const ExecutorOpts& ProtoRunGraphRequest::exec_opts() const {
   return request_->exec_opts();
@@ -604,7 +602,7 @@ bool ProtoRunGraphRequest::store_errors_in_response_body() const {
   return request_->store_errors_in_response_body();
 }
 
-int64 ProtoRunGraphRequest::request_id() const {
+int64_t ProtoRunGraphRequest::request_id() const {
   return request_->request_id();
 }
 
@@ -639,6 +637,8 @@ StepStats* InMemoryRunGraphResponse::mutable_step_stats() {
 CostGraphDef* InMemoryRunGraphResponse::mutable_cost_graph() {
   return &cost_graph_;
 }
+
+Status InMemoryRunGraphResponse::status() const { return status_; }
 
 errors::Code InMemoryRunGraphResponse::status_code() const {
   return status_.code();
@@ -706,6 +706,10 @@ StepStats* OwnedProtoRunGraphResponse::mutable_step_stats() {
 
 CostGraphDef* OwnedProtoRunGraphResponse::mutable_cost_graph() {
   return response_.mutable_cost_graph();
+}
+
+Status OwnedProtoRunGraphResponse::status() const {
+  return Status(response_.status_code(), response_.status_error_message());
 }
 
 errors::Code OwnedProtoRunGraphResponse::status_code() const {
@@ -779,6 +783,10 @@ CostGraphDef* NonOwnedProtoRunGraphResponse::mutable_cost_graph() {
   return response_->mutable_cost_graph();
 }
 
+Status NonOwnedProtoRunGraphResponse::status() const {
+  return Status(response_->status_code(), response_->status_error_message());
+}
+
 errors::Code NonOwnedProtoRunGraphResponse::status_code() const {
   return response_->status_code();
 }
@@ -838,6 +846,8 @@ Status InMemoryRunStepResponse::AddTensorFromRunGraphResponse(
 
 RunMetadata* InMemoryRunStepResponse::mutable_metadata() { return &metadata_; }
 
+Status InMemoryRunStepResponse::status() const { return status_; }
+
 errors::Code InMemoryRunStepResponse::status_code() const {
   return status_.code();
 }
@@ -886,6 +896,10 @@ Status OwnedProtoRunStepResponse::AddTensorFromRunGraphResponse(
 
 RunMetadata* OwnedProtoRunStepResponse::mutable_metadata() {
   return response_.mutable_metadata();
+}
+
+Status OwnedProtoRunStepResponse::status() const {
+  return Status(response_.status_code(), response_.status_error_message());
 }
 
 errors::Code OwnedProtoRunStepResponse::status_code() const {
@@ -938,6 +952,10 @@ Status NonOwnedProtoRunStepResponse::AddTensorFromRunGraphResponse(
 
 RunMetadata* NonOwnedProtoRunStepResponse::mutable_metadata() {
   return response_->mutable_metadata();
+}
+
+Status NonOwnedProtoRunStepResponse::status() const {
+  return Status(response_->status_code(), response_->status_error_message());
 }
 
 errors::Code NonOwnedProtoRunStepResponse::status_code() const {

@@ -138,9 +138,6 @@ class XlaCompiler {
 
   using CompilationResult = ::tensorflow::XlaCompilationResult;
 
-  typedef std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType,
-                                                  bool)>
-      ShapeRepresentationFn;
   struct Options {
     // Name of the compilation device to use. It must be set by the caller.
     // The default empty value is invalid.
@@ -173,7 +170,7 @@ class XlaCompiler {
     // If set, the XLA representation of variables represented to XLA as the
     // shape given by this shape function. Variables are reshaped to this shape
     // on write, and reshaped to their original shape on read.
-    ShapeRepresentationFn shape_representation_fn;
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn;
 
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
@@ -290,7 +287,7 @@ class XlaCompiler {
   void PushNodeTokenMapping();
   Status PopNodeTokenMapping();
   Status SetNodeToken(const string& node_name, const xla::XlaOp& op);
-  xla::StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
+  StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,
@@ -324,10 +321,10 @@ class XlaCompiler {
   Status initialization_status_;
 
   // Returns the next step sequence number.
-  int64 NextStepId();
+  int64_t NextStepId();
 
   // Internal sequence number for steps executed on the compilation device.
-  int64 next_step_id_;
+  int64_t next_step_id_;
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
   StaticDeviceMgr device_mgr_;

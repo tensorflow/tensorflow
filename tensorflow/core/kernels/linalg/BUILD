@@ -23,6 +23,7 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -58,6 +59,11 @@ exports_files([
     "matrix_triangular_solve_op_complex.cc",
     "matrix_triangular_solve_op_impl.h",
     "matrix_triangular_solve_op_real.cc",
+    "qr_op_complex128.cc",
+    "qr_op_complex64.cc",
+    "qr_op_double.cc",
+    "qr_op_float.cc",
+    "qr_op_impl.h",
 ])
 
 # Public support libraries ----------------------------------------------------
@@ -98,10 +104,10 @@ LINALG_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core/kernels:cast_op",
     "//tensorflow/core/kernels:fill_functor",
+    "//tensorflow/core/kernels:transpose_functor",
 ] + if_cuda([
     ":eye_functor",
     "//tensorflow/core/util:cuda_solvers",
-    "//tensorflow/core/kernels:transpose_functor",
 ]) + if_rocm([
     "//tensorflow/core/util:rocm_solvers",
 ])
@@ -127,7 +133,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cholesky_op",
     prefix = "cholesky_op",
-    deps = if_cuda([
+    deps = if_cuda_or_rocm([
         ":matrix_band_part_op",
     ]) + LINALG_DEPS,
 )
@@ -362,7 +368,7 @@ tf_cuda_cc_test(
 
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
-    name = "android_all_op_kernels",
+    name = "portable_all_op_kernels",
     srcs = glob(
         [
             "*.cc",

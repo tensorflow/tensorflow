@@ -48,10 +48,10 @@ class ComputationLayout {
   }
 
   // Returns the layout of a particular parameter.
-  const ShapeLayout& parameter_layout(int64 param_no) const {
+  const ShapeLayout& parameter_layout(int64_t param_no) const {
     return parameter_layouts_[param_no];
   }
-  ShapeLayout* mutable_parameter_layout(int64 param_no) {
+  ShapeLayout* mutable_parameter_layout(int64_t param_no) {
     return &parameter_layouts_[param_no];
   }
 
@@ -69,7 +69,7 @@ class ComputationLayout {
 
   // Returns the shape of the particular parameter or result of the computation
   // with layout.
-  const Shape& parameter_shape(int64 param_no) const {
+  const Shape& parameter_shape(int64_t param_no) const {
     return parameter_layouts_[param_no].shape();
   }
   const Shape& result_shape() const { return result_layout_.shape(); }

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the reconstruction of non-debugger-decorated GraphDefs."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tempfile
 
 from tensorflow.core.framework import graph_pb2

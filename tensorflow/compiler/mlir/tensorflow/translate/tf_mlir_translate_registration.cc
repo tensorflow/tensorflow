@@ -47,7 +47,7 @@ static OwningModuleRef GraphdefToMlirTranslateFunction(llvm::StringRef input,
       input, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, control_output_arrays, prune_unused_nodes,
       convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
-      enable_shape_inference, context);
+      enable_shape_inference, unconditionally_use_set_output_shapes, context);
   if (!module_or.status().ok()) return nullptr;
   return module_or.ConsumeValueOrDie();
 }
@@ -61,7 +61,7 @@ static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
       input, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, control_output_arrays, prune_unused_nodes,
       convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
-      enable_shape_inference, context);
+      enable_shape_inference, unconditionally_use_set_output_shapes, context);
   if (!module_or.status().ok()) return nullptr;
   return module_or.ConsumeValueOrDie();
 }

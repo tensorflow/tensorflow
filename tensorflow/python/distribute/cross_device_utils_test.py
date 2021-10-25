@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for cross_device_utils."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
@@ -109,6 +105,22 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
 
     self.assertIsInstance(result, ops.IndexedSlices)
     self._assert_values_equal(t, result)
+    self.assertEqual(
+        device_util.resolve(destination), device_util.resolve(result.device))
+
+  @combinations.generate(
+      combinations.combine(mode=["graph", "eager"], required_gpus=1))
+  def testCopyIndexedSlicesNoDenseShape(self):
+    with ops.device("/cpu:0"):
+      t = ops.IndexedSlices(
+          indices=array_ops.identity([0]), values=array_ops.identity([1.]))
+    destination = "/gpu:0"
+    result = cross_device_utils.copy_tensor_or_indexed_slices_to_device(
+        t, destination)
+
+    self.assertIsInstance(result, ops.IndexedSlices)
+    self.assertAllEqual(t.indices, result.indices)
+    self.assertAllEqual(t.values, result.values)
     self.assertEqual(
         device_util.resolve(destination), device_util.resolve(result.device))
 

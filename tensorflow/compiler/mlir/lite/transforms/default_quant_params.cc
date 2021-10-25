@@ -55,6 +55,16 @@ class DefaultQuantParamsPass
 
   void runOnFunction() override;
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-default-quant";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Apply quantization with default quantization parameter";
+  }
+
  private:
   // Whether the value is used as a bias input of another op. Here we assume
   // bias is used immediately by the user. This assumption is always correct
@@ -109,10 +119,10 @@ void DefaultQuantParamsPass::runOnFunction() {
   }
 
   func.walk([&](Operation *op) {
-    if (op->hasTrait<OpTrait::IsTerminator>() ||
-        op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-        llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(op))
+    if (quant::IsOpNotQuantizable(op) ||
+        op->getParentOfType<TFL::CustomTfOp>()) {
       return;
+    }
 
     for (auto res : op->getResults()) {
       if (UsedAsBias(res)) {
@@ -231,13 +241,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDefaultQuantParamsPass(
 }
 
 // Registers this pass with default values, only for test
-static PassRegistration<DefaultQuantParamsPass> pass(
-    "tfl-default-quant",
-    "Apply quantization with default quantization parameter", [] {
-      return CreateDefaultQuantParamsPass(/*default_min=*/-1.0,
-                                          /*default_max=*/1.0,
-                                          /*is_signed=*/false);
-    });
+static PassRegistration<DefaultQuantParamsPass> pass([] {
+  return CreateDefaultQuantParamsPass(/*default_min=*/-1.0,
+                                      /*default_max=*/1.0,
+                                      /*is_signed=*/false);
+});
 
 }  // namespace TFL
 }  // namespace mlir

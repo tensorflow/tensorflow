@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 #include "tensorflow/lite/delegates/flex/subgraph_resource.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
@@ -56,7 +57,8 @@ REGISTER_OP("TfLiteSubgraphExecute")
 // subject to change.
 class TfLiteSubgraphExecute : public OpKernel {
  public:
-  explicit TfLiteSubgraphExecute(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit TfLiteSubgraphExecute(OpKernelConstruction* ctx)
+      : OpKernel(ctx), tfl_tensors_need_allocation_(true) {}
 
   void Compute(OpKernelContext* ctx) override {
     // Fetch the TF Lite subgraph to execute.
@@ -83,7 +85,10 @@ class TfLiteSubgraphExecute : public OpKernel {
     // Resize input tensors if necessary.
     ResizeInputTensor(ctx, subgraph_selected);
 
-    subgraph_selected.AllocateTensors();
+    if (tfl_tensors_need_allocation_) {
+      subgraph_selected.AllocateTensors();
+      tfl_tensors_need_allocation_ = false;
+    }
 
     // Copy input tensors to subgraph.
     SetSubgraphInput(ctx, subgraph_selected);
@@ -97,7 +102,7 @@ class TfLiteSubgraphExecute : public OpKernel {
 
  private:
   void ResizeInputTensor(OpKernelContext* ctx,
-                         tflite::Subgraph& subgraph_selected) const {
+                         tflite::Subgraph& subgraph_selected) {
     for (int i = 0; i < subgraph_selected.inputs().size(); ++i) {
       // Shift index by 1 since the first input is always the resource name.
       const Tensor& tf_tensor = ctx->input(i + 1);
@@ -117,6 +122,7 @@ class TfLiteSubgraphExecute : public OpKernel {
         for (auto dim : tf_tensor.shape().dim_sizes()) {
           new_shape.push_back(dim);
         }
+        tfl_tensors_need_allocation_ = true;
         OP_REQUIRES(ctx,
                     subgraph_selected.ResizeInputTensor(
                         subgraph_selected.inputs()[i], new_shape) == kTfLiteOk,
@@ -171,7 +177,6 @@ class TfLiteSubgraphExecute : public OpKernel {
 
   void CopyTFLiteSubgraphResult(OpKernelContext* ctx,
                                 tflite::Subgraph& subgraph_selected) const {
-    // TODO(b/181352924): Handle string/resource/variant type tensors.
     for (int i = 0; i < subgraph_selected.outputs().size(); ++i) {
       OP_REQUIRES(ctx,
                   subgraph_selected.EnsureTensorDataIsReadable(
@@ -180,23 +185,16 @@ class TfLiteSubgraphExecute : public OpKernel {
       // Create an output tensor.
       TfLiteTensor* subgraph_output =
           subgraph_selected.tensor(subgraph_selected.outputs()[i]);
-      OP_REQUIRES(ctx,
-                  subgraph_output->type != kTfLiteString &&
-                      subgraph_output->type != kTfLiteVariant &&
-                      subgraph_output->type != kTfLiteResource,
-                  errors::Internal(
-                      "String/Variant/Resource output tensors not supported"));
-      Tensor* output = nullptr;
-      TensorShape output_shape;
-      for (int i = 0; i < subgraph_output->dims->size; ++i) {
-        output_shape.AddDim(subgraph_output->dims->data[i]);
-      }
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(i, output_shape, &output));
-      // TODO(b/181352924): Consider optimize this part to avoid performance
-      // penalty.
-      memcpy(output->data(), subgraph_output->data.raw, subgraph_output->bytes);
+
+      Tensor tensor;
+      OP_REQUIRES_OK(
+          ctx, tflite::flex::SetTfTensorFromTfLite(subgraph_output, &tensor));
+      ctx->set_output(i, std::move(tensor));
     }
   }
+
+  // Tells if the target subgraph needs to invoko AllocateTensors().
+  bool tfl_tensors_need_allocation_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TfLiteSubgraphExecute").Device(DEVICE_CPU),

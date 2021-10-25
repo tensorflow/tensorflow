@@ -17,10 +17,6 @@
 # TODO(b/159343581): Properly support CompositeTensor in all functions in this
 # file.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import operator
 import sys
@@ -1310,7 +1306,21 @@ class GradientTape(object):
           [check_ops.assert_equal(batch_size, source_shape[0])]):
         target = array_ops.reshape(target, [batch_size, target_row_size])
 
+    run_once = False
+
     def loop_fn(i):
+      nonlocal run_once
+      if run_once and not self._persistent:
+        if parallel_iterations is not None:
+          raise RuntimeError(
+              "GradientTape must be created with persistent=True"
+              " to compute the batch_jacobian with parallel_iterations.")
+        else:
+          raise RuntimeError(
+              "GradientTape must be created with persistent=True"
+              " to compute the batch_jacobian.")
+      run_once = True
+
       with self._ensure_recording():
         y = array_ops.gather(target, i, axis=1)
       return self.gradient(y, source,

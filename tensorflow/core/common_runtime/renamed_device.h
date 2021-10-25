@@ -59,7 +59,7 @@ class RenamedDevice : public Device {
   }
 
   Allocator* GetScopedAllocator(AllocatorAttributes attr,
-                                int64 step_id) override {
+                                int64_t step_id) override {
     return underlying_device_->GetScopedAllocator(attr, step_id);
   }
 

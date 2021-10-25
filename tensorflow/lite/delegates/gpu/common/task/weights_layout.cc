@@ -19,10 +19,10 @@ namespace tflite {
 namespace gpu {
 
 int WeightsDescription::GetOutputGroupSize() const {
-  if (layout == WeightsLayout::kOHWIOGroupI4O4 ||
-      layout == WeightsLayout::kOHWIOGroupO4I4 ||
-      layout == WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4 ||
-      layout == WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4) {
+  if (layout == WeightsLayout::kOSpatialIOGroupI4O4 ||
+      layout == WeightsLayout::kOSpatialIOGroupO4I4 ||
+      layout == WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4 ||
+      layout == WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
     return output_group_size;
   } else {
     return 1;
@@ -30,15 +30,15 @@ int WeightsDescription::GetOutputGroupSize() const {
 }
 
 bool WeightsDescription::IsI4O4() const {
-  return layout == WeightsLayout::kOHWIOGroupI4O4 ||
+  return layout == WeightsLayout::kOSpatialIOGroupI4O4 ||
          layout == WeightsLayout::kOICustomSpatialI4O4 ||
-         layout == WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4;
+         layout == WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4;
 }
 
 bool WeightsDescription::IsO4I4() const {
-  return layout == WeightsLayout::kOHWIOGroupO4I4 ||
+  return layout == WeightsLayout::kOSpatialIOGroupO4I4 ||
          layout == WeightsLayout::kOICustomSpatialO4I4 ||
-         layout == WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4;
+         layout == WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4;
 }
 
 }  // namespace gpu

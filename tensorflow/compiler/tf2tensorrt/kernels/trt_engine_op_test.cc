@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 #include "tensorflow/cc/framework/scope.h"
@@ -57,12 +58,17 @@ namespace tensorrt {
 using ::absl::StrCat;
 using ::testing::ElementsAre;
 
+struct TestParam {
+  bool static_engine;
+};
+
 class TRTEngineOpTestBase : public OpsTestBase {
  public:
   void AddSimpleTrtOp(DataType dtype, int max_cached_engines_count = 1,
                       PartialTensorShape shape = PartialTensorShape({-1, -1}),
                       bool use_implicit_batch = true,
-                      bool allow_build_at_runtime = true) {
+                      bool allow_build_at_runtime = true,
+                      bool static_engine = false) {
     // Create the GPU device.
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("GPU", {}, "/job:worker/replica:0/task:0"));
@@ -77,10 +83,37 @@ class TRTEngineOpTestBase : public OpsTestBase {
     GraphDef graph_def;
     TF_ASSERT_OK(s.ToGraphDef(&graph_def));
     Graph* graph = s.graph();
-    const char* op_name = "myop";
-    TF_ASSERT_OK(
-        convert::RegisterGraphToFunctionLibrary(graph_def, graph, op_name));
+    TF_ASSERT_OK(convert::RegisterGraphToFunctionLibrary(graph_def, graph,
+                                                         std::string(kOpName)));
     TF_ASSERT_OK(flib_def_->AddLibrary(graph->flib_def()));
+
+    string segment_string;
+    if (static_engine) {
+      convert::ConversionParams params;
+      convert::EngineInfo info;
+      info.segment_graph_def.CopyFrom(graph_def);
+      info.precision_mode = TrtPrecisionMode::FP32;
+      info.max_workspace_size_bytes = 1 << 20;
+      info.engine_name = "TRTEngineOP_0_0";
+      params.use_implicit_batch = use_implicit_batch;
+      params.trt_logger_name = "DefaultLogger";
+
+      TrtShapeOptimizationProfile profile;
+      TensorShape my_shape;
+      // We set profile 0 to be incompatible with the input used in the test.
+      // This way we ensure that profile selection is tested.
+      TF_CHECK_OK(
+          TensorShapeUtils::MakeShape(std::vector<int32>{4, 2}, &my_shape));
+      profile.AddShape({my_shape, {}});
+      TF_CHECK_OK(
+          TensorShapeUtils::MakeShape(std::vector<int32>{1, 2}, &my_shape));
+      profile.AddShape({my_shape, {}});
+
+      profile.InitProfiles({shape}, ProfileStrategy::kOptimal);
+      std::vector<PartialTensorShape> shape_vec{shape, {}};
+      TF_CHECK_OK(convert::CreateStaticEngine(params, info, 1, shape_vec,
+                                              &profile, &segment_string));
+    }
 
     // Create the op.
     // In implicit batch mode, the input shapes that we specify here are not
@@ -90,7 +123,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
     // the network for the TensorRT engine.
     OpsTestBase::SetDevice(DEVICE_GPU, std::move(device));
     NameAttrList function;
-    function.set_name(StrCat(op_name, "_native_segment"));
+    function.set_name(StrCat(std::string(kOpName), "_native_segment"));
     // We disable allow_soft_placement when executing the native segment of the
     // TRTEngineOp for the following reasons:
     //    OpsTestBase only allow one device in the device manager.
@@ -98,13 +131,13 @@ class TRTEngineOpTestBase : public OpsTestBase {
     //    When allow_soft_placement is true, the TensorFlow runtime produces an
     //      error if a CPU device is not defined
     //      (see ProcessFunctionLibraryRuntime::InstantiateMultiDevice).
-    TF_ASSERT_OK(NodeDefBuilder(op_name, "TRTEngineOp")
+    TF_ASSERT_OK(NodeDefBuilder(std::string(kOpName), "TRTEngineOp")
                      .Input(FakeInput(1, dtype))
                      .Attr("input_shapes", {shape})
                      .Attr("output_shapes", {shape})
-                     .Attr("static_engine", false)
+                     .Attr("static_engine", static_engine)
                      .Attr("segment_func", function)
-                     .Attr("serialized_segment", "")
+                     .Attr("serialized_segment", segment_string)
                      .Attr("calibration_data", "")
                      .Attr("max_cached_engines_count", max_cached_engines_count)
                      .Attr("workspace_size_bytes", 1 << 20)
@@ -118,6 +151,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Finalize(OpsTestBase::node_def()));
     TF_ASSERT_OK(InitOpWithFunctionLibrary());
   }
+
+  static const absl::string_view kOpName;
 
   template <typename T>
   void AddSimpleInput(const TensorShape& shape) {
@@ -151,6 +186,24 @@ class TRTEngineOpTestBase : public OpsTestBase {
   }
 };
 
+class TRTEngineOpTestWithParam
+    : public TRTEngineOpTestBase,
+      public ::testing::WithParamInterface<TestParam> {
+ public:
+  TRTEngineOpTestWithParam() : param_(GetParam()) {}
+
+ protected:
+  TestParam param_;
+};
+
+const absl::string_view TRTEngineOpTestBase::kOpName = "myop";
+
+constexpr std::array<TestParam, 2> TestParameters{TestParam{false},
+                                                  TestParam{true}};
+
+INSTANTIATE_TEST_CASE_P(TRTEngineOpTestInstantiation, TRTEngineOpTestWithParam,
+                        ::testing::ValuesIn(TestParameters));
+
 TEST_F(TRTEngineOpTestBase, DynamicEngines) {
   // Test dynamic engine creation during inference time
   TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/4);
@@ -161,8 +214,8 @@ TEST_F(TRTEngineOpTestBase, DynamicEngines) {
 
   // Get the engine cache.
   TRTEngineCacheResource* cache_resource = nullptr;
-  TF_ASSERT_OK(
-      device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
+  TF_ASSERT_OK(device_->resource_manager()->Lookup(
+      std::string(kTfTrtContainerName), std::string(kOpName), &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
   // It should contain only one engine.
@@ -214,8 +267,8 @@ TEST_F(TRTEngineOpTestBase, AllowBuildAtRuntime) {
 
   // Get the engine cache.
   TRTEngineCacheResource* cache_resource = nullptr;
-  TF_ASSERT_OK(
-      device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
+  TF_ASSERT_OK(device_->resource_manager()->Lookup(
+      std::string(kTfTrtContainerName), std::string(kOpName), &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
   // It should contain a placeholder with an empty cuda_engine (to mark that
@@ -227,14 +280,15 @@ TEST_F(TRTEngineOpTestBase, AllowBuildAtRuntime) {
   EXPECT_EQ(ectx->cuda_engine, nullptr);
 }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-TEST_F(TRTEngineOpTestBase, ExplicitBatch) {
+TEST_P(TRTEngineOpTestWithParam, ExplicitBatch) {
   // Test inference in explicit batch mode with static input shapes. Static
   // shapes in this context means that the TensorRT knows all the input shapes
   // during engine creation time.
   TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/1,
                                       /*shape=*/PartialTensorShape({1, 2}),
-                                      /*use_implicit_batch=*/false);
+                                      /*use_implicit_batch=*/false,
+                                      /*allow_build_at_runtime=*/true,
+                                      /*static_engine=*/param_.static_engine);
 
   TensorShape input_shape({1, 2});
   TRTEngineOpTestBase::AddSimpleInput<float>(input_shape);
@@ -242,8 +296,8 @@ TEST_F(TRTEngineOpTestBase, ExplicitBatch) {
 
   // Get the engine cache.
   TRTEngineCacheResource* cache_resource = nullptr;
-  TF_ASSERT_OK(
-      device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
+  TF_ASSERT_OK(device_->resource_manager()->Lookup(
+      std::string(kTfTrtContainerName), std::string(kOpName), &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
   auto cache = &cache_resource->cache_;
@@ -253,7 +307,7 @@ TEST_F(TRTEngineOpTestBase, ExplicitBatch) {
   EXPECT_NE(ectx->cuda_engine, nullptr);
 }
 
-TEST_F(TRTEngineOpTestBase, DynamicShapes) {
+TEST_P(TRTEngineOpTestWithParam, DynamicShapes) {
   // Test inference in explicit batch mode with dynamic input shapes. Dynamic
   // shapes in this context means that some input shapes for TensorRT are
   // unknown during engine creation time. When we create the network, the
@@ -261,7 +315,9 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   // have to be specified by calling setBindingDimensions.
   TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/1,
                                       /*shape=*/PartialTensorShape({-1, -1}),
-                                      /*use_implicit_batch=*/false);
+                                      /*use_implicit_batch=*/false,
+                                      /*allow_build_at_runtime=*/true,
+                                      param_.static_engine);
 
   TensorShape input_shape({1, 2});
   TRTEngineOpTestBase::AddSimpleInput<float>(input_shape);
@@ -270,8 +326,8 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
 
   // Get the engine cache.
   TRTEngineCacheResource* cache_resource = nullptr;
-  TF_ASSERT_OK(
-      device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
+  TF_ASSERT_OK(device_->resource_manager()->Lookup(
+      std::string(kTfTrtContainerName), std::string(kOpName), &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
   auto cache = &cache_resource->cache_;
@@ -279,6 +335,15 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
   EXPECT_NE(ectx->cuda_engine, nullptr);
+
+  // Execute the op with an incompatible shape.
+  ResetInputs();
+  TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({1, 37}));
+  // Test that the op runs. This should fall back to native segment.
+  TF_ASSERT_OK(OpsTestBase::RunOpKernel());
+  // We should still have a single engine that is not compatible with the input.
+  EXPECT_EQ(1, cache->size());
+  EXPECT_EQ(0, cache->count({TensorShape({1, 37})}));
 }
 
 template <typename T>
@@ -302,7 +367,6 @@ TYPED_TEST(TRTEngineOpTest, Basic) {
                                   output->NumElements()),
       ElementsAre(TypeParam(0.0f), TypeParam(2.0f)));
 }
-#endif
 
 }  // namespace tensorrt
 }  // namespace tensorflow

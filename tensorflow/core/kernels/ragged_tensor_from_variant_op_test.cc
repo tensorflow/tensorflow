@@ -76,60 +76,60 @@ class RaggedTensorFromVariantKernelTest : public ::tensorflow::OpsTestBase {
 };
 
 TEST_F(RaggedTensorFromVariantKernelTest, ScalarInput) {
-  const std::vector<int64> split_1 = {0, 1, 2, 3, 4, 5};
-  const std::vector<int64> split_2 = {0, 1, 2, 5, 6, 7};
+  const std::vector<int64_t> split_1 = {0, 1, 2, 3, 4, 5};
+  const std::vector<int64_t> split_2 = {0, 1, 2, 5, 6, 7};
   const std::vector<int> values = {0, 1, 1, 2, 2, 3, 4};
 
-  auto encoded_variant = CreateVariantFromRagged<int, int64>(
+  auto encoded_variant = CreateVariantFromRagged<int, int64_t>(
       {split_1, split_2}, TensorShape({7}), values);
   Tensor expected_splits_1(DT_INT64, TensorShape({6}));
   Tensor expected_splits_2(DT_INT64, TensorShape({6}));
   Tensor expected_values(DT_INT32, TensorShape({7}));
 
-  test::FillValues<int64>(&expected_splits_1, split_1);
-  test::FillValues<int64>(&expected_splits_2, split_2);
+  test::FillValues<int64_t>(&expected_splits_1, split_1);
+  test::FillValues<int64_t>(&expected_splits_2, split_2);
   test::FillValues<int>(&expected_values, values);
 
   int input_ragged_rank = 2;
   int output_ragged_rank = 2;
-  BuildDecodeRaggedTensorGraph<int, int64>(input_ragged_rank,
-                                           output_ragged_rank, TensorShape({}),
-                                           {encoded_variant});
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      input_ragged_rank, output_ragged_rank, TensorShape({}),
+      {encoded_variant});
   TF_ASSERT_OK(RunOpKernel());
 
-  test::ExpectTensorEqual<int64>(*GetOutput(0), expected_splits_1);
-  test::ExpectTensorEqual<int64>(*GetOutput(1), expected_splits_2);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(0), expected_splits_1);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(1), expected_splits_2);
   test::ExpectTensorEqual<int>(*GetOutput(2), expected_values);
 }
 
 TEST_F(RaggedTensorFromVariantKernelTest, OneInputElement) {
-  const std::vector<int64> split_1 = {0, 1, 2, 3, 4, 5};
-  const std::vector<int64> split_2 = {0, 1, 2, 5, 6, 7};
+  const std::vector<int64_t> split_1 = {0, 1, 2, 3, 4, 5};
+  const std::vector<int64_t> split_2 = {0, 1, 2, 5, 6, 7};
   const std::vector<int> values = {0, 1, 1, 2, 2, 3, 4};
-  const std::vector<int64> batched_splits_1 = {0, 5};
+  const std::vector<int64_t> batched_splits_1 = {0, 5};
 
-  auto encoded_variant = CreateVariantFromRagged<int, int64>(
+  auto encoded_variant = CreateVariantFromRagged<int, int64_t>(
       {split_1, split_2}, TensorShape({7}), values);
   Tensor expected_splits_1(DT_INT64, TensorShape({2}));
   Tensor expected_splits_2(DT_INT64, TensorShape({6}));
   Tensor expected_splits_3(DT_INT64, TensorShape({6}));
   Tensor expected_values(DT_INT32, TensorShape({7}));
 
-  test::FillValues<int64>(&expected_splits_1, batched_splits_1);
-  test::FillValues<int64>(&expected_splits_2, split_1);
-  test::FillValues<int64>(&expected_splits_3, split_2);
+  test::FillValues<int64_t>(&expected_splits_1, batched_splits_1);
+  test::FillValues<int64_t>(&expected_splits_2, split_1);
+  test::FillValues<int64_t>(&expected_splits_3, split_2);
   test::FillValues<int>(&expected_values, values);
 
   int input_ragged_rank = 2;
   int output_ragged_rank = 3;
-  BuildDecodeRaggedTensorGraph<int, int64>(input_ragged_rank,
-                                           output_ragged_rank, TensorShape({1}),
-                                           {encoded_variant});
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      input_ragged_rank, output_ragged_rank, TensorShape({1}),
+      {encoded_variant});
   TF_ASSERT_OK(RunOpKernel());
 
-  test::ExpectTensorEqual<int64>(*GetOutput(0), expected_splits_1);
-  test::ExpectTensorEqual<int64>(*GetOutput(1), expected_splits_2);
-  test::ExpectTensorEqual<int64>(*GetOutput(2), expected_splits_3);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(0), expected_splits_1);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(1), expected_splits_2);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(2), expected_splits_3);
   test::ExpectTensorEqual<int>(*GetOutput(3), expected_values);
 }
 
@@ -148,37 +148,37 @@ TEST_F(RaggedTensorFromVariantKernelTest, TensorIn2DOut) {
   const std::vector<int> values_2 = {};
   const std::vector<int> values_3 = {4, 5};
   const std::vector<int> values_4 = {6};
-  const std::vector<int64> batched_splits_1 = {0, 2, 4};
-  const std::vector<int64> batched_splits_2 = {0, 3, 3, 5, 6};
+  const std::vector<int64_t> batched_splits_1 = {0, 2, 4};
+  const std::vector<int64_t> batched_splits_2 = {0, 3, 3, 5, 6};
   const std::vector<int> batched_values = {1, 2, 3, 4, 5, 6};
 
   auto component_variant_1 =
-      CreateVariantFromRagged<int, int64>({}, TensorShape({3}), values_1);
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({3}), values_1);
   auto component_variant_2 =
-      CreateVariantFromRagged<int, int64>({}, TensorShape({0}), values_2);
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({0}), values_2);
   auto component_variant_3 =
-      CreateVariantFromRagged<int, int64>({}, TensorShape({2}), values_3);
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({2}), values_3);
   auto component_variant_4 =
-      CreateVariantFromRagged<int, int64>({}, TensorShape({1}), values_4);
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({1}), values_4);
 
   Tensor expected_splits_1(DT_INT64, TensorShape({3}));
   Tensor expected_splits_2(DT_INT64, TensorShape({5}));
   Tensor expected_values(DT_INT32, TensorShape({6}));
 
-  test::FillValues<int64>(&expected_splits_1, batched_splits_1);
-  test::FillValues<int64>(&expected_splits_2, batched_splits_2);
+  test::FillValues<int64_t>(&expected_splits_1, batched_splits_1);
+  test::FillValues<int64_t>(&expected_splits_2, batched_splits_2);
   test::FillValues<int>(&expected_values, batched_values);
 
   int input_ragged_rank = 0;
   int output_ragged_rank = 2;
-  BuildDecodeRaggedTensorGraph<int, int64>(
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({2, 2}),
       {component_variant_1, component_variant_2, component_variant_3,
        component_variant_4});
   TF_ASSERT_OK(RunOpKernel());
 
-  test::ExpectTensorEqual<int64>(*GetOutput(0), expected_splits_1);
-  test::ExpectTensorEqual<int64>(*GetOutput(1), expected_splits_2);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(0), expected_splits_1);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(1), expected_splits_2);
   test::ExpectTensorEqual<int>(*GetOutput(2), expected_values);
 }
 
@@ -189,21 +189,21 @@ TEST_F(RaggedTensorFromVariantKernelTest, NonEmpty1DIn3DOut) {
   // ragged_component_4 = [[x, x], [x]]
   // ragged_component_5 = [[x], [x, x]]
   // batched_ragged = [[rc1, rc2, rc3, rc4, rc5], [rc4, rc5, rc1, rc3, rc2]]
-  const std::vector<int64> component_split_1_1 = {0, 1};
-  const std::vector<int64> component_split_2_1 = {0, 1, 2};
-  const std::vector<int64> component_split_3_1 = {0, 2};
-  const std::vector<int64> component_split_4_1 = {0, 2, 3};
-  const std::vector<int64> component_split_5_1 = {0, 1, 3};
+  const std::vector<int64_t> component_split_1_1 = {0, 1};
+  const std::vector<int64_t> component_split_2_1 = {0, 1, 2};
+  const std::vector<int64_t> component_split_3_1 = {0, 2};
+  const std::vector<int64_t> component_split_4_1 = {0, 2, 3};
+  const std::vector<int64_t> component_split_5_1 = {0, 1, 3};
   const std::vector<int> component_values_1 = {0};
   const std::vector<int> component_values_2 = {0, 1};
   const std::vector<int> component_values_3 = {0, 1};
   const std::vector<int> component_values_4 = {0, 1, 2};
   const std::vector<int> component_values_5 = {0, 1, 2};
 
-  const std::vector<int64> batched_splits_1 = {0, 5, 10};
-  const std::vector<int64> batched_splits_2 = {0,  1,  3,  4,  6, 8,
-                                               10, 12, 13, 14, 16};
-  const std::vector<int64> batched_splits_3 = {
+  const std::vector<int64_t> batched_splits_1 = {0, 5, 10};
+  const std::vector<int64_t> batched_splits_2 = {0,  1,  3,  4,  6, 8,
+                                                 10, 12, 13, 14, 16};
+  const std::vector<int64_t> batched_splits_3 = {
       0, 1, 2, 3, 5, 7, 8, 9, 11, 13, 14, 15, 17, 18, 20, 21, 22};
   const std::vector<int> batched_values = {0, 0, 1, 0, 1, 0, 1, 2, 0, 1, 2,
                                            0, 1, 2, 0, 1, 2, 0, 0, 1, 0, 1};
@@ -213,24 +213,24 @@ TEST_F(RaggedTensorFromVariantKernelTest, NonEmpty1DIn3DOut) {
   Tensor expected_splits_3(DT_INT64, TensorShape({17}));
   Tensor expected_values(DT_INT32, TensorShape({22}));
 
-  test::FillValues<int64>(&expected_splits_1, batched_splits_1);
-  test::FillValues<int64>(&expected_splits_2, batched_splits_2);
-  test::FillValues<int64>(&expected_splits_3, batched_splits_3);
+  test::FillValues<int64_t>(&expected_splits_1, batched_splits_1);
+  test::FillValues<int64_t>(&expected_splits_2, batched_splits_2);
+  test::FillValues<int64_t>(&expected_splits_3, batched_splits_3);
   test::FillValues<int>(&expected_values, batched_values);
 
-  auto variant_component_1 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_1 = CreateVariantFromRagged<int, int64_t>(
       {component_split_1_1}, TensorShape({1}), component_values_1);
-  auto variant_component_2 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_2 = CreateVariantFromRagged<int, int64_t>(
       {component_split_2_1}, TensorShape({2}), component_values_2);
-  auto variant_component_3 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_3 = CreateVariantFromRagged<int, int64_t>(
       {component_split_3_1}, TensorShape({2}), component_values_3);
-  auto variant_component_4 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_4 = CreateVariantFromRagged<int, int64_t>(
       {component_split_4_1}, TensorShape({3}), component_values_4);
-  auto variant_component_5 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_5 = CreateVariantFromRagged<int, int64_t>(
       {component_split_5_1}, TensorShape({3}), component_values_5);
   int input_ragged_rank = 1;
   int output_ragged_rank = 3;
-  BuildDecodeRaggedTensorGraph<int, int64>(
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({2, 5}),
       {variant_component_1, variant_component_2, variant_component_3,
        variant_component_4, variant_component_5, variant_component_4,
@@ -238,9 +238,9 @@ TEST_F(RaggedTensorFromVariantKernelTest, NonEmpty1DIn3DOut) {
        variant_component_2});
   TF_ASSERT_OK(RunOpKernel());
 
-  test::ExpectTensorEqual<int64>(*GetOutput(0), expected_splits_1);
-  test::ExpectTensorEqual<int64>(*GetOutput(1), expected_splits_2);
-  test::ExpectTensorEqual<int64>(*GetOutput(2), expected_splits_3);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(0), expected_splits_1);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(1), expected_splits_2);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(2), expected_splits_3);
   test::ExpectTensorEqual<int>(*GetOutput(3), expected_values);
 }
 
@@ -263,18 +263,19 @@ TEST_F(RaggedTensorFromVariantKernelTest,
   //   [ [x],    [x]    ]
   // ]
   // batched_ragged = [[rc1, rc2], [rc2, rc1]]
-  const std::vector<int64> component_split_1_1 = {0, 1, 3, 4, 6, 8};
-  const std::vector<int64> component_split_1_2 = {0, 1, 2, 3, 5, 7, 8, 9, 11};
-  const std::vector<int64> component_split_2_1 = {0, 2, 4, 5, 6, 8};
-  const std::vector<int64> component_split_2_2 = {0, 2, 3, 4, 6, 7, 9, 10, 11};
+  const std::vector<int64_t> component_split_1_1 = {0, 1, 3, 4, 6, 8};
+  const std::vector<int64_t> component_split_1_2 = {0, 1, 2, 3, 5, 7, 8, 9, 11};
+  const std::vector<int64_t> component_split_2_1 = {0, 2, 4, 5, 6, 8};
+  const std::vector<int64_t> component_split_2_2 = {0, 2, 3,  4, 6,
+                                                    7, 9, 10, 11};
   const std::vector<int> component_values_1 = {0, 0, 1, 0, 1, 0, 1, 2, 0, 1, 2};
   const std::vector<int> component_values_2 = {0, 1, 2, 0, 1, 2, 0, 0, 1, 0, 1};
-  const std::vector<int64> batched_splits_1 = {0, 2, 4};
-  const std::vector<int64> batched_splits_2 = {0, 5, 10, 15, 20};
-  const std::vector<int64> batched_splits_3 = {0,  1,  3,  4,  6,  8,  10,
-                                               12, 13, 14, 16, 18, 20, 21,
-                                               22, 24, 25, 27, 28, 30, 32};
-  const std::vector<int64> batched_splits_4 = {
+  const std::vector<int64_t> batched_splits_1 = {0, 2, 4};
+  const std::vector<int64_t> batched_splits_2 = {0, 5, 10, 15, 20};
+  const std::vector<int64_t> batched_splits_3 = {0,  1,  3,  4,  6,  8,  10,
+                                                 12, 13, 14, 16, 18, 20, 21,
+                                                 22, 24, 25, 27, 28, 30, 32};
+  const std::vector<int64_t> batched_splits_4 = {
       0,  1,  2,  3,  5,  7,  8,  9,  11, 13, 14, 15, 17, 18, 20, 21, 22,
       24, 25, 26, 28, 29, 31, 32, 33, 34, 35, 36, 38, 40, 41, 42, 44};
   const std::vector<int> batched_values = {
@@ -286,30 +287,30 @@ TEST_F(RaggedTensorFromVariantKernelTest,
   Tensor expected_splits_3(DT_INT64, TensorShape({21}));
   Tensor expected_splits_4(DT_INT64, TensorShape({33}));
   Tensor expected_values(DT_INT32, TensorShape({44}));
-  test::FillValues<int64>(&expected_splits_1, batched_splits_1);
-  test::FillValues<int64>(&expected_splits_2, batched_splits_2);
-  test::FillValues<int64>(&expected_splits_3, batched_splits_3);
-  test::FillValues<int64>(&expected_splits_4, batched_splits_4);
+  test::FillValues<int64_t>(&expected_splits_1, batched_splits_1);
+  test::FillValues<int64_t>(&expected_splits_2, batched_splits_2);
+  test::FillValues<int64_t>(&expected_splits_3, batched_splits_3);
+  test::FillValues<int64_t>(&expected_splits_4, batched_splits_4);
   test::FillValues<int>(&expected_values, batched_values);
 
-  auto variant_component_1 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_1 = CreateVariantFromRagged<int, int64_t>(
       {component_split_1_1, component_split_1_2}, TensorShape({11}),
       component_values_1);
-  auto variant_component_2 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_2 = CreateVariantFromRagged<int, int64_t>(
       {component_split_2_1, component_split_2_2}, TensorShape({11}),
       component_values_2);
   int input_ragged_rank = -1;
   int output_ragged_rank = 4;
-  BuildDecodeRaggedTensorGraph<int, int64>(
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({2, 2}),
       {variant_component_1, variant_component_2, variant_component_2,
        variant_component_1});
   TF_ASSERT_OK(RunOpKernel());
 
-  test::ExpectTensorEqual<int64>(*GetOutput(0), expected_splits_1);
-  test::ExpectTensorEqual<int64>(*GetOutput(1), expected_splits_2);
-  test::ExpectTensorEqual<int64>(*GetOutput(2), expected_splits_3);
-  test::ExpectTensorEqual<int64>(*GetOutput(3), expected_splits_4);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(0), expected_splits_1);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(1), expected_splits_2);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(2), expected_splits_3);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(3), expected_splits_4);
   test::ExpectTensorEqual<int>(*GetOutput(4), expected_values);
 }
 
@@ -317,33 +318,33 @@ TEST_F(RaggedTensorFromVariantKernelTest, EmptyRow1DIn2DOut) {
   // ragged_component_1 = [[x, x, x], []]
   // ragged_component_2 = []
   // batched_ragged = [rc1, rc2] = [[[x, x, x], []], []]
-  const std::vector<int64> component_split_1_1 = {0, 3, 3};
+  const std::vector<int64_t> component_split_1_1 = {0, 3, 3};
   const std::vector<int> component_values_1 = {1, 2, 3};
-  const std::vector<int64> component_split_2_1 = {0};
-  const std::vector<int64> batched_splits_1 = {0, 2, 2};
-  const std::vector<int64> batched_splits_2 = {0, 3, 3};
+  const std::vector<int64_t> component_split_2_1 = {0};
+  const std::vector<int64_t> batched_splits_1 = {0, 2, 2};
+  const std::vector<int64_t> batched_splits_2 = {0, 3, 3};
   const std::vector<int> batched_values = {1, 2, 3};
 
   Tensor expected_splits_1(DT_INT64, TensorShape({3}));
   Tensor expected_splits_2(DT_INT64, TensorShape({3}));
   Tensor expected_values(DT_INT32, TensorShape({3}));
-  test::FillValues<int64>(&expected_splits_1, batched_splits_1);
-  test::FillValues<int64>(&expected_splits_2, batched_splits_2);
+  test::FillValues<int64_t>(&expected_splits_1, batched_splits_1);
+  test::FillValues<int64_t>(&expected_splits_2, batched_splits_2);
   test::FillValues<int>(&expected_values, batched_values);
 
-  auto variant_component_1 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_1 = CreateVariantFromRagged<int, int64_t>(
       {component_split_1_1}, TensorShape({3}), component_values_1);
-  auto variant_component_2 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_2 = CreateVariantFromRagged<int, int64_t>(
       {component_split_2_1}, TensorShape({0}), {});  // Empty row.
   int input_ragged_rank = 1;
   int output_ragged_rank = 2;
-  BuildDecodeRaggedTensorGraph<int, int64>(
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({2}),
       {variant_component_1, variant_component_2});
   TF_ASSERT_OK(RunOpKernel());
 
-  test::ExpectTensorEqual<int64>(*GetOutput(0), expected_splits_1);
-  test::ExpectTensorEqual<int64>(*GetOutput(1), expected_splits_2);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(0), expected_splits_1);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(1), expected_splits_2);
   test::ExpectTensorEqual<int>(*GetOutput(2), expected_values);
 }
 
@@ -351,34 +352,34 @@ TEST_F(RaggedTensorFromVariantKernelTest, NDValues1DIn2DOut) {
   // ragged_component_1 = [[x]]
   // ragged_component_1 = [[x], [x]]
   // batched_ragged = [rc1, rc2] = [[[x]], [[x], [x]]]
-  const std::vector<int64> component_split_1_1 = {0, 1};
+  const std::vector<int64_t> component_split_1_1 = {0, 1};
   const std::vector<int> component_values_1 = {1, 2};
-  const std::vector<int64> component_split_2_1 = {0, 1, 2};
+  const std::vector<int64_t> component_split_2_1 = {0, 1, 2};
   const std::vector<int> component_values_2 = {1, 2, 3, 4};
-  const std::vector<int64> batched_splits_1 = {0, 1, 3};
-  const std::vector<int64> batched_splits_2 = {0, 1, 2, 3};
+  const std::vector<int64_t> batched_splits_1 = {0, 1, 3};
+  const std::vector<int64_t> batched_splits_2 = {0, 1, 2, 3};
   const std::vector<int> batched_values = {1, 2, 1, 2, 3, 4};
 
   Tensor expected_splits_1(DT_INT64, TensorShape({3}));
   Tensor expected_splits_2(DT_INT64, TensorShape({4}));
   Tensor expected_values(DT_INT32, TensorShape({3, 2}));
-  test::FillValues<int64>(&expected_splits_1, batched_splits_1);
-  test::FillValues<int64>(&expected_splits_2, batched_splits_2);
+  test::FillValues<int64_t>(&expected_splits_1, batched_splits_1);
+  test::FillValues<int64_t>(&expected_splits_2, batched_splits_2);
   test::FillValues<int>(&expected_values, batched_values);
 
-  auto variant_component_1 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_1 = CreateVariantFromRagged<int, int64_t>(
       {component_split_1_1}, TensorShape({1, 2}), component_values_1);
-  auto variant_component_2 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_2 = CreateVariantFromRagged<int, int64_t>(
       {component_split_2_1}, TensorShape({2, 2}), component_values_2);
   int input_ragged_rank = 1;
   int output_ragged_rank = 2;
-  BuildDecodeRaggedTensorGraph<int, int64>(
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({2}),
       {variant_component_1, variant_component_2});
 
   TF_ASSERT_OK(RunOpKernel());
-  test::ExpectTensorEqual<int64>(*GetOutput(0), expected_splits_1);
-  test::ExpectTensorEqual<int64>(*GetOutput(1), expected_splits_2);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(0), expected_splits_1);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(1), expected_splits_2);
   test::ExpectTensorEqual<int>(*GetOutput(2), expected_values);
 }
 
@@ -447,17 +448,17 @@ TEST_F(RaggedTensorFromVariantKernelTest, NonEmpty1DIn3DOutInt32Splits) {
 // Tests for invalid inputs.
 TEST_F(RaggedTensorFromVariantKernelTest, InvalidInferredInputRaggedRank) {
   auto component_variant_1 =
-      CreateVariantFromRagged<int, int64>({}, TensorShape({3}), {1, 2, 3});
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({3}), {1, 2, 3});
   auto component_variant_2 =
-      CreateVariantFromRagged<int, int64>({}, TensorShape({0}), {});
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({0}), {});
   auto component_variant_3 =
-      CreateVariantFromRagged<int, int64>({}, TensorShape({2}), {1, 2});
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({2}), {1, 2});
   auto component_variant_4 =
-      CreateVariantFromRagged<int, int64>({}, TensorShape({1}), {1});
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({1}), {1});
 
   int input_ragged_rank = -1;
   int output_ragged_rank = 2;
-  BuildDecodeRaggedTensorGraph<int, int64>(
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({1, 1, 1, 4}),
       {component_variant_1, component_variant_2, component_variant_3,
        component_variant_4});
@@ -468,19 +469,19 @@ TEST_F(RaggedTensorFromVariantKernelTest, InvalidInferredInputRaggedRank) {
 }
 
 TEST_F(RaggedTensorFromVariantKernelTest, InputDimsAndRaggedRankAttrsMismatch) {
-  const std::vector<int64> component_split_1_1 = {0, 1};
-  const std::vector<int64> component_split_2_1 = {0, 1, 2};
+  const std::vector<int64_t> component_split_1_1 = {0, 1};
+  const std::vector<int64_t> component_split_2_1 = {0, 1, 2};
   const std::vector<int> component_values_1 = {0};
   const std::vector<int> component_values_2 = {0, 1};
 
-  auto variant_component_1 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_1 = CreateVariantFromRagged<int, int64_t>(
       {component_split_1_1}, TensorShape({1}), component_values_1);
-  auto variant_component_2 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_2 = CreateVariantFromRagged<int, int64_t>(
       {component_split_2_1}, TensorShape({2}), component_values_2);
 
   int input_ragged_rank = 1;
   int output_ragged_rank = 4;
-  BuildDecodeRaggedTensorGraph<int, int64>(
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({2}),
       {variant_component_1, variant_component_2});
   EXPECT_TRUE(absl::StartsWith(RunOpKernel().error_message(),
@@ -491,7 +492,7 @@ TEST_F(RaggedTensorFromVariantKernelTest, InputDimsAndRaggedRankAttrsMismatch) {
 TEST_F(RaggedTensorFromVariantKernelTest, InputDoesNotHoldRaggedTensorVariant) {
   int input_ragged_rank = 1;
   int output_ragged_rank = 2;
-  BuildDecodeRaggedTensorGraph<int, int64>(
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({2}), {1, 2});
   EXPECT_TRUE(absl::StartsWith(
       RunOpKernel().error_message(),
@@ -500,16 +501,16 @@ TEST_F(RaggedTensorFromVariantKernelTest, InputDoesNotHoldRaggedTensorVariant) {
 
 TEST_F(RaggedTensorFromVariantKernelTest,
        InputScalarElementDoesNotMatchInputRaggedRank) {
-  const std::vector<int64> component_split_1_1 = {0, 1};
+  const std::vector<int64_t> component_split_1_1 = {0, 1};
   const std::vector<int> component_values_1 = {1, 2};
-  auto variant_component_1 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_1 = CreateVariantFromRagged<int, int64_t>(
       {component_split_1_1}, TensorShape({1, 2}), component_values_1);
 
   int input_ragged_rank = 2;
   int output_ragged_rank = 3;
-  BuildDecodeRaggedTensorGraph<int, int64>(input_ragged_rank,
-                                           output_ragged_rank, TensorShape({1}),
-                                           {variant_component_1});
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      input_ragged_rank, output_ragged_rank, TensorShape({1}),
+      {variant_component_1});
   EXPECT_TRUE(
       absl::StartsWith(RunOpKernel().error_message(),
                        "Encoded input RaggedTensorVariant has ragged_rank=1.  "
@@ -517,10 +518,10 @@ TEST_F(RaggedTensorFromVariantKernelTest,
 }
 
 TEST_F(RaggedTensorFromVariantKernelTest, RaggedSplitTypeMismatch) {
-  const std::vector<int64> component_split_1_1 = {0, 1};
+  const std::vector<int64_t> component_split_1_1 = {0, 1};
   const std::vector<int> component_values_1 = {0};
 
-  auto variant_component_1 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_1 = CreateVariantFromRagged<int, int64_t>(
       {component_split_1_1}, TensorShape({1}), component_values_1);
 
   int input_ragged_rank = 1;
@@ -536,25 +537,25 @@ TEST_F(RaggedTensorFromVariantKernelTest, RaggedSplitTypeMismatch) {
 TEST_F(RaggedTensorFromVariantKernelTest, RaggedSplitRankNotOne) {
   RaggedTensorVariant encoded(Tensor(DT_INT32, {2}),
                               {Tensor(DT_INT64, {2, 1})});
-  test::FillValues<int64>(encoded.mutable_splits(0), {1, 2});
+  test::FillValues<int64_t>(encoded.mutable_splits(0), {1, 2});
   test::FillValues<int>(encoded.mutable_values(), {1, 2});
 
   int input_ragged_rank = 1;
   int output_ragged_rank = 2;
-  BuildDecodeRaggedTensorGraph<int, int64>(
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({1}), {encoded});
   EXPECT_TRUE(absl::StartsWith(RunOpKernel().error_message(),
                                "Ragged splits must have rank 1"));
 }
 
 TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesTypeMismatch) {
-  const std::vector<int64> component_split_1_1 = {0, 1};
+  const std::vector<int64_t> component_split_1_1 = {0, 1};
   const std::vector<int> component_values_1 = {0};
-  auto variant_component_1 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_1 = CreateVariantFromRagged<int, int64_t>(
       {component_split_1_1}, TensorShape({1}), component_values_1);
   int input_ragged_rank = 1;
   int output_ragged_rank = 2;
-  BuildDecodeRaggedTensorGraph<tstring, int64>(
+  BuildDecodeRaggedTensorGraph<tstring, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({1}),
       {variant_component_1});
   EXPECT_TRUE(
@@ -564,29 +565,29 @@ TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesTypeMismatch) {
 
 TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesRankNotGreaterThanOne) {
   auto variant_component_1 =
-      CreateVariantFromRagged<int, int64>({{0, 1}}, TensorShape({}), {1});
+      CreateVariantFromRagged<int, int64_t>({{0, 1}}, TensorShape({}), {1});
   int input_ragged_rank = 1;
   int output_ragged_rank = 2;
-  BuildDecodeRaggedTensorGraph<int, int64>(input_ragged_rank,
-                                           output_ragged_rank, TensorShape({1}),
-                                           {variant_component_1});
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      input_ragged_rank, output_ragged_rank, TensorShape({1}),
+      {variant_component_1});
   EXPECT_TRUE(absl::StartsWith(RunOpKernel().error_message(),
                                "Ragged values must have rank >= 1"));
 }
 
 TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesRankMismatch) {
-  const std::vector<int64> component_split_1_1 = {0, 1};
-  const std::vector<int64> component_split_2_1 = {0, 1, 2};
+  const std::vector<int64_t> component_split_1_1 = {0, 1};
+  const std::vector<int64_t> component_split_2_1 = {0, 1, 2};
   const std::vector<int> component_values_1 = {0};
   const std::vector<int> component_values_2 = {0, 1, 2, 3};
 
-  auto variant_component_1 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_1 = CreateVariantFromRagged<int, int64_t>(
       {component_split_1_1}, TensorShape({1}), component_values_1);
-  auto variant_component_2 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_2 = CreateVariantFromRagged<int, int64_t>(
       {component_split_2_1}, TensorShape({2, 2}), component_values_2);
   int input_ragged_rank = 1;
   int output_ragged_rank = 2;
-  BuildDecodeRaggedTensorGraph<int, int64>(
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({2}),
       {variant_component_1, variant_component_2});
   EXPECT_TRUE(absl::StartsWith(RunOpKernel().error_message(),
@@ -659,33 +660,33 @@ TEST_F(RaggedTensorFromVariantKernelTest, 2DValuesTensorIn1DOut) {
   //     [[x, x], [x, x]]
   //   ]
   // ]
-  const std::vector<int64> batched_splits_1 = {0, 2, 3, 3, 5};
+  const std::vector<int64_t> batched_splits_1 = {0, 2, 3, 3, 5};
   const std::vector<int> batched_values = {1, 1, 1, 1, 2, 2, 2, 2, 3, 3,
                                            3, 3, 4, 4, 4, 4, 5, 5, 5, 5};
 
-  auto variant_component_1 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_1 = CreateVariantFromRagged<int, int64_t>(
       {}, TensorShape({2, 2, 2}), {1, 1, 1, 1, 2, 2, 2, 2});
-  auto variant_component_2 = CreateVariantFromRagged<int, int64>(
+  auto variant_component_2 = CreateVariantFromRagged<int, int64_t>(
       {}, TensorShape({1, 2, 2}), {3, 3, 3, 3});
   auto variant_component_3 =
-      CreateVariantFromRagged<int, int64>({}, TensorShape({0, 2, 2}), {});
-  auto variant_component_4 = CreateVariantFromRagged<int, int64>(
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({0, 2, 2}), {});
+  auto variant_component_4 = CreateVariantFromRagged<int, int64_t>(
       {}, TensorShape({2, 2, 2}), {4, 4, 4, 4, 5, 5, 5, 5});
 
   Tensor expected_splits_1(DT_INT64, TensorShape({5}));
   Tensor expected_values(DT_INT32, TensorShape({5, 2, 2}));
-  test::FillValues<int64>(&expected_splits_1, batched_splits_1);
+  test::FillValues<int64_t>(&expected_splits_1, batched_splits_1);
   test::FillValues<int>(&expected_values, batched_values);
 
   int input_ragged_rank = 0;
   int output_ragged_rank = 1;
-  BuildDecodeRaggedTensorGraph<int, int64>(
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({4}),
       {variant_component_1, variant_component_2, variant_component_3,
        variant_component_4});
   TF_ASSERT_OK(RunOpKernel());
 
-  test::ExpectTensorEqual<int64>(*GetOutput(0), expected_splits_1);
+  test::ExpectTensorEqual<int64_t>(*GetOutput(0), expected_splits_1);
   test::ExpectTensorEqual<int>(*GetOutput(1), expected_values);
 }
 }  // namespace

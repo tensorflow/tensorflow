@@ -89,8 +89,9 @@ class LocalDeviceState {
   // If asynchronous is false, the host will synchronize to the device after
   // each execution or transfer. This is intended for debugging only.
   LocalDeviceState(se::StreamExecutor* executor, LocalClient* client,
-                   AllocationModel allocation_model, bool asynchronous,
-                   bool allow_event_reuse, bool use_callback_stream);
+                   AllocationModel allocation_model,
+                   int max_inflight_computations, bool allow_event_reuse,
+                   bool use_callback_stream);
   virtual ~LocalDeviceState();
 
   se::StreamExecutor* executor() const { return executor_; }
@@ -140,8 +141,7 @@ class LocalDeviceState {
   //    runtime and cannot perform GPU operations itself. On GPU, callbacks
   //    execute in a separate thread.
   // b) ThenDoHostCallback waits for the callback to complete.
-  void ThenExecuteCallback(se::Stream* stream,
-                           std::function<void()> callback) const;
+  void ThenExecuteCallback(se::Stream* stream, std::function<void()> callback);
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of
@@ -150,7 +150,7 @@ class LocalDeviceState {
   // device callback, so it is safe if the destructor frees device resource
   // (e.g., GPU objects).
   template <typename T>
-  void ThenRelease(se::Stream* stream, T&& object) const {
+  void ThenRelease(se::Stream* stream, T&& object) {
     ThenExecuteCallback(
         stream, [object = std::forward<T>(object)]() { /* releases object */ });
   }
@@ -191,10 +191,11 @@ class LocalDeviceState {
   std::mt19937 prng_seed_generator_ TF_GUARDED_BY(mu_);
   std::uniform_int_distribution<> prng_seed_distribution_ TF_GUARDED_BY(mu_);
 
-  // Callback stream is used for running short host-side callbacks after device
-  // side events, without preventing the device-side stream from doing useful
-  // work.
-  std::unique_ptr<se::Stream> callback_stream_;
+  // Callback map pairs callback stream with a device stream and is used for
+  // running short host-side callbacks after device side events, without
+  // preventing the device-side stream from doing useful work.
+  absl::optional<absl::flat_hash_map<se::Stream*, std::unique_ptr<se::Stream>>>
+      callback_stream_map_;
 
   // A worker thread, used for replicated computation launches.
   std::unique_ptr<WorkerThread> execute_thread_;

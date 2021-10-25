@@ -21,6 +21,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/python/util/function_parameter_canonicalizer.h"
 
 namespace py = pybind11;

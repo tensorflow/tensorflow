@@ -14,13 +14,10 @@
 # ==============================================================================
 """AutomaticControlDependencies and related functionality."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import enum
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import auto_control_deps_utils as utils
 from tensorflow.python.framework import dtypes as dtypes_module
@@ -39,7 +36,8 @@ from tensorflow.python.util import tf_decorator
 # LINT.IfChange
 # Op types that should not run in program order, e.g. because they need to run
 # asynchronously to avoid deadlock.
-ASYNC_STATEFUL_OPS = [
+
+ASYNC_STATEFUL_OPS = frozenset((
     "CollectiveGather",
     "CollectiveGatherV2",
     "CollectiveReduce",
@@ -52,9 +50,10 @@ ASYNC_STATEFUL_OPS = [
     # We do not add "Send" here since we want it to be added as a control output
     # in order to avoid being pruned.
     "Recv",
-]
+    "CollectiveInitializeCommunicator",
+))
 
-LEGACY_RANDOM_OPS = [
+LEGACY_RANDOM_OPS = frozenset((
     # These may be used in variable initializers -- thus their execution should
     # not be dependent on other stateful operations.  This is because although
     # according to program order, tf.Variables may be created in sequence,
@@ -98,20 +97,33 @@ LEGACY_RANDOM_OPS = [
     "RandomGammaGrad",
     "RandomPoisson",
     "RandomPoissonV2",
-]
+))
 
-_ORDER_INSENSITIVE_STATEFUL_OPS = [
-    "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNV2", "CudnnRNNV3",
-    "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
-    "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
+MUST_RUN_ORDER_INSENSITIVE_STATEFUL_OPS = frozenset((
+))
+
+# These ops are order-insensitive ans should in theory run, but at the moment
+# they either always have the necessary data dependencies, or have workarounds
+# in existing code that would break when adding new control deps. This
+# inconsistency should be eventually fixed, but it would be more effective to
+# retire the list instead.
+SKIPPED_ORDER_INSENSITIVE_STATEFUL_OPS = frozenset((
+    "CudnnRNN",
+    "CudnnRNNBackprop",
+    "CudnnRNNV2",
+    "CudnnRNNV3",
+    "CudnnRNNBackpropV2",
+    "CudnnRNNBackpropV3",
+    "EnqueueTPUEmbeddingSparseBatch",
+    "EnqueueTPUEmbeddingIntegerBatch",
     "EnqueueTPUEmbeddingSparseTensorBatch",
-    "EnqueueTPUEmbeddingRaggedTensorBatch", "RestoreV2", "SaveV2"
-]
+    "EnqueueTPUEmbeddingRaggedTensorBatch",
+    "RestoreV2",
+    "SaveV2",
+    "InfeedEnqueue",
+    "InfeedEnqueueTuple",
+))
 # LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
-
-_ALL_DENYLISTED_OPS = (
-    set(ASYNC_STATEFUL_OPS) | set(LEGACY_RANDOM_OPS)
-    | set(_ORDER_INSENSITIVE_STATEFUL_OPS))
 
 # Op types that are marked as stateless, but should be allowlisted to add auto
 # control dependencies.
@@ -129,8 +141,12 @@ _ALLOWLIST_STATELESS_OPS = [
 
 def op_is_stateful(op):
   # pylint: disable=protected-access
-  return (op._is_stateful and op.type not in _ALL_DENYLISTED_OPS) or (
-      op.type in _ALLOWLIST_STATELESS_OPS)
+  ret = ((op._is_stateful and
+          ((op.type not in ASYNC_STATEFUL_OPS) and
+           (op.type not in LEGACY_RANDOM_OPS) and
+           (op.type not in SKIPPED_ORDER_INSENSITIVE_STATEFUL_OPS))) or
+         (op.type in _ALLOWLIST_STATELESS_OPS))
+  return ret
 
 
 class ResourceType(enum.Enum):
@@ -180,14 +196,13 @@ class AutomaticControlDependencies(object):
   NOT THREAD SAFE
   """
 
-  __slots__ = [
-      "_returned_tensors", "ops_which_must_run", "_graph", "_n_operations",
-      "collective_manager_ids_used"
-  ]
-
-  def __init__(self):
+  def __init__(self,
+               record_initial_resource_uses=False,
+               record_uses_of_resource_ids=None):
     self._returned_tensors = object_identity.ObjectIdentitySet()
     self.ops_which_must_run = set()
+    self.record_initial_resource_uses = record_initial_resource_uses
+    self.record_uses_of_resource_ids = record_uses_of_resource_ids
 
   def mark_as_return(self, tensor):
     """Acts like identity but marks the `Tensor` as a return value.
@@ -315,7 +330,9 @@ class AutomaticControlDependencies(object):
 
     if self._graph is not ops.get_default_graph():
       raise RuntimeError(
-          "Graph changed while trying to add control dependencies.")
+          "Within the automatic control dependency context, the default graph"
+          f" cannot change. Upon entry it was {self._graph}, but on exit it"
+          f" changed to {ops.get_default_graph()}")
 
     if hasattr(self._graph, "outer_graph"):
       outer_val = self._graph.outer_graph._add_control_dependencies
@@ -341,6 +358,8 @@ class AutomaticControlDependencies(object):
     merge_for_resource = {}
 
     new_operations = self._graph.get_operations()[self._n_operations:]
+    first_use_for_res = {}
+    resources_by_op = {}
 
     # Ensures that uses of resource tensors get serialized properly and all
     # execute. This is done by keeping a map from resource tensor to the last op
@@ -375,15 +394,18 @@ class AutomaticControlDependencies(object):
       if control_flow_util.IsInWhileLoop(op):
         continue
       control_inputs = set()
+
       # Ensure stateful ops run.
       # Read-only ops are added to control outputs if the read value is
       # consumed. This covers the case when the read value is returned from
       # the function since that goes through a tf.identity in mark_as_return.
-      if (op_def_registry.get(op.type) is None or
+      if ((op_def_registry.get(op.type) is None) or
           (op_is_stateful(op) and
            (op.type not in utils.RESOURCE_READ_OPS or
-            any(output.consumers() for output in op.outputs)))):
+            any(output.consumers() for output in op.outputs))) or
+          (op.type in MUST_RUN_ORDER_INSENSITIVE_STATEFUL_OPS)):
         ops_which_must_run.add(op)
+
       # Make a note of all opened manager_ids.
       if op.type == "NoOp":
         try:
@@ -395,6 +417,8 @@ class AutomaticControlDependencies(object):
       if op.type == "Switch" and op.inputs[0].dtype == dtypes_module.resource:
         continue
       # Make merges trigger all other computation which must run
+      # TODO(mdan): Don't do this. Write a transform to chains instead.
+      # See core/common_runtime/control_flow_deps_to_chains.cc.
       if op.type == "Merge":
         for o in ops_which_must_run:
           op._add_control_input(o)
@@ -432,12 +456,38 @@ class AutomaticControlDependencies(object):
         # Ensure merges happen after the closing of a cond block
         if input_id in merge_for_resource:
           merge_for_resource[input_id]._add_control_input(op)
+
+        do_record = (
+            self.record_initial_resource_uses and
+            input_id not in first_use_for_res)
+
         if is_read:
-          reads_since_last_write_to_resource[input_id].append(op)
+          reads_list = reads_since_last_write_to_resource[input_id]
+          reads_list.append(op)
+
+          if do_record:
+            # Note: this will track the entire list that
+            # reads_since_last_write_to_resource maintains. Updates to it will
+            # and should be tracked, until the first write is encountered. At
+            # that point, reads_since_last_write_to_resource will contain a new
+            # empty list. This logic relies on that behavior.
+            first_use_for_res[input_id] = reads_list
+
         else:
           control_inputs.update(reads_since_last_write_to_resource[input_id])
           reads_since_last_write_to_resource[input_id] = []
           last_write_to_resource[input_id] = op
+
+          if do_record:
+            first_use_for_res[input_id] = [op]
+
+      if self.record_initial_resource_uses and op_is_stateful(op):
+        if resource_inputs:
+          resources_by_op[op] = tuple(resource_inputs)
+        else:
+          if None not in first_use_for_res:
+            first_use_for_res[None] = [op]
+          resources_by_op[op] = (None,)
 
       if (op_is_stateful(op) and not resource_inputs
           and op._control_flow_context is None):
@@ -467,9 +517,30 @@ class AutomaticControlDependencies(object):
 
       op._add_control_inputs(control_inputs)
 
+    # Record the ops which first use resources touched by "ops which must run".
+    if self.record_initial_resource_uses:
+      first_uses_by_output_ops = {}
+      for op in ops_which_must_run:
+        if op not in resources_by_op:
+          # This may happen with Merge/Switch nodes which are special cased
+          # above.
+          continue
+        for r in resources_by_op[op]:
+          if op not in first_uses_by_output_ops:
+            first_uses_by_output_ops[op] = set()
+          first_uses_by_output_ops[op].update(first_use_for_res[r])
+      # For each "op which must run", set a private attr indicating the ops that
+      # used the same resources it did.
+      for op in first_uses_by_output_ops:
+        others = [
+            other.name.encode() for other in first_uses_by_output_ops[op]
+        ]
+        l = attr_value_pb2.AttrValue.ListValue(s=others)
+        # TODO(mdan): Is there a way which doesn't use anonymous attrs?
+        op._set_attr("_res_first_used_by", attr_value_pb2.AttrValue(list=l))
+
     # Ensure all ops which must run do run
     self.ops_which_must_run.update(ops_which_must_run)
-
     control_output_op = None
     for idx, r in enumerate(
         nest.flatten(list(self._returned_tensors), expand_composites=True)):
@@ -478,11 +549,13 @@ class AutomaticControlDependencies(object):
         if r.graph.building_function:
           # There may be many stateful ops in the graph. Adding them as
           # control inputs to each function output could create excessive
-          # control edges in the graph. Thus we create an intermediate No-op to
-          # chain the control dependencies between stateful ops and function
-          # outputs.
+          # control edges in the graph. Thus we create an intermediate No-op
+          # to chain the control dependencies between stateful ops and
+          # function outputs.
           if idx == 0:
             control_output_op = control_flow_ops.no_op()
+            control_output_op._set_attr("_acd_function_control_output",
+                                        attr_value_pb2.AttrValue(b=True))
             control_output_op._add_control_inputs(self.ops_which_must_run)
           updated_ops_which_must_run = [control_output_op]
         else:

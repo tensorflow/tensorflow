@@ -20,7 +20,7 @@ limitations under the License.
 namespace xla {
 
 /*static*/ HloInstruction* TupleUtil::ExtractPrefix(HloInstruction* input_tuple,
-                                                    int64 elements) {
+                                                    int64_t elements) {
   CHECK(input_tuple->shape().IsTuple());
 
   HloComputation* computation = input_tuple->parent();

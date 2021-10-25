@@ -44,7 +44,7 @@ REGISTER_OP("TopKUnique")
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
 
-      int32 k;
+      int32_t k;
       TF_RETURN_IF_ERROR(c->GetAttr("k", &k));
 
       ShapeHandle s;
@@ -73,7 +73,7 @@ REGISTER_OP("TopKWithUnique")
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
 
-      int32 k;
+      int32_t k;
       TF_RETURN_IF_ERROR(c->GetAttr("k", &k));
 
       ShapeHandle s;

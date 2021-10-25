@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -41,7 +42,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/experimental/conv_emitter/conv_emitter_transforms.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
@@ -65,35 +66,35 @@ struct ShapeInfo {
 };
 
 ShapeInfo GetShapeInfo(
-    const Shape& shape, int64 n_dim, int64 c_dim,
+    const Shape& shape, int64_t n_dim, int64_t c_dim,
     absl::Span<const tensorflow::protobuf_int64> spatial_dims,
     mlir::Builder builder) {
   ShapeInfo shape_info;
 
-  std::vector<int64> physical_to_logical(
+  std::vector<int64_t> physical_to_logical(
       shape.layout().minor_to_major().rbegin(),
       shape.layout().minor_to_major().rend());
 
-  std::vector<int64> nchw_to_logical;
+  std::vector<int64_t> nchw_to_logical;
 
   nchw_to_logical.push_back(n_dim);
   nchw_to_logical.push_back(c_dim);
-  for (int64 dim : spatial_dims) {
+  for (int64_t dim : spatial_dims) {
     nchw_to_logical.push_back(dim);
   }
 
-  for (int64 dim : nchw_to_logical) {
+  for (int64_t dim : nchw_to_logical) {
     shape_info.nchw_dimensions.push_back(shape.dimensions(dim));
   }
 
-  for (int64 dim : physical_to_logical) {
+  for (int64_t dim : physical_to_logical) {
     shape_info.physical_dimensions.push_back(shape.dimensions(dim));
   }
 
   std::vector<mlir::AffineExpr> affine_exprs;
   // We want physical to nchw order.
-  for (int64 dim : ComposePermutations(InversePermutation(nchw_to_logical),
-                                       physical_to_logical)) {
+  for (int64_t dim : ComposePermutations(InversePermutation(nchw_to_logical),
+                                         physical_to_logical)) {
     affine_exprs.push_back(builder.getAffineDimExpr(dim));
   }
 
@@ -162,7 +163,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
 
     OpBuilder builder(where);
     mlir::MemRefType type = alloc.getType();
-    CHECK(type.getAffineMaps().empty());
+    CHECK(type.getLayout().isIdentity());
     ancestor_dimensions.insert(ancestor_dimensions.end(),
                                type.getShape().begin(), type.getShape().end());
     mlir::MemRefType new_type =
@@ -267,7 +268,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
 
   builder.create<mlir::AffineStoreOp>(
       location,
-      builder.create<mlir::ConstantOp>(
+      builder.create<mlir::arith::ConstantOp>(
           location, mlir::FloatAttr::get(builder.getF32Type(), 0)),
       output_acc, llvm::ArrayRef<mlir::Value>());
 
@@ -316,7 +317,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
     input_vars.insert(input_vars.end(), filter_spatial_indvars.begin(),
                       filter_spatial_indvars.end());
 
-    return builder.create<mlir::FPExtOp>(
+    return builder.create<mlir::arith::ExtFOp>(
         location,
         builder.createOrFold<mlir::AffineLoadOp>(
             location, input,
@@ -335,7 +336,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
     filter_vars.insert(filter_vars.end(), filter_spatial_indvars.begin(),
                        filter_spatial_indvars.end());
 
-    return builder.create<mlir::FPExtOp>(
+    return builder.create<mlir::arith::ExtFOp>(
         location,
         builder.createOrFold<mlir::AffineLoadOp>(
             location, filter, filter_shape_info.affine_map, filter_vars),
@@ -346,9 +347,10 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
       builder.createOrFold<mlir::AffineLoadOp>(location, output_acc);
   builder.createOrFold<mlir::AffineStoreOp>(
       location,
-      builder.create<mlir::AddFOp>(
+      builder.create<mlir::arith::AddFOp>(
           location, accum_load_op,
-          builder.create<mlir::MulFOp>(location, loaded_input, loaded_filter)),
+          builder.create<mlir::arith::MulFOp>(location, loaded_input,
+                                              loaded_filter)),
       output_acc, llvm::ArrayRef<mlir::Value>());
 
   builder.setInsertionPointAfter(reduction_loops[0]);
@@ -360,7 +362,7 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
                        output_spatial_indvars.end());
     builder.createOrFold<mlir::AffineStoreOp>(
         location,
-        builder.create<mlir::FPTruncOp>(
+        builder.create<mlir::arith::TruncFOp>(
             location,
             builder.createOrFold<mlir::AffineLoadOp>(location, output_acc),
             builder.getF16Type()),
@@ -553,11 +555,14 @@ StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
       llvm_ir::AsStringRef(function_name),
       builder.getFunctionType(
           {mlir::MemRefType::get(output_shape_info.physical_dimensions,
-                                 output_shape_info.element_type, {}),
+                                 output_shape_info.element_type,
+                                 mlir::AffineMap()),
            mlir::MemRefType::get(input_shape_info.physical_dimensions,
-                                 input_shape_info.element_type, {}),
+                                 input_shape_info.element_type,
+                                 mlir::AffineMap()),
            mlir::MemRefType::get(filter_shape_info.physical_dimensions,
-                                 filter_shape_info.element_type, {})},
+                                 filter_shape_info.element_type,
+                                 mlir::AffineMap())},
           {}));
 
   auto* entry_block = function.addEntryBlock();

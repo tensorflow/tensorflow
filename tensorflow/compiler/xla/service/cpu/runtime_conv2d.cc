@@ -25,16 +25,13 @@ limitations under the License.
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConvF32(
     const void* run_options_ptr, float* out, float* lhs, float* rhs,
-    tensorflow::int64 input_batch, tensorflow::int64 input_rows,
-    tensorflow::int64 input_cols, tensorflow::int64 input_channels,
-    tensorflow::int64 kernel_rows, tensorflow::int64 kernel_cols,
-    tensorflow::int64 kernel_channels, tensorflow::int64 kernel_filters,
-    tensorflow::int64 output_rows, tensorflow::int64 output_cols,
-    tensorflow::int64 row_stride, tensorflow::int64 col_stride,
-    tensorflow::int64 padding_top, tensorflow::int64 padding_bottom,
-    tensorflow::int64 padding_left, tensorflow::int64 padding_right,
-    tensorflow::int64 lhs_row_dilation, tensorflow::int64 lhs_col_dilation,
-    tensorflow::int64 rhs_row_dilation, tensorflow::int64 rhs_col_dilation) {
+    int64_t input_batch, int64_t input_rows, int64_t input_cols,
+    int64_t input_channels, int64_t kernel_rows, int64_t kernel_cols,
+    int64_t kernel_channels, int64_t kernel_filters, int64_t output_rows,
+    int64_t output_cols, int64_t row_stride, int64_t col_stride,
+    int64_t padding_top, int64_t padding_bottom, int64_t padding_left,
+    int64_t padding_right, int64_t lhs_row_dilation, int64_t lhs_col_dilation,
+    int64_t rhs_row_dilation, int64_t rhs_col_dilation) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
   XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
@@ -48,17 +45,14 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConvF32(
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConvF16(
     const void* run_options_ptr, Eigen::half* out, Eigen::half* lhs,
-    Eigen::half* rhs, tensorflow::int64 input_batch,
-    tensorflow::int64 input_rows, tensorflow::int64 input_cols,
-    tensorflow::int64 input_channels, tensorflow::int64 kernel_rows,
-    tensorflow::int64 kernel_cols, tensorflow::int64 kernel_channels,
-    tensorflow::int64 kernel_filters, tensorflow::int64 output_rows,
-    tensorflow::int64 output_cols, tensorflow::int64 row_stride,
-    tensorflow::int64 col_stride, tensorflow::int64 padding_top,
-    tensorflow::int64 padding_bottom, tensorflow::int64 padding_left,
-    tensorflow::int64 padding_right, tensorflow::int64 lhs_row_dilation,
-    tensorflow::int64 lhs_col_dilation, tensorflow::int64 rhs_row_dilation,
-    tensorflow::int64 rhs_col_dilation) {
+    Eigen::half* rhs, int64_t input_batch, int64_t input_rows,
+    int64_t input_cols, int64_t input_channels, int64_t kernel_rows,
+    int64_t kernel_cols, int64_t kernel_channels, int64_t kernel_filters,
+    int64_t output_rows, int64_t output_cols, int64_t row_stride,
+    int64_t col_stride, int64_t padding_top, int64_t padding_bottom,
+    int64_t padding_left, int64_t padding_right, int64_t lhs_row_dilation,
+    int64_t lhs_col_dilation, int64_t rhs_row_dilation,
+    int64_t rhs_col_dilation) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
   XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);

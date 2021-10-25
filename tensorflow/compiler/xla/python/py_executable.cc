@@ -140,4 +140,8 @@ StatusOr<std::vector<std::shared_ptr<HloModule>>> PyExecutable::HloModules()
   return executable_->GetHloModules();
 }
 
+void PyExecutable::KeepAlive(py::object obj) {
+  keepalives_.push_back(std::move(obj));
+}
+
 }  // namespace xla

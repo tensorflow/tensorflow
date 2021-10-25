@@ -69,6 +69,7 @@ REGISTER_OP("Switch")
     .Output("output_false: T")
     .Output("output_true: T")
     .Attr("T: type")
+    .SetForwardTypeFn(full_type::ReplicateInputs(2))
     .SetShapeFn(SwitchShape);
 
 REGISTER_OP("RefSwitch")
@@ -123,7 +124,7 @@ Status MergeShape(InferenceContext* c) {
   if (!c->RankKnown(out)) {
     out = c->UnknownShape();
   } else {
-    int32 rank = c->Rank(out);
+    int32_t rank = c->Rank(out);
     for (int i = 1; i < c->num_inputs(); ++i) {
       ShapeHandle input = c->input(i);
       if (!c->RankKnown(input) || c->Rank(input) != rank) {
@@ -150,6 +151,7 @@ REGISTER_OP("Merge")
     .Output("value_index: int32")
     .Attr("T: type")
     .Attr("N: int >= 1")
+    .SetForwardTypeFn(full_type::ReplicateIdenticalInputs())
     .SetShapeFn(MergeShape);
 
 REGISTER_OP("RefMerge")

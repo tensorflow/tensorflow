@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops.matrix_inverse."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.client import session
@@ -59,6 +55,32 @@ class SvdOpTest(test.TestCase):
     with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
                                 "rank.* 2.*1"):
       linalg_ops.svd(vector)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testThrowDeterminismError(self):
+    shape = [6, 5]
+    seed = [42, 24]
+    matrix1 = stateless_random_ops.stateless_random_normal(shape, seed)
+    with test_util.deterministic_ops():
+      if test_util.is_gpu_available(cuda_only=True):
+        with self.assertRaisesRegex(
+            errors_impl.UnimplementedError, "Determinism is not yet supported "
+            "for Svd."):
+          self.evaluate(linalg_ops.svd(matrix1))
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def DISABLED_testBadInputs(self):
+    # TODO(b/185822300): re-enable after the bug is fixed in CUDA-11.x
+    # The input to svd should be a tensor of at least rank 2.
+    for bad_val in [np.nan, np.inf]:
+      matrix = np.array([[1, bad_val], [0, 1]])
+      s, u, v = linalg_ops.svd(matrix, compute_uv=True)
+      s, u, v = self.evaluate([s, u, v])
+      for i in range(2):
+        self.assertTrue(np.isnan(s[i]))
+        for j in range(2):
+          self.assertTrue(np.isnan(u[i, j]))
+          self.assertTrue(np.isnan(v[i, j]))
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testExecuteMultipleWithoutError(self):

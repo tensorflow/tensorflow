@@ -84,7 +84,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
 
     layer = category_encoding.CategoryEncoding(
-        num_tokens=num_tokens, output_mode=category_encoding.BINARY)
+        num_tokens=num_tokens, output_mode=category_encoding.MULTI_HOT)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -195,7 +195,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
 
     layer = category_encoding.CategoryEncoding(
-        num_tokens=num_tokens, output_mode=category_encoding.BINARY)
+        num_tokens=num_tokens, output_mode=category_encoding.MULTI_HOT)
     int_data = layer(input_data)
 
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -252,7 +252,8 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     _ = model.predict(input_array, steps=1)
 
   def test_dense_oov_input(self):
-    input_array = constant_op.constant([[0, 1, 2], [2, 3, 1]])
+    valid_array = constant_op.constant([[0, 1, 2], [0, 1, 2]])
+    invalid_array = constant_op.constant([[0, 1, 2], [2, 3, 1]])
     num_tokens = 3
     expected_output_shape = [None, num_tokens]
     encoder_layer = category_encoding.CategoryEncoding(num_tokens)
@@ -260,13 +261,16 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     int_data = encoder_layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
     model = keras.Model(inputs=input_data, outputs=int_data)
+    # Call predict once on valid input to compile a graph and test control flow.
+    _ = model.predict(valid_array, steps=1)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         ".*must be in the range 0 <= values < num_tokens.*"):
-      _ = model.predict(input_array, steps=1)
+      _ = model.predict(invalid_array, steps=1)
 
   def test_dense_negative(self):
-    input_array = constant_op.constant([[1, 2, 0], [2, 2, -1]])
+    valid_array = constant_op.constant([[0, 1, 2], [0, 1, 2]])
+    invalid_array = constant_op.constant([[1, 2, 0], [2, 2, -1]])
     num_tokens = 3
     expected_output_shape = [None, num_tokens]
     encoder_layer = category_encoding.CategoryEncoding(num_tokens)
@@ -274,10 +278,12 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     int_data = encoder_layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
     model = keras.Model(inputs=input_data, outputs=int_data)
+    # Call predict once on valid input to compile a graph and test control flow.
+    _ = model.predict(valid_array, steps=1)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         ".*must be in the range 0 <= values < num_tokens.*"):
-      _ = model.predict(input_array, steps=1)
+      _ = model.predict(invalid_array, steps=1)
 
   def test_legacy_max_tokens_arg(self):
     input_array = np.array([[1, 2, 3, 1]])
@@ -287,7 +293,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = category_encoding.CategoryEncoding(
-        max_tokens=num_tokens, output_mode=category_encoding.BINARY)
+        max_tokens=num_tokens, output_mode=category_encoding.MULTI_HOT)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -296,31 +302,150 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected_output, output_dataset)
 
 
-@keras_parameterized.run_all_keras_modes
 @keras_parameterized.run_all_keras_modes
 class CategoryEncodingOutputTest(keras_parameterized.TestCase,
                                  preprocessing_test_utils.PreprocessingLayerTest
                                 ):
 
-  def test_binary_output(self):
-    input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
+  def test_one_hot_output(self):
+    input_data = np.array([[3], [2], [0], [1]])
+    expected_output = [
+        [0, 0, 0, 1],
+        [0, 0, 1, 0],
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+    ]
+    num_tokens = 4
+    expected_output_shape = [None, num_tokens]
 
-    # pyformat: disable
-    expected_output = [[0, 1, 1, 1, 0, 0],
-                       [1, 1, 0, 1, 0, 0]]
-    # pyformat: enable
+    layer = category_encoding.CategoryEncoding(
+        num_tokens=num_tokens, output_mode=category_encoding.ONE_HOT)
+    inputs = keras.Input(shape=(1,), dtype=dtypes.int32)
+    outputs = layer(inputs)
+    model = keras.Model(inputs=inputs, outputs=outputs)
+    output_dataset = model(input_data)
+    self.assertAllEqual(expected_output_shape, outputs.shape.as_list())
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_one_hot_output_rank_one_input(self):
+    input_data = np.array([3, 2, 0, 1])
+    expected_output = [
+        [0, 0, 0, 1],
+        [0, 0, 1, 0],
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+    ]
+    num_tokens = 4
+    expected_output_shape = [None, num_tokens]
+
+    # Test call on layer directly.
+    layer = category_encoding.CategoryEncoding(
+        num_tokens=num_tokens, output_mode=category_encoding.ONE_HOT)
+    output_data = layer(input_data)
+    self.assertAllEqual(expected_output, output_data)
+
+    # Test call on model.
+    inputs = keras.Input(shape=(1,), dtype=dtypes.int32)
+    outputs = layer(inputs)
+    model = keras.Model(inputs=inputs, outputs=outputs)
+    output_data = model(input_data)
+    self.assertAllEqual(expected_output_shape, outputs.shape.as_list())
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_one_hot_output_rank_zero_input(self):
+    input_data = np.array(3)
+    expected_output = [0, 0, 0, 1]
+    num_tokens = 4
+    expected_output_shape = [None, num_tokens]
+
+    # Test call on layer directly.
+    layer = category_encoding.CategoryEncoding(
+        num_tokens=num_tokens, output_mode=category_encoding.ONE_HOT)
+    output_data = layer(input_data)
+    self.assertAllEqual(expected_output, output_data)
+
+    # Test call on model.
+    inputs = keras.Input(shape=(1,), dtype=dtypes.int32)
+    outputs = layer(inputs)
+    model = keras.Model(inputs=inputs, outputs=outputs)
+    output_data = model(input_data)
+
+    self.assertAllEqual(expected_output_shape, outputs.shape.as_list())
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_one_hot_rank_3_output_fails(self):
+    layer = category_encoding.CategoryEncoding(
+        num_tokens=4, output_mode=category_encoding.ONE_HOT)
+    with self.assertRaisesRegex(ValueError, "only outputs up to rank 2"):
+      _ = layer(keras.Input(shape=(4,), dtype=dtypes.int32))
+    with self.assertRaisesRegex(ValueError, "only outputs up to rank 2"):
+      _ = layer(np.array([[3, 2, 0, 1], [3, 2, 0, 1]]))
+
+  def test_multi_hot_output(self):
+    input_data = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
+    expected_output = [
+        [0, 1, 1, 1, 0, 0],
+        [1, 1, 0, 1, 0, 0],
+    ]
     num_tokens = 6
     expected_output_shape = [None, num_tokens]
 
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = category_encoding.CategoryEncoding(
-        num_tokens=num_tokens, output_mode=category_encoding.BINARY)
-    int_data = layer(input_data)
-    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+        num_tokens=num_tokens, output_mode=category_encoding.MULTI_HOT)
+    inputs = keras.Input(shape=(None,), dtype=dtypes.int32)
+    outputs = layer(inputs)
+    model = keras.Model(inputs=inputs, outputs=outputs)
+    output_data = model.predict(input_data)
+    self.assertAllEqual(expected_output_shape, outputs.shape.as_list())
+    self.assertAllEqual(expected_output, output_data)
 
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
+  def test_multi_hot_output_rank_one_input(self):
+    input_data = np.array([3, 2, 0, 1])
+    expected_output = [1, 1, 1, 1, 0, 0]
+    num_tokens = 6
+    expected_output_shape = [None, num_tokens]
+
+    # Test call on layer directly.
+    layer = category_encoding.CategoryEncoding(
+        num_tokens=num_tokens, output_mode=category_encoding.MULTI_HOT)
+    output_data = layer(input_data)
+    self.assertAllEqual(expected_output, output_data)
+
+    # Test call on model.
+    inputs = keras.Input(shape=(4,), dtype=dtypes.int32)
+    outputs = layer(inputs)
+    model = keras.Model(inputs=inputs, outputs=outputs)
+    output_data = model(input_data)
+    self.assertAllEqual(expected_output_shape, outputs.shape.as_list())
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_multi_hot_output_rank_zero_input(self):
+    input_data = np.array(3)
+    expected_output = [0, 0, 0, 1, 0, 0]
+    num_tokens = 6
+    expected_output_shape = [None, num_tokens]
+
+    # Test call on layer directly.
+    layer = category_encoding.CategoryEncoding(
+        num_tokens=num_tokens, output_mode=category_encoding.MULTI_HOT)
+    output_data = layer(input_data)
+    self.assertAllEqual(expected_output, output_data)
+
+    # Test call on model.
+    inputs = keras.Input(shape=(4,), dtype=dtypes.int32)
+    outputs = layer(inputs)
+    model = keras.Model(inputs=inputs, outputs=outputs)
+    output_data = model(input_data)
+    self.assertAllEqual(expected_output_shape, outputs.shape.as_list())
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_multi_hot_rank_3_output_fails(self):
+    layer = category_encoding.CategoryEncoding(
+        num_tokens=4, output_mode=category_encoding.ONE_HOT)
+    with self.assertRaisesRegex(ValueError, "only outputs up to rank 2"):
+      _ = layer(keras.Input(shape=(3, 4,), dtype=dtypes.int32))
+    with self.assertRaisesRegex(ValueError, "only outputs up to rank 2"):
+      _ = layer(np.array([[[3, 2, 0, 1], [3, 2, 0, 1]]]))
 
   def test_count_output(self):
     input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
@@ -353,9 +478,9 @@ class CategoryEncodingModelBuildingTest(
           "num_tokens": 5,
           "output_mode": category_encoding.COUNT
       }, {
-          "testcase_name": "binary_output",
+          "testcase_name": "multi_hot_output",
           "num_tokens": 5,
-          "output_mode": category_encoding.BINARY
+          "output_mode": category_encoding.MULTI_HOT
       })
   def test_end_to_end_bagged_modeling(self, output_mode, num_tokens):
     input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])

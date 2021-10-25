@@ -31,8 +31,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
+#include "mlir-hlo/utils/lhlo_utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
@@ -56,51 +58,36 @@ namespace lmhlo {
 
 LmhloDialect::LmhloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context, TypeID::get<LmhloDialect>()) {
+  context->loadDialect<mhlo::MhloDialect>();
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
       >();
 }
 
-// Verifies replica groups attached to collective communication operations.
-// If the attribute is not empty, it must be a rank 2 tensor, and each replica
-// should appear exactly once. If `is_uniform_sized` is true, then we also check
-// that each group is of the same size. If the operation has
-// `use_global_device_id` set, then replica group cannot be empty.
-template <typename OpT>
-LogicalResult VerifyReplicaGroups(OpT op, bool is_uniform_sized) {
-  DenseIntElementsAttr attr = op.replica_groups();
-  auto replica_group_type = attr.getType().dyn_cast<RankedTensorType>();
-  if (!replica_group_type || replica_group_type.getRank() != 2 ||
-      !replica_group_type.getElementType().isInteger(/*width=*/64))
-    return op.emitOpError(
-        "replica groups should be a rank 2 tensor of 64 bit integers");
+//===----------------------------------------------------------------------===//
+// AbsOp
+//===----------------------------------------------------------------------===//
 
-  if (replica_group_type.getShape().equals(ArrayRef<int64_t>{0, 0}))
+static LogicalResult Verify(AbsOp op) {
+  auto operand_type = getElementTypeOrSelf(op.input().getType());
+  auto output_type = getElementTypeOrSelf(op.output().getType());
+  if (auto complex_type = operand_type.dyn_cast<ComplexType>()) {
+    if (complex_type.getElementType() != output_type) {
+      return op.emitOpError(
+          "requires output type to be the same as the element type of the "
+          "input");
+    }
     return success();
-
-  int64_t max_replica_id_seen = 0;
-  llvm::SmallSet<int64_t, 8> replica_seen;
-  for (int64_t id : attr.getValues<int64_t>()) {
-    if (is_uniform_sized && id == -1) {
-      return op.emitOpError("Invalid replica id -1");
-    }
-    if (id != -1) {
-      if (!replica_seen.insert(id).second) {
-        return op.emitOpError("replica id #") << id << " seen more than once";
-      }
-      max_replica_id_seen = std::max(max_replica_id_seen, id);
-    }
   }
-
-  for (int64_t id = 0; id <= max_replica_id_seen; id++) {
-    if (!replica_seen.contains(id)) {
-      return op.emitOpError("replica id #")
-             << id << " not seen in replica groups";
-    }
-  }
+  if (operand_type != output_type)
+    return op.emitOpError("requires all operands to have the same type");
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// AllToAllOp
+//===----------------------------------------------------------------------===//
 
 // TODO(jurahul): Add verification for output shape.
 static LogicalResult Verify(AllGatherOp op) {
@@ -116,23 +103,38 @@ static LogicalResult Verify(AllToAllOp op) {
 // AllReduceOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(AllReduceOp op) {
-  if (failed(VerifyReplicaGroups(op, /*is_uniform_sized=*/false)))
-    return failure();
+static LogicalResult Verify(AllReduceOp op) { return VerifyAllReduce(op); }
 
-  // AllReduce had variadic operands and results that have the same size.
-  // Each memeber of the operand should have the same type as the corresponding
-  // member of the result.
-  for (auto it : llvm::enumerate(
-           llvm::zip(op.operands().getTypes(), op.results().getTypes()))) {
-    Type operandType = std::get<0>(it.value());
-    Type resultType = std::get<1>(it.value());
-    if (operandType != resultType)
-      return op.emitOpError("requires operand #")
-             << it.index() << " (type: " << operandType << ") and result #"
-             << it.index() << " (type: " << resultType << ") to have same type";
-  }
+//===----------------------------------------------------------------------===//
+// ReduceScatterOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(ReduceScatterOp op) {
+  if (failed(VerifyReplicaGroups(op, /*is_uniform_sized=*/true)))
+    return failure();
+  if (failed(mlir::hlo::VerifyReduceScatter(
+          op, /*operand_types=*/op.operands().getTypes(),
+          /*result_types=*/op.results().getTypes(),
+          /*scatter_dimension=*/op.scatter_dimension())))
+    return failure();
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CaseOp
+//===----------------------------------------------------------------------===//
+
+void CaseOp::getSuccessorRegions(Optional<unsigned> index,
+                                 ArrayRef<Attribute> operands,
+                                 SmallVectorImpl<RegionSuccessor>& regions) {
+  // If the predecessor is the CaseOp, branch to all other branches.
+  if (!index.hasValue()) {
+    for (auto& branch : branches())
+      regions.push_back(RegionSuccessor(&branch, branch.getArguments()));
+  }
+  // If the predecessor is one of the branches, branch back to the parent
+  // operation.
+  regions.push_back(RegionSuccessor());
 }
 
 //===----------------------------------------------------------------------===//
@@ -292,6 +294,41 @@ static LogicalResult Verify(ReduceWindowOp op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// WhileOp
+//===----------------------------------------------------------------------===//
+
+void WhileOp::getSuccessorRegions(Optional<unsigned> index,
+                                  ArrayRef<Attribute> operands,
+                                  SmallVectorImpl<RegionSuccessor>& regions) {
+  // If the predecessor is the WhileOp or the body region, branch into the
+  // cond region.
+  if (!index.hasValue() || index.getValue() == 1) {
+    regions.push_back(RegionSuccessor(&cond(), cond().getArguments()));
+    return;
+  }
+  // If the predecessor is the cond region, we can branch to the body region
+  // or back to the parent operation.
+  regions.push_back(RegionSuccessor(&body(), body().getArguments()));
+  regions.push_back(RegionSuccessor());
+}
+
+Region& WhileOp::getLoopBody() { return body(); }
+
+bool WhileOp::isDefinedOutsideOfLoop(Value value) {
+  return !body().isAncestor(value.getParentRegion());
+}
+
+LogicalResult WhileOp::moveOutOfLoop(ArrayRef<Operation*> ops) {
+  for (auto op : ops) op->moveBefore(*this);
+  return success();
+}
+
+// suppress warning.
+
+using mlir::hlo::parseWindowAttributes;
+using mlir::hlo::printWindowAttributes;
+
 }  // namespace lmhlo
 }  // namespace mlir
 
@@ -308,6 +345,19 @@ void FusionOp::build(OpBuilder& builder, OperationState& result,
   result.addAttributes(attributes);
   Region* bodyRegion = result.addRegion();
   FusionOp::ensureTerminator(*bodyRegion, builder, result.location);
+}
+
+void FusionOp::getSuccessorRegions(Optional<unsigned> index,
+                                   ArrayRef<Attribute> operands,
+                                   SmallVectorImpl<RegionSuccessor>& regions) {
+  // If the predecessor is the fusion region, jump back to the parent op.
+  if (index.hasValue()) {
+    assert(index.getValue() == 0 && "expected fusion region");
+    regions.push_back(RegionSuccessor());
+  } else {
+    // If the predecessor is the FusionOp, branch into the region.
+    regions.push_back(RegionSuccessor(&region(), region().getArguments()));
+  }
 }
 
 }  // namespace lmhlo

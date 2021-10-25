@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for sparse_ops.sparse_tensor_dense_matmul."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 import time
 
@@ -421,6 +417,6 @@ def main(_):
 if __name__ == "__main__":
   if "--benchmarks" in sys.argv:
     sys.argv.remove("--benchmarks")
-    app.run()
+    app.run()  # pylint: disable=no-value-for-parameter
   else:
     test.main()

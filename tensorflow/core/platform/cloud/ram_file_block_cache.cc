@@ -228,7 +228,7 @@ Status RamFileBlockCache::Read(const string& filename, size_t offset, size_t n,
 }
 
 bool RamFileBlockCache::ValidateAndUpdateFileSignature(const string& filename,
-                                                       int64 file_signature) {
+                                                       int64_t file_signature) {
   mutex_lock lock(mu_);
   auto it = file_signature_map_.find(filename);
   if (it != file_signature_map_.end()) {

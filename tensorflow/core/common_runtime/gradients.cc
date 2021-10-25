@@ -321,7 +321,7 @@ NodeOut SymbolicGradientBuilder::SumGradients(const NodeOut& src) {
   for (const NodeOut& nout : grads) {
     ndef.add_input(nout.name());
   }
-  AddNodeAttr("N", static_cast<int64>(grads.size()), &ndef);
+  AddNodeAttr("N", static_cast<int64_t>(grads.size()), &ndef);
   AddNodeAttr("T", dtype, &ndef);
   Status s;
   Node* add = graph_->AddNode(ndef, &s);

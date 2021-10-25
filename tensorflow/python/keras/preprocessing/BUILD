@@ -42,7 +42,6 @@ py_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras/layers/preprocessing:image_preprocessing",
         "//tensorflow/python/keras/utils:data_utils",
     ],
 )
@@ -92,6 +91,7 @@ tf_py_test(
     deps = [
         ":image",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],

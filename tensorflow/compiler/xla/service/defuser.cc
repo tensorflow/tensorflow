@@ -53,7 +53,7 @@ Status Defuse(HloInstruction* fusion_instruction) {
       defused_instructions;
   // Initialize map to contain the fusion instruction parameters mapping
   // to the operands of the fusion instruction.
-  for (int64 i = 0; i < fusion_instruction->operand_count(); ++i) {
+  for (int64_t i = 0; i < fusion_instruction->operand_count(); ++i) {
     defused_instructions[fused_computation->parameter_instruction(i)] =
         fusion_instruction->mutable_operand(i);
   }

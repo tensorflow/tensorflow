@@ -14,10 +14,6 @@
 # ==============================================================================
 """Composes one or more `LinearOperators`."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -31,6 +27,7 @@ __all__ = ["LinearOperatorComposition"]
 
 
 @tf_export("linalg.LinearOperatorComposition")
+@linear_operator.make_composite_tensor
 class LinearOperatorComposition(linear_operator.LinearOperator):
   """Composes one or more `LinearOperators`.
 
@@ -285,3 +282,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     for operator in solve_order_list[1:]:
       solution = operator.solve(solution, adjoint=adjoint)
     return solution
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("operators",)

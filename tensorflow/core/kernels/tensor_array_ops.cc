@@ -190,7 +190,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
           "TensorArray size must be scalar, but had shape: ",
           tensor_size->shape().DebugString());
     }
-    const int32 size = tensor_size->scalar<int32>()();
+    const int32_t size = tensor_size->scalar<int32>()();
     if (size < 0) {
       return errors::InvalidArgument("Size should be >= 0.");
     }
@@ -313,8 +313,8 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     // may no longer be resized by new Writes.
     tensor_array->DisableDynamicSize();
 
-    int32 array_size = 0;
-    int32 marked_size = 0;
+    int32_t array_size = 0;
+    int32_t marked_size = 0;
     TF_RETURN_IF_ERROR(tensor_array->Size(&array_size));
     TF_RETURN_IF_ERROR(tensor_array->MarkedSize(&marked_size));
 
@@ -334,7 +334,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
       TF_RETURN_IF_ERROR(tensor::MakeShape(ctx->input(2), &shape_to_prepend));
       auto ta_element_shape = tensor_array->ElemShape();
       if (!ta_element_shape.unknown_rank()) {
-        std::vector<int64> dims;
+        std::vector<int64_t> dims;
         for (auto dim : shape_to_prepend) {
           dims.push_back(dim.size);
         }
@@ -342,7 +342,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
           dims.push_back(dim.size);
         }
         TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
-            gtl::ArraySlice<int64>(dims), &element_shape));
+            gtl::ArraySlice<int64_t>(dims), &element_shape));
       }
     } else {
       element_shape = tensor_array->ElemShape();
@@ -431,16 +431,15 @@ class TensorArrayWriteOp : public OpKernel {
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
     core::ScopedUnref unref(tensor_array);
-    const int32 index = tensor_index->scalar<int32>()();
+    const int32_t index = tensor_index->scalar<int32>()();
     OP_REQUIRES(
         ctx, tensor_value->dtype() == tensor_array->ElemType(),
         errors::InvalidArgument("TensorArray dtype is ",
                                 DataTypeString(tensor_array->ElemType()),
                                 " but Op is trying to write dtype ",
                                 DataTypeString(tensor_value->dtype()), "."));
-    PersistentTensor persistent_tensor(*tensor_value);
-    Status s = tensor_array->WriteOrAggregate<Device, T>(ctx, index,
-                                                         &persistent_tensor);
+    Status s =
+        tensor_array->WriteOrAggregate<Device, T>(ctx, index, tensor_value);
     OP_REQUIRES_OK(ctx, s);
   }
 };
@@ -514,16 +513,16 @@ class TensorArrayReadOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
     core::ScopedUnref unref(tensor_array);
 
-    const int32 index = tensor_index->scalar<int32>()();
+    const int32_t index = tensor_index->scalar<int32>()();
     OP_REQUIRES(
         ctx, dtype_ == tensor_array->ElemType(),
         errors::InvalidArgument(
             "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
             " but Op requested dtype ", DataTypeString(dtype_), "."));
-    PersistentTensor value;
+    Tensor value;
     Status s = tensor_array->Read<Device, T>(ctx, index, &value);
     OP_REQUIRES_OK(ctx, s);
-    ctx->set_output(0, *value.AccessTensor(ctx));
+    ctx->set_output(0, value);
   }
 
  private:
@@ -611,8 +610,8 @@ class TensorArrayPackOrGatherOp : public OpKernel {
     // TensorArray.
     OP_REQUIRES_OK(ctx, tensor_array->SetElemShape(element_shape_));
 
-    int32 num_indices;
-    std::vector<PersistentTensor> values;
+    int32_t num_indices;
+    std::vector<Tensor> values;
     std::vector<int32> indices;
     if (LEGACY_PACK) {
       OP_REQUIRES_OK(ctx, tensor_array->PackOrConcatSize(&num_indices));
@@ -650,12 +649,11 @@ class TensorArrayPackOrGatherOp : public OpKernel {
       return;
     }
 
-    // Read all the PersistentTensors into a vector to keep track of
-    // their memory.
+    // Read all the Tensors into a vector to keep track of their memory.
     Status s = tensor_array->ReadMany<Device, T>(ctx, indices, &values);
     OP_REQUIRES_OK(ctx, s);
 
-    const Tensor* value_0_t = values[0].AccessTensor(ctx);
+    const Tensor* value_0_t = &values[0];
 
     OP_REQUIRES(
         ctx, element_shape_.IsCompatibleWith(value_0_t->shape()),
@@ -685,7 +683,7 @@ class TensorArrayPackOrGatherOp : public OpKernel {
         value_0_t->shaped<T, 2>({1, value_0_t->NumElements()})));
 
     for (int i = 1; i < num_indices; ++i) {
-      const Tensor* value_t = values[i].AccessTensor(ctx);
+      const Tensor* value_t = &values[i];
       OP_REQUIRES(
           ctx, value_0_t->shape() == value_t->shape(),
           errors::InvalidArgument(
@@ -832,7 +830,7 @@ class TensorArrayConcatOp : public OpKernel {
             "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
             " but Op requested dtype ", DataTypeString(dtype_), "."));
 
-    int32 array_size;
+    int32_t array_size;
     OP_REQUIRES_OK(ctx, tensor_array->PackOrConcatSize(&array_size));
 
     // If there are no elements, return a zero-element Tensor with
@@ -855,28 +853,24 @@ class TensorArrayConcatOp : public OpKernel {
       return;
     }
 
-    // Read all the PersistentTensors into a vector to keep track of
-    // their memory.
-    std::vector<PersistentTensor> values;
+    // Read all the Tensors into a vector to keep track of their memory.
+    std::vector<Tensor> values;
     std::vector<int32> indices(array_size);
     std::iota(indices.begin(), indices.end(), 0);
     Status s = tensor_array->ReadMany<Device, T>(ctx, indices, &values);
     OP_REQUIRES_OK(ctx, s);
 
-    std::vector<const Tensor*> value_tensors;
-    value_tensors.resize(values.size());
-
     Tensor* lengths_tensor = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(
-                            1, TensorShape({static_cast<int64>(values.size())}),
-                            &lengths_tensor));
-    auto lengths_tensor_t = lengths_tensor->vec<int64>();
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(
+                       1, TensorShape({static_cast<int64_t>(values.size())}),
+                       &lengths_tensor));
+    auto lengths_tensor_t = lengths_tensor->vec<int64_t>();
 
     TensorShape output_shape;
     TensorShape output_shape_except0;
     for (std::size_t i = 0; i < values.size(); ++i) {
-      value_tensors[i] = values[i].AccessTensor(ctx);
-      TensorShape value_shape_t = value_tensors[i]->shape();
+      TensorShape value_shape_t = values[i].shape();
 
       OP_REQUIRES(
           ctx, TensorShapeUtils::IsVectorOrHigher(value_shape_t),
@@ -917,7 +911,7 @@ class TensorArrayConcatOp : public OpKernel {
     ConstMatrixVector input_tensors_flat;
     input_tensors_flat.reserve(values.size());
     for (size_t i = 0; i < values.size(); ++i) {
-      const Tensor* value_t = value_tensors[i];
+      const Tensor* value_t = &values[i];
       if (value_t->NumElements() > 0) {
         input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
             value_t->shaped<T, 2>({1, value_t->NumElements()})));
@@ -1053,11 +1047,11 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
                 errors::InvalidArgument("Input value for unpack must be at "
                                         "least a vector but received shape: ",
                                         element_shape.DebugString()));
-    int32 array_size;
+    int32_t array_size;
     OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
 
-    int32 max_index;
-    int32 num_values;
+    int32_t max_index;
+    int32_t num_values;
     std::vector<int32> write_indices;
     if (LEGACY_UNPACK) {
       num_values = element_shape.dim_size(0);
@@ -1117,17 +1111,15 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
     Eigen::DSizes<Eigen::DenseIndex, 3> sizes{
         1, 1, static_cast<Eigen::DenseIndex>(element_shape.num_elements())};
 
-    std::vector<PersistentTensor> write_values;
+    std::vector<Tensor> write_values;
     write_values.reserve(num_values);
 
     for (int i = 0; i < num_values; ++i) {
-      Tensor* tensor_value_i;
-      PersistentTensor persistent_tensor;
-      OP_REQUIRES_OK(
-          ctx, ctx->allocate_persistent(tensor_array->ElemType(), element_shape,
-                                        &persistent_tensor, &tensor_value_i));
+      Tensor tensor_value_i;
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(tensor_array->ElemType(),
+                                             element_shape, &tensor_value_i));
       auto tensor_value_i_t =
-          tensor_value_i->shaped<T, 3>({1, 1, element_shape.num_elements()});
+          tensor_value_i.shaped<T, 3>({1, 1, element_shape.num_elements()});
       indices[1] = i;
 
       if (element_shape.num_elements() > 0) {
@@ -1136,7 +1128,7 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
                                        indices, sizes);
       }
 
-      write_values.push_back(persistent_tensor);
+      write_values.push_back(tensor_value_i);
     }
 
     // Record the pack size of the TensorArray.
@@ -1246,11 +1238,11 @@ class TensorArraySplitOp : public OpKernel {
                 errors::InvalidArgument(
                     "Expected lengths to have < max int32 entries"));
 
-    int32 num_tensors = static_cast<int32>(tensor_lengths->NumElements());
-    auto tensor_lengths_t = tensor_lengths->vec<int64>();
-    std::vector<int64> cumulative_lengths;
+    int32_t num_tensors = static_cast<int32>(tensor_lengths->NumElements());
+    auto tensor_lengths_t = tensor_lengths->vec<int64_t>();
+    std::vector<int64_t> cumulative_lengths;
     cumulative_lengths.reserve(num_tensors);
-    int64 total_length = 0;
+    int64_t total_length = 0;
     for (int i = 0; i < num_tensors; ++i) {
       total_length += tensor_lengths_t(i);
       cumulative_lengths.push_back(total_length);
@@ -1268,15 +1260,15 @@ class TensorArraySplitOp : public OpKernel {
                                 "values.shape[0], but sum of lengths is ",
                                 total_length, " and value's shape is: ",
                                 tensor_value->shape().DebugString()));
-    int64 elements_per_row =
+    int64_t elements_per_row =
         (total_length == 0) ? 0 : (tensor_value->NumElements() / total_length);
 
-    int32 array_size;
+    int32_t array_size;
     OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
     bool dynamic_size = tensor_array->HasDynamicSize();
 
     std::vector<TensorShape> element_shapes(num_tensors, tensor_value->shape());
-    for (int32 i = 0; i < num_tensors; ++i) {
+    for (int32_t i = 0; i < num_tensors; ++i) {
       element_shapes[i].set_dim(0, tensor_lengths_t(i));
     }
 
@@ -1302,26 +1294,25 @@ class TensorArraySplitOp : public OpKernel {
     auto tensor_value_t =
         tensor_value->shaped<T, 3>({1, total_length, elements_per_row});
 
-    std::vector<PersistentTensor> write_values;
+    std::vector<Tensor> write_values;
     write_values.reserve(array_size);
 
     for (int i = 0; i < array_size; ++i) {
-      Tensor* tensor_value_i;
-      PersistentTensor persistent_tensor;
+      Tensor tensor_value_i;
 
-      int64 previous_length = (i == 0) ? 0 : cumulative_lengths[i - 1];
+      int64_t previous_length = (i == 0) ? 0 : cumulative_lengths[i - 1];
       Eigen::DSizes<Eigen::DenseIndex, 3> indices{
           0, static_cast<Eigen::DenseIndex>(previous_length), 0};
       Eigen::DSizes<Eigen::DenseIndex, 3> sizes{
           1, static_cast<Eigen::DenseIndex>(tensor_lengths_t(i)),
           static_cast<Eigen::DenseIndex>(elements_per_row)};
 
-      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(
-                              tensor_array->ElemType(), element_shapes[i],
-                              &persistent_tensor, &tensor_value_i));
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(tensor_array->ElemType(), element_shapes[i],
+                                  &tensor_value_i));
 
       if (tensor_lengths_t(i) > 0) {
-        auto tensor_value_i_t = tensor_value_i->shaped<T, 3>(
+        auto tensor_value_i_t = tensor_value_i.shaped<T, 3>(
             {1, tensor_lengths_t(i), elements_per_row});
 
         functor::Split<Device, T, 3>()(ctx->eigen_device<Device>(),
@@ -1329,7 +1320,7 @@ class TensorArraySplitOp : public OpKernel {
                                        indices, sizes);
       }
 
-      write_values.push_back(persistent_tensor);
+      write_values.push_back(tensor_value_i);
     }
 
     // Record the concat size of the TensorArray.

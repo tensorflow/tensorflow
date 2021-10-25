@@ -31,7 +31,7 @@ class StringFormatOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("summarize", &summarize_));
 
     split_template_ = absl::StrSplit(template_, placeholder_);
-    int64 num_placeholders = split_template_.size() - 1;
+    int64_t num_placeholders = split_template_.size() - 1;
     OP_REQUIRES(ctx, ctx->num_inputs() == num_placeholders,
                 errors::InvalidArgument(strings::StrCat(
                     "num placeholders in template and num inputs must match: ",

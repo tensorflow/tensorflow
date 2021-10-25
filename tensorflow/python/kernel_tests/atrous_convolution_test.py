@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for atrous convolution functionality in tensorflow.ops.nn."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 
 import numpy as np
@@ -265,7 +261,6 @@ class AtrousConvolutionTest(test.TestCase):
     self.assertLess(err, err_tolerance)
 
   @test_util.run_v1_only("b/120545219")
-  @test_util.disable_xla("b/178665095")
   def testGradient(self):
     with self.cached_session():
       for padding in ["SAME", "VALID"]:

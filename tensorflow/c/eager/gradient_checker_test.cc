@@ -65,15 +65,15 @@ void CompareNumericalAndManualGradients(
 Status MatMulModel(AbstractContext* ctx,
                    absl::Span<AbstractTensorHandle* const> inputs,
                    absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::MatMul(ctx, inputs[0], inputs[1], outputs, "MatMul",
+  return ops::MatMul(ctx, inputs[0], inputs[1], &outputs[0],
                      /*transpose_a=*/false,
-                     /*transpose_b=*/false);
+                     /*transpose_b=*/false, "MatMul");
 }
 
 Status MulModel(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::Mul(ctx, inputs[0], inputs[1], outputs, "Mul");
+  return ops::Mul(ctx, inputs[0], inputs[1], &outputs[0], "Mul");
 }
 
 // TODO(vnvo2409): Add more tests from `python/ops/gradient_checker_v2_test.py`.

@@ -54,17 +54,23 @@ class IrFunction {
  public:
   IrFunction(const string& function_name, llvm::Function::LinkageTypes linkage,
              const HloModuleConfig& module_config, llvm::Module* llvm_module,
-             llvm::IRBuilder<>* b, int64 num_dynamic_loop_bounds);
+             llvm::IRBuilder<>* b, int64_t num_dynamic_loop_bounds);
   ~IrFunction();
 
-  // Emit ir to read and return the set of ir values representing the dynamic
-  // loop bounds argument of this function.
-  // Each element in returned vector is a pair of ir values representing
-  // the loop bounds for a specific dimension, where the first element of the
-  // pair is the dimension start index, and the second element of the pair
-  // is the dimension limit.
-  // EX: [dimension_i_index_start_ir_value, dimension_i_index_limit_ir_value]
+  // Emit IR to read and return the set of IR values representing the dynamic
+  // loop bounds argument of this function. These bounds delimit the subset
+  // of the output that will be written by the computation's root instruction at
+  // runtime. This is used for parallel computations, where a single computation
+  // is partitioned into N calls to a function with parallel loop bounds, and
+  // then called N times in parallel with loop bounds limiting each call to
+  // producing 1/N of the output.
   //
+  // Each element in returned vector is a pair of ir values representing the
+  // loop bounds for a specific dimension, where the first element of the pair
+  // is the dimension start index, and the second element of the pair is the
+  // dimension limit.
+  //
+  // EX: [dimension_i_index_start_ir_value, // dimension_i_index_limit_ir_value]
   DynamicLoopBounds GetDynamicLoopBounds();
 
   // Returns the encapculated llvm::Function.
@@ -88,6 +94,12 @@ class IrFunction {
   // argument.
   llvm::Value* profile_counters_arg() { return profile_counters_arg_; }
 
+  // Get the llvm::BasicBlock* that contains this function's "ret" instruction.
+  llvm::BasicBlock* return_block() { return return_block_; }
+
+  // Get the llvm::Value* that represents this function's "status" argument.
+  llvm::Value* status_arg() { return status_arg_; }
+
  private:
   // Initialize an llvm::Function with standard signature based on arguments.
   void Initialize(const string& function_name,
@@ -96,13 +108,13 @@ class IrFunction {
 
   // Emit ir to read and return the ir value for the dynamic loop bound at
   // 'offset' from the "dynamic_loop_bounds" argument of this function.
-  llvm::Value* GetDynamicLoopBound(int64 offset);
+  llvm::Value* GetDynamicLoopBound(int64_t offset);
 
   llvm::IRBuilder<>* b_;
   llvm::Module* llvm_module_;
   llvm::IRBuilder<>::InsertPointGuard caller_insert_point_guard_;
 
-  int64 num_dynamic_loop_bounds_ = 0;
+  int64_t num_dynamic_loop_bounds_ = 0;
   // Encapsulated llvm::Function.
   llvm::Function* function_;
   // Function argument IR values.
@@ -112,6 +124,9 @@ class IrFunction {
   llvm::Value* buffer_table_arg_;
   llvm::Value* dynamic_loop_bounds_arg_ = nullptr;
   llvm::Value* profile_counters_arg_;
+  llvm::Value* status_arg_;
+  // Basic block containing return.
+  llvm::BasicBlock* return_block_;
 };
 
 // Returns arguments in `arguments` encoded as a single buffer, suitable for a
@@ -125,14 +140,15 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
     absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
     absl::string_view name, llvm::Value* return_value_buffer,
     llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
-    llvm::Value* profile_counters_arg);
+    llvm::Value* status_arg, llvm::Value* profile_counters_arg);
 
 // Emits a call to a runtime fork/join function which dispatches parallel
 // calls to 'parallel_function' (and joins threads before returning).
 Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    const std::vector<int64>& dimension_partition_counts, llvm::IRBuilder<>* b,
-    llvm::Function* parallel_function, const string& name);
+    const std::vector<int64_t>& dimension_partition_counts,
+    llvm::IRBuilder<>* b, llvm::Function* parallel_function,
+    const string& name);
 
 }  // namespace cpu
 }  // namespace xla

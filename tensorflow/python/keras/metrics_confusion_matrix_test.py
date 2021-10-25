@@ -19,6 +19,7 @@ import json
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import combinations
@@ -1774,6 +1775,121 @@ class MultiAUCTest(test.TestCase, parameterized.TestCase):
       auc_obj(self.y_true_good, self.y_pred)
       auc_obj.reset_state()
       self.assertAllEqual(auc_obj.true_positives, np.zeros((5, 2)))
+
+
+@combinations.generate(combinations.combine(mode=['eager']))
+class ThresholdsTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.parameters([
+      metrics.TruePositives(),
+      metrics.TrueNegatives(),
+      metrics.FalsePositives(),
+      metrics.FalseNegatives(),
+      metrics.Precision(),
+      metrics.Recall(),
+      metrics.SensitivityAtSpecificity(0.5),
+      metrics.SpecificityAtSensitivity(0.5),
+      metrics.PrecisionAtRecall(0.5),
+      metrics.RecallAtPrecision(0.5),
+      metrics.AUC()])
+  def test_with_default_thresholds(self, metric_obj):
+    # By default, the thresholds will be evenly distributed if there are more
+    # than 1. In case there is only 1 thresholds, then we expect
+    # _thresholds_distributed_evenly to be false.
+    expected = len(metric_obj.thresholds) > 1
+    self.assertEqual(metric_obj._thresholds_distributed_evenly, expected)
+
+  @parameterized.parameters([
+      metrics.TruePositives,
+      metrics.TrueNegatives,
+      metrics.FalsePositives,
+      metrics.FalseNegatives,
+      metrics.Precision,
+      metrics.Recall])
+  def test_with_manual_thresholds(self, metric_cls):
+    even_thresholds = [0.0, 0.25, 0.5, 0.75, 1.0]
+    metric_obj = metric_cls(thresholds=even_thresholds)
+    self.assertTrue(metric_obj._thresholds_distributed_evenly)
+
+    uneven_thresholds = [0.0, 0.45, 1.0]
+    metric_obj = metric_cls(thresholds=uneven_thresholds)
+    self.assertFalse(metric_obj._thresholds_distributed_evenly)
+
+  def test_manual_thresholds_auc(self):
+    # The AUC metric handles manual thresholds input differently (it will add
+    # 0.0 and 1.0 for user).
+    even_thresholds = [0.25, 0.5, 0.75]
+    auc = metrics.AUC(thresholds=even_thresholds)
+    self.assertTrue(auc._thresholds_distributed_evenly)
+
+    # Test for save model
+    cloned = metrics.AUC.from_config(auc.get_config())
+    self.assertTrue(cloned._thresholds_distributed_evenly)
+
+    uneven_thresholds = [0.45,]
+    auc = metrics.AUC(thresholds=uneven_thresholds)
+    self.assertFalse(auc._thresholds_distributed_evenly)
+
+    cloned = metrics.AUC.from_config(auc.get_config())
+    self.assertFalse(cloned._thresholds_distributed_evenly)
+
+  @parameterized.parameters([
+      metrics.TruePositives,
+      metrics.TrueNegatives,
+      metrics.FalsePositives,
+      metrics.FalseNegatives,
+      metrics.Precision,
+      metrics.Recall,
+      metrics.AUC])
+  def test_even_thresholds_correctness(self, metric_cls):
+    with compat.forward_compatibility_horizon(2021, 6, 9):
+      # make sure the old approach and new approach produce same result
+      # for evenly distributed thresholds
+      y_true = np.random.randint(2, size=(10,))
+      y_pred = np.random.rand(10)
+
+      even_thresholds = [0.0, 0.25, 0.5, 0.75, 1.0]
+      if metric_cls == metrics.AUC:
+        even_thresholds = even_thresholds[1:-1]
+      metric_obj = metric_cls(thresholds=even_thresholds)
+      metric_obj.update_state(y_true, y_pred)
+      result1 = metric_obj.result()
+
+      metric_obj2 = metric_cls(thresholds=even_thresholds)
+      # Force to use the old approach
+      metric_obj2._thresholds_distributed_evenly = False
+      metric_obj2.update_state(y_true, y_pred)
+      result2 = metric_obj2.result()
+
+      self.assertAllClose(result1, result2)
+      # Check all the variables are the same, eg tp, tn, fp, fn
+      for v1, v2 in zip(metric_obj.variables, metric_obj2.variables):
+        self.assertAllClose(v1, v2)
+
+  @parameterized.parameters([
+      metrics.SensitivityAtSpecificity,
+      metrics.SpecificityAtSensitivity,
+      metrics.PrecisionAtRecall,
+      metrics.RecallAtPrecision])
+  def test_even_thresholds_correctness_2(self, metric_cls):
+    with compat.forward_compatibility_horizon(2021, 6, 9):
+      y_true = np.random.randint(2, size=(10,))
+      y_pred = np.random.rand(10)
+
+      metric_obj = metric_cls(0.5)
+      metric_obj.update_state(y_true, y_pred)
+      result1 = metric_obj.result()
+
+      metric_obj2 = metric_cls(0.5)
+      # Force to use the old approach
+      metric_obj2._thresholds_distributed_evenly = False
+      metric_obj2.update_state(y_true, y_pred)
+      result2 = metric_obj2.result()
+
+      self.assertAllClose(result1, result2)
+      # Check all the variables are the same, eg tp, tn, fp, fn
+      for v1, v2 in zip(metric_obj.variables, metric_obj2.variables):
+        self.assertAllClose(v1, v2)
 
 
 if __name__ == '__main__':

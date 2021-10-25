@@ -25,9 +25,6 @@ namespace resource {
 // A resource variable class. It's similar to TensorFlow Resource
 // Variable, but it's identified with int32 ID in TFLite (instead of
 // using Resource handle like TensorFlow).
-//
-// TODO(b/137042749): TFLite converter cannot convert variables yet.
-// Variable functionalities are only tested with unit tests now.
 class ResourceVariable : public ResourceBase {
  public:
   ResourceVariable();
@@ -67,6 +64,10 @@ void CreateResourceVariableIfNotAvailable(ResourceMap* resources,
 // Returns the corresponding resource variable, or nullptr if none.
 // WARNING: Experimental interface, subject to change.
 ResourceVariable* GetResourceVariable(ResourceMap* resources, int resource_id);
+
+// Returns true if 'tensor' points to a builtin resource.
+// WARNING: Experimental interface, subject to change.
+bool IsBuiltinResource(const TfLiteTensor* tensor);
 
 }  // namespace resource
 }  // namespace tflite

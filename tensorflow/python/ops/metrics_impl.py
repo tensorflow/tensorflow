@@ -13,10 +13,6 @@
 # ==============================================================================
 """Implementation of tf.metrics module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -202,8 +198,9 @@ def _maybe_expand_labels(labels, predictions):
         if predictions_rank == labels_rank + 1:
           return array_ops.expand_dims(labels, -1, name=scope)
         raise ValueError(
-            'Unexpected labels shape %s for predictions shape %s.' %
-            (labels.get_shape(), predictions.get_shape()))
+            f'Unexpected labels shape {labels.get_shape()} for predictions '
+            f'shape {predictions.get_shape()}. Predictions rank should be the '
+            'same rank as labels rank or labels rank plus one .')
 
     # Otherwise, use dynamic shape.
     return control_flow_ops.cond(
@@ -442,6 +439,97 @@ def accuracy(labels,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
     RuntimeError: If eager execution is enabled.
+
+  @compatibility(TF2)
+  `tf.compat.v1.metrics.accuracy` is not compatible with eager
+  execution or `tf.function`.
+  Please use `tf.keras.metrics.Accuracy` instead for TF2 migration. After
+  instantiating a `tf.keras.metrics.Accuracy` object, you can first call the
+  `update_state()` method to record the prediction/labels, and then call the
+  `result()` method to get the accuracy eagerly. You can also attach it to a
+  Keras model when calling the `compile` method. Please refer to [this
+  guide](https://www.tensorflow.org/guide/migrate#new-style_metrics_and_losses)
+  for more details.
+
+  #### Structural Mapping to Native TF2
+
+  Before:
+
+  ```python
+  accuracy, update_op = tf.compat.v1.metrics.accuracy(
+    labels=labels,
+    predictions=predictions,
+    weights=weights,
+    metrics_collections=metrics_collections,
+    update_collections=update_collections,
+    name=name)
+  ```
+
+  After:
+
+  ```python
+   m = tf.keras.metrics.Accuracy(
+     name=name,
+     dtype=None)
+
+   m.update_state(
+   y_true=labels,
+   y_pred=predictions,
+   sample_weight=weights)
+
+   accuracy = m.result()
+  ```
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name    | Note                       |
+  | :-------------------- | :-------------- | :------------------------- |
+  | `label`               | `y_true`        | In `update_state()` method |
+  | `predictions`         | `y_true`        | In `update_state()` method |
+  | `weights`             | `sample_weight` | In `update_state()` method |
+  | `metrics_collections` | Not supported   | Metrics should be tracked  |
+  :                       :                 : explicitly or with Keras   :
+  :                       :                 : APIs, for example,         :
+  :                       :                 : [add_metric][add_metric],  :
+  :                       :                 : instead of via collections :
+  | `updates_collections` | Not supported   | -                          |
+  | `name`                | `name`          | In constructor             |
+
+  [add_metric]:https//www.tensorflow.org/api_docs/python/tf/keras/layers/Layer#add_metric
+
+
+  #### Before & After Usage Example
+
+  Before:
+
+  >>> g = tf.Graph()
+  >>> with g.as_default():
+  ...   logits = [1, 2, 3]
+  ...   labels = [0, 2, 3]
+  ...   acc, acc_op = tf.compat.v1.metrics.accuracy(logits, labels)
+  ...   global_init = tf.compat.v1.global_variables_initializer()
+  ...   local_init = tf.compat.v1.local_variables_initializer()
+  >>> sess = tf.compat.v1.Session(graph=g)
+  >>> sess.run([global_init, local_init])
+  >>> print(sess.run([acc, acc_op]))
+  [0.0, 0.66667]
+
+
+  After:
+
+  >>> m = tf.keras.metrics.Accuracy()
+  >>> m.update_state([1, 2, 3], [0, 2, 3])
+  >>> m.result().numpy()
+  0.66667
+
+  ```python
+  # Used within Keras model
+  model.compile(optimizer='sgd',
+                loss='mse',
+                metrics=[tf.keras.metrics.Accuracy()])
+  ```
+
+  @end_compatibility
   """
   if context.executing_eagerly():
     raise RuntimeError('tf.metrics.accuracy is not supported when eager '
@@ -511,7 +599,7 @@ def _confusion_matrix_at_thresholds(labels,
   else:
     for include in includes:
       if include not in all_includes:
-        raise ValueError('Invalid key: %s.' % include)
+        raise ValueError(f'Invalid key: {include}')
 
   with ops.control_dependencies([
       check_ops.assert_greater_equal(
@@ -724,7 +812,8 @@ def auc(labels,
   with variable_scope.variable_scope(name, 'auc',
                                      (labels, predictions, weights)):
     if curve != 'ROC' and curve != 'PR':
-      raise ValueError('curve must be either ROC or PR, %s unknown' % (curve))
+      raise ValueError(f'Curve must be either ROC or PR. Curve {curve} is '
+                       'unknown.')
 
     kepsilon = 1e-7  # To account for floating point imprecisions.
     if thresholds is not None:
@@ -841,7 +930,10 @@ def auc(labels,
                               math_ops.maximum(y[:num_thresholds - 1], y[1:])),
             name=name)
       else:
-        raise ValueError('Invalid summation_method: %s' % summation_method)
+        raise ValueError(f'Invalid summation_method: {summation_method} '
+                         'summation_method should be \'trapezoidal\', '
+                         '\'careful_interpolation\', \'minoring\', or '
+                         '\'majoring\'.')
 
     # sum up the areas of all the trapeziums
     def compute_auc_value(_, values):
@@ -2870,7 +2962,8 @@ def sensitivity_at_specificity(labels,
                        'supported when eager execution is enabled.')
 
   if specificity < 0 or specificity > 1:
-    raise ValueError('`specificity` must be in the range [0, 1].')
+    raise ValueError('`specificity` must be in the range [0, 1]. Currently, '
+                     f'`specificity` got {specificity}.')
 
   with variable_scope.variable_scope(name, 'sensitivity_at_specificity',
                                      (predictions, labels, weights)):
@@ -2928,7 +3021,8 @@ def _expand_and_tile(tensor, multiple, dim=0, name=None):
     `[-rank(tensor), rank(tensor)]`.
   """
   if multiple < 1:
-    raise ValueError('Invalid multiple %s, must be > 0.' % multiple)
+    raise ValueError(f'Invalid argument multiple={multiple} for '
+                     'expand_and_tile  call. `multiple` must be an integer > 0')
   with ops.name_scope(name, 'expand_and_tile',
                       (tensor, multiple, dim)) as scope:
     # Sparse.
@@ -2983,7 +3077,7 @@ def _num_relevant(labels, k):
     ValueError: if inputs have invalid dtypes or values.
   """
   if k < 1:
-    raise ValueError('Invalid k=%s.' % k)
+    raise ValueError(f'Invalid k={k}')
   with ops.name_scope(None, 'num_relevant', (labels,)) as scope:
     # For SparseTensor, calculate separate count for each row.
     labels = sparse_tensor.convert_to_tensor_or_sparse_tensor(labels)
@@ -3037,10 +3131,11 @@ def _sparse_average_precision_at_top_k(labels, predictions_idx):
     predictions_idx = math_ops.cast(
         predictions_idx, dtypes.int64, name='predictions_idx')
     if predictions_idx.get_shape().ndims == 0:
-      raise ValueError('The rank of predictions_idx must be at least 1.')
+      raise ValueError('The rank of `predictions_idx` must be at least 1.')
     k = predictions_idx.get_shape().as_list()[-1]
     if k is None:
-      raise ValueError('The last dimension of predictions_idx must be set.')
+      raise ValueError('The last dimension of predictions_idx must be set. '
+                       'Currently, it is None.')
     labels = _maybe_expand_labels(labels, predictions_idx)
 
     # Expand dims to produce [D1, ... DN, k, 1] tensor. This gives us a separate
@@ -3308,7 +3403,7 @@ def average_precision_at_k(labels,
                        'supported when eager execution is enabled.')
 
   if k < 1:
-    raise ValueError('Invalid k=%s.' % k)
+    raise ValueError(f'Invalid k={k}. `k` should be >= 1.')
   with ops.name_scope(name, _at_k_name('average_precision', k),
                       (predictions, labels, weights)) as scope:
     # Calculate top k indices to produce [D1, ... DN, k] tensor.
@@ -3692,7 +3787,8 @@ def specificity_at_sensitivity(labels,
                        'supported when eager execution is enabled.')
 
   if sensitivity < 0 or sensitivity > 1:
-    raise ValueError('`sensitivity` must be in the range [0, 1].')
+    raise ValueError('`sensitivity` must be in the range [0, 1]. Currently, '
+                     f'`sensitivity` is {sensitivity}.')
 
   with variable_scope.variable_scope(name, 'specificity_at_sensitivity',
                                      (predictions, labels, weights)):

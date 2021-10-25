@@ -29,7 +29,7 @@ namespace tensorflow {
       Name("Min")                                                           \
           .Device(DEVICE_CPU)                                               \
           .TypeConstraint<type>("T")                                        \
-          .TypeConstraint<int64>("Tidx"),                                   \
+          .TypeConstraint<int64_t>("Tidx"),                                 \
       ReductionOp<CPUDevice, type, int64,                                   \
                   Eigen::internal::MinReducer<type, Eigen::PropagateNaN>>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
@@ -50,7 +50,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
       Name("Min")                                                           \
           .Device(DEVICE_GPU)                                               \
           .TypeConstraint<type>("T")                                        \
-          .TypeConstraint<int64>("Tidx")                                    \
+          .TypeConstraint<int64_t>("Tidx")                                  \
           .HostMemory("reduction_indices"),                                 \
       ReductionOp<GPUDevice, type, int64,                                   \
                   Eigen::internal::MinReducer<type, Eigen::PropagateNaN>>);
@@ -77,7 +77,7 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("input")
         .HostMemory("output")
         .TypeConstraint<int32>("T")
-        .TypeConstraint<int64>("Tidx"),
+        .TypeConstraint<int64_t>("Tidx"),
     ReductionOp<CPUDevice, int32, int64, Eigen::internal::MinReducer<int32>>);
 
 #undef REGISTER_GPU_KERNELS

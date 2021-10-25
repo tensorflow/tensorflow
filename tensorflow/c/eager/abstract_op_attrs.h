@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_ABSTRACT_OP_ATTRS_H_
 #define TENSORFLOW_C_EAGER_ABSTRACT_OP_ATTRS_H_
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -39,6 +41,9 @@ class AbstractOpAttrs {
   virtual bool GetFloat(absl::string_view attr_name, float* result) const = 0;
   virtual bool GetBool(absl::string_view attr_name, bool* result) const = 0;
   virtual bool GetType(absl::string_view attr_name, DataType* result) const = 0;
+  virtual Status GetTypeList(
+      absl::string_view attr_name,
+      absl::InlinedVector<DataType, 4>* type_list) const = 0;
 
  private:
   const AbstractOpAttrsKind kind_;

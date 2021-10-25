@@ -73,8 +73,8 @@ static void LargeOneDimensional(::testing::benchmark::State& state,
   test::Benchmark(device, LargeOneDCumsum<T>(num_x, reverse),
                   /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_x);
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           sizeof(T));
 }
 
@@ -84,9 +84,9 @@ static void DoRowCumsum(::testing::benchmark::State& state,
   test::Benchmark(device, RowCumsum(num_x, num_y, reverse),
                   /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y * sizeof(float));
 }
 
@@ -96,9 +96,9 @@ static void DoColCumsum(::testing::benchmark::State& state,
   test::Benchmark(device, ColCumsum(num_x, num_y, reverse),
                   /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y * sizeof(float));
 }
 
@@ -108,9 +108,9 @@ static void Do3DYCumsum(::testing::benchmark::State& state,
   test::Benchmark(device, ThreeDYCumsum(num_x, num_y, reverse),
                   /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num_x *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * num_x *
                           num_y * sizeof(float));
 }
 

@@ -31,6 +31,7 @@ package(
         "//tensorflow_models:__subpackages__",
     ],
     # features = ["-parse_headers"],
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -116,6 +117,17 @@ cc_library(
     name = "device_event_mgr_hdrs",
     textual_hdrs = [
         "device_event_mgr.h",
+    ],
+)
+
+cc_library(
+    name = "device_utils",
+    srcs = ["device_utils.cc"],
+    hdrs = ["device_utils.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
     ],
 )
 

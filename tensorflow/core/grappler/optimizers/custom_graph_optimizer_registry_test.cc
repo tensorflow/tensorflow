@@ -43,8 +43,6 @@ class TestGraphOptimizer : public CustomGraphOptimizer {
                   GraphDef* optimized_graph) override {
     return Status::OK();
   }
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override {}
 };
 
 REGISTER_GRAPH_OPTIMIZER_AS(TestGraphOptimizer, "StaticRegister");
@@ -99,8 +97,6 @@ class TestPluginGraphOptimizer : public CustomGraphOptimizer {
                   GraphDef* optimized_graph) override {
     return Status::OK();
   }
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override {}
 };
 
 TEST(PluginGraphOptimizerRegistryTest, CrashesOnDuplicateRegistration) {

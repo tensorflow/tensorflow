@@ -3,7 +3,7 @@
 buildscript {
     repositories {
         google()
-        jcenter()
+        mavenCentral()
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:3.1.4'
@@ -16,7 +16,11 @@ buildscript {
 allprojects {
     repositories {
         google()
-        jcenter()
+        mavenCentral()
+        maven {  // Only for snapshot artifacts
+            name 'ossrh-snapshot'
+            url 'http://oss.sonatype.org/content/repositories/snapshots'
+        }
     }
 }
 

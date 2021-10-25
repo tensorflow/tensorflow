@@ -35,7 +35,7 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template <typename Device, typename T>
+template <typename Device, typename T, bool native_format = false>
 class MklDequantizeOp : public OpKernel {
  public:
   explicit MklDequantizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -61,7 +61,7 @@ class MklDequantizeOp : public OpKernel {
 
       // Get MklShape
       MklDnnShape src_mkl_shape;
-      GetMklShape(ctx, kSrcIndex, &src_mkl_shape);
+      GetMklShape(ctx, kSrcIndex, &src_mkl_shape, native_format);
 
       // src_dims is the dimension of src_tensor
       // output_dims are same as src_dims
@@ -124,7 +124,7 @@ class MklDequantizeOp : public OpKernel {
 
       // Allocate MKL or TF output shape based on the above
       AllocateOutputSetMklShape(ctx, 0, &output_tensor, output_tf_shape,
-                                output_mkl_shape);
+                                output_mkl_shape, native_format);
       dst.SetUsrMem(dst_md, output_tensor);
       dst.SetUsrMemDataHandle(output_tensor, reorder_stream);
 
@@ -178,12 +178,12 @@ REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklDequantizeOp<CPUDevice, quint8>);
+                        MklDequantizeOp<CPUDevice, quint8, true>);
 REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklDequantizeOp<CPUDevice, qint8>);
+                        MklDequantizeOp<CPUDevice, qint8, true>);
 
 }  // namespace tensorflow
 

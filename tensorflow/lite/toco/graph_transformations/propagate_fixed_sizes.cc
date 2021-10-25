@@ -575,12 +575,12 @@ void ProcessTensorFlowReductionOperator(Model* model, Operator* op) {
     const auto& reduction_indices =
         reduction_indices_array.GetBuffer<ArrayDataType::kInt32>().data;
     for (size_t i = 0; i < reduction_indices.size(); ++i) {
-      const int32 reduction_index = reduction_indices[i];
+      const int32_t reduction_index = reduction_indices[i];
       if (reduction_index < -input_rank || reduction_index >= input_rank) {
         CHECK(false) << "Invalid reduction dimension " << reduction_index
                      << " for input with " << input_rank << " dimensions";
       }
-      int32 wrapped_index = reduction_index;
+      int32_t wrapped_index = reduction_index;
       if (wrapped_index < 0) {
         wrapped_index += input_rank;
       }
@@ -827,7 +827,7 @@ void ProcessTensorFlowSplitVOperator(Model* model,
       << "size_splits must be int32, int64";
   CHECK_EQ(size_shape.dimensions_count(), 1) << "size_splits must be 1-D";
 
-  std::vector<int64> size_splits_vector;
+  std::vector<int64_t> size_splits_vector;
   if (size_array.data_type == ArrayDataType::kInt32) {
     for (const auto each_size :
          size_array.GetBuffer<ArrayDataType::kInt32>().data) {
@@ -1846,7 +1846,7 @@ void ProcessArgMinMaxOperator(Model* model, Op* op) {
   CHECK_EQ(RequiredBufferSizeForShape(axis_array.shape()), 1)
       << "Axis array must be scalar.";
 
-  int64 axis;
+  int64_t axis;
   if (axis_array.data_type == ArrayDataType::kInt32) {
     axis = axis_array.GetBuffer<ArrayDataType::kInt32>().data[0];
   } else {
@@ -1890,14 +1890,14 @@ void ProcessSparseToDenseOperator(Model* model, SparseToDenseOperator* op) {
     *output_array.mutable_shape()->mutable_dims() =
         output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
   } else {
-    const std::vector<int64>& output_shape_data =
+    const std::vector<int64_t>& output_shape_data =
         output_shape_array.GetBuffer<ArrayDataType::kInt64>().data;
     // explicitly cast elements to int in order to avoid MSVC warnings about
     // narrowing conversion.
     std::transform(
         output_shape_data.begin(), output_shape_data.end(),
         std::back_inserter(*output_array.mutable_shape()->mutable_dims()),
-        [](const int64 dim) { return static_cast<int>(dim); });
+        [](const int64_t dim) { return static_cast<int>(dim); });
   }
 }
 

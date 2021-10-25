@@ -63,7 +63,6 @@ def QI32 : QuantizedType<"Uniform", [32], 1>;
 // https://www.tensorflow.org/lite/performance/quantization_spec
 //===----------------------------------------------------------------------===//
 
-// TODO(b/157870442): replace all FixedResultScale trait
 def FixedOutputRangeInterface : OpInterface<
   "FixedOutputRangeInterface"> {
   let description = [{
@@ -79,9 +78,6 @@ def FixedOutputRangeInterface : OpInterface<
   ];
 }
 
-// TODO(b/157870442): extend this trait to replace the other two
-// tratis/interfaces AccumulatorUniformScale and AffineOpCoefficient, which
-// are used to generate the op quantization specs.
 def AffineQuantizedOpInterface : OpInterface<
   "AffineQuantizedOpInterface"> {
   let description = [{
@@ -119,6 +115,11 @@ def SameOperandsAndResultsScale : OpInterface<"SameScalesOpInterface"> {
       "bool", "RequiredSameOperandsAndResultsScale",
       (ins "bool":$sign, "int":$bit_width), [{}], [{return true;}]
     >,
+    InterfaceMethod<
+      [{Returns whether operands and results must have the same quantized axis.}],
+      "bool", "RequiredSameQuantizedAxes",
+      (ins), [{}], [{return true;}]
+    >,
   ];
 
   let verify = [{
@@ -149,4 +150,6 @@ class AffineOpCoefficient<int dim, int index> : NativeOpTrait<
 // apply quantization on this op.
 def NoQuantizableResult : NativeOpTrait<"quant::NoQuantizableResult">;
 
+// Specify this trait if the op supports dynamic quantization.
+def DynamicQuantizableOp : NativeOpTrait<"quant::DynamicQuantizableOp">;
 #endif // TF_Quantization

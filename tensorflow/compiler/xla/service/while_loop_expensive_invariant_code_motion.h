@@ -29,7 +29,7 @@ namespace xla {
 // instructions with a root that returns true with it will be hoisted out.
 class WhileLoopExpensiveInvariantCodeMotion : public HloModulePass {
  public:
-  using ShapeSizeFunction = std::function<int64(const Shape&)>;
+  using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
   explicit WhileLoopExpensiveInvariantCodeMotion(
       std::function<bool(const HloInstruction&)> worth_hoisting_individually,
       ShapeSizeFunction shape_size_function = ShapeUtil::ByteSizeOfElements)

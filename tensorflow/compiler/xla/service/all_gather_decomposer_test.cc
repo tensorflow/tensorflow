@@ -58,7 +58,7 @@ ENTRY entry {
           op::Multiply(op::ReplicaId(), op::Constant()))));
 }
 
-TEST_F(AllGatherDecomposerTest, CrossPartitionAllGather) {
+TEST_F(AllGatherDecomposerTest, CrossReplicaAndPartitionAllGather) {
   const string module_str = R"(
 HloModule module
 
@@ -147,7 +147,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
   EXPECT_TRUE(changed);
   auto global_id =
-      op::Add(op::PartitionId(), op::Multiply(op::ReplicaId(), op::Constant()));
+      op::Add(op::Multiply(op::ReplicaId(), op::Constant()), op::PartitionId());
   auto id = AllOf(op::Shape("u32[]"),
                   op::Reshape(op::DynamicSlice(op::Constant(), global_id)));
   EXPECT_THAT(module->entry_computation()->root_instruction(),

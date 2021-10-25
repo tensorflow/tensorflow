@@ -55,8 +55,8 @@ TEST_F(RaggedRangeOpTest, IntValues) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 2, 4, 6], [5, 6], [], [5, 4, 3, 2]]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 4, 6, 6, 10}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 4, 6, 6, 10}));
   test::ExpectTensorEqual<int>(
       *GetOutput(kValuesOutput),
       test::AsTensor<int>({0, 2, 4, 6, 5, 6, 5, 4, 3, 2}));
@@ -70,8 +70,8 @@ TEST_F(RaggedRangeOpTest, FloatValues) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 2, 4, 6], [5, 6], [], [5, 4, 3, 2]]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 4, 6, 6, 10}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 4, 6, 6, 10}));
   test::ExpectTensorNear<float>(
       *GetOutput(kValuesOutput),
       test::AsTensor<float>({0, 2, 4, 6, 5, 6, 5, 4, 3, 2}), 0.1);
@@ -85,8 +85,8 @@ TEST_F(RaggedRangeOpTest, BroadcastDeltas) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 1, 2, 3, 4, 5, 6, 7], [5, 6], []]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 8, 10, 10}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 8, 10, 10}));
   test::ExpectTensorEqual<int>(
       *GetOutput(kValuesOutput),
       test::AsTensor<int>({0, 1, 2, 3, 4, 5, 6, 7, 5, 6}));
@@ -100,8 +100,8 @@ TEST_F(RaggedRangeOpTest, BroadcastLimitsAndDeltas) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 1, 2], [], [0, 1]]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 3, 3, 5}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 3, 3, 5}));
   test::ExpectTensorEqual<int>(*GetOutput(kValuesOutput),
                                test::AsTensor<int>({0, 1, 2, 0, 1}));
 }
@@ -114,8 +114,8 @@ TEST_F(RaggedRangeOpTest, BroadcastStartsAndLimits) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 3, 6, 9], [0, 4, 8], [0, 5, 10]]]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 4, 7, 10}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 4, 7, 10}));
   test::ExpectTensorEqual<int>(
       *GetOutput(kValuesOutput),
       test::AsTensor<int>({0, 3, 6, 9, 0, 4, 8, 0, 5, 10}));
@@ -129,8 +129,8 @@ TEST_F(RaggedRangeOpTest, AllScalarInputs) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 1, 2, 3, 4]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 5}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 5}));
   test::ExpectTensorEqual<int>(*GetOutput(kValuesOutput),
                                test::AsTensor<int>({0, 1, 2, 3, 4}));
 }
@@ -184,8 +184,8 @@ TEST_F(RaggedRangeOpTest, EmptyRangePositiveDelta) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 2, 4], []]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 3, 3}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 3, 3}));
   test::ExpectTensorEqual<int>(*GetOutput(kValuesOutput),
                                test::AsTensor<int>({0, 2, 4}));
 }
@@ -198,8 +198,8 @@ TEST_F(RaggedRangeOpTest, EmptyRangeNegativeDelta) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[], [5, 3, 1]]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 0, 3}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 0, 3}));
   test::ExpectTensorEqual<int>(*GetOutput(kValuesOutput),
                                test::AsTensor<int>({5, 3, 1}));
 }

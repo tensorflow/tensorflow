@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.client.graph_util."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
@@ -192,7 +188,7 @@ class GraphUtilTest(test.TestCase):
     graph_def = graph_pb2.GraphDef()
     n1 = graph_def.node.add()
     n1.name = "n1"
-    with self.assertRaisesRegex(TypeError, "must be a list"):
+    with self.assertRaisesRegex(TypeError, "must be an iterable"):
       graph_util.extract_sub_graph(graph_def, "n1")
 
   def create_node_def(self, op, name, inputs):

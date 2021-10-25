@@ -43,6 +43,14 @@ git clone https://github.com/tensorflow/tensorflow
 
 #### Step 2. Edit `app/build.gradle` to use the nightly GPU AAR
 
+Note: You can now target **Android S+** with `targetSdkVersion="S"` in your
+manifest, or `targetSdkVersion "S"` in your Gradle `defaultConfig` (API level
+TBD). In this case, you should merge the contents of
+[`AndroidManifestGpu.xml`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/java/AndroidManifestGpu.xml)
+into your Android application's manifest. Without this change, the GPU delegate
+cannot access OpenCL libraries for acceleration. *AGP 4.2.0 or above is required
+for this to work.*
+
 Add the `tensorflow-lite-gpu` package alongside the existing `tensorflow-lite`
 package in the existing `dependencies` block.
 

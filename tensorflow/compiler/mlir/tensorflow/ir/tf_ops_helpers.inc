@@ -141,6 +141,15 @@ static Type InferReductionOpType(Value input, Value reduction_indices,
   return RankedTensorType::get(out_shape, element_ty);
 }
 
+// Returns the equivalent Value skipping through identity nodes.
+Value LookThroughIdentity(Value result) {
+  while (isa_and_nonnull<IdentityOp, IdentityNOp>(result.getDefiningOp())) {
+    auto op_result = result.cast<OpResult>();
+    result = op_result.getOwner()->getOperand(op_result.getResultNumber());
+  }
+  return result;
+}
+
 // Verifies that the given types are cast compatible. If not, emits appropriate
 // error for the given op. If mask_one_dim is set to true, then the types are
 // allowed to have one mismatching dimension. Masking one of the dimensions is
@@ -275,7 +284,7 @@ SmallVector<int64_t, 4> GetDataFormatPermutation(StringRef from, StringRef to) {
 // on outer dimension only.
 ArrayAttr ShuffleArrayAttr(ArrayAttr attr, ArrayRef<int64_t> permutation,
                            int inner_size = 1) {
-  if (attr.size() == 0) return attr;
+  if (attr.empty()) return attr;
 
   assert(attr.size() % inner_size == 0);
   assert(attr.size() / inner_size == permutation.size());
@@ -314,11 +323,11 @@ static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
   if (perm0.getNumElements() != perm1.getNumElements()) return false;
 
   SmallVector<int64_t, 8> perm0_values;
-  for (const auto &value : perm0.getIntValues())
+  for (const auto &value : perm0.getValues<APInt>())
     perm0_values.push_back(value.getSExtValue());
 
   SmallVector<int64_t, 8> perm1_values;
-  for (const auto &value : perm1.getIntValues())
+  for (const auto &value : perm1.getValues<APInt>())
     perm1_values.push_back(value.getSExtValue());
 
   for (int i = 0; i < perm0_values.size(); ++i) {
@@ -552,35 +561,6 @@ struct DropAttributes : public OpRewritePattern<Op> {
     return success(found);
   }
 };
-
-//===----------------------------------------------------------------------===//
-// TF op helper functions for handling resource handles and ids.
-//===----------------------------------------------------------------------===//
-
-// Returns device of op if present. If op has no device set, an empty string ref
-// is returned instead.
-llvm::StringRef GetDeviceOrEmpty(Operation *op) {
-  if (auto device_attr = op->getAttrOfType<StringAttr>("device"))
-    return device_attr.getValue();
-  return llvm::StringRef();
-}
-
-// Returns resource handle value and id for resource op based on attributes. If
-// a resource handle is anonymous, a new id is always returned.
-ResourceHandleValueAndId GetResourceHandleValueAndIdBase(
-    llvm::StringRef container, llvm::StringRef shared_name,
-    llvm::StringRef device, Value resource,
-    llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
-    int64_t &next_id) {
-  // Always create a new ID for anonymous handle.
-  if (IsResourceHandleAnonymous(shared_name)) return {resource, next_id++};
-
-  ResourceHandle handle(container, shared_name, device, /*op=*/nullptr);
-  auto emplace_res = resource_handle_id_map.try_emplace(handle, next_id);
-  // New ID created, increment next_id.
-  if (emplace_res.second) ++next_id;
-  return {resource, emplace_res.first->second};
-}
 
 // Helper function to create TF op while copying all underscore attributes from
 // another TF op.

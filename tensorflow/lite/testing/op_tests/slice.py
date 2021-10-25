@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for slice."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
@@ -29,7 +25,6 @@ from tensorflow.lite.testing.zip_test_utils import TF_TYPE_INFO
 def make_slice_tests(options):
   """Make a set of tests to do slice."""
 
-  # TODO(renjieliu): add test/support for uint8.
   test_parameters = [
       # 4-D
       {

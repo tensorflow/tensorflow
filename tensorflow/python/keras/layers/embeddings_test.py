@@ -130,13 +130,13 @@ class EmbeddingTest(keras_parameterized.TestCase):
   @testing_utils.enable_v2_dtype_behavior
   def test_mixed_precision_embedding(self):
     try:
-      policy.set_policy('mixed_float16')
+      policy.set_global_policy('mixed_float16')
       layer = keras.layers.Embedding(input_dim=5, output_dim=2)
       self.assertEqual(layer._dtype_policy.name, 'mixed_float16')
       outputs = layer(np.array([0, 1, 2]))
       self.assertEqual(outputs.dtype, 'float16')
     finally:
-      policy.set_policy('float32')
+      policy.set_global_policy('float32')
 
 
 if __name__ == '__main__':

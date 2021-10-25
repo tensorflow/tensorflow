@@ -213,7 +213,7 @@ absl::Status CLArguments::Init(
     const std::map<std::string, std::string>& linkables, CLContext* context,
     Arguments* args, std::string* code) {
   RETURN_IF_ERROR(AllocateObjects(*args, context));
-  RETURN_IF_ERROR(AddObjectArgs(args));
+  RETURN_IF_ERROR(AddObjectArgs(gpu_info, args));
   RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, *args, linkables, code));
   object_refs_ = std::move(args->object_refs_);
   args->GetActiveArguments(kArgsPrefix, *code);
@@ -232,7 +232,7 @@ absl::Status CLArguments::Init(
 absl::Status CLArguments::Init(const GpuInfo& gpu_info, Arguments* args,
                                CLContext* context) {
   RETURN_IF_ERROR(AllocateObjects(*args, context));
-  RETURN_IF_ERROR(AddObjectArgs(args));
+  RETURN_IF_ERROR(AddObjectArgs(gpu_info, args));
   object_refs_ = std::move(args->object_refs_);
   const bool use_f32_for_halfs = gpu_info.IsPowerVR();
   CopyArguments(*args, use_f32_for_halfs);
@@ -251,12 +251,13 @@ absl::Status CLArguments::AllocateObjects(const Arguments& args,
   return absl::OkStatus();
 }
 
-absl::Status CLArguments::AddObjectArgs(Arguments* args) {
+absl::Status CLArguments::AddObjectArgs(const GpuInfo& gpu_info,
+                                        Arguments* args) {
   for (auto& t : args->objects_) {
-    AddGPUResources(t.first, t.second->GetGPUResources(), args);
+    AddGPUResources(t.first, t.second->GetGPUResources(gpu_info), args);
   }
   for (auto& t : args->object_refs_) {
-    AddGPUResources(t.first, t.second->GetGPUResources(), args);
+    AddGPUResources(t.first, t.second->GetGPUResources(gpu_info), args);
   }
   return absl::OkStatus();
 }
@@ -336,18 +337,9 @@ absl::Status CLArguments::ResolveSelector(
     const std::string& object_name, const std::string& selector,
     const std::vector<std::string>& function_args,
     const std::vector<std::string>& template_args, std::string* result) {
-  const GPUObjectDescriptor* desc_ptr;
-  auto it_ref = args.object_refs_.find(object_name);
-  auto it_obj = args.objects_.find(object_name);
-  if (it_ref != args.object_refs_.end()) {
-    desc_ptr = it_ref->second.get();
-  } else if (it_obj != args.objects_.end()) {
-    desc_ptr = it_obj->second.get();
-  } else {
-    return absl::NotFoundError(
-        absl::StrCat("No object with name - ", object_name));
-  }
-  auto names = desc_ptr->GetGPUResources().GetNames();
+  GPUObjectDescriptor* desc_ptr;
+  RETURN_IF_ERROR(args.GetDescriptor(object_name, &desc_ptr));
+  auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
   if (tensor_desc && (selector == "Write" || selector == "Linking")) {
     auto it = linkables.find(object_name);

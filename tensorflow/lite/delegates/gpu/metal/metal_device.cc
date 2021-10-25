@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 
+#import <sys/utsname.h>
+
 #include <string>
 
 namespace tflite {
@@ -25,6 +27,18 @@ GpuInfo CreateGpuInfoFromMetalDevice(id<MTLDevice> device) {
   std::string device_name = std::string([[device name] UTF8String]);
   GpuInfo gpu_info;
   GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
+
+  if (gpu_info.apple_info.gpu_type == AppleGpu::kA15) {
+    struct utsname system_info;
+    uname(&system_info);
+    const std::string gadget_name(system_info.machine);
+    // iPhone 13 mini(iPhone14,4) and iPhone 13(iPhone14,5) have A15 with 4 core
+    // GPU.
+    // In general A15 GPU has 5 cores.
+    if (gadget_name == "iPhone14,4" || gadget_name == "iPhone14,5") {
+      gpu_info.apple_info.SetComputeUnits(4);
+    }
+  }
 
   if (@available(macOS 10.11, iOS 9.0, tvOS 9.0, *)) {
     MTLSize threadsPerGroup = [device maxThreadsPerThreadgroup];

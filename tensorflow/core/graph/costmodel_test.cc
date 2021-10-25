@@ -94,7 +94,7 @@ TEST(CostModelTest, GlobalId) {
   ASSERT_EQ(cost_graph_def.node_size(), 12);
   absl::flat_hash_map<int32, const CostGraphDef::Node> ids;
   for (auto node : cost_graph_def.node()) {
-    int32 index = node.id();
+    int32_t index = node.id();
     auto result = ids.insert({index, node});
     EXPECT_TRUE(result.second);
   }

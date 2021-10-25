@@ -57,7 +57,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_SimpleFunction) {
   const string arg0 = "Func/y/input/_0";
   const string ret0 = "Func/y/output/_1";
 
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   GraphDef expected = test::function::GDef(
       {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
        NDef(arg0, "Identity", {"x"}, {{"T", DT_FLOAT}}),
@@ -253,7 +253,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithoutInput) {
 
   FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   FunctionDef func = FunctionDefHelper::Define(
       // Name
       "GenerateTwo",
@@ -1883,9 +1883,9 @@ TEST_F(FunctionOptimizerTest, SpecializeFunctionForUsedOutputTensors) {
     // And all consumers of specialized function nodes must be mapped to new
     // output ports.
     if (node.name() == "use_fn3_1" && ++found) {
-      EXPECT_EQ("fn3:0", node.input(0));
+      EXPECT_EQ("fn3", node.input(0));
     } else if (node.name() == "use_fn4_2" && ++found) {
-      EXPECT_EQ("fn4:0", node.input(0));
+      EXPECT_EQ("fn4", node.input(0));
     } else if (node.name() == "use_fn5_0" && ++found) {
       EXPECT_EQ("fn5", node.input(0));
     } else if (node.name() == "use_fn5_2" && ++found) {
@@ -2044,9 +2044,9 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionForUsedOutputTensors) {
     // And all consumers of specialized function nodes must be mapped to new
     // output ports.
     if (node.name() == "use_fn3_1" && ++found) {
-      EXPECT_EQ("fn3:0", node.input(0));
+      EXPECT_EQ("fn3", node.input(0));
     } else if (node.name() == "use_fn4_2" && ++found) {
-      EXPECT_EQ("fn4:0", node.input(0));
+      EXPECT_EQ("fn4", node.input(0));
     } else if (node.name() == "use_fn5_0" && ++found) {
       EXPECT_EQ("fn5", node.input(0));
     } else if (node.name() == "use_fn5_2" && ++found) {

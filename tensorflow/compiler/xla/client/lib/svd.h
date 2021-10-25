@@ -41,7 +41,7 @@ struct SVDResult {
 // TODO(kuny): Add a bool flag that supports SVD with economy (reduced)
 // representation, which is more memory efficient, especially in the case of
 // tall-skinny matrices.
-SVDResult SVD(XlaOp a, int64 max_iter = 100, float epsilon = 1e-6,
+SVDResult SVD(XlaOp a, int64_t max_iter = 100, float epsilon = 1e-6,
               PrecisionConfig::Precision precision = PrecisionConfig::HIGHEST);
 
 }  // namespace xla

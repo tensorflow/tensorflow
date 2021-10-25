@@ -1291,22 +1291,15 @@ Status MutableGraphView::UpdateFanin(absl::string_view node_name,
   const int num_regular_fanins =
       NumFanins(*node, /*include_controlling_nodes=*/false);
   bool modified = false;
-  absl::flat_hash_set<InputPort>* from_fanin_port_fanouts = nullptr;
-  absl::flat_hash_set<InputPort>* to_fanin_port_fanouts = nullptr;
   for (int i = 0; i < num_regular_fanins; ++i) {
     if (ParseTensorName(node->input(i)) == from_fanin) {
       InputPort input(node, i);
-      if (from_fanin_port_fanouts == nullptr) {
-        OutputPort from_fanin_port(from_fanin_node, from_fanin.index());
-        from_fanin_port_fanouts = &fanouts()[from_fanin_port];
-      }
-      from_fanin_port_fanouts->erase(input);
 
-      if (to_fanin_port_fanouts == nullptr) {
-        OutputPort to_fanin_port(to_fanin_node, to_fanin.index());
-        to_fanin_port_fanouts = &fanouts()[to_fanin_port];
-      }
-      to_fanin_port_fanouts->insert(input);
+      OutputPort from_fanin_port(from_fanin_node, from_fanin.index());
+      fanouts()[from_fanin_port].erase(input);
+
+      OutputPort to_fanin_port(to_fanin_node, to_fanin.index());
+      fanouts()[to_fanin_port].insert(input);
 
       node->set_input(i, to_fanin_string);
       modified = true;
@@ -1315,8 +1308,9 @@ Status MutableGraphView::UpdateFanin(absl::string_view node_name,
 
   // Dedup control dependencies and update max regular output ports.
   if (modified) {
+    OutputPort from_fanin_port(from_fanin_node, from_fanin.index());
     UpdateMaxRegularOutputPortForRemovedFanin(
-        {from_fanin_node, from_fanin.index()}, *from_fanin_port_fanouts);
+        {from_fanin_node, from_fanin.index()}, fanouts()[from_fanin_port]);
     if (max_regular_output_port()[to_fanin_node] < to_fanin.index()) {
       max_regular_output_port()[to_fanin_node] = to_fanin.index();
     }

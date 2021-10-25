@@ -36,14 +36,11 @@ class WhileTest : public ControlFlowOpTest {};
 
 // The test builds a model that produces the i-th number of
 // triangular number sequence.
-//
-// TODO(ycling): Consider to improve this test case by adding a
-// concat into the body subgraph.
 TEST_F(WhileTest, TestTriangularNumberSequence) {
   const std::vector<int> expected = {1, 3, 6, 10, 15, 21, 28};
   for (int i = 0; i < expected.size(); ++i) {
     interpreter_.reset(new Interpreter);
-    interpreter_->AddSubgraphs(2);
+    AddSubgraphs(2);
     builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), i);
     builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
     builder_->BuildWhileSubgraph(&interpreter_->primary_subgraph());
@@ -64,7 +61,7 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
 
 TEST_F(WhileTest, TestPadLoop) {
   interpreter_.reset(new Interpreter);
-  interpreter_->AddSubgraphs(2);
+  AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), 3);
   builder_->BuildPadLoopBodySubgraph(interpreter_->subgraph(2), {1, 2});
   builder_->BuildWhileSubgraph(&interpreter_->primary_subgraph());
@@ -90,7 +87,7 @@ TEST_F(WhileTest, TestPadLoop) {
 
 TEST_F(WhileTest, TestWhileLoopWithDynamicTensor) {
   interpreter_.reset(new Interpreter);
-  interpreter_->AddSubgraphs(2);
+  AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraphWithDynamicTensor(
       interpreter_->subgraph(1), 3);
   builder_->BuildBodySubgraphWithDynamicTensor(interpreter_->subgraph(2));

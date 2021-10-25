@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/assert_next_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 
@@ -132,10 +132,10 @@ AssertNextDatasetParams ShortAssertNextDatasetParams() {
 std::vector<GetNextTestCase<AssertNextDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/AssertNextDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}})},
           {/*dataset_params=*/AssertNextDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}})}};
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(AssertNextDatasetOpTest, AssertNextDatasetParams,
@@ -196,11 +196,11 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/AssertNextDatasetParams1(),
            /*breakpoints*/ {0, 2, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}})},
           {/*dataset_params=*/AssertNextDatasetParams2(),
            /*breakpoints*/ {0, 2, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}})}};
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}})}};
 }
 
 ITERATOR_SAVE_AND_RESTORE_TEST_P(AssertNextDatasetOpTest,

@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-int32 GetValue(int32 v) { return v; }
+int32 GetValue(int32_t v) { return v; }
 
 template <typename T>
 class RangeOp : public OpKernel {
@@ -71,16 +71,20 @@ class RangeOp : public OpKernel {
           errors::InvalidArgument(
               "Requires start >= limit when delta < 0: ", start, "/", limit));
     }
-    int64 size = (std::is_integral<T>::value
-                      ? ((std::abs(limit - start) + std::abs(delta) - 1) /
-                         std::abs(delta))
-                      : std::ceil(std::abs((limit - start) / delta)));
+    int64_t size = 0;
+    if (std::is_integral<T>::value) {
+      size = static_cast<int64_t>(
+          (std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta));
+    } else {
+      size = static_cast<int64_t>(std::ceil(std::abs((limit - start) / delta)));
+    }
+    TensorShape shape;
+    OP_REQUIRES_OK(context, shape.AddDimWithStatus(size));
     Tensor* out = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, TensorShape({size}), &out));
+    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
     auto flat = out->flat<T>();
     T val = start;
-    for (int64 i = 0; i < size; ++i) {
+    for (int64_t i = 0; i < size; ++i) {
       flat(i) = T(val);
       val += delta;
     }
@@ -168,19 +172,16 @@ class LinSpaceOp : public OpKernel {
 
 #define REGISTER_KERNEL_ALL_NUMS(dev, T) \
   REGISTER_KERNEL(dev, T, int32);        \
-  REGISTER_KERNEL(dev, T, int64)
+  REGISTER_KERNEL(dev, T, int64_t)
 
 #define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL_ALL_NUMS(DEVICE_CPU, T)
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 
-// NOTE(touts): We register the op on GPU but it still runs on CPU
-// because its inputs and outputs are tagged as HostMemory.
-#define REGISTER_GPU_KERNEL(T) REGISTER_KERNEL_ALL_NUMS(DEVICE_GPU, T)
-TF_CALL_float(REGISTER_GPU_KERNEL);
-TF_CALL_double(REGISTER_GPU_KERNEL);
-#undef REGISTER_GPU_KERNEL
-
+#define REGISTER_DEFAULT_KERNEL(T) REGISTER_KERNEL_ALL_NUMS(DEVICE_DEFAULT, T)
+TF_CALL_float(REGISTER_DEFAULT_KERNEL);
+TF_CALL_double(REGISTER_DEFAULT_KERNEL);
+#undef REGISTER_DEFAULT_KERNEL
 
 #undef REGISTER_CPU_KERNEL
 #undef REGISTER_KERNEL_ALL_NUMS

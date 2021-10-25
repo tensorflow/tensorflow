@@ -210,7 +210,7 @@ class MklReorderWithScalePrimitiveFactory : public MklPrimitiveFactory<T> {
 
 // Quantizes a tensor from float to T, with user-specified min_range and
 // max_range.
-template <typename Device, typename T>
+template <typename Device, typename T, bool native_format = false>
 class MklQuantizeV2Op : public OpKernel {
  public:
   explicit MklQuantizeV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -271,24 +271,24 @@ class MklQuantizeV2Op : public OpKernel {
 
     Tensor* output_tensor = nullptr;
     AllocateOutputSetMklShape(ctx, 0, &output_tensor, src_tensor.shape(),
-                              output_mkl_shape);
+                              output_mkl_shape, native_format);
     TensorShape min_tf_shape = {};
     MklDnnShape min_mkl_shape;
     min_mkl_shape.SetMklTensor(false);
     Tensor* output_min_tensor = nullptr;
     AllocateOutputSetMklShape(ctx, 1, &output_min_tensor, min_tf_shape,
-                              min_mkl_shape);
+                              min_mkl_shape, native_format);
     TensorShape max_tf_shape = {};
     MklDnnShape max_mkl_shape;
     max_mkl_shape.SetMklTensor(false);
     Tensor* output_max_tensor = nullptr;
     AllocateOutputSetMklShape(ctx, 2, &output_max_tensor, max_tf_shape,
-                              max_mkl_shape);
+                              max_mkl_shape, native_format);
 
     // Estimate scale for quantization
     float scale_factor = 0;
     const int number_of_bits = sizeof(T) * 8;
-    const int64 number_of_steps = static_cast<int64>(1) << number_of_bits;
+    const int64 number_of_steps = static_cast<int64_t>(1) << number_of_bits;
     scale_factor = (number_of_steps - 1.0) / (max_range - min_range);
 
     float* src_data = const_cast<float*>(src_tensor.flat<float>().data());
@@ -330,7 +330,7 @@ class MklQuantizeV2Op : public OpKernel {
     auto cpu_engine = engine(engine::kind::cpu, 0);
     const Tensor& src_tensor = MklGetInput(ctx, src_idx);
     MklDnnShape src_mkl_shape;
-    GetMklShape(ctx, src_idx, &src_mkl_shape);
+    GetMklShape(ctx, src_idx, &src_mkl_shape, native_format);
     auto src_tf_shape = src_mkl_shape.IsMklTensor() ? src_mkl_shape.GetTfShape()
                                                     : src_tensor.shape();
     auto src_dims = src_mkl_shape.IsMklTensor()
@@ -419,7 +419,7 @@ class MklQuantizeV2Op : public OpKernel {
 
     Tensor* output_tensor = nullptr;
     AllocateOutputSetMklShape(ctx, 0, &output_tensor, output_tf_shape,
-                              output_mkl_shape);
+                              output_mkl_shape, native_format);
     dst.SetUsrMem(dst_md, output_tensor);
 
     TensorShape min_tf_shape = {};
@@ -427,13 +427,13 @@ class MklQuantizeV2Op : public OpKernel {
     min_mkl_shape.SetMklTensor(false);
     Tensor* output_min_tensor = nullptr;
     AllocateOutputSetMklShape(ctx, 1, &output_min_tensor, min_tf_shape,
-                              min_mkl_shape);
+                              min_mkl_shape, native_format);
     TensorShape max_tf_shape = {};
     MklDnnShape max_mkl_shape;
     max_mkl_shape.SetMklTensor(false);
     Tensor* output_max_tensor = nullptr;
     AllocateOutputSetMklShape(ctx, 2, &output_max_tensor, max_tf_shape,
-                              max_mkl_shape);
+                              max_mkl_shape, native_format);
 
     float scale_factor = 0;
     if (mode_ == QUANTIZE_MODE_SCALED) {
@@ -461,7 +461,7 @@ class MklQuantizeV2Op : public OpKernel {
     } else if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
       // Estimate scale for qunatization
       const int number_of_bits = sizeof(T) * 8;
-      const int64 number_of_steps = static_cast<int64>(1) << number_of_bits;
+      const int64 number_of_steps = static_cast<int64_t>(1) << number_of_bits;
       scale_factor = (number_of_steps - 1.0) / (max_range - min_range);
     }
 
@@ -495,12 +495,12 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklQuantizeV2Op<CPUDevice, quint8>);
+                        MklQuantizeV2Op<CPUDevice, quint8, true>);
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklQuantizeV2Op<CPUDevice, qint8>);
+                        MklQuantizeV2Op<CPUDevice, qint8, true>);
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

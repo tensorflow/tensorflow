@@ -161,6 +161,42 @@ void TFLogSinks::SendToSink(TFLogSink& sink, const TFLogEntry& entry) {
   sink.WaitTillSent();
 }
 
+// A class for managing the text file to which VLOG output is written.
+// If the environment variable TF_CPP_VLOG_FILENAME is set, all VLOG
+// calls are redirected from stderr to a file with corresponding name.
+class VlogFileMgr {
+ public:
+  // Determines if the env variable is set and if necessary
+  // opens the file for write access.
+  VlogFileMgr();
+  // Closes the file.
+  ~VlogFileMgr();
+  // Returns either a pointer to the file or stderr.
+  FILE* FilePtr() const;
+
+ private:
+  FILE* vlog_file_ptr;
+  char* vlog_file_name;
+};
+
+VlogFileMgr::VlogFileMgr() {
+  vlog_file_name = getenv("TF_CPP_VLOG_FILENAME");
+  vlog_file_ptr =
+      vlog_file_name == nullptr ? nullptr : fopen(vlog_file_name, "w");
+
+  if (vlog_file_ptr == nullptr) {
+    vlog_file_ptr = stderr;
+  }
+}
+
+VlogFileMgr::~VlogFileMgr() {
+  if (vlog_file_ptr != stderr) {
+    fclose(vlog_file_ptr);
+  }
+}
+
+FILE* VlogFileMgr::FilePtr() const { return vlog_file_ptr; }
+
 int ParseInteger(const char* str, size_t size) {
   // Ideally we would use env_var / safe_strto64, but it is
   // hard to use here without pulling in a lot of dependencies,
@@ -173,7 +209,7 @@ int ParseInteger(const char* str, size_t size) {
 }
 
 // Parse log level (int64) from environment variable (char*)
-int64 LogLevelStrToInt(const char* tf_env_var_val) {
+int64_t LogLevelStrToInt(const char* tf_env_var_val) {
   if (tf_env_var_val == nullptr) {
     return 0;
   }
@@ -256,7 +292,7 @@ bool EmitThreadIdFromEnv() {
 
 }  // namespace
 
-int64 MinLogLevelFromEnv() {
+int64_t MinLogLevelFromEnv() {
   // We don't want to print logs during fuzzing as that would slow fuzzing down
   // by almost 2x. So, if we are in fuzzing mode (not just running a test), we
   // return a value so that nothing is actually printed. Since LOG uses >=
@@ -271,7 +307,7 @@ int64 MinLogLevelFromEnv() {
 #endif
 }
 
-int64 MaxVLogLevelFromEnv() {
+int64_t MaxVLogLevelFromEnv() {
   // We don't want to print logs during fuzzing as that would slow fuzzing down
   // by almost 2x. So, if we are in fuzzing mode (not just running a test), we
   // return a value so that nothing is actually printed. Since VLOG uses <=
@@ -297,7 +333,7 @@ LogMessage& LogMessage::AtLocation(const char* fname, int line) {
 
 LogMessage::~LogMessage() {
   // Read the min log level once during the first call to logging.
-  static int64 min_log_level = MinLogLevelFromEnv();
+  static int64_t min_log_level = MinLogLevelFromEnv();
   if (severity_ >= min_log_level) {
     GenerateLogMessage();
   }
@@ -307,8 +343,8 @@ void LogMessage::GenerateLogMessage() {
   TFLogSinks::Instance().Send(TFLogEntry(severity_, fname_, line_, str()));
 }
 
-int64 LogMessage::MaxVLogLevel() {
-  static int64 max_vlog_level = MaxVLogLevelFromEnv();
+int64_t LogMessage::MaxVLogLevel() {
+  static int64_t max_vlog_level = MaxVLogLevelFromEnv();
   return max_vlog_level;
 }
 
@@ -427,8 +463,8 @@ bool LogEveryPow2State::ShouldLog(int ignored) {
 
 bool LogEveryNSecState::ShouldLog(double seconds) {
   LossyIncrement(&counter_);
-  const int64 now_cycles = absl::base_internal::CycleClock::Now();
-  int64 next_cycles = next_log_time_cycles_.load(std::memory_order_relaxed);
+  const int64_t now_cycles = absl::base_internal::CycleClock::Now();
+  int64_t next_cycles = next_log_time_cycles_.load(std::memory_order_relaxed);
   do {
     if (now_cycles <= next_cycles) return false;
   } while (!next_log_time_cycles_.compare_exchange_weak(
@@ -494,10 +530,11 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
     abort();
   }
 #else   // PLATFORM_POSIX_ANDROID
+  static const internal::VlogFileMgr vlog_file;
   static bool log_thread_id = internal::EmitThreadIdFromEnv();
   uint64 now_micros = EnvTime::NowMicros();
   time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
-  int32 micros_remainder = static_cast<int32>(now_micros % 1000000);
+  int32_t micros_remainder = static_cast<int32>(now_micros % 1000000);
   const size_t time_buffer_size = 30;
   char time_buffer[time_buffer_size];
   strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S",
@@ -533,10 +570,9 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
       break;
   }
 
-  // TODO(jeff,sanjay): Replace this with something that logs through the env.
-  fprintf(stderr, "%s.%06d: %c%s %s:%d] %s\n", time_buffer, micros_remainder,
-          sev, tid_buffer, entry.FName().c_str(), entry.Line(),
-          entry.ToString().c_str());
+  fprintf(vlog_file.FilePtr(), "%s.%06d: %c%s %s:%d] %s\n", time_buffer,
+          micros_remainder, sev, tid_buffer, entry.FName().c_str(),
+          entry.Line(), entry.ToString().c_str());
 #endif  // PLATFORM_POSIX_ANDROID
 }
 

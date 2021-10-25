@@ -26,10 +26,10 @@ OneTimeScratchAllocator::OneTimeScratchAllocator(Stream* stream)
     : stream_(stream) {}
 OneTimeScratchAllocator::~OneTimeScratchAllocator() {}
 
-int64 OneTimeScratchAllocator::GetMemoryLimitInBytes() { return -1; }
+int64_t OneTimeScratchAllocator::GetMemoryLimitInBytes() { return -1; }
 
 port::StatusOr<DeviceMemory<uint8>> OneTimeScratchAllocator::AllocateBytes(
-    int64 byte_size) {
+    int64_t byte_size) {
   CHECK(temporary_ == nullptr);
   SE_ASSIGN_OR_RETURN(temporary_,
                       stream_->AllocateTemporaryArray<uint8>(byte_size));

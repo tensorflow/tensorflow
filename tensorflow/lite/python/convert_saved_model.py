@@ -14,12 +14,11 @@
 # ==============================================================================
 """Functions to convert SavedModel to frozen GraphDefs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from tensorflow.lite.python import util
 from tensorflow.core.framework import types_pb2
+from tensorflow.lite.python import util
+from tensorflow.lite.python.convert_phase import Component
+from tensorflow.lite.python.convert_phase import convert_phase
+from tensorflow.lite.python.convert_phase import SubComponent
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -152,6 +151,7 @@ def _get_tensors(graph, signature_def_tensor_names=None,
   return tensors
 
 
+@convert_phase(Component.PREPARE_TF_MODEL, SubComponent.FREEZE_SAVED_MODEL)
 def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
                        output_arrays, tag_set, signature_key):
   """Converts a SavedModel to a frozen graph.

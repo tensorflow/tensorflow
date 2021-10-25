@@ -16,10 +16,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/cpu_info.h"
@@ -182,7 +182,9 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       return "ThreadPoolDatasetOp::Dataset";
     }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64_t CardinalityInternal() const override {
+      return input_->Cardinality();
+    }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
@@ -268,11 +270,11 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          int64 max_intra_op_parallelism)
+          int64_t max_intra_op_parallelism)
       : Dataset(DatasetContext(ctx), input, max_intra_op_parallelism) {}
 
   Dataset(DatasetContext&& ctx, const DatasetBase* input,
-          int64 max_intra_op_parallelism)
+          int64_t max_intra_op_parallelism)
       : DatasetBase(std::move(ctx)),
         input_(input),
         max_intra_op_parallelism_(max_intra_op_parallelism),
@@ -302,7 +304,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
     return "MaxIntraOpParallelismDatasetOp::Dataset";
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
@@ -351,8 +353,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeKnownRatioNode(std::move(args),
-                                       /*ratio=*/1);
+      return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
     }
 
     Status SaveInternal(SerializationContext* ctx,
@@ -377,13 +378,13 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
   };
 
   const DatasetBase* const input_;
-  const int64 max_intra_op_parallelism_;
+  const int64_t max_intra_op_parallelism_;
   const TraceMeMetadata traceme_metadata_;
 };
 
 /* static */
 void MaxIntraOpParallelismDatasetOp::MakeDatasetFromOptions(
-    OpKernelContext* ctx, DatasetBase* input, int32 max_intra_op_parallelism,
+    OpKernelContext* ctx, DatasetBase* input, int32_t max_intra_op_parallelism,
     DatasetBase** output) {
   OP_REQUIRES(
       ctx, max_intra_op_parallelism >= 0,
@@ -397,10 +398,10 @@ void MaxIntraOpParallelismDatasetOp::MakeDatasetFromOptions(
 void MaxIntraOpParallelismDatasetOp::MakeDataset(OpKernelContext* ctx,
                                                  DatasetBase* input,
                                                  DatasetBase** output) {
-  int64 max_intra_op_parallelism;
+  int64_t max_intra_op_parallelism;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, "max_intra_op_parallelism",
-                                            &max_intra_op_parallelism));
+                 ParseScalarArgument<int64_t>(ctx, "max_intra_op_parallelism",
+                                              &max_intra_op_parallelism));
   OP_REQUIRES(
       ctx, max_intra_op_parallelism >= 0,
       errors::InvalidArgument("`max_intra_op_parallelism` must be >= 0"));
@@ -444,7 +445,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
     return "PrivateThreadPoolDatasetOp::Dataset";
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
@@ -520,7 +521,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
   };
 
   const DatasetBase* const input_;
-  const int64 num_threads_;
+  const int64_t num_threads_;
   const TraceMeMetadata traceme_metadata_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 };
@@ -528,7 +529,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
 /* static */
 void PrivateThreadPoolDatasetOp::MakeDatasetFromOptions(OpKernelContext* ctx,
                                                         DatasetBase* input,
-                                                        int32 num_threads,
+                                                        int32_t num_threads,
                                                         DatasetBase** output) {
   OP_REQUIRES(ctx, num_threads >= 0,
               errors::InvalidArgument("`num_threads` must be >= 0"));
@@ -542,9 +543,9 @@ void PrivateThreadPoolDatasetOp::MakeDatasetFromOptions(OpKernelContext* ctx,
 void PrivateThreadPoolDatasetOp::MakeDataset(OpKernelContext* ctx,
                                              DatasetBase* input,
                                              DatasetBase** output) {
-  int64 num_threads = 0;
-  OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, "num_threads", &num_threads));
+  int64_t num_threads = 0;
+  OP_REQUIRES_OK(
+      ctx, ParseScalarArgument<int64_t>(ctx, "num_threads", &num_threads));
   OP_REQUIRES(ctx, num_threads >= 0,
               errors::InvalidArgument("`num_threads` must be >= 0"));
   *output = new Dataset(ctx, input, num_threads);

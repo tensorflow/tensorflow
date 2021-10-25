@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace shape_inference {
@@ -46,7 +47,7 @@ OpDef MakeOpDefWithLists() {
   return op_reg_data.op_def;
 }
 
-PartialTensorShape S(std::initializer_list<int64> dims) {
+PartialTensorShape S(std::initializer_list<int64_t> dims) {
   return PartialTensorShape(dims);
 }
 
@@ -352,8 +353,9 @@ TEST_F(ShapeInferenceTest, WithRank) {
 
   // WithRank on shape with known dimensionality.
   s1 = in1;
-  EXPECT_EQ("Invalid argument: Shape must be rank 2 but is rank 3",
-            c.WithRank(in1, 2, &s1).ToString());
+  Status status = c.WithRank(in1, 2, &s1);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(), "Shape must be rank 2 but is rank 3");
   EXPECT_FALSE(IsSet(s1));
   EXPECT_TRUE(c.WithRank(in1, 3, &s1).ok());
   EXPECT_TRUE(SameHandle(s1, in1));
@@ -384,9 +386,10 @@ TEST_F(ShapeInferenceTest, WithRankAtMost) {
 
   // WithRankAtMost on shape with known dimensionality.
   s1 = in1;
-  EXPECT_CONTAINS(
-      c.WithRankAtMost(in1, 2, &s1).ToString(),
-      "Invalid argument: Shape must be at most rank 2 but is rank 3");
+  Status status = c.WithRankAtMost(in1, 2, &s1);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(),
+                  "Shape must be at most rank 2 but is rank 3");
 
   EXPECT_FALSE(IsSet(s1));
   EXPECT_TRUE(c.WithRankAtMost(in1, 3, &s1).ok());
@@ -422,9 +425,10 @@ TEST_F(ShapeInferenceTest, WithRankAtLeast) {
 
   // WithRankAtLeast on shape with known dimensionality.
   s1 = in1;
-  EXPECT_CONTAINS(
-      c.WithRankAtLeast(in1, 4, &s1).ToString(),
-      "Invalid argument: Shape must be at least rank 4 but is rank 3");
+  Status status = c.WithRankAtLeast(in1, 4, &s1);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(),
+                  "Shape must be at least rank 4 but is rank 3");
 
   EXPECT_FALSE(IsSet(s1));
   EXPECT_TRUE(c.WithRankAtLeast(in1, 3, &s1).ok());
@@ -464,12 +468,14 @@ TEST_F(ShapeInferenceTest, WithValue) {
   // WithValue on dimension with known size.
   out1 = d0;
 
-  EXPECT_CONTAINS(c.WithValue(d0, 0, &out1).ToString(),
-                  "Invalid argument: Dimension must be 0 but is 1");
+  Status status = c.WithValue(d0, 0, &out1);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(), "Dimension must be 0 but is 1");
   EXPECT_FALSE(IsSet(out1));
   out1 = d0;
-  EXPECT_CONTAINS(c.WithValue(d0, 2, &out1).ToString(),
-                  "Invalid argument: Dimension must be 2 but is 1");
+  status = c.WithValue(d0, 2, &out1);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(), "Dimension must be 2 but is 1");
 
   EXPECT_FALSE(IsSet(out1));
   EXPECT_TRUE(c.WithValue(d0, 1, &out1).ok());
@@ -528,14 +534,16 @@ TEST_F(ShapeInferenceTest, MergeDim) {
   EXPECT_EQ(3, merged_dims.size());
 
   // Merging unequal values is an error.
-  EXPECT_CONTAINS(
-      c.Merge(d2, d1, &out).ToString(),
-      "Invalid argument: Dimensions must be equal, but are 2 and 1");
+  Status status = c.Merge(d2, d1, &out);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(),
+                  "Dimensions must be equal, but are 2 and 1");
 
   EXPECT_FALSE(IsSet(out));
-  EXPECT_CONTAINS(
-      c.Merge(d1, d2, &out).ToString(),
-      "Invalid argument: Dimensions must be equal, but are 1 and 2");
+  status = c.Merge(d1, d2, &out);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(),
+                  "Dimensions must be equal, but are 1 and 2");
 
   EXPECT_FALSE(IsSet(out));
 
@@ -742,23 +750,24 @@ TEST_F(ShapeInferenceTest, MergeShape) {
 
   // Incompatible merges give errors and set out to nullptr.
   out = s_unknown;
-  EXPECT_CONTAINS(
-      c.Merge(s_u_2, s_1_3, &out).ToString(),
-      "Invalid argument: Dimension 1 in both shapes must be equal, but "
-      "are 2 and 3");
+  Status status = c.Merge(s_u_2, s_1_3, &out);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(),
+                  "Dimension 1 in both shapes must be equal, but are 2 and 3");
 
   EXPECT_FALSE(IsSet(out));
   out = s_unknown;
-  EXPECT_CONTAINS(
-      c.Merge(s_1_3, s_u_2, &out).ToString(),
-      "Invalid argument: Dimension 1 in both shapes must be equal, but "
-      "are 3 and 2");
+  status = c.Merge(s_1_3, s_u_2, &out);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(),
+                  "Dimension 1 in both shapes must be equal, but are 3 and 2");
 
   EXPECT_FALSE(IsSet(out));
   out = s_unknown;
-  EXPECT_CONTAINS(
-      c.Merge(s_1, s_1_2, &out).ToString(),
-      "Invalid argument: Shapes must be equal rank, but are 1 and 2");
+  status = c.Merge(s_1, s_1_2, &out);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(),
+                  "Shapes must be equal rank, but are 1 and 2");
 
   EXPECT_FALSE(IsSet(out));
 
@@ -805,18 +814,20 @@ TEST_F(ShapeInferenceTest, MergePrefix) {
   // Incompatible merges give errors and set outs to nullptr.
   s_out = s_unknown;
   s_prefix_out = s_unknown;
-  EXPECT_CONTAINS(
-      c.MergePrefix(s_1_u_3, s_2_4, &s_out, &s_prefix_out).ToString(),
-      "Invalid argument: Dimensions must be equal, but are 1 and 2");
+  Status status = c.MergePrefix(s_1_u_3, s_2_4, &s_out, &s_prefix_out);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(),
+                  "Dimensions must be equal, but are 1 and 2");
 
   EXPECT_FALSE(IsSet(s_out));
   EXPECT_FALSE(IsSet(s_prefix_out));
 
   s_out = s_unknown;
   s_prefix_out = s_unknown;
-  EXPECT_CONTAINS(
-      c.MergePrefix(s_2_4, s_1_u_3, &s_out, &s_prefix_out).ToString(),
-      "Invalid argument: Shape must be at least rank 3 but is rank 2");
+  status = c.MergePrefix(s_2_4, s_1_u_3, &s_out, &s_prefix_out);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(),
+                  "Shape must be at least rank 3 but is rank 2");
   EXPECT_FALSE(IsSet(s_out));
   EXPECT_FALSE(IsSet(s_prefix_out));
 }
@@ -874,21 +885,25 @@ TEST_F(ShapeInferenceTest, Subshape) {
 
   // Errors.
   out = unknown;
+  Status status = c.Subshape(in0, 6, -3, &out);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
   EXPECT_CONTAINS(
-      c.Subshape(in0, 6, -3, &out).ToString(),
-      "Invalid argument: Subshape must have computed start <= end, but is 5 "
+      status.error_message(),
+      "Subshape must have computed start <= end, but is 5 "
       "and 2 (computed from start 6 and end -3 over shape with rank 5)");
   EXPECT_FALSE(IsSet(out));
   out = unknown;
-  EXPECT_CONTAINS(c.Subshape(in0, -50, 100, &out).ToString(),
-                  "Invalid argument: Subshape start out of "
-                  "bounds: -50, for shape with rank 5");
+  status = c.Subshape(in0, -50, 100, &out);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(),
+                  "Subshape start out of bounds: -50, for shape with rank 5");
 
   EXPECT_FALSE(IsSet(out));
   out = unknown;
-  EXPECT_CONTAINS(c.Subshape(in0, 0, -50, &out).ToString(),
-                  "Invalid argument: Subshape end out of "
-                  "bounds: -50, for shape with rank 5");
+  status = c.Subshape(in0, 0, -50, &out);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_CONTAINS(status.error_message(),
+                  "Subshape end out of bounds: -50, for shape with rank 5");
 
   EXPECT_FALSE(IsSet(out));
 }
@@ -1087,13 +1102,13 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   t = ::tensorflow::test::AsTensor<int32>({1, 2, 3});
   EXPECT_EQ("[1,2,3]", create(&t));
 
-  t = ::tensorflow::test::AsTensor<int64>({3, 2, 1});
+  t = ::tensorflow::test::AsTensor<int64_t>({3, 2, 1});
   EXPECT_EQ("[3,2,1]", create(&t));
 
-  t = ::tensorflow::test::AsTensor<int64>({3, -1, 1});
+  t = ::tensorflow::test::AsTensor<int64_t>({3, -1, 1});
   EXPECT_EQ("[3,?,1]", create(&t));
 
-  t = ::tensorflow::test::AsTensor<int64>({});
+  t = ::tensorflow::test::AsTensor<int64_t>({});
   EXPECT_EQ("[]", create(&t));
 
   // Test negative scalar
@@ -1115,7 +1130,7 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   EXPECT_CONTAINS(s_matrix, "Input tensor must be rank 1, but was rank 2");
 
   // Test negative values for the dims.
-  t = ::tensorflow::test::AsTensor<int64>({3, -2, 1});
+  t = ::tensorflow::test::AsTensor<int64_t>({3, -2, 1});
   EXPECT_CONTAINS(create(&t), "Invalid value in tensor used for shape: -2");
 
   // Test negative values for the dims.
@@ -1266,8 +1281,8 @@ TEST_F(ShapeInferenceTest, MakeDimForScalarInput) {
                   "non-negative but is -1");
 
   // Same tests, with int64 values.
-  t1 = tensorflow::test::AsScalar<int64>(20);
-  t2 = tensorflow::test::AsScalar<int64>(-1);
+  t1 = tensorflow::test::AsScalar<int64_t>(20);
+  t2 = tensorflow::test::AsScalar<int64_t>(-1);
   EXPECT_TRUE(c.MakeDimForScalarInput(0, &d).ok());
   EXPECT_EQ("20", c.DebugString(d));
 
@@ -1380,22 +1395,23 @@ TEST_F(ShapeInferenceTest, Add) {
   // Test addition.
   EXPECT_TRUE(c.Add(d_6, 2, &out).ok());
   EXPECT_EQ("8", c.DebugString(out));
-  EXPECT_TRUE(c.Add(d_6, std::numeric_limits<int64>::max() - 6, &out).ok());
-  EXPECT_EQ(std::numeric_limits<int64>::max(), c.Value(out));
+  EXPECT_TRUE(c.Add(d_6, std::numeric_limits<int64_t>::max() - 6, &out).ok());
+  EXPECT_EQ(std::numeric_limits<int64_t>::max(), c.Value(out));
 
   // Test addition using dimension as second value.
   EXPECT_TRUE(c.Add(d_6, c.MakeDim(2), &out).ok());
   EXPECT_EQ("8", c.DebugString(out));
   EXPECT_TRUE(
-      c.Add(d_6, c.MakeDim(std::numeric_limits<int64>::max() - 6), &out).ok());
-  EXPECT_EQ(std::numeric_limits<int64>::max(), c.Value(out));
+      c.Add(d_6, c.MakeDim(std::numeric_limits<int64_t>::max() - 6), &out)
+          .ok());
+  EXPECT_EQ(std::numeric_limits<int64_t>::max(), c.Value(out));
   EXPECT_TRUE(c.Add(d_6, c.UnknownDim(), &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
   EXPECT_TRUE(c.Add(d_0, d_6, &out).ok());
   EXPECT_TRUE(SameHandle(out, d_6));
 
   EXPECT_CONTAINS(
-      c.Add(d_6, std::numeric_limits<int64>::max() - 5, &out).error_message(),
+      c.Add(d_6, std::numeric_limits<int64_t>::max() - 5, &out).error_message(),
       "Dimension size overflow from adding 6 and 9223372036854775802");
 }
 
@@ -1606,7 +1622,7 @@ void ShapeInferenceTest::TestMergeHandles(bool input_not_output) {
   NodeDef def;
   InferenceContext c(kVersion, def, MakeOpDef(2, 2), {S({}), S({})}, {}, {},
                      {});
-  auto make_shape = [&c](std::initializer_list<int64> dim_sizes) {
+  auto make_shape = [&c](std::initializer_list<int64_t> dim_sizes) {
     ShapeHandle s;
     TF_CHECK_OK(c.MakeShapeFromPartialTensorShape(S(dim_sizes), &s));
     return s;
@@ -1717,7 +1733,7 @@ void ShapeInferenceTest::TestRelaxHandles(bool input_not_output) {
   NodeDef def;
   InferenceContext c(kVersion, def, MakeOpDef(2, 2), {S({}), S({})}, {}, {},
                      {});
-  auto make_shape = [&c](std::initializer_list<int64> dim_sizes) {
+  auto make_shape = [&c](std::initializer_list<int64_t> dim_sizes) {
     ShapeHandle s;
     TF_CHECK_OK(c.MakeShapeFromPartialTensorShape(S(dim_sizes), &s));
     return s;

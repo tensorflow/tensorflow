@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -71,11 +70,21 @@ std::set<std::string>* GlobalOpPrefixes() {
 }
 
 // Converts a location to the debug information for the node def.
-Status ConvertLocation(mlir::Location inst_loc,
+Status ConvertLocation(mlir::Location inst_loc, llvm::StringRef node_name,
                        NodeDef::ExperimentalDebugInfo* debug_info) {
   if (auto call_site = inst_loc.dyn_cast<mlir::CallSiteLoc>()) {
     if (auto name_loc = call_site.getCallee().dyn_cast<mlir::NameLoc>()) {
-      debug_info->add_original_node_names(name_loc.getName().c_str());
+      llvm::StringRef original_node_name, original_func_name;
+      std::tie(original_node_name, original_func_name) =
+          name_loc.getName().strref().split('@');
+      // The location points to the current node def.
+      if (node_name == original_node_name && original_func_name.empty()) {
+        return Status::OK();
+      }
+      debug_info->add_original_node_names(original_node_name.str());
+      if (!original_func_name.empty()) {
+        debug_info->add_original_func_names(original_func_name.str());
+      }
     }
   } else if (auto fused = inst_loc.dyn_cast<mlir::FusedLoc>()) {
     auto locations = fused.getLocations();
@@ -83,7 +92,7 @@ Status ConvertLocation(mlir::Location inst_loc,
       return errors::InvalidArgument("expected experimental debuf info.");
     // skip the first one, which is the name of the node_def.
     for (int i = 0, end = locations.size() - 1; i < end; ++i) {
-      TF_RETURN_IF_ERROR(ConvertLocation(locations[i], debug_info));
+      TF_RETURN_IF_ERROR(ConvertLocation(locations[i], node_name, debug_info));
     }
   }
   return Status::OK();
@@ -108,6 +117,12 @@ Status ConvertAttribute(const mlir::ElementsAttr& attr, AttrValue* value) {
   return ConvertToTensorProto(attr, value->mutable_tensor());
 }
 
+Status ConvertAttribute(const mlir::TF::PlaceholderAttr& attr,
+                        AttrValue* value) {
+  value->set_placeholder(attr.getValue().str());
+  return Status::OK();
+}
+
 Status ConvertAttribute(const mlir::TF::ShapeAttr& attr, AttrValue* value) {
   SetTensorShapeProto(attr, value->mutable_shape());
   return Status::OK();
@@ -121,8 +136,8 @@ Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
 Status ConvertAttribute(const mlir::TF::FuncAttr& attr, bool remove_ref_type,
                         AttrValue* value) {
   TF_RETURN_IF_ERROR(
-      ConvertAttribute(attr.GetName().cast<mlir::FlatSymbolRefAttr>(), value));
-  TF_RETURN_IF_ERROR(ConvertAttributes(attr.GetAttrs().getValue(),
+      ConvertAttribute(attr.getName().cast<mlir::FlatSymbolRefAttr>(), value));
+  TF_RETURN_IF_ERROR(ConvertAttributes(attr.getAttrs().getValue(),
                                        /*attrs_to_ignore=*/{}, remove_ref_type,
                                        value->mutable_func()->mutable_attr()));
   return Status::OK();
@@ -284,8 +299,9 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   llvm::SmallString<64> op_name;
   if (IsLegacyCallInstruction(inst)) {
     // The op_name is the name of the function.
-    op_name.append(
-        inst->getAttrOfType<mlir::SymbolRefAttr>("f").getLeafReference());
+    op_name.append(inst->getAttrOfType<mlir::SymbolRefAttr>("f")
+                       .getLeafReference()
+                       .getValue());
     // Remove the attribute from the instruction as it is already converted to
     // op_name.
     auto attr_id = mlir::Identifier::get("f", inst->getContext());
@@ -325,7 +341,7 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
 
   // Add the node debug info.
   TF_RETURN_IF_ERROR(ConvertLocation(
-      inst->getLoc(), node_def->mutable_experimental_debug_info()));
+      inst->getLoc(), name, node_def->mutable_experimental_debug_info()));
 
   return node_def;
 }
@@ -371,9 +387,10 @@ Status ConvertAttributes(
         llvm::TypeSwitch<mlir::Attribute, Status>(attr)
             .Case<mlir::BoolAttr, mlir::IntegerAttr, mlir::FloatAttr,
                   mlir::StringAttr, mlir::ElementsAttr, mlir::UnitAttr,
-                  mlir::TF::ShapeAttr>([&](auto derived_attr) {
-              return ConvertAttribute(derived_attr, &value);
-            })
+                  mlir::TF::ShapeAttr, mlir::TF::PlaceholderAttr>(
+                [&](auto derived_attr) {
+                  return ConvertAttribute(derived_attr, &value);
+                })
             .Case<mlir::ArrayAttr, mlir::TypeAttr>([&](auto derived_attr) {
               return ConvertAttribute(derived_attr, remove_ref_type, &value);
             })

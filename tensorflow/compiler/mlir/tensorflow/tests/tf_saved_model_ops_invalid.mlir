@@ -232,8 +232,8 @@ module attributes {tf_saved_model.semantics} {
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.0> : tensor<f32> } : () -> ()
   // expected-error@+1 {{duplicate 'tf_saved_model.bound_input' binding}}
   func @f(
-    %arg0: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
-    %arg1: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}
+    %arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
+    %arg1: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}
   ) attributes {tf_saved_model.exported_names = ["f"]} {
     return
   }
@@ -245,9 +245,9 @@ module attributes {tf_saved_model.semantics} {
 
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<?xf32>, value = dense<1.> : tensor<1xf32> } : () -> ()
   // expected-error@+1 {{can only apply 'tf_saved_model' argument attributes to exported functions}}
-  func private @f(%arg0: tensor<!tf.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
+  func private @f(%arg0: tensor<!tf_type.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
   -> (tensor<?xf32> {tf_saved_model.index_path = []}) {
-    %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<?xf32>>>) -> tensor<?xf32>
+    %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<?xf32>>>) -> tensor<?xf32>
     return %0 : tensor<?xf32>
   }
 }
@@ -257,7 +257,7 @@ module attributes {tf_saved_model.semantics} {
 module attributes {tf_saved_model.semantics} {
 
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<?xf32>, value = dense<1.> : tensor<1xf32> } : () -> ()
-  // expected-error@+1 {{bound input with type 'tensor<f32>' expected to have type 'tensor<!tf.resource<tensor<?xf32>>>'}}
+  // expected-error@+1 {{bound input with type 'tensor<f32>' expected to have type 'tensor<!tf_type.resource<tensor<?xf32>>>'}}
   func @f(%arg0: tensor<f32> {tf_saved_model.bound_input = @v})
   attributes {tf_saved_model.exported_names = ["f"]} {
     return
@@ -394,7 +394,7 @@ module attributes {tf_saved_model.semantics} {
 
   // expected-error@+1 {{unknown symbol operation}}
   "some_dialect.some_op"() {sym_name = "v"} : () -> ()
-  func @f(%arg0: tensor<!tf.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
+  func @f(%arg0: tensor<!tf_type.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
     attributes { tf_saved_model.exported_names = ["a"] } {
     return
   }
@@ -408,8 +408,8 @@ module attributes {tf_saved_model.semantics} {
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.0> : tensor<f32> } : () -> ()
   // expected-error@+1 {{duplicate 'tf_saved_model.bound_input' binding}}
   func @f(
-    %arg0: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
-    %arg1: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}
+    %arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
+    %arg1: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}
   ) attributes {tf_saved_model.exported_names = ["f"]} {
     return
   }

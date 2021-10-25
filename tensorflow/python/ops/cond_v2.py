@@ -19,10 +19,6 @@ function for If ops produced by cond_v2. This will eventually replace the
 current tf.cond implementation once it reaches feature and performance parity.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 from tensorflow.core.framework import types_pb2
@@ -39,7 +35,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
-from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_functional_ops
@@ -332,7 +327,7 @@ def get_func_graphs(op):
       input_shapes = [t.shape for t in inputs]
       func_graph = util.get_func_graph(op, input_shapes, name_attr_list.name)
     for external_t, internal_t in zip(inputs, func_graph.inputs):
-      custom_gradient.copy_handle_data(external_t, internal_t)
+      handle_data_util.copy_handle_data(external_t, internal_t)
     func_graph.reset_captures(zip(inputs, func_graph.inputs))
     # Link the op so that the gradient code can use it.
     func_graph._forward_cond = op

@@ -32,9 +32,10 @@ using bfloat16 = tensorflow::bfloat16;
 template <typename NativeT>
 std::vector<NativeT> GenerateInput() {
   std::vector<NativeT> input;
+  const auto n = std::numeric_limits<NativeT>::max();
+  input.reserve(n);
 
-  for (int64 i = std::numeric_limits<NativeT>::min();
-       i < std::numeric_limits<NativeT>::max(); ++i) {
+  for (int64_t i = std::numeric_limits<NativeT>::min(); i < n; ++i) {
     input.push_back(static_cast<NativeT>(i));
   }
 
@@ -52,15 +53,16 @@ Array2D<NativeT> GenerateLargeSizeInput(int num_columns, int num_rows) {
 
 template <typename NativeT>
 Array2D<uint32> PackLargeInput(Array2D<NativeT> &input) {
-  const int64 size_per_pack = sizeof(uint32) / sizeof(NativeT);
-  int64 width = input.width();
+  const int64_t size_per_pack = sizeof(uint32) / sizeof(NativeT);
+  int64_t width = input.width();
 
-  int64 padded_output_width = CeilOfRatio(width, size_per_pack);
+  int64_t padded_output_width = CeilOfRatio(width, size_per_pack);
 
   Array2D<uint32> pack_input(input.height(), padded_output_width);
 
   for (int h = 0; h < input.height(); h++) {
     std::vector<NativeT> input_row;
+    input_row.reserve(width);
     for (int w = 0; w < width; w++) {
       input_row.push_back(input({h, w}));
     }
@@ -79,13 +81,14 @@ template <typename NativeT>
 Array2D<bfloat16> GenerateLargeSizeMinCombinedOutput(
     Array2D<NativeT> &input, const QuantizedRange &range,
     bool transpose_output = false) {
-  const int64 size_per_pack = sizeof(uint32) / sizeof(NativeT);
-  int64 width = input.width();
+  const int64_t size_per_pack = sizeof(uint32) / sizeof(NativeT);
+  int64_t width = input.width();
 
-  int64 padded_output_width = CeilOfRatio(width, size_per_pack) * size_per_pack;
+  int64_t padded_output_width =
+      CeilOfRatio(width, size_per_pack) * size_per_pack;
 
-  int64 output_height;
-  int64 output_width;
+  int64_t output_height;
+  int64_t output_width;
 
   if (transpose_output) {
     output_height = padded_output_width;
@@ -110,6 +113,7 @@ Array2D<bfloat16> GenerateLargeSizeMinCombinedOutput(
 
   for (int h = 0; h < input.height(); h++) {
     std::vector<NativeT> input_row;
+    input_row.reserve(width);
     for (int w = 0; w < width; w++) {
       bfloat16 result =
           static_cast<bfloat16>(input(h, w) + half_range) * scale_factor +
@@ -138,17 +142,18 @@ std::vector<bfloat16> GenerateMinCombinedOutput(const QuantizedRange &range) {
       (static_cast<bfloat16>(std::numeric_limits<NativeT>::max() -
                              std::numeric_limits<NativeT>::min()));
   std::vector<bfloat16> output;
-  for (int64 i = std::numeric_limits<NativeT>::min();
-       i < std::numeric_limits<NativeT>::max(); ++i) {
+  const auto n = std::numeric_limits<NativeT>::max();
+  output.reserve(n);
+  for (int64_t i = std::numeric_limits<NativeT>::min(); i < n; ++i) {
     bfloat16 result =
         static_cast<bfloat16>(i + half_range) * scale_factor + range.min;
     output.push_back(result);
   }
 
-  const int64 pack_size = sizeof(uint32) / sizeof(NativeT);
-  const int64 output_size = output.size();
+  const int64_t pack_size = sizeof(uint32) / sizeof(NativeT);
+  const int64_t output_size = output.size();
 
-  int64 num_tailing_zeros =
+  int64_t num_tailing_zeros =
       CeilOfRatio(output_size, pack_size) * pack_size - output_size;
 
   output.insert(output.end(), num_tailing_zeros, bfloat16(0.0));

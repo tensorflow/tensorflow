@@ -15,10 +15,6 @@
 
 """Keyword args functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from tensorflow.python.util import decorator_utils
@@ -47,6 +43,8 @@ def keyword_args_only(func):
     """Keyword args only wrapper."""
     if args:
       raise ValueError(
-          "Must use keyword args to call {}.".format(func.__name__))
+          f"The function {func.__name__} only accepts keyword arguments. "
+          "Do not pass positional arguments. Received the following positional "
+          f"arguments: {args}")
     return func(**kwargs)
   return new_func

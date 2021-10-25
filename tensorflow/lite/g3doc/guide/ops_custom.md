@@ -64,7 +64,7 @@ offset = tf.Variable(0.0)
 def sin(x):
   return tf.sin(x + offset, name="Sin")
 
-  # Train model
+# Train model
 optimizer = tf.optimizers.Adam(0.01)
 def train(x, y):
     with tf.GradientTape() as t:
@@ -101,7 +101,7 @@ Create a TensorFlow Lite model with custom operators, by setting the converter
 attribute `allow_custom_ops` as shown below:
 
 <pre>
-converter = tf.lite.TFLiteConverter.from_concrete_functions([sin.get_concrete_function(x)])
+converter = tf.lite.TFLiteConverter.from_concrete_functions([sin.get_concrete_function(x)], sin)
 <b>converter.allow_custom_ops = True</b>
 tflite_model = converter.convert()
 </pre>

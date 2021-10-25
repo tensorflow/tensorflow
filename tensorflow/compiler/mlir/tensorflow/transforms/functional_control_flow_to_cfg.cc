@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -35,7 +36,7 @@ namespace TF {
 namespace {
 
 struct FunctionalControlFlowToCFG
-    : public PassWrapper<FunctionalControlFlowToCFG, FunctionPass> {
+    : public FunctionalControlFlowToCFGPassBase<FunctionalControlFlowToCFG> {
   void runOnFunction() override;
 };
 
@@ -303,11 +304,6 @@ void FunctionalControlFlowToCFG::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
   return std::make_unique<FunctionalControlFlowToCFG>();
 }
-
-static PassRegistration<FunctionalControlFlowToCFG> pass(
-    "tf-functional-control-flow-to-cfg",
-    "Transform functional control flow Ops to MLIR Control Form Graph "
-    "(CFG) form");
 
 }  // namespace TF
 }  // namespace mlir

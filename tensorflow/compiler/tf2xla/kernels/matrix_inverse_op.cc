@@ -29,7 +29,7 @@ class MatrixInverseOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape input_shape = ctx->InputShape(0);
-    int64 ndims = input_shape.dims();
+    int64_t ndims = input_shape.dims();
     OP_REQUIRES(
         ctx, ndims >= 2,
         errors::InvalidArgument("Input must have rank >= 2, got ", ndims));

@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
 
 #define DEBUG_TYPE "xla-prepare-for-export"
@@ -35,12 +36,10 @@ namespace mhlo {
 namespace {
 
 // Prepare module for export to XLA HLO.
-struct PrepareForExportPass : PrepareForExportPassBase<PrepareForExportPass> {
+struct PrepareForExportPass
+    : public PrepareForExportPassBase<PrepareForExportPass> {
   void runOnFunction() override;
 };
-
-static PassRegistration<PrepareForExportPass> registration(
-    "xla-prepare-for-export", "Prepare for XLA export");
 
 }  // end namespace
 

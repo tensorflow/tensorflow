@@ -24,12 +24,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 using tensorflow::int32;
-using tensorflow::int64;
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenFft(
-    const void* run_options_ptr, void* out, void* operand, int32 fft_type,
-    int32 double_precision, int32 fft_rank, int64 input_batch,
-    int64 fft_length0, int64 fft_length1, int64 fft_length2) {
+    const void* run_options_ptr, void* out, void* operand, int32_t fft_type,
+    int32_t double_precision, int32_t fft_rank, int64_t input_batch,
+    int64_t fft_length0, int64_t fft_length1, int64_t fft_length2) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
   XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);

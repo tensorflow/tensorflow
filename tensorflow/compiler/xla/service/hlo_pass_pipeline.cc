@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -96,7 +97,7 @@ void RecordPassEndMetadata(HloModuleGroup& module_group,
 }
 
 void SetInstructionMetadata(HloModule& module) {
-  StatusOr<int64> pass_id = module.metadata()->current_pass_id();
+  StatusOr<int64_t> pass_id = module.metadata()->current_pass_id();
   if (!pass_id.ok()) {
     LOG(FATAL) << pass_id.status();
   }
@@ -130,9 +131,10 @@ Status HloPassPipeline::RunInvariantCheckers(
     if (!changed_status.ok()) {
       VLOG(2) << "Failed invariant check:";
       XLA_VLOG_LINES(2, hlo->ToString());
-      return Status(changed_status.status().code(),
-                    absl::StrCat(changed_status.status().error_message(),
-                                 "\n\nFailed after ", after_pass_name));
+      return tensorflow::errors::CreateWithUpdatedMessage(
+          changed_status.status(),
+          absl::StrCat(changed_status.status().error_message(),
+                       "\n\nFailed after ", after_pass_name));
     }
     TF_RET_CHECK(!changed_status.ValueOrDie())
         << "invariant checkers must not change the graph";

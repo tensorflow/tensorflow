@@ -36,7 +36,7 @@ namespace functor {
 //  nnz_per_batch.dimension(0) == B
 template <typename Device>
 struct CalculateNNZPerBatchMatrixFromIndices {
-  Status operator()(OpKernelContext* c, TTypes<int64>::ConstMatrix indices,
+  Status operator()(OpKernelContext* c, TTypes<int64_t>::ConstMatrix indices,
                     TTypes<int32>::Vec nnz_per_batch);
 };
 
@@ -56,8 +56,8 @@ struct CalculateNNZPerBatchMatrixFromIndices {
 //   coo_row_ind.size() == indices.dim_size(0)
 template <typename Device>
 struct SparseTensorToCOOSparseMatrix {
-  void operator()(const Device& d, TTypes<int64>::ConstVec host_dense_shape,
-                  TTypes<int64>::ConstMatrix indices,
+  void operator()(const Device& d, TTypes<int64_t>::ConstVec host_dense_shape,
+                  TTypes<int64_t>::ConstMatrix indices,
                   TTypes<int32>::Vec coo_row_ind,
                   TTypes<int32>::Vec coo_col_ind);
 };
@@ -83,11 +83,11 @@ struct SparseTensorToCOOSparseMatrix {
 template <typename Device>
 struct COOSparseMatrixToSparseTensor {
   Status operator()(OpKernelContext* c,
-                    TTypes<int64>::ConstVec host_dense_shape,
+                    TTypes<int64_t>::ConstVec host_dense_shape,
                     TTypes<int32>::ConstVec host_batch_ptrs,
                     TTypes<int32>::Vec coo_row_ind,
                     TTypes<int32>::ConstVec coo_col_ind,
-                    TTypes<int64>::Matrix indices);
+                    TTypes<int64_t>::Matrix indices);
 };
 
 // Convert a vector of coo row indices to csr row pointers.
@@ -119,8 +119,8 @@ struct COOSparseMatrixToCSRSparseMatrix {
 //   Also csr_row_ptr should be initially filled with zeros.
 //
 struct SparseTensorToCSRSparseMatrixCPUFunctor {
-  Status operator()(const int64 batch_size, const int num_rows,
-                    TTypes<int64>::ConstMatrix indices,
+  Status operator()(const int64_t batch_size, const int num_rows,
+                    TTypes<int64_t>::ConstMatrix indices,
                     TTypes<int32>::Vec batch_ptr,
                     TTypes<int32>::Vec csr_row_ptr,
                     TTypes<int32>::Vec csr_col_ind);

@@ -588,7 +588,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithArrayConstantNotSimplified) {
     get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
     get-tuple-element.3 = s32[3]{0} get-tuple-element(loop_var.1), index=2
     add.2 = s32[3]{0} add(get-tuple-element.2, get-tuple-element.3)
-    ROOT tuple = (s32[], s32[3]{0}) tuple(add, add.2, get-tuple-element.3)
+    ROOT tuple = (s32[], s32[3]{0}, s32[3]{0}) tuple(add, add.2, get-tuple-element.3)
   }
   SimpleLoop.condition {
     loop_var.2 = (s32[], s32[3]{0}, s32[3]{0}) parameter(0)
@@ -599,7 +599,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithArrayConstantNotSimplified) {
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(42)
     constant.4 = s32[3]{0} constant({0, 1, 2})
-    tuple.1 = (s32[], s32[3]{0}) tuple(constant.3, constant.4, constant.4)
+    tuple.1 = (s32[], s32[3]{0}, s32[3]{0}) tuple(constant.3, constant.4, constant.4)
     ROOT while = (s32[], s32[3]{0}, s32[3]{0}) while(tuple.1), condition=
       SimpleLoop.condition, body=SimpleLoop.body
   }

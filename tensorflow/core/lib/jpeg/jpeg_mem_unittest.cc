@@ -452,7 +452,7 @@ TEST(JpegMemTest, ChromaDownsampling) {
   UncompressFlags unflags;
   unflags.components = 3;
   int w, h, c;
-  int64 num_warnings;
+  int64_t num_warnings;
   std::unique_ptr<uint8[]> uncompressed(Uncompress(
       jpeg.c_str(), jpeg.size(), unflags, &w, &h, &c, &num_warnings));
   CHECK(uncompressed != nullptr);

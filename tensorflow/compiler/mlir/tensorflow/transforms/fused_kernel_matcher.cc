@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 
@@ -49,7 +50,7 @@ namespace {
 // implementations to decrease the number of operations needed to perform a
 // computation.
 struct FusedKernelMatcherPass
-    : public PassWrapper<FusedKernelMatcherPass, FunctionPass> {
+    : public FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
   void runOnFunction() override;
 };
 
@@ -106,6 +107,16 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
   LogicalResult matchAndRewrite(SrcOpT contraction,
                                 PatternRewriter &rewriter) const override {
     auto context = rewriter.getContext();
+
+    // We do support fusion only if the contraction operation is inside one of
+    // the expected operations with regions. Other operations can have semantics
+    // that is not compatible with fusion (e.g. region compilation).
+    if (!isa<FuncOp, IfOp, WhileOp>(contraction->getParentOp())) {
+      return rewriter.notifyMatchFailure(
+          contraction,
+          "fused operation must be nested inside a function, If or While");
+    }
+
     // If the contraction is used in multiple places, fusing it will only create
     // more contraction nodes, which is slower.
     if (!contraction.getResult().hasOneUse())
@@ -246,10 +257,6 @@ void FusedKernelMatcherPass::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass() {
   return std::make_unique<FusedKernelMatcherPass>();
 }
-
-static PassRegistration<FusedKernelMatcherPass> pass(
-    "tf-fused-kernel-matcher",
-    "Matches computations corresponding to optimized fused kernels");
 
 }  // namespace TF
 

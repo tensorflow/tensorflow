@@ -47,14 +47,13 @@ StatusOr<bool> HloDCE::RunOnComputation(
   // computation's instruction while simultaneously removing instructions.
   std::vector<HloInstruction*> dead_roots;
   for (auto* instruction : computation->instructions()) {
-    auto maybe_collective_op = DynCast<HloAllReduceInstruction>(instruction);
+    auto maybe_collective_op = DynCast<HloCollectiveInstruction>(instruction);
     if (instruction != computation->root_instruction() &&
         instruction->user_count() == 0 &&
         computation->IsSafelyRemovable(instruction) &&
         (!instruction->HasSideEffect() ||
-         (remove_cross_partition_collective_ops &&
-          (maybe_collective_op != nullptr &&
-           !maybe_collective_op->constrain_layout())))) {
+         (remove_cross_partition_collective_ops && maybe_collective_op &&
+          !maybe_collective_op->constrain_layout()))) {
       dead_roots.push_back(instruction);
     }
   }

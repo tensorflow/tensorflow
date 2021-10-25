@@ -16,10 +16,6 @@
 
 """Operations for working with string Tensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -46,6 +42,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=redefined-builtin
 @tf_export("strings.regex_full_match")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def regex_full_match(input, pattern, name=None):
   r"""Match elements of `input` with regex `pattern`.
@@ -73,9 +70,9 @@ regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
 
 @tf_export(
     "strings.regex_replace", v1=["strings.regex_replace", "regex_replace"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("regex_replace")
-@dispatch.add_dispatch_support
 def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
   r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
 
@@ -164,9 +161,10 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
   if tensor_util.is_tf_type(inputs):
     inputs = [inputs]
   if template.count(placeholder) != len(inputs):
-    raise ValueError("%s placeholder(s) in template does not match %s tensor(s)"
-                     " provided as input" % (template.count(placeholder),
-                                             len(inputs)))
+    raise ValueError(f"The template expects {template.count(placeholder)} "
+                     f"tensors, but the inputs only has {len(inputs)}. "
+                     "Please ensure the number of placeholders in template "
+                     "matches inputs length.")
 
   return gen_string_ops.string_format(inputs,
                                       template=template,
@@ -379,6 +377,7 @@ reduce_join.__doc__ = reduce_join_v2.__doc__
 # This wrapper provides backwards compatibility for code that predates the
 # unit argument and that passed 'name' as a positional argument.
 @tf_export(v1=["strings.length"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def string_length(input, name=None, unit="BYTE"):
   """Computes the length of each string given in the input tensor.
@@ -408,6 +407,7 @@ def string_length(input, name=None, unit="BYTE"):
 
 
 @tf_export("strings.length", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def string_length_v2(input, unit="BYTE", name=None):
   return gen_string_ops.string_length(input, unit=unit, name=name)
@@ -417,6 +417,7 @@ string_length_v2.__doc__ = gen_string_ops.string_length.__doc__
 
 
 @tf_export(v1=["substr"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated(None, "Use `tf.strings.substr` instead of `tf.substr`.")
 def substr_deprecated(input, pos, len, name=None, unit="BYTE"):
@@ -426,6 +427,7 @@ substr_deprecated.__doc__ = gen_string_ops.substr.__doc__
 
 
 @tf_export(v1=["strings.substr"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def substr(input, pos, len, name=None, unit="BYTE"):
   return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
@@ -434,6 +436,7 @@ substr.__doc__ = gen_string_ops.substr.__doc__
 
 
 @tf_export("strings.substr", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def substr_v2(input, pos, len, unit="BYTE", name=None):
   return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
@@ -454,6 +457,7 @@ ops.NotDifferentiable("DecodeBase64")
 
 
 @tf_export("strings.to_number", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def string_to_number(input, out_type=dtypes.float32, name=None):
   r"""Converts each string in the input Tensor to the specified numeric type.
@@ -496,6 +500,7 @@ string_to_number_v1.__doc__ = gen_parsing_ops.string_to_number.__doc__
 
 
 @tf_export("strings.to_hash_bucket", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def string_to_hash_bucket(input, num_buckets, name=None):
   # pylint: disable=line-too-long
@@ -526,8 +531,9 @@ def string_to_hash_bucket(input, num_buckets, name=None):
 
 
 @tf_export(v1=["strings.to_hash_bucket", "string_to_hash_bucket"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
-def string_to_hash_bucket_v1(
+def string_to_hash_bucket_v1(  # pylint: disable=missing-function-docstring
     string_tensor=None,
     num_buckets=None,
     name=None,
@@ -542,7 +548,6 @@ string_to_hash_bucket_v1.__doc__ = gen_string_ops.string_to_hash_bucket.__doc__
 @tf_export("strings.join", v1=["strings.join", "string_join"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("string_join")
-@dispatch.add_dispatch_support
 def string_join(inputs, separator="", name=None):
   """Perform element-wise concatenation of a list of string tensors.
 
@@ -573,3 +578,15 @@ def string_join(inputs, separator="", name=None):
     A `tf.string` tensor.
   """
   return gen_string_ops.string_join(inputs, separator=separator, name=name)
+
+
+# Register elementwise ops that don't have Python wrappers.
+dispatch.register_unary_elementwise_api(gen_string_ops.as_string)
+dispatch.register_unary_elementwise_api(gen_string_ops.decode_base64)
+dispatch.register_unary_elementwise_api(gen_string_ops.encode_base64)
+dispatch.register_unary_elementwise_api(gen_string_ops.string_strip)
+dispatch.register_unary_elementwise_api(
+    gen_string_ops.string_to_hash_bucket_fast)
+dispatch.register_unary_elementwise_api(
+    gen_string_ops.string_to_hash_bucket_strong)
+dispatch.register_unary_elementwise_api(gen_string_ops.unicode_script)

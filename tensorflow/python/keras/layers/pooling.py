@@ -885,23 +885,30 @@ class AveragePooling3D(Pooling3D):
 class GlobalPooling1D(Layer):
   """Abstract class for different global pooling 1D layers."""
 
-  def __init__(self, data_format='channels_last', **kwargs):
+  def __init__(self, data_format='channels_last', keepdims=False, **kwargs):
     super(GlobalPooling1D, self).__init__(**kwargs)
     self.input_spec = InputSpec(ndim=3)
     self.data_format = conv_utils.normalize_data_format(data_format)
+    self.keepdims = keepdims
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
-      return tensor_shape.TensorShape([input_shape[0], input_shape[1]])
+      if self.keepdims:
+        return tensor_shape.TensorShape([input_shape[0], input_shape[1], 1])
+      else:
+        return tensor_shape.TensorShape([input_shape[0], input_shape[1]])
     else:
-      return tensor_shape.TensorShape([input_shape[0], input_shape[2]])
+      if self.keepdims:
+        return tensor_shape.TensorShape([input_shape[0], 1, input_shape[2]])
+      else:
+        return tensor_shape.TensorShape([input_shape[0], input_shape[2]])
 
   def call(self, inputs):
     raise NotImplementedError
 
   def get_config(self):
-    config = {'data_format': self.data_format}
+    config = {'data_format': self.data_format, 'keepdims': self.keepdims}
     base_config = super(GlobalPooling1D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -927,6 +934,12 @@ class GlobalAveragePooling1D(GlobalPooling1D):
       `(batch, steps, features)` while `channels_first`
       corresponds to inputs with shape
       `(batch, features, steps)`.
+    keepdims: A boolean, whether to keep the temporal dimension or not.
+      If `keepdims` is `False` (default), the rank of the tensor is reduced
+      for spatial dimensions.
+      If `keepdims` is `True`, the temporal dimension are retained with
+      length 1.
+      The behavior is the same as for `tf.reduce_mean` or `np.mean`.
 
   Call arguments:
     inputs: A 3D tensor.
@@ -942,7 +955,13 @@ class GlobalAveragePooling1D(GlobalPooling1D):
       `(batch_size, features, steps)`
 
   Output shape:
-    2D tensor with shape `(batch_size, features)`.
+    - If `keepdims`=False:
+      2D tensor with shape `(batch_size, features)`.
+    - If `keepdims`=True:
+      - If `data_format='channels_last'`:
+        3D tensor with shape `(batch_size, 1, features)`
+      - If `data_format='channels_first'`:
+        3D tensor with shape `(batch_size, features, 1)`
   """
 
   def __init__(self, data_format='channels_last', **kwargs):
@@ -953,14 +972,16 @@ class GlobalAveragePooling1D(GlobalPooling1D):
   def call(self, inputs, mask=None):
     steps_axis = 1 if self.data_format == 'channels_last' else 2
     if mask is not None:
-      mask = math_ops.cast(mask, backend.floatx())
+      mask = math_ops.cast(mask, inputs[0].dtype)
       mask = array_ops.expand_dims(
           mask, 2 if self.data_format == 'channels_last' else 1)
       inputs *= mask
-      return backend.sum(inputs, axis=steps_axis) / math_ops.reduce_sum(
-          mask, axis=steps_axis)
+      return backend.sum(
+          inputs, axis=steps_axis,
+          keepdims=self.keepdims) / math_ops.reduce_sum(
+              mask, axis=steps_axis, keepdims=self.keepdims)
     else:
-      return backend.mean(inputs, axis=steps_axis)
+      return backend.mean(inputs, axis=steps_axis, keepdims=self.keepdims)
 
   def compute_mask(self, inputs, mask=None):
     return None
@@ -997,6 +1018,12 @@ class GlobalMaxPooling1D(GlobalPooling1D):
       `(batch, steps, features)` while `channels_first`
       corresponds to inputs with shape
       `(batch, features, steps)`.
+    keepdims: A boolean, whether to keep the temporal dimension or not.
+      If `keepdims` is `False` (default), the rank of the tensor is reduced
+      for spatial dimensions.
+      If `keepdims` is `True`, the temporal dimension are retained with
+      length 1.
+      The behavior is the same as for `tf.reduce_max` or `np.max`.
 
   Input shape:
     - If `data_format='channels_last'`:
@@ -1007,35 +1034,48 @@ class GlobalMaxPooling1D(GlobalPooling1D):
       `(batch_size, features, steps)`
 
   Output shape:
-    2D tensor with shape `(batch_size, features)`.
+    - If `keepdims`=False:
+      2D tensor with shape `(batch_size, features)`.
+    - If `keepdims`=True:
+      - If `data_format='channels_last'`:
+        3D tensor with shape `(batch_size, 1, features)`
+      - If `data_format='channels_first'`:
+        3D tensor with shape `(batch_size, features, 1)`
   """
 
   def call(self, inputs):
     steps_axis = 1 if self.data_format == 'channels_last' else 2
-    return backend.max(inputs, axis=steps_axis)
+    return backend.max(inputs, axis=steps_axis, keepdims=self.keepdims)
 
 
 class GlobalPooling2D(Layer):
   """Abstract class for different global pooling 2D layers.
   """
 
-  def __init__(self, data_format=None, **kwargs):
+  def __init__(self, data_format=None, keepdims=False, **kwargs):
     super(GlobalPooling2D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=4)
+    self.keepdims = keepdims
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_last':
-      return tensor_shape.TensorShape([input_shape[0], input_shape[3]])
+      if self.keepdims:
+        return tensor_shape.TensorShape([input_shape[0], 1, 1, input_shape[3]])
+      else:
+        return tensor_shape.TensorShape([input_shape[0], input_shape[3]])
     else:
-      return tensor_shape.TensorShape([input_shape[0], input_shape[1]])
+      if self.keepdims:
+        return tensor_shape.TensorShape([input_shape[0], input_shape[1], 1, 1])
+      else:
+        return tensor_shape.TensorShape([input_shape[0], input_shape[1]])
 
   def call(self, inputs):
     raise NotImplementedError
 
   def get_config(self):
-    config = {'data_format': self.data_format}
+    config = {'data_format': self.data_format, 'keepdims': self.keepdims}
     base_config = super(GlobalPooling2D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -1064,6 +1104,12 @@ class GlobalAveragePooling2D(GlobalPooling2D):
         It defaults to the `image_data_format` value found in your
         Keras config file at `~/.keras/keras.json`.
         If you never set it, then it will be "channels_last".
+      keepdims: A boolean, whether to keep the spatial dimensions or not.
+        If `keepdims` is `False` (default), the rank of the tensor is reduced
+        for spatial dimensions.
+        If `keepdims` is `True`, the spatial dimensions are retained with
+        length 1.
+        The behavior is the same as for `tf.reduce_mean` or `np.mean`.
 
   Input shape:
     - If `data_format='channels_last'`:
@@ -1072,14 +1118,20 @@ class GlobalAveragePooling2D(GlobalPooling2D):
       4D tensor with shape `(batch_size, channels, rows, cols)`.
 
   Output shape:
-    2D tensor with shape `(batch_size, channels)`.
+    - If `keepdims`=False:
+      2D tensor with shape `(batch_size, channels)`.
+    - If `keepdims`=True:
+      - If `data_format='channels_last'`:
+        4D tensor with shape `(batch_size, 1, 1, channels)`
+      - If `data_format='channels_first'`:
+        4D tensor with shape `(batch_size, channels, 1, 1)`
   """
 
   def call(self, inputs):
     if self.data_format == 'channels_last':
-      return backend.mean(inputs, axis=[1, 2])
+      return backend.mean(inputs, axis=[1, 2], keepdims=self.keepdims)
     else:
-      return backend.mean(inputs, axis=[2, 3])
+      return backend.mean(inputs, axis=[2, 3], keepdims=self.keepdims)
 
 
 @keras_export('keras.layers.GlobalMaxPool2D', 'keras.layers.GlobalMaxPooling2D')
@@ -1105,6 +1157,12 @@ class GlobalMaxPooling2D(GlobalPooling2D):
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
+    keepdims: A boolean, whether to keep the spatial dimensions or not.
+      If `keepdims` is `False` (default), the rank of the tensor is reduced
+      for spatial dimensions.
+      If `keepdims` is `True`, the spatial dimensions are retained with
+      length 1.
+      The behavior is the same as for `tf.reduce_max` or `np.max`.
 
   Input shape:
     - If `data_format='channels_last'`:
@@ -1113,36 +1171,51 @@ class GlobalMaxPooling2D(GlobalPooling2D):
       4D tensor with shape `(batch_size, channels, rows, cols)`.
 
   Output shape:
-    2D tensor with shape `(batch_size, channels)`.
+    - If `keepdims`=False:
+      2D tensor with shape `(batch_size, channels)`.
+    - If `keepdims`=True:
+      - If `data_format='channels_last'`:
+        4D tensor with shape `(batch_size, 1, 1, channels)`
+      - If `data_format='channels_first'`:
+        4D tensor with shape `(batch_size, channels, 1, 1)`
   """
 
   def call(self, inputs):
     if self.data_format == 'channels_last':
-      return backend.max(inputs, axis=[1, 2])
+      return backend.max(inputs, axis=[1, 2], keepdims=self.keepdims)
     else:
-      return backend.max(inputs, axis=[2, 3])
+      return backend.max(inputs, axis=[2, 3], keepdims=self.keepdims)
 
 
 class GlobalPooling3D(Layer):
   """Abstract class for different global pooling 3D layers."""
 
-  def __init__(self, data_format=None, **kwargs):
+  def __init__(self, data_format=None, keepdims=False, **kwargs):
     super(GlobalPooling3D, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=5)
+    self.keepdims = keepdims
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_last':
-      return tensor_shape.TensorShape([input_shape[0], input_shape[4]])
+      if self.keepdims:
+        return tensor_shape.TensorShape(
+            [input_shape[0], 1, 1, 1, input_shape[4]])
+      else:
+        return tensor_shape.TensorShape([input_shape[0], input_shape[4]])
     else:
-      return tensor_shape.TensorShape([input_shape[0], input_shape[1]])
+      if self.keepdims:
+        return tensor_shape.TensorShape(
+            [input_shape[0], input_shape[1], 1, 1, 1])
+      else:
+        return tensor_shape.TensorShape([input_shape[0], input_shape[1]])
 
   def call(self, inputs):
     raise NotImplementedError
 
   def get_config(self):
-    config = {'data_format': self.data_format}
+    config = {'data_format': self.data_format, 'keepdims': self.keepdims}
     base_config = super(GlobalPooling3D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -1163,6 +1236,12 @@ class GlobalAveragePooling3D(GlobalPooling3D):
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
+    keepdims: A boolean, whether to keep the spatial dimensions or not.
+      If `keepdims` is `False` (default), the rank of the tensor is reduced
+      for spatial dimensions.
+      If `keepdims` is `True`, the spatial dimensions are retained with
+      length 1.
+      The behavior is the same as for `tf.reduce_mean` or `np.mean`.
 
   Input shape:
     - If `data_format='channels_last'`:
@@ -1173,14 +1252,20 @@ class GlobalAveragePooling3D(GlobalPooling3D):
       `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`
 
   Output shape:
-    2D tensor with shape `(batch_size, channels)`.
+    - If `keepdims`=False:
+      2D tensor with shape `(batch_size, channels)`.
+    - If `keepdims`=True:
+      - If `data_format='channels_last'`:
+        5D tensor with shape `(batch_size, 1, 1, 1, channels)`
+      - If `data_format='channels_first'`:
+        5D tensor with shape `(batch_size, channels, 1, 1, 1)`
   """
 
   def call(self, inputs):
     if self.data_format == 'channels_last':
-      return backend.mean(inputs, axis=[1, 2, 3])
+      return backend.mean(inputs, axis=[1, 2, 3], keepdims=self.keepdims)
     else:
-      return backend.mean(inputs, axis=[2, 3, 4])
+      return backend.mean(inputs, axis=[2, 3, 4], keepdims=self.keepdims)
 
 
 @keras_export('keras.layers.GlobalMaxPool3D', 'keras.layers.GlobalMaxPooling3D')
@@ -1198,6 +1283,12 @@ class GlobalMaxPooling3D(GlobalPooling3D):
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be "channels_last".
+    keepdims: A boolean, whether to keep the spatial dimensions or not.
+      If `keepdims` is `False` (default), the rank of the tensor is reduced
+      for spatial dimensions.
+      If `keepdims` is `True`, the spatial dimensions are retained with
+      length 1.
+      The behavior is the same as for `tf.reduce_max` or `np.max`.
 
   Input shape:
     - If `data_format='channels_last'`:
@@ -1208,14 +1299,20 @@ class GlobalMaxPooling3D(GlobalPooling3D):
       `(batch_size, channels, spatial_dim1, spatial_dim2, spatial_dim3)`
 
   Output shape:
-    2D tensor with shape `(batch_size, channels)`.
+    - If `keepdims`=False:
+      2D tensor with shape `(batch_size, channels)`.
+    - If `keepdims`=True:
+      - If `data_format='channels_last'`:
+        5D tensor with shape `(batch_size, 1, 1, 1, channels)`
+      - If `data_format='channels_first'`:
+        5D tensor with shape `(batch_size, channels, 1, 1, 1)`
   """
 
   def call(self, inputs):
     if self.data_format == 'channels_last':
-      return backend.max(inputs, axis=[1, 2, 3])
+      return backend.max(inputs, axis=[1, 2, 3], keepdims=self.keepdims)
     else:
-      return backend.max(inputs, axis=[2, 3, 4])
+      return backend.max(inputs, axis=[2, 3, 4], keepdims=self.keepdims)
 
 
 # Aliases

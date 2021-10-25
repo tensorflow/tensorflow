@@ -185,13 +185,10 @@ reasonable default behavior.
 """
 # pylint: enable=line-too-long
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import enum  # pylint: disable=g-bad-import-order
+import functools
 import threading
 import weakref
 
@@ -230,7 +227,6 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
-
 
 # ------------------------------------------------------------------------------
 # Context tracking whether in a strategy.update() or .update_non_slot() call.
@@ -373,11 +369,13 @@ class _CurrentDistributionContext(object):
                strategy,
                var_creator_scope,
                var_scope=None,
+               resource_creator_scope=None,
                default_device=None):
     self._context = distribution_strategy_context._CrossReplicaThreadMode(  # pylint: disable=protected-access
         strategy)
     self._var_creator_scope = var_creator_scope
     self._var_scope = var_scope
+    self._resource_creator_scope = resource_creator_scope
     if default_device:
       self._device_scope = ops.device(default_device)
     else:
@@ -395,6 +393,9 @@ class _CurrentDistributionContext(object):
       if self._var_scope:
         self._var_scope.__enter__()
       self._var_creator_scope.__enter__()
+      if self._resource_creator_scope:
+        nest.map_structure(lambda scope: scope.__enter__(),
+                           self._resource_creator_scope)
       if self._device_scope:
         self._device_scope.__enter__()
     return self._context.strategy
@@ -420,6 +421,24 @@ class _CurrentDistributionContext(object):
           RuntimeError("Variable creator scope nesting error: move call to "
                        "tf.distribute.set_strategy() out of `with` scope."),
           e)
+
+    if self._resource_creator_scope:
+      try:
+        if isinstance(self._resource_creator_scope, list):
+          reversed_resource_creator_scope = self._resource_creator_scope[::-1]
+          nest.map_structure(
+              lambda scope: scope.__exit__(exception_type, exception_value,  # pylint:disable=g-long-lambda
+                                           traceback),
+              reversed_resource_creator_scope)
+
+        else:
+          self._resource_creator_scope.__exit__(exception_type, exception_value,
+                                                traceback)
+      except RuntimeError as e:
+        six.raise_from(
+            RuntimeError("Resource creator scope nesting error: move call "
+                         "to tf.distribute.set_strategy() out of `with` "
+                         "scope."), e)
 
     if self._var_scope:
       try:
@@ -936,6 +955,7 @@ class StrategyBase(object):
   # pylint: enable=line-too-long
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED, moving to `extended`
+  @deprecated(None, "use extended.colocate_vars_with() instead.")
   def colocate_vars_with(self, colocate_with_variable):
     """DEPRECATED: use extended.colocate_vars_with() instead."""
     return self._extended.colocate_vars_with(colocate_with_variable)
@@ -958,6 +978,7 @@ class StrategyBase(object):
           input_fn, replication_mode=replication_mode)
 
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
+  @deprecated(None, "use run() instead")
   def experimental_run(self, fn, input_iterator=None):
     """DEPRECATED TF 1.x ONLY."""
     with self.scope():
@@ -1080,6 +1101,8 @@ class StrategyBase(object):
     Returns:
       A `tf.distribute.DistributedDataset`.
     """
+    distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__, "distribute_dataset").increase_by(1)
     # pylint: enable=line-too-long
     return self._extended._experimental_distribute_dataset(dataset, options)  # pylint: disable=protected-access
 
@@ -1155,6 +1178,9 @@ class StrategyBase(object):
     Returns:
       A `tf.distribute.DistributedDataset`.
     """
+    distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__,
+        "distribute_datasets_from_function").increase_by(1)
     # pylint: enable=line-too-long
     return self._extended._distribute_datasets_from_function(  # pylint: disable=protected-access
         dataset_fn, options)
@@ -1419,44 +1445,49 @@ class StrategyBase(object):
     if reduce_op != reduce_util.ReduceOp.MEAN:
       raise TypeError("Expected `reduce_op` to be a `tf.distribute.ReduceOp`, "
                       "not: %r" % reduce_op)
-    # TODO(josh11b): Support list/tuple and tensor axis values.
-    if not isinstance(axis, six.integer_types):
-      raise TypeError("Expected `axis` to be an integer not: %r" % axis)
 
-    def mean_reduce_helper(v, axis=axis):
+    def mean_reduce_helper(v, axes=axis):
       """Computes the numerator and denominator on each replica."""
-      numer = math_ops.reduce_sum(v, axis=axis)
-      if v.shape.rank is not None:
-        # Note(joshl): We support axis < 0 to be consistent with the
-        # tf.math.reduce_* operations.
-        if axis < 0:
-          if axis + v.shape.rank < 0:
+      numer = math_ops.reduce_sum(v, axis=axes)
+      def dimension(axis):
+        if v.shape.rank is not None:
+          # Note(joshl): We support axis < 0 to be consistent with the
+          # tf.math.reduce_* operations.
+          if axis < 0:
+            if axis + v.shape.rank < 0:
+              raise ValueError(
+                  "`axis` = %r out of range for `value` with rank %d" %
+                  (axis, v.shape.rank))
+            axis += v.shape.rank
+          elif axis >= v.shape.rank:
             raise ValueError(
                 "`axis` = %r out of range for `value` with rank %d" %
                 (axis, v.shape.rank))
-          axis += v.shape.rank
-        elif axis >= v.shape.rank:
-          raise ValueError(
-              "`axis` = %r out of range for `value` with rank %d" %
-              (axis, v.shape.rank))
-        # TF v2 returns `None` for unknown dimensions and an integer for
-        # known dimension, whereas TF v1 returns tensor_shape.Dimension(None)
-        # or tensor_shape.Dimension(integer). `dimension_value` hides this
-        # difference, always returning `None` or an integer.
-        dim = tensor_shape.dimension_value(v.shape[axis])
-        if dim is not None:
-          # By returning a python value in the static shape case, we can
-          # maybe get a fast path for reducing the denominator.
-          # TODO(b/151871486): Remove array_ops.identity after we fallback to
-          # simple reduction if inputs are all on CPU.
-          return numer, array_ops.identity(
-              constant_op.constant(dim, dtype=dtypes.int64))
-      elif axis < 0:
-        axis = axis + array_ops.rank(v)
-      # TODO(b/151871486): Remove array_ops.identity after we fallback to simple
-      # reduction if inputs are all on CPU.
-      denom = array_ops.identity(
-          array_ops.shape_v2(v, out_type=dtypes.int64)[axis])
+          # TF v2 returns `None` for unknown dimensions and an integer for
+          # known dimension, whereas TF v1 returns tensor_shape.Dimension(None)
+          # or tensor_shape.Dimension(integer). `dimension_value` hides this
+          # difference, always returning `None` or an integer.
+          dim = tensor_shape.dimension_value(v.shape[axis])
+          if dim is not None:
+            # By returning a python value in the static shape case, we can
+            # maybe get a fast path for reducing the denominator.
+            # TODO(b/151871486): Remove array_ops.identity after we fallback to
+            # simple reduction if inputs are all on CPU.
+            return array_ops.identity(
+                constant_op.constant(dim, dtype=dtypes.int64))
+        elif axis < 0:
+          axis = axis + array_ops.rank(v)
+        # TODO(b/151871486): Remove array_ops.identity after we fallback to
+        # simple reduction if inputs are all on CPU.
+        return array_ops.identity(
+            array_ops.shape_v2(v, out_type=dtypes.int64)[axis])
+      if isinstance(axis, six.integer_types):
+        denom = dimension(axis)
+      elif isinstance(axis, (tuple, list)):
+        denom = math_ops.reduce_prod([dimension(a) for a in axes])
+      else:
+        raise TypeError(
+            "Expected `axis` to be an integer, tuple or list not: %r" % axis)
       # TODO(josh11b): Should we cast denom to v.dtype here instead of after the
       # reduce is complete?
       return numer, denom
@@ -1484,6 +1515,7 @@ class StrategyBase(object):
     return math_ops.truediv(numer, denom)
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED
+  @deprecated(None, "use `experimental_local_results` instead.")
   def unwrap(self, value):
     """Returns the list of all local per-replica values contained in `value`.
 
@@ -1536,6 +1568,7 @@ class StrategyBase(object):
     return self._extended._num_replicas_in_sync  # pylint: disable=protected-access
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED: see doc string
+  @deprecated(None, "use `update_config_proto` instead.")
   def configure(self,
                 session_config=None,
                 cluster_spec=None,
@@ -1936,6 +1969,10 @@ class StrategyV1(StrategyBase):
     return self.extended.experimental_make_numpy_dataset(
         numpy_input, session=session)
 
+  @deprecated(
+      None,
+      "This method is not available in TF 2.x. Please switch to using `run` instead."
+  )
   def experimental_run(self, fn, input_iterator=None):  # pylint: disable=useless-super-delegation
     """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
 
@@ -2071,6 +2108,10 @@ class StrategyExtendedV2(object):
     # when creating Datasets from numpy array inputs.
     self._require_static_shapes = False
 
+  def _resource_creator_scope(self):
+    """Returns one or a list of ops.resource_creator_scope for some Strategy."""
+    return None
+
   def _container_strategy(self):
     """Get the containing `tf.distribute.Strategy`.
 
@@ -2105,6 +2146,16 @@ class StrategyExtendedV2(object):
                       trackable.CheckpointInitialValueCallable):
         checkpoint_restore_uid = kwargs[
             "initial_value"].checkpoint_position.restore_uid
+      elif (isinstance(kwargs["initial_value"], functools.partial) and
+            isinstance(kwargs["initial_value"].func,
+                       trackable.CheckpointInitialValueCallable)):
+        # Some libraries (e.g, Keras) create partial function out of initializer
+        # to bind shape/dtype, for example:
+        #  initial_val = functools.partial(initializer, shape, dtype=dtype)
+        # Therefore to get the restore_uid we need to examine the "func" of
+        # the partial function.
+        checkpoint_restore_uid = kwargs[
+            "initial_value"].func.checkpoint_position.restore_uid
       else:
         checkpoint_restore_uid = None
 
@@ -2135,7 +2186,9 @@ class StrategyExtendedV2(object):
         variable_scope.variable_creator_scope(creator_with_resource_vars),
         variable_scope.variable_scope(
             variable_scope.get_variable_scope(),
-            custom_getter=distributed_getter), self._default_device)
+            custom_getter=distributed_getter),
+        strategy.extended._resource_creator_scope(),  # pylint: disable=protected-access
+        self._default_device)
 
   def _allow_variable_partition(self):
     return False
@@ -2731,6 +2784,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
   def _broadcast_to(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")
 
+  @deprecated(None, "please use `run` instead.")
   def experimental_run_steps_on_iterator(self,
                                          fn,
                                          iterator,
@@ -3147,6 +3201,9 @@ class ReplicaContextBase(object):
     execute in the same order on all replicas. Dispatching all-reduce based on
     conditions is usually error-prone.
 
+    Known limitation: if `value` contains `tf.IndexedSlices`, attempting to
+    compute gradient w.r.t `value` would result in an error.
+
     This API currently can only be called in the replica context. Other
     variants to reduce values across replicas are:
     * `tf.distribute.StrategyExtended.reduce_to`: the reduce and all-reduce API
@@ -3160,9 +3217,9 @@ class ReplicaContextBase(object):
       reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
         be combined. Allows using string representation of the enum such as
         "SUM", "MEAN".
-      value: a nested structure of `tf.Tensor` which `tf.nest.flatten` accepts.
-        The structure and the shapes of the `tf.Tensor` need to be same on all
-        replicas.
+      value: a potentially nested structure of `tf.Tensor` or `tf.IndexedSlices` which
+        `tf.nest.flatten` accepts. The structure and the shapes of `value` need to be
+        same on all replicas.
       options: a `tf.distribute.experimental.CommunicationOptions`. Options to
         perform collective operations. This overrides the default options if the
         `tf.distribute.Strategy` takes one in the constructor. See
@@ -3173,6 +3230,13 @@ class ReplicaContextBase(object):
        A nested structure of `tf.Tensor` with the reduced values. The structure
        is the same as `value`.
     """
+    flattened_value = nest.flatten(value)
+    has_indexed_slices = False
+
+    for v in flattened_value:
+      if isinstance(v, ops.IndexedSlices):
+        has_indexed_slices = True
+
     if isinstance(reduce_op, six.string_types):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     if options is None:
@@ -3183,19 +3247,37 @@ class ReplicaContextBase(object):
           reduce_op, [(v, _batch_reduce_destination(v)) for v in value_flat],
           options)
 
-    if reduce_op in [reduce_util.ReduceOp.SUM, reduce_util.ReduceOp.MEAN]:
+    # Due to the use of `capture_call_time_value` in collective ops, we have
+    # to maintain two branches: one w/ merge_call and one w/o. Details can be
+    # found in b/184009754.
+    if self._strategy.extended._use_merge_call():  # pylint: disable=protected-access
       # TODO(cjfj): Work out why `batch_reduce` doesn't return the correct grad.
+      if has_indexed_slices:
+        return nest.pack_sequence_as(
+            value,
+            self.merge_call(batch_all_reduce, args=flattened_value))
+
       @custom_gradient.custom_gradient
       def grad_wrapper(*xs):
         ys = self.merge_call(batch_all_reduce, args=xs)
         # The gradient of an all-sum is itself an all-sum (all-mean, likewise).
         return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
-      return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
+      return nest.pack_sequence_as(value, grad_wrapper(*flattened_value))
     else:
-      # TODO(cjfj): Implement gradients for other reductions.
-      reduced = nest.pack_sequence_as(
-          value, self.merge_call(batch_all_reduce, args=nest.flatten(value)))
-      return nest.map_structure(array_ops.prevent_gradient, reduced)
+      if has_indexed_slices:
+        return nest.pack_sequence_as(
+            value,
+            self._strategy.extended._replica_ctx_all_reduce(  # pylint: disable=protected-access
+                reduce_op, flattened_value, options))
+
+      @custom_gradient.custom_gradient
+      def grad_wrapper(*xs):
+        ys = self._strategy.extended._replica_ctx_all_reduce(  # pylint: disable=protected-access
+            reduce_op, xs, options)
+        # The gradient of an all-sum is itself an all-sum (all-mean, likewise).
+        return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
+
+      return nest.pack_sequence_as(value, grad_wrapper(*flattened_value))
 
   # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
   # all-reduce. It would return a function returning the result of reducing `t`
@@ -3380,7 +3462,7 @@ class ReplicaContext(ReplicaContextBase):
 
     Example usage:
 
-    >>> strategy = tf.distribute.MirroredStrategy(['GPU:0', 'CPU:0']) # 2 replicas
+    >>> strategy = tf.distribute.MirroredStrategy(['GPU:0', 'GPU:1']) # 2 replicas
     >>> with strategy.scope():
     ...   distributed_variable = tf.Variable(5.0)
     >>> distributed_variable
@@ -3471,8 +3553,6 @@ def _batch_reduce_destination(x):
     return x.device
   else:
     return x
-
-
 # ------------------------------------------------------------------------------
 
 
@@ -3767,3 +3847,6 @@ distribution_strategy_replica_gauge = monitoring.IntGauge(
     "/tensorflow/api/distribution_strategy/replica",
     "Gauge to track the number of replica each distribution strategy used.",
     "CountType")
+distribution_strategy_input_api_counter = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/input_api",
+    "Counter to track the usage of the input APIs", "strategy", "api")

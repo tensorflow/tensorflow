@@ -26,7 +26,6 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -54,6 +53,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.ragged import ragged_getitem
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
@@ -63,13 +63,6 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import get_symbol_from_name
 from tensorflow.python.util.tf_export import keras_export
-
-# TODO(b/168039935): track dropout rate to decide whether/how to make a
-# dropout rate fastpath.
-keras_temporary_dropout_rate = monitoring.BoolGauge(
-    '/tensorflow/api/keras/dropout/temp_rate_is_zero',
-    'Temporarily record if Keras dropout layer was created w/'
-    'constant rate = 0')
 
 
 # pylint: disable=g-classes-have-attributes
@@ -194,11 +187,10 @@ class Dropout(Layer):
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
     super(Dropout, self).__init__(**kwargs)
+    if isinstance(rate, (int, float)) and not 0 <= rate <= 1:
+      raise ValueError(f'Invalid value {rate} received for '
+                       f'`rate`, expected a value between 0 and 1.')
     self.rate = rate
-    if isinstance(rate, (int, float)) and not rate:
-      keras_temporary_dropout_rate.get_cell().set(True)
-    else:
-      keras_temporary_dropout_rate.get_cell().set(False)
     self.noise_shape = noise_shape
     self.seed = seed
     self.supports_masking = True
@@ -738,6 +730,8 @@ class RepeatVector(Layer):
   def __init__(self, n, **kwargs):
     super(RepeatVector, self).__init__(**kwargs)
     self.n = n
+    if not isinstance(n, int):
+      raise TypeError(f'Expected an integer value for `n`, got {type(n)}.')
     self.input_spec = InputSpec(ndim=2)
 
   def compute_output_shape(self, input_shape):
@@ -1093,7 +1087,7 @@ class Dense(Layer):
 
   Note: If the input to the layer has a rank greater than 2, then `Dense`
   computes the dot product between the `inputs` and the `kernel` along the
-  last axis of the `inputs` and axis 1 of the `kernel` (using `tf.tensordot`).
+  last axis of the `inputs` and axis 0 of the `kernel` (using `tf.tensordot`).
   For example, if input has dimensions `(batch_size, d0, d1)`,
   then we create a `kernel` with shape `(d1, units)`, and the `kernel` operates
   along axis 2 of the `input`, on every sub-tensor of shape `(1, 1, d1)`
@@ -1164,6 +1158,9 @@ class Dense(Layer):
         activity_regularizer=activity_regularizer, **kwargs)
 
     self.units = int(units) if not isinstance(units, int) else units
+    if self.units < 0:
+      raise ValueError(f'Received an invalid value for `units`, expected '
+                       f'a positive integer, got {units}.')
     self.activation = activations.get(activation)
     self.use_bias = use_bias
     self.kernel_initializer = initializers.get(kernel_initializer)
@@ -1575,9 +1572,12 @@ class TFSlicingOpDispatcher(dispatch.OpDispatcher):
     else:
       return self.NOT_SUPPORTED
 
-for slicing_op in [array_ops._slice_helper,  # pylint: disable=protected-access
-                   array_ops.boolean_mask,
-                   array_ops.boolean_mask_v2]:
+for slicing_op in [
+    array_ops._slice_helper,  # pylint: disable=protected-access
+    array_ops.boolean_mask,
+    array_ops.boolean_mask_v2,
+    ragged_getitem.ragged_tensor_getitem
+]:
   TFSlicingOpDispatcher(slicing_op).register(slicing_op)
 
 

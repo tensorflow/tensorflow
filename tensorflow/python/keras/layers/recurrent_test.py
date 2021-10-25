@@ -34,11 +34,11 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
+from tensorflow.python.keras.layers.legacy_rnn import rnn_cell_impl
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -1291,7 +1291,7 @@ class RNNTest(keras_parameterized.TestCase):
         recurrent_activation='sigmoid',
         implementation=2)
     tf_lstm_cell_output = _run_cell(
-        rnn_cell.LSTMCell,
+        rnn_cell_impl.LSTMCell,
         use_peepholes=True,
         initializer=init_ops.ones_initializer)
     self.assertNotAllClose(first_implementation_output, no_peephole_output)
@@ -1680,6 +1680,40 @@ class RNNTest(keras_parameterized.TestCase):
     output_dense = ragged_tensor.RaggedTensor.from_tensor(
         output_dense, lengths=row_lengths)
     self.assertAllClose(output_ragged, output_dense)
+
+    # Check if return sequences and go_backwards outputs are correct
+    np.random.seed(100)
+    returning_rnn_layer = layer(4, go_backwards=True, return_sequences=True)
+
+    x_ragged = keras.Input(shape=(None, 5), ragged=True)
+    y_ragged = returning_rnn_layer(x_ragged)
+    model = keras.models.Model(x_ragged, y_ragged)
+    output_ragged = model.predict(ragged_data, steps=1)
+    self.assertAllClose(output_ragged.ragged_rank, ragged_data.ragged_rank)
+    self.assertAllClose(output_ragged.row_splits, ragged_data.row_splits)
+
+    x_dense = keras.Input(shape=(3, 5))
+    masking = keras.layers.Masking()(x_dense)
+    y_dense = returning_rnn_layer(masking)
+    model_2 = keras.models.Model(x_dense, y_dense)
+    dense_data = ragged_data.to_tensor()
+    output_dense = model_2.predict(dense_data, steps=1)
+
+    # Note that the raw output for dense and ragged input when go_backward=True
+    # will be different. Consider following input
+    # [[a, b, 0], [c, 0, 0], [d, e, f]] where 0s are masked value.
+    # The dense output will be [[0, b, a], [0, 0, c], [f, e, d]] since it will
+    # process the whole sequence from the end.
+    # While ragged output will be [[b, a], [c], [f, e, d]] since it just ignore
+    # the 0s. And if we densify the ragged output, it will by default inserting
+    # 0s to the end (rather than from the beginning), which make the output to
+    # be [[b, a, 0], [c, 0, 0], [f, e, d]]. With this, we need to verify that
+    # reverse(ragged_output.to_tensor()) == reverse(dense_output)
+    output_dense = keras.backend.reverse(output_dense, [1])
+    output_dense = ragged_tensor.RaggedTensor.from_tensor(
+        output_dense, lengths=row_lengths)
+
+    self.assertAllClose(keras.backend.reverse(output_ragged, [1]), output_dense)
 
   def test_stateless_rnn_cell(self):
 

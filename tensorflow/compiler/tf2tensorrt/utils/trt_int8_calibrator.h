@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <utility>
+
 #include "tensorflow/core/platform/mutex.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
@@ -34,11 +35,7 @@ namespace tensorrt {
 // a push calibration This class should be updated accordingly
 
 // IInt8EntropyCalibrator2 is preferred for TRT 5.1+.
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
 struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator2 {
-#else
-struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
-#endif
  public:
   // Construct a calibrator for future calibration.
   TRTInt8Calibrator(
@@ -51,10 +48,10 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
 
   ~TRTInt8Calibrator();
 
-  int getBatchSize() const override;
+  int getBatchSize() const noexcept override;
 
   bool getBatch(void* bindings[], const char* names[],
-                int num_bindings) override;
+                int num_bindings) noexcept override;
 
   // Feed calibration data to the calibrator, and return true if the data is
   // accepted. Return false if the calibrator has been terminated.
@@ -69,9 +66,10 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   void setDone();
 
   // If not null, calibration is skipped.
-  const void* readCalibrationCache(std::size_t& length) override;
+  const void* readCalibrationCache(std::size_t& length) noexcept override;
 
-  void writeCalibrationCache(const void* ptr, std::size_t length) override;
+  void writeCalibrationCache(const void* ptr,
+                             std::size_t length) noexcept override;
 
   const string& getCalibrationTableAsString() { return calibration_table_; }
 

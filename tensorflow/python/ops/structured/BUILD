@@ -16,6 +16,14 @@ py_library(
     srcs_version = "PY3",
     tags = ["nofixdeps"],
     deps = [
+        ":structured_ops",
+    ],
+)
+
+py_library(
+    name = "structured_ops",
+    srcs = ["structured_ops.py"],
+    deps = [
         ":structured_array_ops",
         ":structured_tensor",
     ],
@@ -147,6 +155,7 @@ py_test(
     name = "structured_tensor_slice_test",
     srcs = ["structured_tensor_slice_test.py"],
     python_version = "PY3",
+    tags = ["notsan"],  # Times out frequently.
     deps = [
         ":structured_tensor",
         "//tensorflow/python:framework_ops",

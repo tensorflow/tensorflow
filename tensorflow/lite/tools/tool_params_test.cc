@@ -24,18 +24,20 @@ namespace {
 
 TEST(ToolParams, SetTest) {
   ToolParams params;
-  params.AddParam("some-int1", ToolParam::Create<int>(13));
-  params.AddParam("some-int2", ToolParam::Create<int>(17));
+  params.AddParam("some-int1", ToolParam::Create<int>(13 /*, position=0*/));
+  params.AddParam("some-int2", ToolParam::Create<int>(17 /*, position=0*/));
 
   ToolParams others;
-  others.AddParam("some-int1", ToolParam::Create<int>(19));
-  others.AddParam("some-bool", ToolParam::Create<bool>(true));
+  others.AddParam("some-int1", ToolParam::Create<int>(19, 5));
+  others.AddParam("some-bool", ToolParam::Create<bool>(true, 1));
 
   params.Set(others);
   EXPECT_EQ(19, params.Get<int>("some-int1"));
+  EXPECT_EQ(5, params.GetPosition<int>("some-int1"));
   EXPECT_TRUE(params.HasValueSet<int>("some-int1"));
 
   EXPECT_EQ(17, params.Get<int>("some-int2"));
+  EXPECT_EQ(0, params.GetPosition<int>("some-int2"));
   EXPECT_FALSE(params.HasValueSet<int>("some-int2"));
 
   EXPECT_FALSE(params.HasParam("some-bool"));
@@ -43,30 +45,32 @@ TEST(ToolParams, SetTest) {
 
 TEST(ToolParams, MergeTestOverwriteTrue) {
   ToolParams params;
-  params.AddParam("some-int1", ToolParam::Create<int>(13));
-  params.AddParam("some-int2", ToolParam::Create<int>(17));
+  params.AddParam("some-int1", ToolParam::Create<int>(13 /*, position=0*/));
+  params.AddParam("some-int2", ToolParam::Create<int>(17 /*, position=0*/));
 
   ToolParams others;
-  others.AddParam("some-int1", ToolParam::Create<int>(19));
-  others.AddParam("some-bool", ToolParam::Create<bool>(true));
+  others.AddParam("some-int1", ToolParam::Create<int>(19, 5));
+  others.AddParam("some-bool", ToolParam::Create<bool>(true /*, position=0*/));
 
   params.Merge(others, true /* overwrite */);
   EXPECT_EQ(19, params.Get<int>("some-int1"));
+  EXPECT_EQ(5, params.GetPosition<int>("some-int1"));
   EXPECT_EQ(17, params.Get<int>("some-int2"));
   EXPECT_TRUE(params.Get<bool>("some-bool"));
 }
 
 TEST(ToolParams, MergeTestOverwriteFalse) {
   ToolParams params;
-  params.AddParam("some-int1", ToolParam::Create<int>(13));
-  params.AddParam("some-int2", ToolParam::Create<int>(17));
+  params.AddParam("some-int1", ToolParam::Create<int>(13 /*, position=0*/));
+  params.AddParam("some-int2", ToolParam::Create<int>(17 /*, position=0*/));
 
   ToolParams others;
-  others.AddParam("some-int1", ToolParam::Create<int>(19));
-  others.AddParam("some-bool", ToolParam::Create<bool>(true));
+  others.AddParam("some-int1", ToolParam::Create<int>(19, 5));
+  others.AddParam("some-bool", ToolParam::Create<bool>(true /*, position=0*/));
 
   params.Merge(others);  // default overwrite is false
   EXPECT_EQ(13, params.Get<int>("some-int1"));
+  EXPECT_EQ(0, params.GetPosition<int>("some-int1"));
   EXPECT_EQ(17, params.Get<int>("some-int2"));
   EXPECT_TRUE(params.Get<bool>("some-bool"));
 }

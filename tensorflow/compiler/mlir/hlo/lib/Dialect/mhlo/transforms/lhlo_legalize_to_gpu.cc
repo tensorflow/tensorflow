@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
@@ -68,11 +70,11 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       size = dim_size;
     }
 
-    auto reducing_dimension = *reduce_op.dimensions().int_value_begin();
+    auto reducing_dimension = *reduce_op.dimensions().value_begin<APInt>();
 
     // Require all inputs to have the same shape.
     int64_t reduce_dim_size = 0;
-    for (auto input : reduce_op.operands()) {
+    for (auto input : reduce_op.inputs()) {
       auto shaped_type = input.getType().dyn_cast<ShapedType>();
       if (!shaped_type || !shaped_type.hasStaticShape()) {
         return failure();
@@ -82,10 +84,10 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     }
 
     // Create a launch that is parallel in the result dimension.
-    auto block_size_x = rewriter.create<mlir::ConstantOp>(
+    auto block_size_x = rewriter.create<mlir::arith::ConstantOp>(
         loc, rewriter.getIndexType(),
         rewriter.getIntegerAttr(rewriter.getIndexType(), size));
-    auto one = rewriter.create<mlir::ConstantOp>(
+    auto one = rewriter.create<mlir::arith::ConstantOp>(
         loc, rewriter.getIndexType(),
         rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
     auto launch_op = rewriter.create<mlir::gpu::LaunchOp>(
@@ -105,14 +107,14 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
       // Insert a loop into the body to compute the reduction. The loop ranges
       // from [0.dim).
-      auto zero = rewriter.create<mlir::ConstantOp>(
+      auto zero = rewriter.create<mlir::arith::ConstantOp>(
           loc, rewriter.getIndexType(),
           rewriter.getIntegerAttr(rewriter.getIndexType(), 0));
       // TODO(b/137624192) Use dimOp to make it shape independent.
-      auto upper = rewriter.create<mlir::ConstantOp>(
+      auto upper = rewriter.create<mlir::arith::ConstantOp>(
           loc, rewriter.getIndexType(),
           rewriter.getIntegerAttr(rewriter.getIndexType(), reduce_dim_size));
-      auto step = rewriter.create<mlir::ConstantOp>(
+      auto step = rewriter.create<mlir::arith::ConstantOp>(
           loc, rewriter.getIndexType(),
           rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
       auto loop = rewriter.create<mlir::scf::ForOp>(loc, zero, upper, step);
@@ -133,7 +135,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       auto accumulator = rewriter.create<memref::SubViewOp>(
           loc, resType, output, offset, size, stride);
       llvm::SmallVector<Value, 4> indexings;
-      auto input_buffer = *reduce_op.operands().begin();
+      Value input_buffer = reduce_op.inputs().front();
       auto input_type_rank =
           input_buffer.getType().cast<MemRefType>().getRank();
 
@@ -172,7 +174,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 };
 
 struct LhloLegalizeToGpuPass
-    : public PassWrapper<LhloLegalizeToGpuPass, FunctionPass> {
+    : public LhloLegalizeToGpuPassBase<LhloLegalizeToGpuPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, gpu::GPUDialect, linalg::LinalgDialect,
                     memref::MemRefDialect, scf::SCFDialect>();
@@ -181,9 +183,9 @@ struct LhloLegalizeToGpuPass
   void runOnFunction() override {
     OwningRewritePatternList patterns(&getContext());
     ConversionTarget target(getContext());
-    target.addLegalDialect<linalg::LinalgDialect, memref::MemRefDialect,
-                           StandardOpsDialect, gpu::GPUDialect, scf::SCFDialect,
-                           LmhloDialect>();
+    target.addLegalDialect<arith::ArithmeticDialect, linalg::LinalgDialect,
+                           memref::MemRefDialect, StandardOpsDialect,
+                           gpu::GPUDialect, scf::SCFDialect, LmhloDialect>();
     target.addIllegalOp<ReduceOp>();
     auto func = getFunction();
     patterns.insert<LhloReduceToGPULaunchConverter>(func.getContext());

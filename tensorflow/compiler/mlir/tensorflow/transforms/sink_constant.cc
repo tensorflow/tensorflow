@@ -40,8 +40,13 @@ using ::mlir::TF::ConstOp;
 
 class ClusterConstantSinkingPass
     : public TF::ClusterConstantSinkingPassBase<ClusterConstantSinkingPass> {
+ public:
+  explicit ClusterConstantSinkingPass(
+      llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter)
+      : filter_(filter) {}
+
   void runOnFunction() override {
-    getFunction().walk([](tf_device::ClusterOp cluster) {
+    getFunction().walk([filter = filter_](tf_device::ClusterOp cluster) {
       LLVM_DEBUG(llvm::dbgs() << "Visit " << *cluster.getOperation() << "\n");
       // For each launch op, we find the values used that come from a constant
       // defined above and sink these constants in the region body.
@@ -54,6 +59,9 @@ class ClusterConstantSinkingPass
         Value constant = use->get();
         auto const_op = dyn_cast_or_null<TF::ConstOp>(constant.getDefiningOp());
         if (!const_op) return;
+
+        // Filter constants using user provided predicate function.
+        if (filter && !filter(cluster, const_op.value())) return;
 
         // We found a constant, try to insert it in the map and re-use its
         // cloned value if any.
@@ -80,12 +88,16 @@ class ClusterConstantSinkingPass
       });
     });
   }
+
+ private:
+  llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter_;
 };
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass() {
-  return std::make_unique<ClusterConstantSinkingPass>();
+std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass(
+    llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter) {
+  return std::make_unique<ClusterConstantSinkingPass>(filter);
 }
 
 }  // namespace TFDevice

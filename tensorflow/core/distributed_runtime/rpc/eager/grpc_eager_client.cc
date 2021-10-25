@@ -52,9 +52,6 @@ namespace {
  *
  * TODO(fishx): When exiting client, make sure all pending ops on remote workers
  * are finished.
- *
- * TODO(b/139210648): Move this comment to eager/execute.py when this feature is
- * on by default.
  */
 bool EnableStreaming() {
   bool result;

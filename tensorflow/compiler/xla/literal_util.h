@@ -118,7 +118,7 @@ class LiteralUtil {
   // Creates a literal of the given shape where each element is `value`.
   template <typename NativeT>
   static Literal CreateFullWithDescendingLayout(
-      absl::Span<const int64> dimensions, NativeT value);
+      absl::Span<const int64_t> dimensions, NativeT value);
 
   // Creates a new literal from an Array type. The variants not ending with
   // WithLayout use the default XLA layout for the literal's linear
@@ -149,26 +149,26 @@ class LiteralUtil {
 
   // Creates a linspace-populated literal with the given number of rows and
   // columns.
-  static Literal CreateR2F32Linspace(float from, float to, int64 rows,
-                                     int64 cols);
+  static Literal CreateR2F32Linspace(float from, float to, int64_t rows,
+                                     int64_t cols);
 
   // Creates a literal that projects the (x, y) dimensions given in values into
   // the z dimension given by "projection".
   template <typename NativeT>
   static Literal CreateR3Projected(
       std::initializer_list<std::initializer_list<NativeT>> values,
-      int64 projection);
+      int64_t projection);
 
   // Creates a literal that projects the (x, y) dimensions given in values into
   // the z and p dimensions given.
   template <typename NativeT>
   static Literal CreateR4Projected(
       std::initializer_list<std::initializer_list<NativeT>> values,
-      int64 projection_p, int64 projection_z);
+      int64_t projection_p, int64_t projection_z);
 
   // Returns an identity matrix (rank 2) with the given row and column count.
   template <typename NativeT>
-  static Literal MakeIdentityR2(int64 size);
+  static Literal MakeIdentityR2(int64_t size);
 
   // Returns a tuple literal composed of given literals. Data is copied from the
   // given elements into the returned literal.
@@ -211,7 +211,7 @@ class LiteralUtil {
   // The content of the literal values is the default value of the primitive
   // type of literal itself (0 for numeric types, and false for predicates).
   static Literal CreateFromDimensions(PrimitiveType primitive_type,
-                                      absl::Span<const int64> dimensions);
+                                      absl::Span<const int64_t> dimensions);
 
   // If the given literal's data type is bfloat16, converts it to a float
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
@@ -238,6 +238,10 @@ class LiteralUtil {
   // recursively converts its elements.
   static Literal ConvertF64ToBF16(const LiteralSlice& f64_literal);
 
+  // Creates a scalar literal whose value is the maximum value of a given
+  // literal slice.
+  static Literal MaxElement(const LiteralSlice& literal);
+
   // If the given literal's data type is double, converts it to a bfloat16
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
@@ -247,8 +251,8 @@ class LiteralUtil {
   // data in the given input literal. For reshaping purposes the (flat) data
   // buffer of the input literal is assumed to have the given minor_to_major
   // layout order.
-  static Literal ReshapeSlice(absl::Span<const int64> new_dimensions,
-                              absl::Span<const int64> minor_to_major,
+  static Literal ReshapeSlice(absl::Span<const int64_t> new_dimensions,
+                              absl::Span<const int64_t> minor_to_major,
                               const LiteralSlice& literal);
 
   // Creates a literal with the supplied shape, and uses the provided value
@@ -259,7 +263,7 @@ class LiteralUtil {
       typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
   static StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
-      const std::function<T(absl::Span<const int64>)>& generator);
+      const std::function<T(absl::Span<const int64_t>)>& generator);
 
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
@@ -287,7 +291,7 @@ class LiteralUtil {
   // Returns a multi-dimensional index as a string. For example: '{7, 8}' will
   // be returned for a 2-dimensional index with dimension 0 index equal to 7,
   // dimension 1 equal to 8.
-  static string MultiIndexAsString(absl::Span<const int64> multi_index);
+  static string MultiIndexAsString(absl::Span<const int64_t> multi_index);
 };
 
 std::ostream& operator<<(std::ostream& out, const Literal& literal);
@@ -304,7 +308,7 @@ template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateR1(absl::Span<const NativeT> values) {
   Literal literal(
       ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<NativeT>(),
-                           {static_cast<int64>(values.size())}));
+                           {static_cast<int64_t>(values.size())}));
   literal.PopulateR1(values);
   return literal;
 }
@@ -315,8 +319,8 @@ template <typename NativeT>
     const Layout& layout) {
   Literal literal(ShapeUtil::MakeShapeWithLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(),
-      {static_cast<int64>(values.size()),
-       static_cast<int64>(values.begin()->size())},
+      {static_cast<int64_t>(values.size()),
+       static_cast<int64_t>(values.begin()->size())},
       AsInt64Slice(layout.minor_to_major())));
   literal.PopulateR2(values);
   return literal;
@@ -333,15 +337,15 @@ template <typename NativeT>
     std::initializer_list<std::initializer_list<std::initializer_list<NativeT>>>
         values,
     const Layout& layout) {
-  const int64 d0 = values.size();
-  const int64 d1 = values.begin()->size();
-  const int64 d2 = values.begin()->begin()->size();
+  const int64_t d0 = values.size();
+  const int64_t d1 = values.begin()->size();
+  const int64_t d2 = values.begin()->begin()->size();
   Array3D<NativeT> tmp(d0, d1, d2);
-  int64 i0 = 0;
+  int64_t i0 = 0;
   for (auto d1_values : values) {
-    int64 i1 = 0;
+    int64_t i1 = 0;
     for (auto d2_values : d1_values) {
-      int64 i2 = 0;
+      int64_t i2 = 0;
       for (auto value : d2_values) {
         tmp(i0, i1, i2) = value;
         ++i2;
@@ -366,18 +370,18 @@ template <typename NativeT>
         std::initializer_list<std::initializer_list<NativeT>>>>
         values,
     const Layout& layout) {
-  const int64 d0 = values.size();
-  const int64 d1 = values.begin()->size();
-  const int64 d2 = values.begin()->begin()->size();
-  const int64 d3 = values.begin()->begin()->begin()->size();
+  const int64_t d0 = values.size();
+  const int64_t d1 = values.begin()->size();
+  const int64_t d2 = values.begin()->begin()->size();
+  const int64_t d3 = values.begin()->begin()->begin()->size();
   Array4D<NativeT> tmp(d0, d1, d2, d3);
-  int64 i0 = 0;
+  int64_t i0 = 0;
   for (auto d1_values : values) {
-    int64 i1 = 0;
+    int64_t i1 = 0;
     for (auto d2_values : d1_values) {
-      int64 i2 = 0;
+      int64_t i2 = 0;
       for (auto d3_values : d2_values) {
-        int64 i3 = 0;
+        int64_t i3 = 0;
         for (auto value : d3_values) {
           tmp(i0, i1, i2, i3) = value;
           ++i3;
@@ -443,16 +447,16 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateR3Projected(
     std::initializer_list<std::initializer_list<NativeT>> values,
-    int64 projection) {
-  int64 dim0_size = projection;
-  int64 dim1_size = values.size();
-  int64 dim2_size = values.begin()->size();
+    int64_t projection) {
+  int64_t dim0_size = projection;
+  int64_t dim1_size = values.size();
+  int64_t dim2_size = values.begin()->size();
 
   Array3D<NativeT> array(dim0_size, dim1_size, dim2_size);
-  for (int64 dim0 = 0; dim0 < dim0_size; ++dim0) {
-    int64 dim1 = 0;
+  for (int64_t dim0 = 0; dim0 < dim0_size; ++dim0) {
+    int64_t dim1 = 0;
     for (auto inner_list : values) {
-      int64 dim2 = 0;
+      int64_t dim2 = 0;
       for (auto value : inner_list) {
         array(dim0, dim1, dim2) = value;
         ++dim2;
@@ -468,18 +472,18 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateR4Projected(
     std::initializer_list<std::initializer_list<NativeT>> values,
-    int64 projection_p, int64 projection_z) {
-  int64 dim0_size = projection_p;
-  int64 dim1_size = projection_z;
-  int64 dim2_size = values.size();
-  int64 dim3_size = values.begin()->size();
+    int64_t projection_p, int64_t projection_z) {
+  int64_t dim0_size = projection_p;
+  int64_t dim1_size = projection_z;
+  int64_t dim2_size = values.size();
+  int64_t dim3_size = values.begin()->size();
 
   Array4D<NativeT> array(dim0_size, dim1_size, dim2_size, dim3_size);
-  for (int64 dim0 = 0; dim0 < dim0_size; ++dim0) {
-    for (int64 dim1 = 0; dim1 < dim1_size; ++dim1) {
-      int64 dim2 = 0;
+  for (int64_t dim0 = 0; dim0 < dim0_size; ++dim0) {
+    for (int64_t dim1 = 0; dim1 < dim1_size; ++dim1) {
+      int64_t dim2 = 0;
       for (auto inner_list : values) {
-        int64 dim3 = 0;
+        int64_t dim3 = 0;
         for (auto value : inner_list) {
           array(dim0, dim1, dim2, dim3) = value;
           ++dim3;
@@ -507,9 +511,9 @@ template <typename NativeT>
 
 // Returns an identity matrix (rank 2) with the given row and column count.
 template <typename NativeT>
-/* static */ Literal LiteralUtil::MakeIdentityR2(int64 size) {
+/* static */ Literal LiteralUtil::MakeIdentityR2(int64_t size) {
   Array2D<NativeT> array(size, size, 0);
-  for (int64 i = 0; i < size; ++i) {
+  for (int64_t i = 0; i < size; ++i) {
     array(i, i) = 1;
   }
   return CreateR2FromArray2D(array);
@@ -517,7 +521,7 @@ template <typename NativeT>
 
 template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateFullWithDescendingLayout(
-    absl::Span<const int64> dimensions, NativeT value) {
+    absl::Span<const int64_t> dimensions, NativeT value) {
   Literal literal(ShapeUtil::MakeShapeWithDescendingLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), dimensions));
   literal.PopulateWithValue(value);
@@ -527,12 +531,12 @@ template <typename NativeT>
 template <PrimitiveType type, typename T>
 /* static */ StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
     const Shape& shape,
-    const std::function<T(absl::Span<const int64>)>& generator) {
+    const std::function<T(absl::Span<const int64_t>)>& generator) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   TF_RET_CHECK(shape.element_type() == type);
   Literal literal(shape);
   TF_RETURN_IF_ERROR(literal.Populate<NativeT>(
-      [&](absl::Span<const int64> indexes) { return generator(indexes); }));
+      [&](absl::Span<const int64_t> indexes) { return generator(indexes); }));
   return std::move(literal);
 }
 
@@ -542,8 +546,9 @@ template <PrimitiveType type, typename E, typename T>
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   std::normal_distribution<NativeT> generator(mean, stddev);
   return CreateLiteralWithGenerator<type, NativeT>(
-      shape,
-      [&](absl::Span<const int64> /*indexes*/) { return generator(*engine); });
+      shape, [&](absl::Span<const int64_t> /*indexes*/) {
+        return generator(*engine);
+      });
 }
 
 template <PrimitiveType type, typename T>

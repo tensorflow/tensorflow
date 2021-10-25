@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for partitioned_variables.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 import numpy as np
@@ -181,7 +177,7 @@ class PartitionerCreatorsTest(test.TestCase):
           "root", partitioner=partitioner_axis3_str):
         v3str = variable_scope.get_variable(
             "v3str",
-            initializer=np.array([""] * 4 * 8 * 16 * 32).reshape(4, 8, 16, 32),
+            initializer=np.array([""] * 4 * 8 * 16 * 32).reshape(4, 8, 16, 32),  # pylint: disable=too-many-function-args
             dtype=dtypes.string,
             shape=(4, 8, 16, 32))
         v3str_list = v3str._get_variable_list()

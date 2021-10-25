@@ -108,7 +108,7 @@ cc_test(
         ":c_api",
         ":common",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -135,7 +135,7 @@ cc_test(
         ":common",
         ":selectively_built_c_api_test_lib",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -152,7 +152,7 @@ cc_test(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -195,7 +195,7 @@ cc_test(
     srcs = ["common_test.cc"],
     deps = [
         ":common",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -206,7 +206,7 @@ cc_test(
     copts = ["-Wno-unused-variable"],
     deps = [
         ":common",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

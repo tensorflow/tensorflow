@@ -17,10 +17,6 @@
 See [Importing Data](https://tensorflow.org/guide/data) for an overview.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.data import experimental
 from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
@@ -30,6 +26,7 @@ from tensorflow.python.data.ops.dataset_ops import make_initializable_iterator
 from tensorflow.python.data.ops.dataset_ops import make_one_shot_iterator
 from tensorflow.python.data.ops.dataset_ops import UNKNOWN as UNKNOWN_CARDINALITY
 from tensorflow.python.data.ops.iterator_ops import Iterator
+from tensorflow.python.data.ops.options import Options
 from tensorflow.python.data.ops.readers import FixedLengthRecordDataset
 from tensorflow.python.data.ops.readers import TextLineDataset
 from tensorflow.python.data.ops.readers import TFRecordDataset

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Dtypes and dtype utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -104,9 +100,13 @@ def canonicalize_dtype(dtype):
 
 
 def _result_type(*arrays_and_dtypes):
+  """Returns the resulting type given a set of arrays."""
   def preprocess_float(x):
-    if is_prefer_float32() and isinstance(x, float):
-      return np.float32(x)
+    if is_prefer_float32():
+      if isinstance(x, float):
+        return np.float32(x)
+      elif isinstance(x, complex):
+        return np.complex64(x)
     return x
   arrays_and_dtypes = [preprocess_float(x) for x in arrays_and_dtypes]
   dtype = np.result_type(*arrays_and_dtypes)

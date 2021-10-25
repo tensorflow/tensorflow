@@ -23,7 +23,13 @@ limitations under the License.
 
 int TfLiteIntArrayGetSizeInBytes(int size) {
   static TfLiteIntArray dummy;
-  return sizeof(dummy) + sizeof(dummy.data[0]) * size;
+
+  int computed_size = sizeof(dummy) + sizeof(dummy.data[0]) * size;
+#if defined(_MSC_VER)
+  // Context for why this is needed is in http://b/189926408#comment21
+  computed_size -= sizeof(dummy.data[0]);
+#endif
+  return computed_size;
 }
 
 int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b) {
@@ -45,8 +51,10 @@ int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
 #ifndef TF_LITE_STATIC_MEMORY
 
 TfLiteIntArray* TfLiteIntArrayCreate(int size) {
-  TfLiteIntArray* ret =
-      (TfLiteIntArray*)malloc(TfLiteIntArrayGetSizeInBytes(size));
+  int alloc_size = TfLiteIntArrayGetSizeInBytes(size);
+  if (alloc_size <= 0) return NULL;
+  TfLiteIntArray* ret = (TfLiteIntArray*)malloc(alloc_size);
+  if (!ret) return ret;
   ret->size = size;
   return ret;
 }
@@ -66,7 +74,13 @@ void TfLiteIntArrayFree(TfLiteIntArray* a) { free(a); }
 
 int TfLiteFloatArrayGetSizeInBytes(int size) {
   static TfLiteFloatArray dummy;
-  return sizeof(dummy) + sizeof(dummy.data[0]) * size;
+
+  int computed_size = sizeof(dummy) + sizeof(dummy.data[0]) * size;
+#if defined(_MSC_VER)
+  // Context for why this is needed is in http://b/189926408#comment21
+  computed_size -= sizeof(dummy.data[0]);
+#endif
+  return computed_size;
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
@@ -181,9 +195,9 @@ void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   }
   // TODO(b/145340303): Tensor data should be aligned.
   if (!tensor->data.raw) {
-    tensor->data.raw = malloc(num_bytes);
+    tensor->data.raw = (char*)malloc(num_bytes);
   } else if (num_bytes > tensor->bytes) {
-    tensor->data.raw = realloc(tensor->data.raw, num_bytes);
+    tensor->data.raw = (char*)realloc(tensor->data.raw, num_bytes);
   }
   tensor->bytes = num_bytes;
 }
@@ -229,7 +243,7 @@ const char* TfLiteTypeGetName(TfLiteType type) {
   return "Unknown type";
 }
 
-TfLiteDelegate TfLiteDelegateCreate() {
+TfLiteDelegate TfLiteDelegateCreate(void) {
   TfLiteDelegate d = {
       .data_ = NULL,
       .Prepare = NULL,

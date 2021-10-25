@@ -103,7 +103,7 @@ class RGBToHSVOp : public XlaOpKernel {
                 errors::InvalidArgument("input must be at least 1D",
                                         input_shape.DebugString()));
     int channel_dim = input_shape.dims() - 1;
-    int64 channels = input_shape.dim_size(channel_dim);
+    int64_t channels = input_shape.dim_size(channel_dim);
     OP_REQUIRES(
         context, channels == 3,
         errors::FailedPrecondition("input must have 3 channels but input has ",
@@ -141,7 +141,7 @@ class HSVToRGBOp : public XlaOpKernel {
                 errors::InvalidArgument("input must be at least 1D",
                                         input_shape.DebugString()));
     int channel_dim = input_shape.dims() - 1;
-    int64 channels = input_shape.dim_size(channel_dim);
+    int64_t channels = input_shape.dim_size(channel_dim);
     OP_REQUIRES(
         context, channels == 3,
         errors::FailedPrecondition("input must have 3 channels but input has ",
@@ -181,8 +181,8 @@ class AdjustContrastOpV2 : public XlaOpKernel {
     int height_dim = input_shape.dims() - 3;
     int width_dim = input_shape.dims() - 2;
     int channel_dim = input_shape.dims() - 1;
-    const int64 height = input_shape.dim_size(height_dim);
-    const int64 width = input_shape.dim_size(width_dim);
+    const int64_t height = input_shape.dim_size(height_dim);
+    const int64_t width = input_shape.dim_size(width_dim);
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(factor_shape),
                 errors::InvalidArgument("contrast_factor must be scalar: ",
@@ -204,7 +204,7 @@ class AdjustContrastOpV2 : public XlaOpKernel {
         reduce, XlaHelpers::FloatLiteral(b, accumulation_type, height * width));
     output = XlaHelpers::ConvertElementType(output, type);
 
-    std::vector<int64> broadcast_dims(input_shape.dims() - 2);
+    std::vector<int64_t> broadcast_dims(input_shape.dims() - 2);
     std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
     broadcast_dims.back() = channel_dim;
     output =
@@ -231,7 +231,7 @@ class AdjustSaturationOp : public XlaOpKernel {
                 errors::InvalidArgument("scale must be scalar: ",
                                         scale_shape.DebugString()));
     const int channel_dim = input_shape.dims() - 1;
-    const int64 channels = input_shape.dim_size(channel_dim);
+    const int64_t channels = input_shape.dim_size(channel_dim);
     OP_REQUIRES(
         context, channels == 3,
         errors::InvalidArgument("input must have 3 channels but instead has ",
@@ -285,7 +285,7 @@ class AdjustHueOp : public XlaOpKernel {
                 errors::InvalidArgument("delta must be scalar: ",
                                         delta_shape.DebugString()));
     const int channel_dim = input_shape.dims() - 1;
-    const int64 channels = input_shape.dim_size(channel_dim);
+    const int64_t channels = input_shape.dim_size(channel_dim);
     OP_REQUIRES(
         context, channels == 3,
         errors::InvalidArgument("input must have 3 channels but instead has ",
@@ -331,14 +331,14 @@ class AdjustHueOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("AdjustHue"), AdjustHueOp);
 
 struct WhileCondFn {
-  const int64 num_boxes;
-  const int64 output_size;
+  const int64_t num_boxes;
+  const int64_t output_size;
 
-  explicit WhileCondFn(int64 num_boxes, int64 output_size)
+  explicit WhileCondFn(int64_t num_boxes, int64_t output_size)
       : num_boxes(num_boxes), output_size(output_size) {}
 
-  xla::StatusOr<xla::XlaOp> operator()(absl::Span<const xla::XlaOp> values,
-                                       xla::XlaBuilder* cond_builder) const {
+  StatusOr<xla::XlaOp> operator()(absl::Span<const xla::XlaOp> values,
+                                  xla::XlaBuilder* cond_builder) const {
     xla::XlaOp row_idx = values[0];
     xla::XlaOp row_in_bounds =
         xla::Lt(row_idx, xla::ConstantR0<int32>(cond_builder, num_boxes));
@@ -354,11 +354,11 @@ struct WhileCondFn {
 // to ensure that suppressed boxes cannot themselves suppress other
 // boxes.
 struct SuppressBodyFn {
-  const int64 num_boxes;
+  const int64_t num_boxes;
 
-  explicit SuppressBodyFn(int64 num_boxes) : num_boxes(num_boxes) {}
+  explicit SuppressBodyFn(int64_t num_boxes) : num_boxes(num_boxes) {}
 
-  xla::StatusOr<std::vector<xla::XlaOp>> operator()(
+  StatusOr<std::vector<xla::XlaOp>> operator()(
       absl::Span<const xla::XlaOp> values, xla::XlaBuilder* builder) const {
     auto row_idx = values[0];
     auto num_outputs_so_far = values[1];
@@ -410,7 +410,7 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(boxes_shape),
                 errors::InvalidArgument("boxes must be 2-D, currently: ",
                                         boxes_shape.DebugString()));
-    const int64 num_boxes = boxes_shape.dim_size(0);
+    const int64_t num_boxes = boxes_shape.dim_size(0);
     OP_REQUIRES(context, boxes_shape.dim_size(1) == 4,
                 errors::InvalidArgument("boxes must have 4 columns",
                                         boxes_shape.DebugString()));
@@ -433,7 +433,7 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     xla::PrimitiveType scores_xla_type = context->InputXlaType("scores");
     const xla::XlaOp boxes_input = context->Input("boxes");
     const xla::XlaOp scores_input = context->Input("scores");
-    int64 output_size;
+    int64_t output_size;
     OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(2, &output_size));
     OP_REQUIRES(
         context, output_size >= 0,

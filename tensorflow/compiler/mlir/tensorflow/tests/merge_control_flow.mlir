@@ -288,7 +288,7 @@ func @same_predicate_dependency() {
 // Checks that results from first IfRegion are moved after merged IfRegion op as needed.
 
 // CHECK-LABEL: func @same_predicate_results_moved
-func @same_predicate_results_moved(%arg0: tensor<!tf.resource<tensor<f32>>>) {
+func @same_predicate_results_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
   // CHECK:      tf_device.cluster
   // CHECK:        %[[IF_OUTPUT:[0-9]*]]:2 = "tf.IfRegion"
   // CHECK:          %[[A_OUTPUT:[0-9]*]] = "tf.A"
@@ -311,7 +311,7 @@ func @same_predicate_results_moved(%arg0: tensor<!tf.resource<tensor<f32>>>) {
       %3 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
      }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+    "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %4 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> (tensor<f32>)
     %5 = "tf.IfRegion"(%0) ( {
       %3 = "tf.B"(%4) : (tensor<f32>) -> (tensor<i32>)
@@ -330,7 +330,7 @@ func @same_predicate_results_moved(%arg0: tensor<!tf.resource<tensor<f32>>>) {
 // Checks that side effect successor of op in first IfRegion are moved after merged IfRegion op as needed.
 
 // CHECK-LABEL: func @same_predicate_side_effect_moved
-func @same_predicate_side_effect_moved(%arg0: tensor<!tf.resource<tensor<f32>>>) {
+func @same_predicate_side_effect_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
   // CHECK:      tf_device.cluster
   // CHECK:        %[[IF_OUTPUT:[0-9]*]]:2 = "tf.IfRegion"
   // CHECK:         "tf.A"
@@ -345,13 +345,13 @@ func @same_predicate_side_effect_moved(%arg0: tensor<!tf.resource<tensor<f32>>>)
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %1 = "tf.IfRegion"(%0) ( {
       %3 = "tf.A"() : () -> (tensor<f32>)
-      "tf.AssignVariableOp"(%arg0, %3) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+      "tf.AssignVariableOp"(%arg0, %3) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       }, {
       %3 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
      }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
-    %8 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<f32>>>) -> (tensor<f32>)
+    %8 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> (tensor<f32>)
     %4 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> (tensor<f32>)
     %5 = "tf.IfRegion"(%0) ( {
       %3 = "tf.B"(%4) : (tensor<f32>) -> (tensor<i32>)
@@ -550,4 +550,71 @@ func @same_predicate_3_ifregions_intermediate_side_effect() {
   return
 }
 
+// Check case for 4 IfRegions where 1st and 3rd IfRegions
+// can be merged and ensure that side effect analysis is regenerated.
 
+// CHECK-LABEL: func @side_effect_analysis_updated
+func @side_effect_analysis_updated() {
+  // CHECK-COUNT-3:   "tf.IfRegion"
+  "tf_device.cluster"() ( {
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %8 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+    %1 = "tf.IfRegion"(%0) ( {
+      %2 = "tf.A"() : () -> (tensor<f32>)
+      "tf.Yield"(%2) : (tensor<f32>) -> ()
+      }, {
+      %2 = "tf.C"() : () -> (tensor<f32>)
+      "tf.Yield"(%2) : (tensor<f32>) -> ()
+    }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
+    %9 = "tf.IfRegion"(%8) ( {
+      %4 = "tf.E"() : () -> (tensor<f32>)
+      "tf.Yield"(%4) : (tensor<f32>) -> ()
+      }, {
+      %4 = "tf.F"() : () -> (tensor<f32>)
+      "tf.Yield"(%4) : (tensor<f32>) -> ()
+    }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
+    "tf.IfRegion"(%0) ( {
+      %5 = "tf.G"(%1) : (tensor<f32>) -> (tensor<f32>)
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+    }) { is_stateless = false} : (tensor<i1>) -> ()
+    "tf.IfRegion"(%8) ( {
+      %4 = "tf.E"() : () -> (tensor<f32>)
+      "tf.Yield"(%4) : (tensor<f32>) -> ()
+      }, {
+      %4 = "tf.F"() : () -> (tensor<f32>)
+      "tf.Yield"(%4) : (tensor<f32>) -> ()
+    }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// Check that 2 IfRegions can be merged when the first IfRegion contains multiple side effecting ops.
+
+// CHECK-LABEL: func @same_predicate_2_ifregions_multiple_side_effect_ops
+func @same_predicate_2_ifregions_multiple_side_effect_ops() {
+  // CHECK:       "tf.IfRegion"
+  // CHECK-NOT:   "tf.IfRegion"
+  "tf_device.cluster"() ( {
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %1 = "tf.IfRegion"(%0) ( {
+      %2 = "tf.A"() : () -> (tensor<f32>)
+      %3 = "tf.B"() : () -> (tensor<f32>)
+      "tf.Yield"(%2) : (tensor<f32>) -> ()
+      }, {
+      %2 = "tf.C"() : () -> (tensor<f32>)
+      "tf.Yield"(%2) : (tensor<f32>) -> ()
+    }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
+    %9 = "tf.IfRegion"(%0) ( {
+      %4 = "tf.E"() : () -> (tensor<f32>)
+      "tf.Yield"(%4) : (tensor<f32>) -> ()
+      }, {
+      %4 = "tf.F"() : () -> (tensor<f32>)
+      "tf.Yield"(%4) : (tensor<f32>) -> ()
+    }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}

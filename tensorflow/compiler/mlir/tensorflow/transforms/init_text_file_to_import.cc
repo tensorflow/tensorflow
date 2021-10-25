@@ -15,7 +15,9 @@ limitations under the License.
 
 #include <numeric>
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -24,6 +26,8 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/core/lib/io/path.h"
 
 namespace mlir {
 namespace TF {
@@ -35,9 +39,13 @@ static constexpr int kTextFileIndex_LineNumber = -1;
 // InitTextFileToImportPass converts InitializeTableFromTextFileV2Op to the
 // corresponding LookupTableImportV2Op if possible.
 class InitTextFileToImportPass
-    : public mlir::PassWrapper<InitTextFileToImportPass, FunctionPass> {
+    : public InitTextFileToImportPassBase<InitTextFileToImportPass> {
  public:
-  explicit InitTextFileToImportPass() {}
+  InitTextFileToImportPass() {}
+  InitTextFileToImportPass(const InitTextFileToImportPass&) {}
+  explicit InitTextFileToImportPass(std::string saved_model_dir) {
+    saved_model_dir_ = saved_model_dir;
+  }
 
  private:
   void runOnFunction() override;
@@ -46,7 +54,10 @@ class InitTextFileToImportPass
 class ConvertInitializeTableFromTextFileV2
     : public OpRewritePattern<InitializeTableFromTextFileV2Op> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  explicit ConvertInitializeTableFromTextFileV2(mlir::MLIRContext* context,
+                                                StringRef saved_model_dir)
+      : OpRewritePattern<InitializeTableFromTextFileV2Op>(context),
+        saved_model_dir_(saved_model_dir) {}
 
   LogicalResult matchAndRewrite(InitializeTableFromTextFileV2Op op,
                                 PatternRewriter& rewriter) const override {
@@ -70,14 +81,25 @@ class ConvertInitializeTableFromTextFileV2
                       m_Constant(&filename_attr))) {
       return failure();
     }
-    StringRef filename = filename_attr.getRawStringData()[0];
+
+    if (filename_attr.getRawStringData().size() != 1) {
+      return failure();
+    }
+    std::string filename = filename_attr.getRawStringData()[0].str();
+
+    if (!saved_model_dir_.empty()) {
+      filename = tensorflow::io::JoinPath(
+          saved_model_dir_.str(),
+          tensorflow::io::JoinPath("assets",
+                                   tensorflow::io::Basename(filename)));
+    }
 
     // Read the content of the file.
     std::string error_message;
     auto file = openInputFile(filename, &error_message);
     if (!file) {
       return op.emitOpError("failed to open vocabulary file")
-             << " (" << filename.str() << "): " << error_message;
+             << " (" << filename << "): " << error_message;
     }
 
     // Splits into lines.
@@ -93,14 +115,14 @@ class ConvertInitializeTableFromTextFileV2
     std::iota(line_nums.begin(), line_nums.end(), 0);
 
     // Create constant ops for keys an values.
-    Value key_constant_tensor = rewriter.create<ConstantOp>(
+    Value key_constant_tensor = rewriter.create<arith::ConstantOp>(
         op.getLoc(),
         DenseStringElementsAttr::get(
             RankedTensorType::get(static_cast<int64_t>(lines.size()),
                                   StringType::get(rewriter.getContext())),
             lines));
 
-    Value value_constant_tensor = rewriter.create<ConstantOp>(
+    Value value_constant_tensor = rewriter.create<arith::ConstantOp>(
         op.getLoc(), rewriter.getI64TensorAttr(line_nums));
 
     // Replace the given op with LookupTableImportV2Op.
@@ -110,6 +132,9 @@ class ConvertInitializeTableFromTextFileV2
     rewriter.eraseOp(op);
     return success();
   }
+
+ private:
+  StringRef saved_model_dir_;
 };
 
 void InitTextFileToImportPass::runOnFunction() {
@@ -117,21 +142,19 @@ void InitTextFileToImportPass::runOnFunction() {
   MLIRContext* context = &getContext();
   FuncOp func = getFunction();
 
-  patterns.insert<ConvertInitializeTableFromTextFileV2>(context);
+  patterns.insert<ConvertInitializeTableFromTextFileV2>(
+      context, StringRef(saved_model_dir_));
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
 
 // Replace InitializeTableFromTextFileV2Ops with LookupTableImportV2Ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass() {
-  return std::make_unique<InitTextFileToImportPass>();
+std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass(
+    std::string saved_model_dir) {
+  return std::make_unique<InitTextFileToImportPass>(saved_model_dir);
 }
 
-static PassRegistration<InitTextFileToImportPass> pass(
-    "tf-init-text-file-to-import",
-    "convert InitializeTableFromTextFileV2 ops to LookupTableImportV2Op to "
-    "remove the dependency on asset files");
 
 }  // namespace TF
 }  // namespace mlir

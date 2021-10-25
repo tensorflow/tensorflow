@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for scan ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
@@ -72,7 +68,7 @@ def handle_options(func, x, axis, exclusive, reverse):
 
 class CumsumTest(xla_test.XLATestCase):
 
-  valid_dtypes = [np.float32, np.int32]
+  valid_dtypes = [np.float32, np.int32, np.int64]
 
   def axis_dtypes(self):
     return set(self.int_types).intersection([np.int32, np.int64])

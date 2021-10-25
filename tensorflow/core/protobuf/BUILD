@@ -25,6 +25,7 @@ COMMON_PROTO_SRCS = [
     "bfc_memory_map.proto",
     "config.proto",
     "cluster.proto",
+    "coordination_config.proto",
     "debug.proto",
     "device_filters.proto",
     "device_properties.proto",
@@ -33,6 +34,7 @@ COMMON_PROTO_SRCS = [
     "rewriter_config.proto",
     "tensor_bundle.proto",
     "saver.proto",
+    "status.proto",
     "verifier_config.proto",
 ]
 
@@ -60,6 +62,7 @@ tf_proto_library(
     srcs = ["autotuning.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/stream_executor:dnn_proto"],
 )
 
 tf_proto_library(
@@ -146,9 +149,10 @@ exports_files(
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
         "snapshot.proto",
+        "data_service.proto",
         "service_config.proto",
         "debug_event.proto",
-        "extension_type_variant.proto",
+        "composite_tensor_variant.proto",
         "meta_graph.proto",
         "named_tensor.proto",
         "remote_tensor_handle.proto",
@@ -176,9 +180,10 @@ tf_proto_library(
         # NOTE: Creating an alias and adding the files does not work in OSS.
         # NOTE: tf_proto_library requires files to be in the same package.
         "snapshot.proto",
+        "data_service.proto",
         "service_config.proto",
         "debug_event.proto",
-        "extension_type_variant.proto",
+        "composite_tensor_variant.proto",
         "meta_graph.proto",
         "named_tensor.proto",
         "remote_tensor_handle.proto",
@@ -195,6 +200,7 @@ tf_proto_library(
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
     ],
+    tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
 )
 
 # copybara:uncomment_begin(google-only)

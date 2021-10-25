@@ -14,9 +14,5 @@
 # ==============================================================================
 """Deprecated, please use ../distribute/distribute_lib.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=wildcard-import
 from tensorflow.python.distribute.distribute_lib import *

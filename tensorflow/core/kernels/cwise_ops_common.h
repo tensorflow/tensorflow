@@ -59,10 +59,10 @@ class BinaryOpShared : public OpKernel {
 
     BCast bcast;
     Tensor* out = nullptr;
-    int64 out_num_elements;
+    int64_t out_num_elements;
 
-    int64 in0_num_elements;
-    int64 in1_num_elements;
+    int64_t in0_num_elements;
+    int64_t in1_num_elements;
 
     int ndims;
     bool result;
@@ -265,6 +265,11 @@ class SimpleBinaryOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& in0 = ctx->input(0);
     const Tensor& in1 = ctx->input(1);
+    OP_REQUIRES(
+        ctx, in0.NumElements() == in1.NumElements(),
+        errors::InvalidArgument("The two arguments to a cwise op must have "
+                                "same number of elements, got ",
+                                in0.NumElements(), " and ", in1.NumElements()));
     auto in0_flat = in0.flat<Tin>();
     auto in1_flat = in1.flat<Tin>();
     const Device& eigen_device = ctx->eigen_device<Device>();

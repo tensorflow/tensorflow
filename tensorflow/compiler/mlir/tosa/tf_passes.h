@@ -29,6 +29,8 @@ struct TOSATFLegalizationPipelineOptions
 void createTFtoTOSALegalizationPipeline(
     OpPassManager& pm, const TOSATFLegalizationPipelineOptions& opts);
 
+void registerTFtoTOSALegalizationPipeline();
+
 }  // namespace tosa
 }  // namespace mlir
 

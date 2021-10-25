@@ -32,7 +32,7 @@ TEST(TimespanTests, NonInstantSpanIncludesSingleTimeTests) {
   XEventBuilder event_builder = xline_builder.AddEvent(
       *xplane_builder.GetOrCreateEventMetadata("1st event"));
   event_builder.AddStatValue(
-      *xplane_builder.GetOrCreateStatMetadata("int stat"), int64{1234});
+      *xplane_builder.GetOrCreateStatMetadata("int stat"), int64_t{1234});
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("string stat"),
       std::string("abc"));

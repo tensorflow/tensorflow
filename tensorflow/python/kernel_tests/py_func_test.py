@@ -15,10 +15,6 @@
 # ==============================================================================
 """Tests for py_func op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import re
 
@@ -36,12 +32,15 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import batch_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -241,7 +240,7 @@ class PyFuncTest(PyFuncTestBase):
   def testObjectArraysAreConvertedToBytes(self):
 
     def read_object_array():
-      return np.array([b" there", u" ya"], dtype=np.object)
+      return np.array([b" there", u" ya"], dtype=np.object_)
 
     def read_and_return_strings(x, y):
       return x + y
@@ -642,6 +641,35 @@ class EagerPyFuncTest(PyFuncTestBase):
       self.evaluate(output)
 
   @test_util.run_in_graph_and_eager_modes
+  def testTapeCache(self):
+    # Testing for b/198962664 (gh:#51839)
+    old_cache_size = len(script_ops.tape_cache)
+
+    def f(x):
+      return x**2
+
+    x = constant_op.constant(3.0)
+
+    y = script_ops.eager_py_func(f, inp=[x], Tout=dtypes.float32)
+
+    # No cache if there is no active tape
+    self.assertEqual(len(script_ops.tape_cache), old_cache_size)
+
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = script_ops.eager_py_func(f, inp=[x], Tout=dtypes.float32)
+      # A new cache entry is created when running eagerly.
+      if context.executing_eagerly():
+        self.assertEqual(len(script_ops.tape_cache), old_cache_size + 1)
+      else:
+        self.assertEqual(len(script_ops.tape_cache), old_cache_size)
+    dy_dx = tape.gradient(y, x)
+    # Force a evaluation.
+    self.evaluate(dy_dx)
+    # Cache entry consumed after gradient calculation.
+    self.assertEqual(len(script_ops.tape_cache), old_cache_size)
+
+  @test_util.run_in_graph_and_eager_modes
   def testEagerGradientTape(self):
 
     def f(x):
@@ -776,6 +804,72 @@ class EagerPyFuncTest(PyFuncTestBase):
 
     with self.assertRaisesRegex(ValueError, "callable"):
       _ = script_ops.eager_py_func(x, inp=[x], Tout=dtypes.string)
+
+  def testUnsupportedToutType(self):
+    with self.assertRaisesRegex(
+        TypeError, "Cannot convert value {} to a TensorFlow DType."):
+      script_ops.eager_py_func(lambda x: x, [1], [{}])
+
+  def testRaggedTensorArg(self):
+    x = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    y, = script_ops.eager_py_func(math_ops.reduce_sum, [x], [dtypes.int32])
+    self.assertAllEqual(y, 21)
+
+  def testRaggedTensorReturn(self):
+
+    def fn(v, l):
+      return ragged_tensor.RaggedTensor.from_row_lengths(v, l)
+
+    values = [1, 2, 3, 4, 5, 6]
+    lengths = constant_op.constant([3, 1, 2], dtypes.int64)
+    out_signature = [ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32)]
+    y, = script_ops.eager_py_func(fn, [values, lengths], out_signature)
+    self.assertIsInstance(y, ragged_tensor.RaggedTensor)
+    self.assertAllEqual(y, [[1, 2, 3], [4], [5, 6]])
+
+  def testRaggedExpectedListGotList(self):
+    x = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    x_spec = type_spec.type_spec_from_value(x)
+    y, = script_ops.eager_py_func(lambda v: [v], [x], [x_spec])
+    self.assertAllEqual(y, x)
+
+  def testRaggedExpectedListGotTuple(self):
+    x = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    x_spec = type_spec.type_spec_from_value(x)
+    y, = script_ops.eager_py_func(lambda v: (v,), [x], [x_spec])
+    self.assertAllEqual(y, x)
+
+  def testRaggedExpectedListGotSingleValue(self):
+    x = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    x_spec = type_spec.type_spec_from_value(x)
+    y, = script_ops.eager_py_func(lambda v: v, [x], [x_spec])
+    self.assertAllEqual(y, x)
+
+  def testRaggedNoReturnValue(self):
+    x = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
+    result = self.evaluate(script_ops.eager_py_func(lambda v: None, [x], []))
+    if context.executing_eagerly():
+      self.assertEqual(result, [])
+    else:
+      self.assertIsNone(result)
+
+  def testRaggedBadReturnTypeExpectedTensorReturnedRagged(self):
+    rt = ragged_factory_ops.constant([[1, 2], [3, 4, 5]])
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "py_function: func=.* returned .* which did not match Tout=.*"):
+      result = script_ops.eager_py_func(lambda x: x + 3, [rt], [dtypes.int32])
+      self.evaluate(result)
+
+  def testRaggedBadReturnTypeExpectedRaggedReturnedTensor(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "py_function: func=.* returned .* which did not match Tout=.*"):
+      result = script_ops.eager_py_func(
+          func=lambda x: x,
+          inp=[constant_op.constant([[1, 2, 3]])],
+          Tout=[ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32)])
+      self.evaluate(result)
 
 
 if __name__ == "__main__":

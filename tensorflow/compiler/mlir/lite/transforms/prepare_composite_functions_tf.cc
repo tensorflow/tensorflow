@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
@@ -64,8 +65,68 @@ constexpr char kCustomSSDPostprocessing[] = "TFLite_Detection_PostProcess";
 constexpr char kTfNMSPadded[] = "non_max_suppression_padded_v2";
 constexpr char kCustomMaxUnpooling[] = "addons:MaxUnpooling2D";
 constexpr char kCustomDenseImageWarp[] = "addons:DenseImageWarp";
+constexpr char kTFLFusableOp[] = "tfl_fusable_op";
 
 using mlir::TF::FuncAttr;
+
+inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
+                                       const std::string& content) {
+  ShapedType type = RankedTensorType::get(
+      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
+  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
+                                 type,
+                                 StringRef(content.data(), content.size()));
+}
+
+LogicalResult CreateTflFusableOpCustomOptions(
+    ArrayRef<std::pair<StringRef, Attribute>> attrs, OpBuilder* builder,
+    std::string& custom_option_buffer) {
+  // There is something worth noting in the ordering of the custom op option:
+  // At the MLIR level, all the option is ordered alphabetcially, so there is
+  // no way for us to retrieve the original order, so please make sure you are
+  // reading custom option from dictionary rather than depending on the order.
+  flexbuffers::Builder fbb;
+  size_t start_map = fbb.StartMap();
+
+  for (auto attr : attrs) {
+    if (auto float_attr = attr.second.dyn_cast_or_null<FloatAttr>()) {
+      fbb.Float(attr.first.data(), float_attr.getValue().convertToFloat());
+    } else if (auto int_attr = attr.second.dyn_cast_or_null<IntegerAttr>()) {
+      fbb.Int(attr.first.data(), int_attr.getInt());
+    } else if (auto bool_attr = attr.second.dyn_cast_or_null<BoolAttr>()) {
+      fbb.Bool(attr.first.data(), bool_attr.getValue());
+    } else {
+      // TODO(b/201482289): support other data types.
+      return failure();
+    }
+  }
+
+  fbb.EndMap(start_map);
+  fbb.Finish();
+  custom_option_buffer.assign(fbb.GetBuffer().begin(), fbb.GetBuffer().end());
+  return success();
+}
+
+// Convert func annotated with `tfl_fusable_op` attribute to tfl custom op.
+LogicalResult ConvertTflFusableOp(
+    FuncOp func, StringRef custom_op_name,
+    ArrayRef<std::pair<StringRef, Attribute>> attrs) {
+  func.eraseBody();
+  func.addEntryBlock();
+
+  OpBuilder builder(func.getBody());
+  std::string custom_option_buffer;
+  if (failed(CreateTflFusableOpCustomOptions(attrs, &builder,
+                                             custom_option_buffer))) {
+    return failure();
+  }
+
+  auto tfl_fusable_op = builder.create<TFL::CustomOp>(
+      func->getLoc(), func.getType().getResults(), func.getArguments(),
+      custom_op_name, CustomOption(&builder, custom_option_buffer));
+  builder.create<ReturnOp>(func->getLoc(), tfl_fusable_op.getResults());
+  return success();
+}
 
 // Abstracts the conversion of the embedded lookup composite function.
 class ConvertEmbeddedLookupFunc {
@@ -88,13 +149,13 @@ class ConvertEmbeddedLookupFunc {
 
   LogicalResult VerifySignature() {
     if (func_.getNumArguments() != 2) {
-      return func_.emitError()
+      return func_.emitWarning()
              << "Invalid number of arguments in the embedding "
                 "matmul composite function";
     }
     if (func_.getType().getNumResults() != 1) {
-      return func_.emitError() << "Invalid number of results in the embedding "
-                                  "matmul composite function";
+      return func_.emitWarning() << "Invalid number of results in the "
+                                    "embedding matmul composite function";
     }
     return success();
   }
@@ -118,6 +179,16 @@ class PrepareCompositeFunctionsPass
 
  public:
   explicit PrepareCompositeFunctionsPass() {}
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-prepare-composite-funcs-tf";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Prepares composite functions in Tensorflow dialect of MLIR";
+  }
 
  private:
   // TODO(b/160915525): Consolidate FuncAttr and StringAttr into one.
@@ -189,6 +260,8 @@ LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
 
     if (result.wasInterrupted()) return failure();
   }
+  // Current UnidirectionalSequenceLSTMOp doesn't support mask input.
+  if (lstm_func.getNumArguments() == 7) return failure();
 
   // We should know the batch size in advance for the lstm fusion.
   // A good indicator of batch size is both cell state and input state (indices
@@ -241,14 +314,12 @@ LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
 void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
                                                         StringAttr attr) {
   if (attr.getValue() == "embedding_matmul") {
-    func.eraseBody();
-    func.addEntryBlock();
     // Convert the composite embedding_matmul function body to a
     // TFLite fused embedding_lookup op.
     ConvertEmbeddedLookupFunc convert_embedded_lookup(func);
-    if (failed(convert_embedded_lookup.VerifySignature())) {
-      return signalPassFailure();
-    }
+    if (failed(convert_embedded_lookup.VerifySignature())) return;
+    func.eraseBody();
+    func.addEntryBlock();
     convert_embedded_lookup.RewriteFunc();
   } else if (attr.getValue() == mlir::TFL::kLstmCellSimple) {
     // Check if the lstm cell simple can be fused, if not, we just don't do
@@ -272,17 +343,15 @@ void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
       return signalPassFailure();
     }
   } else if (attr.getValue() == kTfNMSPadded) {
+    ConvertNMSPaddedFunc convert_nms_padded(func);
+    if (failed(convert_nms_padded.VerifySignature())) return;
     func.eraseBody();
     func.addEntryBlock();
-    ConvertNMSPaddedFunc convert_nms_padded(func);
-    if (failed(convert_nms_padded.VerifySignature())) {
-      return signalPassFailure();
-    }
     convert_nms_padded.RewriteFunc();
   } else if (attr.getValue() == kCustomDenseImageWarp) {
     ConvertDenseImageWarpFunc image_warping(func);
-    if (failed(image_warping.VerifySignature()) ||
-        failed(image_warping.RewriteFunc())) {
+    if (failed(image_warping.VerifySignature())) return;
+    if (failed(image_warping.RewriteFunc())) {
       return signalPassFailure();
     }
   }
@@ -290,7 +359,7 @@ void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
 
 void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     FuncOp func, FuncAttr attr) {
-  auto api_name = attr.GetName().getLeafReference();
+  StringRef api_name = attr.getName().getLeafReference().getValue();
   bool enable_fuse_tftext =
       fuse_tftext_flag || IsTFTextRegistered(tensorflow::OpRegistry::Global());
   if (api_name.startswith(kTFTextAPIPrefix) && enable_fuse_tftext) {
@@ -299,14 +368,36 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     }
   } else if (api_name == kCustomSSDPostprocessing) {
     ConvertSSDPostProcessFunc convert_ssd_postprocess(func, attr);
-    if (failed(convert_ssd_postprocess.VerifySignature()) ||
-        failed(convert_ssd_postprocess.RewriteFunc())) {
+    if (failed(convert_ssd_postprocess.VerifySignature())) return;
+    if (failed(convert_ssd_postprocess.RewriteFunc())) {
       return signalPassFailure();
     }
   } else if (api_name == kCustomMaxUnpooling) {
     ConvertMaxUnpoolingFunc max_unpooling(func, attr);
-    if (failed(max_unpooling.VerifySignature()) ||
-        failed(max_unpooling.RewriteFunc())) {
+    if (failed(max_unpooling.VerifySignature())) return;
+    if (failed(max_unpooling.RewriteFunc())) {
+      return signalPassFailure();
+    }
+  } else {
+    // We will look for the `tfl_fusable_op` attribute and fuse as a custom op.
+    DictionaryAttr dict_attr = attr.getAttrs();
+
+    SmallVector<std::pair<StringRef, Attribute>, 4> attributes;
+    bool tfl_fusable_op = false;
+    for (auto attr_item : dict_attr) {
+      // Push other attributes except the TFLFusableOp.
+      if (attr_item.first == kTFLFusableOp &&
+          attr_item.second.dyn_cast<BoolAttr>().getValue()) {
+        tfl_fusable_op = true;
+      } else {
+        attributes.push_back(attr_item);
+      }
+    }
+
+    if (!tfl_fusable_op) return;
+
+    if (failed(ConvertTflFusableOp(func, api_name, attributes))) {
+      func->emitError(absl::StrCat("failed to fuse for op: ", api_name.str()));
       return signalPassFailure();
     }
   }
@@ -323,10 +414,8 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,
   if (attr.getValue().startswith("lstm_")) {
     // Check if the keras lstm can be fused, if not, we just don't do anything.
     if (failed(CheckFusableKerasLstm(func, module))) return;
-
     func.eraseBody();
     func.addEntryBlock();
-
     OpBuilder builder(func.getBody());
     if (failed(ConvertKerasLSTMLayer(func, &builder)))
       return signalPassFailure();
@@ -368,9 +457,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass() {
   return std::make_unique<PrepareCompositeFunctionsPass>();
 }
 
-static PassRegistration<PrepareCompositeFunctionsPass> pass(
-    "tfl-prepare-composite-funcs-tf",
-    "Prepares composite functions in Tensorflow dialect of MLIR ");
+static PassRegistration<PrepareCompositeFunctionsPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

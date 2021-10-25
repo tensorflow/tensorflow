@@ -56,7 +56,7 @@ class AddingPreprocessingLayer(
         dtype=dtypes.float32,
         initializer=init_ops.zeros_initializer)
 
-  def reset_state(self):
+  def reset_state(self):  # pylint: disable=method-hidden
     self._sum.assign([0.])
 
   def set_total(self, sum_value):

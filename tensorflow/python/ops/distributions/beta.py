@@ -14,10 +14,6 @@
 # ==============================================================================
 """The Beta distribution class."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -281,7 +277,7 @@ class Beta(distribution.Distribution):
   def _log_unnormalized_prob(self, x):
     x = self._maybe_assert_valid_sample(x)
     return (math_ops.xlogy(self.concentration1 - 1., x) +
-            (self.concentration0 - 1.) * math_ops.log1p(-x))
+            (self.concentration0 - 1.) * math_ops.log1p(-x))  # pylint: disable=invalid-unary-operand-type
 
   def _log_normalization(self):
     return (math_ops.lgamma(self.concentration1)

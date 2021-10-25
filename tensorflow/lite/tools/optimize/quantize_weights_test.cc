@@ -591,6 +591,70 @@ TEST_F(QuantizeWeightsTest, VerifyUpdatedHybridSchemeFalseQuantizationHybrid) {
   }
 }
 
+TEST_F(QuantizeWeightsTest, DequantizeConvBlocklisted) {
+  LoadBasicModel();
+  flatbuffers::FlatBufferBuilder builder;
+  const CustomOpMap custom_op_map;
+  auto status = QuantizeWeights(&builder, model_, 0, custom_op_map,
+                                /*use_updated_hybrid_scheme=*/true,
+                                {BuiltinOperator_CONV_2D});
+  EXPECT_EQ(status, kTfLiteOk);
+
+  const uint8_t* buffer = builder.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  ASSERT_TRUE(output_model);
+
+  ASSERT_EQ(output_model->subgraphs()->size(), model_->subgraphs()->size());
+  for (size_t subgraph_idx = 0; subgraph_idx < model_->subgraphs()->size();
+       ++subgraph_idx) {
+    const auto quantized_graph = output_model->subgraphs()->Get(subgraph_idx);
+    const auto float_graph = model_->subgraphs()->Get(subgraph_idx);
+    // The output graph should have an extra tensor from the added dequantize
+    // op.
+    ASSERT_EQ(quantized_graph->tensors()->size(),
+              float_graph->tensors()->size() + 1);
+    // Check that a dequantize op exists.
+    int32_t dequant_input_idx = -1;
+    int32_t dequant_output_idx = -1;
+    for (size_t i = 0; i < quantized_graph->operators()->size(); ++i) {
+      const auto op = quantized_graph->operators()->Get(i);
+      const uint32_t op_code_idx = op->opcode_index();
+      if (GetBuiltinCode(output_model->operator_codes()->Get(op_code_idx)) ==
+          BuiltinOperator_DEQUANTIZE) {
+        dequant_input_idx = op->inputs()->Get(0);
+        dequant_output_idx = op->outputs()->Get(0);
+      }
+    }
+    ASSERT_GT(dequant_input_idx, -1);
+    ASSERT_GT(dequant_output_idx, -1);
+    for (size_t i = 0; i < quantized_graph->tensors()->size(); ++i) {
+      const auto quant_tensor = quantized_graph->tensors()->Get(i);
+      // If the tensor is a weight, it should have type INT8.
+      // If the tensor is a bias, it should have type FLOAT32.
+      // If the tensor is an input or output it should have type FLOAT32.
+      // The input to dequantize should be INT8, and all other tensors should be
+      // FLOAT32.
+      if (i == dequant_input_idx) {
+        EXPECT_EQ(quant_tensor->type(), TensorType_INT8);
+        // The dequantize should still be quantized per-channel
+        EXPECT_EQ(quant_tensor->quantization()->scale()->size(), 5);
+        EXPECT_EQ(quant_tensor->quantization()->quantized_dimension(), 0);
+      } else if (i == dequant_output_idx) {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      } else if (IsModelInputOrOutput(output_model, i)) {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      } else if (quant_tensor->name()->str() == "conv_bias") {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      } else if (quant_tensor->buffer() != 0) {
+        // If it's a non-bias constant tensor, it must be the weight.
+        EXPECT_EQ(quant_tensor->type(), TensorType_INT8);
+      } else {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      }
+    }
+  }
+}
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite

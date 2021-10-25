@@ -25,17 +25,17 @@ namespace tensorflow {
 // in b/111604096 and cl/171681867), so we use signed int here. We choose int64
 // instead of int32 because `VarHandleOp` doesn't support int32 on GPU, and
 // because of the "int32 problem".
-using StateElementType = int64;
+using StateElementType = int64_t;
 static constexpr DataType STATE_ELEMENT_DTYPE = DT_INT64;
 static constexpr DataType ALGORITHM_DTYPE = STATE_ELEMENT_DTYPE;
 
 using random::PhiloxRandom;
 
-static constexpr int64 PHILOX_MIN_STATE_SIZE =
+static constexpr int64_t PHILOX_MIN_STATE_SIZE =
     (PhiloxRandom::ResultType::kElementCount +
      PhiloxRandom::Key::kElementCount) /
     2;
-static constexpr int64 THREEFRY_MIN_STATE_SIZE = 2;
+static constexpr int64_t THREEFRY_MIN_STATE_SIZE = 2;
 
 }  // end namespace tensorflow
 

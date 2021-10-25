@@ -76,14 +76,14 @@ class BFloat16Propagation : public HloModulePass {
   // of the producers and users.
   virtual bool ShouldKeepPrecisionUnchanged(const HloInstruction* inst);
 
+  // Determines whether we should consider changing the precision of the given
+  // instruction in the forward pass.
+  virtual bool InstructionIsCandidateForBF16Output(HloInstruction* hlo);
+
  private:
   // ***************************
   // Function called and state produced by the forward analysis pass (from
   // parameters to root) that determines the candidate HLOs to use BF16 outputs.
-
-  // Determines whether we should consider changing the precision of the given
-  // instruction in the forward pass.
-  bool InstructionIsCandidateForBF16Output(HloInstruction* hlo);
 
   // The set of instructions to consider using bfloat16, computed in the forward
   // pass.
@@ -197,7 +197,7 @@ class BFloat16Propagation : public HloModulePass {
 
   // Mapping from each HloComputation to the number of callers to it in the
   // module. Populated at the beginning of this pass.
-  absl::flat_hash_map<const HloComputation*, int64> caller_counts_;
+  absl::flat_hash_map<const HloComputation*, int64_t> caller_counts_;
 
   // We first store the potential F32-to-BF16 changes to changes_to_bf16_, which
   // are subject to further adjustment, then finally applied to the HLOs. This

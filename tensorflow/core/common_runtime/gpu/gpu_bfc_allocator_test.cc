@@ -42,8 +42,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
-                int64 peak_bytes_in_use, int64 largest_alloc_size) {
+void CheckStats(Allocator* a, int64_t num_allocs, int64_t bytes_in_use,
+                int64_t peak_bytes_in_use, int64_t largest_alloc_size) {
   absl::optional<AllocatorStats> stats = a->GetStats();
   EXPECT_TRUE(stats);
   if (!stats) {
@@ -202,7 +202,7 @@ TEST_P(GPUBFCAllocatorTest, ExerciseCoalescing) {
     // causing fragmentation and growth.
     float* t1 = TypedAllocator::Allocate<float>(&a, 1024, {});
 
-    int64* t2 = TypedAllocator::Allocate<int64>(&a, 1048576, {});
+    int64_t* t2 = TypedAllocator::Allocate<int64_t>(&a, 1048576, {});
     double* t3 = TypedAllocator::Allocate<double>(&a, 2048, {});
     float* t4 = TypedAllocator::Allocate<float>(&a, 10485760, {});
 
@@ -212,7 +212,7 @@ TEST_P(GPUBFCAllocatorTest, ExerciseCoalescing) {
     a.DeallocateRaw(t4);
   }
   CheckStats(&a, 4097, 0,
-             1024 * sizeof(float) + 1048576 * sizeof(int64) +
+             1024 * sizeof(float) + 1048576 * sizeof(int64_t) +
                  2048 * sizeof(double) + 10485760 * sizeof(float),
              10485760 * sizeof(float));
 
@@ -267,7 +267,7 @@ TEST_P(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
   random::PhiloxRandom philox(123, 17);
   random::SimplePhilox rand(&philox);
 
-  const int32 max_mem = 1 << 27;
+  const int32_t max_mem = 1 << 27;
 
   std::vector<void*> initial_ptrs;
   for (int s = 1; s < 10; s++) {
@@ -288,7 +288,7 @@ TEST_P(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
     }
   }
 
-  const int32 max_mem_2 = 1 << 26;
+  const int32_t max_mem_2 = 1 << 26;
   // Allocate a lot of raw pointers between 100 bytes and 64 megs.
   for (int s = 1; s < 10; s++) {
     size_t size = std::min<size_t>(

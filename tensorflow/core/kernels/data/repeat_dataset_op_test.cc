@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/repeat_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include <string>
+#include <utility>
+
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -26,7 +30,7 @@ constexpr char kNodeName[] = "repeat_dataset";
 class RepeatDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  RepeatDatasetParams(T input_dataset_params, int64 count,
+  RepeatDatasetParams(T input_dataset_params, int64_t count,
                       DataTypeVector output_dtypes,
                       std::vector<PartialTensorShape> output_shapes,
                       string node_name)
@@ -40,7 +44,7 @@ class RepeatDatasetParams : public DatasetParams {
   }
 
   std::vector<Tensor> GetInputTensors() const override {
-    return {CreateTensor<int64>(TensorShape({}), {count_})};
+    return {CreateTensor<int64_t>(TensorShape({}), {count_})};
   }
 
   Status GetInputNames(std::vector<string>* input_names) const override {
@@ -52,22 +56,23 @@ class RepeatDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
-    attr_vector->emplace_back(RepeatDatasetOp::kOutputTypes, output_dtypes_);
-    attr_vector->emplace_back(RepeatDatasetOp::kOutputShapes, output_shapes_);
+    attr_vector->emplace_back("output_types", output_dtypes_);
+    attr_vector->emplace_back("output_shapes", output_shapes_);
+    attr_vector->emplace_back("metadata", "");
     return Status::OK();
   }
 
   string dataset_type() const override { return RepeatDatasetOp::kDatasetType; }
 
  private:
-  int64 count_;
+  int64_t count_;
 };
 
 class RepeatDatasetOpTest : public DatasetOpsTestBase {};
 
 RepeatDatasetParams FiniteRepeatDatasetParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
+      /*components=*/{CreateTensor<int64_t>(TensorShape{2, 2}, {1, 2, 3, 4}),
                       CreateTensor<tstring>(TensorShape{2, 1}, {"a", "b"})},
       /*node_name=*/"tensor_slice");
   return RepeatDatasetParams(
@@ -80,7 +85,7 @@ RepeatDatasetParams FiniteRepeatDatasetParams() {
 
 RepeatDatasetParams EmptyRepeatDatasetParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
+      /*components=*/{CreateTensor<int64_t>(TensorShape{2, 2}, {1, 2, 3, 4}),
                       CreateTensor<tstring>(TensorShape{2, 1}, {"a", "b"})},
       /*node_name=*/"tensor_slice");
   return RepeatDatasetParams(
@@ -93,7 +98,7 @@ RepeatDatasetParams EmptyRepeatDatasetParams() {
 
 RepeatDatasetParams ForeverRepeatDatasetParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{2, 1}, {1, 2})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{2, 1}, {1, 2})},
       /*node_name=*/"tensor_slice");
   return RepeatDatasetParams(
       /*input_dataset_params=*/std::move(tensor_slice_dataset_params),
@@ -106,13 +111,13 @@ RepeatDatasetParams ForeverRepeatDatasetParams() {
 std::vector<GetNextTestCase<RepeatDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/FiniteRepeatDatasetParams(),
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape{2}, {1, 2}),
+           {CreateTensor<int64_t>(TensorShape{2}, {1, 2}),
             CreateTensor<tstring>(TensorShape{1}, {"a"}),
-            CreateTensor<int64>(TensorShape{2}, {3, 4}),
+            CreateTensor<int64_t>(TensorShape{2}, {3, 4}),
             CreateTensor<tstring>(TensorShape{1}, {"b"}),
-            CreateTensor<int64>(TensorShape{2}, {1, 2}),
+            CreateTensor<int64_t>(TensorShape{2}, {1, 2}),
             CreateTensor<tstring>(TensorShape{1}, {"a"}),
-            CreateTensor<int64>(TensorShape{2}, {3, 4}),
+            CreateTensor<int64_t>(TensorShape{2}, {3, 4}),
             CreateTensor<tstring>(TensorShape{1}, {"b"})}},
           {/*dataset_params=*/EmptyRepeatDatasetParams(),
            /*expected_outputs=*/{}},
@@ -121,8 +126,8 @@ std::vector<GetNextTestCase<RepeatDatasetParams>> GetNextTestCases() {
            // Use the first group of the repeated tensors to represent the
            // infinite outputs.
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape{1}, {1}),
-            CreateTensor<int64>(TensorShape{1}, {2})}}};
+           {CreateTensor<int64_t>(TensorShape{1}, {1}),
+            CreateTensor<int64_t>(TensorShape{1}, {2})}}};
 }
 
 class ParameterizedIteratorGetNextOpTest
@@ -279,13 +284,13 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/FiniteRepeatDatasetParams(),
            /*breakpoints*/ {0, 1, 3},
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape{2}, {1, 2}),
+           {CreateTensor<int64_t>(TensorShape{2}, {1, 2}),
             CreateTensor<tstring>(TensorShape{1}, {"a"}),
-            CreateTensor<int64>(TensorShape{2}, {3, 4}),
+            CreateTensor<int64_t>(TensorShape{2}, {3, 4}),
             CreateTensor<tstring>(TensorShape{1}, {"b"}),
-            CreateTensor<int64>(TensorShape{2}, {1, 2}),
+            CreateTensor<int64_t>(TensorShape{2}, {1, 2}),
             CreateTensor<tstring>(TensorShape{1}, {"a"}),
-            CreateTensor<int64>(TensorShape{2}, {3, 4}),
+            CreateTensor<int64_t>(TensorShape{2}, {3, 4}),
             CreateTensor<tstring>(TensorShape{1}, {"b"})}},
           {/*dataset_params=*/EmptyRepeatDatasetParams(),
            /*breakpoints*/ {0, 1, 3},
@@ -296,8 +301,8 @@ IteratorSaveAndRestoreTestCases() {
            // Use the first group of the repeated tensors to represent the
            // infinite outputs.
            /*expected_outputs=*/
-           {CreateTensor<int64>(TensorShape{1}, {1}),
-            CreateTensor<int64>(TensorShape{1}, {2})}}};
+           {CreateTensor<int64_t>(TensorShape{1}, {1}),
+            CreateTensor<int64_t>(TensorShape{1}, {2})}}};
 }
 
 class ParameterizedIteratorSaveAndRestoreTest

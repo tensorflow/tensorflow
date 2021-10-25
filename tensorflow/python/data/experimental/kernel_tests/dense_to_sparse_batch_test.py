@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.dense_to_sparse_batch()."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -118,12 +114,14 @@ class DenseToSparseBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         lambda x: array_ops.fill([x], x)).apply(
             batching.dense_to_sparse_batch(4, [12]))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
 
     num_outputs = len(components) // 4
-    self.run_core_tests(lambda: self._build_dataset(components), num_outputs)
+    verify_fn(self, lambda: self._build_dataset(components), num_outputs)
 
 
 if __name__ == "__main__":

@@ -76,7 +76,7 @@ struct TableBuilder::Rep {
   BlockBuilder data_block;
   BlockBuilder index_block;
   string last_key;
-  int64 num_entries;
+  int64_t num_entries;
   bool closed;  // Either Finish() or Abandon() has been called.
 
   // We do not emit the index entry for a block until we have seen the

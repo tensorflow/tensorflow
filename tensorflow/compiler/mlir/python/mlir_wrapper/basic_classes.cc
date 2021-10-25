@@ -43,7 +43,9 @@ void init_basic_classes(py::module& m) {
       .def("new", ([]() { return new mlir::Block; }),
            py::return_value_policy::reference)
       .def("end", &mlir::Block::end)
-      .def("addArgument", &mlir::Block::addArgument);
+      .def("addArgument", [](mlir::Block& block, mlir::Type type) {
+        return block.addArgument(type, llvm::None);
+      });
 
   py::class_<mlir::Value>(m, "Value").def("getType", &mlir::Value::getType);
   py::class_<mlir::OpResult, mlir::Value>(m, "OpResult");

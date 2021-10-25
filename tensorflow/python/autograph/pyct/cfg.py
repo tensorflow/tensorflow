@@ -36,19 +36,15 @@ TODO(mdan): Alternatively, consider adding an edge from try to all its excepts.
 # They should rather be called 'block statements', because they include
 # statements that may have a body, e.g. if and while.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
+import enum
 import weakref
-from enum import Enum
 
+import astunparse
 import gast
 import six
 
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import parser
 
 
 class Node(object):
@@ -87,9 +83,9 @@ class Node(object):
     elif isinstance(self.ast_node, gast.ClassDef):
       return 'class %s' % self.ast_node.name
     elif isinstance(self.ast_node, gast.withitem):
-      return parser.unparse(
-          self.ast_node.context_expr, include_encoding_marker=False).strip()
-    return parser.unparse(self.ast_node, include_encoding_marker=False).strip()
+      # TODO(xjun): remove use of astunparse
+      return astunparse.unparse(self.ast_node.context_expr).strip()
+    return astunparse.unparse(self.ast_node).strip()
 
 
 class Graph(
@@ -142,7 +138,7 @@ class Graph(
     return result
 
 
-class _WalkMode(Enum):
+class _WalkMode(enum.Enum):
   FORWARD = 1
   REVERSE = 2
 

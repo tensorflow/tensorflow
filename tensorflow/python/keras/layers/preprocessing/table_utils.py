@@ -51,10 +51,6 @@ class TableHandler(object):
         oov_tokens = [oov_tokens]
       self.oov_tokens = math_ops.cast(oov_tokens, table._value_dtype)  # pylint: disable=protected-access
 
-  def data(self):
-    keys, values = self.table.export()
-    return (keys.numpy(), values.numpy())
-
   def table_size(self):
     return self.table.size().numpy()
 

@@ -91,6 +91,7 @@ tf_cc_test(
     srcs = ["summary_file_writer_test.cc"],
     deps = [
         ":summary_file_writer",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

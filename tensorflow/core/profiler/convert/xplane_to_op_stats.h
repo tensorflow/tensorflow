@@ -40,9 +40,6 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
                                          OpStats* op_stats);
 
-// Extracts DeviceCapabilities from XPlane stats.
-DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane);
-
 // Populates PerfEnv.
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
                     double peak_hbm_bw_giga_bytes_per_second);
@@ -50,13 +47,13 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
 // Extracts PerfEnv from XPlane stats.
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane);
 
-// Reads multiple XSpaces from <xspace_paths>, convert them to OpStats, and
+// Takes an XSpace proto message, converts to OpStats, and
 // combine them to a single OpStats in <combined_op_stats>.
 // Return the first error status during conversion, or return Status::OK() if
 // there is no error.
-Status ConvertMultiXSpacesToCombinedOpStats(
-    const std::vector<std::string>& xspace_paths, const OpStatsOptions& options,
-    OpStats* combined_op_stats);
+Status ConvertMultiXSpacesToCombinedOpStats(const std::vector<XSpace>& xspaces,
+                                            const OpStatsOptions& options,
+                                            OpStats* combined_op_stats);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -14,15 +14,12 @@
 # ==============================================================================
 """Tests for tensorflow.ops.ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
@@ -246,11 +243,11 @@ class ConstantInitializersTest(test.TestCase):
   def testInvalidValueTypeForConstantInitializerCausesTypeError(self):
     c = constant_op.constant([1.0, 2.0, 3.0])
     with self.assertRaisesRegex(TypeError,
-                                r"Invalid type for initial value: .*Tensor.*"):
+                                r"Invalid type for initial value=.*Tensor.*"):
       init_ops.constant_initializer(c, dtype=dtypes.float32)
     v = variables.Variable([3.0, 2.0, 1.0])
     with self.assertRaisesRegex(
-        TypeError, r"Invalid type for initial value: .*Variable.*"):
+        TypeError, r"Invalid type for initial value=.*Variable.*"):
       init_ops.constant_initializer(v, dtype=dtypes.float32)
 
 
@@ -541,6 +538,20 @@ class RangeTest(test.TestCase):
     tf_ans = math_ops.range(
         constant_op.constant(4, dtype=dtypes.int32), dtype=dtypes.int64)
     self.assertAllEqual(self.evaluate(tf_ans), np.array([0, 1, 2, 3]))
+
+  def testLargeLimits(self):
+    # Test case for GitHub issue 46913.
+    with self.session():
+      with self.assertRaises(errors_impl.ResourceExhaustedError):
+        v = math_ops.range(0, 9223372036854775807)
+        self.evaluate(v)
+
+  def testLargeStarts(self):
+    # Test case for GitHub issue 46899.
+    with self.session():
+      with self.assertRaises(errors_impl.InternalError):
+        v = math_ops.range(start=-1e+38, limit=1)
+        self.evaluate(v)
 
 
 # TODO(vrv): move to sequence_ops_test?

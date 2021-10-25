@@ -14,10 +14,6 @@
 # ==============================================================================
 """Integration test for sequence feature columns with SequenceExamples."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 from google.protobuf import text_format
 
@@ -28,9 +24,9 @@ from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.feature_column import dense_features
 from tensorflow.python.keras.feature_column import sequence_feature_column as ksfc
-from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import merge
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.ops import array_ops
@@ -100,7 +96,7 @@ class SequenceFeatureColumnIntegrationTest(test.TestCase):
     seq_input, _ = sequence_input_layer(features)
     dense_input_layer = dense_features.DenseFeatures(ctx_cols)
     ctx_input = dense_input_layer(features)
-    ctx_input = core.RepeatVector(array_ops.shape(seq_input)[1])(ctx_input)
+    ctx_input = backend.repeat(ctx_input, array_ops.shape(seq_input)[1])
     concatenated_input = merge.concatenate([seq_input, ctx_input])
 
     rnn_layer = recurrent.RNN(recurrent.SimpleRNNCell(10))

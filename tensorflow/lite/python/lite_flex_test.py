@@ -14,14 +14,12 @@
 # ==============================================================================
 """Tests for lite.py functionality related to select TF op usage."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl.testing import parameterized
 import numpy as np
+
+import tensorflow as tf
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.lite.python import lite
@@ -37,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
@@ -74,6 +73,21 @@ class FromSessionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected_output = np.array([[2.0, 4.0, 6.0, 8.0]], dtype=np.float32)
     output_data = interpreter.get_tensor(output_details[0]['index'])
     self.assertTrue((expected_output == output_data).all())
+
+  def testFlexWithAutomaticPassThrough(self):
+    # Create a graph that has one L2Loss op.
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        in_tensor = array_ops.placeholder(
+            shape=[4], dtype=dtypes.float32, name='input')
+        out_tensor = nn_ops.l2_loss(in_tensor)
+        converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                      [out_tensor])
+        converter.target_spec.supported_ops = set([lite.OpsSet.SELECT_TF_OPS])
+        converter._experimental_allow_all_select_tf_ops = True
+        tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+    self.assertIn('FlexL2Loss', tflite_test_util.get_ops_list(tflite_model))
 
   def testDeprecatedFlags(self):
     with ops.Graph().as_default():
@@ -124,7 +138,8 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase,
     concrete_func = root.f.get_concrete_function(input_data)
 
     # Convert model.
-    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
     converter.target_spec.supported_ops = set([lite.OpsSet.SELECT_TF_OPS])
     converter.experimental_new_converter = enable_mlir
     tflite_model = converter.convert()
@@ -224,6 +239,51 @@ class WithCustomOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     output_data = interpreter.get_tensor(output_details[0]['index'])
     self.assertTrue((expected_output == output_data).all())
 
+
+class FromSavedModelTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_v2_only
+  def testFlexResourceVariables(self):
+
+    class Model(tf.Module):
+
+      def __init__(self):
+        self.v = tf.Variable([[0.0, 0.0, 0.0, 0.0]])
+
+      @tf.function(
+          input_signature=[tf.TensorSpec(shape=[1, 4], dtype=tf.float32)])
+      def eval(self, x):
+        # Control flow is needed to generate "FlexReadVariableOp".
+        if tf.reduce_mean(x) > 1.0:
+          self.v.assign_add([[1.0, 1.0, 1.0, 1.0]])
+        return self.v + x
+
+    m = Model()
+    to_save = m.eval.get_concrete_function()
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    tf.saved_model.save(m, save_dir, to_save)
+    converter = tf.lite.TFLiteConverter.from_saved_model(save_dir)
+
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    converter.experimental_enable_resource_variables = True
+    tflite_model = converter.convert()
+
+    # Check the model works with TensorFlow ops.
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_runner = interpreter.get_signature_runner()
+    outputs = signature_runner(
+        x=np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32))
+    expected_output = np.array([[2.0, 3.0, 4.0, 5.0]], dtype=np.float32)
+    self.assertTrue((expected_output == list(outputs.values())[0]).all)
+
+    # Second run.
+    outputs = signature_runner(
+        x=np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32))
+    expected_output = np.array([[3.0, 4.0, 5.0, 6.0]], dtype=np.float32)
+    self.assertTrue((expected_output == list(outputs.values())[0]).all)
 
 if __name__ == '__main__':
   test.main()

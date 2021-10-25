@@ -299,9 +299,9 @@ class Im2ColConvFunctor {
     const int filter_value_count = filter_width * filter_height * input_depth;
     OP_REQUIRES(context, (filter_value_count * sizeof(T1)) <= kMaxChunkSize,
                 errors::InvalidArgument("Im2Col patch too large for buffer"));
-    const int64 patches_per_chunk =
+    const int64_t patches_per_chunk =
         kMaxChunkSize / (filter_value_count * sizeof(T1));
-    const int64 chunk_value_count =
+    const int64_t chunk_value_count =
         (kMaxChunkSize + (sizeof(T1) - 1)) / sizeof(T1);
     // Because memory allocation is very expensive on mobile platforms, try to
     // allocate a persistent buffer that will be kept around between calls. We
@@ -324,18 +324,18 @@ class Im2ColConvFunctor {
     core::ScopedUnref unref_buffer(im2col_buffer_resource);
     T1* im2col_buffer = im2col_buffer_resource->data;
 
-    const int64 patch_count = (input_batches * output_height * output_width);
-    const int64 chunk_count =
+    const int64_t patch_count = (input_batches * output_height * output_width);
+    const int64_t chunk_count =
         (patch_count + (patches_per_chunk - 1)) / patches_per_chunk;
-    for (int64 chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
-      const int64 patch_index_start = chunk_index * patches_per_chunk;
-      const int64 patch_index_end =
+    for (int64_t chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
+      const int64_t patch_index_start = chunk_index * patches_per_chunk;
+      const int64_t patch_index_end =
           std::min(patch_index_start + patches_per_chunk, patch_count);
-      for (int64 patch_index = patch_index_start; patch_index < patch_index_end;
-           ++patch_index) {
-        const int64 batch = patch_index / (output_height * output_width);
-        const int64 out_y = (patch_index / output_width) % output_height;
-        const int64 out_x = patch_index % output_width;
+      for (int64_t patch_index = patch_index_start;
+           patch_index < patch_index_end; ++patch_index) {
+        const int64_t batch = patch_index / (output_height * output_width);
+        const int64_t out_y = (patch_index / output_width) % output_height;
+        const int64_t out_x = patch_index % output_width;
         const T1* input_batch_start =
             input_data + (batch * input_height * input_width * input_depth);
         const int in_y_origin = (out_y * stride_rows) - filter_top_offset;
@@ -443,8 +443,8 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
-    const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
-    const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
+    const int64_t stride_n = GetTensorDim(strides_, data_format_, 'N');
+    const int64_t stride_c = GetTensorDim(strides_, data_format_, 'C');
     OP_REQUIRES(
         context, stride_n == 1 && stride_c == 1,
         errors::InvalidArgument("Current implementation does not yet support "
@@ -478,7 +478,7 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
 
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.
-    const int64 in_depth = GetTensorDim(input, data_format_, 'C');
+    const int64_t in_depth = GetTensorDim(input, data_format_, 'C');
     OP_REQUIRES(context, in_depth == filter.dim_size(2),
                 errors::InvalidArgument(
                     "input and filter must have the same depth: ", in_depth,
@@ -489,7 +489,7 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
 
     // The second dimension for input is rows/height.
     // The first dimension for filter is rows/height.
-    const int64 input_rows_raw = GetTensorDim(input, data_format_, 'H');
+    const int64_t input_rows_raw = GetTensorDim(input, data_format_, 'H');
     OP_REQUIRES(
         context,
         FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
@@ -499,7 +499,7 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
 
     // The third dimension for input is columns/width.
     // The second dimension for filter is columns/width.
-    const int64 input_cols_raw = GetTensorDim(input, data_format_, 'W');
+    const int64_t input_cols_raw = GetTensorDim(input, data_format_, 'W');
     OP_REQUIRES(
         context,
         FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
@@ -508,7 +508,7 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 
     // The first dimension for input is batch.
-    const int64 batch_raw = GetTensorDim(input, data_format_, 'N');
+    const int64_t batch_raw = GetTensorDim(input, data_format_, 'N');
     OP_REQUIRES(context,
                 FastBoundsCheck(batch_raw, std::numeric_limits<int>::max()),
                 errors::InvalidArgument("batch is too large"));
@@ -519,7 +519,7 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
     const int stride_rows = GetTensorDim(strides_, data_format_, 'H');
     const int stride_cols = GetTensorDim(strides_, data_format_, 'W');
 
-    int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+    int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
     OP_REQUIRES_OK(context,
                    GetWindowedOutputSize(input_rows, filter_rows, stride_rows,
                                          padding_, &out_rows, &pad_rows));

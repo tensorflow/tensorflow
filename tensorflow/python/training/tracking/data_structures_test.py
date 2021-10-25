@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import json
@@ -58,7 +54,7 @@ class ListTests(test.TestCase):
 
   def testCallNotImplemented(self):
     with self.assertRaisesRegex(TypeError, "not callable"):
-      data_structures.List()(1.)
+      data_structures.List()(1.)  # pylint: disable=not-callable
 
   def testNoPop(self):
     with self.assertRaises(AttributeError):
@@ -257,7 +253,7 @@ class ListWrapperTest(test.TestCase):
 
   def testNotHashable(self):
     with self.assertRaises(TypeError):
-      hash(data_structures.ListWrapper())
+      hash(data_structures.ListWrapper())  # pylint: disable=no-value-for-parameter
 
   def testDelItem(self):
     l = data_structures.ListWrapper([1, 2, 3, [4]])
@@ -347,7 +343,7 @@ class MappingTests(test.TestCase):
       mapping["a"] = data_structures.List()
     self.assertIs(original, mapping["a"])
     with self.assertRaises(AttributeError):
-      del mapping["a"]
+      del mapping["a"]  # pylint: disable=unsupported-delete-operation
     mapping.update(b=data_structures.Mapping())
     with self.assertRaises(ValueError):
       mapping.update({"b": data_structures.Mapping()})

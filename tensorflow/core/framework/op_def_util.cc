@@ -431,6 +431,9 @@ string SummarizeOpDef(const OpDef& op_def) {
   if (op_def.allows_uninitialized_input()) {
     strings::StrAppend(&ret, "; allows_uninitialized_input=true");
   }
+  if (op_def.is_distributed_communication()) {
+    strings::StrAppend(&ret, "; is_distributed_communication=true");
+  }
   strings::StrAppend(&ret, ">");
   return ret;
 }

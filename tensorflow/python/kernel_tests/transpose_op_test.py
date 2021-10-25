@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for Transpose op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 
 import numpy as np
@@ -379,29 +375,26 @@ class TransposeTest(test.TestCase):
         np.arange(0, 16).reshape([1, 2, 1, 2, 1, 2, 1, 2]).astype(np.float64))
 
   def testComplex64(self):
-    self._testBoth(np.array(np.complex(1, 2)).astype(np.complex64))
-    self._testBoth(np.complex(1, 2) * np.arange(0, 21).astype(np.complex64))
+    self._testBoth(np.array(1 + 2j).astype(np.complex64))
+    self._testBoth((1 + 2j) * np.arange(0, 21).astype(np.complex64))
     self._testBoth(
-        np.complex(1, 2) *
-        np.arange(0, 21).reshape([3, 7]).astype(np.complex64))
+        (1 + 2j) * np.arange(0, 21).reshape([3, 7]).astype(np.complex64))
     self._testBoth(
-        np.complex(1, 2) *
-        np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.complex64))
+        (1 + 2j) * np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.complex64))
     self._testBoth(
-        np.complex(1, 2) *
+        (1 + 2j) *
         np.arange(0, 1260).reshape([2, 3, 5, 7, 2, 3]).astype(np.complex64))
 
   def testComplex128(self):
-    self._testBoth(np.array(np.complex(1, 2)).astype(np.complex128))
-    self._testBoth(np.complex(1, 2) * np.arange(0, 21).astype(np.complex128))
+    self._testBoth(np.array(1 + 2j).astype(np.complex128))
+    self._testBoth((1 + 2j) * np.arange(0, 21).astype(np.complex128))
     self._testBoth(
-        np.complex(1, 2) *
-        np.arange(0, 21).reshape([3, 7]).astype(np.complex128))
+        (1 + 2j) * np.arange(0, 21).reshape([3, 7]).astype(np.complex128))
     self._testBoth(
-        np.complex(1, 2) *
+        (1 + 2j) *
         np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.complex128))
     self._testBoth(
-        np.complex(1, 2) *
+        (1 + 2j) *
         np.arange(0, 1260).reshape([2, 3, 5, 7, 2, 3]).astype(np.complex128))
 
   def testInt8(self):

@@ -37,9 +37,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
-constexpr int64 kPointerSize = 8;
+constexpr int64_t kPointerSize = 8;
 
-int64 ShapeSize(const Shape& shape) {
+int64_t ShapeSize(const Shape& shape) {
   return ShapeUtil::ByteSizeOf(shape, kPointerSize);
 }
 
@@ -320,7 +320,7 @@ TEST_F(HloCostAnalysisTest, Convolution) {
 
 TEST_F(HloCostAnalysisTest, ConvolutionExtreme) {
   XlaBuilder builder("convolution");
-  constexpr int64 kLarge = 512 * 1024;
+  constexpr int64_t kLarge = 512 * 1024;
   auto input = Parameter(
       &builder, 0,
       ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kLarge}),
@@ -343,7 +343,7 @@ TEST_F(HloCostAnalysisTest, ConvolutionExtreme) {
 
 TEST_F(HloCostAnalysisTest, ConvolutionExtreme2) {
   XlaBuilder builder("convolution");
-  constexpr int64 kLarge = 512 * 1024;
+  constexpr int64_t kLarge = 512 * 1024;
   auto input = Parameter(
       &builder, 0,
       ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/1}),
@@ -637,7 +637,7 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
 
     EXPECT_EQ(fusion_analysis.flop_count(), 16);
     EXPECT_EQ(fusion_analysis.transcendental_count(), 4);
-    constexpr int64 bytes_accessed = sizeof(float) * 4 * 2 * 2;
+    constexpr int64_t bytes_accessed = sizeof(float) * 4 * 2 * 2;
     static_assert(bytes_accessed == 64, "");
     EXPECT_EQ(fusion_analysis.bytes_accessed(), bytes_accessed);
 
@@ -828,6 +828,40 @@ ENTRY entry {
   EXPECT_EQ(analysis.operand_bytes_accessed(*outfeed, 0),
             sizeof(float) * 2 * 3);
   EXPECT_EQ(analysis.output_bytes_accessed(*outfeed), 0);
+}
+
+TEST_F(FusionCostAnalysis, AllReduceTupleBytesAccessed) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+sum {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  param0 = f32[2,2]{1,0} parameter(0)
+  param1 = f32[2,2]{1,0} parameter(1)
+  ROOT all-reduce = (f32[2,2]{1,0}, f32[2,2]{1,0}) all-reduce(param0, param1), replica_groups={{0,1}}, to_apply=sum
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* all_reduce = module->entry_computation()->root_instruction();
+
+  HloCostAnalysis all_reduce_analysis(ShapeSize);
+  ASSERT_IS_OK(all_reduce->Accept(&all_reduce_analysis));
+
+  EXPECT_EQ(all_reduce_analysis.bytes_accessed(*all_reduce),
+            sizeof(float) * 2 * 2 * 4);
+  EXPECT_EQ(all_reduce_analysis.operand_bytes_accessed(*all_reduce, 0),
+            sizeof(float) * 2 * 2);
+  EXPECT_EQ(all_reduce_analysis.operand_bytes_accessed(*all_reduce, 1),
+            sizeof(float) * 2 * 2);
+  EXPECT_EQ(all_reduce_analysis.output_bytes_accessed(*all_reduce),
+            sizeof(float) * 2 * 2 * 2);
 }
 
 TEST_F(HloCostAnalysisTest, TupleCost) {

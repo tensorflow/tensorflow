@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.resource_variable_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import gc
 import os
@@ -26,7 +22,9 @@ import re
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import tensor_pb2
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -43,6 +41,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -89,6 +88,14 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
   def testGPUInt64(self):
     with context.eager_mode(), context.device("gpu:0"):
       v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int64)
+      self.assertAllEqual(1, v.numpy())
+
+  @test_util.run_gpu_only
+  def testGPUBfloat16(self):
+    with context.eager_mode(), ops.device("gpu:0"):
+      v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.bfloat16)
+      self.assertEqual("/job:localhost/replica:0/task:0/device:GPU:0",
+                       v.device)
       self.assertAllEqual(1, v.numpy())
 
   def testEagerNameNotIdentity(self):
@@ -236,12 +243,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       self.assertEqual("<tf.Variable 'Variable:0' shape=() dtype=int32,"
                        " numpy=<unavailable>>", text)
 
-  def testUnprintableHandle(self):
+  def testFormatResourceHandle(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
-      self.assertIn("<unprintable>", str(handle))
-      self.assertIn("<unprintable>", repr(handle))
+      self.assertIn("<Resource Tensor>", str(handle))
+      self.assertIn("<Resource Tensor>", repr(handle))
 
   @test_util.run_in_graph_and_eager_modes
   def testDtypeSurvivesIdentity(self):
@@ -326,7 +333,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     c = constant_op.constant(1.)
     identity = array_ops.identity_n([c, v.handle])
     # TODO(b/137403775): Remove this.
-    custom_gradient.copy_handle_data(v.handle, identity[1])
+    handle_data_util.copy_handle_data(v.handle, identity[1])
 
     g = gradients_impl.gradients(identity[0], [c, v.handle])
     self.assertEqual(g[1].dtype, dtypes.float64)
@@ -811,6 +818,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(assign_without_read)
     self.assertEqual(4.0, self.evaluate(v.value()))
 
+  def testAssignRuntimeShapeCheck(self):
+    with forward_compat.forward_compatibility_horizon(2021, 11, 20):
+      v = resource_variable_ops.ResourceVariable([1.0, 1.0], name="var0")
+
+      @def_function.function
+      def f(shape):
+        t = array_ops.zeros(shape)
+        v.assign(t)
+
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        f(constant_op.constant([3]))
+
   @test_util.run_in_graph_and_eager_modes
   def testLoad(self):
     v = resource_variable_ops.ResourceVariable(1.0, name="var0")
@@ -1172,7 +1191,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       v = resource_variable_ops.ResourceVariable(initial_value=zero)
       return (i + 1, v.read_value())
 
-    with self.assertRaisesRegex(ValueError, "initializer"):
+    with self.assertRaisesRegex(ValueError, "initial_value"):
       control_flow_ops.while_loop(cond, body, [0, 0])
 
   def testVariableEager(self):
@@ -1343,6 +1362,22 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with self.assertRaisesRegex(Exception, r"shape.*2.*3"):
       state_ops.scatter_update(v, [0, 1], [0, 1, 2])
 
+  def testScatterAddDeterministic(self):
+    with context.eager_mode(), test_util.deterministic_ops():
+      # Normally a nondeterministic codepath occurs when the variable has at
+      # least 1024 elements. Test that op determinism ensures the op is
+      # deterministc.
+      v = resource_variable_ops.ResourceVariable(array_ops.zeros([1024]))
+      delta = ops.IndexedSlices(
+          values=np.random.normal(size=(1_000_000,)),
+          indices=array_ops.zeros((1_000_000,), dtype=np.int32),
+          dense_shape=(1024,))
+      v.scatter_add(delta)
+      for _ in range(5):
+        v2 = resource_variable_ops.ResourceVariable(array_ops.zeros([1024]))
+        v2.scatter_add(delta)
+        self.assertAllEqual(v, v2)
+
   @test_util.run_in_graph_and_eager_modes
   def testAssignIncompatibleShape(self):
     v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
@@ -1370,7 +1405,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # NOTE(ebrevdo): shape_and_type lacks append() in some versions of protobuf.
     variant_shape_and_type_data.shape_and_type.extend([
         cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
-            shape=stored_shape, dtype=stored_dtype)])
+            shape=stored_shape,
+            dtype=stored_dtype,
+            type=full_type_pb2.FullTypeDef())
+    ])
     return variant_shape_and_type_data
 
   @def_function.function
@@ -1594,6 +1632,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       checker.record_snapshot()
     checker.report()
     checker.assert_no_leak_if_all_possibly_except_one()
+
+  @test_util.run_v2_only
+  def testIterateVariable(self):
+    v = variables.Variable([1., 2.])
+    self.assertAllClose([1., 2.], list(iter(v)))
+
 
 if __name__ == "__main__":
   test.main()

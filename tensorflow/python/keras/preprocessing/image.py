@@ -92,8 +92,9 @@ def smart_resize(x, size, interpolation='bilinear'):
   we resize the `(340, 340)` crop to `(200, 200)`.
 
   Args:
-    x: Input image (as a tensor or NumPy array). Must be in format
-      `(height, width, channels)`.
+    x: Input image or batch of images (as a tensor or NumPy array).
+      Must be in format `(height, width, channels)` or
+      `(batch_size, height, width, channels)`.
     size: Tuple of `(height, width)` integer. Target size.
     interpolation: String, interpolation to use for resizing.
       Defaults to `'bilinear'`. Supports `bilinear`, `nearest`, `bicubic`,
@@ -109,12 +110,17 @@ def smart_resize(x, size, interpolation='bilinear'):
                      'but got: %s' % (size,))
   img = ops.convert_to_tensor_v2_with_dispatch(x)
   if img.shape.rank is not None:
-    if img.shape.rank != 3:
+    if img.shape.rank < 3 or img.shape.rank > 4:
       raise ValueError(
-          'Expected an image array with shape `(height, width, channels)`, but '
+          'Expected an image array with shape `(height, width, channels)`, '
+          'or `(batch_size, height, width, channels)` but '
           'got input with incorrect rank, of shape %s' % (img.shape,))
   shape = array_ops.shape(img)
-  height, width = shape[0], shape[1]
+  if img.shape.rank == 4:
+    height, width = shape[1], shape[2]
+    static_num_channels = img.shape[-1]
+  else:
+    height, width = shape[0], shape[1]
   target_height, target_width = size
 
   crop_height = math_ops.cast(
@@ -131,20 +137,28 @@ def smart_resize(x, size, interpolation='bilinear'):
   crop_box_wstart = math_ops.cast(
       math_ops.cast(width - crop_width, 'float32') / 2, 'int32')
 
-  crop_box_start = array_ops.stack([crop_box_hstart, crop_box_wstart, 0])
-  crop_box_size = array_ops.stack([crop_height, crop_width, -1])
+  if img.shape.rank == 4:
+    crop_box_start = array_ops.stack([0, crop_box_hstart, crop_box_wstart, 0])
+    crop_box_size = array_ops.stack([-1, crop_height, crop_width, -1])
+  else:
+    crop_box_start = array_ops.stack([crop_box_hstart, crop_box_wstart, 0])
+    crop_box_size = array_ops.stack([crop_height, crop_width, -1])
 
   img = array_ops.slice(img, crop_box_start, crop_box_size)
   img = image_ops.resize_images_v2(
       images=img,
       size=size,
       method=interpolation)
+  if img.shape.rank == 4:
+    # Apparent bug in resize_images_v2 may cause shape to be lost
+    img.set_shape((None, None, None, static_num_channels))
   if isinstance(x, np.ndarray):
     return img.numpy()
   return img
 
 
-@keras_export('keras.preprocessing.image.array_to_img')
+@keras_export('keras.utils.array_to_img',
+              'keras.preprocessing.image.array_to_img')
 def array_to_img(x, data_format=None, scale=True, dtype=None):
   """Converts a 3D Numpy array to a PIL Image instance.
 
@@ -187,7 +201,8 @@ def array_to_img(x, data_format=None, scale=True, dtype=None):
   return image.array_to_img(x, data_format=data_format, scale=scale, **kwargs)
 
 
-@keras_export('keras.preprocessing.image.img_to_array')
+@keras_export('keras.utils.img_to_array',
+              'keras.preprocessing.image.img_to_array')
 def img_to_array(img, data_format=None, dtype=None):
   """Converts a PIL Image instance to a Numpy array.
 
@@ -228,7 +243,8 @@ def img_to_array(img, data_format=None, dtype=None):
   return image.img_to_array(img, data_format=data_format, **kwargs)
 
 
-@keras_export('keras.preprocessing.image.save_img')
+@keras_export('keras.utils.save_img',
+              'keras.preprocessing.image.save_img')
 def save_img(path,
              x,
              data_format=None,
@@ -258,6 +274,8 @@ def save_img(path,
                  scale=scale, **kwargs)
 
 
+@keras_export('keras.utils.load_img',
+              'keras.preprocessing.image.load_img')
 def load_img(path, grayscale=False, color_mode='rgb', target_size=None,
              interpolation='nearest'):
   """Loads an image into PIL format.
@@ -266,7 +284,7 @@ def load_img(path, grayscale=False, color_mode='rgb', target_size=None,
 
   ```
   image = tf.keras.preprocessing.image.load_img(image_path)
-  input_arr = keras.preprocessing.image.img_to_array(image)
+  input_arr = tf.keras.preprocessing.image.img_to_array(image)
   input_arr = np.array([input_arr])  # Convert single image to a batch.
   predictions = model.predict(input_arr)
   ```
@@ -302,7 +320,7 @@ class Iterator(image.Iterator, data_utils.Sequence):
 
 
 @keras_export('keras.preprocessing.image.DirectoryIterator')
-class DirectoryIterator(image.DirectoryIterator, Iterator):
+class DirectoryIterator(image.DirectoryIterator, Iterator):  # pylint: disable=inconsistent-mro
   """Iterator capable of reading images from a directory on disk.
 
   Args:
@@ -456,7 +474,7 @@ class NumpyArrayIterator(image.NumpyArrayIterator, Iterator):
         **kwargs)
 
 
-class DataFrameIterator(image.DataFrameIterator, Iterator):
+class DataFrameIterator(image.DataFrameIterator, Iterator):  # pylint: disable=inconsistent-mro
   """Iterator capable of reading images from a directory on disk as a dataframe.
 
   Args:
@@ -1132,4 +1150,3 @@ keras_export(
 keras_export('keras.preprocessing.image.random_brightness')(random_brightness)
 keras_export(
     'keras.preprocessing.image.apply_affine_transform')(apply_affine_transform)
-keras_export('keras.preprocessing.image.load_img')(load_img)

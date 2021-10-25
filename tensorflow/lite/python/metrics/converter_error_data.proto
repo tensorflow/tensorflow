@@ -1,0 +1,93 @@
+// Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This schema defines the converter error format to communicate between C++
+// and python.
+
+syntax = "proto2";
+
+package tflite.metrics;
+
+message ConverterErrorData {
+  // Error code for popular errors.
+  enum ErrorCode {
+    UNKNOWN = 0;
+    ERROR_NEEDS_FLEX_OPS = 1;
+    ERROR_NEEDS_CUSTOM_OPS = 2;
+    ERROR_UNSUPPORTED_CONTROL_FLOW_V1 = 3;
+
+    // 200- 209 error codes are reserved for backend(delegate) compatibility.
+    // Backend compatibility is checked at MlirToFlatBufferTranslateFunction()
+    // with the converted flatbuffer model. If some nodes are incompatibile with
+    // the given backends in TocoFlags.supported_backends, the error will be
+    // raised.
+    ERROR_GPU_NOT_COMPATIBLE = 200;
+  }
+
+  // Information about the op where the error occurs.
+  message Operator {
+    // The op name has "<dialect>.<name>" format, Ex: "tf.Abs".
+    optional string name = 1;
+  }
+
+  // Represents the type of location.
+  enum LocationType {
+    // No location information available.
+    UNKNOWNLOC = 0;
+    // The location is the nodename;
+    NAMELOC = 1;
+    // The location is a stacktrace.
+    CALLSITELOC = 2;
+    // The location is a fused location, usually represents the list of output
+    // tensor locations of that node.
+    FUSEDLOC = 3;
+  }
+
+  // Represents a source location with file name, line and column number.
+  message FileLoc {
+    optional string filename = 1;
+    optional uint32 line = 2;
+    optional uint32 column = 3;
+  }
+
+  // Represents the node name and its source location.
+  message SourceLoc {
+    optional string name = 1;
+    optional FileLoc source = 2;
+  }
+
+  // Represents the location information of current node.
+  message Location {
+    optional LocationType type = 1;
+    // For each location type, this field is different. If type is:
+    // - UNKNOWNLOC: call is empty.
+    // - NAMELOC: call has a single element representing the current node.
+    // - CALLSITELOC: call is a chain of source locations representing a
+    //     stacktrace.
+    // - FUSEDLOC: call is a list, represents the list of output tensor
+    //     locations.
+    repeated SourceLoc call = 2;
+  }
+
+  // The name of the component from which the error was originally thrown.
+  optional string component = 1;
+  // The name of the subcomponent from which the error was originally thrown. In
+  // MLIR, this field contains the pass name.
+  optional string subcomponent = 2;
+
+  optional ErrorCode error_code = 3;
+  optional string error_message = 4;
+  optional Operator operator = 5;
+  optional Location location = 6;
+}

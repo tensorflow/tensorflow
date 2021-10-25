@@ -31,7 +31,8 @@ message HloProfilePrinterData {
     // Metrics computed by HloCostAnalysis.
     float flop_count = 4;
     float transcendental_count = 5;
-    float bytes_accessed = 6;
+    reserved 6;  // bytes_accessed used to erroneously be a float
+    int64 bytes_accessed = 9;
     float optimal_seconds = 7;
 
     // The index into the profile counters array for the HloInstruction

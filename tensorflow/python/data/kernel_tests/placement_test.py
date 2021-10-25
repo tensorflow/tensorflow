@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.data placement within tf.functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import prefetching_ops
@@ -66,7 +62,6 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testWhile(self):
-    self.skipTest("b/166625126")
 
     @def_function.function
     def f():
@@ -121,7 +116,6 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCond(self):
-    self.skipTest("b/166625126")
     # Ideally, placer should avoid cross-device copies even when the cond op
     # has no placement constraints.
     @def_function.function
@@ -141,7 +135,6 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testId(self):
-    self.skipTest("b/166625126")
     # Ideally, placer should know that Identity(dataset) should be on the same
     # device as the dataset.
     @def_function.function
@@ -151,11 +144,26 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset
     f()
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testIteratorOnDeviceEagerMode(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
+  @combinations.generate(test_base.default_test_combinations())
+  @test_util.run_gpu_only
+  def testFunctionCall(self):
+    # Ideally, placer should know that Call(dataset) should be on the same
+    # device as the dataset. Create a funciton that could be place don the GPU,
+    # but a Dataset that cannot.
+    @def_function.function
+    def test_call(dataset):
+      return dataset.reduce(0, lambda s, _: s + 1)
 
+    @def_function.function
+    def f():
+      dataset = dataset_ops.Dataset.range(10)
+      return test_call(dataset)
+
+    self.assertEqual(self.evaluate(f()), 10)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  @test_util.run_gpu_only
+  def testIteratorOnDeviceEagerMode(self):
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
     iterator = iter(dataset)
@@ -169,10 +177,8 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertIn("gpu:0", optional_data.has_value().device.lower())
 
   @combinations.generate(test_base.graph_only_combinations())
+  @test_util.run_gpu_only()
   def testIteratorOnDeviceGraphModeOneShotIterator(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
     self.skipTest("TODO(b/169429285): tf.data.Dataset.make_one_shot_iterator "
                   "does not support GPU placement.")
 
@@ -203,10 +209,8 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertIn(b"GPU:0", self.evaluate(has_value_device))
 
   @combinations.generate(test_base.graph_only_combinations())
+  @test_util.run_gpu_only()
   def testIteratorOnDeviceGraphModeInitializableIterator(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
     iterator = dataset_ops.make_initializable_iterator(dataset)
@@ -234,9 +238,8 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertIn(b"GPU:0", self.evaluate(has_value_device))
 
   @combinations.generate(test_base.eager_only_combinations())
+  @test_util.run_gpu_only()
   def testIterDatasetEagerModeWithExplicitDevice(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
 
     @def_function.function
     def comp():
@@ -248,6 +251,22 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     with ops.device("/gpu:0"):
       result = comp()
     self.assertEqual(result.numpy(), 45)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  @test_util.run_gpu_only()
+  def testFunctionInliningColocation(self):
+
+    @def_function.function
+    def f(ds):
+      return next(iter(ds))
+
+    @def_function.function
+    def g():
+      dataset = dataset_ops.Dataset.range(10)
+      return f(dataset)
+
+    with ops.device("/gpu:0"):
+      self.assertEqual(self.evaluate(g()), 0)
 
 
 if __name__ == "__main__":

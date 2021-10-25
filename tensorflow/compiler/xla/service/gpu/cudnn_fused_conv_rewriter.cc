@@ -221,7 +221,7 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
     auto zero = computation->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::Zero(conv_output_type)));
 
-    int64 num_output_feature = conv->shape().tuple_shapes(0).dimensions(
+    int64_t num_output_feature = conv->shape().tuple_shapes(0).dimensions(
         conv->convolution_dimension_numbers().output_feature_dimension());
     bias = computation->AddInstruction(HloInstruction::CreateBroadcast(
         ShapeUtil::MakeShapeWithDescendingLayout(conv_output_type,
@@ -242,10 +242,12 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
   new_conv->set_convolution_dimension_numbers(
       conv->convolution_dimension_numbers());
   new_conv->set_metadata(conv->metadata());
+  computation->parent()->SetAndUniquifyInstrName(new_conv,
+                                                 "cudnn-conv-bias-activation");
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
                       conv->backend_config<CudnnConvBackendConfig>());
   config.set_activation_mode(
-      static_cast<int64>(se::dnn::ActivationMode::kRelu));
+      static_cast<int64_t>(se::dnn::ActivationMode::kRelu));
   config.set_conv_result_scale(alpha_conv);
   config.set_side_input_scale(alpha_side_input);
   TF_RETURN_IF_ERROR(new_conv->set_backend_config(config));

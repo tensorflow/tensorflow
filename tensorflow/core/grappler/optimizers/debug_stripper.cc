@@ -73,10 +73,5 @@ Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
   return Status::OK();
 }
 
-void DebugStripper::Feedback(Cluster* cluster, const GrapplerItem& item,
-                             const GraphDef& optimize_output, double result) {
-  // Takes no feedback.
-}
-
 }  // end namespace grappler
 }  // end namespace tensorflow

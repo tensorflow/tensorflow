@@ -59,8 +59,7 @@ Status DumpToolData(absl::string_view run_dir, absl::string_view host,
       ProfilerJoinPath(run_dir, absl::StrCat(host_prefix, tool.name()));
   TF_RETURN_IF_ERROR(WriteStringToFile(Env::Default(), path, tool.data()));
   if (os) {
-    *os << "Dumped tool data for " << tool.name() << " to " << path
-        << std::endl;
+    *os << "Dumped tool data for " << tool.name() << " to " << path << '\n';
   }
   return Status::OK();
 }
@@ -84,7 +83,7 @@ Status GetOrCreateRunDir(const std::string& repository_root,
                          std::ostream* os) {
   // Creates a directory to <repository_root>/<run>/.
   *run_dir = ProfilerJoinPath(repository_root, run);
-  *os << "Creating directory: " << *run_dir;
+  *os << "Creating directory: " << *run_dir << '\n';
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(*run_dir));
   return Status::OK();
 }

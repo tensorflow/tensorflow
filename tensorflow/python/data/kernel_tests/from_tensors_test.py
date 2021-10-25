@@ -13,21 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.from_tensors()."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import collections
 from absl.testing import parameterized
+
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -37,6 +37,11 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
+
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
 
 
 class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -123,6 +128,27 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(components)
 
     self.assertDatasetProduces(dataset, expected_output=[components])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorsNamedTuple(self):
+    Foo = collections.namedtuple("Foo", ["x", "y"])
+    element = Foo(x=1, y=2)
+    dataset = dataset_ops.Dataset.from_tensors(element)
+    self.assertDatasetProduces(dataset, expected_output=[element])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorsAttrs(self):
+    if attr is None:
+      self.skipTest("attr module is not available.")
+
+    @attr.s
+    class Foo(object):
+      x = attr.ib()
+      y = attr.ib()
+
+    element = Foo(x=1, y=2)
+    dataset = dataset_ops.Dataset.from_tensors(element)
+    self.assertDatasetProduces(dataset, expected_output=[element])
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsMixedRagged(self):
@@ -266,6 +292,11 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       self.assertEqual(sess.run(iterator.get_next()), 2)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42, name="from_tensors")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):
@@ -275,13 +306,58 @@ class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
     return dataset_ops.Dataset.from_tensors(components)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testFromTensorsCore(self):
-    # Equal length components
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     arr = np.array(1)
-    num_outputs = 1
-    self.run_core_tests(lambda: self._build_tensor_dataset(arr), num_outputs)
+    verify_fn(self, lambda: self._build_tensor_dataset(arr), num_outputs=1)
 
+
+class FromTensorsRandomAccessTest(test_base.DatasetTestBase,
+                                  parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testInvalidIndex(self):
+    dataset = dataset_ops.Dataset.from_tensors([1, 2, 3])
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, -1))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, 1))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testBasic(self):
+    dataset = dataset_ops.Dataset.from_tensors(range(4))
+    self.assertAllEqual(self.evaluate(random_access.at(dataset, 0)), range(4))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, 1))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testEmptyDataset(self):
+    dataset = dataset_ops.Dataset.from_tensors([])
+    self.assertAllEqual(self.evaluate(random_access.at(dataset, 0)), [])
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, 1))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testNumpyArray(self):
+    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
+    dataset = dataset_ops.Dataset.from_tensors(components)
+    result = self.evaluate(random_access.at(dataset, 0))
+    for i in range(3):
+      self.assertAllEqual(result[i], components[i])
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, 1))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorsNestedDataset(self):
+    dataset = dataset_ops.Dataset.from_tensors(dataset_ops.Dataset.range(10))
+    result = random_access.at(dataset, 0)
+    for i in range(10):
+      self.assertEqual(self.evaluate(random_access.at(result, i)), i)
 
 if __name__ == "__main__":
   test.main()

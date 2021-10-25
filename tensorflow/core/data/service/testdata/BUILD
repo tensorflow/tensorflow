@@ -1,4 +1,3 @@
-# Description:
 # Data service test data.
 
 load("//tensorflow:tensorflow.bzl", "filegroup")

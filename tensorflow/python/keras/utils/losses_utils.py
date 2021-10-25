@@ -37,10 +37,21 @@ class ReductionV2(object):
      used with `tf.distribute.Strategy`, outside of built-in training loops such
      as `tf.keras` `compile` and `fit`, we expect reduction value to be
      `SUM` or `NONE`. Using `AUTO` in that case will raise an error.
-  * `NONE`: Weighted losses with one dimension reduced (axis=-1, or axis
-     specified by loss function). When this reduction type used with built-in
-     Keras training loops like `fit`/`evaluate`, the unreduced vector loss is
-     passed to the optimizer but the reported loss will be a scalar value.
+  * `NONE`: No **additional** reduction is applied to the output of the wrapped
+     loss function. When non-scalar losses are returned to Keras functions like
+     `fit`/`evaluate`, the unreduced vector loss is passed to the optimizer
+     but the reported loss will be a scalar value.
+
+     Caution: **Verify the shape of the outputs when using** `Reduction.NONE`.
+     The builtin loss functions wrapped by the loss classes reduce
+     one dimension (`axis=-1`, or `axis` if specified by loss function).
+     `Reduction.NONE` just means that no **additional** reduction is applied by
+     the class wrapper. For categorical losses with an example input shape of
+     `[batch, W, H, n_classes]` the `n_classes` dimension is reduced. For
+     pointwise losses your must include a dummy axis so that `[batch, W, H, 1]`
+     is reduced to `[batch, W, H]`. Without the dummy axis `[batch, W, H]`
+     will be incorrectly reduced to `[batch, W]`.
+
   * `SUM`: Scalar sum of weighted losses.
   * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
      This reduction type is not supported when used with
@@ -262,6 +273,7 @@ def reduce_weighted_loss(weighted_losses,
   return loss
 
 
+@keras_export('keras.__internal__.losses.compute_weighted_loss', v1=[])
 def compute_weighted_loss(losses,
                           sample_weight=None,
                           reduction=ReductionV2.SUM_OVER_BATCH_SIZE,

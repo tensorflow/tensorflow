@@ -63,9 +63,6 @@ class TestOptimizer : public CustomGraphOptimizer {
     return Status::OK();
   }
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override {}
-
  private:
   static bool optimized_;
 };
@@ -121,9 +118,6 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
     }
     return Status::OK();
   }
-
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override {}
 
  private:
   static gtl::FlatMap<string, GrapplerItem::OptimizationOptions>*
@@ -723,14 +717,11 @@ class SleepingOptimizer : public CustomGraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
     *optimized_graph = item.graph;
-    sleep(1);
+    Env::Default()->SleepForMicroseconds(1000000);
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     optimized_graph->add_node();
     return Status::OK();
   }
-
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override {}
 };
 
 REGISTER_GRAPH_OPTIMIZER(SleepingOptimizer);
@@ -1021,8 +1012,7 @@ TEST_F(MetaOptimizerTest, CompressConstants) {
       found_zeros = true;
       EXPECT_EQ(node.op(), "Const");
       const TensorProto& zeroes_t = node.attr().at("value").tensor();
-      EXPECT_EQ(zeroes_t.float_val_size(), 1);
-      EXPECT_EQ(zeroes_t.float_val(0), 0.0f);
+      EXPECT_EQ(zeroes_t.float_val_size(), 0);
     } else if (node.name() == "host_ones") {
       found_host_ones = true;
       EXPECT_EQ(node.op(), "HostConst");
@@ -1072,9 +1062,6 @@ class TfDataTestOptimizer : public CustomGraphOptimizer {
     *optimized_graph = item.graph;
     return Status::OK();
   }
-
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override {}
 
  private:
   static std::atomic<int> count_;

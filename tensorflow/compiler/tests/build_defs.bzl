@@ -20,7 +20,7 @@ def tf_xla_py_test(
         enabled_backends = None,
         disabled_backends = None,
         use_xla_device = True,
-        enable_mlir_bridge = False,
+        enable_mlir_bridge = True,
         **kwargs):
     """Generates py_test targets, one per XLA backend.
 
@@ -109,11 +109,19 @@ def tf_xla_py_test(
         for mlir_option in enable_mlir_bridge_options:
             extra_dep = []
             updated_name = test_name
+
+            mlir_bridge_dep = "//tensorflow/python:is_mlir_bridge_test_true"
+            has_mlir_dep = (mlir_bridge_dep in deps)
             if mlir_option:
-                extra_dep = ["//tensorflow/python:is_mlir_bridge_test_true"]
                 if updated_name.endswith("_test"):
                     updated_name = updated_name[:-5]
                 updated_name += "_mlir_bridge_test"
+                extra_dep = [] if has_mlir_dep else [mlir_bridge_dep]
+            elif has_mlir_dep:
+                # Some tests run only with mlir_bridge by explicitly adding the MLIR
+                # bridge dep so if the dep is already present skip non MLIR
+                # version.
+                continue
 
             py_test(
                 name = updated_name,

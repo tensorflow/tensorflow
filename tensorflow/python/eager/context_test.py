@@ -13,14 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import weakref
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.compiler.xla.service import hlo_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -31,7 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ContextTest(test.TestCase):
+class ContextTest(test.TestCase, parameterized.TestCase):
 
   def testSetGlobalSeed(self):
     c = context.Context()
@@ -83,7 +81,9 @@ class ContextTest(test.TestCase):
         return x + constant_op.constant(1.)
 
     with context.collect_graphs() as graphs:
-      f(constant_op.constant(1.))
+      with ops.device('CPU:0'):
+        x = constant_op.constant(1.)
+      f(x)
 
     self.assertLen(graphs, 1)
     graph, = graphs
@@ -128,28 +128,32 @@ class ContextTest(test.TestCase):
 
   @test_util.run_gpu_only
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
-  def testGetMemoryUsage(self):
-    array_ops.zeros([10]) # Allocate some memory on the GPU.
-    self.assertGreater(
-        context.context().get_total_memory_usage('GPU:0'), 0)
+  def testGetMemoryInfo(self):
+    array_ops.zeros([10])  # Allocate some memory on the GPU.
+    self.assertGreater(context.context().get_memory_info('GPU:0')['current'], 0)
 
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
-  def testGetMemoryUsageCPU(self):
-    with self.assertRaisesRegex(ValueError, 'CPU does not support'):
-      context.context().get_total_memory_usage('CPU:0')
+  def testGetMemoryInfoCPU(self):
+    if test_util.IsMklEnabled():
+      # TODO(gzmkl) work with Google team to address design issue in allocator.h
+      self.skipTest('MklCPUAllocator does not throw exception. So skip test.')
+
+    with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
+      context.context().get_memory_info('CPU:0')
 
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
-  def testGetMemoryUsageUnknownDevice(self):
+  def testGetMemoryInfoUnknownDevice(self):
+    with self.assertRaisesRegex(ValueError, 'No matching devices found'):
+      context.context().get_memory_info('unknown_device:0')
+
+  @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
+  def testGetMemoryInfoUnparsableDevice(self):
     with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
-      context.context().get_total_memory_usage('unknown_device')
-
-  @test_util.run_gpu_only
-  @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
-  def testGetMemoryUsageAmbiguousDevice(self):
-    if len(context.context().list_physical_devices('GPU')) < 2:
-      self.skipTest('Need at least 2 GPUs')
-    with self.assertRaisesRegex(ValueError, 'Multiple devices'):
-      context.context().get_total_memory_usage('GPU')
+      context.context().get_memory_info('GPU')
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      context.context().get_memory_info('GPU:')
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      context.context().get_memory_info('GPU:CPU')
 
   def testListFunctionNames(self):
 
@@ -169,6 +173,43 @@ class ContextTest(test.TestCase):
     # Cannot set logical device twice.
     with self.assertRaisesRegex(RuntimeError, 'Virtual CPUs already set'):
       ctx.set_logical_cpu_devices(8)
+
+  def testSetLogicalLocalCpuDevice(self):
+    ctx = context.Context()
+
+    # Manually add a remote CPU device into logical device list.
+    ctx._logical_devices = []  # pylint: disable=protected-access
+    dev = context.LogicalDevice(name='/job:worker/replica:0/task:1',
+                                device_type='CPU')
+    ctx._logical_devices.append(dev)  # pylint: disable=protected-access
+    self.assertIs(len(ctx.list_logical_devices('CPU')), 1)
+
+    # This would pass the check since the previously added device is not local.
+    ctx.set_logical_cpu_devices(4)
+    # Logical device list would be overwritten after initialization.
+    self.assertIs(len(ctx.list_logical_devices('CPU')), 4)
+
+  @parameterized.named_parameters([(f'_{stage}', stage) for stage in [
+      'hlo', 'hlo_serialized', 'optimized_hlo', 'optimized_hlo_serialized',
+      'optimized_hlo_proto_serialized', 'optimized_hlo_dot'
+  ]])
+  def testGetCompilerIr(self, stage):
+
+    @def_function.function(jit_compile=True)
+    def test_func(x):
+      return 2 * x
+
+    a = array_ops.ones((1000, 1000))  # 4 * 1000 * 1000 in bytes
+    result = test_func.experimental_get_compiler_ir(a)(stage=stage)
+    self.assertNotEmpty(result)
+    if stage == 'optimized_hlo_proto_serialized':
+      hlo_proto = hlo_pb2.HloProto.FromString(result)
+      allocations = hlo_proto.buffer_assignment.buffer_allocations
+      buffer_size = sum(
+          getattr(allocation, 'size') for allocation in allocations)
+      # The sizes of input and output are both 4 * 1000 * 1000 in bytes.
+      self.assertGreaterEqual(buffer_size, 2 * 4 * 1000 * 1000)
+      self.assertLess(buffer_size, 4 * 4 * 1000 * 1000)
 
 
 if __name__ == '__main__':

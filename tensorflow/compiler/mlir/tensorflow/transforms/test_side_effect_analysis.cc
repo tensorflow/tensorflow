@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -32,15 +33,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
-namespace tf_executor {
+namespace tf_test {
 
 namespace {
 
-// A pass that adds "Predecessors" and "Successors" remarks for each op based on
-// SideEffectAnalysis result. For testing purpose only.
-struct TestSideEffectAnalysis
+struct TestSideEffectAnalysisPass
     : public TF::PerFunctionAggregateAnalysisConsumerPass<
-          TestSideEffectAnalysis, TF::SideEffectAnalysis> {
+          TestSideEffectAnalysisPass, TF::SideEffectAnalysis> {
   void runOnFunction(FuncOp func,
                      const TF::SideEffectAnalysis::Info& analysis) {
     int64_t next_id = 0;
@@ -66,13 +65,18 @@ struct TestSideEffectAnalysis
       }
     });
   }
-};
 
-static mlir::PassRegistration<TestSideEffectAnalysis> pass(
-    "tf-test-side-effect-analysis",
-    "Add remarks based on side-effect analysis result, for testing purpose.");
+  StringRef getArgument() const final { return "tf-test-side-effect-analysis"; }
+  StringRef getDescription() const final {
+    return "Test pass for analyzing side-effect analysis result";
+  }
+};
 
 }  // anonymous namespace
 
-}  // namespace tf_executor
+std::unique_ptr<OperationPass<ModuleOp>> CreateTestSideEffectAnalysisPass() {
+  return std::make_unique<TestSideEffectAnalysisPass>();
+}
+
+}  // namespace tf_test
 }  // namespace mlir

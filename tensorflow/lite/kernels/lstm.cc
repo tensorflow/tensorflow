@@ -2071,89 +2071,58 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             GetTemporary(context, node, kOutputStateZeroPoints), row_sums,
             row_sums_size, &op_data->compute_row_sums,
             CpuBackendContext::GetFromContext(context));
-      } else {
-        const int num_intermediate_tensors = node->intermediates->size;
-        if (num_intermediate_tensors == 5) {
-          TfLiteTensor* scratch0;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 0, &scratch0));
-          TfLiteTensor* scratch1;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 1, &scratch1));
-          TfLiteTensor* scratch2;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 2, &scratch2));
-          TfLiteTensor* scratch3;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 3, &scratch3));
-          TfLiteTensor* scratch4;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 4, &scratch4));
-          TfLiteTensor* scratch5;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 5, &scratch5));
-          return lstm_eval::EvalInteger8x8_16(
-              input, input_to_input_weights, input_to_forget_weights,
-              input_to_cell_weights, input_to_output_weights,
-              recurrent_to_input_weights, recurrent_to_forget_weights,
-              recurrent_to_cell_weights, recurrent_to_output_weights,
-              cell_to_input_weights, cell_to_forget_weights,
-              cell_to_output_weights, input_layer_norm_coefficients,
-              forget_layer_norm_coefficients, cell_layer_norm_coefficients,
-              output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
-              cell_gate_bias, output_gate_bias, projection_weights,
-              projection_bias, params, /*forward_sequence=*/true,
-              /*time_major=*/true, &op_data->integer_lstm_param, output_state,
-              cell_state, output, scratch0, scratch1, scratch2, scratch3,
-              scratch4, scratch5, CpuBackendContext::GetFromContext(context));
-        } else {
-          TfLiteTensor* scratch0;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 0, &scratch0));
-          TfLiteTensor* scratch1;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 1, &scratch1));
-          TfLiteTensor* scratch2;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 2, &scratch2));
-          TfLiteTensor* scratch3;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 3, &scratch3));
-          TfLiteTensor* scratch4;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 4, &scratch4));
-          TfLiteTensor* scratch5;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 5, &scratch5));
-          TfLiteTensor* scratch6;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 6, &scratch6));
-          TfLiteTensor* scratch7;
-          TF_LITE_ENSURE_OK(context,
-                            GetTemporarySafe(context, node, 7, &scratch7));
-          return lstm_eval::EvalInteger8x8_8(
-              input, input_to_input_weights, input_to_forget_weights,
-              input_to_cell_weights, input_to_output_weights,
-              recurrent_to_input_weights, recurrent_to_forget_weights,
-              recurrent_to_cell_weights, recurrent_to_output_weights,
-              cell_to_input_weights, cell_to_forget_weights,
-              cell_to_output_weights, input_layer_norm_coefficients,
-              forget_layer_norm_coefficients, cell_layer_norm_coefficients,
-              output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
-              cell_gate_bias, output_gate_bias, projection_weights,
-              projection_bias, params, output_state, cell_state, output,
-              &op_data->integer_lstm_param, scratch0, scratch1, scratch2,
-              scratch3, scratch4, scratch5, scratch6, scratch7);
-          return kTfLiteOk;
-        }
       }
+      const int num_intermediate_tensors = node->intermediates->size;
+      TfLiteTensor* scratch0;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 0, &scratch0));
+      TfLiteTensor* scratch1;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 1, &scratch1));
+      TfLiteTensor* scratch2;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 2, &scratch2));
+      TfLiteTensor* scratch3;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 3, &scratch3));
+      TfLiteTensor* scratch4;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 4, &scratch4));
+      TfLiteTensor* scratch5;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 5, &scratch5));
+      if (num_intermediate_tensors == 5) {
+        return lstm_eval::EvalInteger8x8_16(
+            input, input_to_input_weights, input_to_forget_weights,
+            input_to_cell_weights, input_to_output_weights,
+            recurrent_to_input_weights, recurrent_to_forget_weights,
+            recurrent_to_cell_weights, recurrent_to_output_weights,
+            cell_to_input_weights, cell_to_forget_weights,
+            cell_to_output_weights, input_layer_norm_coefficients,
+            forget_layer_norm_coefficients, cell_layer_norm_coefficients,
+            output_layer_norm_coefficients, input_gate_bias, forget_gate_bias,
+            cell_gate_bias, output_gate_bias, projection_weights,
+            projection_bias, params, /*forward_sequence=*/true,
+            /*time_major=*/true, &op_data->integer_lstm_param, output_state,
+            cell_state, output, scratch0, scratch1, scratch2, scratch3,
+            scratch4, scratch5, CpuBackendContext::GetFromContext(context));
+      }
+      TfLiteTensor* scratch6;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 6, &scratch6));
+      TfLiteTensor* scratch7;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 7, &scratch7));
+      return lstm_eval::EvalInteger8x8_8(
+          input, input_to_input_weights, input_to_forget_weights,
+          input_to_cell_weights, input_to_output_weights,
+          recurrent_to_input_weights, recurrent_to_forget_weights,
+          recurrent_to_cell_weights, recurrent_to_output_weights,
+          cell_to_input_weights, cell_to_forget_weights, cell_to_output_weights,
+          input_layer_norm_coefficients, forget_layer_norm_coefficients,
+          cell_layer_norm_coefficients, output_layer_norm_coefficients,
+          input_gate_bias, forget_gate_bias, cell_gate_bias, output_gate_bias,
+          projection_weights, projection_bias, params, output_state, cell_state,
+          output, &op_data->integer_lstm_param, scratch0, scratch1, scratch2,
+          scratch3, scratch4, scratch5, scratch6, scratch7);
     }
     default:
       context->ReportError(context, "Type %d is not currently supported.",
                            input_to_output_weights->type);
       return kTfLiteError;
   }
-  return kTfLiteOk;
 }
 // LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
 
@@ -2369,8 +2338,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  // TODO(ycling): Investigate if this copy can be avoided with the 5-inputs
-  // LSTM kernel.
   memcpy(prev_activation->data.raw, activation_out->data.raw,
          activation_out->bytes);
   memcpy(prev_state->data.raw, state_out->data.raw, state_out->bytes);
@@ -2390,7 +2357,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
     default:
       return nullptr;
   }
-  return nullptr;
 }
 void Free(TfLiteContext* context, void* buffer) {
   delete static_cast<OpData*>(buffer);
@@ -2406,7 +2372,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     default:
       return kTfLiteError;
   }
-  return kTfLiteError;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -2419,7 +2384,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     default:
       return kTfLiteError;
   }
-  return kTfLiteError;
 }
 
 }  // namespace lstm

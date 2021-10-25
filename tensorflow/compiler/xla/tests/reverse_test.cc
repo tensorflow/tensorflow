@@ -40,8 +40,8 @@ static std::array<bool, 1> use_bfloat16_params{false};
 #endif
 
 struct ReverseSpec {
-  std::vector<int64> input_dims;
-  std::vector<int64> reversal;
+  std::vector<int64_t> input_dims;
+  std::vector<int64_t> reversal;
   bool use_bfloat16;
 
   string ToTestCaseName() const {
@@ -91,13 +91,13 @@ TEST_P(FloatReverseTest, Reverses) {
   Rev(a, spec.reversal);
 
   Literal expected = input_literal.Clone();
-  std::vector<int64> output_indices(spec.input_dims.size());
-  expected.EachCell<float>([&](absl::Span<const int64> indices, float) {
-    for (int64 i = 0; i < indices.size(); ++i) {
+  std::vector<int64_t> output_indices(spec.input_dims.size());
+  expected.EachCell<float>([&](absl::Span<const int64_t> indices, float) {
+    for (int64_t i = 0; i < indices.size(); ++i) {
       output_indices[i] = indices[i];
     }
     float value = input_literal.Get<float>(indices);
-    for (int64 dim : spec.reversal) {
+    for (int64_t dim : spec.reversal) {
       output_indices[dim] = (spec.input_dims[dim] - 1) - indices[dim];
     }
     expected.Set<float>(output_indices, value);

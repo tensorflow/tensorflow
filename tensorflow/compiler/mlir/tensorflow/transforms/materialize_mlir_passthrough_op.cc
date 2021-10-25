@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 #define DEBUG_TYPE "tf-materialize-passthrough-op"
 
@@ -35,7 +36,7 @@ namespace mlir {
 namespace {
 
 class MaterializePassthroughOpPass
-    : public PassWrapper<MaterializePassthroughOpPass, FunctionPass> {
+    : public TF::MaterializePassthroughOpBase<MaterializePassthroughOpPass> {
  public:
   void runOnFunction() override;
 };
@@ -100,10 +101,5 @@ std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass() {
   return std::make_unique<MaterializePassthroughOpPass>();
 }
 }  // namespace TF
-
-static PassRegistration<MaterializePassthroughOpPass> pass(
-    "tf-materialize-passthrough-op",
-    "Materialize the MlirPassthroughOp by replacing it with the MLIR module "
-    "attached as an attribute");
 
 }  // namespace mlir

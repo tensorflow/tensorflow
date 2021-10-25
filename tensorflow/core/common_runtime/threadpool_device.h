@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/common_runtime/node_file_writer.h"
 
 namespace tensorflow {
 
@@ -31,7 +32,7 @@ class ThreadPoolDevice : public LocalDevice {
 
   Allocator* GetAllocator(AllocatorAttributes attr) override;
   Allocator* GetScopedAllocator(AllocatorAttributes attr,
-                                int64 step_id) override;
+                                int64_t step_id) override;
   ScopedAllocatorMgr* GetScopedAllocatorMgr() const override {
     return scoped_allocator_mgr_.get();
   }
@@ -44,9 +45,17 @@ class ThreadPoolDevice : public LocalDevice {
 
   Status Sync() override { return Status::OK(); }
 
+  void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
+  void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
+                    AsyncOpKernel::DoneCallback done) override;
+
  private:
+  void LogInputs(OpKernel* op_kernel, OpKernelContext* context);
+  void LogOutputs(OpKernel* op_kernel, OpKernelContext* context);
+
   Allocator* allocator_;  // Not owned
   std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;
+  NodeFileWriter* node_file_writer_ = nullptr;  // not owned
 };
 
 }  // namespace tensorflow

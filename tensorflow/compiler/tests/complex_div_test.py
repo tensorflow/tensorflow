@@ -14,10 +14,6 @@
 # ==============================================================================
 """Test cases for complex numbers division."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 import numpy as np
@@ -44,7 +40,8 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
       result = session.run(output, {pa: a, pb: b})
       if equality_test is None:
         equality_test = self.assertAllCloseAccordingToType
-      equality_test(result, expected, rtol=1e-3)
+      equality_test(np.real(result), np.real(expected), rtol=1e-3)
+      equality_test(np.imag(result), np.imag(expected), rtol=1e-3)
 
   def testComplexOps(self):
     for dtype in self.complex_types:
@@ -61,6 +58,7 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
               complex(np.nan, 1),
               complex(np.nan, np.inf),
               complex(np.nan, np.nan),
+              complex(-np.inf, np.nan),
           ],
                    dtype=dtype),
           np.array([
@@ -73,6 +71,7 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
               0 + 0j,
               0 + 0j,
               0 + 0j,
+              0.0 + 0j,
           ],
                    dtype=dtype),
           expected=np.array([
@@ -85,6 +84,7 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
               complex(np.nan, np.inf),
               complex(np.nan, np.inf),
               complex(np.nan, np.nan),
+              complex(-np.inf, np.nan),
           ],
                             dtype=dtype))
 
@@ -92,6 +92,7 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
       self._testBinary(
           gen_math_ops.real_div,
           np.array([
+              1 + 1j,
               1 + 1j,
               1 + 1j,
               1 + 1j,
@@ -111,6 +112,7 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
                   complex(np.inf, np.nan),  # C++ and Python diverge here.
                   complex(np.nan, 1),
                   complex(np.nan, np.inf),  # C++ and Python diverge here.
+                  complex(np.nan, -np.inf),  # C++ and Python diverge here.
                   complex(np.nan, np.nan),
               ],
               dtype=dtype),
@@ -123,6 +125,7 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
                   complex(0 + 0j),  # C++ and Python diverge here.
                   (1 + 1j) / complex(np.nan, 1),
                   complex(0 + 0j),  # C++ and Python diverge here.
+                  complex(0 - 0j),  # C++ and Python diverge here.
                   (1 + 1j) / complex(np.nan, np.nan),
               ],
               dtype=dtype))
@@ -139,6 +142,7 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
               complex(np.nan, 1),
               complex(np.nan, np.inf),
               complex(np.nan, np.nan),
+              complex(np.nan, -np.inf),
           ],
                    dtype=dtype),
           np.array([
@@ -150,6 +154,7 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
               1 + 1j,
               1 + 1j,
               1 + 1j,
+              -1 - 1j,
           ],
                    dtype=dtype),
           expected=np.array(
@@ -162,6 +167,7 @@ class ComplexNumbersDivisionTest(xla_test.XLATestCase):
                   complex(np.nan / 1) / (1 + 1j),
                   complex(np.inf, np.inf),  # C++ and Python diverge here.
                   complex(np.nan / np.nan) / (1 + 1j),
+                  complex(np.inf, np.inf),  # C++ and Python diverge here.
               ],
               dtype=dtype))
 

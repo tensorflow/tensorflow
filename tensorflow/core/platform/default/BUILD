@@ -1,8 +1,9 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_copts")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
 package(
     default_visibility = [
@@ -76,13 +77,13 @@ cc_library(
     name = "env",
     srcs = [
         "posix_file_system.cc",
-        "posix_file_system.h",
         "//tensorflow/core/platform:env.cc",
         "//tensorflow/core/platform:file_system.cc",
         "//tensorflow/core/platform:file_system_helper.cc",
         "//tensorflow/core/platform:threadpool.cc",
     ],
     hdrs = [
+        "posix_file_system.h",
         "//tensorflow/core/platform:env.h",
         "//tensorflow/core/platform:file_system.h",
         "//tensorflow/core/platform:file_system_helper.h",
@@ -103,7 +104,6 @@ cc_library(
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:denormal",
         "//tensorflow/core/platform:env_time",
-        "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:load_library",
@@ -114,6 +114,7 @@ cc_library(
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
@@ -141,6 +142,11 @@ cc_library(
     ],
     deps = [
         ":env",
+        "//tensorflow/core/platform:load_library",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -409,41 +415,6 @@ cc_library(
 )
 
 cc_library(
-    name = "test_benchmark",
-    testonly = True,
-    srcs = ["test_benchmark.cc"],
-    hdrs = ["test_benchmark.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:types",
-        "//tensorflow/core/util:reporter",
-    ],
-)
-
-tf_cc_test(
-    name = "test_benchmark_test",
-    srcs = ["test_benchmark_test.cc"],
-    tags = [
-        "nobuilder",
-        "notap",
-    ],
-    deps = [
-        ":test_benchmark",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-    ],
-)
-
-cc_library(
     name = "test",
     testonly = True,
     srcs = ["test.cc"],
@@ -515,7 +486,25 @@ cc_library(
         "//tensorflow/core/lib/core:notification",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "crash_analysis",
+    srcs = [
+        "crash_analysis.cc",
+    ],
+    hdrs = ["crash_analysis.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/core/platform:protobuf",
     ],
 )
 
@@ -585,7 +574,6 @@ exports_files(
             "integral_types.h",
             "logging.h",
             "test.cc",
-            "test_benchmark.cc",
         ],
     ),
     visibility = ["//tensorflow/core/platform:__pkg__"],
@@ -596,7 +584,28 @@ exports_files(
         "integral_types.h",
         "logging.h",
         "test.cc",
-        "test_benchmark.cc",
     ],
     visibility = [":core_and_platform_packages"],
+)
+
+# TODO(rostam): Delete after the release of Bazel built-in cc_shared_library.
+# Turns off the error when linking the same target twice through two different cc_shared libraries.
+bool_flag(
+    name = "incompatible_link_once",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+# Enables permission check.
+bool_flag(
+    name = "enable_permissions_check",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+# Enables experimental cc_shared_library debug.
+bool_flag(
+    name = "experimental_debug",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
 )

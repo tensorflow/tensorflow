@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
+#include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
@@ -74,13 +75,13 @@ class CpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
-  static int64 ShapeSizeBytes(const Shape& shape);
+  static int64_t ShapeSizeBytes(const Shape& shape);
 
   // Type of the computation function we expect in the JIT.
   using ComputeFunctionType =
       void (*)(void* /*result*/, const ExecutableRunOptions* /*run_options*/,
                const void** /*args*/, void** /*buffer_table*/,
-               int64* /*profile_counters*/);
+               XlaCustomCallStatus* /*status*/, int64_t* /*profile_counters*/);
 
   const ComputeFunctionType& compute_function() const {
     return compute_function_;
@@ -88,7 +89,7 @@ class CpuExecutable : public Executable {
 
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
-  int64 SizeOfGeneratedCodeInBytes() const override;
+  int64_t SizeOfGeneratedCodeInBytes() const override;
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the

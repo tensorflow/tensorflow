@@ -17,7 +17,7 @@
 // When parsing it back, we should recover all 3 locations (the
 // tf_executor.island, tf.Identity, and tf_executor.yield).
 
-// CHECK-LABEL: "func"
+// CHECK-LABEL: "builtin.func"
 // CHECK:    "tf_executor.graph"() ( {
 // CHECK-NEXT:      "tf_executor.island"() ( {
 // CHECK-NEXT:        "tf.Identity"(%{{.*}}) : (tensor<f32>) -> tensor<f32> loc("identity@some_function")
@@ -44,7 +44,7 @@ func @island_one_op_all_locs_same(%arg0: tensor<f32>) -> tensor<f32> {
 // it is incorrect to use that syntax if the island, wrapped op, and yield
 // don't have identical locations.
 
-// CHECK-LABEL: "func"
+// CHECK-LABEL: "builtin.func"
 // CHECK:    "tf_executor.graph"() ( {
 // CHECK-NEXT:      "tf_executor.island"() ( {
 // CHECK-NEXT:        "tf.Identity"(%{{.*}}) : (tensor<f32>) -> tensor<f32> loc("identity@some_function")

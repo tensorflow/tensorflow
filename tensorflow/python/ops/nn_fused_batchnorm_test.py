@@ -14,21 +14,21 @@
 # ==============================================================================
 """Tests for fused_batch_norm related functionality in tensorflow.ops.nn."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad
 from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 
@@ -668,6 +668,154 @@ class BatchNormalizationTest(test.TestCase):
         'dtype': np.float16,
     }
     self._testBatchNormGradGrad(config)
+
+  def test5dBatchNormFollowedByRelu(self):
+    # The remapper grappler pass previously did not properly handle a 5D
+    # inference FusedBatchNorm followed by Relu. This asserts that this case is
+    # correctly handled.
+    np.random.seed(1)
+    x = np.random.random_sample((2, 3, 2, 2, 3)).astype(np.float32)
+    scale = np.random.random_sample((3,)).astype(np.float32)
+    offset = np.random.random_sample((3,)).astype(np.float32)
+    mean = np.random.random_sample((3,)).astype(np.float32)
+    var = np.random.random_sample((3,)).astype(np.float32)
+
+    epsilon = 0.001
+    y, _, _ = nn_impl.fused_batch_norm(
+        x,
+        scale,
+        offset,
+        mean=mean,
+        variance=var,
+        epsilon=epsilon,
+        data_format='NCDHW',
+        is_training=False)
+    y = nn_ops.relu(y)
+    y_val = self.evaluate(y)
+    y_ref = self._inference_ref(x, scale, offset, mean, var, epsilon,
+                                'NCDHW')
+    y_ref = np.maximum(y_ref, 0.)
+    self.assertAllClose(y_ref, y_val, atol=1e-3)
+
+  def testEagerShapeErrors(self):
+    with context.eager_mode():
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((3,))
+      offset = array_ops.ones((2,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'scale must have the same number of elements'):
+        nn_impl.fused_batch_norm(x, scale, offset)
+
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      offset = array_ops.ones((3,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'offset must have the same number of elements'):
+        nn_impl.fused_batch_norm(x, scale, offset)
+
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      offset = array_ops.ones((2,))
+      mean = array_ops.ones((0,))
+      variance = array_ops.ones((2,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'When is_training=false, mean must have the same number of elements'):
+        nn_impl.fused_batch_norm(
+            x, scale, offset, mean=mean, variance=variance, is_training=False)
+
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      offset = array_ops.ones((2,))
+      mean = array_ops.ones((2,))
+      variance = array_ops.ones((0,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'When is_training=false, variance must have the same number of '
+          'elements'):
+        nn_impl.fused_batch_norm(
+            x, scale, offset, mean=mean, variance=variance, is_training=False)
+
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      offset = array_ops.ones((2,))
+      mean = array_ops.ones((0,))
+      variance = array_ops.ones((2,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'When exponential_avg_factor != 1, mean must have the same number of '
+          'elements'):
+        nn_impl.fused_batch_norm(
+            x,
+            scale,
+            offset,
+            mean=mean,
+            variance=variance,
+            exponential_avg_factor=0.5)
+
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      offset = array_ops.ones((2,))
+      mean = array_ops.ones((2,))
+      variance = array_ops.ones((0,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'When exponential_avg_factor != 1, variance must have the same '
+          'number of elements'):
+        nn_impl.fused_batch_norm(
+            x,
+            scale,
+            offset,
+            mean=mean,
+            variance=variance,
+            exponential_avg_factor=0.5)
+
+  def testEagerShapeGradErrors(self):
+    with context.eager_mode():
+      y_backprop = array_ops.ones((2, 2, 2, 3))
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      reserve_space_1 = array_ops.ones((2,))
+      reserve_space_2 = array_ops.ones((2,))
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  'x and y_backprop must have same shape,'):
+        gen_nn_ops.fused_batch_norm_grad_v2(y_backprop, x, scale,
+                                            reserve_space_1, reserve_space_2)
+
+      y_backprop = array_ops.ones((2, 2, 2, 2))
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((3,))
+      reserve_space_1 = array_ops.ones((2,))
+      reserve_space_2 = array_ops.ones((2,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'scale must have the same number of elements'):
+        gen_nn_ops.fused_batch_norm_grad_v2(y_backprop, x, scale,
+                                            reserve_space_1, reserve_space_2)
+
+      y_backprop = array_ops.ones((2, 2, 2, 2))
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      reserve_space_1 = array_ops.ones((3,))
+      reserve_space_2 = array_ops.ones((2,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'reserve_space_1 must have the same number of elements'):
+        gen_nn_ops.fused_batch_norm_grad_v2(y_backprop, x, scale,
+                                            reserve_space_1, reserve_space_2)
+
+      y_backprop = array_ops.ones((2, 2, 2, 2))
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      reserve_space_1 = array_ops.ones((2,))
+      reserve_space_2 = array_ops.ones((3,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'reserve_space_2 must have the same number of elements'):
+        gen_nn_ops.fused_batch_norm_grad_v2(y_backprop, x, scale,
+                                            reserve_space_1, reserve_space_2)
 
 
 if __name__ == '__main__':

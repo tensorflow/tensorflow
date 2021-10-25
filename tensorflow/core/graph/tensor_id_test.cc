@@ -27,6 +27,7 @@ string ParseHelper(const string& n) { return ParseTensorName(n).ToString(); }
 
 TEST(TensorIdTest, ParseTensorName) {
   EXPECT_EQ(ParseHelper("W1"), "W1:0");
+  EXPECT_EQ(ParseHelper("W1:0"), "W1:0");
   EXPECT_EQ(ParseHelper("weights:0"), "weights:0");
   EXPECT_EQ(ParseHelper("W1:1"), "W1:1");
   EXPECT_EQ(ParseHelper("W1:17"), "W1:17");
@@ -102,6 +103,14 @@ TEST(TensorIdTest, IsTensorIdControl) {
   input = "foo:2";
   tensor_id = ParseTensorName(input);
   EXPECT_FALSE(IsTensorIdControl(tensor_id));
+}
+
+TEST(TensorIdTest, PortZero) {
+  for (string input : {"foo", "foo:0"}) {
+    TensorId tensor_id = ParseTensorName(input);
+    EXPECT_EQ("foo", tensor_id.node());
+    EXPECT_EQ(0, tensor_id.index());
+  }
 }
 
 }  // namespace

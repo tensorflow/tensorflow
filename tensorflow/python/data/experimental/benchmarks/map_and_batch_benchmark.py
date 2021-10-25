@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmarks for `tf.data.experimental.map_and_batch()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import hashlib
 import itertools
 
@@ -26,6 +22,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -49,7 +46,7 @@ class MapAndBatchBenchmark(benchmark_base.DatasetBenchmarkBase):
 
         dataset = dataset.apply(
             batching.map_and_batch(lambda _: dense_value, batch_size))  # pylint: disable=cell-var-from-loop
-        options = dataset_ops.Options()
+        options = options_lib.Options()
         options.experimental_optimization.apply_default_optimizations = False
         dataset = dataset.with_options(options)
 
@@ -84,7 +81,7 @@ class MapAndBatchBenchmark(benchmark_base.DatasetBenchmarkBase):
       dataset = dataset.map(math_ops.matmul, num_parallel_calls=map_num_calls)
       dataset = dataset.batch(
           batch_size=batch_size, num_parallel_calls=batch_num_calls)
-      options = dataset_ops.Options()
+      options = options_lib.Options()
       options.experimental_optimization.apply_default_optimizations = False
       options.experimental_optimization.map_and_batch_fusion = apply_fusion
       dataset = dataset.with_options(options)

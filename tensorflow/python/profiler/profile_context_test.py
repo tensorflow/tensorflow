@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from tensorflow.python.client import session
@@ -40,8 +36,7 @@ class ProfilerContextTest(test.TestCase):
   def testBasics(self):
     ops.reset_default_graph()
     outfile = os.path.join(test.get_temp_dir(), "dump")
-    opts = builder(builder.time_and_memory()
-                  ).with_file_output(outfile).build()
+    opts = builder(builder.time_and_memory()).with_file_output(outfile).build()
 
     x = lib.BuildFullModel()
 
@@ -65,17 +60,10 @@ class ProfilerContextTest(test.TestCase):
 
       self.assertEqual(set([15, 50, 100]), set(pctx.get_profiles("op").keys()))
 
-    with lib.ProfilerFromFile(
-        os.path.join(test.get_temp_dir(), "profile_100")) as profiler:
+    with lib.ProfilerFromFile(os.path.join(test.get_temp_dir(),
+                                           "profile_100")) as profiler:
       profiler.profile_operations(options=opts)
       with gfile.Open(outfile, "r") as f:
-
-        if test.is_built_with_rocm():
-          # The profiler output for ROCm mode, includes an extra warning
-          # related to the lack of stream tracing in ROCm mode.
-          # Need to skip this warning when doing the diff
-          profile_str = "\n".join(profile_str.split("\n")[7:])
-
         self.assertEqual(profile_str, f.read())
 
   @test_util.run_deprecated_v1
@@ -104,8 +92,8 @@ class ProfilerContextTest(test.TestCase):
   def testDisabled(self):
     ops.reset_default_graph()
     x = lib.BuildFullModel()
-    with profile_context.ProfileContext(test.get_temp_dir(),
-                                        enabled=False) as pctx:
+    with profile_context.ProfileContext(
+        test.get_temp_dir(), enabled=False) as pctx:
       with session.Session() as sess:
         self.evaluate(variables.global_variables_initializer())
         for _ in range(10):

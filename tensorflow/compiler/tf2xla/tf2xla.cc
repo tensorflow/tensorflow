@@ -115,7 +115,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
     for (const XlaCompiler::ResourceUpdate& update : result.resource_updates) {
       updated_inputs[update.input_index] = true;
     }
-    int64 input_index = xla_args.size() - config.variable_size();
+    int64_t input_index = xla_args.size() - config.variable_size();
     for (const tf2xla::Variable& variable : config.variable()) {
       if (variable.readonly() == updated_inputs[input_index]) {
         return errors::InvalidArgument(

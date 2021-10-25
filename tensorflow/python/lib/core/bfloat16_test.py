@@ -14,10 +14,6 @@
 # ==============================================================================
 """Test cases for the bfloat16 Python type."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import itertools
@@ -226,7 +222,7 @@ class Bfloat16Test(parameterized.TestCase):
   def testSort(self):
     values_to_sort = np.float32(FLOAT_VALUES)
     sorted_f32 = np.sort(values_to_sort)
-    sorted_bf16 = np.sort(values_to_sort.astype(bfloat16))
+    sorted_bf16 = np.sort(values_to_sort.astype(bfloat16))  # pylint: disable=too-many-function-args
     np.testing.assert_equal(sorted_f32, np.float32(sorted_bf16))
 
   def testDtypeFromString(self):

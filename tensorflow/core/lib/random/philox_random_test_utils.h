@@ -32,7 +32,7 @@ inline uint64 GetTestSeed() { return New64(); }
 // distribution.
 template <class Distribution>
 void FillRandoms(PhiloxRandom gen, typename Distribution::ResultElementType* p,
-                 int64 size) {
+                 int64_t size) {
   const int granularity = Distribution::kResultElementCount;
 
   CHECK(size % granularity == 0)

@@ -14,10 +14,6 @@
 # ==============================================================================
 """`LinearOperator` coming from a [[nested] block] circulant matrix."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -98,8 +94,9 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     self._name = name
 
     if block_depth not in allowed_block_depths:
-      raise ValueError("Expected block_depth to be in %s.  Found: %s." %
-                       (allowed_block_depths, block_depth))
+      raise ValueError(
+          f"Argument `block_depth` must be one of {allowed_block_depths}. "
+          f"Received: {block_depth}.")
     self._block_depth = block_depth
 
     with ops.name_scope(name, values=[spectrum]):
@@ -109,12 +106,16 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
       if not self.spectrum.dtype.is_complex:
         if is_self_adjoint is False:
           raise ValueError(
-              "A real spectrum always corresponds to a self-adjoint operator.")
+              f"A real spectrum always corresponds to a self-adjoint operator. "
+              f"Expected argument `is_self_adjoint` to be True when "
+              f"`spectrum.dtype.is_complex` = True. "
+              f"Received: {is_self_adjoint}.")
         is_self_adjoint = True
 
       if is_square is False:
         raise ValueError(
-            "A [[nested] block] circulant operator is always square.")
+            f"A [[nested] block] circulant operator is always square. "
+            f"Expected argument `is_square` to be True. Received: {is_square}.")
       is_square = True
 
       super(_BaseLinearOperatorCirculant, self).__init__(
@@ -136,8 +137,8 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     if spectrum.shape.ndims is not None:
       if spectrum.shape.ndims < self.block_depth:
         raise ValueError(
-            "Argument spectrum must have at least %d dimensions.  Found: %s" %
-            (self.block_depth, spectrum))
+            f"Argument `spectrum` must have at least {self.block_depth} "
+            f"dimensions. Received: {spectrum}.")
     return spectrum
 
   @property
@@ -300,7 +301,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     Returns:
       `Tensor` with `dtype` `self.dtype`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       h = self._ifft(_to_complex(self.spectrum))
       return math_ops.cast(h, self.dtype)
 
@@ -346,7 +347,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
       An `Op` that asserts this operator has Hermitian spectrum.
     """
     eps = np.finfo(self.dtype.real_dtype.as_numpy_dtype).eps
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       # Assume linear accumulation of error.
       max_err = eps * self.domain_dimension_tensor()
       imag_convolution_kernel = math_ops.imag(self.convolution_kernel())
@@ -514,8 +515,13 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     return math_ops.cast(math_ops.complex(re_d_value, im_d_value), self.dtype)
 
+  @property
+  def _composite_tensor_fields(self):
+    return ("spectrum", "input_output_dtype")
+
 
 @tf_export("linalg.LinearOperatorCirculant")
+@linear_operator.make_composite_tensor
 class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   """`LinearOperator` acting like a circulant matrix.
 
@@ -772,6 +778,7 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
 
 
 @tf_export("linalg.LinearOperatorCirculant2D")
+@linear_operator.make_composite_tensor
 class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
   """`LinearOperator` acting like a block circulant matrix.
 
@@ -959,6 +966,7 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
 
 
 @tf_export("linalg.LinearOperatorCirculant3D")
+@linear_operator.make_composite_tensor
 class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
   """`LinearOperator` acting like a nested block circulant matrix.
 

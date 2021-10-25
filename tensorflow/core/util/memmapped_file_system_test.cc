@@ -22,6 +22,10 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/memmapped_file_system_writer.h"
 
+#ifdef PLATFORM_WINDOWS
+#undef DeleteFile
+#endif
+
 namespace tensorflow {
 
 namespace {

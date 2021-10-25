@@ -50,7 +50,7 @@ auto OpGradientInfoInit(const T &a) {
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 359> a = {{
+  static std::array<OpIndexInfo, 362> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
       {"ApproximateEqual"},
@@ -84,6 +84,8 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"CheckNumericsV2"},
       {"Cholesky"},
       {"CollectivePermute", 1, {0}},
+      {"CompositeTensorVariantFromComponents"},
+      {"CompositeTensorVariantToComponents"},
       {"Conj"},
       {"ConjugateTranspose", 1, {0}},
       {"Const"},
@@ -409,6 +411,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"XlaSharding"},
       {"XlaSpmdShardToFullShape"},
       {"ZerosLike"},
+      {"_EagerConst"},
       {"VarHandleOp"},
   }};
   static const auto &m = *OpGradientInfoInit(a);
@@ -422,7 +425,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 478> a = {{
+  static std::array<OpIndexInfo, 480> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -479,6 +482,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"CheckNumericsV2"},
       {"CollectivePermute"},
       {"Complex"},
+      {"CompositeTensorVariantFromComponents"},
       {"Concat"},
       {"ConcatV2"},
       {"Conj"},
@@ -900,6 +904,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"Xlogy"},
       {"ZerosLike"},
       {"Zeta"},
+      {"_EagerConst"},
       {"VarHandleOp"},
   }};
   static const auto &m = *OpGradientInfoInit(a);

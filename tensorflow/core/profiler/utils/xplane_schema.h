@@ -33,10 +33,14 @@ TF_CONST_INIT extern const absl::string_view kHostThreadsPlaneName;
 TF_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 // Name prefix of XPlane that contains TPU events.
 TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
+// Name prefix of XPlane that contains custom device events.
+TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
 // Name prefix of XPlane that contains TPU runtime events.
 TF_CONST_INIT extern const absl::string_view kTpuRuntimePlaneName;
 // Name of XPlane that contains CUPTI driver API generated events.
 TF_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
+// Name of XPlane that contains Roctracer API generated events.
+TF_CONST_INIT extern const absl::string_view kRoctracerApiPlaneName;
 // Name of XPlane that contains profile metadata such as XLA debug info.
 TF_CONST_INIT extern const absl::string_view kMetadataPlaneName;
 // Name of XPlane that contains kpi related metrics.
@@ -52,6 +56,10 @@ TF_CONST_INIT extern const absl::string_view kXlaModuleLineName;
 TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
+
+// GPU device vendors.
+TF_CONST_INIT extern const absl::string_view kDeviceVendorNvidia;
+TF_CONST_INIT extern const absl::string_view kDeviceVendorAMD;
 
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
@@ -105,6 +113,8 @@ enum HostEventType {
   kMapAndBatchConsume,
   kParseExampleProduce,
   kParseExampleConsume,
+  kParallelBatchProduce,
+  kParallelBatchConsume,
   // Batching related.
   kBatchingSessionRun,
   kProcessBatch,
@@ -112,7 +122,10 @@ enum HostEventType {
   kMergeInputTensors,
   kScheduleWithoutSplit,
   kScheduleWithSplit,
+  kScheduleWithEagerSplit,
   kASBSQueueSchedule,
+  // TFRT related.
+  kTfrtModelRun,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.
@@ -132,6 +145,7 @@ enum StatType {
   kChipOrdinal,
   kNodeOrdinal,
   kModelId,
+  kQueueId,
   kQueueAddr,
   kRequestId,
   kRunId,
@@ -174,7 +188,6 @@ enum StatType {
   kMemFreeDetails,
   kMemsetDetails,
   kMemoryResidencyDetails,
-  kKernelAnnotation,
   kNVTXRange,
   kKernelDetails,
   kStream,
@@ -186,6 +199,7 @@ enum StatType {
   kTfOp,
   kHloOp,
   kHloModule,
+  kProgramId,
   kEquation,
   kIsEager,
   kTfFunctionCall,
@@ -194,13 +208,13 @@ enum StatType {
   kBytesAccessed,
   kSelectedGroupIds,
   kSourceInfo,
+  kModelName,
+  kModelVersion,
   // Performance counter related.
   kRawValue,
   kScaledValue,
   kThreadId,
   // XLA metadata map related.
-  kSelfDurationPs,
-  kMinDurationPs,
   kHloProto,
   // Device capability related.
   kDevCapClockRateKHz,
@@ -209,6 +223,7 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
+  kDevVendor,
   // Batching related.
   kBatchSizeAfterPadding,
   kPaddingAmount,
@@ -220,7 +235,7 @@ enum StatType {
   kLastStatType = kOccupancySuggestedBlockSize,
 };
 
-inline std::string GpuPlaneName(int32 device_ordinal) {
+inline std::string GpuPlaneName(int32_t device_ordinal) {
   return absl::StrCat(kGpuPlanePrefix, device_ordinal);
 }
 
@@ -233,9 +248,9 @@ inline bool IsHostEventType(HostEventType event_type,
   return GetHostEventTypeStr(event_type) == event_name;
 }
 
-absl::optional<int64> FindHostEventType(absl::string_view event_name);
+absl::optional<int64_t> FindHostEventType(absl::string_view event_name);
 
-absl::optional<int64> FindTfOpEventType(absl::string_view event_name);
+absl::optional<int64_t> FindTfOpEventType(absl::string_view event_name);
 
 absl::string_view GetStatTypeStr(StatType stat_type);
 
@@ -245,13 +260,13 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
 
-absl::optional<int64> FindStatType(absl::string_view stat_name);
+absl::optional<int64_t> FindStatType(absl::string_view stat_name);
 
 // Returns true if the given event shouldn't be shown in the trace viewer.
-bool IsInternalEvent(absl::optional<int64> event_type);
+bool IsInternalEvent(absl::optional<int64_t> event_type);
 
 // Returns true if the given stat shouldn't be shown in the trace viewer.
-bool IsInternalStat(absl::optional<int64> stat_type);
+bool IsInternalStat(absl::optional<int64_t> stat_type);
 
 // Support for flow events:
 // This class enables encoding/decoding the flow id and direction, stored as

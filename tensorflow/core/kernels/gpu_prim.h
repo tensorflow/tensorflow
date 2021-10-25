@@ -52,6 +52,22 @@ __device__ __forceinline__ Eigen::half ThreadLoadVolatilePointer<Eigen::half>(
 }
 
 template <>
+__device__ __forceinline__ void ThreadStoreVolatilePtr<Eigen::bfloat16>(
+    Eigen::bfloat16 *ptr, Eigen::bfloat16 val,
+    Int2Type<true> /*is_primitive*/) {
+  *reinterpret_cast<volatile uint16_t *>(ptr) =
+      Eigen::numext::bit_cast<uint16_t>(val);
+}
+
+template <>
+__device__ __forceinline__ Eigen::bfloat16
+ThreadLoadVolatilePointer<Eigen::bfloat16>(Eigen::bfloat16 *ptr,
+                                           Int2Type<true> /*is_primitive*/) {
+  uint16_t result = *reinterpret_cast<volatile uint16_t *>(ptr);
+  return Eigen::numext::bit_cast<Eigen::bfloat16>(result);
+}
+
+template <>
 struct NumericTraits<Eigen::half>
     : BaseTraits</*_CATEGORY=*/FLOATING_POINT, /*_PRIMITIVE=*/true,
                  /*_NULL_TYPE=*/false, /*_UnsignedBits=*/uint16_t,

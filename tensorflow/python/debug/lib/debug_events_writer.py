@@ -14,14 +14,10 @@
 # ==============================================================================
 """Writer class for `DebugEvent` protos in tfdbg v2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from tensorflow.core.protobuf import debug_event_pb2
-from tensorflow.python import _pywrap_debug_events_writer
+from tensorflow.python.client import _pywrap_debug_events_writer
 
 # Default size of each circular buffer (unit: number of DebugEvent protos).
 DEFAULT_CIRCULAR_BUFFER_SIZE = 1000

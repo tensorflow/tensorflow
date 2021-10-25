@@ -141,7 +141,8 @@ remedies.
 This exception is common to code which attempts to obtain values calculated
 within a `tf.cond`, `tf.while_loop`, or another `@tf.function` without using
 functional style or through mutable collections. See
-[Limitations](limitations.md) for more details.
+[Capturing External Symbolic Tensors](https://www.tensorflow.org/guide/function#all_outputs_of_a_tffunction_must_be_return_values)
+and [Limitations](limitations.md) for more details.
 
 ### "StagingError: in converted code"
 

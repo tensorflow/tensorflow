@@ -710,6 +710,24 @@ TEST_F(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
                               "in s32[42]{0}\n"
                               "in output shape\n"
                               "in i = s32[42]{0} iota(), iota_dimension=0");
+  EXPECT_DESC_AND_EXPLANATION(iota, m::Op().WithShape(F32, {42}),
+                              "an HloInstruction outputting\n"
+                              "  a shape:\n"
+                              "   * with element type F32 AND\n"
+                              "   * with dimensions [42]",
+                              "Shape does not have element type F32\n"
+                              "in s32[42]{0}\n"
+                              "in output shape\n"
+                              "in i = s32[42]{0} iota(), iota_dimension=0");
+  EXPECT_DESC_AND_EXPLANATION(iota, m::Op().WithShape(S32, {128}),
+                              "an HloInstruction outputting\n"
+                              "  a shape:\n"
+                              "   * with element type S32 AND\n"
+                              "   * with dimensions [128]",
+                              "Shape does not have dimensions [128]\n"
+                              "in s32[42]{0}\n"
+                              "in output shape\n"
+                              "in i = s32[42]{0} iota(), iota_dimension=0");
   EXPECT_DESC_AND_EXPLANATION(
       iota, m::Op().WithOperand(2, m::Op().WithOpcode(HloOpcode::kAdd)),
       "an HloInstruction with operand 2 which is:\n"
@@ -968,6 +986,42 @@ TEST_F(PatternMatcherTest, Comparison) {
       "HloInstruction is not comparison NE\n"
       "in compare = f32[1]{0} compare(f32[1]{0} param.0, f32[1]{0} param.1), "
       "direction=EQ");
+}
+
+TEST_F(PatternMatcherTest, CustomCallMatchers) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+
+    ENTRY test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT out = f32[] custom-call(p0, p1), custom_call_target="test_target"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  EXPECT_TRUE(Match(root, m::CustomCall()));
+  EXPECT_TRUE(Match(root, m::CustomCall("test_target")));
+  EXPECT_TRUE(Match(
+      root, m::CustomCall("test_target", m::Parameter(0), m::Parameter(1))));
+
+  HloInstruction* instr;
+  EXPECT_TRUE(Match(root, m::CustomCall(&instr)));
+  EXPECT_TRUE(Match(root, m::CustomCall(&instr, "test_target")));
+  EXPECT_TRUE(Match(root, m::CustomCall(&instr, "test_target", m::Parameter(0),
+                                        m::Parameter(1))));
+
+  const HloInstruction* const_instr;
+  EXPECT_TRUE(Match(root, m::CustomCall(&const_instr)));
+  EXPECT_TRUE(Match(root, m::CustomCall(&const_instr, "test_target")));
+  EXPECT_TRUE(Match(root, m::CustomCall(&const_instr, "test_target",
+                                        m::Parameter(0), m::Parameter(1))));
+
+  EXPECT_FALSE(Match(root, m::CustomCall("other_target")));
+  EXPECT_FALSE(Match(
+      root, m::CustomCall("test_target", m::Parameter(1), m::Parameter(0))));
 }
 
 }  // namespace

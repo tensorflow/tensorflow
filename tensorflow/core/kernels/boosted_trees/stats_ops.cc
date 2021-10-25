@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <limits>
+#include <string>
 #include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 #include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -51,14 +53,24 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
     // node_id_range
     const Tensor* node_id_range_t;
     OP_REQUIRES_OK(context, context->input("node_id_range", &node_id_range_t));
+    OP_REQUIRES(
+        context, node_id_range_t->dims() == 1,
+        errors::InvalidArgument("node_id_range must be a rank 1 tensor, but "
+                                "given node_id_range has dims of ",
+                                node_id_range_t->dims()));
+    OP_REQUIRES(context, node_id_range_t->dim_size(0) == 2,
+                errors::InvalidArgument(
+                    "node_id_range must be a rank 1 tensor with shape=[2], but "
+                    "given node_id_range has shape ",
+                    node_id_range_t->dim_size(0), " on its first dim"));
     const auto node_id_range = node_id_range_t->vec<int32>();
-    const int32 node_id_first = node_id_range(0);  // inclusive
-    const int32 node_id_last = node_id_range(1);   // exclusive
+    const int32_t node_id_first = node_id_range(0);  // inclusive
+    const int32_t node_id_last = node_id_range(1);   // exclusive
     // stats_summary_list
     OpInputList stats_summary_list;
     OP_REQUIRES_OK(context, context->input_list("stats_summary_list",
                                                 &stats_summary_list));
-    const int64 num_buckets = stats_summary_list[0].dim_size(1);
+    const int64_t num_buckets = stats_summary_list[0].dim_size(1);
     // Check for single logit: 1 gradient + 1 hessian value.
     DCHECK_EQ(stats_summary_list[0].dim_size(2), 2);
     std::vector<TTypes<float, 3>::ConstTensor> stats_summary;
@@ -244,24 +256,32 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     // node_id_range
     const Tensor* node_id_range_t;
     OP_REQUIRES_OK(context, context->input("node_id_range", &node_id_range_t));
+    OP_REQUIRES(
+        context, node_id_range_t->NumElements() == 2,
+        errors::InvalidArgument("node_id_range argument must have shape [2]"));
     const auto node_id_range = node_id_range_t->vec<int32>();
-    const int32 node_id_first = node_id_range(0);  // inclusive
-    const int32 node_id_last = node_id_range(1);   // exclusive
+    const int32_t node_id_first = node_id_range(0);  // inclusive
+    const int32_t node_id_last = node_id_range(1);   // exclusive
 
     const Tensor* stats_summary_t;
     OP_REQUIRES_OK(context, context->input("stats_summary", &stats_summary_t));
+    OP_REQUIRES(
+        context, stats_summary_t->shape().dims() == 4,
+        errors::InvalidArgument("stats_summary argument must have rank 4"));
     TTypes<float, 4>::ConstTensor stats_summary =
         stats_summary_t->tensor<float, 4>();
-    const int32 feature_dims = stats_summary_t->dim_size(1);
+    const int32_t feature_dims = stats_summary_t->dim_size(1);
     // The last bucket is for default/missing value.
-    const int32 num_buckets = stats_summary_t->dim_size(2) - 1;
-    const int32 logits_dim = logits_dim_;
-    const int32 hessian_dim = stats_summary_t->dim_size(3) - logits_dim;
+    const int32_t num_buckets = stats_summary_t->dim_size(2) - 1;
+    const int32_t logits_dim = logits_dim_;
+    const int32_t hessian_dim = stats_summary_t->dim_size(3) - logits_dim;
     DCHECK_GT(hessian_dim, 0);
     DCHECK_LE(hessian_dim, logits_dim * logits_dim);
 
     const Tensor* l1_t;
     OP_REQUIRES_OK(context, context->input("l1", &l1_t));
+    OP_REQUIRES(context, l1_t->NumElements() == 1,
+                errors::InvalidArgument("l1 argument must be a scalar"));
     const auto l1 = l1_t->scalar<float>()();
     DCHECK_GE(l1, 0);
     if (logits_dim_ > 1) {
@@ -271,17 +291,25 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
 
     const Tensor* l2_t;
     OP_REQUIRES_OK(context, context->input("l2", &l2_t));
+    OP_REQUIRES(context, l2_t->NumElements() == 1,
+                errors::InvalidArgument("l2 argument must be a scalar"));
     const auto l2 = l2_t->scalar<float>()();
     DCHECK_GE(l2, 0);
 
     const Tensor* tree_complexity_t;
     OP_REQUIRES_OK(context,
                    context->input("tree_complexity", &tree_complexity_t));
+    OP_REQUIRES(
+        context, tree_complexity_t->NumElements() == 1,
+        errors::InvalidArgument("tree_complexity argument must be a scalar"));
     const auto tree_complexity = tree_complexity_t->scalar<float>()();
 
     const Tensor* min_node_weight_t;
     OP_REQUIRES_OK(context,
                    context->input("min_node_weight", &min_node_weight_t));
+    OP_REQUIRES(
+        context, min_node_weight_t->NumElements() == 1,
+        errors::InvalidArgument("min_node_weight argument must be a scalar"));
     const auto min_node_weight = min_node_weight_t->scalar<float>()();
 
     std::vector<int32> output_node_ids;
@@ -290,14 +318,14 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     std::vector<int32> output_thresholds;
     std::vector<Eigen::VectorXf> output_left_node_contribs;
     std::vector<Eigen::VectorXf> output_right_node_contribs;
-    std::vector<string> output_split_types;
+    std::vector<std::string> output_split_types;
 
     // TODO(tanzheny) parallelize the computation.
     // Iterate each node and find the best gain per node.
-    for (int32 node_id = node_id_first; node_id < node_id_last; ++node_id) {
+    for (int32_t node_id = node_id_first; node_id < node_id_last; ++node_id) {
       float best_gain = std::numeric_limits<float>::lowest();
-      int32 best_bucket = 0;
-      int32 best_f_dim = 0;
+      int32_t best_bucket = 0;
+      int32_t best_f_dim = 0;
       string best_split_type;
       Eigen::VectorXf best_contrib_for_left(logits_dim);
       Eigen::VectorXf best_contrib_for_right(logits_dim);
@@ -421,10 +449,11 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
   // there is no regularization.
   // Calculate the best inequality split per node.
   void CalculateBestInequalitySplit(
-      TTypes<float, 4>::ConstTensor stats_summary, const int32 node_id,
-      const int32 feature_dims, const int32 logits_dim, const int32 hessian_dim,
-      const int32 num_buckets, const float min_node_weight, const float l1,
-      const float l2, float* best_gain, int32* best_bucket, int32* best_f_dim,
+      TTypes<float, 4>::ConstTensor stats_summary, const int32_t node_id,
+      const int32_t feature_dims, const int32_t logits_dim,
+      const int32_t hessian_dim, const int32_t num_buckets,
+      const float min_node_weight, const float l1, const float l2,
+      float* best_gain, int32* best_bucket, int32* best_f_dim,
       string* best_split_type, Eigen::VectorXf* best_contrib_for_left,
       Eigen::VectorXf* best_contrib_for_right) {
     std::vector<Eigen::VectorXf> cum_grad;
@@ -491,9 +520,10 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
   void CalculateBestEqualitySplit(
       TTypes<float, 4>::ConstTensor stats_summary,
       const Eigen::VectorXf& total_grad, const Eigen::VectorXf& total_hess,
-      const int32 node_id, const int32 feature_dims, const int32 logits_dim,
-      const int32 hessian_dim, const int32 num_buckets, const float l1,
-      const float l2, float* best_gain, int32* best_bucket, int32* best_f_dim,
+      const int32_t node_id, const int32_t feature_dims,
+      const int32_t logits_dim, const int32_t hessian_dim,
+      const int32_t num_buckets, const float l1, const float l2,
+      float* best_gain, int32* best_bucket, int32* best_f_dim,
       string* best_split_type, Eigen::VectorXf* best_contrib_for_left,
       Eigen::VectorXf* best_contrib_for_right) {
     const string kEqualityDefaultRight =
@@ -518,8 +548,8 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
                             const Eigen::VectorXf& grad_for_right,
                             const Eigen::VectorXf& hess_for_left,
                             const Eigen::VectorXf& hess_for_right,
-                            const int32 logits_dim, const int32 bucket,
-                            const int32 f_dim, const float l1, const float l2,
+                            const int32_t logits_dim, const int32_t bucket,
+                            const int32_t f_dim, const float l1, const float l2,
                             const string split_type, float* best_gain,
                             int32* best_bucket, int32* best_f_dim,
                             string* best_split_type,
@@ -568,8 +598,18 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
     const Tensor* node_id_range_t;
     OP_REQUIRES_OK(context, context->input("node_id_range", &node_id_range_t));
     const auto node_id_range = node_id_range_t->vec<int32>();
-    const int32 node_id_first = node_id_range(0);  // Inclusive.
-    const int32 node_id_last = node_id_range(1);   // Exclusive.
+    OP_REQUIRES(
+        context, node_id_range_t->dims() == 1,
+        errors::InvalidArgument("node_id_range must be a rank 1 tensor, but "
+                                "given node_id_range has dims of ",
+                                node_id_range_t->dims()));
+    OP_REQUIRES(context, node_id_range_t->dim_size(0) == 2,
+                errors::InvalidArgument(
+                    "node_id_range must be a rank 1 tensor with shape=[2], but "
+                    "given node_id_range has shape ",
+                    node_id_range_t->dim_size(0), " on its first dim"));
+    const int32_t node_id_first = node_id_range(0);  // Inclusive.
+    const int32_t node_id_last = node_id_range(1);   // Exclusive.
 
     // Get stats_summaries_list.
     OpInputList stats_summaries_list;
@@ -578,11 +618,12 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
 
     // Infer dimensions of a stats_summary.
     DCHECK_GT(stats_summaries_list.size(), 0);
-    const int32 feature_dims = stats_summaries_list[0].dim_size(1);
+    const int32_t feature_dims = stats_summaries_list[0].dim_size(1);
     // The last bucket is for default/missing value.
-    const int32 num_buckets = stats_summaries_list[0].dim_size(2) - 1;
-    const int32 logits_dim = logits_dim_;
-    const int32 hessian_dim = stats_summaries_list[0].dim_size(3) - logits_dim;
+    const int32_t num_buckets = stats_summaries_list[0].dim_size(2) - 1;
+    const int32_t logits_dim = logits_dim_;
+    const int32_t hessian_dim =
+        stats_summaries_list[0].dim_size(3) - logits_dim;
     DCHECK_GT(hessian_dim, 0);
     DCHECK_LE(hessian_dim, logits_dim * logits_dim);
 
@@ -651,11 +692,11 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
     // TODO(tanzheny) parallelize the computation.
     // Iterate each node and find the best gain per node.
     float parent_gain;
-    for (int32 node_id = node_id_first; node_id < node_id_last; ++node_id) {
+    for (int32_t node_id = node_id_first; node_id < node_id_last; ++node_id) {
       float best_gain = std::numeric_limits<float>::lowest();
-      int32 best_bucket;
-      int32 best_f_id;
-      int32 best_f_dim;
+      int32_t best_bucket;
+      int32_t best_f_id;
+      int32_t best_f_dim;
       string best_split_type;
       Eigen::VectorXf best_contrib_for_left(logits_dim);
       Eigen::VectorXf best_contrib_for_right(logits_dim);
@@ -678,8 +719,8 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
         const string split_type = split_types(f_idx);
         TTypes<float, 4>::ConstTensor stats_summary = stats_summaries[f_idx];
         float f_best_gain = std::numeric_limits<float>::lowest();
-        int32 f_best_bucket;
-        int32 f_best_f_dim;
+        int32_t f_best_bucket;
+        int32_t f_best_f_dim;
         string f_best_split_type;
         Eigen::VectorXf f_best_contrib_for_left(logits_dim);
         Eigen::VectorXf f_best_contrib_for_right(logits_dim);
@@ -805,10 +846,11 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
   // there is no regularization.
   // Calculate the best inequality split per node.
   void CalculateBestInequalitySplit(
-      TTypes<float, 4>::ConstTensor stats_summary, const int32 node_id,
-      const int32 feature_dims, const int32 logits_dim, const int32 hessian_dim,
-      const int32 num_buckets, const float min_node_weight, const float l1,
-      const float l2, float* best_gain, int32* best_bucket, int32* best_f_dim,
+      TTypes<float, 4>::ConstTensor stats_summary, const int32_t node_id,
+      const int32_t feature_dims, const int32_t logits_dim,
+      const int32_t hessian_dim, const int32_t num_buckets,
+      const float min_node_weight, const float l1, const float l2,
+      float* best_gain, int32* best_bucket, int32* best_f_dim,
       string* best_split_type, Eigen::VectorXf* best_contrib_for_left,
       Eigen::VectorXf* best_contrib_for_right) {
     std::vector<Eigen::VectorXf> cum_grad;
@@ -875,9 +917,10 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
   void CalculateBestEqualitySplit(
       TTypes<float, 4>::ConstTensor stats_summary,
       const Eigen::VectorXf& total_grad, const Eigen::VectorXf& total_hess,
-      const int32 node_id, const int32 feature_dims, const int32 logits_dim,
-      const int32 hessian_dim, const int32 num_buckets, const float l1,
-      const float l2, float* best_gain, int32* best_bucket, int32* best_f_dim,
+      const int32_t node_id, const int32_t feature_dims,
+      const int32_t logits_dim, const int32_t hessian_dim,
+      const int32_t num_buckets, const float l1, const float l2,
+      float* best_gain, int32* best_bucket, int32* best_f_dim,
       string* best_split_type, Eigen::VectorXf* best_contrib_for_left,
       Eigen::VectorXf* best_contrib_for_right) {
     const string kEqualityDefaultRight =
@@ -902,8 +945,8 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
                             const Eigen::VectorXf& grad_for_right,
                             const Eigen::VectorXf& hess_for_left,
                             const Eigen::VectorXf& hess_for_right,
-                            const int32 logits_dim, const int32 bucket,
-                            const int32 f_dim, const float l1, const float l2,
+                            const int32_t logits_dim, const int32_t bucket,
+                            const int32_t f_dim, const float l1, const float l2,
                             const string split_type, float* best_gain,
                             int32* best_bucket, int32* best_f_dim,
                             string* best_split_type,
@@ -959,14 +1002,14 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
     const Tensor* node_id_range_t;
     OP_REQUIRES_OK(context, context->input("node_id_range", &node_id_range_t));
     const auto node_id_range = node_id_range_t->vec<int32>();
-    const int32 node_id_first = node_id_range(0);  // inclusive
-    const int32 node_id_last = node_id_range(1);   // exclusive
+    const int32_t node_id_first = node_id_range(0);  // inclusive
+    const int32_t node_id_last = node_id_range(1);   // exclusive
 
     const Tensor* stats_summary_indices_t;
     OP_REQUIRES_OK(context, context->input("stats_summary_indices",
                                            &stats_summary_indices_t));
     const auto stats_summary_indices = stats_summary_indices_t->matrix<int32>();
-    const int32 num_sparse_entries = stats_summary_indices_t->dim_size(0);
+    const int32_t num_sparse_entries = stats_summary_indices_t->dim_size(0);
 
     const Tensor* stats_summary_values_t;
     OP_REQUIRES_OK(context, context->input("stats_summary_values",
@@ -977,8 +1020,8 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->input("stats_summary_shape", &stats_summary_shape_t));
     const auto stats_summary_shape = stats_summary_shape_t->vec<int32>();
-    const int32 num_buckets = stats_summary_shape(2) - 1;
-    const int32 stats_dims = stats_summary_shape(3);
+    const int32_t num_buckets = stats_summary_shape(2) - 1;
+    const int32_t stats_dims = stats_summary_shape(3);
 
     const Tensor* l1_t;
     OP_REQUIRES_OK(context, context->input("l1", &l1_t));
@@ -1008,9 +1051,9 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
 
     FeatureMap f_map;
 
-    int32 previous_node_id = -1;
+    int32_t previous_node_id = -1;
     for (int idx = 0; idx < num_sparse_entries; ++idx) {
-      int32 node_id = stats_summary_indices(idx, 0);
+      int32_t node_id = stats_summary_indices(idx, 0);
       if (node_id != previous_node_id) {
         process_node(f_map, &output_node_ids, &output_gains,
                      &output_feature_dimensions, &output_thresholds,
@@ -1022,9 +1065,16 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
       previous_node_id = node_id;
       DCHECK_LE(node_id_first, node_id);
       DCHECK_LT(node_id, node_id_last);
-      const int32 feature_dim = stats_summary_indices(idx, 1);
-      const int32 bucket_id = stats_summary_indices(idx, 2);
-      const int32 stat_dim = stats_summary_indices(idx, 3);
+      const int32_t feature_dim = stats_summary_indices(idx, 1);
+      const int32_t bucket_id = stats_summary_indices(idx, 2);
+      const int32_t stat_dim = stats_summary_indices(idx, 3);
+      OP_REQUIRES(context, stat_dim < stats_dims,
+                  errors::InvalidArgument(
+                      "Stat dim, the sum of logits dim and hessian dim in "
+                      "stats_summary_indices, cannot be greater than stats "
+                      "dims, the last value in stats_summary_shape, which was ",
+                      stats_dims, ". At index (", idx,
+                      ", 4), stats_summary_indices contains value ", stat_dim));
       std::pair<FeatureMapIterator, bool> const& f_insert_result = f_map.insert(
           FeatureMapIterator::value_type(feature_dim, BucketMap()));
       auto& b_map = f_insert_result.first->second;
@@ -1114,8 +1164,8 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
                     std::vector<float>* output_left_node_contribs,
                     std::vector<float>* output_right_node_contribs,
                     std::vector<string>* output_split_types,
-                    const int32 node_id, const float min_node_weight,
-                    const float l1, const float l2, const int32 num_buckets) {
+                    const int32_t node_id, const float min_node_weight,
+                    const float l1, const float l2, const int32_t num_buckets) {
     float parent_gain;
     Eigen::VectorXf unused(logits_dim_);
     Eigen::MatrixXf identity;
@@ -1135,7 +1185,7 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
     float total_hess = 0;
 
     for (auto f_iter = f_map.begin(); f_iter != f_map.end(); ++f_iter) {
-      const int32 feature_dim = f_iter->first;
+      const int32_t feature_dim = f_iter->first;
       const auto buckets_to_stats_map = f_iter->second;
 
       // The very last bucket contains stats for missing values.
@@ -1168,7 +1218,7 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
       float total_left_hess = 0;
       for (auto b_iter = buckets_to_stats_map.begin();
            b_iter != buckets_to_stats_map.end(); ++b_iter) {
-        const int32 bucket_id = b_iter->first;
+        const int32_t bucket_id = b_iter->first;
         // total_left_stats should exclude stats from default bucket.
         if (bucket_id == num_buckets) {
           break;
@@ -1266,7 +1316,7 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input_list("bucketized_features_list",
                                                 &bucketized_features_list));
     // Infer batch size.
-    const int64 batch_size = node_ids_t->dim_size(0);
+    const int64_t batch_size = node_ids_t->dim_size(0);
 
     // Allocate temporary stats tensor (Rank 4).
     Tensor temp_stats_double_t;
@@ -1281,8 +1331,8 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
     for (int feature_idx = 0; feature_idx < num_features_; ++feature_idx) {
       const auto& features = bucketized_features_list[feature_idx].vec<int32>();
       for (int i = 0; i < batch_size; ++i) {
-        const int32 node = node_ids(i);
-        const int32 bucket = features(i);
+        const int32_t node = node_ids(i);
+        const int32_t bucket = features(i);
         temp_stats_double(feature_idx, node, bucket, 0) += gradients(i, 0);
         temp_stats_double(feature_idx, node, bucket, 1) += hessians(i, 0);
       }
@@ -1337,11 +1387,11 @@ class BoostedTreesAggregateStatsOp : public OpKernel {
     const auto feature = feature_t->matrix<int32>();
 
     // Infer batch size, feature dimension and stats dimension.
-    const int64 batch_size = node_ids_t->dim_size(0);
-    const int64 logits_dims = gradients_t->dim_size(1);
-    const int64 hessians_dims = hessians_t->dim_size(1);
-    const int64 stats_dims = logits_dims + hessians_dims;
-    const int64 feature_dims = feature_t->dim_size(1);
+    const int64_t batch_size = node_ids_t->dim_size(0);
+    const int64_t logits_dims = gradients_t->dim_size(1);
+    const int64_t hessians_dims = hessians_t->dim_size(1);
+    const int64_t stats_dims = logits_dims + hessians_dims;
+    const int64_t feature_dims = feature_t->dim_size(1);
 
     // Allocate temporary stats tensor (Rank 4), upcasting to double.
     // A default bucket is added to the end for missing/default values.
@@ -1355,10 +1405,10 @@ class BoostedTreesAggregateStatsOp : public OpKernel {
     temp_stats_double.setZero();
 
     for (int i = 0; i < batch_size; ++i) {
-      const int32 node = node_ids(i);
+      const int32_t node = node_ids(i);
       for (int feature_dim = 0; feature_dim < feature_dims; ++feature_dim) {
-        const int32 feature_value = feature(i, feature_dim);
-        const int32 bucket =
+        const int32_t feature_value = feature(i, feature_dim);
+        const int32_t bucket =
             (feature_value == -1) ? num_buckets_ : feature_value;
         for (int stat_dim = 0; stat_dim < logits_dims; ++stat_dim) {
           temp_stats_double(node, feature_dim, bucket, stat_dim) +=
@@ -1390,8 +1440,8 @@ REGISTER_KERNEL_BUILDER(Name("BoostedTreesAggregateStats").Device(DEVICE_CPU),
 
 // Key based on node id, feature dimension and bucket id.
 struct StatsPartitionKey {
-  StatsPartitionKey(const int32 node_id, const int32 feature_dim,
-                    const int32 bucket_id)
+  StatsPartitionKey(const int32_t node_id, const int32_t feature_dim,
+                    const int32_t bucket_id)
       : node_id(node_id), feature_dim(feature_dim), bucket_id(bucket_id) {}
 
   bool operator==(const StatsPartitionKey& other) const {
@@ -1433,7 +1483,7 @@ typedef StatsPartitionMap::iterator StatsPartitionIterator;
 struct InstanceFeatureDimKey {
   InstanceFeatureDimKey() : instance(-1), feature_dim(-1) {}
 
-  InstanceFeatureDimKey(const int32 instance, const int32 feature_dim)
+  InstanceFeatureDimKey(const int32_t instance, const int32_t feature_dim)
       : instance(instance), feature_dim(feature_dim) {}
 
   bool operator==(const InstanceFeatureDimKey& other) const {
@@ -1461,15 +1511,13 @@ struct InstanceFeatureDimKey {
 };
 
 // Add statistics to StatsPartitionMap for (instance, feature dim, bucket id).
-static void AddInstanceStatsToMap(const int32 instance, const int32 feature_dim,
-                                  const int32 bucket_id,
-                                  const int32 logits_dims,
-                                  const int32 stats_dims,
-                                  StatsPartitionMap* stats_map,
-                                  const TTypes<float>::ConstMatrix& gradients,
-                                  const TTypes<float>::ConstMatrix& hessians,
-                                  const TTypes<int32>::ConstVec& node_ids) {
-  const int32 node_id = node_ids(instance);
+static void AddInstanceStatsToMap(
+    const int32_t instance, const int32_t feature_dim, const int32_t bucket_id,
+    const int32_t logits_dims, const int32_t stats_dims,
+    StatsPartitionMap* stats_map, const TTypes<float>::ConstMatrix& gradients,
+    const TTypes<float>::ConstMatrix& hessians,
+    const TTypes<int32>::ConstVec& node_ids) {
+  const int32_t node_id = node_ids(instance);
   const auto key = StatsPartitionKey(node_id, feature_dim, bucket_id);
   std::pair<StatsPartitionIterator, bool> const& insert_result =
       stats_map->insert(StatsPartitionIterator::value_type(
@@ -1493,18 +1541,19 @@ static void AddRangeStats(const int start_instance, const int end_instance,
                           const TTypes<float>::ConstMatrix& gradients,
                           const TTypes<float>::ConstMatrix& hessians,
                           const TTypes<int32>::ConstVec& node_ids,
-                          const int32 feature_dims, const int32 bucket_id,
-                          const int32 logits_dims, const int32 stats_dims) {
+                          const int32_t feature_dims, const int32_t bucket_id,
+                          const int32_t logits_dims, const int32_t stats_dims) {
   DCHECK_LE(start_instance, end_instance);
   if (start_instance == end_instance) {
     DCHECK_LT(start_feature_dim, end_feature_dim);
   }
-  for (int32 instance = start_instance; instance <= end_instance; ++instance) {
-    const int32 start_f_dim =
+  for (int32_t instance = start_instance; instance <= end_instance;
+       ++instance) {
+    const int32_t start_f_dim =
         (instance == start_instance) ? start_feature_dim + 1 : 0;
-    const int32 end_f_dim =
+    const int32_t end_f_dim =
         (instance == end_instance) ? end_feature_dim : feature_dims;
-    for (int32 f_dim = start_f_dim; f_dim < end_f_dim; ++f_dim) {
+    for (int32_t f_dim = start_f_dim; f_dim < end_f_dim; ++f_dim) {
       AddInstanceStatsToMap(instance, f_dim, bucket_id, logits_dims, stats_dims,
                             stats_map, gradients, hessians, node_ids);
     }
@@ -1557,12 +1606,12 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
                     feature_shape_t->shape().DebugString()));
     const auto feature_shape = feature_shape_t->vec<int32>();
 
-    const int64 batch_size = gradients_t->dim_size(0);
-    const int64 logits_dims = gradients_t->dim_size(1);
-    const int64 hessians_dims = hessians_t->dim_size(1);
-    const int64 stats_dims = logits_dims + hessians_dims;
-    const int64 num_sparse_entries = feature_indices_t->dim_size(0);
-    const int32 feature_dims = feature_shape(1);
+    const int64_t batch_size = gradients_t->dim_size(0);
+    const int64_t logits_dims = gradients_t->dim_size(1);
+    const int64_t hessians_dims = hessians_t->dim_size(1);
+    const int64_t stats_dims = logits_dims + hessians_dims;
+    const int64_t num_sparse_entries = feature_indices_t->dim_size(0);
+    const int32_t feature_dims = feature_shape(1);
     DCHECK_LE(num_sparse_entries, batch_size * feature_dims);
 
     // Aggregate statistics info to map.
@@ -1573,17 +1622,17 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
 
     for (int i = 0; i < num_sparse_entries; ++i) {
       // the instance number within a batch
-      const int32 instance = feature_indices(i, 0);
+      const int32_t instance = feature_indices(i, 0);
       DCHECK_LE(instance, batch_size);
       DCHECK_GE(instance, prev_instance);
       // the node id within a tree.
-      const int32 node_id = node_ids(instance);
+      const int32_t node_id = node_ids(instance);
       DCHECK_LE(node_id, max_splits_);
       // the feature dimension.
-      const int32 f_dim = feature_indices(i, 1);
+      const int32_t f_dim = feature_indices(i, 1);
       DCHECK_LE(f_dim, feature_dims);
       // the bucket id of the value.
-      const int32 bucket_id = feature_values(i);
+      const int32_t bucket_id = feature_values(i);
       DCHECK_LE(bucket_id, num_buckets_);
 
       // Add statistics for the missing entries into default bucket.
@@ -1604,7 +1653,7 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
                   num_buckets_, logits_dims, stats_dims);
 
     // Serialize statistics info map to tensor output.
-    const int64 num_slots = stats_map.size() * stats_dims;
+    const int64_t num_slots = stats_map.size() * stats_dims;
     Tensor* summary_indices_t = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output("stats_summary_indices",

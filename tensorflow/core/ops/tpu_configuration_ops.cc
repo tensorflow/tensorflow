@@ -34,7 +34,10 @@ using shape_inference::ShapeHandle;
 // number of chips on each host. Validates that all hosts have the same number
 // of chips, and that the chips are consistent with the topology set by
 // flags. Has a single output which is a proto describing the requested system
-// configuration, which is sent to all hosts.
+// configuration, which is sent to all hosts. Note that for multi-client setups
+// the input to _ConfigureDistributedTPU refers only to hosts controlled by the
+// local process/client; the topology set by flags determines the total number
+// of hosts across all clients, and this is reflected in the return value.
 //
 // 3 Run _InitializeHostForDistributedTPU on the TPU_SYSTEM of each host, taking
 // as input the output from ConfigureDistributedTPU. Has a single Tensor output
@@ -206,6 +209,9 @@ REGISTER_OP("ConfigureDistributedTPU")
     .Attr("is_global_init: bool = false")
     .Attr("enable_whole_mesh_compilations: bool = false")
     .Attr("compilation_failure_closes_chips: bool = true")
+    // Available values: 0 (unset), 1 (enabled) or 2 (disabled).
+    // This attribute is ignored in non-TFRT TPU runtime.
+    .Attr("tpu_cancellation_closes_chips: int = 0")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
@@ -218,4 +224,7 @@ REGISTER_OP("ConfigureTPUEmbedding")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("IsTPUEmbeddingInitialized")
+    .Output("is_tpu_embedding_initialized: bool")
+    .SetShapeFn(shape_inference::ScalarShape);
 }  // end namespace tensorflow

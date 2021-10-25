@@ -451,13 +451,13 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
   CheckFinalDataTypesSatisfied(*model);
 
   // Estimate and log the number of arithmetic ops
-  int64 ops_count = 0;
+  int64_t ops_count = 0;
   if (EstimateArithmeticOpsCount(*model, &ops_count)) {
     LOG(INFO) << "Estimated count of arithmetic ops: " << ops_count
               << " ops, equivalently " << ops_count / 2 << " MACs";
   }
   model->ops_count = ops_count;
-  int64 params_count = 0;
+  int64_t params_count = 0;
 
   // Compute and log the number of parameters
   for (const auto& array_pair : model->GetArrayMap()) {
@@ -486,7 +486,8 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
           toco_flags.force_select_tf_ops() || toco_flags.enable_select_tf_ops();
       params.allow_custom_ops = allow_custom_ops;
       params.allow_dynamic_tensors = toco_flags.allow_dynamic_tensors();
-
+      params.disable_per_channel =
+          toco_flags.disable_per_channel_quantization();
       if (toco_flags.post_training_quantize()) {
         if (toco_flags.quantize_to_float16()) {
           params.quantize_weights = tflite::QuantizedBufferType::FLOAT16;

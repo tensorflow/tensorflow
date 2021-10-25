@@ -19,7 +19,6 @@
 import collections
 import copy
 import csv
-import io
 import json
 import os
 import re
@@ -998,7 +997,7 @@ class ProgbarLogger(Callback):
     else:
       raise ValueError('Unknown `count_mode`: ' + str(count_mode))
     # Defaults to all Model's metrics except for loss.
-    self.stateful_metrics = set(stateful_metrics) if stateful_metrics else None
+    self.stateful_metrics = set(stateful_metrics) if stateful_metrics else set()
 
     self.seen = 0
     self.progbar = None
@@ -1075,11 +1074,17 @@ class ProgbarLogger(Callback):
     self.progbar = None
 
   def _maybe_init_progbar(self):
-    if self.stateful_metrics is None:
-      if self.model:
-        self.stateful_metrics = set(m.name for m in self.model.metrics)
-      else:
-        self.stateful_metrics = set()
+    """Instantiate a `Progbar` if not yet, and update the stateful metrics."""
+    # TODO(rchao): Legacy TF1 code path may use list for
+    # `self.stateful_metrics`. Remove "cast to set" when TF1 support is dropped.
+    self.stateful_metrics = set(self.stateful_metrics)
+
+    if self.model:
+      # Update the existing stateful metrics as `self.model.metrics` may contain
+      # updated metrics after `MetricsContainer` is built in the first train
+      # step.
+      self.stateful_metrics = self.stateful_metrics.union(
+          set(m.name for m in self.model.metrics))
 
     if self.progbar is None:
       self.progbar = Progbar(
@@ -1087,6 +1092,8 @@ class ProgbarLogger(Callback):
           verbose=self.verbose,
           stateful_metrics=self.stateful_metrics,
           unit_name='step' if self.use_steps else 'sample')
+
+    self.progbar._update_stateful_metrics(self.stateful_metrics)  # pylint: disable=protected-access
 
   def _implements_train_batch_hooks(self):
     return self._call_batch_hooks
@@ -1449,7 +1456,11 @@ class ModelCheckpoint(Callback):
             self.model.save(filepath, overwrite=True, options=self._options)
 
         self._maybe_remove_file()
-      except IOError as e:
+      except IsADirectoryError as e:  # h5py 3.x
+        raise IOError('Please specify a non-directory filepath for '
+                      'ModelCheckpoint. Filepath used is an existing '
+                      'directory: {}'.format(filepath))
+      except IOError as e:  # h5py 2.x
         # `e.errno` appears to be `None` so checking the content of `e.args[0]`.
         if 'is a directory' in str(e.args[0]).lower():
           raise IOError('Please specify a non-directory filepath for '
@@ -1961,7 +1972,7 @@ class LearningRateScheduler(Callback):
       raise ValueError('The dtype of Tensor should be float')
     backend.set_value(self.model.optimizer.lr, backend.get_value(lr))
     if self.verbose > 0:
-      print('\nEpoch %05d: LearningRateScheduler reducing learning '
+      print('\nEpoch %05d: LearningRateScheduler setting learning '
             'rate to %s.' % (epoch + 1, lr))
 
   def on_epoch_end(self, epoch, logs=None):
@@ -2070,12 +2081,10 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         to disable profiling.
       embeddings_freq: frequency (in epochs) at which embedding layers will be
         visualized. If set to 0, embeddings won't be visualized.
-      embeddings_metadata: a dictionary which maps layer name to a file name in
-        which metadata for this embedding layer is saved. See the
-        [details](
-          https://www.tensorflow.org/how_tos/embedding_viz/#metadata_optional)
-        about metadata files format. In case if the same metadata file is
-        used for all embedding layers, string can be passed.
+      embeddings_metadata: Dictionary which maps embedding layer names to the
+        filename of a file in which to save metadata for the embedding layer.
+        In case the same metadata file is to be
+        used for all embedding layers, a single filename can be passed.
 
   Examples:
 
@@ -2257,7 +2266,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     """Writes Keras model train_function graph to TensorBoard."""
     with self._train_writer.as_default():
       with summary_ops_v2.record_if(True):
-        train_fn = self.model.train_function
+        train_fn = self.model.train_tf_function
         # If the train_function is a `tf.function`, we can write out a graph
         if hasattr(train_fn, 'function_spec'):
           summary_ops_v2.graph(train_fn._concrete_stateful_fn.graph)  # pylint: disable=protected-access
@@ -2336,15 +2345,14 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   def _init_profile_batch(self, profile_batch):
     """Validate profile_batch value and set the range of batches to profile.
+    Sets values of _start_batch and _stop_batch attributes,
+    specifying the start and stop batch to profile.
+    Setting `profile_batch=0` disables profiling.
 
     Args:
       profile_batch: The range of batches to profile. Should be a non-negative
         integer or a comma separated string of pair of positive integers. A pair
         of positive integers signify a range of batches to profile.
-
-    Returns:
-      A pair of non-negative integers specifying the start and stop batch to
-      profile.
 
     Raises:
       ValueError: If profile_batch is not an integer or a comma seperated pair
@@ -2435,7 +2443,8 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self.write_steps_per_second:
       batch_run_time = time.time() - self._batch_start_time
       self._train_accumulated_time += batch_run_time
-      summary_ops_v2.scalar('batch_steps_per_second', 1. / batch_run_time)
+      summary_ops_v2.scalar(
+          'batch_steps_per_second', 1. / batch_run_time, step=self._train_step)
     if not self._should_trace:
       return
 
@@ -2738,21 +2747,17 @@ class CSVLogger(Callback):
     self.writer = None
     self.keys = None
     self.append_header = True
-    self.file_flags = ''
-    self._open_args = {'newline': '\n'}
     super(CSVLogger, self).__init__()
 
   def on_train_begin(self, logs=None):
     if self.append:
       if file_io.file_exists_v2(self.filename):
-        with open(self.filename, 'r' + self.file_flags) as f:
+        with gfile.GFile(self.filename, 'r') as f:
           self.append_header = not bool(len(f.readline()))
       mode = 'a'
     else:
       mode = 'w'
-    self.csv_file = io.open(self.filename,
-                            mode + self.file_flags,
-                            **self._open_args)
+    self.csv_file = gfile.GFile(self.filename, mode)
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}

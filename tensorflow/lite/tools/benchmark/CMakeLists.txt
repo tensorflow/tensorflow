@@ -22,20 +22,21 @@ populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
 )
 list(APPEND TFLITE_BENCHMARK_SRCS
   ${TF_SOURCE_DIR}/core/util/stats_calculator.cc
+  ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
+  ${TFLITE_SOURCE_DIR}/profiling/memory_usage_monitor.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
   ${TFLITE_SOURCE_DIR}/profiling/time.cc
   ${TFLITE_SOURCE_DIR}/tools/command_line_flags.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/default_execution_provider.cc
+  ${TFLITE_SOURCE_DIR}/tools/delegates/delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc
-  ${TFLITE_SOURCE_DIR}/tools/optimize/sparsity/format_converter.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
 )
 
 list(APPEND TFLITE_BENCHMARK_LIBS
   tensorflow-lite
-  ${CMAKE_DL_LIBS}
 )
 
 # TODO(b/171007016): Enable performance options on Windows.

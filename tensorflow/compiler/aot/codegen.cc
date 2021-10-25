@@ -64,7 +64,7 @@ Status XLATypeToCpp(xla::PrimitiveType type, string* str) {
       *str = "tensorflow::int32";
       break;
     case xla::S64:
-      *str = "tensorflow::int64";
+      *str = "int64_t";
       break;
     case xla::U8:
       *str = "tensorflow::uint8";
@@ -395,14 +395,14 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
                       const MetadataResult& metadata_result, string* header) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
-  const int64 result_index = compile_result.aot->result_buffer_index();
+  const int64_t result_index = compile_result.aot->result_buffer_index();
   const std::vector<BufferInfo>& buffer_infos =
       compile_result.aot->buffer_infos();
   const std::vector<int32> arg_index_table =
       ::xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
   std::vector<string> buffer_infos_as_strings =
       BufferInfosToCppExpression(buffer_infos);
-  const int64 buffer_infos_size = buffer_infos.size();
+  const int64_t buffer_infos_size = buffer_infos.size();
   if (result_index < 0 || result_index >= buffer_infos_size) {
     return errors::InvalidArgument("result index: ", result_index,
                                    " is outside the range of temp sizes: [0,",
@@ -502,7 +502,8 @@ namespace xla { class ExecutableRunOptions; }
 // (Implementation detail) Entry point to the function in the object file.
 extern "C" void {{ENTRY}}(
     void* result, const ::xla::ExecutableRunOptions* run_options,
-    const void** args, void** temps, tensorflow::int64* profile_counters);
+    const void** args, void** temps, XlaCustomCallStatus* status,
+    int64_t* profile_counters);
 
 {{DECLS_FROM_OBJ_FILE}}
 
@@ -547,7 +548,7 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
   static constexpr size_t kNumVariables = {{VARIABLE_NUM}};
 
   // Byte size of each argument buffer. There are kNumArgs entries.
-  static const ::tensorflow::int64 ArgSize(::tensorflow::int32 index) {
+  static const ::int64_t ArgSize(::tensorflow::int32 index) {
     return BufferInfos()[ArgIndexToBufferIndex()[index]].size();
   }
 

@@ -59,6 +59,11 @@ struct ErrorFormatter {
 // TODO(akulik): create new error space for GL error.
 
 absl::Status GetOpenGlErrors() {
+#ifdef __EMSCRIPTEN__
+  // This check is not recommended on WebGL, since it will force a wait on the
+  // GPU process.
+  return absl::OkStatus();
+#else
   auto error = glGetError();
   if (error == GL_NO_ERROR) {
     return absl::OkStatus();
@@ -72,6 +77,7 @@ absl::Status GetOpenGlErrors() {
     errors.push_back(error);
   }
   return absl::InternalError(absl::StrJoin(errors, ",", ErrorFormatter()));
+#endif  // __EMSCRIPTEN__
 }
 
 absl::Status GetEglError() {

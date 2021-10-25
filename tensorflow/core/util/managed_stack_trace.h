@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_ABSTRACT_STACK_TRACE_H_
 #define TENSORFLOW_CORE_UTIL_ABSTRACT_STACK_TRACE_H_
 
+#include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/strings/match.h"
@@ -25,14 +27,25 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Maps filename/line_no combination into a stack frame.
-using StackTraceMap =
-    std::function<absl::optional<StackFrame>(std::pair<const char*, int>)>;
-
 // Returns "true" on filenames which should be skipped.
 using StackTraceFilter = std::function<bool(const char*)>;
 
-using ToStackFramesFunctor = std::vector<StackFrame>(int, const StackTraceMap&,
+using SourceLoc = std::pair<std::string, int>;
+
+// Using absl::Hash breaks NVCC under Windows :P
+struct PairHash {
+  template <class T1, class T2>
+  std::size_t operator()(const std::pair<T1, T2>& pair) const {
+    std::size_t h1 = std::hash<T1>()(pair.first);
+    std::size_t h2 = std::hash<T2>()(pair.second);
+    return h1 + 0x9e3779b9 + (h2 << 6) + (h2 >> 2);
+  }
+};
+
+// Maps filename/line_no combination into a stack frame.
+using SourceMap = std::unordered_map<SourceLoc, StackFrame, PairHash>;
+
+using ToStackFramesFunctor = std::vector<StackFrame>(int, const SourceMap&,
                                                      const StackTraceFilter&,
                                                      bool, int);
 
@@ -54,11 +67,12 @@ class ManagedStackTrace {
       : id_(id), to_stack_frames_(to_stack_frames) {}
 
   // Returns stack trace as a vector of `StackFrame`s.
-  std::vector<StackFrame> ToStackFrames(const StackTraceMap& mapper = {},
-                                        const StackTraceFilter& filtered = {},
+  std::vector<StackFrame> ToStackFrames(const SourceMap& source_map,
+                                        const StackTraceFilter& filtered,
                                         bool reverse_traversal = false,
                                         int limit = -1) const {
-    return to_stack_frames_(id_, mapper, filtered, reverse_traversal, limit);
+    return to_stack_frames_(id_, source_map, filtered, reverse_traversal,
+                            limit);
   }
 
  private:

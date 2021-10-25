@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for sequential_feature_column."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 from absl.testing import parameterized
 import numpy as np
@@ -655,7 +651,7 @@ class SequenceFeaturesSavingTest(test.TestCase, parameterized.TestCase):
     inputs_a = sparse_tensor.SparseTensor(indices_a, values_a,
                                           (batch_size, timesteps, 1))
 
-    values_b = np.zeros(10, dtype=np.str)
+    values_b = np.zeros(10, dtype=np.str_)
     indices_b = np.zeros((10, 3), dtype=np.int64)
     indices_b[:, 0] = np.arange(10)
     inputs_b = sparse_tensor.SparseTensor(indices_b, values_b,

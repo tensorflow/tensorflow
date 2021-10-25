@@ -95,7 +95,7 @@ TEST_F(RangeOpTest, Large_Double) {
   // Check the output
   Tensor expected(allocator(), DT_DOUBLE, TensorShape({20000}));
   std::vector<double> result;
-  for (int32 i = 0; i < 20000; ++i) result.push_back(i * 0.5);
+  for (int32_t i = 0; i < 20000; ++i) result.push_back(i * 0.5);
   test::FillValues<double>(&expected, gtl::ArraySlice<double>(result));
   test::ExpectTensorEqual<double>(expected, *GetOutput(0));
 }
@@ -142,7 +142,7 @@ TEST_F(LinSpaceOpTest, Single_D64) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({}), {9.0});
   AddInputFromArray<float>(TensorShape({}), {100.0});
-  AddInputFromArray<int64>(TensorShape({}), {1});
+  AddInputFromArray<int64_t>(TensorShape({}), {1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output

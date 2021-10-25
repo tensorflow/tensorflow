@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for BiasAdd."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -246,8 +242,10 @@ class BiasAddTestBase(test.TestCase):
     for (data_format, use_gpu) in [("NHWC", False), ("NHWC", True),
                                    ("NCHW", False), ("NCHW", True)]:
       for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
-        np_input = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-                            dtype=dtype.as_numpy_dtype).reshape(1, 3, 2)
+        # pylint: disable=too-many-function-args
+        np_input = np.array(
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            dtype=dtype.as_numpy_dtype).reshape(1, 3, 2)
         bias = np.array([1.3, 2.4], dtype=dtype.as_numpy_dtype)
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
 
@@ -282,6 +280,13 @@ class BiasAddTestBase(test.TestCase):
                                                  2]).astype(np.float32)
         bias = np.array([1.3, 2.4], dtype=dtype.as_numpy_dtype)
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
+
+  def test1x1Image(self):
+    for (data_format, use_gpu) in [("NHWC", False), ("NCHW", False)]:
+      np_input = np.arange(1.0, 129.0).reshape([4, 1, 1, 32]).astype(np.float32)
+      self._testGradient(np_input,
+                         np.random.rand(32).astype(np.float32), dtypes.float32,
+                         data_format, use_gpu)
 
   def testEmpty(self):
     np.random.seed(7)

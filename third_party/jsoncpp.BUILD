@@ -13,7 +13,6 @@ cc_library(
     ],
     hdrs = [
         "include/json/allocator.h",
-        "include/json/autolink.h",
         "include/json/config.h",
         "include/json/forwards.h",
         "include/json/json.h",

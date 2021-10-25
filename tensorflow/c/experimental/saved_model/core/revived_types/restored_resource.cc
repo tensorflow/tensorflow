@@ -63,7 +63,10 @@ RestoredResource::~RestoredResource() {
   // https://github.com/tensorflow/tensorflow/commit/3c806101f57768e479f8646e7518bbdff1632ca3
   // did not have their destroy_resource function saved, meaning they will
   // leak resources.
-  if (destroy_resource_ != nullptr) {
+  //
+  // Check that handle is null before calling destroy_resource function in case
+  // destructor is invoked unintentionally.
+  if (destroy_resource_ != nullptr && handle() != nullptr) {
     Status status = ExecuteNoArgDummyReturnFunction(destroy_resource_);
     if (!status.ok()) {
       LOG(WARNING)

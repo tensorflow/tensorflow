@@ -29,6 +29,7 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 
+using test_utils::SimpleDelegate;
 using test_utils::TestDelegate;
 using test_utils::TestFP16Delegation;
 
@@ -134,9 +135,3 @@ INSTANTIATE_TEST_SUITE_P(TestFP16Delegation, TestFP16Delegation,
 }  // anonymous namespace
 }  // namespace delegates
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

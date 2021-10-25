@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for overloaded RaggedTensor operators."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import tf2
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -59,6 +55,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase):
     y = ragged_factory_ops.constant([[4.0, 4.0], [2.0]])
     self.assertAllEqual(abs(x), [[1.0, 2.0], [8.0]])
 
+    # pylint: disable=invalid-unary-operand-type
     self.assertAllEqual((-x), [[-1.0, 2.0], [-8.0]])
 
     self.assertAllEqual((x + y), [[5.0, 2.0], [10.0]])
@@ -89,6 +86,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual((x % 2.0), [[1.0, 0.0], [0.0]])
 
   def testLogicalOperators(self):
+    # pylint: disable=invalid-unary-operand-type
     a = ragged_factory_ops.constant([[True, True], [False]])
     b = ragged_factory_ops.constant([[True, False], [False]])
     self.assertAllEqual((~a), [[False, False], [True]])

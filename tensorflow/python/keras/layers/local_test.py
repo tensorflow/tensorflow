@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for locally-connected layers."""
 
+import os
 from absl.testing import parameterized
 import numpy as np
 
@@ -26,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
+from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
@@ -362,6 +364,99 @@ class LocallyConnectedImplementationModeTest(test.TestCase,
       self.assertAllCloseAccordingToType(
           out_1, out_3, atol=2e-4)
 
+  @parameterized.parameters([
+      {
+          'width': 1,
+          'data_format': 'channels_first'
+      },
+      {
+          'width': 1,
+          'data_format': 'channels_last'
+      },
+      {
+          'width': 6,
+          'data_format': 'channels_first'
+      },
+      {
+          'width': 6,
+          'data_format': 'channels_last'
+      },
+  ])
+  def test_locallyconnected_save(self, width, data_format):
+    with self.cached_session():
+      num_samples = 4
+      num_classes = 3
+      num_epochs = 2
+
+      np.random.seed(1)
+      tf_test_util.random_seed.set_seed(1)
+      targets = np.random.randint(0, num_classes, (num_samples,))
+
+      height = 7
+      filters = 2
+      inputs = get_inputs(data_format, filters, height, num_samples, width)
+
+      kernel_x = (3,)
+      kernel_y = () if width == 1 else (2,)
+      stride_x = (1,)
+      stride_y = () if width == 1 else (3,)
+      layers = 2
+
+      kwargs = {
+          'layers': layers,
+          'filters': filters,
+          'kernel_size': kernel_x + kernel_y,
+          'strides': stride_x + stride_y,
+          'data_format': data_format,
+          'num_classes': num_classes
+      }
+
+      model_1 = get_model_saveable(implementation=1, **kwargs)
+      model_2 = get_model_saveable(implementation=2, **kwargs)
+      model_3 = get_model_saveable(implementation=3, **kwargs)
+
+      # Train.
+      model_1.fit(
+          x=inputs,
+          y=targets,
+          epochs=num_epochs,
+          batch_size=num_samples,
+          shuffle=False)
+      model_2.fit(
+          x=inputs,
+          y=targets,
+          epochs=num_epochs,
+          batch_size=num_samples,
+          shuffle=False)
+      model_3.fit(
+          x=inputs,
+          y=targets,
+          epochs=num_epochs,
+          batch_size=num_samples,
+          shuffle=False)
+
+      out_1_before = model_1(inputs)
+      out_2_before = model_2(inputs)
+      out_3_before = model_3(inputs)
+
+      path_1 = os.path.join(self.get_temp_dir(), 'model_1_path')
+      model_1.save(path_1)
+      model_1 = keras.models.load_model(path_1, custom_objects={'xent': xent})
+      path_2 = os.path.join(self.get_temp_dir(), 'model_2_path')
+      model_2.save(path_2)
+      model_2 = keras.models.load_model(path_2, custom_objects={'xent': xent})
+      path_3 = os.path.join(self.get_temp_dir(), 'model_3_path')
+      model_3.save(path_3)
+      model_3 = keras.models.load_model(path_3, custom_objects={'xent': xent})
+
+      out_1_after = model_1(inputs)
+      out_2_after = model_2(inputs)
+      out_3_after = model_3(inputs)
+
+      self.assertAllCloseAccordingToType(out_1_before, out_1_after, atol=2e-4)
+      self.assertAllCloseAccordingToType(out_2_before, out_2_after, atol=2e-4)
+      self.assertAllCloseAccordingToType(out_3_before, out_3_after, atol=2e-4)
+
   def test_make_2d(self):
     input_shapes = [
         (0,),
@@ -465,6 +560,39 @@ def get_model(implementation,
       metrics=[keras.metrics.categorical_accuracy],
       loss=xent
   )
+  return model
+
+
+def get_model_saveable(implementation, filters, kernel_size, strides, layers,
+                       num_classes, data_format):
+  model = keras.Sequential()
+
+  if len(kernel_size) == 1:
+    lc_layer = keras.layers.LocallyConnected1D
+  elif len(kernel_size) == 2:
+    lc_layer = keras.layers.LocallyConnected2D
+  else:
+    raise NotImplementedError(kernel_size)
+
+  for _ in range(layers):
+    model.add(
+        lc_layer(
+            padding='valid',
+            kernel_initializer=keras.initializers.random_normal(),
+            bias_initializer=keras.initializers.random_normal(),
+            filters=filters,
+            strides=strides,
+            kernel_size=kernel_size,
+            activation=keras.activations.relu,
+            data_format=data_format,
+            implementation=implementation))
+
+  model.add(keras.layers.Flatten())
+  model.add(keras.layers.Dense(num_classes))
+  model.compile(
+      optimizer=rmsprop.RMSProp(learning_rate=0.01),
+      metrics=[keras.metrics.categorical_accuracy],
+      loss=xent)
   return model
 
 

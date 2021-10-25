@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.client import session
@@ -141,7 +137,7 @@ class MatrixBandPartBenchmark(test_lib.Benchmark):
 
 
 if __name__ == "__main__":
-  dtypes = (np.bool, np.int32, np.int64, np.float16,
+  dtypes = (np.bool_, np.int32, np.int64, np.float16,
             dtypes_lib.bfloat16.as_numpy_dtype, np.float32, np.float64,
             np.complex64, np.complex128)
   for dtype in dtypes:

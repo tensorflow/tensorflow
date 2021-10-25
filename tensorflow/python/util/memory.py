@@ -15,10 +15,6 @@
 
 """Functions related to Python memory management."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 # TODO(b/115366440): Delete this function when a custom OrderedDict is added
 def dismantle_ordered_dict(ordered_dict):

@@ -50,7 +50,7 @@ Status SparseCountSparseOutputShapeFn(InferenceContext *c) {
 }
 
 Status RaggedCountSparseOutputShapeFn(InferenceContext *c) {
-  int32 rank = c->Rank(c->input(1));
+  int32_t rank = c->Rank(c->input(1));
   if (rank != c->kUnknownRank) {
     ++rank;  // Add the ragged dimension
   }

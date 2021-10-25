@@ -14,7 +14,7 @@ filegroup(
         "grappler_item_builder.h",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/grappler:__pkg__",
     ],
 )
 

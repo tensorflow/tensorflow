@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #endif
 
-// 'tensorflow' namespace is used so that int64 and other types don't require
+// 'tensorflow' namespace is used so that int64_t and other types don't require
 // qualification.
 namespace tensorflow {
 namespace xla {
@@ -53,25 +53,25 @@ void EigenConvImpl(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
                    Eigen::Aligned>
       output(out, input_batch, output_rows, output_cols, kernel_filters);
 
-  Eigen::array<Eigen::IndexPair<int64>, 1> contract_dims;
-  contract_dims[0] = Eigen::IndexPair<int64>(1, 0);
+  Eigen::array<Eigen::IndexPair<int64_t>, 1> contract_dims;
+  contract_dims[0] = Eigen::IndexPair<int64_t>(1, 0);
 
   // Molds the output of the patch extraction code into a 2d tensor:
   // - the first dimension (dims[0]): the patch values to be multiplied with the
   //   kernels
   // - the second dimension (dims[1]): everything else
-  Eigen::DSizes<int64, 2> pre_contract_dims;
+  Eigen::DSizes<int64_t, 2> pre_contract_dims;
   pre_contract_dims[0] = output_cols * output_rows * input_batch;
   pre_contract_dims[1] = kernel_channels * kernel_cols * kernel_rows;
 
   // Molds the output of the contraction into the shape expected by the user:
-  Eigen::DSizes<int64, 4> post_contract_dims;
+  Eigen::DSizes<int64_t, 4> post_contract_dims;
   post_contract_dims[0] = input_batch;
   post_contract_dims[1] = output_rows;
   post_contract_dims[2] = output_cols;
   post_contract_dims[3] = kernel_filters;
 
-  Eigen::DSizes<int64, 2> kernel_dims;
+  Eigen::DSizes<int64_t, 2> kernel_dims;
   kernel_dims[0] = kernel_channels * kernel_cols * kernel_rows;
   kernel_dims[1] = kernel_filters;
 

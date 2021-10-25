@@ -35,7 +35,7 @@ Status RemoveNodes(const GraphDef& input_graph_def,
         "remove_nodes expects at least one 'op'"
         "argument, e.g. remove_nodes(op=Identity)");
   }
-  int32 max_inputs;
+  int32_t max_inputs;
   TF_RETURN_IF_ERROR(
       context.GetOneInt32Parameter("max_inputs", 1, &max_inputs));
 

@@ -15,10 +15,6 @@
 # ==============================================================================
 """Functions used by multiple converter files."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import datetime
 import sys
@@ -47,6 +43,16 @@ from tensorflow.python.training.saver import export_meta_graph as _export_meta_g
 # Keras functions used by TFLite
 model_input_signature = _tflite_keras_util.model_input_signature
 trace_model_call = _tflite_keras_util.trace_model_call
+
+# Jax functions used by TFLite
+# pylint: disable=g-import-not-at-top
+# pylint: disable=unused-import
+try:
+  from jax import xla_computation as _xla_computation
+except ImportError:
+  _xla_computation = None
+# pylint: enable=g-import-not-at-top
+# pylint: enable=unused-import
 
 # Defined as per TFLite schema
 _MAP_TFLITE_ENUM_TO_TF_TYPES = {
@@ -450,7 +456,7 @@ def convert_bytes_to_c_source(data,
     if (len(array_line) + 4) > max_line_width:
       array_lines.append(array_line + "\n")
       array_line = starting_pad
-    array_line += " 0x%02x," % (value)
+    array_line += " 0x%02x," % (value,)
   if len(array_line) > len(starting_pad):
     array_lines.append(array_line + "\n")
   array_values = "".join(array_lines)
@@ -545,7 +551,6 @@ def _convert_model_from_bytearray_to_object(model_bytearray):
   model_object = schema_fb.Model.GetRootAsModel(model_bytearray, 0)
   model_object = schema_fb.ModelT.InitFromObj(model_object)
   model_object = copy.deepcopy(model_object)
-  model_object.subgraphs[0].inputs[0] = model_object.subgraphs[0].inputs[0]
   return model_object
 
 
@@ -578,13 +583,23 @@ def get_dequantize_opcode_idx(model):
   return quant_opcode_idxs
 
 
+def _update_signature_def_tensors(tensor_maps, map_old_to_new_tensors):
+  """Update the tensors in the SignatureDef's TensorMaps."""
+  for i in range(len(tensor_maps)):
+    if tensor_maps[i].tensorIndex in map_old_to_new_tensors:
+      tensor_maps[i].tensorIndex = (
+          map_old_to_new_tensors[tensor_maps[i].tensorIndex])
+
+
 def _remove_tensors_from_model(model, remove_tensors_idxs):
   """Remove tensors from model."""
   if not remove_tensors_idxs:
     return
   if len(model.subgraphs) > 1:
-    raise ValueError("Model must only have one subgraph. Instead, it has "
-                     "{} subgraphs.".format(len(model.subgraphs)))
+    logging.info("Skipping the removal of dangled tensors since the model has "
+                 "multiple subgraphs and tensors can be used in the different "
+                 "subgraph(s)")
+    return
   subgraph = model.subgraphs[0]
   tensors = subgraph.tensors
   operators = subgraph.operators
@@ -615,6 +630,10 @@ def _remove_tensors_from_model(model, remove_tensors_idxs):
     for op in operators:
       update_tensors(op.inputs)
       update_tensors(op.outputs)
+    if model.signatureDefs:
+      signature_def = model.signatureDefs[0]
+      _update_signature_def_tensors(signature_def.inputs, d_old_to_new_tensors)
+      _update_signature_def_tensors(signature_def.outputs, d_old_to_new_tensors)
     # Delete the tensors
     for idx in sorted(remove_tensors_idxs, reverse=True):
       tensors.pop(idx)
@@ -623,11 +642,23 @@ def _remove_tensors_from_model(model, remove_tensors_idxs):
 
 def _modify_model_input_type(model, inference_input_type=dtypes.float32):
   """Modify model input type."""
-
   if inference_input_type == dtypes.float32:
     return
 
-  subgraph = model.subgraphs[0]
+  if not model.signatureDefs:
+    _modify_model_input_type_per_subgraph(model, 0, -1, inference_input_type)
+    return
+
+  for signature_index, signature_def in enumerate(model.signatureDefs):
+    _modify_model_input_type_per_subgraph(model, signature_def.subgraphIndex,
+                                          signature_index, inference_input_type)
+
+
+def _modify_model_input_type_per_subgraph(model, subgraph_index,
+                                          signature_index,
+                                          inference_input_type):
+  """Modify model input type per subgraph."""
+  subgraph = model.subgraphs[subgraph_index]
   tensors = subgraph.tensors
   operators = subgraph.operators
 
@@ -700,6 +731,11 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
     remove_tensors_idxs = set()
     for op in input_quant_ops:
       subgraph.inputs[subgraph.inputs == op.inputs[0]] = op.outputs[0]
+      if signature_index >= 0:
+        signature_def = model.signatureDefs[signature_index]
+        for i in range(len(signature_def.inputs)):
+          if signature_def.inputs[i].tensorIndex == op.inputs[0]:
+            signature_def.inputs[i].tensorIndex = op.outputs[0]
       remove_tensors_idxs.add(op.inputs[0])
       operators.remove(op)
     # Remove tensors marked for deletion.
@@ -712,11 +748,24 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
 
 def _modify_model_output_type(model, inference_output_type=dtypes.float32):
   """Modify model output type."""
-
   if inference_output_type == dtypes.float32:
     return
 
-  subgraph = model.subgraphs[0]
+  if not model.signatureDefs:
+    _modify_model_output_type_per_subgraph(model, 0, -1, inference_output_type)
+    return
+
+  for signature_index, signature_def in enumerate(model.signatureDefs):
+    _modify_model_output_type_per_subgraph(model, signature_def.subgraphIndex,
+                                           signature_index,
+                                           inference_output_type)
+
+
+def _modify_model_output_type_per_subgraph(model, subgraph_index,
+                                           signature_index,
+                                           inference_output_type):
+  """Modify model output type per subgraph."""
+  subgraph = model.subgraphs[subgraph_index]
   tensors = subgraph.tensors
   operators = subgraph.operators
 
@@ -734,8 +783,8 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
   output_dequant_ops = []
   for op in operators:
     # Find operators that dequantize model output
-    if op.opcodeIndex in dequant_opcode_idxs and \
-        op.outputs[0] in subgraph.outputs:
+    if (op.opcodeIndex in dequant_opcode_idxs and
+        op.outputs[0] in subgraph.outputs):
       # If found, validate that the operator's output type is float
       quant_tensor, float_tensor = tensors[op.inputs[0]], tensors[op.outputs[0]]
       float_type = _convert_tflite_enum_type_to_tf_type(float_tensor.type)
@@ -805,6 +854,11 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
     remove_tensors_idxs = set()
     for op in output_dequant_ops:
       subgraph.outputs[subgraph.outputs == op.outputs[0]] = op.inputs[0]
+      if signature_index >= 0:
+        signature_def = model.signatureDefs[signature_index]
+        for i in range(len(signature_def.outputs)):
+          if signature_def.outputs[i].tensorIndex == op.outputs[0]:
+            signature_def.outputs[i].tensorIndex = op.inputs[0]
       remove_tensors_idxs.add(op.outputs[0])
       operators.remove(op)
     # Remove tensors marked for deletion.
@@ -817,7 +871,20 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
 
 def _remove_redundant_quantize_ops(model):
   """Finds back to back quantize ops and remove the first quantize op."""
-  subgraph = model.subgraphs[0]
+  if not model.signatureDefs:
+    _remove_redundant_quantize_ops_per_subgraph(model, 0, -1)
+    return
+
+  for signature_index, signature_def in enumerate(model.signatureDefs):
+    _remove_redundant_quantize_ops_per_subgraph(model,
+                                                signature_def.subgraphIndex,
+                                                signature_index)
+
+
+def _remove_redundant_quantize_ops_per_subgraph(model, subgraph_index,
+                                                signature_index):
+  """Remove redundant quantize ops per subgraph."""
+  subgraph = model.subgraphs[subgraph_index]
   tensors = subgraph.tensors
   operators = subgraph.operators
 
@@ -839,8 +906,8 @@ def _remove_redundant_quantize_ops(model):
       # This is a requantize op, so write down its input tensor index.
       if input_type != dtypes.float32 and output_type != dtypes.float32:
         redundant_quant_tensors[op.inputs[0]] = op
-    if op.opcodeIndex in dequant_opcode_idxs and \
-        op.outputs[0] in subgraph.outputs:
+    if (op.opcodeIndex in dequant_opcode_idxs and
+        op.outputs[0] in subgraph.outputs):
       output_dequant_tensors[op.inputs[0]] = op
 
   # Remove all the quant ops which produce the redundant quant tensors.
@@ -848,6 +915,11 @@ def _remove_redundant_quantize_ops(model):
     output_tensor_idx = op.outputs[0]
     if output_tensor_idx in redundant_quant_tensors:
       requantize_op = redundant_quant_tensors[output_tensor_idx]
+      if model.signatureDefs:
+        signature_def = model.signatureDefs[0]
+        for output in signature_def.outputs:
+          if output.tensorIndex == op.outputs[0]:
+            output.tensorIndex = op.inputs[0]
       # Reset the input of the requantize op to the float input
       requantize_op.inputs[0] = op.inputs[0]
       operators.remove(op)
@@ -858,6 +930,11 @@ def _remove_redundant_quantize_ops(model):
     if output_tensor_idx in output_dequant_tensors:
       dequant_op = output_dequant_tensors[output_tensor_idx]
       subgraph.outputs[subgraph.outputs == dequant_op.outputs[0]] = op.inputs[0]
+      if signature_index >= 0:
+        signature_def = model.signatureDefs[signature_index]
+        for output in signature_def.outputs:
+          if output.tensorIndex == dequant_op.outputs[0]:
+            output.tensorIndex = op.inputs[0]
       operators.remove(op)
       operators.remove(dequant_op)
 
@@ -887,15 +964,11 @@ def modify_model_io_type(
     RuntimeError: If the modification was unsuccessful.
 
   """
-  if inference_input_type == dtypes.float32 and \
-      inference_output_type == dtypes.float32:
+  if (inference_input_type == dtypes.float32 and
+      inference_output_type == dtypes.float32):
     return model
 
   model_object = _convert_model_from_bytearray_to_object(model)
-
-  if len(model_object.subgraphs) > 1:
-    raise ValueError("Model must only have one subgraph. Instead, it has "
-                     "{} subgraphs.".format(len(model_object.subgraphs)))
 
   _modify_model_input_type(model_object, inference_input_type)
 

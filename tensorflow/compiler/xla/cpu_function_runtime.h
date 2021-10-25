@@ -132,7 +132,7 @@ class BufferInfo {
 
   Kind kind_ : 2;
   tensorflow::uint64 size_ : 62;
-  tensorflow::int64 entry_param_number_;
+  int64_t entry_param_number_;
 };
 
 // Align to 64-bytes, to mimic tensorflow::Allocator::kAllocatorAlignment.

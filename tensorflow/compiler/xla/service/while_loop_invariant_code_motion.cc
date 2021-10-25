@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
@@ -44,7 +46,7 @@ static void CreateLoopInvariantCopy(
 
   struct DFSFrame {
     HloInstruction* instruction;
-    int64 operand_index;
+    int64_t operand_index;
   };
 
   InlinedVector<DFSFrame, 8> dfs_stack;
@@ -110,10 +112,12 @@ bool WhileLoopInvariantCodeMotion::NotWorthHoistingIndividually(
     case HloOpcode::kConstant:
       return !hoist_constants_;
 
+    case HloOpcode::kReshape:
+      return !hoist_reshapes_;
+
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kIota:
-    case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose:
@@ -208,14 +212,22 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
       continue;
     }
 
-    if (!hoist_size_inflating_ops_) {
+    if (!hoist_other_ && instruction->opcode() != HloOpcode::kConstant &&
+        instruction->opcode() != HloOpcode::kReshape) {
+      continue;
+    }
+
+    // Constants don't inflate, so size inflation check doesn't make sense for
+    // constants.
+    if (hoist_size_inflation_ratio_ &&
+        instruction->opcode() != HloOpcode::kConstant) {
       // Check that hoisting the instruction doesn't cause a significant memory
       // blow-up. LICM extends the live-range of the output of the hoisted
       // instruction to be the entire while loop, which may be problematic on
       // platforms where memory is limited. This can be especially harmful if
       // the instruction has a significantly larger output than its input, e.g.
       // kIota, kBroadcast or kConstant.
-      int64 input_size = 0, output_size = 0;
+      int64_t input_size = 0, output_size = 0;
 
       for (auto* operand : instruction->operands()) {
         ShapeUtil::ForEachSubshape(
@@ -235,7 +247,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
             }
           });
 
-      if (output_size > input_size) {
+      if (output_size > input_size * *hoist_size_inflation_ratio_) {
         continue;
       }
     }
@@ -305,7 +317,7 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
 
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
-  for (auto* comp : module->computations()) {
+  for (auto* comp : module->MakeComputationPostOrder()) {
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
                     [](const HloInstruction* instr) {
                       return instr->opcode() == HloOpcode::kWhile;
@@ -329,6 +341,15 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
         bool result,
         TryHoistingInvariantInstructionsFromWhileBody(while_instr));
     changed |= result;
+  }
+
+  if (changed) {
+    // Run DCE if changed. This pass may create new while loops with new
+    // computations and if we don't delete the old ones, we can have spurious
+    // verification failures (e.g., the verifier may see multiple channel
+    // instructions that have the same channel ids).
+    HloDCE dce;
+    TF_RETURN_IF_ERROR(dce.Run(module).status());
   }
 
   if (changed) {

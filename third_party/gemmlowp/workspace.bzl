@@ -6,8 +6,10 @@ def repo():
     """Imports gemmlowp."""
 
     # Attention: tools parse and update these lines.
+    # LINT.IfChange
     GEMMLOWP_COMMIT = "fda83bdc38b118cc6b56753bd540caa49e570745"
     GEMMLOWP_SHA256 = "43146e6f56cb5218a8caaab6b5d1601a083f1f31c06ff474a4378a7d35be9cfb"
+    # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/gemmlowp.cmake)
 
     tf_http_archive(
         name = "gemmlowp",

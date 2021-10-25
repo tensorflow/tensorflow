@@ -31,15 +31,15 @@ using QuantileStream =
 class BoostedTreesQuantileStreamResource : public ResourceBase {
  public:
   BoostedTreesQuantileStreamResource(const float epsilon,
-                                     const int64 max_elements,
-                                     const int64 num_streams)
+                                     const int64_t max_elements,
+                                     const int64_t num_streams)
       : are_buckets_ready_(false),
         epsilon_(epsilon),
         num_streams_(num_streams),
         max_elements_(max_elements) {
     streams_.reserve(num_streams_);
     boundaries_.reserve(num_streams_);
-    for (int64 idx = 0; idx < num_streams; ++idx) {
+    for (int64_t idx = 0; idx < num_streams; ++idx) {
       streams_.push_back(QuantileStream(epsilon, max_elements));
       boundaries_.push_back(std::vector<float>());
     }
@@ -49,18 +49,19 @@ class BoostedTreesQuantileStreamResource : public ResourceBase {
 
   tensorflow::mutex* mutex() { return &mu_; }
 
-  QuantileStream* stream(const int64 index) { return &streams_[index]; }
+  QuantileStream* stream(const int64_t index) { return &streams_[index]; }
 
-  const std::vector<float>& boundaries(const int64 index) {
+  const std::vector<float>& boundaries(const int64_t index) {
     return boundaries_[index];
   }
 
-  void set_boundaries(const std::vector<float>& boundaries, const int64 index) {
+  void set_boundaries(const std::vector<float>& boundaries,
+                      const int64_t index) {
     boundaries_[index] = boundaries;
   }
 
   float epsilon() const { return epsilon_; }
-  int64 num_streams() const { return num_streams_; }
+  int64_t num_streams() const { return num_streams_; }
 
   bool are_buckets_ready() const { return are_buckets_ready_; }
   void set_buckets_ready(const bool are_buckets_ready) {
@@ -70,7 +71,7 @@ class BoostedTreesQuantileStreamResource : public ResourceBase {
   void ResetStreams() {
     streams_.clear();
     streams_.reserve(num_streams_);
-    for (int64 idx = 0; idx < num_streams_; ++idx) {
+    for (int64_t idx = 0; idx < num_streams_; ++idx) {
       streams_.push_back(QuantileStream(epsilon_, max_elements_));
     }
   }
@@ -92,9 +93,9 @@ class BoostedTreesQuantileStreamResource : public ResourceBase {
   bool are_buckets_ready_;
 
   const float epsilon_;
-  const int64 num_streams_;
+  const int64_t num_streams_;
   // An upper-bound for the number of elements.
-  int64 max_elements_;
+  int64_t max_elements_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BoostedTreesQuantileStreamResource);
 };

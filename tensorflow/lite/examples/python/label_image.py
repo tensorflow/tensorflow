@@ -14,16 +14,12 @@
 # ==============================================================================
 """label_image for tflite."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import time
 
 import numpy as np
 from PIL import Image
-import tensorflow as tf # TF2
+import tensorflow as tf
 
 
 def load_labels(filename):

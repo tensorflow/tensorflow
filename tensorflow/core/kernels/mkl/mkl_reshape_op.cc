@@ -89,8 +89,8 @@ class MklReshapeOp : public OpKernel {
         break;
       case DT_INT64:
         OP_REQUIRES_OK(context,
-                       ValidateSizes<int64>(sizes, &product, &unknown_index,
-                                            &shape, &sizes_has_zero_dim));
+                       ValidateSizes<int64_t>(sizes, &product, &unknown_index,
+                                              &shape, &sizes_has_zero_dim));
         break;
       default:
         context->CtxFailure(errors::InvalidArgument(

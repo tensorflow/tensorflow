@@ -39,9 +39,9 @@ void SetupGrapplerItem(GrapplerItem *item) {
   SetAttrValue(std::vector<DataType>({DT_INT64}), &types_attr);
   common_attrs[1] = std::make_pair("output_types", types_attr);
 
-  NodeDef *start_node = graph_utils::AddScalarConstNode<int64>(0, &graph);
-  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64>(10, &graph);
-  NodeDef *step_node = graph_utils::AddScalarConstNode<int64>(1, &graph);
+  NodeDef *start_node = graph_utils::AddScalarConstNode<int64_t>(0, &graph);
+  NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
+  NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
   std::vector<string> range_inputs(3);
   range_inputs[0] = start_node->name();
@@ -50,7 +50,8 @@ void SetupGrapplerItem(GrapplerItem *item) {
   NodeDef *range_node = graph_utils::AddNode(
       "RangeDataset", "RangeDataset", range_inputs, common_attrs, &graph);
 
-  NodeDef *buffer_size_node = graph_utils::AddScalarConstNode<int64>(1, &graph);
+  NodeDef *buffer_size_node =
+      graph_utils::AddScalarConstNode<int64_t>(1, &graph);
   NodeDef *prefetch_node = graph_utils::AddNode(
       "PrefetchDataset", "PrefetchDataset",
       {range_node->name(), buffer_size_node->name()}, common_attrs, &graph);

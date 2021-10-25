@@ -21,7 +21,7 @@ limitations under the License.
 #include <cstdlib>
 #include <unordered_set>
 
-#include "tensorflow/core/platform/error.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/windows/error_windows.h"
 

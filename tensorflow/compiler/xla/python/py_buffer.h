@@ -70,6 +70,7 @@ class PyBuffer {
 
   std::shared_ptr<PyClient> client() const { return client_; }
   PjRtBuffer* buffer() const { return buffer_.get(); }
+  std::shared_ptr<PjRtBuffer> shared_ptr_buffer() const { return buffer_; }
 
   ClientAndPtr<PjRtDevice> device() const;
   absl::string_view platform_name() const {
@@ -80,7 +81,9 @@ class PyBuffer {
   StatusOr<pybind11::object> CopyToDevice(
       const ClientAndPtr<PjRtDevice>& dst_device) const;
 
-  int64 OnDeviceSizeInBytes() { return buffer_->OnDeviceSizeInBytes(); }
+  StatusOr<size_t> OnDeviceSizeInBytes() {
+    return buffer_->GetOnDeviceSizeInBytes();
+  }
 
   void Delete() {
     buffer_->Delete();
@@ -107,7 +110,7 @@ class PyBuffer {
   const std::shared_ptr<Traceback>& traceback() const { return traceback_; }
 
   // Returns the size (i.e. number of elements) of the (host) numpy array.
-  StatusOr<int64> size();
+  StatusOr<int64_t> size();
 
   // Returns the number of dimensions of the (host) numpy array.
   int ndim() const { return buffer()->on_device_shape().dimensions_size(); }

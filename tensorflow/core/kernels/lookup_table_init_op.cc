@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -142,7 +141,7 @@ class InitializeTableFromTextFileOp : public OpKernel {
     OP_REQUIRES(ctx, !vocab_filename.empty(),
                 errors::InvalidArgument("filename cannot be empty."));
 
-    int64 memory_used_before = 0;
+    int64_t memory_used_before = 0;
     if (ctx->track_allocations()) {
       memory_used_before = table->MemoryUsed();
     }
@@ -184,11 +183,11 @@ class InitializeTableFromTextFileOp : public OpKernel {
   }
 
   mutex mu_;
-  int64 vocab_size_;
+  int64_t vocab_size_;
   char delimiter_;
-  int64 key_index_;
-  int64 value_index_;
-  int64 offset_ = 0;
+  int64_t key_index_;
+  int64_t value_index_;
+  int64_t offset_ = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InitializeTableFromTextFileOp);
 };
@@ -198,32 +197,4 @@ REGISTER_KERNEL_BUILDER(Name("InitializeTableFromTextFile").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(
     Name("InitializeTableFromTextFileV2").Device(DEVICE_CPU),
     InitializeTableFromTextFileOp);
-
-class InitializeTableFromDatasetOp : public AsyncOpKernel {
- public:
-  explicit InitializeTableFromDatasetOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(), "initialize_table_from_dataset") {}
-
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    lookup::InitializableLookupTable* table;
-    OP_REQUIRES_OK_ASYNC(
-        ctx, GetInitializableLookupTable("table_handle", ctx, &table), done);
-    core::ScopedUnref unref_me(table);
-    data::DatasetBase* dataset;
-    OP_REQUIRES_OK_ASYNC(
-        ctx, GetDatasetFromVariantTensor(ctx->input(1), &dataset), done);
-    background_worker_.Schedule([ctx, dataset, table, done]() {
-      lookup::InitializeTableFromDataset(ctx, dataset, table, done);
-    });
-  }
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(InitializeTableFromDatasetOp);
-
-  data::BackgroundWorker background_worker_;
-};
-
-REGISTER_KERNEL_BUILDER(Name("InitializeTableFromDataset").Device(DEVICE_CPU),
-                        InitializeTableFromDatasetOp);
 }  // namespace tensorflow

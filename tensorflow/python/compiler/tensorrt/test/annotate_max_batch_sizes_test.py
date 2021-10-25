@@ -14,10 +14,6 @@
 # ==============================================================================
 """Testing the impact of graph node _tftrt_op_max_batch_size annotation on TRTEngineOp attributes."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import unittest
 
 from tensorflow.core.framework import attr_value_pb2

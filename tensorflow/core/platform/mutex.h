@@ -235,7 +235,8 @@ class condition_variable {
 
  private:
   friend ConditionResult WaitForMilliseconds(mutex_lock* mu,
-                                             condition_variable* cv, int64 ms);
+                                             condition_variable* cv,
+                                             int64_t ms);
   internal::CVData cv_;
 };
 
@@ -245,7 +246,7 @@ class condition_variable {
 // thread noticing a signal on the condition variable.  Otherwise may
 // return either kCond_Timeout or kCond_MaybeNotified
 inline ConditionResult WaitForMilliseconds(mutex_lock* mu,
-                                           condition_variable* cv, int64 ms) {
+                                           condition_variable* cv, int64_t ms) {
   std::cv_status s = cv->wait_for(*mu, std::chrono::milliseconds(ms));
   return (s == std::cv_status::timeout) ? kCond_Timeout : kCond_MaybeNotified;
 }

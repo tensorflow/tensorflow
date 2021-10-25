@@ -17,7 +17,7 @@ func @my_rsqrt(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
 
 // CHECK-NEXT: %[[RE:.*]] = "tf.RiscReciprocal"(%arg0) : (tensor<2x3xf32>) -> tensor<*xf32>
 // CHECK-NEXT: %[[SQRT:.*]] = "tf.RiscSqrt"(%[[RE]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[SQRT]]) {shape = #tf.shape<3x2x3>} : (tensor<*xf32>) -> tensor<3x2x3xf32>
+// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[SQRT]]) {shape = #tf_type.shape<3x2x3>} : (tensor<*xf32>) -> tensor<3x2x3xf32>
 // CHECK-NEXT: return %[[ES]] : tensor<3x2x3xf32>
 }
 
@@ -30,7 +30,7 @@ func @my_leaky_relu(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
 // CHECK-NEXT: %[[SHAPE:.*]] = "tf.RiscShape"(%arg0) {T = i32} : (tensor<2x3xf32>) -> tensor<*xi32>
 // CHECK-NEXT: %[[ALPHA1:.*]] = "tf.RiscBroadcast"(%[[ALPHA]], %[[SHAPE]]) : (tensor<f32>, tensor<*xi32>) -> tensor<*xf32>
 // CHECK-NEXT: %[[MAX:.*]] = "tf.RiscMaximum"(%arg0, %[[ALPHA1]]) : (tensor<2x3xf32>, tensor<*xf32>) -> tensor<*xf32>
-// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[MAX]]) {shape = #tf.shape<3x2x3>} : (tensor<*xf32>) -> tensor<3x2x3xf32>
+// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[MAX]]) {shape = #tf_type.shape<3x2x3>} : (tensor<*xf32>) -> tensor<3x2x3xf32>
 // CHECK-NEXT: return %[[ES]] : tensor<3x2x3xf32>
 }
 
@@ -43,7 +43,7 @@ func @my_leaky_relu_with_default(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
 // CHECK-NEXT: %[[SHAPE:.*]] = "tf.RiscShape"(%arg0) {T = i32} : (tensor<2x3xf32>) -> tensor<*xi32>
 // CHECK-NEXT: %[[ALPHA1:.*]] = "tf.RiscBroadcast"(%[[ALPHA]], %[[SHAPE]]) : (tensor<f32>, tensor<*xi32>) -> tensor<*xf32>
 // CHECK-NEXT: %[[MAX:.*]] = "tf.RiscMaximum"(%arg0, %[[ALPHA1]]) : (tensor<2x3xf32>, tensor<*xf32>) -> tensor<*xf32>
-// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[MAX]]) {shape = #tf.shape<3x2x3>} : (tensor<*xf32>) -> tensor<3x2x3xf32>
+// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[MAX]]) {shape = #tf_type.shape<3x2x3>} : (tensor<*xf32>) -> tensor<3x2x3xf32>
 // CHECK-NEXT: return %[[ES]] : tensor<3x2x3xf32>
 }
 
@@ -53,7 +53,7 @@ func @my_cast(%arg0: tensor<2x3xf32>) -> tensor<2x3xi32> {
   return %0 : tensor<2x3xi32>
 
 // CHECK-NEXT: %[[CAST:.*]] = "tf.RiscCast"(%arg0) {Tout = i32} : (tensor<2x3xf32>) -> tensor<*xi32>
-// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[CAST]]) {shape = #tf.shape<2x3>} : (tensor<*xi32>) -> tensor<2x3xi32>
+// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[CAST]]) {shape = #tf_type.shape<2x3>} : (tensor<*xi32>) -> tensor<2x3xi32>
 // CHECK-NEXT: return %[[ES]] : tensor<2x3xi32>
 }
 
@@ -64,7 +64,7 @@ func @my_pack_single_input(%arg0: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
 
 // CHECK-NEXT: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
 // CHECK-NEXT: %[[ED:.*]] = "tf.ExpandDims"(%arg0, %[[AXIS]]) : (tensor<2x3xf32>, tensor<i32>) -> tensor<*xf32>
-// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[ED]]) {shape = #tf.shape<3x2x3>} : (tensor<*xf32>) -> tensor<3x2x3xf32>
+// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[ED]]) {shape = #tf_type.shape<3x2x3>} : (tensor<*xf32>) -> tensor<3x2x3xf32>
 // CHECK-NEXT: return %[[ES]] : tensor<3x2x3xf32>
 }
 
@@ -79,7 +79,7 @@ func @my_pack_multiple_inputs(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>, %a
 // CHECK-NEXT: %[[CC0:.*]] = "tf.RiscConcat"(%[[ED0]], %[[ED1]]) {axis = 0 : i32} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 // CHECK-NEXT: %[[ED2:.*]] = "tf.ExpandDims"(%arg2, %[[AXIS]]) : (tensor<2x3xf32>, tensor<i32>) -> tensor<*xf32>
 // CHECK-NEXT: %[[CC1:.*]] = "tf.RiscConcat"(%[[CC0]], %[[ED2]]) {axis = 0 : i32} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[CC1]]) {shape = #tf.shape<3x2x3>} : (tensor<*xf32>) -> tensor<3x2x3xf32>
+// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[CC1]]) {shape = #tf_type.shape<3x2x3>} : (tensor<*xf32>) -> tensor<3x2x3xf32>
 // CHECK-NEXT: return %[[ES]] : tensor<3x2x3xf32>
 }
 
@@ -98,27 +98,27 @@ func @my_add_n_multiple_inputs(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>, %
 
 // CHECK-NEXT: %[[ADD0:.*]] = "tf.RiscAdd"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<*xf32>
 // CHECK-NEXT: %[[ADD1:.*]] = "tf.RiscAdd"(%[[ADD0]], %arg2) : (tensor<*xf32>, tensor<2x3xf32>) -> tensor<*xf32>
-// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[ADD1]]) {shape = #tf.shape<2x3>} : (tensor<*xf32>) -> tensor<2x3xf32>
+// CHECK-NEXT: %[[ES:.*]] = "tf.EnsureShape"(%[[ADD1]]) {shape = #tf_type.shape<2x3>} : (tensor<*xf32>) -> tensor<2x3xf32>
 // CHECK-NEXT: return %[[ES]] : tensor<2x3xf32>
 }
 
 // CHECK-LABEL: my_map_and_batch_dataset
-func @my_map_and_batch_dataset(%input: tensor<*x!tf.variant>,
+func @my_map_and_batch_dataset(%input: tensor<*x!tf_type.variant>,
                                %other1: tensor<*xf32>,
-                               %other2: tensor<*xi32>) -> tensor<*x!tf.variant> {
+                               %other2: tensor<*xi32>) -> tensor<*x!tf_type.variant> {
   %0 = "tf.MyMapAndBatchDataset"(%input, %other1, %other2)
     {batch_size=1000 : i64, num_parallel_calls = 8 : i64, drop_remainder = 0 : i1,
-     func = @"__some_func", output_types = [f32], output_shapes = [#tf.shape<>], preserve_cardinality = true}
-    : (tensor<*x!tf.variant>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf.variant>
-  return %0 : tensor<*x!tf.variant>
+     func = @"__some_func", output_types = [f32], output_shapes = [#tf_type.shape<>], preserve_cardinality = true}
+    : (tensor<*x!tf_type.variant>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.variant>
+  return %0 : tensor<*x!tf_type.variant>
 
 // CHECK-DAG: %[[BATCH:.*]] = "tf.Const"() {value = dense<1000> : tensor<i64>} : () -> tensor<i64>
 // CHECK-DAG: %[[PARAL:.*]] = "tf.Const"() {value = dense<8> : tensor<i64>} : () -> tensor<i64>
 // CHECK-DAG: %[[KEEP:.*]] = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
 // CHECK: %[[CAST:.*]] = "tf.Cast"(%arg2) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
 // CHECK: %[[RET:.*]] = "tf.MapAndBatchDatasetV0"(%arg0, %[[BATCH]], %[[PARAL]], %[[KEEP]], %arg1, %[[CAST]])
-// CHECK-SAME: {f = @__some_func, output_shapes = [#tf.shape<>], output_types = [f32], preserve_cardinality = true} : (tensor<*x!tf.variant>, tensor<i64>, tensor<i64>, tensor<i1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*x!tf.variant>
-// CHECK: return %[[RET]] : tensor<*x!tf.variant>
+// CHECK-SAME: {f = @__some_func, output_shapes = [#tf_type.shape<>], output_types = [f32], preserve_cardinality = true} : (tensor<*x!tf_type.variant>, tensor<i64>, tensor<i64>, tensor<i1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*x!tf_type.variant>
+// CHECK: return %[[RET]] : tensor<*x!tf_type.variant>
 }
 
 //=================> decomposition functions, translated from tf.compose api <====================
@@ -157,16 +157,16 @@ tfr.func @tf__my_expand_dims(%value: !tfr.tensor, %axis: i32 {tfr.name="axis"}) 
 tfr.func @tf__my_pack(%values: !tfr.tensor_list,
                       %n: i32 {tfr.name="N"},
                       %axis: i32 {tfr.name="axis"}) -> !tfr.tensor {
-  %index = constant 0 : index
-  %cst = constant 1 : i32
-  %eq = cmpi eq, %n, %cst : i32
+  %index = arith.constant 0 : index
+  %cst = arith.constant 1 : i32
+  %eq = arith.cmpi eq, %n, %cst : i32
   %v1 = tfr.get_element %values[%index] : (!tfr.tensor_list, index) -> !tfr.tensor
   %temp = tfr.call @tf__my_expand_dims(%v1, %axis) : (!tfr.tensor, i32) -> !tfr.tensor
   %res = scf.if %eq -> !tfr.tensor {
     scf.yield %temp : !tfr.tensor
   } else {
-    %step = index_cast %cst : i32 to index
-    %end = index_cast %n : i32 to index
+    %step = arith.index_cast %cst : i32 to index
+    %end = arith.index_cast %n : i32 to index
     %reduce = scf.for %i = %step to %end step %step iter_args(%reduce_iter=%temp) -> !tfr.tensor {
       %v = tfr.get_element %values[%i] : (!tfr.tensor_list, index) -> !tfr.tensor
       %temp1 =  tfr.call @tf__my_expand_dims(%v, %axis) : (!tfr.tensor, i32) -> !tfr.tensor
@@ -180,15 +180,15 @@ tfr.func @tf__my_pack(%values: !tfr.tensor_list,
 
 tfr.func @tf__my_add_n(%values: !tfr.tensor_list,
                        %n: i32 {tfr.name="N"}) -> !tfr.tensor {
-  %index = constant 0 : index
-  %cst = constant 1 : i32
-  %eq = cmpi eq, %n, %cst : i32
+  %index = arith.constant 0 : index
+  %cst = arith.constant 1 : i32
+  %eq = arith.cmpi eq, %n, %cst : i32
   %v1 = tfr.get_element %values[%index] : (!tfr.tensor_list, index) -> !tfr.tensor
   %res = scf.if %eq -> !tfr.tensor {
     scf.yield %v1 : !tfr.tensor
   } else {
-    %step = index_cast %cst : i32 to index
-    %end = index_cast %n : i32 to index
+    %step = arith.index_cast %cst : i32 to index
+    %end = arith.index_cast %n : i32 to index
     %reduce = scf.for %i = %step to %end step %step iter_args(%reduce_iter=%v1) -> !tfr.tensor {
       %v = tfr.get_element %values[%i] : (!tfr.tensor_list, index) -> !tfr.tensor
       %reduce_next =  tfr.call @tf__risc_add(%reduce_iter, %v) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor

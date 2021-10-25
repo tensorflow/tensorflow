@@ -36,7 +36,7 @@ struct ShapeAndValues {
 
 template <typename VALUE_TYPE>
 ShapeAndValues<VALUE_TYPE> createVector(const std::vector<VALUE_TYPE>& values) {
-  TensorShape shape({static_cast<int64>(values.size())});
+  TensorShape shape({static_cast<int64_t>(values.size())});
   return {shape, values};
 }
 
@@ -216,14 +216,14 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_3DParamsRowSplits2) {
   //           [],
   //           [[3]]
   //          ]
-  BuildRaggedTensorToTensorGraph<int64, int64>(
-      TensorShape({3, 2, 3}),             // shape
-      {"ROW_SPLITS", "ROW_SPLITS"},       // row_partition_types
-      createVector<int64>({0, 1, 2, 3}),  // values
-      createScalar<int64>(5),             // default_value
+  BuildRaggedTensorToTensorGraph<int64_t, int64_t>(
+      TensorShape({3, 2, 3}),               // shape
+      {"ROW_SPLITS", "ROW_SPLITS"},         // row_partition_types
+      createVector<int64_t>({0, 1, 2, 3}),  // values
+      createScalar<int64_t>(5),             // default_value
       {
-          createVector<int64>({0, 2, 2, 3}),
-          createVector<int64>({0, 3, 3, 4}),
+          createVector<int64_t>({0, 2, 2, 3}),
+          createVector<int64_t>({0, 3, 3, 4}),
       }  // row_partition_tensors
   );
   TF_ASSERT_OK(RunOpKernel());
@@ -233,8 +233,8 @@ TEST_F(RaggedTensorToTensorOpTest, RaggedTensorToTensor_3DParamsRowSplits2) {
   //              [[5, 5, 5], [5, 5, 5]],
   //              [[3, 5, 5], [5, 5, 5]]
   //            ]
-  test::ExpectTensorEqual<int64>(
-      *GetOutput(0), test::AsTensor<int64>(
+  test::ExpectTensorEqual<int64_t>(
+      *GetOutput(0), test::AsTensor<int64_t>(
                          {0, 1, 2, 5, 5, 5, 5, 5, 5, 5, 5, 5, 3, 5, 5, 5, 5, 5},
                          TensorShape({3, 2, 3})));
 }

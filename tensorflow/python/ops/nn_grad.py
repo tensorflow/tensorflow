@@ -14,10 +14,6 @@
 # ==============================================================================
 """Gradients for operators defined in nn_ops.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -531,7 +527,7 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
             array_ops.expand_dims(softmax, 2)),
         axis=1)) * softmax)
 
-  return grad, _BroadcastMul(grad_loss, -nn_ops.log_softmax(logits))
+  return grad, _BroadcastMul(grad_loss, -nn_ops.log_softmax(logits))  # pylint: disable=invalid-unary-operand-type
 
 
 @ops.RegisterGradient("SparseSoftmaxCrossEntropyWithLogits")

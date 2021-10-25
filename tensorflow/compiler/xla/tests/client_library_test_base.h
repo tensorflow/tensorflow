@@ -277,14 +277,14 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // parameter. When the use_bfloat16 flag is set but the literal has F32
   // elements, the literal will be converted to BF16 before being transferred.
   StatusOr<std::unique_ptr<GlobalData>> CreateParameterAndTransferLiteral(
-      int64 parameter_number, const Literal& literal, const string& name,
+      int64_t parameter_number, const Literal& literal, const string& name,
       XlaBuilder* builder, XlaOp* data_handle);
 
   // As above, but the caller can specify the device that the literal is
   // transferred to. If device_handle is nullptr, the literal will be
   // transferred to the default device.
   StatusOr<std::unique_ptr<GlobalData>> CreateParameterAndTransferLiteral(
-      int64 parameter_number, const Literal& literal, const string& name,
+      int64_t parameter_number, const Literal& literal, const string& name,
       const DeviceHandle* device_handle, XlaBuilder* builder,
       XlaOp* data_handle);
 
@@ -333,7 +333,7 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // converted to bfloat16.
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateR0Parameter(NativeT value,
-                                                int64 parameter_number,
+                                                int64_t parameter_number,
                                                 const string& name,
                                                 XlaBuilder* builder,
                                                 XlaOp* data_handle);
@@ -348,7 +348,7 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // converted to bfloat16.
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateR1Parameter(
-      absl::Span<const NativeT> values, int64 parameter_number,
+      absl::Span<const NativeT> values, int64_t parameter_number,
       const string& name, XlaBuilder* builder, XlaOp* data_handle);
 
   // Creates a parameter instruction that wraps the given constant array
@@ -362,7 +362,7 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // converted to bfloat16.
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateR2Parameter(
-      const Array2D<NativeT>& array_2d, int64 parameter_number,
+      const Array2D<NativeT>& array_2d, int64_t parameter_number,
       const string& name, XlaBuilder* builder, XlaOp* data_handle);
 
   // Creates a parameter instruction that wraps the given constant array
@@ -376,7 +376,7 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // converted to bfloat16.
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateR3Parameter(
-      const Array3D<NativeT>& array_3d, int64 parameter_number,
+      const Array3D<NativeT>& array_3d, int64_t parameter_number,
       const string& name, XlaBuilder* builder, XlaOp* data_handle);
 
   // Creates a parameter instruction that wraps the given constant array
@@ -390,12 +390,12 @@ class ClientLibraryTestBase : public ManifestCheckingTest {
   // converted to bfloat16.
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateR4Parameter(
-      const Array4D<NativeT>& array_4d, int64 parameter_number,
+      const Array4D<NativeT>& array_4d, int64_t parameter_number,
       const string& name, XlaBuilder* builder, XlaOp* data_handle);
 
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateParameter(const Array<NativeT>& array_4d,
-                                              int64 parameter_number,
+                                              int64_t parameter_number,
                                               const string& name,
                                               XlaBuilder* builder,
                                               XlaOp* data_handle);
@@ -603,7 +603,7 @@ void ClientLibraryTestBase::ComputeAndCompare(
 
 template <typename NativeT>
 std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
-    NativeT value, int64 parameter_number, const string& name,
+    NativeT value, int64_t parameter_number, const string& name,
     XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateR0(value);
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
@@ -617,7 +617,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
 
 template <typename NativeT>
 std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR1Parameter(
-    absl::Span<const NativeT> values, int64 parameter_number,
+    absl::Span<const NativeT> values, int64_t parameter_number,
     const string& name, XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateR1(values);
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
@@ -631,7 +631,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR1Parameter(
 
 template <typename NativeT>
 std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
-    const Array2D<NativeT>& array_2d, int64 parameter_number,
+    const Array2D<NativeT>& array_2d, int64_t parameter_number,
     const string& name, XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateR2FromArray2D(array_2d);
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
@@ -645,7 +645,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
 
 template <typename NativeT>
 std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
-    const Array3D<NativeT>& array_3d, int64 parameter_number,
+    const Array3D<NativeT>& array_3d, int64_t parameter_number,
     const string& name, XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateR3FromArray3D(array_3d);
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
@@ -659,7 +659,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
 
 template <typename NativeT>
 std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR4Parameter(
-    const Array4D<NativeT>& array_4d, int64 parameter_number,
+    const Array4D<NativeT>& array_4d, int64_t parameter_number,
     const string& name, XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateR4FromArray4D(array_4d);
   if (use_bfloat16_ && literal.shape().element_type() == F32) {
@@ -673,7 +673,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR4Parameter(
 
 template <typename NativeT>
 std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateParameter(
-    const Array<NativeT>& array, int64 parameter_number, const string& name,
+    const Array<NativeT>& array, int64_t parameter_number, const string& name,
     XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateFromArray(array);
   if (use_bfloat16_ && literal.shape().element_type() == F32) {

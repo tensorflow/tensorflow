@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/metrics.h"
+#include "tensorflow/cc/saved_model/util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -34,54 +36,40 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
+// Reads the SavedModel proto from saved_model.pb in `export_dir`.
+// Returns a failure status when the SavedModel file does not exist.
+Status ReadSavedModel(absl::string_view export_dir,
+                      SavedModel* saved_model_proto) {
   LOG(INFO) << "Reading SavedModel from: " << export_dir;
 
-  const string saved_model_pb_path =
+  const std::string saved_model_pb_path =
       io::JoinPath(export_dir, kSavedModelFilenamePb);
+
   if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
-    return ReadBinaryProto(Env::Default(), saved_model_pb_path,
-                           saved_model_proto);
+    Status result =
+        ReadBinaryProto(Env::Default(), saved_model_pb_path, saved_model_proto);
+    if (result.ok()) {
+      metrics::SavedModelRead(saved_model::GetWriteVersion(*saved_model_proto))
+          .IncrementBy(1);
+    }
+    return result;
   }
-  const string saved_model_pbtxt_path =
+  const std::string saved_model_pbtxt_path =
       io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
   if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
-    return ReadTextProto(Env::Default(), saved_model_pbtxt_path,
-                         saved_model_proto);
-  }
-  return Status(error::Code::NOT_FOUND,
-                "Could not find SavedModel .pb or .pbtxt at supplied export "
-                "directory path: " +
-                    export_dir);
-}
-
-// Swap tensor_content field of Const Op Tensors in the named functions
-static Status SwapTensorContent(MetaGraphDef* meta_graph_def) {
-  GraphDef graph_def = *meta_graph_def->mutable_graph_def();
-  for (auto& function : *meta_graph_def->mutable_graph_def()
-                             ->mutable_library()
-                             ->mutable_function()) {
-    for (auto& node : (*function.mutable_node_def())) {
-      if (node.op() != "Const") continue;
-      auto node_iterator = node.mutable_attr()->find("value");
-      if (node_iterator == node.mutable_attr()->end()) continue;
-      AttrValue node_value = node_iterator->second;
-      if (!node_value.has_tensor()) continue;
-
-      auto tsize = node_value.mutable_tensor()->tensor_content().size();
-      auto p_type = node_value.mutable_tensor()->dtype();
-      // Swap only when there is something in tensor_content field
-      if (tsize != 0 && DataTypeCanUseMemcpy(p_type)) {
-        Tensor parsed(p_type);
-        DCHECK(parsed.FromProto(*node_value.mutable_tensor()));
-        TF_RETURN_IF_ERROR(ByteSwapTensor(&parsed));
-        (*node.mutable_attr())["value"].mutable_tensor()->set_tensor_content(
-            string(reinterpret_cast<const char*>(parsed.tensor_data().data()),
-                   parsed.tensor_data().size()));
-      }
+    Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
+                                  saved_model_proto);
+    if (result.ok()) {
+      metrics::SavedModelRead(saved_model::GetWriteVersion(*saved_model_proto))
+          .IncrementBy(1);
     }
+    return result;
   }
-  return Status::OK();
+  return Status(
+      error::Code::NOT_FOUND,
+      strings::StrCat("Could not find SavedModel .pb or .pbtxt at supplied "
+                      "export directory path: ",
+                      export_dir));
 }
 
 Status FindMetaGraphDef(const std::unordered_set<string>& tags,
@@ -100,7 +88,7 @@ Status FindMetaGraphDef(const std::unordered_set<string>& tags,
       *meta_graph_def = std::move(graph_def);
       // Correct the endiness of Tensor content on big-endian system
       if (!port::kLittleEndian) {
-        TF_RETURN_IF_ERROR(SwapTensorContent(meta_graph_def));
+        TF_RETURN_IF_ERROR(ByteSwapTensorContent(meta_graph_def));
       }
       return Status::OK();
     }
@@ -113,7 +101,6 @@ Status FindMetaGraphDef(const std::unordered_set<string>& tags,
           " }. To inspect available tag-sets in the SavedModel, please "
           "use the SavedModel CLI: `saved_model_cli`"));
 }
-
 }  // namespace
 
 Status ReadMetaGraphDefFromSavedModel(const string& export_dir,

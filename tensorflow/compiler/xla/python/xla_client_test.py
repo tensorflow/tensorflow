@@ -21,11 +21,20 @@ import threading
 import unittest
 
 from absl import flags
+from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.xla.python import xla_client
+
+# pylint: disable=g-import-not-at-top
+try:
+  # This import is only used for GPU; the dependency is incompatible with TPU
+  # so it results in an import error.
+  from tensorflow.python.framework import test_util
+except ImportError:
+  test_util = None
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -43,7 +52,10 @@ FLAGS = flags.FLAGS
 # pylint: disable=g-complex-comprehension
 
 
-def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
+def TestFactory(xla_backend,
+                cloud_tpu=False,
+                tfrt_tpu=False,
+                external_tpu=False):
   tests = []
 
   if not cloud_tpu:
@@ -114,8 +126,8 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
     return np.array(*args, dtype=np.int32, **kwargs)
 
   def NumpyArrayBool(*args, **kwargs):
-    """Convenience wrapper to create Numpy arrays with a np.bool dtype."""
-    return np.array(*args, dtype=np.bool, **kwargs)
+    """Convenience wrapper to create Numpy arrays with a np.bool_ dtype."""
+    return np.array(*args, dtype=np.bool_, **kwargs)
 
   class ComputationPrinting(absltest.TestCase):
 
@@ -155,11 +167,30 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
       self.assertEqual(hlo_text, hlo_text_roundtrip)
 
     @unittest.skipIf(cloud_tpu, "not implemented")
+    def testStableComputationSerialization(self):
+      # Ideally we would test identical computations produced in different
+      # processes. For now we have this limited smoke test.
+      computation = self.ExampleComputation()
+      ref = computation.as_serialized_hlo_module_proto()
+      for _ in range(10):
+        self.assertEqual(computation.as_serialized_hlo_module_proto(), ref)
+
+    @unittest.skipIf(cloud_tpu, "not implemented")
     def testFlopEstimate(self):
       computation = self.ExampleComputation()
       properties = xla_client._xla.hlo_module_cost_analysis(
           self.backend, computation.as_hlo_module())
       self.assertEqual(properties["flops"], 8.0)
+
+    def testFingerprint(self):
+      computation = self.ExampleComputation()
+      executable = self.backend.compile(computation)
+      fingerprint = executable.fingerprint
+      if self.backend.platform == "tpu" and not cloud_tpu:
+        logging.info("fingerprint: %s", fingerprint)
+        self.assertNotEmpty(fingerprint)
+      else:
+        self.assertIsNone(fingerprint)
 
   tests.append(ComputationPrinting)
 
@@ -354,6 +385,69 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
 
   tests.append(ComputationsWithConstantsTest)
 
+  class PythonCallbackTest(ComputationTest):
+
+    def testPythonCallback(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      f = lambda x, y: (x + y, x - y)
+
+      arg0 = np.array([9, 43, -101, 22], dtype=np.int32)
+      arg1 = np.array([10, 15, -2, 7], dtype=np.int32)
+      shape = xla_client.shape_from_pyval(arg0)
+      shape = shape.with_major_to_minor_layout_if_absent()
+      p0 = ops.Parameter(c, 0, shape)
+      p1 = ops.Parameter(c, 1, shape)
+      out, keepalive = self.backend.emit_python_callback(
+          f, c, [p0, p1], [shape, shape])
+      self._ExecuteAndCompareExact(
+          c, arguments=[arg0, arg1], expected=[arg0 + arg1, arg0 - arg1])
+      del out, keepalive
+
+    def testTokens(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      def _Callback(x, y):
+        assert y is None, y
+        return None, x + 1
+
+      arg0 = np.array([9, 43, -101, 22], dtype=np.int32)
+      shape = xla_client.shape_from_pyval(arg0)
+      token_shape = xla_client.Shape.token_shape()
+      p0 = ops.Parameter(c, 0, shape)
+      token = ops.CreateToken(c)
+      out, keepalive = self.backend.emit_python_callback(
+          _Callback, c, [p0, token], [token_shape, shape])
+      out = ops.GetTupleElement(out, 1)
+      self._ExecuteAndCompareExact(c, arguments=[arg0], expected=[arg0 + 1])
+      del out, keepalive
+
+    def testStriding(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      def _Callback(x):
+        assert x.flags.f_contiguous, x.strides
+        # Force the output array to have C layout, which will require a
+        # transpose back to the expected Fortran layout.
+        return np.ascontiguousarray(x * 2),
+
+      arg0 = np.arange(12, dtype=np.int16).reshape(3, 4)
+      shape_f_layout = xla_client.Shape.array_shape(
+          arg0.dtype, arg0.shape, layout=(0, 1))
+      p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg0))
+      out, keepalive = self.backend.emit_python_callback(
+          _Callback, c, [p0], [shape_f_layout], [shape_f_layout])
+      self._ExecuteAndCompareExact(c, arguments=[arg0], expected=[arg0 * 2])
+      del out, keepalive
+
+  tests.append(PythonCallbackTest)
+
   class ComputationFromProtoTest(absltest.TestCase):
     """Test computation execution from HLO proto."""
 
@@ -460,6 +554,13 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
       self.assertEqual(xla_shape.dimensions(), (1, 2))
       self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
+    def testXlaShapeIndex(self):
+      a = xla_client.ShapeIndex((1, 2))
+      b = xla_client.ShapeIndex((1, 2))
+      c = xla_client.ShapeIndex((2, 3))
+      self.assertEqual(a, b)
+      self.assertNotEqual(b, c)
+
     def testBlockHostUntilReadyWorks(self):
       arg = np.array([[1., 2.]], np.float32)
       arg_buffer = self.backend.buffer_from_pyval(arg)
@@ -527,6 +628,8 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
       self.assertIs(self.backend.live_buffers()[0], arg2_buffer)
       self.assertIs(self.backend.live_buffers()[1], arg1_buffer)
       self.assertIs(self.backend.live_buffers()[2], arg0_buffer)
+      self.assertEqual(self.backend.devices()[0].live_buffers(),
+                       self.backend.live_buffers())
 
       arg1_buffer.delete()
       self.assertLen(self.backend.live_buffers(), 2)
@@ -628,7 +731,7 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
         "src_dtype": src_dtype,
         "dst_dtype": dst_dtype,
     } for src_dtype, dst_dtype in itertools.permutations(
-        [np.bool, np.int32, np.int64, np.float32, np.float64], 2))
+        [np.bool_, np.int32, np.int64, np.float32, np.float64], 2))
     # pyformat: enable
     def testConvertElementType(self, src_dtype, dst_dtype):
       if ((src_dtype in [np.int64, np.float64] or
@@ -1401,6 +1504,55 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
           ],
           rtol=1e-4)
 
+    def testApproxTopK(self):
+      if self.backend.platform != "tpu":
+        self.skipTest("ApproxTopK is only supported on TPU")
+      k = 10
+      qy_size = 256
+      db_size = 3000
+      feature = 128
+      recall_target = 0.95
+      b = self._NewComputation()
+      p0 = ops.Parameter(b, 0, xla_client.shape_from_pyval(NumpyArrayF32(0)))
+      q0 = ops.Parameter(b, 1, xla_client.shape_from_pyval(NumpyArrayF32(0)))
+      ops.Parameter(b, 2, xla_client.shape_from_pyval(NumpyArrayS32(0)))
+      ops.Parameter(b, 3, xla_client.shape_from_pyval(NumpyArrayS32(0)))
+      ops.Gt(p0, q0)
+      comparator = b.build()
+      qy_shape = [qy_size, feature]
+      db_shape = [feature, db_size]
+      rng = np.random.RandomState(0)
+      qy_arg = rng.randn(*qy_shape).astype(np.float32)
+      db_arg = rng.randn(*db_shape).astype(np.float32)
+      b = self._NewComputation()
+      qy = ops.Parameter(b, 0, xla_client.shape_from_pyval(qy_arg))
+      db = ops.Parameter(b, 1, xla_client.shape_from_pyval(db_arg))
+      scores = ops.Dot(qy, db)
+      iota = ops.Iota(
+          b,
+          xla_client.Shape.array_shape(xla_client.PrimitiveType.S32,
+                                       (qy_size, db_size)), 1)
+      init_val = ops.Constant(b, np.float32(-1))
+      init_arg = ops.Constant(b, np.int32(-1))
+      ground_truth = ops.TopK(scores, k=k)
+      approx_topk = ops.ApproxTopK(
+          b, [scores, iota], [init_val, init_arg],
+          top_k=k,
+          reduction_dim=1,
+          comparator=comparator,
+          recall_target=recall_target)
+      ops.Tuple(b, [
+          ops.GetTupleElement(ground_truth, 1),
+          ops.GetTupleElement(approx_topk, 1)
+      ])
+      results = self._Execute(b, [qy_arg, db_arg])
+      ground_truth_docids = [set(x) for x in results[0]]
+      hits = sum(
+          len(list(x for x in approx_topk_per_q
+                   if x in ground_truth_docids[q]))
+          for q, approx_topk_per_q in enumerate(results[1]))
+      self.assertGreater(hits / (qy_size * k), recall_target)
+
     def testIsConstant(self):
       c = self._NewComputation()
       a = ops.Constant(c, np.int32(3))
@@ -1496,8 +1648,10 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
       """Computation (A) -> B that returns a constant 1 for any input."""
       c = self._NewComputation("constant_{}_{}_one".format(
           in_dtype.__name__, out_dtype.__name__))
-      ops.Parameter(c, 0,
-                    xla_client.shape_from_pyval(np.array(0, dtype=in_dtype)))
+      ops.Parameter(
+          c, 0,
+          xla_client.shape_from_pyval(np.array(
+              0, dtype=in_dtype)).with_major_to_minor_layout_if_absent())
       ops.Constant(c, out_dtype(1))
       return c.build()
 
@@ -1763,6 +1917,40 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
           padding=padding)
       self._ExecuteAndCompareClose(c, expected=[[[5., 9.]]])
 
+    def testReduceWindowVariadic(self):
+      c = self._NewComputation("reducer")
+      shape = xla_client.shape_from_pyval(np.array(0, dtype=np.int32))
+      shape = shape.with_major_to_minor_layout_if_absent()
+      ps = [ops.Parameter(c, i, shape) for i in range(4)]
+      which = ops.Ge(ps[0], ps[2])
+      ops.Tuple(
+          c, [ops.Select(which, ps[0], ps[2]),
+              ops.Select(which, ps[1], ps[3])])
+      reducer = c.build()
+
+      key_array = np.array([[1, 5, 6], [4, 2, 3]], dtype=np.int32)
+      val_array = np.array([[7, 8, 9], [10, 11, 12]], dtype=np.int32)
+      c = self._NewComputation()
+      window_dimensions = (2, 1)
+      window_strides = (1, 1)
+      padding = xla_client.window_padding_type_to_pad_values(
+          xla_client.PaddingType.VALID, key_array.shape, window_dimensions,
+          window_strides)
+      ops.ReduceWindowWithGeneralPadding(
+          operands=[ops.Constant(c, key_array),
+                    ops.Constant(c, val_array)],
+          init_values=[
+              ops.Constant(c, np.int32(0)),
+              ops.Constant(c, np.int32(0))
+          ],
+          computation=reducer,
+          window_dimensions=window_dimensions,
+          window_strides=window_strides,
+          base_dilations=[],
+          window_dilations=[],
+          padding=padding)
+      self._ExecuteAndCompareClose(c, expected=[[[4, 5, 6]], [[10, 8, 9]]])
+
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
         "dtype": dtype,
@@ -1961,9 +2149,9 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
     def testSetSharding(self):
       c = self._NewComputation()
       sharding = xla_client.OpSharding()
-      sharding.type = sharding.type.REPLICATED
-      sharding.tile_assignment_dimensions.extend([1])
-      sharding.tile_assignment_devices.extend([0])
+      sharding.type = xla_client.OpSharding.Type.REPLICATED
+      sharding.tile_assignment_dimensions = [1]
+      sharding.tile_assignment_devices = [0]
       c.set_sharding(sharding)
       x = ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF32(2.0)))
       c.clear_sharding()
@@ -2001,29 +2189,40 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
       self.backend = xla_backend()
       if self.backend.platform not in ("cpu", "gpu"):
         self.skipTest("DLPack requires CPU or GPU")
+      self.cpu_backend = (
+          self.backend
+          if self.backend.platform == "cpu" else xla_client.make_cpu_client())
+      self.gpu_backend = (
+          self.backend if self.backend.platform == "gpu" else None)
 
     # pylint: disable=g-complex-comprehension
     # pyformat: disable
     @parameterized.named_parameters({
-        "testcase_name": "{}_own={}".format(FormatShapeAndDtype(shape, dtype),
-                                            take_ownership),
+        "testcase_name": "{}_own={}_gpu={}".format(
+            FormatShapeAndDtype(shape, dtype), take_ownership, gpu),
         "dtype": dtype,
         "shape": shape,
-        "take_ownership": take_ownership
+        "take_ownership": take_ownership,
+        "gpu": gpu
     } for dtype in dlpack_dtypes for shape in testcase_shapes
-                                    for take_ownership in [False, True])
+                                    for take_ownership in [False, True]
+                                    for gpu in [False, True])
     # pyformat: enable
-    def testRoundTrip(self, dtype, shape, take_ownership):
+    def testRoundTrip(self, dtype, shape, take_ownership, gpu):
+      if gpu and self.gpu_backend is None:
+        raise unittest.SkipTest("Test not running with GPU support")
+      backend = self.gpu_backend if gpu else self.cpu_backend
       if dtype == np.bool_:
         x = np.random.randint(0, 2, size=shape).astype(np.bool_)
       else:
         x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
-      buffer = self.backend.buffer_from_pyval(x)
+      buffer = backend.buffer_from_pyval(x)
       dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(
           buffer, take_ownership=take_ownership)
       del buffer  # Free "buffer" to make sure dlt retains ownership.
       self.assertEqual(type(dlt).__name__, "PyCapsule")
-      y = xla_client._xla.dlpack_managed_tensor_to_buffer(dlt, self.backend)
+      y = xla_client._xla.dlpack_managed_tensor_to_buffer(
+          dlt, self.cpu_backend, self.gpu_backend)
       np.testing.assert_array_equal(
           x.astype(np.uint8) if dtype == np.bool_ else x, y.to_py())
 
@@ -2177,17 +2376,53 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
 
   tests.append(TracebackTest)
 
-  class ClientTest(parameterized.TestCase):
+  class ClientTest(ComputationTest):
 
     def setUp(self):
       super(ClientTest, self).setUp()
       self.backend = xla_backend()
 
     def testPlatformVersion(self):
-      # Check doesn't crash
       version = self.backend.platform_version
+      logging.info("platform_version:\n%s", version)
       if self.backend.platform == "cpu":
         self.assertEqual(version, "<unknown>")
+      elif self.backend.platform == "gpu":
+        # Following is false if not built with --config=cuda
+        if test_util.is_gpu_available(cuda_only=True):
+          self.assertTrue(
+              re.match(r"^cuda \d{4,}$", version),
+              msg=f"Expected CUDA version string; got {repr(version)}")
+        else:
+          self.assertEqual(version, "<unknown>")
+      elif self.backend.platform == "tpu" and not cloud_tpu:
+        self.assertIn("tpu", version.lower())
+        self.assertIn("cl/", version)
+
+    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
+    def testExecutableSerialization(self):
+      if self.backend.platform != "tpu":
+        self.skipTest("Test requires tpu platform")
+
+      c = self._NewComputation()
+      ops.Add(
+          ops.Constant(c, NumpyArrayS32([1, 2])),
+          ops.Constant(c, NumpyArrayS32([3, 4])))
+
+      options = xla_client.CompileOptions()
+      executable = self.backend.compile(c.build(), options)
+      self.assertLen(executable.hlo_modules(), 1)
+
+      serialized = self.backend.serialize_executable(executable)
+      deserialized = self.backend.deserialize_executable(
+          serialized,
+          executable.hlo_modules()[0], options)
+
+      expected, = xla_client.execute_with_python_values(executable, (),
+                                                        self.backend)
+      actual, = xla_client.execute_with_python_values(deserialized, (),
+                                                      self.backend)
+      self.assertTrue(np.all(actual == expected))
 
   tests.append(ClientTest)
 
@@ -2220,7 +2455,7 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
             memoryview(buf)
 
     # 1D reshape of full size, half size, and size of 0.
-    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or tfrt_tpu or external_tpu, "not implemented")
     @parameterized.parameters((5), (3), (0))
     def testReshape1D(self, reshape_size):
       full_size = 5
@@ -2238,7 +2473,7 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
     # where the strides may differ between the host and devices. The reshaped
     # physical memory layout is not consecutive, and we test if the program can
     # return the correct logical view of the data.
-    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or tfrt_tpu or external_tpu, "not implemented")
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
         "dtype": dtype,
@@ -2291,6 +2526,20 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False):
 
   tests.append(DynamicReshapeTest)
 
+  class DeviceAssignmentTest(ComputationTest):
+
+    def testSerialize(self):
+      shape = (3, 4)
+      device_assignment = xla_client.DeviceAssignment.create(
+          np.arange(np.prod(shape)).reshape(*shape))
+      self.assertEqual(device_assignment.replica_count(), shape[0])
+      self.assertEqual(device_assignment.computation_count(), shape[1])
+      serialized = device_assignment.serialize()
+      self.assertIsInstance(serialized, bytes)
+      self.assertNotEmpty(serialized)
+
+  tests.append(DeviceAssignmentTest)
+
   return tests
 
 
@@ -2305,8 +2554,14 @@ def InstantiateTests(globals_dict, backend_fn, test_prefix="", **kw):
     globals_dict[test.__name__] = test
 
 
+backends = {
+    "cpu": xla_client.make_cpu_client,
+    "gpu": xla_client.make_gpu_client,
+}
+
 if __name__ == "__main__":
-  flags.DEFINE_string("backend", "cpu", "Target backend.")
-  InstantiateTests(globals(),
-                   lambda: xla_client.get_local_backend(FLAGS.backend))
+  flags.DEFINE_string("backend", "cpu", "Target platform.")
+  # pylint: disable=unnecessary-lambda
+  InstantiateTests(globals(), lambda: backends[FLAGS.backend]())
+  # pylint: enable=unnecessary-lambda
   absltest.main()

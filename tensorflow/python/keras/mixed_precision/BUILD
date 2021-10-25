@@ -182,6 +182,7 @@ py_library(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/training/tracking:base_delegate",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -255,15 +256,10 @@ py_library(
 )
 
 cuda_py_test(
-    name = "keras_test",
+    name = "layer_test",
     size = "medium",
-    srcs = ["keras_test.py"],
-    data = [
-        "//tensorflow/python/keras/mixed_precision/testdata:lso_ckpt_tf2.2",
-        "//tensorflow/python/keras/mixed_precision/testdata:lso_savedmodel_tf2.2",
-    ],
+    srcs = ["layer_test.py"],
     python_version = "PY3",
-    shard_count = 10,
     tags = [
         "no_pip",
         "no_windows",  # b/139083295: bfloat16 tests fail on Windows

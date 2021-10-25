@@ -101,6 +101,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Value* EmitIntegerPow(llvm::Value* lhs, llvm::Value* rhs,
                               bool is_signed);
 
+  virtual StatusOr<llvm::Value*> EmitPredBinaryOp(const HloInstruction* op,
+                                                  llvm::Value* lhs_value,
+                                                  llvm::Value* rhs_value);
+
   virtual StatusOr<llvm::Value*> EmitIntegerBinaryOp(const HloInstruction* op,
                                                      llvm::Value* lhs_value,
                                                      llvm::Value* rhs_value,
@@ -177,6 +181,25 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                                     llvm::Value* operand_value);
   virtual StatusOr<llvm::Value*> EmitRsqrtComplexAbs(
       PrimitiveType prim_type, llvm::Value* operand_value);
+
+  virtual StatusOr<llvm::Value*> EmitComplexAdd(const HloInstruction* op,
+                                                llvm::Value* lhs_value,
+                                                llvm::Value* rhs_value);
+
+  virtual StatusOr<llvm::Value*> EmitComplexSubtract(const HloInstruction* op,
+                                                     llvm::Value* lhs_value,
+                                                     llvm::Value* rhs_value);
+
+  virtual StatusOr<llvm::Value*> EmitComplexMultiply(const HloInstruction* op,
+                                                     llvm::Value* lhs_value,
+                                                     llvm::Value* rhs_value);
+
+  virtual StatusOr<llvm::Value*> EmitComplexDivide(const HloInstruction* op,
+                                                   llvm::Value* lhs_value,
+                                                   llvm::Value* rhs_value);
+
+  virtual StatusOr<llvm::Value*> EmitComplexLog(const HloInstruction* op,
+                                                llvm::Value* operand_value);
 
   virtual StatusOr<llvm::Value*> EmitComplexSqrt(const HloInstruction* op,
                                                  PrimitiveType prim_type,

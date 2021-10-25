@@ -27,6 +27,7 @@ py_library(
         ":ragged_functional_ops",
         ":ragged_gather_ops",
         ":ragged_getitem",
+        ":ragged_image_ops",
         ":ragged_map_ops",
         ":ragged_math_ops",
         ":ragged_operators",
@@ -238,6 +239,7 @@ py_library(
         ":ragged_functional_ops",
         ":ragged_gather_ops",
         ":ragged_getitem",
+        ":ragged_image_ops",
         ":ragged_map_ops",
         ":ragged_math_ops",
         ":ragged_operators",
@@ -414,6 +416,18 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "ragged_image_ops",
+    srcs = ["ragged_image_ops.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":ragged_tensor",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:map_fn",
+        "//tensorflow/python/framework:tensor_spec",
     ],
 )
 
@@ -1098,6 +1112,18 @@ py_test(
 )
 
 py_test(
+    name = "ragged_resize_image_op_test",
+    srcs = ["ragged_resize_image_op_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":ragged",  # fixdeps: keep
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
     name = "ragged_map_fn_op_test",
     size = "small",
     srcs = ["ragged_map_fn_op_test.py"],
@@ -1329,6 +1355,21 @@ py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_matmul_op_test",
+    srcs = ["ragged_matmul_op_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":ragged_concat_ops",
+        ":ragged_math_ops",
+        ":ragged_tensor",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )

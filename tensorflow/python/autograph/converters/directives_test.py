@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for directives module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.converters import directives as directives_converter
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.autograph.lang import directives
@@ -60,7 +56,7 @@ class DirectivesTest(converter_testing.TestCase):
     def f():
       a = True
       while True:
-        directives.set_loop_options(parallel_iterations=10, back_prop=a)
+        directives.set_loop_options(parallel_iterations=10, back_prop=a)  # pylint: disable=unexpected-keyword-arg
         pass
 
     _, node, _ = self.transform(f, directives_converter, include_ast=True)
@@ -86,7 +82,7 @@ class DirectivesTest(converter_testing.TestCase):
       a = 1
       while True:
         a = 2
-        directives.set_loop_options(parallel_iterations=10, back_prop=a)
+        directives.set_loop_options(parallel_iterations=10, back_prop=a)  # pylint: disable=unexpected-keyword-arg
 
     with self.assertRaisesRegex(ValueError, 'must be the first statement'):
       self.transform(f, directives_converter, include_ast=True)

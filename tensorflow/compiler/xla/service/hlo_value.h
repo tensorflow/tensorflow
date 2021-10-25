@@ -72,7 +72,7 @@ struct HloUse {
   HloInstruction* instruction;
 
   // The operand number in which the value is appears.
-  int64 operand_number;
+  int64_t operand_number;
 
   // The shape index within the operand in which the value appears.
   ShapeIndex operand_index;

@@ -31,16 +31,16 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
   TF_ASSIGN_OR_RETURN(
       auto replication,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/false));
-  std::vector<std::pair<HloInstruction*, int64>> all_reduces_to_replace;
+  std::vector<std::pair<HloInstruction*, int64_t>> all_reduces_to_replace;
 
   // Returns the size of a replica group if all groups have the same size, or -1
   // if they have different sizes.
   auto get_replica_group_size =
-      [this](const HloInstruction* all_reduce) -> int64 {
+      [this](const HloInstruction* all_reduce) -> int64_t {
     if (all_reduce->replica_groups().empty()) {
       return replica_count_;
     }
-    int64 replica_group_size = -1;
+    int64_t replica_group_size = -1;
     for (const auto& group : all_reduce->replica_groups()) {
       if (replica_group_size == -1) {
         replica_group_size = group.replica_ids_size();
@@ -63,7 +63,7 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
       if (!inst->IsCrossReplicaAllReduce()) {
         continue;
       }
-      int64 group_size = get_replica_group_size(inst);
+      int64_t group_size = get_replica_group_size(inst);
       if (group_size == -1) {
         continue;
       }
@@ -78,7 +78,7 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
 
   for (auto all_reduce_and_group_size : all_reduces_to_replace) {
     auto all_reduce = all_reduce_and_group_size.first;
-    const int64 replica_group_size = all_reduce_and_group_size.second;
+    const int64_t replica_group_size = all_reduce_and_group_size.second;
     if (replica_group_size == 1) {
       TF_RETURN_IF_ERROR(all_reduce->parent()->ReplaceInstruction(
           all_reduce, all_reduce->mutable_operand(0)));

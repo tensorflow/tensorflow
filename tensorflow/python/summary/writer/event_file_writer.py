@@ -14,10 +14,6 @@
 # ==============================================================================
 """Writes events to disk in a logdir."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os.path
 import sys
@@ -26,7 +22,7 @@ import time
 
 import six
 
-from tensorflow.python import _pywrap_events_writer
+from tensorflow.python.client import _pywrap_events_writer
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat

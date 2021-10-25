@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for reduce operators."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
@@ -161,8 +157,8 @@ def make_reduce_tests(reduce_op,
             "fully_quantize": [True],
         },
         {
-            "input_dtype": [tf.float32],
-            "input_shape": [[2, 0, 2]],
+            "input_dtype": [tf.float32, tf.int32],
+            "input_shape": [[2, 0, 2], [0]],
             "axis": [0],
             "const_axis": [True],
             "keepdims": [True, False],

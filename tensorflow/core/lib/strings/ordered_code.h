@@ -56,7 +56,7 @@ class OrderedCode {
   // ordered lexicographically after smaller values.
   static void WriteString(string* dest, StringPiece str);
   static void WriteNumIncreasing(string* dest, uint64 num);
-  static void WriteSignedNumIncreasing(string* dest, int64 num);
+  static void WriteSignedNumIncreasing(string* dest, int64_t num);
 
   // -------------------------------------------------------------------
   // Decoding routines: these extract an item earlier encoded using
@@ -68,7 +68,7 @@ class OrderedCode {
   // otherwise.
   static bool ReadString(StringPiece* src, string* result);
   static bool ReadNumIncreasing(StringPiece* src, uint64* result);
-  static bool ReadSignedNumIncreasing(StringPiece* src, int64* result);
+  static bool ReadSignedNumIncreasing(StringPiece* src, int64_t* result);
 
   // Helper for testing: corrupt "*str" by changing the kth item separator
   // in the string.

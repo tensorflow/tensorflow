@@ -235,9 +235,12 @@ class Variant {
   }
 
   std::string DebugString() const {
-    return strings::StrCat(
-        "Variant<type: ", TypeName(),
-        " value: ", is_empty() ? "[empty]" : GetValue()->DebugString(), ">");
+    return strings::StrCat("Variant<type: ", TypeName(),
+                           " value: ", SummarizeValue(), ">");
+  }
+
+  std::string SummarizeValue() const {
+    return is_empty() ? "[empty]" : GetValue()->DebugString();
   }
 
   // Returns a pointer to the stored value if it is type T, or nullptr

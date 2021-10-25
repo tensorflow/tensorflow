@@ -223,6 +223,7 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
   }
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
+  TF_LITE_ENSURE(context, filter->dims->data[1] != 0);
   const int batch_size = input_size / filter->dims->data[1];
   const int num_units = filter->dims->data[0];
 
@@ -976,6 +977,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
+  // Do nothing if expected output is empty.
+  if (NumElements(output) == 0) {
+    return kTfLiteOk;
+  }
 
   switch (filter->type) {
     case kTfLiteFloat32:

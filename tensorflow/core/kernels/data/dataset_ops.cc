@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -27,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/utils/traversal.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -52,7 +52,7 @@ DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx)
     : OpKernel(ctx), op_version_(ctx->def().op() == kDatasetToGraph ? 1 : 2) {
   if (op_version_ == 2) {
     if (ctx->HasAttr(kExternalStatePolicy)) {
-      int64 state_change_option;
+      int64_t state_change_option;
       OP_REQUIRES_OK(ctx,
                      ctx->GetAttr(kExternalStatePolicy, &state_change_option));
       external_state_policy_ =
@@ -103,8 +103,7 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
       }
     }
   }
-  SerializationContext::Params params;
-  params.resource_mgr = ctx->resource_manager();
+  SerializationContext::Params params(ctx);
   params.external_state_policy = external_state_policy_;
 
   GraphDef graph_def;
@@ -137,7 +136,7 @@ void DatasetCardinalityOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
   Tensor* result;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
-  result->scalar<int64>()() = dataset->Cardinality();
+  result->scalar<int64_t>()() = dataset->Cardinality();
 }
 
 void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {

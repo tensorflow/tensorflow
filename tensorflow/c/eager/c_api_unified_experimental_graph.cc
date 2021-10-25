@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
+#include "tensorflow/c/eager/graph_function.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -70,7 +71,7 @@ class GraphTensor : public TracingTensorHandle {
       return Status::OK();
     }
 
-    std::vector<int64> dims(num_dims, kUnknownDim);
+    std::vector<int64_t> dims(num_dims, kUnknownDim);
     TF_GraphGetTensorShape(graph_, output_,
                            reinterpret_cast<int64_t*>(dims.data()), num_dims,
                            &status);
@@ -177,9 +178,7 @@ class GraphOperation : public TracingOperation {
     return Status::OK();
   }
   Status SetAttrInt(const char* attr_name, int64_t value) override {
-    static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                  "64-bit int types should match in size");
-    op_->node_builder.Attr(attr_name, static_cast<tensorflow::int64>(value));
+    op_->node_builder.Attr(attr_name, static_cast<int64_t>(value));
     return Status::OK();
   }
   Status SetAttrFloat(const char* attr_name, float value) override {
@@ -203,10 +202,8 @@ class GraphOperation : public TracingOperation {
                       const int num_dims) override {
     PartialTensorShape shape;
     if (num_dims >= 0) {
-      static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                    "64-bit int types should match in size");
-      shape = PartialTensorShape(ArraySlice<tensorflow::int64>(
-          reinterpret_cast<const tensorflow::int64*>(dims), num_dims));
+      shape = PartialTensorShape(ArraySlice<int64_t>(
+          reinterpret_cast<const int64_t*>(dims), num_dims));
     }
     op_->node_builder.Attr(attr_name, shape);
     return Status::OK();
@@ -254,12 +251,9 @@ class GraphOperation : public TracingOperation {
   }
   Status SetAttrIntList(const char* attr_name, const int64_t* values,
                         int num_values) override {
-    static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                  "64-bit int types should match in size");
     op_->node_builder.Attr(
-        attr_name,
-        ArraySlice<const tensorflow::int64>(
-            reinterpret_cast<const tensorflow::int64*>(values), num_values));
+        attr_name, ArraySlice<const int64_t>(
+                       reinterpret_cast<const int64_t*>(values), num_values));
     return Status::OK();
   }
   Status SetAttrTypeList(const char* attr_name, const DataType* values,
@@ -287,10 +281,8 @@ class GraphOperation : public TracingOperation {
       if (num_dims[i] < 0) {
         shapes.emplace_back();
       } else {
-        static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
-                      "64-bit int types should match in size");
-        shapes.emplace_back(ArraySlice<tensorflow::int64>(
-            reinterpret_cast<const tensorflow::int64*>(dims[i]), num_dims[i]));
+        shapes.emplace_back(ArraySlice<int64_t>(
+            reinterpret_cast<const int64_t*>(dims[i]), num_dims[i]));
       }
     }
     op_->node_builder.Attr(attr_name, shapes);
@@ -318,27 +310,6 @@ class GraphOperation : public TracingOperation {
   const char* op_name_ = nullptr;
   // TODO(srbs): Use this.
   string device_name_;
-};
-
-// GraphFunction is a thin wrapper over a TF_Function.
-struct GraphFunction : public AbstractFunction {
-  TF_Function* func = nullptr;
-  GraphFunction() : AbstractFunction(kGraph) {}
-  explicit GraphFunction(TF_Function* func)
-      : AbstractFunction(kGraph), func(func) {}
-  ~GraphFunction() override {
-    if (func) TF_DeleteFunction(func);
-  }
-
-  Status GetFunctionDef(FunctionDef** fdef) override {
-    *fdef = &func->fdef;
-    return Status::OK();
-  }
-
-  // For LLVM style RTTI.
-  static bool classof(const AbstractFunction* ptr) {
-    return ptr->getKind() == kGraph;
-  }
 };
 
 // GraphContext wraps a TF_Graph modeling a single function and manages the
@@ -387,7 +358,6 @@ class GraphContext : public TracingContext {
   }
 
   Status Finalize(OutputList* outputs, AbstractFunction** f) override {
-    std::unique_ptr<GraphFunction> func(new GraphFunction);
     std::vector<TF_Output> graph_outputs;
     graph_outputs.reserve(outputs->outputs.size());
     for (auto* abstract_output : outputs->outputs) {
@@ -401,13 +371,14 @@ class GraphContext : public TracingContext {
     }
 
     auto s = TF_NewStatus();
-    func->func = TF_GraphToFunction(graph_.get(), name_.data(), 0, -1, nullptr,
-                                    inputs_.size(), inputs_.data(),
-                                    graph_outputs.size(), graph_outputs.data(),
-                                    nullptr, nullptr, name_.data(), s);
+    auto func = TF_GraphToFunction(graph_.get(), name_.data(), 0, -1, nullptr,
+                                   inputs_.size(), inputs_.data(),
+                                   graph_outputs.size(), graph_outputs.data(),
+                                   nullptr, nullptr, name_.data(), s);
+    *f = new GraphFunction(std::move(func->fdef));
+    TF_DeleteFunction(func);
     TF_RETURN_IF_ERROR(StatusFromTF_Status(s));
     TF_DeleteStatus(s);
-    *f = func.release();
     return Status::OK();
   }
 

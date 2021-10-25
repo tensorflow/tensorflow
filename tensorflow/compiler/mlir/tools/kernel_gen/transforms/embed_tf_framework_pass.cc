@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -34,13 +36,17 @@ bool IsNotInsideTfEntryFunction(Operation* op) {
   return !func->hasAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName);
 }
 
+template <typename OpTy>
+bool HasInitializedOpKernelContextOperand(OpTy op) {
+  return op.ctx() != nullptr;
+}
+
 // The pass rewrites the function marked with `tf_entry` attribute.
 // * adds tf_framework::OpKernelContextType argument to the function,
 // * std.alloc becomes tf_framework.alloc_raw,
 // * std.dealloc becomes tf_framework.dealloc_raw.
-class EmbedTFFrameworkFunctionAndAllocPass
-    : public EmbedTFFrameworkFunctionAndAllocPassBase<
-          EmbedTFFrameworkFunctionAndAllocPass> {
+class EmbedTFFrameworkPass
+    : public EmbedTFFrameworkPassBase<EmbedTFFrameworkPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
   }
@@ -51,8 +57,7 @@ class EmbedTFFrameworkFunctionAndAllocPass
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
-    PopulateEmbedTFFrameworkFunctionAndAllocConversionPatterns(m.getContext(),
-                                                               &patterns);
+    PopulateEmbedTFFrameworkPatterns(&patterns);
 
     // Set target.
     ConversionTarget target(getContext());
@@ -66,40 +71,12 @@ class EmbedTFFrameworkFunctionAndAllocPass
       return func_type.getNumInputs() > 0 &&
              func_type.getInput(0).isa<OpKernelContextType>();
     });
-    target.addDynamicallyLegalOp<memref::AllocOp, memref::DeallocOp>(
+    target.addDynamicallyLegalOp<AssertOp, memref::AllocOp, memref::DeallocOp>(
         IsNotInsideTfEntryFunction);
-
-    if (failed(applyPartialConversion(m, target, std::move(patterns)))) {
-      signalPassFailure();
-    }
-  }
-};
-
-// The pass rewrites the function marked with `tf_entry` attribute.
-// All contained `std.assert` operations are rewritten into calls to
-// `tf_framework.report_error` and the required control flow to make
-// execution of the function terminate.
-
-class EmbedTFFrameworkAssertPass
-    : public EmbedTFFrameworkAssertPassBase<EmbedTFFrameworkAssertPass> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
-  }
-
- public:
-  void runOnOperation() override {
-    ModuleOp m = getOperation();
-
-    // Populate patterns.
-    RewritePatternSet patterns(&getContext());
-    PopulateEmbedTFFrameworkAssertConversionPatterns(m.getContext(), &patterns);
-
-    // Set target.
-    ConversionTarget target(getContext());
-    target.addLegalDialect<tf_framework::TFFrameworkDialect,
-                           StandardOpsDialect>();
-
-    target.addDynamicallyLegalOp<AssertOp>(IsNotInsideTfEntryFunction);
+    target.addDynamicallyLegalOp<JITExecuteOp>(
+        &HasInitializedOpKernelContextOperand<JITExecuteOp>);
+    target.addDynamicallyLegalOp<JITCompileFromStrOp>(
+        &HasInitializedOpKernelContextOperand<JITCompileFromStrOp>);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns)))) {
       signalPassFailure();
@@ -109,13 +86,8 @@ class EmbedTFFrameworkAssertPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp> >
-CreateEmbedTFFrameworkFunctionAndAllocPass() {
-  return std::make_unique<EmbedTFFrameworkFunctionAndAllocPass>();
-}
-
-std::unique_ptr<OperationPass<ModuleOp> > CreateEmbedTFFrameworkAssertPass() {
-  return std::make_unique<EmbedTFFrameworkAssertPass>();
+std::unique_ptr<OperationPass<ModuleOp> > CreateEmbedTFFrameworkPass() {
+  return std::make_unique<EmbedTFFrameworkPass>();
 }
 
 }  // namespace tf_framework

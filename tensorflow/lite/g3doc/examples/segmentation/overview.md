@@ -10,6 +10,9 @@ The model will create a mask over the target objects with high accuracy.
 
 <img src="images/segmentation.gif" class="attempt-right" />
 
+Note: To integrate an existing model, try
+[TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/image_segmenter).
+
 ## Get started
 
 If you are new to TensorFlow Lite and are working with Android or iOS, it is

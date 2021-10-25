@@ -12,33 +12,37 @@ licenses([
 
 exports_files(["COPYING.MPL2"])
 
-EIGEN_FILES = [
-    "Eigen/**",
-    "unsupported/Eigen/CXX11/**",
-    "unsupported/Eigen/FFT",
-    "unsupported/Eigen/KroneckerProduct",
-    "unsupported/Eigen/src/FFT/**",
-    "unsupported/Eigen/src/KroneckerProduct/**",
-    "unsupported/Eigen/MatrixFunctions",
-    "unsupported/Eigen/SpecialFunctions",
-    "unsupported/Eigen/src/MatrixFunctions/**",
-    "unsupported/Eigen/src/SpecialFunctions/**",
-]
+ALL_FILES_WITH_EXTENSIONS = glob(["**/*.*"])
 
-# Files known to be under MPL2 license.
-EIGEN_MPL2_HEADER_FILES = glob(
-    EIGEN_FILES,
+# Top-level headers, excluding anything in one of the  ../src/.. directories.
+EIGEN_HEADERS = glob(
+    [
+        "Eigen/*",
+        "unsupported/Eigen/*",
+        "unsupported/Eigen/CXX11/*",
+    ],
     exclude = [
-        # Guarantees that any non-MPL2 file added to the list above will fail to
-        # compile.
+        "**/src/**",
+    ] + ALL_FILES_WITH_EXTENSIONS,
+)
+
+# Internal eigen headers, known to be under an MPL2 license.
+EIGEN_MPL2_SOURCES = glob(
+    [
+        "Eigen/**/src/**/*.h",
+        "unsupported/Eigen/**/src/**/*.h",
+    ],
+    exclude = [
+        # This guarantees that any file depending on non MPL2 licensed code
+        # will not compile.
         "Eigen/src/Core/util/NonMPL2.h",
-        "Eigen/**/CMakeLists.txt",
     ],
 )
 
 cc_library(
     name = "eigen3",
-    hdrs = EIGEN_MPL2_HEADER_FILES,
+    srcs = EIGEN_MPL2_SOURCES,
+    hdrs = EIGEN_HEADERS,
     defines = [
         # This define (mostly) guarantees we don't link any problematic
         # code. We use it, but we do not rely on it, as evidenced above.
@@ -51,6 +55,12 @@ cc_library(
 
 filegroup(
     name = "eigen_header_files",
-    srcs = EIGEN_MPL2_HEADER_FILES,
+    srcs = EIGEN_HEADERS,
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "eigen_source_files",
+    srcs = EIGEN_MPL2_SOURCES,
     visibility = ["//visibility:public"],
 )

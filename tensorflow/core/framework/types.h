@@ -75,6 +75,7 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d);
 TF_EXPORT extern const char* const DEVICE_DEFAULT;     // "DEFAULT"
 TF_EXPORT extern const char* const DEVICE_CPU;         // "CPU"
 TF_EXPORT extern const char* const DEVICE_GPU;         // "GPU"
+TF_EXPORT extern const char* const DEVICE_TPU;         // "TPU"
 TF_EXPORT extern const char* const DEVICE_TPU_SYSTEM;  // "TPU_SYSTEM"
 
 template <typename Device>
@@ -412,7 +413,7 @@ struct IsValidDataType<long> {
 };
 template <>
 struct EnumToDataType<DT_INT64> {
-  typedef tensorflow::int64 Type;
+  typedef int64_t Type;
 };
 
 template <>
@@ -462,7 +463,7 @@ struct IsValidDataType {
 };
 
 // Extra validity checking; not part of public API.
-static_assert(IsValidDataType<int64>::value, "Incorrect impl for int64");
+static_assert(IsValidDataType<int64_t>::value, "Incorrect impl for int64");
 static_assert(IsValidDataType<int32>::value, "Incorrect impl for int32");
 
 // TODO(jeff): Maybe unify this with Tensor::CanUseDMA, or the underlying
@@ -543,17 +544,6 @@ bool DataTypeAlwaysOnHost(DataType dt);
 // ordering has no semantic otherwise.
 struct TypeRef {
   std::shared_ptr<FullTypeDef> full_type;
-
-  // TypeRef() : full_type(new FullTypeDef()) {}
-
-  // explicit TypeRef(const FullTypeDef& ft)
-  //     : full_type(std::make_shared<FullTypeDef>(ft)) {}
-  //   TypeRef(TypeRef&& t) : full_type(std::move(t.full_type)) {}
-
-  //   TypeRef& operator=(const TypeRef& t) {
-  //     this->full_type = t.full_type;
-  //     return *this;
-  //   }
 
   bool operator==(const TypeRef& other) const {
     // TODO(mdan): This should be more efficient.

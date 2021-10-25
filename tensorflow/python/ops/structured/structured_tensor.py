@@ -15,10 +15,7 @@
 # ==============================================================================
 """Structured Tensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import logging
 import re
 from typing import Callable, Dict, List, Sequence, Tuple, Union
 
@@ -37,6 +34,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import row_partition as row_partition_lib
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -270,6 +268,46 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         nrows,
         row_partitions,
         internal=_structured_tensor_factory_key)
+
+  @classmethod
+  def from_fields_and_rank(cls, fields, rank, validate=False):
+    """Creates a `StructuredTensor` from a nonempty dictionary of fields.
+
+    Args:
+      fields: A dictionary mapping from string to `Tensor`, `RaggedTensor`, or
+        `StructuredTensor`, providing the values for individual fields in each
+        structure.  If `rank > 0`, then every tensor in `fields` must have
+        the same shape in the first `rank` dimensions. Cannot be empty.
+      rank: The rank of the resulting structured tensor.
+      validate: If true, then add runtime validation ops that check that the
+        field values all have compatible shapes in the outer `rank`
+        dimensions.
+
+    Returns:
+      A `StructuredTensor`.
+    Examples:
+      >>> StructuredTensor.from_fields_and_rank({'x': 1, 'y': [1, 2, 3]}, 0)
+      <StructuredTensor(
+        fields={
+          "x": tf.Tensor(1, shape=(), dtype=int32),
+          "y": tf.Tensor([1 2 3], shape=(3,), dtype=int32)},
+        shape=())>
+      >>> StructuredTensor.from_fields_and_rank({'foo': [1, 2], 'bar': [3, 4]},
+      ...                              1)
+      <StructuredTensor(
+        fields={
+          "bar": tf.Tensor([3 4], shape=(2,), dtype=int32),
+          "foo": tf.Tensor([1 2], shape=(2,), dtype=int32)},
+        shape=(2,))>
+    """
+    if not fields:
+      raise ValueError('Must provide at least one field')
+    if not isinstance(rank, int):
+      raise ValueError('rank must be an integer')
+    if rank < 0:
+      raise ValueError('rank must be nonnegative')
+    return StructuredTensor.from_fields(fields, shape=[None] * rank,
+                                        validate=validate)
 
   def with_updates(
       self,
@@ -556,31 +594,26 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
     >>> s1 = [[x, x, x, x], [x, x, x, x]]              # shape = [2, 4]
     >>> StructuredTensor.from_pyval(s1).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 4 8], shape=(3,),
-                                          dtype=int64)),)
+    (tf.RowPartition(row_splits=[0 4 8]),)
 
     >>> s2 = [[x, x], [x, x], [x, x], [x, x]]          # shape = [4, 2]
     >>> StructuredTensor.from_pyval(s2).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 2 4 6 8], shape=(5,),
-                                          dtype=int64)),)
+    (tf.RowPartition(row_splits=[0 2 4 6 8]),)
 
     >>> s3 = [[x, x, x], [], [x, x, x, x], [x]]        # shape = [2, None]
     >>> StructuredTensor.from_pyval(s3).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 3 3 7 8], shape=(5,),
-                                          dtype=int64)),)
+    (tf.RowPartition(row_splits=[0 3 3 7 8]),)
 
     >>> s4 = [[[x, x], [x, x]], [[x, x], [x, x]]]      # shape = [2, 2, 2]
     >>> StructuredTensor.from_pyval(s4).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 2 4], shape=(3,), dtype=int64)),
-     tf.RowPartition(row_splits=tf.Tensor([0 2 4 6 8], shape=(5,),
-                                          dtype=int64)))
+    (tf.RowPartition(row_splits=[0 2 4]),
+     tf.RowPartition(row_splits=[0 2 4 6 8]))
 
 
     >>> s5 = [[[x, x], [x]], [[x, x]], [[x, x], [x]]]  # shape = [3, None, None]
     >>> StructuredTensor.from_pyval(s5).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 2 3 5], shape=(4,), dtype=int64)),
-     tf.RowPartition(row_splits=tf.Tensor([0 2 3 5 7 8], shape=(6,),
-                                          dtype=int64)))
+    (tf.RowPartition(row_splits=[0 2 3 5]),
+     tf.RowPartition(row_splits=[0 2 3 5 7 8]))
 
     Note that shapes for nested fields (such as `x['b']` in the above example)
     are not considered part of the shape of a `StructuredTensor`, and are not
@@ -1091,6 +1124,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     return StructuredTensorSpec.from_value(self)
 
 
+@type_spec.register('tf.StructuredTensorSpec')
 class StructuredTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for `StructuredTensor`s."""
 
@@ -1127,18 +1161,48 @@ class StructuredTensorSpec(type_spec.BatchableTypeSpec):
     self._field_specs = dict(field_specs)
 
   @property
+  def shape(self):
+    return self._shape
+
+  @property
   def value_type(self):
     return StructuredTensor
 
   def _to_components(self, value):
-    return value._fields
+    nrows = () if value.nrows() is None else value.nrows()
+    return (value._fields, nrows, value.row_partitions)
 
   def _from_components(self, components):
-    return StructuredTensor.from_fields(components, self._shape, validate=False)
+    if isinstance(components, dict):
+      logging.warning('Loading deprecated encoding for StructuredTensorSpec.')
+      return StructuredTensor.from_fields(components, self._shape,
+                                          validate=False)
+    elif not isinstance(components[0], dict):
+      logging.warning('Loading deprecated encoding for StructuredTensorSpec.')
+      fields = {}
+      nrows, row_partitions = components
+      if isinstance(nrows, tuple) and not nrows:
+        nrows = None  # empty rank-0 structured tensor
+      return StructuredTensor.from_fields(fields, self._shape, nrows=nrows,
+                                          row_partitions=row_partitions,
+                                          validate=False)
+
+    (fields, nrows, row_partitions) = components
+    if isinstance(nrows, tuple) and not nrows:
+      nrows = None  # empty rank-0 structured tensor
+    return StructuredTensor(fields, self._shape, nrows, row_partitions,
+                            internal=_structured_tensor_factory_key)
 
   @property
   def _component_specs(self):
-    return self._field_specs
+    if self._shape.rank == 0:
+      nrows_spec = ()
+    else:
+      nrows_spec = tensor_spec.TensorSpec([], dtypes.int64)
+
+    row_partition_specs = ((row_partition_lib.RowPartitionSpec(),)
+                           * (self._shape.rank - 1))
+    return (self._field_specs, nrows_spec, row_partition_specs)
 
   @classmethod
   def from_value(cls, value):

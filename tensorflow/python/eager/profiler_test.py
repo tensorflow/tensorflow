@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for eager profiler."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from tensorflow.core.profiler.protobuf import trace_events_pb2
@@ -30,10 +26,13 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.profiler import trace
 
 
+@test_util.with_eager_op_as_function
 class ProfilerTest(test_util.TensorFlowTestCase):
 
+  # TODO(b/201538012): Revert the host_tracer_level to 2 once the tracing logic
+  #                    between eager and graph mode execution are unified.
   def test_profile(self):
-    profiler.start()
+    profiler.start(options={'host_tracer_level': 3})
     with trace.Trace('three_times_five'):
       three = constant_op.constant(3)
       five = constant_op.constant(5)
@@ -47,8 +46,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     profile_pb.ParseFromString(profile_result)
     devices = frozenset(device.name for device in profile_pb.devices.values())
     self.assertIn('/host:CPU', devices)
-    if not test_util.IsBuiltWithROCm() and config.list_physical_devices('GPU'):
-      # device tracing is not yet supported on the ROCm platform
+    if config.list_physical_devices('GPU'):
       self.assertIn('/device:GPU:0', devices)
     events = frozenset(event.name for event in profile_pb.trace_events)
     self.assertIn('three_times_five', events)

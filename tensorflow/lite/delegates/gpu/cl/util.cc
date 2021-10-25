@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -179,6 +180,30 @@ absl::Status CreateCLBuffer(cl_context context, int size_in_bytes,
   if (!*result) {
     return absl::UnknownError(
         absl::StrCat("Failed to allocate device memory (clCreateBuffer): ",
+                     CLErrorCodeToString(error_code)));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CreateCLSubBuffer(cl_context context, cl_mem parent,
+                               size_t origin_in_bytes, size_t size_in_bytes,
+                               bool read_only, cl_mem* result) {
+  cl_mem_flags flags = read_only ? CL_MEM_READ_ONLY : CL_MEM_READ_WRITE;
+
+  cl_buffer_region region{};
+  region.origin = origin_in_bytes;
+  region.size = size_in_bytes;
+
+  cl_int error_code;
+  if (!clCreateSubBuffer) {
+    return absl::InternalError("clCreateSubBuffer is not supported.");
+  }
+  *result = clCreateSubBuffer(parent, flags, CL_BUFFER_CREATE_TYPE_REGION,
+                              &region, &error_code);
+
+  if (!*result) {
+    return absl::UnknownError(
+        absl::StrCat("Failed to allocate device memory (clCreateSubBuffer): ",
                      CLErrorCodeToString(error_code)));
   }
   return absl::OkStatus();

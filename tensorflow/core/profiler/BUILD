@@ -135,9 +135,17 @@ cc_library(
 )
 
 filegroup(
-    name = "mobile_srcs",
+    name = "mobile_srcs_no_runtime",
     srcs = [
-        "//tensorflow/core/profiler/lib:mobile_srcs",
+        "//tensorflow/core/profiler/lib:mobile_srcs_no_runtime",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "//tensorflow/core/profiler/lib:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

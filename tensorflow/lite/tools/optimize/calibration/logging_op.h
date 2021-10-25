@@ -23,6 +23,7 @@ namespace optimize {
 namespace calibration {
 
 typedef TfLiteStatus (*logging_kernel_func_ptr)(TfLiteContext* context,
+                                                const int subgraph_index,
                                                 TfLiteNode* node,
                                                 Logger* logger,
                                                 ErrorReporter* error_reporter);

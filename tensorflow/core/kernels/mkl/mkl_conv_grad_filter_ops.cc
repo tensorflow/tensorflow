@@ -420,12 +420,14 @@ class MklConvCustomBackpropFilterOp
       memory::dims fwd_dst_dims, fwd_dst_dims_tf_order;
 
       // Get forward convolution parameters.
+      bool is_grouped_convolution = false;
       MklDnnConvUtil conv_util(context, this->strides_, this->padding_,
                                this->data_format_, this->dilations_);
       conv_util.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &fwd_src_dims, &fwd_filter_dims,
           &strides, &dilations, &fwd_dst_dims_tf_order, &fwd_dst_dims,
-          &padding_left, &padding_right, false, is_depthwise);
+          &padding_left, &padding_right, &is_grouped_convolution, false,
+          is_depthwise);
       if (!context->status().ok()) return;
 
       bool is_conv2d = (this->strides_.size() == 4);
@@ -453,7 +455,7 @@ class MklConvCustomBackpropFilterOp
       memory::dims diff_bias_dims = {};
       int64 depth = 0;
       if (bias_enabled) {
-        TensorShape obp_tf_shape = GetTfShape(context, 2);
+        TensorShape obp_tf_shape = GetTfShape(context, 2, native_format);
         depth = (this->data_format_ == FORMAT_NCHW)
                     ? obp_tf_shape.dim_size(1)
                     : obp_tf_shape.dim_size(is_conv2d ? 3 : 4);
@@ -483,7 +485,7 @@ class MklConvCustomBackpropFilterOp
       diff_filter_mkl_shape.SetMklTensor(false);
 
       if (is_conv2d) {
-        if (!is_depthwise) {
+        if (!is_depthwise && !is_grouped_convolution) {
           // Conv2D: output_dims_mkl_order is in OIHW format.
           TensorShape diff_filter_tf_shape(
               {diff_filter_dims[MklDnnDims::Dim_H],
@@ -493,7 +495,7 @@ class MklConvCustomBackpropFilterOp
           AllocateOutputSetMklShape(context, 0, &diff_filter_tensor,
                                     diff_filter_tf_shape, diff_filter_mkl_shape,
                                     native_format);
-        } else {
+        } else if (is_depthwise) {
           // Depthwise Conv2d: diff_filter_dims is GOIHW format.
           //                  | TensorFlow       | MKLDNN
           // ----------------------------------------------------------------
@@ -511,6 +513,22 @@ class MklConvCustomBackpropFilterOp
                diff_filter_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_G],
                diff_filter_dims
                    [MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_O]});
+          AllocateOutputSetMklShape(context, 0, &diff_filter_tensor,
+                                    diff_filter_tf_shape, diff_filter_mkl_shape,
+                                    native_format);
+        } else {
+          // For group convolution, we have group_count == in_depth /
+          // filter_in_depth. So here G = in_depth / filter_in_depth, and
+          // O = original O / group_count.
+          // And the GOIHW is mkldnn format, here we try to extract the TF
+          // format, TF format is HWIO, here O is O * G.
+          TensorShape diff_filter_tf_shape(
+              {diff_filter_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_H],
+               diff_filter_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_W],
+               diff_filter_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_I],
+               diff_filter_dims[MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_O] *
+                   diff_filter_dims
+                       [MklDnnFilterGroupDims::MKL_GROUP_FILTER_DIM_G]});
           AllocateOutputSetMklShape(context, 0, &diff_filter_tensor,
                                     diff_filter_tf_shape, diff_filter_mkl_shape,
                                     native_format);
@@ -560,7 +578,14 @@ class MklConvCustomBackpropFilterOp
       }
 
       DCHECK(!diff_filter_mkl_shape.IsMklTensor());
-      auto diff_filter_format = GetOutputFormat(mkl_fmt_tag);
+      // Output layout is Tensorflow's filter layout
+      //   Conv2D: HWIO;  Conv3D: DHWIO; Depthwise Conv: HWIGO; Group Conv:
+      //   HWIGO
+      auto diff_filter_format =
+          (is_depthwise || is_grouped_convolution)
+              ? memory::format_tag::hwigo
+              : ((this->strides_.size() == 4) ? memory::format_tag::hwio
+                                              : memory::format_tag::dhwio);
       auto diff_filter_md =
           memory::desc(diff_filter_dims, MklDnnType<T>(), diff_filter_format);
 
@@ -664,15 +689,6 @@ class MklConvCustomBackpropFilterOp
     return fwd_filter_dims;
   }
 
-  // Output layout is Tensorflow's filter layout
-  //   Conv2D: HWIO;  Conv3D: DHWIO; Depthwise Conv: HWIGO
-  memory::format_tag GetOutputFormat(const memory::format_tag data_format) {
-    return is_depthwise
-               ? memory::format_tag::hwigo
-               : ((this->strides_.size() == 4) ? memory::format_tag::hwio
-                                               : memory::format_tag::dhwio);
-  }
-
   void AllocateOutputTensor(OpKernelContext* context,
                             const memory::dims& output_dims_mkl_order,
                             Tensor** output_tensor) {
@@ -704,7 +720,7 @@ class MklConvCustomBackpropFilterOp
     MklDnnShape bias_grad_mkl_shape;
     bias_grad_mkl_shape.SetMklTensor(false);
     AllocateOutputSetMklShape(context, 1, bias_grad_tensor, bias_grad_shape,
-                              bias_grad_mkl_shape);
+                              bias_grad_mkl_shape, native_format);
   }
 };
 
@@ -756,7 +772,13 @@ class MklConvCustomBackpropFilterOp
           .Device(DEVICE_CPU)                                            \
           .TypeConstraint<T>("T")                                        \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),                \
-      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, true>);
+      MklConvCustomBackpropFilterOp<CPUDevice, T, false, false, true>);  \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_MklNativeConv2DBackpropFilterWithBias")                     \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<T>("T")                                        \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel),                \
+      MklConvCustomBackpropFilterOp<CPUDevice, T, true, false, true>);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_FILTER_KERNELS);

@@ -46,7 +46,7 @@ class EmptyOp : public XlaOpKernel {
         errors::InvalidArgument("shape must be a vector of int32, got shape ",
                                 shape_shape.DebugString()));
 
-    std::vector<int64> shape;
+    std::vector<int64_t> shape;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("shape", &shape));
 
     auto default_value = xla::Zero(ctx->builder(), type_);

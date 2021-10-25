@@ -394,6 +394,207 @@ Status FractionalMaxPoolGradHelper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("FractionalMaxPool", FractionalMaxPoolGradHelper);
 
+// Templated constructor for FusedBatchNormGrad[..]::Attrs.
+template <typename T>
+T FusedBatchNormGradAttrs(float epsilon, std::string data_format,
+                          bool is_training) {
+  T result;
+  result.epsilon_ = epsilon;
+  result.data_format_ = data_format;
+  result.is_training_ = is_training;
+  return result;
+}
+
+using BatchNormGradFn =
+    std::function<Status(const Scope&, Output x, Output grad_y, Output scale,
+                         const std::vector<Output>& reserve_spaces,
+                         float epsilon, std::string data_format,
+                         bool is_training, std::vector<Output>* grad_outputs)>;
+
+Status BaseFusedBatchNormGrad(const Scope& scope, const Operation& op,
+                              const std::vector<Output>& grad_inputs,
+                              BatchNormGradFn grad_fn,
+                              std::vector<Output>* grad_outputs) {
+  if (op.num_outputs() < 5) {
+    return errors::InvalidArgument(
+        "FusedBatchNorm requires at least 5 outputs");
+  }
+  if (grad_inputs.empty()) {
+    return errors::InvalidArgument("FusedBatchNorm grad requires 1 grad input");
+  }
+  if (op.num_inputs() < 3) {
+    return errors::InvalidArgument("FusedBatchNorm has too few inputs");
+  }
+
+  Output x = op.input(0);
+  Output grad_y = grad_inputs[0];
+  Output scale = op.input(1);
+  float epsilon;
+  std::string data_format;
+  bool is_training;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "epsilon", &epsilon));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "data_format", &data_format));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "is_training", &is_training));
+
+  std::vector<Output> reserve_spaces;
+  reserve_spaces.push_back(op.output(3));
+  reserve_spaces.push_back(op.output(4));
+  if (op.num_outputs() > 5) {
+    reserve_spaces.push_back(op.output(5));
+  }
+
+  if (is_training) {
+    return grad_fn(scope, x, grad_y, scale, reserve_spaces, epsilon,
+                   data_format, is_training, grad_outputs);
+  } else {
+    if (op.num_inputs() < 5) {
+      return errors::InvalidArgument(
+          "FusedBatchNorm requires 5 inputs in eval mode");
+    }
+
+    reserve_spaces[0] = op.input(3);  // pop_mean
+    reserve_spaces[1] = op.input(4);  // pop_var
+    if (data_format == "NCHW") {
+      x = Transpose(scope, x, {0, 2, 3, 1});
+      grad_y = Transpose(scope, grad_y, {0, 2, 3, 1});
+    } else if (data_format == "NCDHW") {
+      x = Transpose(scope, x, {0, 2, 3, 4, 1});
+      grad_y = Transpose(scope, grad_y, {0, 2, 3, 4, 1});
+    }
+
+    std::string target_data_format;
+    if (data_format == "NCHW" || data_format == "NHWC") {
+      target_data_format = "NHWC";
+    } else {
+      target_data_format = "NDHWC";
+    }
+
+    TF_RETURN_IF_ERROR(grad_fn(scope, x, grad_y, scale, reserve_spaces, epsilon,
+                               target_data_format, is_training, grad_outputs));
+    if (data_format == "NCHW") {
+      (*grad_outputs)[0] = Transpose(scope, (*grad_outputs)[0], {0, 3, 1, 2});
+    } else if (data_format == "NCDHW") {
+      (*grad_outputs)[0] =
+          Transpose(scope, (*grad_outputs)[0], {0, 4, 1, 2, 3});
+    }
+    return scope.status();
+  }
+}
+
+Status FusedBatchNormV3Grad(const Scope& scope, const Operation& op,
+                            const std::vector<Output>& grad_inputs,
+                            std::vector<Output>* grad_outputs) {
+  return BaseFusedBatchNormGrad(
+      scope, op, grad_inputs,
+      [](const Scope& scope, Output x, Output grad_y, Output scale,
+         const std::vector<Output>& reserve_spaces, float epsilon,
+         std::string data_format, bool is_training,
+         std::vector<Output>* grad_outputs) {
+        FusedBatchNormGradV3 grad(
+            scope, grad_y, x, scale, reserve_spaces[0], reserve_spaces[1],
+            reserve_spaces[2],
+            FusedBatchNormGradAttrs<FusedBatchNormGradV3::Attrs>(
+                epsilon, data_format, is_training));
+        grad_outputs->push_back(grad.x_backprop);
+        grad_outputs->push_back(grad.scale_backprop);
+        grad_outputs->push_back(grad.offset_backprop);
+        grad_outputs->push_back(NoGradient());
+        grad_outputs->push_back(NoGradient());
+        return scope.status();
+      },
+      grad_outputs);
+}
+
+REGISTER_GRADIENT_OP("FusedBatchNormV3", FusedBatchNormV3Grad);
+
+Status Conv2DBackpropInputGrad(const Scope& scope, const Operation& op,
+                               const std::vector<Output>& grad_inputs,
+                               std::vector<Output>* grad_outputs) {
+  if (op.num_inputs() != 3) {
+    return errors::InvalidArgument("Conv2DBackpropInput requires 3 inputs.");
+  }
+  if (grad_inputs.empty()) {
+    return errors::InvalidArgument(
+        "Conv2DBackpropInput grad requires 1 grad input");
+  }
+
+  std::vector<int> dilations, strides, explicit_paddings;
+  bool use_cudnn_on_gpu;
+  std::string data_format, padding;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "dilations", &dilations));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "strides", &strides));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "explicit_paddings", &explicit_paddings));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "use_cudnn_on_gpu", &use_cudnn_on_gpu));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "padding", &padding));
+
+  grad_outputs->push_back(NoGradient());
+
+  Conv2DBackpropFilter::Attrs filter_attrs;
+  filter_attrs.use_cudnn_on_gpu_ = use_cudnn_on_gpu;
+  filter_attrs.explicit_paddings_ = explicit_paddings;
+  filter_attrs.data_format_ = data_format;
+  filter_attrs.dilations_ = dilations;
+  grad_outputs->push_back(
+      Conv2DBackpropFilter(scope, grad_inputs[0], Shape(scope, op.input(1)),
+                           op.input(2), strides, padding, filter_attrs));
+
+  Conv2D::Attrs conv_attrs;
+  conv_attrs.use_cudnn_on_gpu_ = use_cudnn_on_gpu;
+  conv_attrs.explicit_paddings_ = explicit_paddings;
+  conv_attrs.data_format_ = data_format;
+  conv_attrs.dilations_ = dilations;
+  grad_outputs->push_back(
+      Conv2D(scope, grad_inputs[0], op.input(1), strides, padding, conv_attrs));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Conv2DBackpropInput", Conv2DBackpropInputGrad);
+
+Status DepthwiseConv2dNativeGrad(const Scope& scope, const Operation& op,
+                                 const std::vector<Output>& grad_inputs,
+                                 std::vector<Output>* grad_outputs) {
+  if (op.num_inputs() != 2) {
+    return errors::InvalidArgument("DepthwiseConv2dNative requires 2 inputs.");
+  }
+  if (grad_inputs.empty()) {
+    return errors::InvalidArgument(
+        "DepthwiseConv2dNative grad requires 1 grad input");
+  }
+
+  std::vector<int> dilations, strides, explicit_paddings;
+  std::string data_format, padding;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "dilations", &dilations));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "strides", &strides));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "explicit_paddings", &explicit_paddings));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "padding", &padding));
+
+  DepthwiseConv2dNativeBackpropInput::Attrs input_attrs;
+  input_attrs.explicit_paddings_ = explicit_paddings;
+  input_attrs.data_format_ = data_format;
+  input_attrs.dilations_ = dilations;
+  grad_outputs->push_back(DepthwiseConv2dNativeBackpropInput(
+      scope, Shape(scope, op.input(0)), op.input(1), grad_inputs[0], strides,
+      padding, input_attrs));
+
+  DepthwiseConv2dNativeBackpropFilter::Attrs filter_attrs;
+  filter_attrs.explicit_paddings_ = explicit_paddings;
+  filter_attrs.data_format_ = data_format;
+  filter_attrs.dilations_ = dilations;
+  grad_outputs->push_back(DepthwiseConv2dNativeBackpropFilter(
+      scope, op.input(0), Shape(scope, op.input(1)), grad_inputs[0], strides,
+      padding, filter_attrs));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("DepthwiseConv2dNative", DepthwiseConv2dNativeGrad);
+
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow

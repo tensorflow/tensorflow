@@ -23,7 +23,9 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.preprocessing.text_dataset_from_directory', v1=[])
+@keras_export('keras.utils.text_dataset_from_directory',
+              'keras.preprocessing.text_dataset_from_directory',
+              v1=[])
 def text_dataset_from_directory(directory,
                                 labels='inferred',
                                 label_mode='int',

@@ -25,7 +25,7 @@ const char* const DebugNodeKey::kMetadataFilePrefix = "_tfdbg_";
 const char* const DebugNodeKey::kDeviceTag = "device_";
 
 DebugNodeKey::DebugNodeKey(const string& device_name, const string& node_name,
-                           const int32 output_slot, const string& debug_op)
+                           const int32_t output_slot, const string& debug_op)
     : device_name(device_name),
       node_name(node_name),
       output_slot(output_slot),

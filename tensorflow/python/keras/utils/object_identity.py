@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-import collections.abc as collections_abc
+import collections
 import weakref
 
 
@@ -115,7 +115,7 @@ class Reference(_ObjectIdentityWrapper):
     return self._wrapped
 
 
-class ObjectIdentityDictionary(collections_abc.MutableMapping):
+class ObjectIdentityDictionary(collections.abc.MutableMapping):
   """A mutable mapping data structure which compares using "is".
 
   This is necessary because we have trackable objects (_ListWrapper) which
@@ -173,7 +173,7 @@ class ObjectIdentityWeakKeyDictionary(ObjectIdentityDictionary):
         yield unwrapped
 
 
-class ObjectIdentitySet(collections_abc.MutableSet):
+class ObjectIdentitySet(collections.abc.MutableSet):
   """Like the built-in set, but compares objects with "is"."""
 
   __slots__ = ["_storage", "__weakref__"]

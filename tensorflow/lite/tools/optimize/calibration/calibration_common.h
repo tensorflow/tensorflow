@@ -54,6 +54,7 @@ enum class OperatorTensorType { kNone, kInput, kOutput, kIntermediate };
 
 // Information about an operator in the TfLite graph.
 struct OperatorInfo {
+  int subgraph_index;
   int node_index;
   std::string name;
   BuiltinOperator builtin_op_code;

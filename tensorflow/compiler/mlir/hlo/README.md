@@ -205,10 +205,14 @@ Exit:
 The MHLO dialect has no direct export format, it is only meant as an
 intermediate optimization dialect/format. It is also where we can experiment
 cheaply with new ops. This format will be where the representation would differ
-from existing end points.
+from existing endpoints.
 
 Status: Exists but need to be cleaned up and evolved, in particular with respect
 to supporting dynamic shapes.
+
+MHLO differs from XLA HLO op set in multiple ways, including:
+1. MHLO While accepts multiple operands and may produce multiple results
+   instead;
 
 ### LMHLO
 
@@ -231,3 +235,32 @@ Exit:
 ## End-to-End pipeline
 
 TODO
+
+## Alternative build setups
+
+### Building Python API
+
+Building the MHLO Python API requires building as an LLVM external project.
+The below instructions presume that you have this `mlir-hlo` repo and an
+`llvm-project` repo checked out side by side.
+
+Note that the python package produced by this procedure includes the `mlir`
+package and is not suitable for deployment as-is (but it can be included into
+a larger aggregate).
+
+```
+mkdir build && cd build
+cmake -GNinja -B. ${LLVM_SRC_DIR}/llvm \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DLLVM_ENABLE_PROJECTS=mlir \
+    -DLLVM_EXTERNAL_PROJECTS=mlir_hlo \
+    -DLLVM_EXTERNAL_MLIR_HLO_SOURCE_DIR=${MLIR_HLO_SRC_DIR} \
+    -DLLVM_TARGETS_TO_BUILD=host \
+    -DPython3_EXECUTABLE=$(which python) \
+    -DMLIR_ENABLE_BINDINGS_PYTHON=ON \
+    -DMHLO_ENABLE_BINDINGS_PYTHON=ON
+
+ninja MLIRHLOPythonModules
+export PYTHONPATH=$PWD/tools/mlir_hlo/python_packages/mlir_hlo
+python -c "import mlir.dialects.mhlo"
+```

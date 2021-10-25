@@ -47,7 +47,7 @@ bool IsSameComputationExceptParams(const HloInstruction* a,
     return a == b;
   }
   // Otherwise recursively compare all operands.
-  for (int64 i = 0; i < a->operand_count(); ++i) {
+  for (int64_t i = 0; i < a->operand_count(); ++i) {
     if (!IsSameComputationExceptParams(a->operand(i), b->operand(i))) {
       return false;
     }
@@ -58,7 +58,7 @@ bool IsSameComputationExceptParams(const HloInstruction* a,
 // Check that the comparison computation has been modified to add a tie breaker
 // using 'iota_parameter'.
 void CheckComputationHasTieBreaker(const HloInstruction* root,
-                                   int64 iota_parameter) {
+                                   int64_t iota_parameter) {
   // With the tie breaker, the root instruction should be
   //   Select(Eq(Comp(), CompReverse()), Lt(), Comp())
   // with Comp() being the original comparison function, and CompReverse() being

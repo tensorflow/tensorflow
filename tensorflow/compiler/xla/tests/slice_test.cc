@@ -201,10 +201,10 @@ XLA_TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
 }
 
 struct R1Spec {
-  int64 input_dim0;
-  int64 slice_start;
-  int64 slice_limit;
-  int64 slice_stride;
+  int64_t input_dim0;
+  int64_t slice_start;
+  int64_t slice_limit;
+  int64_t slice_stride;
 };
 
 // Parameterized test that generates R1 values, slices them according
@@ -255,9 +255,9 @@ XLA_TEST_P(SliceR1Test, DoIt_U32) { Run<uint32>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_S32) { Run<int32>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_U64) { Run<uint64>(GetParam()); }
+XLA_TEST_P(SliceR1Test, DoIt_U64) { Run<uint64_t>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_S64) { Run<int64>(GetParam()); }
+XLA_TEST_P(SliceR1Test, DoIt_S64) { Run<int64_t>(GetParam()); }
 
 // TODO(b/69425338): The following tests are disable on GPU because they use
 // too much GPU memory.
@@ -278,11 +278,11 @@ XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S32)) {
 }
 
 XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_U64)) {
-  Run<uint64>(GetParam());
+  Run<uint64_t>(GetParam());
 }
 
 XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S64)) {
-  Run<int64>(GetParam());
+  Run<int64_t>(GetParam());
 }
 
 XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
@@ -385,12 +385,12 @@ INSTANTIATE_TEST_CASE_P(
 // clang-format on
 
 struct R2Spec {
-  int64 input_dim0;
-  int64 input_dim1;
-  std::array<int64, 2> slice_starts;
-  std::array<int64, 2> slice_limits;
-  std::array<int64, 2> slice_strides;
-  std::array<int64, 2> layout;
+  int64_t input_dim0;
+  int64_t input_dim1;
+  std::array<int64_t, 2> slice_starts;
+  std::array<int64_t, 2> slice_limits;
+  std::array<int64_t, 2> slice_strides;
+  std::array<int64_t, 2> layout;
 };
 
 // Parameterized test that generates patterned R2 values, slices them according
@@ -470,11 +470,11 @@ INSTANTIATE_TEST_CASE_P(
         ));
 
 struct R4Spec {
-  std::array<int64, 4> input_dims;
-  std::array<int64, 4> input_layout;  // minor-to-major
-  std::array<int64, 4> slice_starts;
-  std::array<int64, 4> slice_limits;
-  std::array<int64, 4> slice_strides;
+  std::array<int64_t, 4> input_dims;
+  std::array<int64_t, 4> input_layout;  // minor-to-major
+  std::array<int64_t, 4> slice_starts;
+  std::array<int64_t, 4> slice_limits;
+  std::array<int64_t, 4> slice_strides;
 };
 
 string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {

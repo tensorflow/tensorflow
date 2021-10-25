@@ -70,7 +70,7 @@ class CurlHttpRequest : public HttpRequest {
   /// Sets a request header.
   void AddHeader(const string& name, const string& value) override;
 
-  void AddResolveOverride(const string& hostname, int64 port,
+  void AddResolveOverride(const string& hostname, int64_t port,
                           const string& ip_addr) override;
 
   /// Sets the 'Authorization' header to the value of 'Bearer ' + auth_token.

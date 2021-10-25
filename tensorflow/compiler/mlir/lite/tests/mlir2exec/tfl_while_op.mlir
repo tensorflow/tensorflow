@@ -9,11 +9,11 @@
 
 // Verify tensors in interpreter state:
 // ------------------------------------
-// CHECK: Tensor 0 pconst kTfLiteInt32 kTfLiteMmapRo 4B ( 0.0 MB) (null)
-// CHECK-NEXT: Tensor 1 N kTfLiteInt32 kTfLiteMmapRo 4B ( 0.0 MB) (null)
-// CHECK-NEXT: Tensor 2 val kTfLiteFloat32 kTfLiteMmapRo 4B ( 0.0 MB) [1]
-// CHECK-NEXT: Tensor 3 tfl.while kTfLiteInt32 kTfLiteArenaRw 4B ( 0.0 MB) (null)
-// CHECK-NEXT: Tensor 4 result kTfLiteFloat32 kTfLiteArenaRw 4B ( 0.0 MB) [1]
+// CHECK: Tensor 0 val kTfLiteFloat32 kTfLiteMmapRo 4 / 0.00 [1] [{{.*}})
+// CHECK-NEXT: Tensor 1 N kTfLiteInt32 kTfLiteMmapRo 4 / 0.00 (null) [{{.*}})
+// CHECK-NEXT: Tensor 2 pconst kTfLiteInt32 kTfLiteMmapRo 4 / 0.00 (null) [{{.*}})
+// CHECK-NEXT: Tensor 3 tfl.while kTfLiteInt32 kTfLiteArenaRw 4 / 0.00 (null) [{{.*}})
+// CHECK-NEXT: Tensor 4 result kTfLiteFloat32 kTfLiteArenaRw 4 / 0.00 [1] [{{.*}})
 
 // Verify while was not folded away:
 // ------------------------------------
@@ -21,12 +21,12 @@
 
 func @main() -> (tensor<1xf32>, tensor<i32>)
     attributes {tf.entry_function = {outputs = "result,pconst"}} {
-  %cst = constant dense<1> : tensor<i32> loc("dec")
-  %arg0 = constant dense<5> : tensor<i32> loc("N")
-  %arg1 = constant dense<3.0> : tensor<1xf32> loc("val")
+  %cst = arith.constant dense<1> : tensor<i32> loc("dec")
+  %arg0 = arith.constant dense<5> : tensor<i32> loc("N")
+  %arg1 = arith.constant dense<3.0> : tensor<1xf32> loc("val")
   %0:3 = "tfl.while"(%arg0, %arg1, %cst) ( {
     ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>, %arg4: tensor<i32>):
-      %cst_0 = constant dense<0> : tensor<i32>
+      %cst_0 = arith.constant dense<0> : tensor<i32>
       %1 = "tfl.greater"(%arg2, %cst_0) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
       "tfl.yield"(%1) : (tensor<i1>) -> ()
   },  {

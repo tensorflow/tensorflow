@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -36,7 +37,7 @@ namespace {
 //  %1 = "tf.DeviceIndex"()
 //          {device = "", device_names = ["CPU", "GPU"]} : () -> tensor<i32>
 //  %4 = "tf.Case"(%1, %arg0, %arg1)
-//          {branches = [@foo, @baz], output_shapes = [#tf.shape<>]} :
+//          {branches = [@foo, @baz], output_shapes = [#tf_type.shape<>]} :
 //            (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
 // ```
 //
@@ -44,7 +45,7 @@ namespace {
 // executed to produce the same values but with different functions optimized
 // for CPU or GPU.
 struct DeviceIndexSelector
-    : public PassWrapper<DeviceIndexSelector, OperationPass<FuncOp>> {
+    : public DeviceIndexSelectorPassBase<DeviceIndexSelector> {
   void runOnOperation() override;
 };
 
@@ -67,7 +68,7 @@ void DeviceIndexSelector::runOnOperation() {
     }
     DenseElementsAttr attr =
         DenseElementsAttr::get(type, b.getI32IntegerAttr(index));
-    auto constant = b.create<ConstantOp>(op.getLoc(), type, attr);
+    auto constant = b.create<arith::ConstantOp>(op.getLoc(), type, attr);
     op.replaceAllUsesWith(constant.getOperation());
     op.erase();
   });
@@ -77,9 +78,6 @@ void DeviceIndexSelector::runOnOperation() {
 std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass() {
   return std::make_unique<DeviceIndexSelector>();
 }
-
-static PassRegistration<DeviceIndexSelector> pass(
-    "tf-device-index-selector", "Fold tf.DeviceIndex to constant");
 
 }  // namespace TF
 }  // namespace mlir

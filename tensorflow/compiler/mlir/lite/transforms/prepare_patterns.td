@@ -22,8 +22,14 @@ def NonOpaqueElementsAttr : ElementsAttrBase<
   CPred<"!$_self.isa<OpaqueElementsAttr>()">,
   "non-opaque constant tensor">;
 
+def CreateGatherNdOp : NativeCodeCall<
+    "$_builder.create<TF::GatherNdOp>($0.getLoc(), $0.getType(), $1, $2)">;
+
+def CreateTFCastOpI32 : NativeCodeCall<
+    "CreateTFCastOpI32(&$_builder, $_loc, $0, $1)">;
+
 // Convert to std constant for statically shaped, non-opaque constants.
-def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (ConstantOp $value),
+def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (Arith_ConstantOp $value),
           [(AnyStaticShapeTensor $res)]>;
 
 // Convert the legacy BatchNormWithGlobalNormalization to other ops.
@@ -137,13 +143,36 @@ def : Pat<(TF_RankOp (TFL_DequantizeOp (TFL_QuantizeOp $input, $qtype))),
 
 // `k` is expected to be 0, other values are not supported currently.
 def : Pat<(TF_MatrixSetDiagV2Op $input, $diagonal,
-            (ConstantOp ConstantAttr<I32ElementsAttr, "{0}">)),
+            (Arith_ConstantOp ConstantAttr<I32ElementsAttr, "{0}">)),
           (TF_MatrixSetDiagOp $input, $diagonal)>;
 
 // `align` attribute can be ignored because we only support converting
 // `MatrixSetDiagV3` to `MatrixSetDiag` with default `k` inputs.
 def : Pat<(TF_MatrixSetDiagV3Op $input, $diagonal,
-            (ConstantOp ConstantAttr<I32ElementsAttr, "{0}">),
+            (Arith_ConstantOp ConstantAttr<I32ElementsAttr, "{0}">),
             $align),
           (TF_MatrixSetDiagOp $input, $diagonal)>;
 
+//===----------------------------------------------------------------------===//
+// TensorScatterAdd op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerTensorScatterAdd: Pat<
+  (TF_TensorScatterAddOp $input, $indices, $updates),
+  (TF_TensorScatterUpdateOp $input, $indices,
+     (TF_AddOp $updates, (CreateGatherNdOp $updates, $input, $indices)))>;
+
+//===----------------------------------------------------------------------===//
+// AddV2 op patterns.
+//===----------------------------------------------------------------------===//
+
+// This is mostly safe, we can use i64 but it will break Darwinn case.
+// TODO(b/199054442): Change to i64 when Darwinn supports i64.
+def LowerUInt32AddV2 : Pat<
+  (TF_AddV2Op $lhs, $rhs),
+  (TF_CastOp
+    (TF_AddV2Op
+      (CreateTFCastOpI32 $lhs, /*truncate=*/ConstBoolAttrFalse),
+      (CreateTFCastOpI32 $rhs, /*truncate=*/ConstBoolAttrFalse)),
+     /*truncate=*/ConstBoolAttrFalse),
+  [(TensorOf<[TF_Uint32]> $lhs), (TensorOf<[TF_Uint32]> $rhs)]>;

@@ -27,9 +27,9 @@ import numpy as np
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import cardinality
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -1685,7 +1685,7 @@ def infer_steps_for_dataset(model,
   assert isinstance(dataset, dataset_ops.DatasetV2)
   if (model._in_multi_worker_mode() and
       (dataset.options().experimental_distribute.auto_shard_policy !=
-       distribute_options.AutoShardPolicy.OFF)):
+       options_lib.AutoShardPolicy.OFF)):
     # If the dataset would be auto-sharded, we should not infer a local
     # steps_per_epoch due to the possible inbalanced sharding between workers.
     return None

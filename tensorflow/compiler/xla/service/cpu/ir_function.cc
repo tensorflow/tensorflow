@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iterator>
-
 #include "tensorflow/compiler/xla/service/cpu/ir_function.h"
+
+#include <iterator>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -27,13 +27,14 @@ namespace xla {
 namespace cpu {
 
 static std::vector<llvm::Type*> GetComputeFunctionParams(
-    llvm::Module* llvm_module, const int64 num_dynamic_loop_bounds) {
+    llvm::Module* llvm_module, const int64_t num_dynamic_loop_bounds) {
   llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(llvm_module->getContext());
   llvm::Type* i8_ptr_ptr_type = i8_ptr_type->getPointerTo();
   llvm::Type* i64_ptr_type =
       llvm::Type::getInt64PtrTy(llvm_module->getContext());
   std::vector<llvm::Type*> compute_function_params(
-      {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type});
+      {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type,
+       i8_ptr_type});
   if (num_dynamic_loop_bounds > 0) {
     compute_function_params.push_back(i64_ptr_type);
   }
@@ -45,7 +46,7 @@ IrFunction::IrFunction(const string& function_name,
                        llvm::Function::LinkageTypes linkage,
                        const HloModuleConfig& module_config,
                        llvm::Module* llvm_module, llvm::IRBuilder<>* b,
-                       int64 num_dynamic_loop_bounds)
+                       int64_t num_dynamic_loop_bounds)
     : b_(b),
       llvm_module_(llvm_module),
       caller_insert_point_guard_(*b),
@@ -54,8 +55,8 @@ IrFunction::IrFunction(const string& function_name,
 }
 
 IrFunction::~IrFunction() {
-  // Emit function return value.
-  b_->CreateRetVoid();
+  // Branch to function return.
+  b_->CreateBr(return_block_);
 }
 
 DynamicLoopBounds IrFunction::GetDynamicLoopBounds() {
@@ -153,6 +154,8 @@ void IrFunction::Initialize(const string& function_name,
   parameters_arg_ = &*arg_iter;
   (++arg_iter)->setName("buffer_table");
   buffer_table_arg_ = &*arg_iter;
+  (++arg_iter)->setName("status");
+  status_arg_ = &*arg_iter;
   if (num_dynamic_loop_bounds_ > 0) {
     (++arg_iter)->setName("dynamic_loop_bounds");
     dynamic_loop_bounds_arg_ = &*arg_iter;
@@ -169,16 +172,24 @@ void IrFunction::Initialize(const string& function_name,
     if (&argument == retval) {
       continue;
     }
-    function_->addAttribute(argument.getArgNo() + 1, llvm::Attribute::NoAlias);
+    function_->addParamAttr(argument.getArgNo(), llvm::Attribute::NoAlias);
   }
+
+  return_block_ =
+      llvm::BasicBlock::Create(/*Context=*/llvm_module_->getContext(),
+                               /*Name=*/"return", /*Parent=*/function_);
+
+  b_->SetInsertPoint(return_block_);
+  b_->CreateRetVoid();
 
   b_->SetInsertPoint(llvm::BasicBlock::Create(
       /*Context=*/llvm_module_->getContext(),
       /*Name=*/"entry",
-      /*Parent=*/function_));
+      /*Parent=*/function_,
+      /*InsertBefore=*/return_block_));
 }
 
-llvm::Value* IrFunction::GetDynamicLoopBound(const int64 offset) {
+llvm::Value* IrFunction::GetDynamicLoopBound(const int64_t offset) {
   CHECK_GT(num_dynamic_loop_bounds_, 0);
   CHECK_LT(offset, num_dynamic_loop_bounds_ * 2);
   string name = absl::StrCat("dynamic_loop_bound_", offset);
@@ -218,28 +229,28 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
     absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
     absl::string_view name, llvm::Value* return_value_buffer,
     llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
-    llvm::Value* profile_counters_arg) {
+    llvm::Value* status_arg, llvm::Value* profile_counters_arg) {
   llvm::Value* parameter_addresses_buffer =
       EncodeArrayFunctionArguments(parameter_addresses, name, b);
 
   const auto to_int8_ptr = [=](llvm::Value* ptr) {
     return b->CreatePointerCast(ptr, b->getInt8PtrTy());
   };
-  std::vector<llvm::Value*> arguments{
-      to_int8_ptr(return_value_buffer), to_int8_ptr(exec_run_options_arg),
-      parameter_addresses_buffer, buffer_table_arg};
-  if (profile_counters_arg != nullptr) {
-    arguments.push_back(profile_counters_arg);
-  }
-  return arguments;
+  return std::vector<llvm::Value*>{to_int8_ptr(return_value_buffer),
+                                   to_int8_ptr(exec_run_options_arg),
+                                   parameter_addresses_buffer,
+                                   buffer_table_arg,
+                                   status_arg,
+                                   profile_counters_arg};
 }
 
 // Emits a call to a runtime fork/join function which dispatches parallel
 // calls to 'parallel_function' (and joins threads before returning).
 Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    const std::vector<int64>& dimension_partition_counts, llvm::IRBuilder<>* b,
-    llvm::Function* parallel_function, const string& name) {
+    const std::vector<int64_t>& dimension_partition_counts,
+    llvm::IRBuilder<>* b, llvm::Function* parallel_function,
+    const string& name) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
 
   // Build ParallelForkJoin function type.
@@ -275,32 +286,32 @@ Status EmitCallToParallelForkJoin(
 
   // Create ShapePartitionIterator to generate all partitions of 'shape'.
   ShapePartitionIterator partition_iterator(shape, dimension_partition_counts);
-  const int64 num_partitions = partition_iterator.GetTotalPartitionCount();
+  const int64_t num_partitions = partition_iterator.GetTotalPartitionCount();
   // Add argument specifying the number of parallel partitions.
   fork_join_arguments.push_back(b->getInt32(num_partitions));
 
   // The number of partitioned most-major dimensions in 'shape'.
-  const int32 num_partitioned_dims = dimension_partition_counts.size();
+  const int32_t num_partitioned_dims = dimension_partition_counts.size();
   // A dimension partition consists of two elements: [start_index, limit_index).
-  const int32 dim_partition_size = 2;
+  const int32_t dim_partition_size = 2;
   // Calculate array partition stride.
-  const int32 array_partition_stride =
+  const int32_t array_partition_stride =
       num_partitioned_dims * dim_partition_size;
   // Calculate the total number of elements in the partition array.
-  const int32 partition_array_size =
+  const int32_t partition_array_size =
       dim_partition_size * num_partitioned_dims * num_partitions;
 
   // Store dimension partition values as llvm constants in 'partitions'.
   // See comments in runtime_fork_join.cc for array layout description.
   std::vector<llvm::Constant*> partitions(partition_array_size);
-  for (int32 i = 0; i < num_partitions; ++i) {
-    std::vector<std::pair<int64, int64>> dim_partitions =
+  for (int32_t i = 0; i < num_partitions; ++i) {
+    std::vector<std::pair<int64_t, int64_t>> dim_partitions =
         partition_iterator.GetPartition(i);
     CHECK_EQ(num_partitioned_dims, dim_partitions.size());
-    const int32 partition_index = i * array_partition_stride;
-    for (int32 j = 0; j < num_partitioned_dims; ++j) {
-      const std::pair<int64, int64>& dim_partition = dim_partitions[j];
-      const int32 index = partition_index + j * dim_partition_size;
+    const int32_t partition_index = i * array_partition_stride;
+    for (int32_t j = 0; j < num_partitioned_dims; ++j) {
+      const std::pair<int64_t, int64_t>& dim_partition = dim_partitions[j];
+      const int32_t index = partition_index + j * dim_partition_size;
       // Store partition [dim_start, dim_limit) intervals for each dimension.
       partitions[index] = b->getInt64(dim_partition.first);
       partitions[index + 1] =

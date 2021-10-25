@@ -21,7 +21,7 @@ versions {
 }
 
 # CHECK-LABEL: func @main
-# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<8xi32>) -> tensor<8xi32>
+# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<8xi32> loc({{.*}})) -> tensor<8xi32>
 # CHECK-SAME:  control_outputs = ""
 # CHECK-SAME:  inputs = "arg"
 # CHECK-SAME:  outputs = "arg"

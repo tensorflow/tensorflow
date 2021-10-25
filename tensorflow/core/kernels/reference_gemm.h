@@ -32,9 +32,10 @@ limitations under the License.
 namespace tensorflow {
 template <class T1, class T2, class T3>
 void ReferenceGemm(bool transpose_a, bool transpose_b, bool transpose_c,
-                   size_t m, size_t n, size_t k, const T1* a, int32 offset_a,
-                   size_t lda, const T2* b, int32 offset_b, size_t ldb, T3* c,
-                   int32 shift_c, int32 offset_c, int32 mult_c, size_t ldc) {
+                   size_t m, size_t n, size_t k, const T1* a, int32_t offset_a,
+                   size_t lda, const T2* b, int32_t offset_b, size_t ldb, T3* c,
+                   int32_t shift_c, int32_t offset_c, int32_t mult_c,
+                   size_t ldc) {
   int a_i_stride;
   int a_l_stride;
   if (transpose_a) {
@@ -63,19 +64,19 @@ void ReferenceGemm(bool transpose_a, bool transpose_b, bool transpose_c,
     c_j_stride = 1;
   }
 
-  const int32 highest = static_cast<int32>(Eigen::NumTraits<T3>::highest());
-  const int32 lowest = static_cast<int32>(Eigen::NumTraits<T3>::lowest());
-  const int32 rounding = (shift_c < 1) ? 0 : (1 << (shift_c - 1));
+  const int32_t highest = static_cast<int32>(Eigen::NumTraits<T3>::highest());
+  const int32_t lowest = static_cast<int32>(Eigen::NumTraits<T3>::lowest());
+  const int32_t rounding = (shift_c < 1) ? 0 : (1 << (shift_c - 1));
 
   int i, j, l;
   for (j = 0; j < n; j++) {
     for (i = 0; i < m; i++) {
-      int32 total = 0;
+      int32_t total = 0;
       for (l = 0; l < k; l++) {
         const size_t a_index = ((i * a_i_stride) + (l * a_l_stride));
-        const int32 a_value = static_cast<int32>(a[a_index]) - offset_a;
+        const int32_t a_value = static_cast<int32>(a[a_index]) - offset_a;
         const size_t b_index = ((j * b_j_stride) + (l * b_l_stride));
-        const int32 b_value = static_cast<int32>(b[b_index]) - offset_b;
+        const int32_t b_value = static_cast<int32>(b[b_index]) - offset_b;
         total += (a_value * b_value);
       }
       const size_t c_index = ((i * c_i_stride) + (j * c_j_stride));

@@ -7,8 +7,7 @@ The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
 , TensorFlow devel docker image
 [tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
-**Note:** This feature is currently experimental and available since version 2.4
-and may change.
+**Note:** This feature is available since version 2.4.
 
 ### Prerequisites
 

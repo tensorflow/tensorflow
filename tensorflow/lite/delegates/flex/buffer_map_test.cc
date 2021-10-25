@@ -77,8 +77,8 @@ tensorflow::Tensor MakeTensor(const std::vector<int>& shape,
   return buffer_map.GetTensor(0);
 }
 
-std::vector<tensorflow::int64> GetTensorShape(const tensorflow::Tensor& t) {
-  std::vector<tensorflow::int64> shape(t.dims());
+std::vector<int64_t> GetTensorShape(const tensorflow::Tensor& t) {
+  std::vector<int64_t> shape(t.dims());
   for (int i = 0; i < t.dims(); ++i) {
     shape[i] = t.dim_size(i);
   }
@@ -221,9 +221,3 @@ TEST(BufferMapTest, TensorFlowOverwritesTfLite) {
 }  // namespace
 }  // namespace flex
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

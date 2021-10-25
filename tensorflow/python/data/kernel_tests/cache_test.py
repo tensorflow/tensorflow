@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.cache()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import os
 from os import path
@@ -182,6 +178,18 @@ class FileCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda a: a).batch(4).repeat(2)
     expected_output = [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]] * 2
     self.assertDatasetProduces(dataset, expected_output)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheZipped(self):
+    def make_dataset(i):
+      cache_path = self.cache_prefix + "_" + str(i)
+      return dataset_ops.Dataset.range(100).shuffle(100).cache(cache_path)
+
+    datasets = [make_dataset(i) for i in range(3)]
+    dataset = dataset_ops.Dataset.zip(tuple(datasets))
+    first_order = self.getDatasetOutput(dataset)
+    second_order = self.getDatasetOutput(dataset)
+    self.assertEqual(first_order, second_order)
 
   @combinations.generate(test_base.default_test_combinations())
   def testCleaningUpCacheFiles(self):
@@ -420,11 +428,17 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).cache(name="cache")
+    self.assertDatasetProduces(dataset, [42])
+
 
 class CacheCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                           parameterized.TestCase):
 
   def setUp(self):
+    super(CacheCheckpointTest, self).setUp()
     self.range_size = 10
     self.num_repeats = 3
     self.num_outputs = self.range_size * self.num_repeats

@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Import router for file_io."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.lib.io.file_io import copy as Copy
 from tensorflow.python.lib.io.file_io import create_dir as MkDir

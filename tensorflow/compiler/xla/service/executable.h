@@ -366,7 +366,7 @@ class Executable {
   // not supported by the executable.
   //
   // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
-  virtual int64 SizeOfGeneratedCodeInBytes() const;
+  virtual int64_t SizeOfGeneratedCodeInBytes() const;
 
   // Dumping helpers.
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
@@ -399,7 +399,7 @@ class Executable {
 
   // Execution count, used to generate a unique filename for each dumped
   // execution.
-  int64 execution_count_ = 0;
+  int64_t execution_count_ = 0;
 
   std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map_;

@@ -34,10 +34,6 @@ raw PCM data (as floats in the range -1.0 to 1.0) called 'decoded_sample_data',
 and the output is called 'labels_softmax'.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import os.path
 import sys

@@ -17,10 +17,6 @@
 Adapted from Tangent.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 import inspect
 import linecache
@@ -38,17 +34,13 @@ from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.util import tf_inspect
 
 
-if sys.version_info >= (3, 9):
-  # ast has an unparse function in 3.9+
-  astunparse = ast
-
-
 PY2_PREAMBLE = textwrap.dedent("""
-from __future__ import division
-from __future__ import print_function
 """)
 PY3_PREAMBLE = ''
 MAX_SIZE = 0
+
+if sys.version_info >= (3, 9):
+  astunparse = ast
 
 if sys.version_info >= (3,):
   STANDARD_PREAMBLE = PY3_PREAMBLE
@@ -154,14 +146,14 @@ def parse_entity(entity, future_features):
 
   try:
     original_source = inspect_utils.getimmediatesource(entity)
-  except (IOError, OSError) as e:
-    raise ValueError(
-        'Unable to locate the source code of {}. Note that functions defined'
-        ' in certain environments, like the interactive Python shell do not'
-        ' expose their source code. If that is the case, you should to define'
-        ' them in a .py source file. If you are certain the code is'
+  except OSError as e:
+    raise errors.InaccessibleSourceCodeError(
+        f'Unable to locate the source code of {entity}. Note that functions'
+        ' defined in certain environments, like the interactive Python shell,'
+        ' do not expose their source code. If that is the case, you should'
+        ' define them in a .py source file. If you are certain the code is'
         ' graph-compatible, wrap the call using'
-        ' @tf.autograph.do_not_convert. Original error: {}'.format(entity, e))
+        f' @tf.autograph.experimental.do_not_convert. Original error: {e}')
 
   source = dedent_block(original_source)
 
@@ -304,9 +296,10 @@ def _parse_lambda(lam):
     return _without_context(node, lines, minl, maxl)
 
   elif not candidates:
+    lambda_codes = '\n'.join([unparse(l) for l in lambda_nodes])
     raise errors.UnsupportedLanguageElementError(
-        'could not parse the source code of {}:'
-        ' no matching AST found'.format(lam))
+        f'could not parse the source code of {lam}:'
+        f' no matching AST found among candidates:\n{lambda_codes}')
 
   # Attempt to narrow down selection by signature is multiple nodes are found.
   matches = [v for v in candidates if _node_matches_argspec(v[0], lam)]
@@ -319,10 +312,10 @@ def _parse_lambda(lam):
       'Match {}:\n{}\n'.format(i, unparse(node, include_encoding_marker=False))
       for i, (node, _, _) in enumerate(matches))
   raise errors.UnsupportedLanguageElementError(
-      'could not parse the source code of {}: found multiple definitions with'
-      ' identical signatures at the location. This error'
+      f'could not parse the source code of {lam}: found multiple definitions'
+      ' with identical signatures at the location. This error'
       ' may be avoided by defining each lambda on a single line and with'
-      ' unique argument names.\n{}'.format(lam, matches))
+      f' unique argument names. The matching definitions were:\n{matches}')
 
 
 # TODO(mdan): This should take futures as input instead.
@@ -345,7 +338,7 @@ def parse(src, preamble_len=0, single_node=True):
     nodes = nodes[preamble_len:]
   if single_node:
     if len(nodes) != 1:
-      raise ValueError('expected exactly one node, found {}'.format(nodes))
+      raise ValueError('expected exactly one node, got {}'.format(nodes))
     return nodes[0]
   return nodes
 
@@ -365,7 +358,7 @@ def parse_expression(src):
   if __debug__:
     if not isinstance(node, gast.Expr):
       raise ValueError(
-          'expected a single expression, found instead {}'.format(node))
+          'expected exactly one node of type Expr, got {}'.format(node))
   return node.value
 
 
@@ -392,7 +385,12 @@ def unparse(node, indentation=None, include_encoding_marker=True):
     codes.append('# coding=utf-8')
   for n in node:
     if isinstance(n, gast.AST):
-      n = gast.gast_to_ast(n)
-    codes.append(astunparse.unparse(n).strip())
+      ast_n = gast.gast_to_ast(n)
+    else:
+      ast_n = n
+
+    if astunparse is ast:
+      ast.fix_missing_locations(ast_n)  # Only ast needs to call this.
+    codes.append(astunparse.unparse(ast_n).strip())
 
   return '\n'.join(codes)

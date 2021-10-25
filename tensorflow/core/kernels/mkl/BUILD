@@ -24,6 +24,7 @@ MKL_SHORT_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/kernels:ops_util",
+    "//tensorflow/core/util:mkl_util",
 ] + mkl_deps()
 
 MKL_DEPS = MKL_SHORT_DEPS + [
@@ -53,18 +54,30 @@ MKL_TEST_DEPS = [
     "//tensorflow/core:testlib",
     "//tensorflow/core/kernels:ops_testutil",
     "//tensorflow/core/kernels:ops_util",
+    "//tensorflow/core/util:mkl_util",
 ]
 
 tf_mkl_kernel_library(
     name = "mkl_batch_matmul_op",
     srcs = ["mkl_batch_matmul_op.cc"],
     hdrs = [
+        "mkl_batch_matmul_helper.h",
         "mkl_matmul_ops_common.h",
     ],
     deps = [
         "//tensorflow/core/kernels:batch_matmul_op",
         "//tensorflow/core/kernels:matmul_op",
     ] + MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_einsum_op",
+    srcs = ["mkl_einsum_op.cc"],
+    hdrs = [
+        "mkl_batch_matmul_helper.h",
+        "mkl_matmul_ops_common.h",
+    ],
+    deps = ["//tensorflow/core/kernels/linalg:einsum_op"] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(
@@ -252,10 +265,8 @@ tf_mkl_kernel_library(
     name = "mkl_dequantize_op",
     srcs = ["mkl_dequantize_op.cc"],
     deps = [
-        "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
@@ -266,12 +277,12 @@ tf_mkl_kernel_library(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/kernels:meta_support",
-        "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/util:image_resizer_state",
+        "//tensorflow/core/util:mkl_util",
     ] + mkl_deps(),
 )
 
@@ -314,11 +325,9 @@ tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
     deps = [
-        "//third_party/eigen3",
-        "//tensorflow/core:framework",
         "//tensorflow/core/kernels:fused_batch_norm_op",
         "//tensorflow/core/kernels:no_op",
-    ] + mkl_deps(),
+    ] + MKL_DEPS,
 )
 
 tf_cc_test_mkl(
@@ -344,7 +353,10 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_concat_op",
     prefix = "mkl_concat_op",
-    deps = ["//tensorflow/core/kernels:quantization_utils"] + MKL_DEPS,
+    deps = [
+        "//tensorflow/core/kernels:no_op",
+        "//tensorflow/core/kernels:quantization_utils",
+    ] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(

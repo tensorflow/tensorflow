@@ -71,7 +71,7 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
 
         // Make sure all the inputs really are vectors, with as many entries as
         // there are columns in the weights.
-        int64 weights_cols;
+        int64_t weights_cols;
         if (conv_node.op() == "Conv2D") {
           weights_cols = weights.shape().dim_size(3);
         } else if (conv_node.op() == "DepthwiseConv2dNative") {
@@ -91,7 +91,7 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
         auto weights_vector = weights.flat<float>();
         Tensor scaled_weights(DT_FLOAT, weights.shape());
         auto scaled_weights_vector = scaled_weights.flat<float>();
-        for (int64 row = 0; row < weights_vector.dimension(0); ++row) {
+        for (int64_t row = 0; row < weights_vector.dimension(0); ++row) {
           scaled_weights_vector(row) =
               weights_vector(row) *
               mul_values.flat<float>()(row % weights_cols);

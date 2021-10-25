@@ -32,7 +32,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
-#include "tensorflow/compiler/xla/python/absl_casters.h"
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -586,12 +586,16 @@ std::unique_ptr<PyTreeDef> PyTreeDef::Compose(const PyTreeDef& inner) const {
 /*static*/ std::unique_ptr<PyTreeDef> PyTreeDef::Tuple(
     const std::vector<PyTreeDef>& defs) {
   auto out = absl::make_unique<PyTreeDef>();
+  int num_leaves = 0;
   for (const PyTreeDef& def : defs) {
     absl::c_copy(def.traversal_, std::back_inserter(out->traversal_));
+    num_leaves += def.num_leaves();
   }
   Node node;
   node.kind = PyTreeKind::kTuple;
   node.arity = defs.size();
+  node.num_leaves = num_leaves;
+  node.num_nodes = out->traversal_.size() + 1;
   out->traversal_.push_back(node);
   return out;
 }
@@ -628,48 +632,66 @@ std::string PyTreeDef::ToString() const {
       throw std::logic_error("Too few elements for container.");
     }
 
-    std::string kind;
+    std::string children =
+        absl::StrJoin(agenda.end() - node.arity, agenda.end(), ", ");
+    std::string representation;
     switch (node.kind) {
       case PyTreeKind::kLeaf:
         agenda.push_back("*");
         continue;
       case PyTreeKind::kNone:
-        kind = "None";
-        break;
-      case PyTreeKind::kNamedTuple:
-        kind = "namedtuple";
+        representation = "None";
         break;
       case PyTreeKind::kTuple:
-        kind = "tuple";
+        // Tuples with only one element must have a trailing comma.
+        if (node.arity == 1) children += ",";
+        representation = absl::StrCat("(", children, ")");
         break;
       case PyTreeKind::kList:
-        kind = "list";
+        representation = absl::StrCat("[", children, "]");
         break;
-      case PyTreeKind::kDict:
-        kind = "dict";
+      case PyTreeKind::kDict: {
+        if (py::len(node.node_data) != node.arity) {
+          throw std::logic_error("Number of keys and entries does not match.");
+        }
+        representation = "{";
+        std::string separator;
+        auto child_iter = agenda.end() - node.arity;
+        for (const py::handle& key : node.node_data) {
+          absl::StrAppendFormat(&representation, "%s%s: %s", separator,
+                                py::repr(key), *child_iter);
+          child_iter++;
+          separator = ", ";
+        }
+        representation += "}";
         break;
-      case PyTreeKind::kCustom:
-        kind = static_cast<std::string>(py::str(node.custom->type));
-        break;
-    }
+      }
 
-    std::string children =
-        absl::StrJoin(agenda.end() - node.arity, agenda.end(), ",");
+      case PyTreeKind::kNamedTuple:
+      case PyTreeKind::kCustom: {
+        std::string kind;
+        if (node.kind == PyTreeKind::kNamedTuple) {
+          kind = "namedtuple";
+        } else {
+          kind = static_cast<std::string>(py::str(node.custom->type));
+        }
+
+        std::string data;
+        if (node.node_data) {
+          data = absl::StrFormat("[%s]", py::str(node.node_data));
+        }
+        representation =
+            absl::StrFormat("CustomNode(%s%s, [%s])", kind, data, children);
+        break;
+      }
+    }
     agenda.erase(agenda.end() - node.arity, agenda.end());
-
-    std::string data;
-    if (node.node_data) {
-      data = absl::StrFormat("[%s]", py::str(node.node_data));
-    }
-
-    agenda.push_back(
-        absl::StrFormat("PyTreeDef(%s%s, [%s])", kind, data, children));
+    agenda.push_back(std::move(representation));
   }
-
   if (agenda.size() != 1) {
     throw std::logic_error("PyTreeDef traversal did not yield a singleton.");
   }
-  return std::move(agenda.back());
+  return absl::StrCat("PyTreeDef(", agenda.back(), ")");
 }
 
 void BuildPytreeSubmodule(py::module& m) {

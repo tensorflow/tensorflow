@@ -278,6 +278,11 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
+  llvm::Value* FCmpULE(Args&&... args) {
+    return mixin_builder()->CreateFCmpULE(std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
   llvm::Value* FCmpOLE(Args&&... args) {
     return mixin_builder()->CreateFCmpOLE(std::forward<Args>(args)...);
   }

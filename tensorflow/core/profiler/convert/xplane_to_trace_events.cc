@@ -69,7 +69,7 @@ void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
     uint32 resource_id = xline.DisplayId();
     xline.ForEachEvent(
         [device_id, resource_id, trace](const XEventVisitor& xevent) {
-          int64 event_type =
+          int64_t event_type =
               xevent.Type().value_or(HostEventType::kUnknownHostEventType);
           if (IsInternalEvent(event_type)) return;
           auto* event = trace->add_trace_events();
@@ -128,9 +128,13 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
   }
   std::vector<const XPlane*> device_planes =
       FindPlanesWithPrefix(xspace, kGpuPlanePrefix);
-  // We don't expect GPU and TPU planes to be present in the same XSpace.
+  // We don't expect GPU and TPU planes and custom devices to be present in the
+  // same XSpace.
   if (device_planes.empty()) {
     device_planes = FindPlanesWithPrefix(xspace, kTpuPlanePrefix);
+  }
+  if (device_planes.empty()) {
+    device_planes = FindPlanesWithPrefix(xspace, kCustomPlanePrefix);
   }
   for (const XPlane* device_plane : device_planes) {
     XPlaneVisitor xplane = CreateTfXPlaneVisitor(device_plane);

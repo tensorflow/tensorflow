@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Sanity tests for tf.flags."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 import unittest
 
@@ -26,24 +22,34 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
 
 
-flags.DEFINE_string(
-    flag_name='old_string', default_value='default', docstring='docstring')
+flags.DEFINE_string(  # pylint: disable=no-value-for-parameter
+    flag_name='old_string',
+    default_value='default',
+    docstring='docstring')
 flags.DEFINE_string(
     name='new_string', default='default', help='docstring')
-flags.DEFINE_integer(
-    flag_name='old_integer', default_value=1, docstring='docstring')
+flags.DEFINE_integer(  # pylint: disable=no-value-for-parameter
+    flag_name='old_integer',
+    default_value=1,
+    docstring='docstring')
 flags.DEFINE_integer(
     name='new_integer', default=1, help='docstring')
-flags.DEFINE_float(
-    flag_name='old_float', default_value=1.5, docstring='docstring')
+flags.DEFINE_float(  # pylint: disable=no-value-for-parameter
+    flag_name='old_float',
+    default_value=1.5,
+    docstring='docstring')
 flags.DEFINE_float(
     name='new_float', default=1.5, help='docstring')
-flags.DEFINE_bool(
-    flag_name='old_bool', default_value=True, docstring='docstring')
+flags.DEFINE_bool(  # pylint: disable=no-value-for-parameter
+    flag_name='old_bool',
+    default_value=True,
+    docstring='docstring')
 flags.DEFINE_bool(
     name='new_bool', default=True, help='docstring')
-flags.DEFINE_boolean(
-    flag_name='old_boolean', default_value=False, docstring='docstring')
+flags.DEFINE_boolean(  # pylint: disable=no-value-for-parameter
+    flag_name='old_boolean',
+    default_value=False,
+    docstring='docstring')
 flags.DEFINE_boolean(
     name='new_boolean', default=False, help='docstring')
 

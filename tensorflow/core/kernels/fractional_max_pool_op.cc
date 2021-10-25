@@ -94,8 +94,8 @@ class FractionalMaxPoolOp : public OpKernel {
     }
 
     // Generate pooling sequence.
-    std::vector<int64> height_cum_seq;
-    std::vector<int64> width_cum_seq;
+    std::vector<int64_t> height_cum_seq;
+    std::vector<int64_t> width_cum_seq;
     GuardedPhiloxRandom generator;
     generator.Init(seed_, seed2_);
     height_cum_seq = GeneratePoolingSequence(input_size[1], output_size[1],
@@ -114,13 +114,14 @@ class FractionalMaxPoolOp : public OpKernel {
     OP_REQUIRES_OK(
         context,
         context->allocate_output(
-            1, TensorShape({static_cast<int64>(height_cum_seq.size())}),
+            1, TensorShape({static_cast<int64_t>(height_cum_seq.size())}),
             &output_height_seq_tensor));
     Tensor* output_width_seq_tensor = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(
-                     2, TensorShape({static_cast<int64>(width_cum_seq.size())}),
-                     &output_width_seq_tensor));
+        context,
+        context->allocate_output(
+            2, TensorShape({static_cast<int64_t>(width_cum_seq.size())}),
+            &output_width_seq_tensor));
 
     ConstEigenMatrixMap in_mat(tensor_in.flat<T>().data(), input_size[3],
                                input_size[2] * input_size[1] * input_size[0]);
@@ -131,8 +132,8 @@ class FractionalMaxPoolOp : public OpKernel {
     // Initializes the output tensor with MIN<T>.
     output_tensor->flat<T>().setConstant(Eigen::NumTraits<T>::lowest());
 
-    auto output_height_seq_flat = output_height_seq_tensor->flat<int64>();
-    auto output_width_seq_flat = output_width_seq_tensor->flat<int64>();
+    auto output_height_seq_flat = output_height_seq_tensor->flat<int64_t>();
+    auto output_width_seq_flat = output_width_seq_tensor->flat<int64_t>();
 
     // Set output tensors.
     for (int i = 0; i < height_cum_seq.size(); ++i) {
@@ -148,29 +149,29 @@ class FractionalMaxPoolOp : public OpKernel {
     // 1: height / row
     // 2: width / col
     // 3: depth / channel
-    const int64 height_max = input_size[1] - 1;
-    const int64 width_max = input_size[2] - 1;
-    for (int64 b = 0; b < input_size[0]; ++b) {
+    const int64_t height_max = input_size[1] - 1;
+    const int64_t width_max = input_size[2] - 1;
+    for (int64_t b = 0; b < input_size[0]; ++b) {
       // height sequence.
-      for (int64 hs = 0; hs < height_cum_seq.size() - 1; ++hs) {
+      for (int64_t hs = 0; hs < height_cum_seq.size() - 1; ++hs) {
         // height start and end.
-        const int64 height_start = height_cum_seq[hs];
-        int64 height_end =
+        const int64_t height_start = height_cum_seq[hs];
+        int64_t height_end =
             overlapping_ ? height_cum_seq[hs + 1] : height_cum_seq[hs + 1] - 1;
         height_end = std::min(height_end, height_max);
 
         // width sequence.
-        for (int64 ws = 0; ws < width_cum_seq.size() - 1; ++ws) {
-          const int64 out_offset =
+        for (int64_t ws = 0; ws < width_cum_seq.size() - 1; ++ws) {
+          const int64_t out_offset =
               (b * output_size[1] + hs) * output_size[2] + ws;
           // width start and end.
-          const int64 width_start = width_cum_seq[ws];
-          int64 width_end =
+          const int64_t width_start = width_cum_seq[ws];
+          int64_t width_end =
               overlapping_ ? width_cum_seq[ws + 1] : width_cum_seq[ws + 1] - 1;
           width_end = std::min(width_end, width_max);
-          for (int64 h = height_start; h <= height_end; ++h) {
-            for (int64 w = width_start; w <= width_end; ++w) {
-              const int64 in_offset =
+          for (int64_t h = height_start; h <= height_end; ++h) {
+            for (int64_t w = width_start; w <= width_end; ++w) {
+              const int64_t in_offset =
                   (b * input_size[1] + h) * input_size[2] + w;
               out_mat.col(out_offset) =
                   out_mat.col(out_offset).cwiseMax(in_mat.col(in_offset));
@@ -183,8 +184,8 @@ class FractionalMaxPoolOp : public OpKernel {
 
  private:
   bool deterministic_;
-  int64 seed_;
-  int64 seed2_;
+  int64_t seed_;
+  int64_t seed2_;
   std::vector<float> pooling_ratio_;
   bool pseudo_random_;
   bool overlapping_;
@@ -196,7 +197,7 @@ class FractionalMaxPoolOp : public OpKernel {
       FractionalMaxPoolOp<type>)
 
 REGISTER_FRACTIONALMAXPOOL(int32);
-REGISTER_FRACTIONALMAXPOOL(int64);
+REGISTER_FRACTIONALMAXPOOL(int64_t);
 REGISTER_FRACTIONALMAXPOOL(float);
 REGISTER_FRACTIONALMAXPOOL(double);
 
@@ -235,8 +236,22 @@ class FractionalMaxPoolGradOp : public OpKernel {
 
     // Just to make it similar to FractionalMaxPoolOp.
     constexpr int tensor_in_and_out_dims = 4;
-    std::vector<int64> input_size(tensor_in_and_out_dims);
-    std::vector<int64> output_size(tensor_in_and_out_dims);
+    OP_REQUIRES(
+        context, tensor_in.dims() == tensor_in_and_out_dims,
+        errors::InvalidArgument("orig_input should be a tensor of rank 4, got ",
+                                tensor_in.DebugString()));
+    OP_REQUIRES(context, tensor_in.NumElements() > 0,
+                errors::InvalidArgument("orig_input must not be empty, got ",
+                                        tensor_in.DebugString()));
+    OP_REQUIRES(context, tensor_out.dims() == tensor_in_and_out_dims,
+                errors::InvalidArgument(
+                    "orig_output should be a tensor of rank 4, got ",
+                    tensor_out.DebugString()));
+    OP_REQUIRES(context, tensor_out.NumElements() > 0,
+                errors::InvalidArgument("orig_output must not be empty, got ",
+                                        tensor_out.DebugString()));
+    std::vector<int64_t> input_size(tensor_in_and_out_dims);
+    std::vector<int64_t> output_size(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       input_size[i] = tensor_in.dim_size(i);
     }
@@ -252,7 +267,7 @@ class FractionalMaxPoolGradOp : public OpKernel {
                                 {1}, DataTypeToEnum<T>::v(), tensor_out.shape(),
                                 &tensor_out_dup));
     Tensor tensor_out_arg_max;
-    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<int64>::v(),
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<int64_t>::v(),
                                                    tensor_out.shape(),
                                                    &tensor_out_arg_max));
     // Find arg_max for each tensor_out
@@ -263,15 +278,15 @@ class FractionalMaxPoolGradOp : public OpKernel {
         tensor_out_dup.flat<T>().data(), output_size[3],
         output_size[2] * output_size[1] * output_size[0]);
     EigenIndexMatrixMap tensor_out_arg_max_mat(
-        tensor_out_arg_max.flat<int64>().data(), output_size[3],
+        tensor_out_arg_max.flat<int64_t>().data(), output_size[3],
         output_size[2] * output_size[1] * output_size[0]);
 
-    tensor_out_arg_max.flat<int64>().setConstant(kInvalidMaxPoolingIndex);
+    tensor_out_arg_max.flat<int64_t>().setConstant(kInvalidMaxPoolingIndex);
     // Initializes the duplicate output tensor with MIN<T>.
     tensor_out_dup.flat<T>().setConstant(Eigen::NumTraits<T>::lowest());
 
-    auto height_seq_tensor_flat = height_seq_tensor.flat<int64>();
-    auto width_seq_tensor_flat = width_seq_tensor.flat<int64>();
+    auto height_seq_tensor_flat = height_seq_tensor.flat<int64_t>();
+    auto width_seq_tensor_flat = width_seq_tensor.flat<int64_t>();
 
     // Now walk through the process of fractional max pooling again.
     // For both input and output,
@@ -279,35 +294,35 @@ class FractionalMaxPoolGradOp : public OpKernel {
     // 1: height / row
     // 2: width / col
     // 3: depth / channel
-    const int64 height_max = input_size[1] - 1;
-    const int64 width_max = input_size[2] - 1;
-    for (int64 b = 0; b < input_size[0]; ++b) {
+    const int64_t height_max = input_size[1] - 1;
+    const int64_t width_max = input_size[2] - 1;
+    for (int64_t b = 0; b < input_size[0]; ++b) {
       // height sequence.
-      for (int64 hs = 0; hs < height_seq_tensor.dim_size(0) - 1; ++hs) {
+      for (int64_t hs = 0; hs < height_seq_tensor.dim_size(0) - 1; ++hs) {
         // height start and end.
-        const int64 height_start = height_seq_tensor_flat(hs);
-        int64 height_end = overlapping_ ? height_seq_tensor_flat(hs + 1)
-                                        : height_seq_tensor_flat(hs + 1) - 1;
+        const int64_t height_start = height_seq_tensor_flat(hs);
+        int64_t height_end = overlapping_ ? height_seq_tensor_flat(hs + 1)
+                                          : height_seq_tensor_flat(hs + 1) - 1;
         height_end = std::min(height_end, height_max);
 
         // width sequence.
-        for (int64 ws = 0; ws < width_seq_tensor.dim_size(0) - 1; ++ws) {
-          const int64 out_index =
+        for (int64_t ws = 0; ws < width_seq_tensor.dim_size(0) - 1; ++ws) {
+          const int64_t out_index =
               (b * output_size[1] + hs) * output_size[2] + ws;
           // width start and end.
-          const int64 width_start = width_seq_tensor_flat(ws);
-          int64 width_end = overlapping_ ? width_seq_tensor_flat(ws + 1)
-                                         : width_seq_tensor_flat(ws + 1) - 1;
+          const int64_t width_start = width_seq_tensor_flat(ws);
+          int64_t width_end = overlapping_ ? width_seq_tensor_flat(ws + 1)
+                                           : width_seq_tensor_flat(ws + 1) - 1;
           width_end = std::min(width_end, width_max);
-          for (int64 h = height_start; h <= height_end; ++h) {
-            for (int64 w = width_start; w <= width_end; ++w) {
-              const int64 in_index =
+          for (int64_t h = height_start; h <= height_end; ++h) {
+            for (int64_t w = width_start; w <= width_end; ++w) {
+              const int64_t in_index =
                   (b * input_size[1] + h) * input_size[2] + w;
               // Walk through each channel (depth).
-              for (int64 d = 0; d < input_size[3]; ++d) {
+              for (int64_t d = 0; d < input_size[3]; ++d) {
                 const T& input_ref = tensor_in_mat.coeffRef(d, in_index);
                 T& output_ref = tensor_out_dup_mat.coeffRef(d, out_index);
-                int64& out_arg_max_ref =
+                int64_t& out_arg_max_ref =
                     tensor_out_arg_max_mat.coeffRef(d, out_index);
                 if (output_ref < input_ref ||
                     out_arg_max_ref == kInvalidMaxPoolingIndex) {
@@ -326,10 +341,10 @@ class FractionalMaxPoolGradOp : public OpKernel {
     ConstEigenMatrixMap tensor_out_mat(
         tensor_out.flat<T>().data(), output_size[3],
         output_size[2] * output_size[1] * output_size[0]);
-    const int64 num_reshaped_cols =
+    const int64_t num_reshaped_cols =
         output_size[2] * output_size[1] * output_size[0];
-    for (int64 i = 0; i < num_reshaped_cols; ++i) {
-      for (int64 j = 0; j < output_size[3]; ++j) {
+    for (int64_t i = 0; i < num_reshaped_cols; ++i) {
+      for (int64_t j = 0; j < output_size[3]; ++j) {
         DCHECK_EQ(tensor_out_dup_mat(j, i), tensor_out_mat(j, i));
       }
     }
@@ -341,7 +356,7 @@ class FractionalMaxPoolGradOp : public OpKernel {
 
     auto out_backprop_flat = out_backprop.flat<T>();
     auto input_backprop_flat = output->flat<T>();
-    auto out_arg_max_flat = tensor_out_arg_max.flat<int64>();
+    auto out_arg_max_flat = tensor_out_arg_max.flat<int64_t>();
     int num_total_outputs = out_backprop_flat.size();
     int num_total_inputs = input_backprop_flat.size();
 
@@ -367,7 +382,7 @@ class FractionalMaxPoolGradOp : public OpKernel {
                           FractionalMaxPoolGradOp<type>)
 
 REGISTER_FRACTIONALMAXPOOLGRAD(int32);
-REGISTER_FRACTIONALMAXPOOLGRAD(int64);
+REGISTER_FRACTIONALMAXPOOLGRAD(int64_t);
 REGISTER_FRACTIONALMAXPOOLGRAD(float);
 REGISTER_FRACTIONALMAXPOOLGRAD(double);
 

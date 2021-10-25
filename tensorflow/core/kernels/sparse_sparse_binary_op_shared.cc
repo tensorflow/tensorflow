@@ -60,17 +60,17 @@ namespace {
 // row-major order.
 template <typename T>
 void UnionSparseIndicesAndValues(
-    typename TTypes<int64>::ConstMatrix a_indices_mat,
-    typename TTypes<T>::ConstFlat a_values, int64 a_nnz,
-    typename TTypes<int64>::ConstMatrix b_indices_mat,
-    typename TTypes<T>::ConstFlat b_values, int64 b_nnz, int num_dims,
+    typename TTypes<int64_t>::ConstMatrix a_indices_mat,
+    typename TTypes<T>::ConstFlat a_values, int64_t a_nnz,
+    typename TTypes<int64_t>::ConstMatrix b_indices_mat,
+    typename TTypes<T>::ConstFlat b_values, int64_t b_nnz, int num_dims,
     std::vector<T> *a_augmented_values, std::vector<T> *b_augmented_values,
     std::vector<std::pair<bool, int64>> *entries_to_copy) {
   entries_to_copy->reserve(a_nnz + b_nnz);
   a_augmented_values->reserve(a_nnz);
   b_augmented_values->reserve(b_nnz);
 
-  int64 i = 0, j = 0;
+  int64_t i = 0, j = 0;
   const T kZero = T(0);
   while (i < a_nnz && j < b_nnz) {
     switch (sparse::DimComparator::cmp(a_indices_mat, b_indices_mat, i, j,
@@ -148,8 +148,9 @@ class SparseSparseBinaryOpShared : public OpKernel {
                     a_values_t->shape().DebugString(), " and ",
                     b_values_t->shape().DebugString()));
 
-    const int64 a_nnz = a_indices_t->dim_size(0);
-    const int64 b_nnz = b_indices_t->dim_size(0);
+    const int64_t a_nnz = a_indices_t->dim_size(0);
+    const int64_t b_nnz = b_indices_t->dim_size(0);
+
     const auto a_values = a_values_t->vec<T>();
     const auto b_values = b_values_t->vec<T>();
 
@@ -166,13 +167,21 @@ class SparseSparseBinaryOpShared : public OpKernel {
                     "Input shapes should be a vector but received shapes ",
                     a_shape_t->shape().DebugString(), " and ",
                     b_shape_t->shape().DebugString()));
+    const int num_dims = a_indices_t->dim_size(1);
+    OP_REQUIRES(
+        ctx, a_shape_t->NumElements() == num_dims,
+        errors::InvalidArgument("Second dimension of a_indices and length of "
+                                "a_shape must match, got ",
+                                num_dims, " and ", a_shape_t->NumElements()));
+    OP_REQUIRES(ctx, num_dims > 0,
+                errors::InvalidArgument("Tensors must not be empty"));
     OP_REQUIRES(ctx, a_shape_t->IsSameSize(*b_shape_t),
                 errors::InvalidArgument(
                     "Operands do not have the same ranks; got shapes: ",
                     a_shape_t->SummarizeValue(10), " and ",
                     b_shape_t->SummarizeValue(10)));
-    const auto a_shape = a_shape_t->flat<int64>();
-    const auto b_shape = b_shape_t->flat<int64>();
+    const auto a_shape = a_shape_t->flat<int64_t>();
+    const auto b_shape = b_shape_t->flat<int64_t>();
     for (int i = 0; i < a_shape_t->NumElements(); ++i) {
       OP_REQUIRES(ctx, a_shape(i) == b_shape(i),
                   errors::InvalidArgument("Operands' shapes do not match: got ",
@@ -180,9 +189,8 @@ class SparseSparseBinaryOpShared : public OpKernel {
                                           " for dimension ", i));
     }
 
-    const int num_dims = a_indices_t->dim_size(1);
-    const auto a_indices_mat = a_indices_t->matrix<int64>();
-    const auto b_indices_mat = b_indices_t->matrix<int64>();
+    const auto a_indices_mat = a_indices_t->matrix<int64_t>();
+    const auto b_indices_mat = b_indices_t->matrix<int64_t>();
     std::vector<T> a_augmented_values, b_augmented_values;
     std::vector<std::pair<bool, int64>> entries_to_copy;  // from_a?, idx
     UnionSparseIndicesAndValues(a_indices_mat, a_values, a_nnz, b_indices_mat,
@@ -190,18 +198,18 @@ class SparseSparseBinaryOpShared : public OpKernel {
                                 &b_augmented_values, &entries_to_copy);
 
     // Allocates and fills output tensors.
-    const int64 sum_nnz = a_augmented_values.size();
+    const int64_t sum_nnz = a_augmented_values.size();
     Tensor *output_indices_t, *output_values_t;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({sum_nnz, num_dims}),
                                         &output_indices_t));
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(1, TensorShape({sum_nnz}), &output_values_t));
-    auto output_indices_mat = output_indices_t->matrix<int64>();
+    auto output_indices_mat = output_indices_t->matrix<int64_t>();
 
-    for (int64 i = 0; i < sum_nnz; ++i) {
+    for (int64_t i = 0; i < sum_nnz; ++i) {
       const bool from_a = entries_to_copy[i].first;
-      const int64 idx = entries_to_copy[i].second;
+      const int64_t idx = entries_to_copy[i].second;
       output_indices_mat.chip<0>(i) =
           from_a ? a_indices_mat.chip<0>(idx) : b_indices_mat.chip<0>(idx);
     }

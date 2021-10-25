@@ -18,12 +18,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_UTILS_H_
 
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 
@@ -38,15 +40,18 @@ StatusOr<int> GetElementTypeBytes(mlir::Type type);
 // Creates an DenseIntElementsAttr using the elements of the vector and the
 // optional shape.
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
-    const llvm::ArrayRef<int64> vector, mlir::Builder builder,
+    const llvm::ArrayRef<int64_t> vector, mlir::Builder builder,
     llvm::ArrayRef<int64_t> shape = {});
 
 StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
                                                     mlir::Builder builder);
 
-mlir::mhlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
+mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
     const GatherDimensionNumbers& input, mlir::Builder builder);
 
+// Converts the given XLA shape for tensors to the template MLIR type. Note that
+// any dynamic bounds in the input shape is lost and those dimensions are fully
+// dynamic in the MLIR type.
 template <typename TypeT>
 static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& shape,
                                                 mlir::Builder builder) {
@@ -56,6 +61,12 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& shape,
 
   auto dimensions = shape.dimensions();
   llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
+  for (auto element : llvm::enumerate(shape.dynamic_dimensions())) {
+    bool is_dynamic = element.value();
+    if (is_dynamic) {
+      array[element.index()] = mlir::ShapedType::kDynamicSize;
+    }
+  }
   return TypeT::get(array, element_type_or.ValueOrDie());
 }
 
@@ -65,9 +76,16 @@ StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
 template <>
 inline StatusOr<mlir::MemRefType> ConvertTensorShapeToType(
     const Shape& shape, mlir::Builder builder) {
+  if (shape.is_dynamic()) {
+    return tensorflow::errors::FailedPrecondition(
+        "MemRefType don't support dynamic shapes");
+  }
   return ConvertTensorShapeToMemRefType(shape, builder);
 }
 
+// Converts the given XLA shape to the template MLIR type. Note that  any
+// dynamic bounds in the input shape is lost and those dimensions are fully
+// dynamic in the MLIR type.
 template <typename TypeT>
 static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
                                                mlir::Builder builder) {

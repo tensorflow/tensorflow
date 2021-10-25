@@ -40,15 +40,6 @@ class ConvertTFBatchMatMulOp : public OpRewritePattern<BatchMatMulOpType> {
   static std::vector<Value> sliceInput(Value value, int batch_size,
                                        Location loc, PatternRewriter& rewriter);
 
-  static TF::TransposeOp createTransposeOp(Value value, Location loc,
-                                           PatternRewriter& rewriter);
-
-  static TF::PackOp createMatMulOps(const std::vector<Value>& sliced_lhs,
-                                    const std::vector<Value>& sliced_rhs,
-                                    const tensorflow::MatMulBCast& bcast,
-                                    int rows, int cols, Type element_type,
-                                    Location loc, PatternRewriter& rewriter);
-
   LogicalResult matchAndRewrite(BatchMatMulOpType op,
                                 PatternRewriter& rewriter) const override;
 };

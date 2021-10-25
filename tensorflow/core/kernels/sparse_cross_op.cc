@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
@@ -41,10 +42,10 @@ template <typename InternalType>
 class ColumnInterface {
  public:
   // Returns the number of features in the specified batch.
-  virtual int64 FeatureCount(int64 batch) const = 0;
+  virtual int64_t FeatureCount(int64_t batch) const = 0;
 
   // Returns the fingerprint of nth feature from the specified batch.
-  virtual InternalType Feature(int64 batch, int64 n,
+  virtual InternalType Feature(int64_t batch, int64_t n,
                                bool strong_hash) const = 0;
 
   virtual ~ColumnInterface() {}
@@ -54,26 +55,27 @@ class ColumnInterface {
 template <typename InternalType>
 class SparseTensorColumn : public ColumnInterface<InternalType> {
  public:
-  SparseTensorColumn(const Tensor& values, std::vector<int64> feature_counts,
-                     std::vector<int64> feature_start_indices)
+  SparseTensorColumn(const Tensor& values, std::vector<int64_t> feature_counts,
+                     std::vector<int64_t> feature_start_indices)
       : values_(values),
         feature_counts_(std::move(feature_counts)),
         feature_start_indices_(std::move(feature_start_indices)) {
     CHECK_EQ(feature_counts_.size(), feature_start_indices_.size());
   }
 
-  int64 FeatureCount(int64 batch) const override {
+  int64_t FeatureCount(int64_t batch) const override {
     return feature_counts_[batch];
   }
 
-  InternalType Feature(int64 batch, int64 n, bool strong_hash) const override;
+  InternalType Feature(int64_t batch, int64_t n,
+                       bool strong_hash) const override;
 
   ~SparseTensorColumn() override {}
 
  private:
   const Tensor& values_;
-  std::vector<int64> feature_counts_;
-  std::vector<int64> feature_start_indices_;
+  std::vector<int64_t> feature_counts_;
+  std::vector<int64_t> feature_start_indices_;
 };
 
 // A column that is backed by a sparse tensor.
@@ -81,9 +83,9 @@ template <typename InternalType>
 class KeyedSparseTensorColumn : public ColumnInterface<InternalType> {
  public:
   KeyedSparseTensorColumn(const Tensor& values,
-                          std::vector<int64> feature_counts,
-                          std::vector<int64> feature_start_indices,
-                          std::vector<int64> key)
+                          std::vector<int64_t> feature_counts,
+                          std::vector<int64_t> feature_start_indices,
+                          std::vector<int64_t> key)
       : values_(values),
         feature_counts_(std::move(feature_counts)),
         feature_start_indices_(std::move(feature_start_indices)) {
@@ -91,80 +93,82 @@ class KeyedSparseTensorColumn : public ColumnInterface<InternalType> {
     std::memcpy(key_, key.data(), sizeof(key_));
   }
 
-  int64 FeatureCount(int64 batch) const override {
+  int64_t FeatureCount(int64_t batch) const override {
     return feature_counts_[batch];
   }
 
-  InternalType Feature(int64 batch, int64 n, bool strong_hash) const override;
+  InternalType Feature(int64_t batch, int64_t n,
+                       bool strong_hash) const override;
 
   ~KeyedSparseTensorColumn() override {}
 
  private:
   const Tensor& values_;
   tensorflow::uint64 key_[2];
-  std::vector<int64> feature_counts_;
-  std::vector<int64> feature_start_indices_;
+  std::vector<int64_t> feature_counts_;
+  std::vector<int64_t> feature_start_indices_;
 };
 
 // InternalType is int64 only when using HashCrosser.
 template <>
-int64 SparseTensorColumn<int64>::Feature(int64 batch, int64 n,
-                                         bool strong_hash) const {
-  const int64 start = feature_start_indices_[batch];
+int64_t SparseTensorColumn<int64_t>::Feature(int64_t batch, int64_t n,
+                                             bool strong_hash) const {
+  const int64_t start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
     return Fingerprint64(values_.vec<tstring>().data()[start + n]);
-  return values_.vec<int64>().data()[start + n];
+  return values_.vec<int64_t>().data()[start + n];
 }
 
 template <>
-int64 KeyedSparseTensorColumn<int64>::Feature(int64 batch, int64 n,
-                                              bool strong_hash) const {
-  const int64 start = feature_start_indices_[batch];
+int64_t KeyedSparseTensorColumn<int64_t>::Feature(int64_t batch, int64_t n,
+                                                  bool strong_hash) const {
+  const int64_t start = feature_start_indices_[batch];
   if (strong_hash) {
     if (DT_STRING == values_.dtype()) {
       return StrongKeyedHash(key_, values_.vec<tstring>()(start + n));
     }
     return StrongKeyedHash(
-        key_, {reinterpret_cast<const char*>(&values_.vec<int64>()(start + n)),
-               sizeof(values_.dtype())});
+        key_,
+        {reinterpret_cast<const char*>(&values_.vec<int64_t>()(start + n)),
+         sizeof(values_.dtype())});
   }
   if (DT_STRING == values_.dtype())
     return Fingerprint64(values_.vec<tstring>()(start + n));
   return Fingerprint64(
-      {reinterpret_cast<const char*>(&values_.vec<int64>()(start + n)),
+      {reinterpret_cast<const char*>(&values_.vec<int64_t>()(start + n)),
        sizeof(values_.dtype())});
 }
 
 // InternalType is string or StringPiece when using StringCrosser.
 template <>
-tstring SparseTensorColumn<tstring>::Feature(int64 batch, int64 n,
+tstring SparseTensorColumn<tstring>::Feature(int64_t batch, int64_t n,
                                              bool strong_hash) const {
-  const int64 start = feature_start_indices_[batch];
+  const int64_t start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
     return values_.vec<tstring>().data()[start + n];
-  return std::to_string(values_.vec<int64>().data()[start + n]);
+  return std::to_string(values_.vec<int64_t>().data()[start + n]);
 }
 
 template <>
-tstring KeyedSparseTensorColumn<tstring>::Feature(int64 batch, int64 n,
+tstring KeyedSparseTensorColumn<tstring>::Feature(int64_t batch, int64_t n,
                                                   bool strong_hash) const {
-  const int64 start = feature_start_indices_[batch];
+  const int64_t start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
     return values_.vec<tstring>().data()[start + n];
-  return std::to_string(values_.vec<int64>().data()[start + n]);
+  return std::to_string(values_.vec<int64_t>().data()[start + n]);
 }
 
 template <>
-StringPiece SparseTensorColumn<StringPiece>::Feature(int64 batch, int64 n,
+StringPiece SparseTensorColumn<StringPiece>::Feature(int64_t batch, int64_t n,
                                                      bool strong_hash) const {
-  const int64 start = feature_start_indices_[batch];
+  const int64_t start = feature_start_indices_[batch];
   return values_.vec<tstring>().data()[start + n];
 }
 
 template <>
 StringPiece KeyedSparseTensorColumn<StringPiece>::Feature(
-    int64 batch, int64 n, bool strong_hash) const {
-  const int64 start = feature_start_indices_[batch];
+    int64_t batch, int64_t n, bool strong_hash) const {
+  const int64_t start = feature_start_indices_[batch];
   return values_.vec<tstring>().data()[start + n];
 }
 
@@ -174,9 +178,12 @@ class DenseTensorColumn : public ColumnInterface<InternalType> {
  public:
   explicit DenseTensorColumn(const Tensor& tensor) : tensor_(tensor) {}
 
-  int64 FeatureCount(int64 batch) const override { return tensor_.dim_size(1); }
+  int64_t FeatureCount(int64_t batch) const override {
+    return tensor_.dim_size(1);
+  }
 
-  InternalType Feature(int64 batch, int64 n, bool strong_hash) const override;
+  InternalType Feature(int64_t batch, int64_t n,
+                       bool strong_hash) const override;
 
   ~DenseTensorColumn() override {}
 
@@ -188,14 +195,18 @@ class DenseTensorColumn : public ColumnInterface<InternalType> {
 template <typename InternalType>
 class KeyedDenseTensorColumn : public ColumnInterface<InternalType> {
  public:
-  explicit KeyedDenseTensorColumn(const Tensor& tensor, std::vector<int64> key)
+  explicit KeyedDenseTensorColumn(const Tensor& tensor,
+                                  std::vector<int64_t> key)
       : tensor_(tensor) {
     std::memcpy(key_, key.data(), sizeof(key_));
   }
 
-  int64 FeatureCount(int64 batch) const override { return tensor_.dim_size(1); }
+  int64_t FeatureCount(int64_t batch) const override {
+    return tensor_.dim_size(1);
+  }
 
-  InternalType Feature(int64 batch, int64 n, bool strong_hash) const override;
+  InternalType Feature(int64_t batch, int64_t n,
+                       bool strong_hash) const override;
 
   ~KeyedDenseTensorColumn() override {}
 
@@ -206,53 +217,54 @@ class KeyedDenseTensorColumn : public ColumnInterface<InternalType> {
 
 // InternalType is int64 only when using HashCrosser.
 template <>
-int64 DenseTensorColumn<int64>::Feature(int64 batch, int64 n,
-                                        bool strong_hash) const {
+int64_t DenseTensorColumn<int64_t>::Feature(int64_t batch, int64_t n,
+                                            bool strong_hash) const {
   if (DT_STRING == tensor_.dtype())
     return Fingerprint64(tensor_.matrix<tstring>()(batch, n));
-  return tensor_.matrix<int64>()(batch, n);
+  return tensor_.matrix<int64_t>()(batch, n);
 }
 
 template <>
-int64 KeyedDenseTensorColumn<int64>::Feature(int64 batch, int64 n,
-                                             bool strong_hash) const {
+int64_t KeyedDenseTensorColumn<int64_t>::Feature(int64_t batch, int64_t n,
+                                                 bool strong_hash) const {
   if (strong_hash) {
     if (DT_STRING == tensor_.dtype()) {
       return StrongKeyedHash(key_, tensor_.matrix<tstring>()(batch, n));
     }
     return StrongKeyedHash(
-        key_, {reinterpret_cast<const char*>(tensor_.matrix<int64>()(batch, n)),
-               sizeof(tensor_.dtype())});
+        key_,
+        {reinterpret_cast<const char*>(tensor_.matrix<int64_t>()(batch, n)),
+         sizeof(tensor_.dtype())});
   }
   if (DT_STRING == tensor_.dtype())
     return Fingerprint64(tensor_.matrix<tstring>()(batch, n));
-  return tensor_.matrix<int64>()(batch, n);
+  return tensor_.matrix<int64_t>()(batch, n);
 }
 
 // Internal type is string or StringPiece when using StringCrosser.
 template <>
-tstring DenseTensorColumn<tstring>::Feature(int64 batch, int64 n,
+tstring DenseTensorColumn<tstring>::Feature(int64_t batch, int64_t n,
                                             bool strong_hash) const {
   if (DT_STRING == tensor_.dtype()) return tensor_.matrix<tstring>()(batch, n);
-  return std::to_string(tensor_.matrix<int64>()(batch, n));
+  return std::to_string(tensor_.matrix<int64_t>()(batch, n));
 }
 
 template <>
-tstring KeyedDenseTensorColumn<tstring>::Feature(int64 batch, int64 n,
+tstring KeyedDenseTensorColumn<tstring>::Feature(int64_t batch, int64_t n,
                                                  bool strong_hash) const {
   if (DT_STRING == tensor_.dtype()) return tensor_.matrix<tstring>()(batch, n);
-  return std::to_string(tensor_.matrix<int64>()(batch, n));
+  return std::to_string(tensor_.matrix<int64_t>()(batch, n));
 }
 
 template <>
-StringPiece DenseTensorColumn<StringPiece>::Feature(int64 batch, int64 n,
+StringPiece DenseTensorColumn<StringPiece>::Feature(int64_t batch, int64_t n,
                                                     bool strong_hash) const {
   return tensor_.matrix<tstring>()(batch, n);
 }
 
 template <>
 StringPiece KeyedDenseTensorColumn<StringPiece>::Feature(
-    int64 batch, int64 n, bool strong_hash) const {
+    int64_t batch, int64_t n, bool strong_hash) const {
   return tensor_.matrix<tstring>()(batch, n);
 }
 
@@ -260,17 +272,18 @@ StringPiece KeyedDenseTensorColumn<StringPiece>::Feature(
 template <typename OutType>
 class OutputUpdater {
  public:
-  OutputUpdater(const std::vector<int64>& output_start_indices,
+  OutputUpdater(const std::vector<int64_t>& output_start_indices,
                 Tensor* indices_out, Tensor* values_out)
       : output_start_indices_(output_start_indices),
         indices_out_(indices_out),
         values_out_(values_out) {}
 
-  void Update(const int64 batch_index, const int64 cross_count,
+  void Update(const int64_t batch_index, const int64_t cross_count,
               const OutType& cross) const {
-    const int64 output_index = output_start_indices_[batch_index] + cross_count;
+    const int64_t output_index =
+        output_start_indices_[batch_index] + cross_count;
 
-    auto indices_matrix = indices_out_->matrix<int64>();
+    auto indices_matrix = indices_out_->matrix<int64_t>();
     indices_matrix(output_index, 0) = batch_index;
     indices_matrix(output_index, 1) = cross_count;
 
@@ -279,7 +292,7 @@ class OutputUpdater {
   }
 
  private:
-  const std::vector<int64>& output_start_indices_;
+  const std::vector<int64_t>& output_start_indices_;
   Tensor* indices_out_;
   Tensor* values_out_;
 };
@@ -290,11 +303,12 @@ class StringCrosser {
  public:
   StringCrosser(const std::vector<
                     std::unique_ptr<ColumnInterface<InternalType>>>& columns,
-                const int64 num_buckets_unused, const uint64 hash_key_unused,
+                const int64_t num_buckets_unused, const uint64 hash_key_unused,
                 const tstring k_feature_separator)
       : columns_(columns), k_feature_separator_(k_feature_separator) {}
 
-  string Generate(const int64 batch_index, const std::vector<int>& permutation,
+  string Generate(const int64_t batch_index,
+                  const std::vector<int>& permutation,
                   bool unused_strong_hash) const {
     gtl::InlinedVector<InternalType, 6> cross_vec(columns_.size());
     for (int i = 0; i < permutation.size(); i++) {
@@ -314,13 +328,14 @@ class StringCrosser {
 class HashCrosser {
  public:
   HashCrosser(
-      const std::vector<std::unique_ptr<ColumnInterface<int64>>>& columns,
-      const int64 num_buckets, const uint64 hash_key,
+      const std::vector<std::unique_ptr<ColumnInterface<int64_t>>>& columns,
+      const int64_t num_buckets, const uint64 hash_key,
       const tstring k_feature_separator_unused)
       : columns_(columns), num_buckets_(num_buckets), hash_key_(hash_key) {}
 
-  int64 Generate(const int64 batch_index, const std::vector<int>& permutation,
-                 bool unused_strong_hash) const {
+  int64_t Generate(const int64_t batch_index,
+                   const std::vector<int>& permutation,
+                   bool unused_strong_hash) const {
     // Do the fingerprint concatenation on uint64.
     uint64 hashed_output = hash_key_;
     for (size_t i = 0; i < permutation.size(); ++i) {
@@ -332,13 +347,13 @@ class HashCrosser {
       return hashed_output % num_buckets_;
     } else {
       // To prevent negative output we take modulo to max int64.
-      return hashed_output % std::numeric_limits<int64>::max();
+      return hashed_output % std::numeric_limits<int64_t>::max();
     }
   }
 
  private:
-  const std::vector<std::unique_ptr<ColumnInterface<int64>>>& columns_;
-  const int64 num_buckets_;
+  const std::vector<std::unique_ptr<ColumnInterface<int64_t>>>& columns_;
+  const int64_t num_buckets_;
   const uint64 hash_key_;
 };
 
@@ -346,13 +361,14 @@ class HashCrosser {
 class HashCrosserV2 {
  public:
   HashCrosserV2(
-      const std::vector<std::unique_ptr<ColumnInterface<int64>>>& columns,
-      const int64 num_buckets, const uint64 hash_key_unused,
+      const std::vector<std::unique_ptr<ColumnInterface<int64_t>>>& columns,
+      const int64_t num_buckets, const uint64 hash_key_unused,
       const tstring k_feature_separator_unused)
       : columns_(columns), num_buckets_(num_buckets) {}
 
-  int64 Generate(const int64 batch_index, const std::vector<int>& permutation,
-                 bool strong_hash) const {
+  int64_t Generate(const int64_t batch_index,
+                   const std::vector<int>& permutation,
+                   bool strong_hash) const {
     // Do the fingerprint concatenation on uint64.
     uint64 hashed_output =
         columns_[0]->Feature(batch_index, permutation[0], strong_hash);
@@ -366,13 +382,13 @@ class HashCrosserV2 {
       return hashed_output % num_buckets_;
     } else {
       // To prevent negative output we take modulo to max int64.
-      return hashed_output % std::numeric_limits<int64>::max();
+      return hashed_output % std::numeric_limits<int64_t>::max();
     }
   }
 
  private:
-  const std::vector<std::unique_ptr<ColumnInterface<int64>>>& columns_;
-  const int64 num_buckets_;
+  const std::vector<std::unique_ptr<ColumnInterface<int64_t>>>& columns_;
+  const int64_t num_buckets_;
 };
 
 // ProductIterator generates cartesian products based on indices.
@@ -382,7 +398,7 @@ class ProductIterator {
   explicit ProductIterator(
       const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>&
           columns,
-      int64 batch_index)
+      int64_t batch_index)
       : columns_(columns), batch_index_(batch_index) {
     next_permutation_.resize(columns_.size(), 0);
     // Sets has_next_ to false if any feature column has 0 features.
@@ -420,7 +436,7 @@ class ProductIterator {
  private:
   bool has_next_;
   const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>& columns_;
-  const int64 batch_index_;
+  const int64_t batch_index_;
   std::vector<int> next_permutation_;
 };
 
@@ -435,18 +451,18 @@ struct CrossTraits<false, InternalType> {
 };
 
 template <>
-struct CrossTraits<true, int64> {
+struct CrossTraits<true, int64_t> {
   typedef HashCrosser Crosser;
   typedef HashCrosserV2 CrosserV2;
-  typedef OutputUpdater<int64> Updater;
+  typedef OutputUpdater<int64_t> Updater;
 };
 }  // namespace
 
 // Calculate the batch size from either the shapes input or the dense input.
-int64 CalculateBatchSize(const OpInputList& shapes_list_in,
-                         const OpInputList& dense_list_in) {
+int64_t CalculateBatchSize(const OpInputList& shapes_list_in,
+                           const OpInputList& dense_list_in) {
   if (shapes_list_in.size() > 0) {
-    return shapes_list_in[0].vec<int64>()(0);
+    return shapes_list_in[0].vec<int64_t>()(0);
   }
 
   if (dense_list_in.size() > 0) {
@@ -460,10 +476,19 @@ int64 CalculateBatchSize(const OpInputList& shapes_list_in,
 Status ValidateInput(const OpInputList& indices_list_in,
                      const OpInputList& values_list_in,
                      const OpInputList& shapes_list_in,
-                     const OpInputList& dense_list_in) {
+                     const OpInputList& dense_list_in,
+                     const DataType& internal_type) {
   const auto size = indices_list_in.size();
+  // Only perform internal_type check for SparseCrossOp.
+  // Check if the internal_type is not invalid before doing so.
+  bool check_type = internal_type != DT_INVALID;
   // Validates indices_list_in OpInputList.
   for (int i = 0; i < size; i++) {
+    if (check_type && indices_list_in[i].dtype() != DT_INT64) {
+      return errors::InvalidArgument("Input indices should be of type ",
+                                     DT_INT64, " but received ",
+                                     indices_list_in[i].dtype());
+    }
     if (!TensorShapeUtils::IsMatrix(indices_list_in[i].shape())) {
       return errors::InvalidArgument(
           "Input indices should be a matrix but received shape ",
@@ -482,6 +507,14 @@ Status ValidateInput(const OpInputList& indices_list_in,
                                    values_list_in.size());
   }
   for (int i = 0; i < size; i++) {
+    // Make sure to avoid the expected type to be string, but input values to be
+    // int64.
+    if (check_type && internal_type == DT_STRING &&
+        values_list_in[i].dtype() == DT_INT64) {
+      return errors::InvalidArgument("Input values should be of internal type ",
+                                     internal_type, " but received ",
+                                     values_list_in[i].dtype());
+    }
     if (!TensorShapeUtils::IsVector(values_list_in[i].shape())) {
       return errors::InvalidArgument(
           "Input values should be a vector but received shape ",
@@ -502,13 +535,18 @@ Status ValidateInput(const OpInputList& indices_list_in,
                                    shapes_list_in.size());
   }
   for (int i = 0; i < size; i++) {
+    if (check_type && shapes_list_in[i].dtype() != DT_INT64) {
+      return errors::InvalidArgument("Input shape should be of type ", DT_INT64,
+                                     " but received ",
+                                     shapes_list_in[i].dtype());
+    }
     if (!TensorShapeUtils::IsVector(shapes_list_in[i].shape())) {
       return errors::InvalidArgument(
           "Input shapes should be a vector but received shape ",
           shapes_list_in[i].shape().DebugString(), " at position ", i);
     }
 
-    if (shapes_list_in[i].vec<int64>().size() != 2) {
+    if (shapes_list_in[i].vec<int64_t>().size() != 2) {
       return errors::InvalidArgument("shape should imply a 2D tensor, but got ",
                                      shapes_list_in[i].shape().DebugString(),
                                      " at position ", i);
@@ -517,6 +555,14 @@ Status ValidateInput(const OpInputList& indices_list_in,
 
   // Validates dense_list_in OpInputList
   for (int i = 0; i < dense_list_in.size(); ++i) {
+    // Make sure to avoid the expected type to be string, but input values to be
+    // int64.
+    if (check_type && internal_type == DT_STRING &&
+        dense_list_in[i].dtype() == DT_INT64) {
+      return errors::InvalidArgument("Dense inputs should be of internal type ",
+                                     internal_type, " but received ",
+                                     dense_list_in[i].dtype());
+    }
     if (!TensorShapeUtils::IsMatrix(dense_list_in[i].shape())) {
       return errors::InvalidArgument(
           "Dense inputs should be a matrix but received shape ",
@@ -529,10 +575,10 @@ Status ValidateInput(const OpInputList& indices_list_in,
   // shapes).
   const auto batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
   for (int i = 0; i < size; i++) {
-    if (shapes_list_in[i].vec<int64>()(0) != batch_size) {
-      return errors::InvalidArgument("Expected batch size ", batch_size,
-                                     " got ", shapes_list_in[i].vec<int64>()(0),
-                                     " at position ", i);
+    if (shapes_list_in[i].vec<int64_t>()(0) != batch_size) {
+      return errors::InvalidArgument(
+          "Expected batch size ", batch_size, " got ",
+          shapes_list_in[i].vec<int64_t>()(0), " at position ", i);
     }
   }
   for (int i = 0; i < dense_list_in.size(); ++i) {
@@ -548,15 +594,15 @@ Status ValidateInput(const OpInputList& indices_list_in,
 
 // Extracts data about the features and populates feature data.
 void ExtractFeatureData(
-    const OpInputList& indices_list_in, int64 batch_size,
-    std::vector<std::vector<int64>>* feature_counts,
-    std::vector<std::vector<int64>>* feature_start_indices) {
-  gtl::InlinedVector<int64, 8> current_row(indices_list_in.size(), 0);
+    const OpInputList& indices_list_in, int64_t batch_size,
+    std::vector<std::vector<int64_t>>* feature_counts,
+    std::vector<std::vector<int64_t>>* feature_start_indices) {
+  gtl::InlinedVector<int64_t, 8> current_row(indices_list_in.size(), 0);
   for (int b = 0; b < batch_size; b++) {
     for (int i = 0; i < indices_list_in.size(); i++) {
-      const auto indices = indices_list_in[i].matrix<int64>();
-      int64 feature_count = 0;
-      int64 start_index = current_row[i];
+      const auto indices = indices_list_in[i].matrix<int64_t>();
+      int64_t feature_count = 0;
+      int64_t start_index = current_row[i];
       // Loops until we reach next batch index for current feature column.
       while (current_row[i] < indices_list_in[i].dim_size(0) &&
              indices(current_row[i], 0) == b) {
@@ -571,10 +617,10 @@ void ExtractFeatureData(
 
 // Returns number of crosses for a given batch_index
 template <typename InternalType>
-int64 CrossCountByBatchIndex(
+int64_t CrossCountByBatchIndex(
     const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>& columns,
     int batch_index) {
-  int64 cross_count = 1;
+  int64_t cross_count = 1;
   for (int i = 0; i < columns.size(); i++) {
     const auto feature_count = columns[i]->FeatureCount(batch_index);
     // If one column is missing any feature, there won't be any cross.
@@ -594,13 +640,13 @@ GenerateColumnsFromInput(const OpInputList& indices_list_in,
                          const OpInputList& shapes_list_in,
                          const OpInputList& dense_list_in) {
   std::vector<std::unique_ptr<ColumnInterface<InternalType>>> columns;
-  const int64 batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
-  const int64 number_of_columns = shapes_list_in.size();
+  const int64_t batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
+  const int64_t number_of_columns = shapes_list_in.size();
 
-  std::vector<std::vector<int64>> feature_counts(number_of_columns,
-                                                 std::vector<int64>());
-  std::vector<std::vector<int64>> feature_start_indices(number_of_columns,
-                                                        std::vector<int64>());
+  std::vector<std::vector<int64_t>> feature_counts(number_of_columns,
+                                                   std::vector<int64_t>());
+  std::vector<std::vector<int64_t>> feature_start_indices(
+      number_of_columns, std::vector<int64_t>());
 
   ExtractFeatureData(indices_list_in, batch_size, &feature_counts,
                      &feature_start_indices);
@@ -625,15 +671,15 @@ GenerateKeyedColumnsFromInput(const OpInputList& indices_list_in,
                               const OpInputList& values_list_in,
                               const OpInputList& shapes_list_in,
                               const OpInputList& dense_list_in,
-                              std::vector<int64> keys) {
+                              std::vector<int64_t> keys) {
   std::vector<std::unique_ptr<ColumnInterface<InternalType>>> columns;
-  const int64 batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
-  const int64 number_of_columns = shapes_list_in.size();
+  const int64_t batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
+  const int64_t number_of_columns = shapes_list_in.size();
 
-  std::vector<std::vector<int64>> feature_counts(number_of_columns,
-                                                 std::vector<int64>());
-  std::vector<std::vector<int64>> feature_start_indices(number_of_columns,
-                                                        std::vector<int64>());
+  std::vector<std::vector<int64_t>> feature_counts(number_of_columns,
+                                                   std::vector<int64_t>());
+  std::vector<std::vector<int64_t>> feature_start_indices(
+      number_of_columns, std::vector<int64_t>());
 
   ExtractFeatureData(indices_list_in, batch_size, &feature_counts,
                      &feature_start_indices);
@@ -659,13 +705,13 @@ GenerateKeyedColumnsFromInput(const OpInputList& indices_list_in,
 template <typename InternalType>
 Status CreateOutputTensors(
     const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>& columns,
-    int64 batch_size, OpKernelContext* context, Tensor** indices_out,
+    int64_t batch_size, OpKernelContext* context, Tensor** indices_out,
     Tensor** values_out, Tensor** shape_out,
-    std::vector<int64>* output_start_indices) {
+    std::vector<int64_t>* output_start_indices) {
   // Calculates dimensions for output tensors.
-  int64 cross_count_total = 0;
-  int64 max_cross_count = 0;
-  for (int64 b = 0; b < batch_size; b++) {
+  int64_t cross_count_total = 0;
+  int64_t max_cross_count = 0;
+  for (int64_t b = 0; b < batch_size; b++) {
     // For each input, sets starting indices in output SparseTensor
     (*output_start_indices)[b] = cross_count_total;
     const auto cross_count = CrossCountByBatchIndex(columns, b);
@@ -681,7 +727,7 @@ Status CreateOutputTensors(
   TF_RETURN_IF_ERROR(context->allocate_output(2, TensorShape({2}), shape_out));
 
   // Sets shape.
-  auto shape_vec = (*shape_out)->vec<int64>();
+  auto shape_vec = (*shape_out)->vec<int64_t>();
   shape_vec(0) = batch_size;
   shape_vec(1) = max_cross_count;
 
@@ -695,9 +741,10 @@ class SparseCrossOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("num_buckets", &num_buckets_));
     // Read signed_hash_key_ as int64 since uint64 attributes are not
     // supported by REGISTER_OP.
-    int64 signed_hash_key_;
+    int64_t signed_hash_key_;
     OP_REQUIRES_OK(context, context->GetAttr("hash_key", &signed_hash_key_));
     hash_key_ = static_cast<uint64>(signed_hash_key_);
+    OP_REQUIRES_OK(context, context->GetAttr("internal_type", &internal_type_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -711,8 +758,10 @@ class SparseCrossOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->input_list("dense_inputs", &dense_list_in));
 
-    OP_REQUIRES_OK(context, ValidateInput(indices_list_in, values_list_in,
-                                          shapes_list_in, dense_list_in));
+    DataType internal_type = internal_type_;
+    OP_REQUIRES_OK(
+        context, ValidateInput(indices_list_in, values_list_in, shapes_list_in,
+                               dense_list_in, internal_type));
 
     std::vector<std::unique_ptr<ColumnInterface<InternalType>>> columns =
         GenerateColumnsFromInput<InternalType>(indices_list_in, values_list_in,
@@ -724,8 +773,9 @@ class SparseCrossOp : public OpKernel {
     Tensor* indices_out;
     Tensor* values_out;
     Tensor* shape_out;
-    const int64 batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
-    std::vector<int64> output_start_indices(batch_size);
+    const int64_t batch_size =
+        CalculateBatchSize(shapes_list_in, dense_list_in);
+    std::vector<int64_t> output_start_indices(batch_size);
     OP_REQUIRES_OK(
         context,
         CreateOutputTensors(columns, batch_size, context, &indices_out,
@@ -733,10 +783,10 @@ class SparseCrossOp : public OpKernel {
 
     typename CrossTraits<HASHED_OUTPUT, InternalType>::Updater updater(
         output_start_indices, indices_out, values_out);
-    auto do_work = [&columns, crosser, updater](int64 begin, int64 end) {
+    auto do_work = [&columns, crosser, updater](int64_t begin, int64_t end) {
       for (int b = begin; b < end; b++) {
         ProductIterator<InternalType> product_iterator(columns, b);
-        int64 cross_count = 0;
+        int64_t cross_count = 0;
         while (product_iterator.HasNext()) {
           const auto permutation = product_iterator.Next();
           updater.Update(b, cross_count,
@@ -754,8 +804,9 @@ class SparseCrossOp : public OpKernel {
   }
 
  private:
-  int64 num_buckets_;
+  int64_t num_buckets_;
   uint64 hash_key_;
+  DataType internal_type_;
 };
 
 class SparseCrossV2Op : public OpKernel {
@@ -773,8 +824,11 @@ class SparseCrossV2Op : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->input_list("dense_inputs", &dense_list_in));
 
-    OP_REQUIRES_OK(context, ValidateInput(indices_list_in, values_list_in,
-                                          shapes_list_in, dense_list_in));
+    // Set internal_type to invalid_type so that the check will be ignored.
+    DataType internal_type = DT_INVALID;
+    OP_REQUIRES_OK(
+        context, ValidateInput(indices_list_in, values_list_in, shapes_list_in,
+                               dense_list_in, internal_type));
 
     const Tensor* sep_t;
     OP_REQUIRES_OK(context, context->input("sep", &sep_t));
@@ -786,8 +840,9 @@ class SparseCrossV2Op : public OpKernel {
     Tensor* indices_out;
     Tensor* values_out;
     Tensor* shape_out;
-    const int64 batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
-    std::vector<int64> output_start_indices(batch_size);
+    const int64_t batch_size =
+        CalculateBatchSize(shapes_list_in, dense_list_in);
+    std::vector<int64_t> output_start_indices(batch_size);
     OP_REQUIRES_OK(
         context,
         CreateOutputTensors(columns, batch_size, context, &indices_out,
@@ -795,10 +850,10 @@ class SparseCrossV2Op : public OpKernel {
     StringCrosser<tstring> crosser(columns, 0, 0, separator);
     OutputUpdater<tstring> updater(output_start_indices, indices_out,
                                    values_out);
-    auto do_work = [&columns, crosser, updater](int64 begin, int64 end) {
+    auto do_work = [&columns, crosser, updater](int64_t begin, int64_t end) {
       for (int b = begin; b < end; b++) {
         ProductIterator<tstring> product_iterator(columns, b);
-        int64 cross_count = 0;
+        int64_t cross_count = 0;
         while (product_iterator.HasNext()) {
           const auto permutation = product_iterator.Next();
           updater.Update(b, cross_count,
@@ -832,12 +887,15 @@ class SparseCrossHashedOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->input_list("dense_inputs", &dense_list_in));
 
-    OP_REQUIRES_OK(context, ValidateInput(indices_list_in, values_list_in,
-                                          shapes_list_in, dense_list_in));
+    // Set internal_type to invalid_type so that the check will be ignored.
+    DataType internal_type = DT_INVALID;
+    OP_REQUIRES_OK(
+        context, ValidateInput(indices_list_in, values_list_in, shapes_list_in,
+                               dense_list_in, internal_type));
 
     const Tensor* num_buckets_t;
     OP_REQUIRES_OK(context, context->input("num_buckets", &num_buckets_t));
-    const int64 num_buckets = num_buckets_t->scalar<int64>()();
+    const int64_t num_buckets = num_buckets_t->scalar<int64_t>()();
 
     const Tensor* strong_hash_t;
     OP_REQUIRES_OK(context, context->input("strong_hash", &strong_hash_t));
@@ -845,30 +903,32 @@ class SparseCrossHashedOp : public OpKernel {
 
     const Tensor* salt_t;
     OP_REQUIRES_OK(context, context->input("salt", &salt_t));
-    const auto salt = salt_t->flat<int64>();
-    std::vector<int64> key_{salt(0), salt(1)};
+    const auto salt = salt_t->flat<int64_t>();
+    std::vector<int64_t> key_{salt(0), salt(1)};
 
-    std::vector<std::unique_ptr<ColumnInterface<int64>>> columns =
-        GenerateKeyedColumnsFromInput<int64>(indices_list_in, values_list_in,
-                                             shapes_list_in, dense_list_in,
-                                             key_);
+    std::vector<std::unique_ptr<ColumnInterface<int64_t>>> columns =
+        GenerateKeyedColumnsFromInput<int64_t>(indices_list_in, values_list_in,
+                                               shapes_list_in, dense_list_in,
+                                               key_);
     Tensor* indices_out;
     Tensor* values_out;
     Tensor* shape_out;
-    const int64 batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
-    std::vector<int64> output_start_indices(batch_size);
+    const int64_t batch_size =
+        CalculateBatchSize(shapes_list_in, dense_list_in);
+    std::vector<int64_t> output_start_indices(batch_size);
     OP_REQUIRES_OK(
         context,
         CreateOutputTensors(columns, batch_size, context, &indices_out,
                             &values_out, &shape_out, &output_start_indices));
     const tstring unused_sep;
     HashCrosserV2 crosser(columns, num_buckets, 0, unused_sep);
-    OutputUpdater<int64> updater(output_start_indices, indices_out, values_out);
-    auto do_work = [&columns, crosser, updater, strong_hash](int64 begin,
-                                                             int64 end) {
+    OutputUpdater<int64_t> updater(output_start_indices, indices_out,
+                                   values_out);
+    auto do_work = [&columns, crosser, updater, strong_hash](int64_t begin,
+                                                             int64_t end) {
       for (int b = begin; b < end; b++) {
-        ProductIterator<int64> product_iterator(columns, b);
-        int64 cross_count = 0;
+        ProductIterator<int64_t> product_iterator(columns, b);
+        int64_t cross_count = 0;
         while (product_iterator.HasNext()) {
           const auto permutation = product_iterator.Next();
           updater.Update(b, cross_count,
@@ -895,19 +955,19 @@ REGISTER_KERNEL_BUILDER(Name("SparseCross")
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<tstring>("out_type")
-                            .TypeConstraint<int64>("internal_type"),
+                            .TypeConstraint<int64_t>("internal_type"),
                         SparseCrossOp<false, tstring>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int64>("out_type")
+                            .TypeConstraint<int64_t>("out_type")
                             .TypeConstraint<tstring>("internal_type"),
                         SparseCrossOp<true, int64>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int64>("out_type")
-                            .TypeConstraint<int64>("internal_type"),
+                            .TypeConstraint<int64_t>("out_type")
+                            .TypeConstraint<int64_t>("internal_type"),
                         SparseCrossOp<true, int64>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCrossV2").Device(DEVICE_CPU),

@@ -170,6 +170,9 @@ typedef struct SE_ExecutableRunOptions {
   int launch_id;
 } SE_ExecutableRunOptions;
 
+typedef struct SE_ExecutableSerializationHandle
+    SE_ExecutableSerializationHandle;
+
 typedef struct SE_MaybeOwningDeviceMemory {
   SE_DeviceMemoryBase memory;
   bool owned;

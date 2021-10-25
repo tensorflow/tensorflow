@@ -59,6 +59,7 @@ void DumpToFileInDirOrStdout(const HloModule& module,
 // directory specified, or if that directory is equal to "-", writes to stdout
 // instead.
 void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
+                             absl::string_view module_name,
                              absl::string_view file_prefix,
                              absl::string_view file_suffix,
                              absl::string_view contents);

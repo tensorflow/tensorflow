@@ -32,6 +32,9 @@ constexpr int32_t kMinSdkVersionForNNAPI = 27;
 constexpr int32_t kMinSdkVersionForNNAPI11 = 28;
 constexpr int32_t kMinSdkVersionForNNAPI12 = 29;
 constexpr int32_t kMinSdkVersionForNNAPI13 = 30;
+// TODO(b/185838597): change the remaining kMinSdkVersionForNNAPI* to
+// kNNAPIRuntimeFeatureLevel*.
+constexpr int32_t kNNAPIRuntimeFeatureLevel5 = 31;
 
 // Track tensor indices to NN API tensor indices mapping.
 class OperandMapping {
@@ -185,6 +188,9 @@ class NNMemory {
   size_t byte_size_ = 0;
   uint8_t* data_ptr_ = nullptr;
   ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
+#ifndef __ANDROID__
+  std::string shm_region_name_;
+#endif
 };
 
 // LINT.IfChange
@@ -262,7 +268,8 @@ class NNAPIDelegateKernel {
         nnapi_(nnapi),
         nn_model_(nullptr, NNFreeModel(nnapi_)),
         nn_compilation_(nullptr, NNFreeCompilation(nnapi_)),
-        nn_burst_(nullptr, NNFreeBurst(nnapi_)) {}
+        nn_burst_(nullptr, NNFreeBurst(nnapi_)),
+        nn_execution_(nullptr, NNFreeExecution(nnapi_)) {}
   NNAPIDelegateKernel() : NNAPIDelegateKernel(NnApiImplementation()) {}
   ~NNAPIDelegateKernel() {
     for (auto content : allocation_memory_mapping_) {
@@ -337,6 +344,10 @@ class NNAPIDelegateKernel {
   std::unique_ptr<ANeuralNetworksCompilation, NNFreeCompilation>
       nn_compilation_;
   std::unique_ptr<ANeuralNetworksBurst, NNFreeBurst> nn_burst_;
+  std::unique_ptr<ANeuralNetworksExecution, NNFreeExecution> nn_execution_;
+  // The mappings of tenor id to BufferHandle. Needed to track BufferHandle
+  // change and alter nn_reusable_execution_ if necessary.
+  std::vector<int> tensor_handle_map_;
   // Node indices that this delegate is responsible for. Indices here
   // indexes into the nodes array in the TfLiteContext.
   std::vector<int> nodes_;
@@ -360,13 +371,23 @@ class NNAPIDelegateKernel {
   std::vector<uint8_t> nn_compilation_cache_token_;
 
   std::vector<int> nnapi_to_tflite_op_mapping_;
+  // Map of DENSIFY output tensor id to node id.
+  std::vector<int> densify_output_to_node_mapping_;
+  // Map of DEQUANTIZE output tensor id to node id.
+  // Only contains DEQUANTIZE nodes with non-const input.
+  std::vector<int> non_const_dequantize_output_to_node_mapping_;
 
   // Fully initialized in NNAPIDelegateKernel::AddOpsAndTensors
-  int target_sdk_version_ = 27;  // kMinSdkVersionForNNAPI13
+  int target_feature_level_ = 27;  // kMinSdkVersionForNNAPI10
 
   void AddDequantizeOperatorsWhereNeeded(
       const TfLiteContext* context, int builtin_code, const TfLiteNode* node,
       int tflite_node_index, NNAPIOpBuilder* builder, int* nnapi_errno);
+
+  TfLiteStatus DensifyAndDequantizeConstTensor(TfLiteContext* context,
+                                               int densify_node_id,
+                                               bool should_dequantize,
+                                               NNAPIOpBuilder& builder);
 
   TfLiteStatus AddOpsAndTensors(TfLiteContext* context, int* nnapi_errno,
                                 bool allow_dynamic_dimensions);

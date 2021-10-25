@@ -118,7 +118,7 @@ body {
 
   p_b.1.1 = f32[2] get-tuple-element(p_b.1), index=0
 
-  ROOT root = (f32[2],f32[2],f32[2]) tuple(p_b.1.1, p_b.1)
+  ROOT root = (f32[2],(f32[2],f32[2])) tuple(p_b.1.1, p_b.1)
 }
 
 condition {

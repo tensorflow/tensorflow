@@ -237,17 +237,25 @@ struct Relu<Device, qint8> {
 
 }  // namespace functor
 
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+#define DEFINE_GPU_NO_MLIR_KERNELS(T)          \
+  template struct functor::Relu<GPUDevice, T>; \
+  template struct functor::Elu<GPUDevice, T>;  \
+  template struct functor::Selu<GPUDevice, T>;
+
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_NO_MLIR_KERNELS);
+
+#undef DEFINE_RELU_KERNELS
+#endif
+
 // Definition of the GPU implementations declared in relu_op.cc.
 #define DEFINE_GPU_KERNELS(T)                           \
-  template struct functor::Relu<GPUDevice, T>;          \
   template struct functor::ReluGrad<GPUDevice, T>;      \
   template struct functor::Relu6<GPUDevice, T>;         \
   template struct functor::Relu6Grad<GPUDevice, T>;     \
   template struct functor::LeakyRelu<GPUDevice, T>;     \
   template struct functor::LeakyReluGrad<GPUDevice, T>; \
-  template struct functor::Elu<GPUDevice, T>;           \
   template struct functor::EluGrad<GPUDevice, T>;       \
-  template struct functor::Selu<GPUDevice, T>;          \
   template struct functor::SeluGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);

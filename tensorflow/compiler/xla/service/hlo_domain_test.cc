@@ -414,7 +414,7 @@ ENTRY entry {
 
   struct Assignment {
     HloInstruction* instruction;
-    int64 device;
+    int64_t device;
   } assignments[] = {
       {new_gte0, 1},
       {new_copy0, 1},

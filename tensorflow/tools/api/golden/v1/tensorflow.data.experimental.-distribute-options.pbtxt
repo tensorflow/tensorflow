@@ -1,6 +1,6 @@
 path: "tensorflow.data.experimental.DistributeOptions"
 tf_class {
-  is_instance: "<class \'tensorflow.python.data.experimental.ops.distribute_options.DistributeOptions\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.options.DistributeOptions\'>"
   is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
   is_instance: "<type \'object\'>"
   member {

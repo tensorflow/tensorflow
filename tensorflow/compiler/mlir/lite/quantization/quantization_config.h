@@ -26,9 +26,12 @@ limitations under the License.
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
 namespace mlir {
 namespace TFL {
+
+using ::tflite::optimize::ReducedPrecisionSupport;
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
@@ -38,6 +41,9 @@ struct QuantizationSpecs {
   // mode which doesn't require QAT or sample inputs. But it can only target
   // DT_HALF and DT_QINT8 inference type.
   bool weight_quantization = false;
+
+  // Whether use the new MLIR dynamic quantizer instead of the tflite one.
+  bool enable_mlir_dynamic_quantizer = false;
 
   // Whether the quantization passes are triggered for post-training
   // quantization. If it is true, the model input doesn't require user specified
@@ -91,11 +97,26 @@ struct QuantizationSpecs {
   // the tensors with known names.
   std::string serialized_quant_stats = "";
 
+  // A bitmask to encode support for reduced precision inference in the model.
+  ReducedPrecisionSupport support_mask = ReducedPrecisionSupport::None;
+
   // Whether run the passes to propagate the quantization parameters and graph
   // rewrites. Returns false if the inference_type is DT_FLOAT or
   // `weight_quantization` flag is set.
   bool RunPropagationAndRewriteQuantizationPasses() const {
     return inference_type != tensorflow::DT_FLOAT && !weight_quantization;
+  }
+
+  // TODO(b/202075505): make implicit weight type clearer
+  // Whether run the passes and graph rewrites for dynamic quantization.
+  bool RunAndRewriteDynamicQuantizationPasses() const {
+    // TODO(b/201389248): add condition that symmetric, signed, int8 only
+    // If fail, log will appear to let user know nothing happened.
+    bool dynamic_quantize =
+        (inference_type != tensorflow::DT_FLOAT) && weight_quantization &&
+        !post_training_quantization && !disable_infer_tensor_range &&
+        enable_mlir_dynamic_quantizer;
+    return dynamic_quantize;
   }
 
   // Whether run the passes to only quantize the weights.
@@ -132,6 +153,11 @@ struct QuantizationSpecs {
   // Whether add the NumericVerify ops to verify numbers before and after
   // quantization.
   bool verify_numeric = false;
+  // Whether to add verification for layer by layer, or on whole model. When
+  // disabled (per-layer) float and quantized ops will be run from same input
+  // (output of previous quantized layer). When enabled, float and quantized ops
+  // will run with respective float and quantized output of previous ops.
+  bool whole_model_verify = false;
 };
 
 // Parses the command line flag strings to the quantization specification for

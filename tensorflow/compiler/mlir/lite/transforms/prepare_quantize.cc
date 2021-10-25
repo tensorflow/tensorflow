@@ -116,6 +116,16 @@ class PrepareQuantizePass
   explicit PrepareQuantizePass(const QuantizationSpecs& quant_specs)
       : quant_specs_(quant_specs) {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-prepare-quantize";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Prepare TFL dialect for quantization";
+  }
+
   void runOnFunction() override;
 
  private:
@@ -251,7 +261,7 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
 
   func.walk([&](ReturnOp ret) {
     int i = 0;
-    for (Value returned : ret.operands()) {
+    for (Value returned : ret.getOperands()) {
       llvm::SmallVector<Value, 4> quantized;
       for (auto user : returned.getUsers()) {
         if (auto q = Quantized(user)) {
@@ -420,8 +430,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
   return std::make_unique<PrepareQuantizePass>(quant_specs);
 }
 
-static PassRegistration<PrepareQuantizePass> pass(
-    "tfl-prepare-quantize", "Prepare TFL dialect for quantization");
+static PassRegistration<PrepareQuantizePass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

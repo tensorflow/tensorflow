@@ -61,7 +61,6 @@ struct OptimizationProfileConfig {
                   ", max: ", tensorflow::tensorrt::DebugString(max), "]");
   }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Sets the min/opt/max dimensions for profile.
   //
   // The given min/opt/max dimensions should satisfy the condition
@@ -82,7 +81,7 @@ struct OptimizationProfileConfig {
       return errors::Internal("Incorrect number of profile config parameters");
     }
     for (int i = 0; i < n_inputs; i++) {
-      const nvinfer1::ITensor* input = network->getInput(i);
+      const ITensorProxyPtr input = network->getInput(i);
       const char* name = input->getName();
       if (input->isShapeTensor()) {
         int idx = i + n_inputs;
@@ -95,20 +94,14 @@ struct OptimizationProfileConfig {
         profile->setShapeValues(name, nvinfer1::OptProfileSelector::kMAX,
                                 max[idx].d, max[idx].nbDims);
       }
-      if (input->isExecutionTensor()) {
-        VLOG(2) << "Setting input dimensions for " << name << ", "
-                << ::tensorflow::tensorrt::DebugString(opt[i]);
-        profile->setDimensions(name, nvinfer1::OptProfileSelector::kMIN,
-                               min[i]);
-        profile->setDimensions(name, nvinfer1::OptProfileSelector::kOPT,
-                               opt[i]);
-        profile->setDimensions(name, nvinfer1::OptProfileSelector::kMAX,
-                               max[i]);
-      }
+      VLOG(2) << "Setting input dimensions for " << name << ", "
+              << ::tensorflow::tensorrt::DebugString(opt[i]);
+      profile->setDimensions(name, nvinfer1::OptProfileSelector::kMIN, min[i]);
+      profile->setDimensions(name, nvinfer1::OptProfileSelector::kOPT, opt[i]);
+      profile->setDimensions(name, nvinfer1::OptProfileSelector::kMAX, max[i]);
     }
     return Status::OK();
   }
-#endif
 
   // Returns true if profile range completely includes the given shapes.
   bool IncludesShapes(const std::vector<TensorShape>& shapes,
@@ -196,12 +189,10 @@ class TrtShapeOptimizationProfile {
   // compatible with the given input shapes.
   int GetProfileNumber(const std::vector<TensorShape>& shapes);
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Creates optimization profiles and add them to the builder config.
   Status ConfigureBuilder(nvinfer1::IBuilder* builder,
                           nvinfer1::IBuilderConfig* config,
                           const nvinfer1::INetworkDefinition* network);
-#endif
 
   // Creates execution contexts for each optimization profile.
   Status CreateExecutionContexts(nvinfer1::ICudaEngine* engine,
@@ -270,12 +261,10 @@ class TrtShapeOptimizationProfile {
   // Optimization profile generation strategy.
   ProfileStrategy strategy_;
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Adds optimization profiles to the builder config.
   Status AddProfiles(nvinfer1::IBuilder* builder,
                      nvinfer1::IBuilderConfig* config,
                      const nvinfer1::INetworkDefinition* network);
-#endif
 
   void SetShapeTensorMask(const nvinfer1::ICudaEngine* engine, int n_inputs);
   void SetShapeTensorMask(
@@ -284,6 +273,8 @@ class TrtShapeOptimizationProfile {
   void ImplicitBatchModeCompatibleStrategy(
       const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes);
   void OptimalStrategy(
+      const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes);
+  Status RangeStrategy(
       const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes);
 };
 

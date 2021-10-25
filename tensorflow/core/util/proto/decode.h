@@ -42,16 +42,16 @@ using tensorflow::protobuf::io::StringOutputStream;
 // Converts an uint64 to an int64 without loss of information.
 // Unsigned values greater than INT64_MAX are represented as
 // negative numbers by wrapping (same as twos-complement bit equivalence).
-inline int64 WrapUnsignedAsSigned64(uint64 unsigned_value) {
+inline int64_t WrapUnsignedAsSigned64(uint64 unsigned_value) {
   // For a detailed explanation of why this works to wrap unsigned ints, see
   // http://stackoverflow.com/questions/13150449/efficient-unsigned-to-signed-cast-avoiding-implementation-defined-behavior
   // Both if tests should be optimized out.
   if (unsigned_value <= INT64_MAX) {
-    return static_cast<int64>(unsigned_value);
+    return static_cast<int64_t>(unsigned_value);
   }
   // The C++ spec allows an architecture where this test is required.
   if (unsigned_value >= INT64_MIN) {
-    return static_cast<int64>(unsigned_value - INT64_MIN) + INT64_MIN;
+    return static_cast<int64_t>(unsigned_value - INT64_MIN) + INT64_MIN;
   }
   return 0;  // This should never occur.
 }
@@ -104,12 +104,12 @@ template <class TensorType, enum WireFormatLite::FieldType DeclaredType>
 const uint8* ReadFromArray(const uint8* buf, TensorType* value);
 
 template <>
-inline const uint8* ReadFromArray<int64, WireFormatLite::TYPE_INT32>(
-    const uint8* buf, int64* value) {
+inline const uint8* ReadFromArray<int64_t, WireFormatLite::TYPE_INT32>(
+    const uint8* buf, int64_t* value) {
   uint32 temp = 0;
   bool unused_ok;  // The Counting pass would have failed if this were corrupt.
   buf = ReadVarint32FromArray(buf, &unused_ok, &temp);
-  *value = static_cast<int64>(temp);
+  *value = static_cast<int64_t>(temp);
   return buf;
 }
 
@@ -124,8 +124,8 @@ inline const uint8* ReadFromArray<int32, WireFormatLite::TYPE_INT32>(
 }
 
 template <>
-inline const uint8* ReadFromArray<int64, WireFormatLite::TYPE_INT64>(
-    const uint8* buf, int64* value) {
+inline const uint8* ReadFromArray<int64_t, WireFormatLite::TYPE_INT64>(
+    const uint8* buf, int64_t* value) {
   uint64 temp = 0;
   bool unused_ok;  // The Counting pass would have failed if this were corrupt.
   buf = ReadVarint64FromArray(buf, &unused_ok, &temp);
@@ -158,8 +158,8 @@ inline const uint8* ReadFromArray<uint64, WireFormatLite::TYPE_UINT64>(
 }
 
 template <>
-inline const uint8* ReadFromArray<int64, WireFormatLite::TYPE_SINT32>(
-    const uint8* buf, int64* value) {
+inline const uint8* ReadFromArray<int64_t, WireFormatLite::TYPE_SINT32>(
+    const uint8* buf, int64_t* value) {
   uint64 temp = 0;
   bool unused_ok;  // The Counting pass would have failed if this were corrupt.
   buf = ReadVarint64FromArray(buf, &unused_ok, &temp);
@@ -178,8 +178,8 @@ inline const uint8* ReadFromArray<int32, WireFormatLite::TYPE_SINT32>(
 }
 
 template <>
-inline const uint8* ReadFromArray<int64, WireFormatLite::TYPE_SINT64>(
-    const uint8* buf, int64* value) {
+inline const uint8* ReadFromArray<int64_t, WireFormatLite::TYPE_SINT64>(
+    const uint8* buf, int64_t* value) {
   uint64 temp = 0;
   bool unused_ok;  // The Counting pass would have failed if this were corrupt.
   buf = ReadVarint64FromArray(buf, &unused_ok, &temp);
@@ -221,9 +221,9 @@ inline const uint8* ReadFromArray<uint64, WireFormatLite::TYPE_FIXED64>(
 }
 
 template <>
-inline const uint8* ReadFromArray<int64, WireFormatLite::TYPE_SFIXED32>(
-    const uint8* buf, int64* value) {
-  int32 temp;
+inline const uint8* ReadFromArray<int64_t, WireFormatLite::TYPE_SFIXED32>(
+    const uint8* buf, int64_t* value) {
+  int32_t temp;
   buf = WireFormatLite::ReadPrimitiveFromArray<int32,
                                                WireFormatLite::TYPE_SFIXED32>(
       buf, &temp);
@@ -240,8 +240,8 @@ inline const uint8* ReadFromArray<int32, WireFormatLite::TYPE_SFIXED32>(
 }
 
 template <>
-inline const uint8* ReadFromArray<int64, WireFormatLite::TYPE_SFIXED64>(
-    const uint8* buf, int64* value) {
+inline const uint8* ReadFromArray<int64_t, WireFormatLite::TYPE_SFIXED64>(
+    const uint8* buf, int64_t* value) {
   protobuf_int64 temp;
   buf = WireFormatLite::ReadPrimitiveFromArray<protobuf_int64,
                                                WireFormatLite::TYPE_SFIXED64>(
@@ -407,7 +407,7 @@ inline Status ReadValue(CodedInputStream* input,
                                   DataTypeString(dtype));
       }
     case WireFormatLite::TYPE_INT64:
-      return ReadPrimitive<protobuf_int64, int64, WireFormatLite::TYPE_INT64>(
+      return ReadPrimitive<protobuf_int64, int64_t, WireFormatLite::TYPE_INT64>(
           input, index, datap);
     case WireFormatLite::TYPE_UINT64:
       return ReadPrimitive<protobuf_uint64, uint64,
@@ -415,7 +415,7 @@ inline Status ReadValue(CodedInputStream* input,
     case WireFormatLite::TYPE_INT32:
       switch (dtype) {
         case DataType::DT_INT64:
-          return ReadPrimitive<int32, int64, WireFormatLite::TYPE_INT32>(
+          return ReadPrimitive<int32, int64_t, WireFormatLite::TYPE_INT32>(
               input, index, datap);
         case DataType::DT_INT32:
           return ReadPrimitive<int32, int32, WireFormatLite::TYPE_INT32>(
@@ -468,7 +468,7 @@ inline Status ReadValue(CodedInputStream* input,
     case WireFormatLite::TYPE_SFIXED32:
       switch (dtype) {
         case DataType::DT_INT64:
-          return ReadPrimitive<int32, int64, WireFormatLite::TYPE_SFIXED32>(
+          return ReadPrimitive<int32, int64_t, WireFormatLite::TYPE_SFIXED32>(
               input, index, datap);
         case DataType::DT_INT32:
           return ReadPrimitive<int32, int32, WireFormatLite::TYPE_SFIXED32>(
@@ -478,12 +478,12 @@ inline Status ReadValue(CodedInputStream* input,
                                   DataTypeString(dtype));
       }
     case WireFormatLite::TYPE_SFIXED64:
-      return ReadPrimitive<protobuf_int64, int64,
+      return ReadPrimitive<protobuf_int64, int64_t,
                            WireFormatLite::TYPE_SFIXED64>(input, index, datap);
     case WireFormatLite::TYPE_SINT32:
       switch (dtype) {
         case DataType::DT_INT64:
-          return ReadPrimitive<int32, int64, WireFormatLite::TYPE_SINT32>(
+          return ReadPrimitive<int32, int64_t, WireFormatLite::TYPE_SINT32>(
               input, index, datap);
         case DataType::DT_INT32:
           return ReadPrimitive<int32, int32, WireFormatLite::TYPE_SINT32>(
@@ -493,8 +493,8 @@ inline Status ReadValue(CodedInputStream* input,
                                   DataTypeString(dtype));
       }
     case WireFormatLite::TYPE_SINT64:
-      return ReadPrimitive<protobuf_int64, int64, WireFormatLite::TYPE_SINT64>(
-          input, index, datap);
+      return ReadPrimitive<protobuf_int64, int64_t,
+                           WireFormatLite::TYPE_SINT64>(input, index, datap);
       // default: intentionally omitted in order to enable static checking.
   }
   // Unreachable.
@@ -527,7 +527,7 @@ inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
                                   DataTypeString(dtype));
       }
     case WireFormatLite::TYPE_INT64:
-      *index += ReadPackedPrimitives<int64, WireFormatLite::TYPE_INT64>(
+      *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_INT64>(
           buf, buf_size, *index, stride, data);
       return Status::OK();
     case WireFormatLite::TYPE_UINT64:
@@ -537,7 +537,7 @@ inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
     case WireFormatLite::TYPE_INT32:
       switch (dtype) {
         case DataType::DT_INT64:
-          *index += ReadPackedPrimitives<int64, WireFormatLite::TYPE_INT32>(
+          *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_INT32>(
               buf, buf_size, *index, stride, data);
           return Status::OK();
         case DataType::DT_INT32:
@@ -596,8 +596,9 @@ inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
     case WireFormatLite::TYPE_SFIXED32:
       switch (dtype) {
         case DataType::DT_INT64:
-          *index += ReadPackedPrimitives<int64, WireFormatLite::TYPE_SFIXED32>(
-              buf, buf_size, *index, stride, data);
+          *index +=
+              ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_SFIXED32>(
+                  buf, buf_size, *index, stride, data);
           return Status::OK();
         case DataType::DT_INT32:
           *index += ReadPackedPrimitives<int32, WireFormatLite::TYPE_SFIXED32>(
@@ -608,14 +609,14 @@ inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
                                   DataTypeString(dtype));
       }
     case WireFormatLite::TYPE_SFIXED64:
-      *index += ReadPackedPrimitives<int64, WireFormatLite::TYPE_SFIXED64>(
+      *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_SFIXED64>(
           buf, buf_size, *index, stride, data);
       return Status::OK();
 
     case WireFormatLite::TYPE_SINT32:
       switch (dtype) {
         case DataType::DT_INT64:
-          *index += ReadPackedPrimitives<int64, WireFormatLite::TYPE_SINT32>(
+          *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_SINT32>(
               buf, buf_size, *index, stride, data);
           return Status::OK();
         case DataType::DT_INT32:
@@ -627,7 +628,7 @@ inline Status ReadPackedFromArray(const void* buf, size_t buf_size,
                                   DataTypeString(dtype));
       }
     case WireFormatLite::TYPE_SINT64:
-      *index += ReadPackedPrimitives<int64, WireFormatLite::TYPE_SINT64>(
+      *index += ReadPackedPrimitives<int64_t, WireFormatLite::TYPE_SINT64>(
           buf, buf_size, *index, stride, data);
       return Status::OK();
       // default: intentionally omitted in order to enable static checking.

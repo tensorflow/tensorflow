@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.tools.docs.generate2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import shutil
 import types
@@ -54,7 +50,6 @@ class Generate2Test(googletest.TestCase):
           output_dir=output_dir,
           code_url_prefix='',
           search_hints=True,
-          gen_report=False,
       )
 
 

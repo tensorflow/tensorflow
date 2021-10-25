@@ -109,13 +109,12 @@ CHECK: atomicrmw fadd float* %[[ADDR:.*]], float %[[VALUE:.*]] seq_cst
 }
 
 TEST_F(GpuAtomicTest, TestAddAtomicF64) {
-  const se::DeviceDescription& device_description =
-      backend().default_stream_executor()->GetDeviceDescription();
-  int cc_major = 0, cc_minor = 0;
-  device_description.cuda_compute_capability(&cc_major, &cc_minor);
-
   // Atomic add required sm_60 or above.
-  if (cc_major < 6) {
+  if (!backend()
+           .default_stream_executor()
+           ->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeast(6)) {
     return;
   }
 

@@ -42,6 +42,7 @@ namespace testing {
 namespace {
 const double kRelativeThreshold = 1e-2f;
 const double kAbsoluteThreshold = 1e-4f;
+const char kDefaultSignatureKey[] = "serving_default";
 
 // For quantized tests, we use a different error measurement from float ones.
 // Assumes the baseline is a always a float TF model.
@@ -126,6 +127,10 @@ class TfLiteDriver::DataExpectation {
 
  private:
   bool CompareTwoValuesHelper(float v1, float v2) {
+    if (std::isnan(v1) || std::isnan(v2)) {
+      return !(std::isnan(v1) && std::isnan(v2));
+    }
+
     float diff = std::abs(v1 - v2);
     bool error_is_large = false;
     // For very small numbers, try absolute error, otherwise go with
@@ -139,6 +144,10 @@ class TfLiteDriver::DataExpectation {
   }
 
   bool CompareTwoValuesHelper(double v1, double v2) {
+    if (std::isnan(v1) || std::isnan(v2)) {
+      return !(std::isnan(v1) && std::isnan(v2));
+    }
+
     double diff = std::abs(v1 - v2);
     bool error_is_large = false;
     // For very small numbers, try absolute error, otherwise go with
@@ -381,11 +390,19 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
     // are fully validated against TfLite delegates.
     resolver_.reset(
         new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
-    ops::builtin::BuiltinOpResolver* buildinop_resolver_ =
+    ops::builtin::BuiltinOpResolver* builtin_op_resolver_ =
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
-    tflite::ops::custom::AddGradientOps(buildinop_resolver_);
-    tflite::ops::custom::AddParseExampleOp(buildinop_resolver_);
-    tflite::ops::custom::AddPerceptionOps(buildinop_resolver_);
+    builtin_op_resolver_->AddCustom("IRFFT2D",
+                                    tflite::ops::custom::Register_IRFFT2D());
+    builtin_op_resolver_->AddCustom(
+        "AvgPool3D", tflite::ops::custom::Register_AVG_POOL_3D());
+    builtin_op_resolver_->AddCustom(
+        "MaxPool3D", tflite::ops::custom::Register_MAX_POOL_3D());
+    builtin_op_resolver_->AddCustom("Roll",
+                                    tflite::ops::custom::Register_ROLL());
+    tflite::ops::custom::AddGradientOps(builtin_op_resolver_);
+    tflite::ops::custom::AddParseExampleOp(builtin_op_resolver_);
+    tflite::ops::custom::AddPerceptionOps(builtin_op_resolver_);
   }
 
   switch (delegate_type) {
@@ -443,7 +460,8 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
   } else {
     auto* delegate_providers = tflite::KernelTestDelegateProviders::Get();
     for (auto& one : delegate_providers->CreateAllDelegates()) {
-      if (interpreter_->ModifyGraphWithDelegate(std::move(one)) != kTfLiteOk) {
+      if (interpreter_->ModifyGraphWithDelegate(std::move(one.delegate)) !=
+          kTfLiteOk) {
         Invalidate(
             "Unable to the build graph using the delegate initialized from "
             "tflite::KernelTestDelegateProviders");
@@ -453,6 +471,34 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
   }
 
   must_allocate_tensors_ = true;
+
+  // The order of inputs and outputs must match the order in "*_tests.txt" and
+  // "*.inputs" files.
+  // TODO(b/192473002): Run the interpreter using signature instead of indexes.
+  auto* signature_runner =
+      interpreter_->GetSignatureRunner(kDefaultSignatureKey);
+  if (signature_runner) {
+    const auto& signature_inputs =
+        interpreter_->signature_inputs(kDefaultSignatureKey);
+    for (const char* name : signature_runner->input_names()) {
+      inputs_.push_back(signature_inputs.at(name));
+    }
+    const auto& signature_outputs =
+        interpreter_->signature_outputs(kDefaultSignatureKey);
+    for (const char* name : signature_runner->output_names()) {
+      outputs_.push_back(signature_outputs.at(name));
+    }
+  }
+
+  // Uses the default order when there is no signature.
+  if (inputs_.empty()) {
+    inputs_.insert(inputs_.end(), interpreter_->inputs().begin(),
+                   interpreter_->inputs().end());
+  }
+  if (outputs_.empty()) {
+    outputs_.insert(outputs_.end(), interpreter_->outputs().begin(),
+                    interpreter_->outputs().end());
+  }
 }
 
 void TfLiteDriver::ResetTensor(int id) {

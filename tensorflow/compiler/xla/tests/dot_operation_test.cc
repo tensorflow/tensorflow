@@ -142,7 +142,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64, VectorDot) {
                                         this->error_spec_);
 }
 
-std::vector<int64> MinorToMajorForIsRowMajor(bool row_major) {
+std::vector<int64_t> MinorToMajorForIsRowMajor(bool row_major) {
   return {row_major ? 1 : 0, row_major ? 0 : 1};
 }
 
@@ -604,7 +604,9 @@ XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
 
   // Slice batches into individual matrices and multiply them.
   std::vector<XlaOp> out_slices;
-  for (int i = 0; i < 4; ++i) {
+  const auto n = 4;
+  out_slices.reserve(n);
+  for (int i = 0; i < n; ++i) {
     // Slice off individual matrices and reshape to 2D tensors.
     auto x_slice = Slice(x_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
     x_slice = Reshape(x_slice, {0, 1, 2}, {2, 2});
@@ -1199,7 +1201,7 @@ XLA_TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
 }
 
 using EinsumParamType =
-    std::tuple<std::vector<int64>, std::vector<int64>, string>;
+    std::tuple<std::vector<int64_t>, std::vector<int64_t>, string>;
 class EinsumTest : public DotOperationTest,
                    public ::testing::WithParamInterface<EinsumParamType> {};
 XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
@@ -1222,7 +1224,7 @@ XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
 }
 
 std::vector<EinsumParamType> GetEinsumTestCases() {
-  using v = std::vector<int64>;
+  using v = std::vector<int64_t>;
   using p = EinsumParamType;
   std::vector<p> test_cases = {
       p{v{5, 6}, v{6, 7}, "mk,kn->mn"},
@@ -1287,8 +1289,8 @@ std::vector<EinsumParamType> GetEinsumTestCases() {
 INSTANTIATE_TEST_SUITE_P(Einsum, EinsumTest,
                          ::testing::ValuesIn(GetEinsumTestCases()));
 
-using BatchDotParamType =
-    std::tuple<std::vector<int64>, std::vector<int64>, std::vector<int64>>;
+using BatchDotParamType = std::tuple<std::vector<int64_t>, std::vector<int64_t>,
+                                     std::vector<int64_t>>;
 class BatchDotTest : public DotOperationTest,
                      public ::testing::WithParamInterface<BatchDotParamType> {};
 XLA_TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
@@ -1308,7 +1310,7 @@ XLA_TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
 }
 
 std::vector<BatchDotParamType> GetBatchDotTestCases() {
-  using v = std::vector<int64>;
+  using v = std::vector<int64_t>;
   using p = BatchDotParamType;
   std::vector<p> test_cases = {
       p{v{5, 6}, v{6, 7}, v{5, 7}},
@@ -1822,10 +1824,10 @@ void DOT_ReorderContracting(::testing::benchmark::State& state) {
 
   int device_ordinal = client->default_device_ordinal();
 
-  const int64 d0 = 128;
-  const int64 d1 = 128;
-  const int64 d2 = 128;
-  const int64 d3 = 128;
+  const int64_t d0 = 128;
+  const int64_t d1 = 128;
+  const int64_t d2 = 128;
+  const int64_t d3 = 128;
 
   Array3D<float> input_arr(d0, d1, d2);
   Array2D<float> const_arr(d1 * d2, d3);
@@ -1861,7 +1863,7 @@ void DOT_ReorderContracting(::testing::benchmark::State& state) {
     ASSERT_IS_OK(executable->Run({&buffer0}, options));
   }
 
-  const int64 total_bytes = d0 * d1 * d2 + d1 * d2 * d3 + d0 * d3;
+  const int64_t total_bytes = d0 * d1 * d2 + d1 * d2 * d3 + d0 * d3;
   for (auto s : state) {
     ASSERT_IS_OK(executable->Run({&buffer0}, options));
   }

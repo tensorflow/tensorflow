@@ -53,6 +53,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/grappler:__pkg__",
     ],
 )
 
@@ -165,6 +166,7 @@ cc_library(
         ":manip_grad",
         ":math_grad",
         ":nn_grad",
+        ":resource_variable_grad",
     ],
 )
 
@@ -455,6 +457,7 @@ cc_library(
 tf_cc_test(
     name = "gradients_nn_grad_test",
     srcs = ["gradients/nn_grad_test.cc"],
+    tags = ["no_windows"],  # b/189986187
     deps = [
         ":cc_ops",
         ":cc_ops_internal",
@@ -560,6 +563,41 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "resource_variable_grad",
+    srcs = ["gradients/resource_variable_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":grad_op_registry",
+        ":gradients",
+        "//tensorflow/core:lib_proto_parsing",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "gradients_resource_variable_grad_test",
+    srcs = ["gradients/resource_variable_grad_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":grad_op_registry",
+        ":grad_testutil",
+        ":gradient_checker",
+        ":math_grad",
+        ":resource_variable_grad",
+        ":resource_variable_ops",
+        ":testutil",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:gradients",
+        "//tensorflow/cc:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # Generates separate libraries for array_ops and math_ops to reduce the dependency count of targets that depend on only these
 tf_gen_op_wrappers_cc(
     name = "math_ops",
@@ -576,6 +614,16 @@ tf_gen_op_wrappers_cc(
     extra_gen_deps = ["//tensorflow/c/kernels:bitcast_op_lib"],
     op_lib_names = [
         "array_ops",
+    ],
+    pkg = "//tensorflow/core",
+)
+
+tf_gen_op_wrappers_cc(
+    name = "dataset_ops",
+    api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
+    op_lib_names = [
+        "dataset_ops",
+        "experimental_dataset_ops",
     ],
     pkg = "//tensorflow/core",
 )
@@ -614,16 +662,21 @@ tf_gen_op_wrappers_cc(
         "ops/array_ops.h",
         "ops/const_op.h",
         "ops/math_ops.h",
+        "ops/dataset_ops.h",
+        "ops/experimental_dataset_ops.h",
         "ops/standard_ops.h",
     ],
     other_hdrs_internal = [
         "ops/array_ops_internal.h",
         "ops/math_ops_internal.h",
+        "ops/dataset_ops_internal.h",
+        "ops/experimental_dataset_ops_internal.h",
     ],
     pkg = "//tensorflow/core",
     deps = [
         ":array_ops",
         ":const_op",
+        ":dataset_ops",
         ":math_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",

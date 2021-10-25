@@ -88,8 +88,6 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertTrue(layer._instrumented_keras_api)
     self.assertTrue(layer._instrumented_keras_layer_class)
     self.assertFalse(layer._instrumented_keras_model_class)
-    self.assertTrue(base_layer.keras_api_gauge.get_cell('tf.keras.layers.Add'))
-    base_layer.keras_api_gauge.get_cell('tf.keras.layers.Add').set(False)
 
   @combinations.generate(combinations.keras_model_type_combinations())
   def test_dynamic_layer(self):
@@ -579,6 +577,17 @@ class BaseLayerTest(keras_parameterized.TestCase):
                                 'not compatible with provided weight shape'):
       layer.set_weights([kernel.T, bias])
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_set_weights_accepts_output_of_get_weights(self):
+    layer = layers.Layer()
+    layer.add_weight(name='scalar_float', shape=(), dtype=dtypes.float32)
+    layer.add_weight(name='scalar_string', shape=(), dtype=dtypes.string,
+                     initializer=lambda *a, **k: 'abc')
+    layer.add_weight(name='vector_float', shape=(3,), dtype=dtypes.float32)
+    layer.add_weight(name='vector_string', shape=(2,), dtype=dtypes.string,
+                     initializer=lambda *a, **k: 2 * ['abc'])
+    layer.set_weights(layer.get_weights())
+
   def test_get_config_error(self):
 
     class MyLayer(base_layer.Layer):
@@ -986,14 +995,14 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
     with ops.Graph().as_default():
       x1 = array_ops.ones((3, 3))
     x2 = array_ops.ones((3, 3))
-    with self.assertRaisesRegex(TypeError, 'Graph tensors'):
+    with self.assertRaises(TypeError):
       math_ops.matmul(x1, x2)
 
   def test_mixing_numpy_arrays_and_graph_tensors(self):
     with ops.Graph().as_default():
       x1 = array_ops.ones((3, 3))
     x2 = np.ones((3, 3), dtype='float32')
-    with self.assertRaisesRegex(TypeError, 'Graph tensors'):
+    with self.assertRaises(TypeError):
       math_ops.matmul(x1, x2)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -1605,11 +1614,6 @@ class IdentityLayer(base_layer.Layer):
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class DTypeTest(keras_parameterized.TestCase):
-
-  # This class only have tests relating to layer.dtype. Tests for dtype policies
-  # are in mixed_precision/keras_test.py
-
-  # TODO(reedwm): Maybe have a separate test file for input casting tests.
 
   def _const(self, dtype):
     return array_ops.constant(1, dtype=dtype)

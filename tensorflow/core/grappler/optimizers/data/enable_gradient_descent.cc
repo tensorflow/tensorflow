@@ -32,8 +32,8 @@ namespace {
 constexpr char kAlgorithm[] = "algorithm";
 constexpr char kModelDataset[] = "ModelDataset";
 
-constexpr int64 HILL_CLIMB = 0;
-constexpr int64 GRADIENT_DESCENT = 1;
+constexpr int64_t HILL_CLIMB = 0;
+constexpr int64_t GRADIENT_DESCENT = 1;
 
 }  // namespace
 
@@ -63,12 +63,6 @@ Status EnableGradientDescent::OptimizeAndCollectStats(
   }
 
   return Status::OK();
-}
-
-void EnableGradientDescent::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                     const GraphDef& optimize_output,
-                                     double result) {
-  // no-op
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(EnableGradientDescent, "enable_gradient_descent");

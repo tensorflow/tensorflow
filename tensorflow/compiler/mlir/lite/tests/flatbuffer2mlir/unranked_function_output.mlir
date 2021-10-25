@@ -1,8 +1,8 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck %s
+// RUN: tf-opt --tfl-legalize-tf-while %s -o - | flatbuffer_translate -mlir-to-tflite-flatbuffer - -o -  | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck %s
 
 // This test is to test for unranked function output from input, the output type should be compatible with input type.
 
-// CHECK: func @main(%arg0: tensor<1xf32>) -> tensor<*xf32> attributes {tf.entry_function = {inputs = "arg0", outputs = "tf.While"}} {
+// CHECK: func @main(%arg0: tensor<1xf32>) -> tensor<*xf32> attributes {tf.entry_function = {inputs = "arg0", outputs = "tfl.while"}} {
 // CHECK:   %0 = "tfl.while"(%arg0) ( {
 // CHECK:   ^bb0(%arg1: tensor<*xf32>):
 // CHECK:     %[[RES0:.*]] = call @cond(%arg1) : (tensor<*xf32>) -> tensor<*xf32>

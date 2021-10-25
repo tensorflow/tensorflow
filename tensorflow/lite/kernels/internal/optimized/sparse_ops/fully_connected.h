@@ -66,7 +66,7 @@ inline void FullyConnectedSparseWeight(
   for (int b = 0; b < batches; ++b) {
     for (int i = 0; i < output_depth; ++i) {
       float total = output_data[b * output_depth + i];
-      float bias_value = bias_data[i];
+      const float bias_value = bias_data ? bias_data[i] : 0;
       output_data[b * output_depth + i] = ActivationFunctionWithMinMax(
           total + bias_value, output_activation_min, output_activation_max);
     }
@@ -105,7 +105,7 @@ inline void FullyConnectedSparseWeight1x4Impl(
   for (int b = thread_start; b < thread_end; ++b) {
     for (int i = 0; i < output_depth; ++i) {
       float total = output_data[b * output_depth + i];
-      float bias_value = bias_data[i];
+      const float bias_value = bias_data ? bias_data[i] : 0;
       output_data[b * output_depth + i] = ActivationFunctionWithMinMax(
           total + bias_value, output_activation_min, output_activation_max);
     }

@@ -120,9 +120,10 @@ class ReductionHelper {
 
  private:
   bool reduce_first_axis_;  // True if need to reduce the 0-th dimension.
-  gtl::InlinedVector<int64, 4> data_reshape_;  // Reshape data before reduction.
-  gtl::InlinedVector<int64, 4> out_shape_;     // The final output shape.
-  gtl::InlinedVector<int64, 4> out_reshape_;   // Reshape output for reduction.
+  gtl::InlinedVector<int64_t, 4>
+      data_reshape_;                          // Reshape data before reduction.
+  gtl::InlinedVector<int64_t, 4> out_shape_;  // The final output shape.
+  gtl::InlinedVector<int64_t, 4> out_reshape_;  // Reshape output for reduction.
 };
 
 // For operations where the output is a reduction function along some
@@ -227,8 +228,8 @@ class ReductionOp : public OpKernel {
                                                &shuffled, alloc_attr));
         OP_REQUIRES_OK(ctx, DoTranspose(d, data_reshaped, helper.permutation(),
                                         &shuffled));
-        const int64 unreduced = tmp_out.NumElements();
-        const int64 reduced = shuffled.NumElements() / unreduced;
+        const int64_t unreduced = tmp_out.NumElements();
+        const int64_t reduced = shuffled.NumElements() / unreduced;
         const Tensor& const_shuffled = shuffled;
         Functor::Reduce(ctx, tmp_out.flat<T>(),
                         const_shuffled.shaped<T, 2>({unreduced, reduced}),

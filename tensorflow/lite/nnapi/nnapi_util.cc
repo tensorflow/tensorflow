@@ -43,20 +43,24 @@ std::string SimpleJoin(const std::vector<const char*>& elements,
 }  // namespace
 
 std::vector<const char*> GetDeviceNamesList() {
+  return GetDeviceNamesList(NnApiImplementation());
+}
+
+std::vector<const char*> GetDeviceNamesList(const NnApi* nnapi) {
   std::vector<const char*> device_names;
 
   // Only build the list if NnApiImplementation has the methods we need,
   // leaving it empty otherwise.
-  if (NnApiImplementation()->ANeuralNetworks_getDeviceCount != nullptr) {
+  if (nnapi->ANeuralNetworks_getDeviceCount != nullptr) {
     uint32_t num_devices = 0;
 
-    NnApiImplementation()->ANeuralNetworks_getDeviceCount(&num_devices);
+    nnapi->ANeuralNetworks_getDeviceCount(&num_devices);
 
     for (uint32_t i = 0; i < num_devices; i++) {
       ANeuralNetworksDevice* device = nullptr;
       const char* buffer = nullptr;
-      NnApiImplementation()->ANeuralNetworks_getDevice(i, &device);
-      NnApiImplementation()->ANeuralNetworksDevice_getName(device, &buffer);
+      nnapi->ANeuralNetworks_getDevice(i, &device);
+      nnapi->ANeuralNetworksDevice_getName(device, &buffer);
       device_names.push_back(buffer);
     }
   }
@@ -65,7 +69,11 @@ std::vector<const char*> GetDeviceNamesList() {
 }
 
 std::string GetStringDeviceNamesList() {
-  std::vector<const char*> device_names = GetDeviceNamesList();
+  return GetStringDeviceNamesList(NnApiImplementation());
+}
+
+std::string GetStringDeviceNamesList(const NnApi* nnapi) {
+  std::vector<const char*> device_names = GetDeviceNamesList(nnapi);
   return SimpleJoin(device_names, ",");
 }
 

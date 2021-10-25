@@ -169,6 +169,11 @@ message OpDef {
   // field to true, to allow the Op to take an uninitialized Tensor as
   // input.
   bool allows_uninitialized_input = 19;  // for Assign, etc.
+
+  // Indicates whether the op implementation uses distributed communication.
+  // If True, the op is allowed to return errors for network disconnection and
+  // trigger TF network failure handling logics.
+  bool is_distributed_communication = 21;
 }
 // LINT.ThenChange(
 //     https://www.tensorflow.org/code/tensorflow/core/framework/op_def_util.cc)

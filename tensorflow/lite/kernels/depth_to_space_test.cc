@@ -60,6 +60,11 @@ TEST(DepthToSpaceOpModel, BadBlockSize) {
   EXPECT_DEATH(DepthToSpaceOpModel({TensorType_FLOAT32, {1, 1, 1, 4}}, 4),
                "Cannot allocate tensors");
 }
+
+TEST(DepthToSpaceOpModel, NoBlockSize) {
+  EXPECT_DEATH(DepthToSpaceOpModel({TensorType_FLOAT32, {1, 1, 1, 4}}, 0),
+               "Cannot allocate tensors");
+}
 #endif
 
 TEST(DepthToSpaceOpModel, Float32) {

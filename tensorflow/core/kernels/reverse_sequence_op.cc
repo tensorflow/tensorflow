@@ -103,8 +103,8 @@ void CheckErrors<GPUDevice, int32>(OpKernelContext* context, int batch_dim,
 }
 
 template <>
-void CheckErrors<GPUDevice, int64>(OpKernelContext* context, int batch_dim,
-                                   int seq_dim) {
+void CheckErrors<GPUDevice, int64_t>(OpKernelContext* context, int batch_dim,
+                                     int seq_dim) {
   CheckErrorsGPU(context, batch_dim, seq_dim);
 }
 
@@ -115,6 +115,10 @@ class ReverseSequenceOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("batch_dim", &batch_dim_));
     OP_REQUIRES_OK(context, context->GetAttr("seq_dim", &seq_dim_));
+    OP_REQUIRES(context, batch_dim_ >= 0,
+                errors::InvalidArgument("Invalid batch_dim ", batch_dim_));
+    OP_REQUIRES(context, seq_dim_ >= 0,
+                errors::InvalidArgument("Invalid seq_dim ", seq_dim_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -174,7 +178,7 @@ class ReverseSequenceOp : public OpKernel {
 
 #define REGISTER_REVERSE_SEQUENCE_LEN(type) \
   REGISTER_REVERSE_SEQUENCE(type, int32);   \
-  REGISTER_REVERSE_SEQUENCE(type, int64);
+  REGISTER_REVERSE_SEQUENCE(type, int64_t);
 
 TF_CALL_NUMBER_TYPES(REGISTER_REVERSE_SEQUENCE_LEN);
 TF_CALL_bool(REGISTER_REVERSE_SEQUENCE_LEN);
@@ -194,7 +198,7 @@ namespace functor {
 
 #define DECLARE_GPU_SPEC_LEN(T, Dims) \
   DECLARE_GPU_SPEC(T, int32, Dims);   \
-  DECLARE_GPU_SPEC(T, int64, Dims);
+  DECLARE_GPU_SPEC(T, int64_t, Dims);
 
 #define DECLARE_GPU_SPECS(T)  \
   DECLARE_GPU_SPEC_LEN(T, 2); \
@@ -217,7 +221,7 @@ TF_CALL_bool(DECLARE_GPU_SPECS);
 
 #define REGISTER_REVERSE_SEQUENCE_GPU_LEN(type) \
   REGISTER_REVERSE_SEQUENCE_GPU(type, int32);   \
-  REGISTER_REVERSE_SEQUENCE_GPU(type, int64);
+  REGISTER_REVERSE_SEQUENCE_GPU(type, int64_t);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_REVERSE_SEQUENCE_GPU_LEN);
 TF_CALL_bool(REGISTER_REVERSE_SEQUENCE_GPU_LEN);

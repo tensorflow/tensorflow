@@ -25,9 +25,9 @@ using shape_inference::ShapeHandle;
 namespace {
 
 Status CandidateSamplerShapeFn(InferenceContext* c) {
-  int64 num_sampled;
+  int64_t num_sampled;
   TF_RETURN_IF_ERROR(c->GetAttr("num_sampled", &num_sampled));
-  int64 num_true;
+  int64_t num_true;
   TF_RETURN_IF_ERROR(c->GetAttr("num_true", &num_true));
 
   ShapeHandle true_classes_shape;
@@ -142,7 +142,7 @@ REGISTER_OP("ComputeAccidentalHits")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .SetShapeFn([](InferenceContext* c) {
-      int64 num_true;
+      int64_t num_true;
       TF_RETURN_IF_ERROR(c->GetAttr("num_true", &num_true));
 
       // Validate true_classes, must be a matrix.

@@ -210,10 +210,10 @@ class TraceMe {
   // Returns the activity ID, which is used to stop the activity.
   // Calls `name_generator` to get the name for activity.
   template <typename NameGeneratorT>
-  static int64 ActivityStart(NameGeneratorT name_generator, int level = 1) {
+  static int64_t ActivityStart(NameGeneratorT name_generator, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      int64 activity_id = TraceMeRecorder::NewActivityId();
+      int64_t activity_id = TraceMeRecorder::NewActivityId();
       TraceMeRecorder::Record(
           {name_generator(), GetCurrentTimeNanos(), -activity_id});
       return activity_id;
@@ -224,10 +224,10 @@ class TraceMe {
 
   // Record the start time of an activity.
   // Returns the activity ID, which is used to stop the activity.
-  static int64 ActivityStart(absl::string_view name, int level = 1) {
+  static int64_t ActivityStart(absl::string_view name, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      int64 activity_id = TraceMeRecorder::NewActivityId();
+      int64_t activity_id = TraceMeRecorder::NewActivityId();
       TraceMeRecorder::Record(
           {std::string(name), GetCurrentTimeNanos(), -activity_id});
       return activity_id;
@@ -237,17 +237,17 @@ class TraceMe {
   }
 
   // Same as ActivityStart above, an overload for "const std::string&"
-  static int64 ActivityStart(const std::string& name, int level = 1) {
+  static int64_t ActivityStart(const std::string& name, int level = 1) {
     return ActivityStart(absl::string_view(name), level);
   }
 
   // Same as ActivityStart above, an overload for "const char*"
-  static int64 ActivityStart(const char* name, int level = 1) {
+  static int64_t ActivityStart(const char* name, int level = 1) {
     return ActivityStart(absl::string_view(name), level);
   }
 
   // Record the end time of an activity started by ActivityStart().
-  static void ActivityEnd(int64 activity_id) {
+  static void ActivityEnd(int64_t activity_id) {
 #if !defined(IS_MOBILE_PLATFORM)
     // We don't check the level again (see TraceMe::Stop()).
     if (TF_PREDICT_FALSE(activity_id != kUntracedActivity)) {
@@ -264,7 +264,7 @@ class TraceMe {
   static void InstantActivity(NameGeneratorT name_generator, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      int64 now = GetCurrentTimeNanos();
+      int64_t now = GetCurrentTimeNanos();
       TraceMeRecorder::Record(
           {name_generator(), /*start_time=*/now, /*end_time=*/now});
     }
@@ -279,7 +279,7 @@ class TraceMe {
 #endif
   }
 
-  static int64 NewActivityId() {
+  static int64_t NewActivityId() {
 #if !defined(IS_MOBILE_PLATFORM)
     return TraceMeRecorder::NewActivityId();
 #else
@@ -289,7 +289,7 @@ class TraceMe {
 
  private:
   // Start time used when tracing is disabled.
-  constexpr static int64 kUntracedActivity = 0;
+  constexpr static int64_t kUntracedActivity = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(TraceMe);
 
@@ -301,7 +301,7 @@ class TraceMe {
     std::string name;
   } no_init_;
 
-  int64 start_time_ = kUntracedActivity;
+  int64_t start_time_ = kUntracedActivity;
 };
 
 // Whether OpKernel::TraceString will populate additional information for

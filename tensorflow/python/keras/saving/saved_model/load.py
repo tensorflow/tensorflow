@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import input_spec
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.protobuf import saved_metadata_pb2
 from tensorflow.python.keras.protobuf import versions_pb2
 from tensorflow.python.keras.saving import saving_utils
@@ -167,6 +168,12 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
       model.compile(**saving_utils.compile_args_from_training_config(
           training_config), from_serialized=True)
       saving_utils.try_build_compiled_arguments(model)
+      if isinstance(model.optimizer, optimizer_v2.OptimizerV2):
+        if (model.optimizer.get_slot_names()):
+          logging.warning('Your optimizer uses slots. '
+                          'Slots cannot be restored from saved_model, '
+                          'as a result, your model is starting with  '
+                          'a new initialized optimizer.')
     else:
       logging.warning('No training configuration found in save file, so the '
                       'model was *not* compiled. Compile it manually.')
@@ -188,6 +195,12 @@ def _read_legacy_metadata(object_graph_def, metadata):
   for node_id, proto in enumerate(object_graph_def.nodes):
     if (proto.WhichOneof('kind') == 'user_object' and
         proto.user_object.identifier in constants.KERAS_OBJECT_IDENTIFIERS):
+      if not proto.user_object.metadata:
+        raise ValueError('Unable to create a Keras model from this SavedModel. '
+                         'This SavedModel was created with '
+                         '`tf.saved_model.save`, and lacks the Keras metadata.'
+                         'Please save your Keras model by calling `model.save`'
+                         'or `tf.keras.models.save_model`.')
       metadata.nodes.add(
           node_id=node_id,
           node_path=node_paths[node_id],
@@ -246,7 +259,7 @@ class KerasObjectLoader(object):
   """
 
   def __init__(self, metadata, object_graph_def):
-    self._metadata = metadata
+    self._metadata = {x.node_id: x for x in metadata.nodes}
     self._proto = object_graph_def
 
     self._node_paths = {node_data.node_id: node_data.node_path
@@ -302,7 +315,7 @@ class KerasObjectLoader(object):
     self._traversed_nodes_from_config.add(node_id)
     obj._maybe_initialize_trackable()
     if isinstance(obj, base_layer.Layer) and not obj.built:
-      metadata = json_utils.decode(proto.user_object.metadata)
+      metadata = json_utils.decode(self._metadata[node_id].metadata)
       self._try_build_layer(obj, node_id, metadata.get('build_input_shape'))
 
     # Create list of all possible children
@@ -371,7 +384,7 @@ class KerasObjectLoader(object):
     # and layers will create the metric when initialized (this avoids wasting
     # time by creating objects multiple times).
     metric_list = []
-    for node_metadata in self._metadata.nodes:
+    for node_metadata in self._metadata.values():
       if node_metadata.identifier == constants.METRIC_IDENTIFIER:
         metric_list.append(node_metadata)
         continue
@@ -659,8 +672,7 @@ class KerasObjectLoader(object):
 
   def _reconstruct_model(self, model_id, model, layers):
     """Reconstructs the network structure."""
-    config = json_utils.decode(
-        self._proto.nodes[model_id].user_object.metadata)['config']
+    config = json_utils.decode(self._metadata[model_id].metadata)['config']
 
     # Set up model inputs
     if model.inputs:
@@ -889,13 +901,16 @@ def _finalize_config_layers(layers):
     # Restore metrics list.
     _restore_layer_metrics(layer)
 
-    # Restore RNN layer states
+    # Restore RNN layer states.
     if (isinstance(layer, recurrent.RNN) and
         layer.stateful and
         hasattr(_get_keras_attr(layer), 'states')):
       layer.states = getattr(_get_keras_attr(layer), 'states', None)
       for variable in nest.flatten(layer.states):
         backend.track_variable(variable)
+
+    # Perform any layer defined finalization of the layer state.
+    layer.finalize_state()
 
 
 def _finalize_metric(metric):

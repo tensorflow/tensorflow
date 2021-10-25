@@ -33,7 +33,7 @@ StatusOr<HloInstruction*> PartitionConvolution(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
         const Window& conv_window)>& create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo,
-    int64 num_partitions, const SpmdPartitionerOptions& options,
+    int64_t num_partitions, const SpmdPartitionerOptions& options,
     HloInstruction* partition_id, HloModule* module, SpmdBuilder* b);
 
 }  // namespace spmd

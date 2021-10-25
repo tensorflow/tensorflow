@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -980,8 +981,17 @@ class SparseMatMulOp : public OpKernel {
                 errors::InvalidArgument(
                     "Matrix size incompatible: a: ", a.shape().DebugString(),
                     ", b: ", b.shape().DebugString()));
+    OP_REQUIRES(ctx, m >= 0 && n >= 0 && k >= 0,
+                errors::InvalidArgument(
+                    "Matrix dimensions cannot be negative: a: ",
+                    a.shape().DebugString(), ", b: ", b.shape().DebugString()));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({m, n}), &output));
+
+    // Return early if at least one of the output dimension size is 0.
+    if (m == 0 || n == 0) {
+      return;
+    }
 
     if (k == 0) {
       // If the inner dimension k in the matrix multiplication is zero, we fill
@@ -1039,6 +1049,10 @@ class SparseMatMulOp : public OpKernel {
     if (transpose_b) {
       // TODO(agarwal): avoid transposing the matrix here and directly handle
       // transpose in CreateDenseSlices.
+      OP_REQUIRES(ctx, right->dim_size(0) != 0,
+                  errors::InvalidArgument("b has an entry 0 in it's shape."));
+      OP_REQUIRES(ctx, right->dim_size(1) != 0,
+                  errors::InvalidArgument("b has an entry 0 in it's shape."));
       right_tr.reset(
           new Tensor(right->dtype(),
                      TensorShape({right->dim_size(1), right->dim_size(0)})));

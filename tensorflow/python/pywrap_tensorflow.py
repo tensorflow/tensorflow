@@ -14,10 +14,6 @@
 # =============================================================================
 """A Python wrapper that loads _pywrap_tensorflow_internal.so."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ctypes
 import sys
 import traceback
@@ -57,7 +53,7 @@ try:
   try:
     ModuleNotFoundError
   except NameError:
-    ModuleNotFoundError = ImportError
+    ModuleNotFoundError = ImportError  # pylint: disable=redefined-builtin
 
   # pylint: disable=wildcard-import,g-import-not-at-top,line-too-long,undefined-variable
   try:
@@ -76,10 +72,13 @@ try:
   elif _can_set_rtld_local:
     sys.setdlopenflags(_default_dlopen_flags)
 except ImportError:
-  msg = """%s\n\nFailed to load the native TensorFlow runtime.\n
-See https://www.tensorflow.org/install/errors\n
-for some common reasons and solutions.  Include the entire stack trace
-above this error message when asking for help.""" % traceback.format_exc()
-  raise ImportError(msg)
+  raise ImportError(
+      f'{traceback.format_exc()}'
+      f'\n\nFailed to load the native TensorFlow runtime.\n'
+      f'See https://www.tensorflow.org/install/errors '
+      f'for some common causes and solutions.\n'
+      f'If you need help, create an issue '
+      f'at https://github.com/tensorflow/tensorflow/issues '
+      f'and include the entire stack trace above this error message.')
 
 # pylint: enable=wildcard-import,g-import-not-at-top,unused-import,line-too-long

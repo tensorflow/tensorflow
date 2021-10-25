@@ -120,9 +120,26 @@ Status ShapeRefiner::InferShapesForFunctionSubNode(
     TF_RETURN_IF_ERROR(outer_context->MakeShapeFromShapeProto(proto, &handle));
     outer_context->set_output(index, handle);
 
-    auto* resource = node_context->input_handle_shapes_and_types(0);
+    const std::vector<ShapeAndType>* resource =
+        node_context->input_handle_shapes_and_types(0);
     if (resource) {
-      outer_context->set_output_handle_shapes_and_types(index, *resource);
+      // `ShapesAndType`s contain `ShapeHandle`s.  These `ShapeHandle`s point
+      // to `Shape`s that are owned by a different inference context too.  We
+      // need to copy them to the outer context to prevent them from being
+      // destroyed before they are used.
+      std::vector<ShapeAndType> copied_shapes_and_types;
+      for (auto& shape_and_type : *resource) {
+        ShapeHandle handle;
+        TensorShapeProto proto;
+        node_context->ShapeHandleToProto(shape_and_type.shape, &proto);
+        TF_RETURN_IF_ERROR(
+            outer_context->MakeShapeFromShapeProto(proto, &handle));
+        copied_shapes_and_types.push_back(
+            ShapeAndType(handle, shape_and_type.dtype, shape_and_type.type));
+      }
+
+      outer_context->set_output_handle_shapes_and_types(
+          index, copied_shapes_and_types);
     }
   }
 
@@ -405,7 +422,7 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(
 }
 
 Status ShapeRefiner::EvaluateConstantIntScalarEdge(
-    const Node* node, int dst_idx, bool* evaluated, int64* result,
+    const Node* node, int dst_idx, bool* evaluated, int64_t* result,
     shape_inference::InferenceContext* outer_context) {
   Tensor scalar;
   TF_RETURN_IF_ERROR(EvaluateConstantTensorForEdge(node, dst_idx, evaluated,
@@ -424,7 +441,7 @@ Status ShapeRefiner::EvaluateConstantIntScalarEdge(
             "EvaluateConstantIntScalarEdge called on non-integer edge: ",
             scalar.dtype());
       }
-      *result = scalar.scalar<int64>()();
+      *result = scalar.scalar<int64_t>()();
     }
   }
   return Status::OK();
@@ -440,6 +457,11 @@ Status ShapeRefiner::ConstantPartialShape(
   if (src_context == nullptr) return errors::Internal("Missing src context");
   ShapeHandle src_shape = src_context->output(input_edge->src_output());
 
+  // All shapes are expected to be 1D integer tensors with the exception of the
+  // sentinel that represents an unknown shape (scalar/rank 0 tensor with -1 as
+  // value). Handle the special case first before considering the more general
+  // rank 1 case.
+
   if (src_context->Value(src_context->Rank(src_shape)) == 0) {
     Tensor t;
     bool evaluated = false;
@@ -454,7 +476,7 @@ Status ShapeRefiner::ConstantPartialShape(
       if (t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) {
         *result = target_context->UnknownShape();
         return Status::OK();
-      } else if (t.dtype() == DT_INT64 && t.scalar<int64>()() == -1) {
+      } else if (t.dtype() == DT_INT64 && t.scalar<int64_t>()() == -1) {
         *result = target_context->UnknownShape();
         return Status::OK();
       }
@@ -516,7 +538,7 @@ Status ShapeRefiner::ConstantPartialShape(
     std::vector<DimensionHandle> dims;
     // Pack is concatenating its input scalars to form the shape tensor vector.
     for (int i = 0; i < src_context->num_inputs(); ++i) {
-      int64 size;
+      int64_t size;
       bool evaluated;
       TF_RETURN_IF_ERROR(EvaluateConstantIntScalarEdge(
           input_edge->src(), i, &evaluated, &size, outer_context));
@@ -604,7 +626,7 @@ Status ShapeRefiner::PartialStridedSliceShape(
   }
 
   bool evaluated;
-  int64 begin;
+  int64_t begin;
   if (begin_mask == 1) {
     begin = 0;
   } else {
@@ -616,9 +638,9 @@ Status ShapeRefiner::PartialStridedSliceShape(
     }
   }
 
-  int64 end;
+  int64_t end;
   if (end_mask == 1) {
-    end = std::numeric_limits<int64>::max();
+    end = std::numeric_limits<int64_t>::max();
   } else {
     TF_RETURN_IF_ERROR(EvaluateConstantIntScalarEdge(slice_node, 2, &evaluated,
                                                      &end, outer_context));
@@ -628,7 +650,7 @@ Status ShapeRefiner::PartialStridedSliceShape(
     }
   }
 
-  int64 stride;
+  int64_t stride;
   TF_RETURN_IF_ERROR(EvaluateConstantIntScalarEdge(slice_node, 3, &evaluated,
                                                    &stride, outer_context));
   if (!evaluated) {
@@ -777,8 +799,8 @@ bool ShapeRefiner::SameDefinedShape(InferenceContext* c, ShapeHandle s0,
   }
   for (int i = 0; i < c->Rank(s0); ++i) {
     if (!c->Dim(s0, i).SameHandle(c->Dim(s1, i))) {
-      int64 val0 = c->Value(c->Dim(s0, i));
-      int64 val1 = c->Value(c->Dim(s1, i));
+      int64_t val0 = c->Value(c->Dim(s0, i));
+      int64_t val1 = c->Value(c->Dim(s1, i));
       if (val0 < 0 || val1 < 0 || val0 != val1) {
         return false;
       }

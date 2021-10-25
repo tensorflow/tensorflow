@@ -69,6 +69,11 @@ void OneHotComputeImpl(const OneHotContext& op_context) {
   for (int i = 0; i < op_context.axis; ++i) {
     prefix_dim_size *= op_context.indices->dims->data[i];
   }
+  if (prefix_dim_size == 0) {
+    // If indices tensor is degenerate, return a degenerate tensor, just like
+    // TensorFlow does.
+    return;
+  }
   const int suffix_dim_size = NumElements(op_context.indices) / prefix_dim_size;
   const int depth = *op_context.depth->data.i32;
 

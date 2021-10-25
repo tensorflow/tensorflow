@@ -31,8 +31,9 @@ class OperandUpcasterTest
           std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>> {};
 
 bool ShouldUpcast(PrimitiveType operand_type, PrimitiveType result_type) {
-  return primitive_util::BitWidth(operand_type) <
-         primitive_util::BitWidth(result_type);
+  return operand_type != result_type &&
+         primitive_util::HigherPrecisionType(operand_type, result_type) ==
+             result_type;
 }
 
 TEST_P(OperandUpcasterTest, ConvertInserted) {
@@ -85,8 +86,8 @@ INSTANTIATE_TEST_SUITE_P(S16U16, OperandUpcasterTest,
                                            std::make_tuple(U8, U8, U16)));
 
 INSTANTIATE_TEST_SUITE_P(S32, OperandUpcasterTest,
-                         ::testing::Combine(::testing::Values(S8, S16),
-                                            ::testing::Values(S8, S16),
+                         ::testing::Combine(::testing::Values(S8, U8, S16),
+                                            ::testing::Values(S8, U8, S16),
                                             ::testing::Values(S32)));
 
 INSTANTIATE_TEST_SUITE_P(U32, OperandUpcasterTest,
@@ -94,10 +95,19 @@ INSTANTIATE_TEST_SUITE_P(U32, OperandUpcasterTest,
                                             ::testing::Values(U8, U16),
                                             ::testing::Values(U32)));
 
+INSTANTIATE_TEST_SUITE_P(BF16, OperandUpcasterTest,
+                         ::testing::Combine(::testing::Values(BF16, S8, U8),
+                                            ::testing::Values(BF16, S8, U8),
+                                            ::testing::Values(BF16)));
+
 INSTANTIATE_TEST_SUITE_P(F32, OperandUpcasterTest,
                          ::testing::Combine(::testing::Values(BF16, F16),
                                             ::testing::Values(BF16, F16),
                                             ::testing::Values(F32)));
+
+INSTANTIATE_TEST_SUITE_P(NoUpcast, OperandUpcasterTest,
+                         ::testing::Values(std::make_tuple(F32, F32, BF16),
+                                           std::make_tuple(S32, S32, U32)));
 
 }  // namespace
 

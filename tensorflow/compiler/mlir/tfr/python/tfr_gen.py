@@ -18,10 +18,6 @@
 # pylint: disable=missing-function-docstring
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import os
 import re
@@ -65,10 +61,12 @@ class TFRTypes(enum.Enum):
   NONE = 4
   SHAPE = 5  # shape -> !shape.shape
   I1 = 21
-  I32 = 22
-  I64 = 23
-  F32 = 24
-  INDEX = 25
+  I8 = 22
+  I16 = 23
+  I32 = 24
+  I64 = 25
+  F32 = 26
+  INDEX = 27
   AG_UNDEFINED_VAL = 100
   AG_BUILTIN_FUNC = 101
   TF_RAW_OP = 102
@@ -76,6 +74,7 @@ class TFRTypes(enum.Enum):
   TF_TENSOR_SHAPE_FUNC = 104  # shape.as_list
   TF_TENSOR_SHAPE_LIST = 105  # shape.as_list()
   PY_BUILTIN_FUNC = 200
+  TFR_BUILTIN_FUNC = 201
 
   # As these are not real types, __getattribute__ helps them appear more like
   # actual types (i.e. class definitions).
@@ -95,10 +94,19 @@ class TFRTypes(enum.Enum):
       return self.name.lower()
 
 
-_attribute_types = [
+_ATTRIBUTE_TYPES = (
     TFRTypes.I1, TFRTypes.I32, TFRTypes.I64, TFRTypes.F32, TFRTypes.INDEX,
     TFRTypes.ATTR
-]
+    )
+
+# TODO(b/203493652): implement the "rename_to" for the customization in
+# tensorflow/core/api_def/base_api/*
+# {op_name: {API's attribute name: OpDef's attribute name}}
+_ATTRIBUTE_RENAMES = {
+    'Mean': {'axis': 'reduction_indices'},
+    'Split': {'axis': 'split_dim'},
+    'SplitV': {'axis': 'split_dim'},
+}
 
 
 def _get_type_from_proto(arg_def=None, attr_def=None):
@@ -231,7 +239,7 @@ class OpDefCache(object):
     self._op_defs = {}
 
   def lookup(self, f_name, func_def=None, optional=False):
-    if f_name in self._op_defs.keys():
+    if f_name in self._op_defs:
       return self._op_defs[f_name]
 
     if isinstance(func_def, types.FunctionType):
@@ -274,7 +282,7 @@ class OpDefCache(object):
     return (op_def, derived_attrs)
 
   def mlir_external_funcs(self):
-    tfr_funcs = []
+    tfr_funcs = set()
     for _, (op_def, derived_attrs) in sorted(self._op_defs.items()):
       tfr_func = '\ntfr.func @tf__{}_('.format(_camel_to_snake(op_def.name))
 
@@ -294,7 +302,7 @@ class OpDefCache(object):
       attrs_with_default = [
           attr for attr in non_derived_attrs if attr.HasField('default_value')
       ]
-      attr_names = set()
+      attr_names = {'f32_', 'i32_', 'i64_', 'i1_'}  # reserved
       for attr_def in attrs_no_default + attrs_with_default:
         inputs.append(_get_type_info_from_proto(None, attr_def))
         attr_names.add(attr_def.name)
@@ -307,9 +315,9 @@ class OpDefCache(object):
       inputs = ','.join(inputs)
       outputs = ','.join(outputs)
       attrs = ','.join(sorted(derived_attrs.union(attr_names)))
-      tfr_funcs.append('{}{}) -> ({}) attributes {{{}}}'.format(
+      tfr_funcs.add('{}{}) -> ({}) attributes {{{}}}'.format(
           tfr_func, inputs, outputs, attrs))
-    return tfr_funcs
+    return sorted(list(tfr_funcs))
 
 
 _PY_TYPE_TO_TFR = {
@@ -322,6 +330,8 @@ _TF_DTYPE_TO_TFR = {
     'bool': TFRTypes.I1,
     'int64': TFRTypes.I64,
     'int32': TFRTypes.I32,
+    'int16': TFRTypes.I16,
+    'int8': TFRTypes.I8,
     'float32': TFRTypes.F32,
 }
 
@@ -335,6 +345,15 @@ QN = qual_names.QN
 
 # TODO(mdan): Fix this with an importable module.
 AG_MODULE = api._TRANSPILER.get_extra_locals()['ag__']  # pylint:disable=protected-access
+
+# When an item is callable, the signature is (*operand_types) -> result_type(s)
+TFR_BUILTINS = {
+    '_tfr_quant_act_range': (TFRTypes.TENSOR, TFRTypes.TENSOR),
+    '_tfr_quant_rescale': TFRTypes.TENSOR,
+    '_tfr_quant_raw_data': lambda input_type: input_type,
+    '_tfr_quant_qparam': (TFRTypes.TENSOR, TFRTypes.TENSOR),
+    '_tfr_quant_scale_factor': TFRTypes.TENSOR,
+}
 
 
 class TFRTypeResolver(type_inference.Resolver):
@@ -364,6 +383,8 @@ class TFRTypeResolver(type_inference.Resolver):
 
   def res_name(self, ns, types_ns, name):
     name_str = str(name)
+    if name_str in TFR_BUILTINS:
+      return {TFRTypes.TFR_BUILTIN_FUNC}, name_str
     if name_str in ns:
       ns_val = ns[name_str]
       return {type(ns_val)}, ns_val
@@ -377,6 +398,7 @@ class TFRTypeResolver(type_inference.Resolver):
     return None, None
 
   def res_value(self, ns, value):
+    # resolves the type of the symbol by the metadata in 'value'
     if value is None:
       return {TFRTypes.NONE}
     if value in (TFRTypes.SHAPE, TFRTypes.TF_TENSOR_SHAPE_FUNC):
@@ -394,13 +416,14 @@ class TFRTypeResolver(type_inference.Resolver):
 
       # All the imported operations, which are not autograph built-ins, are
       # considered to be TF raw ops.
-      # TODO(fengliuai): refine the condition so we only match TensorFlow
+      # TODO(fengliuai): refine the condition that we only match TensorFlow
       # ops here.
       return {TFRTypes.TF_RAW_OP}
     # TODO(mdan): Is ATTR equivalent to string?
     return {_PY_TYPE_TO_TFR.get(type(value), TFRTypes.ATTR)}
 
   def res_call(self, ns, types_ns, node, f_type, args, keywords):
+    # resolves the return type of the function call.
     name = anno.Basic.QN.of(node.func)
     if f_type == (TFRTypes.AG_BUILTIN_FUNC,):
 
@@ -437,16 +460,8 @@ class TFRTypeResolver(type_inference.Resolver):
       raise NotImplementedError('return type of {}'.format(name))
 
     elif f_type == (TFRTypes.TF_RAW_OP,):
+      # This is a TF operation, so it should be found in the op_defs.
       op_name = name.qn[1]
-      op_def, _ = self._op_defs.lookup(op_name)
-      if len(op_def.output_arg) == 1:
-        return {_get_type_from_proto(op_def.output_arg[0])}, None
-      return ({tuple(_get_type_from_proto(arg) for arg in op_def.output_arg)},
-              None)
-
-    elif f_type == (types.FunctionType,):
-      # A composition Python function name is used directly.
-      op_name = name.qn[0]
       op_def, _ = self._op_defs.lookup(op_name)
       if len(op_def.output_arg) == 1:
         return {_get_type_from_proto(op_def.output_arg[0])}, None
@@ -461,8 +476,25 @@ class TFRTypeResolver(type_inference.Resolver):
       if name == QN('len'):
         return {TFRTypes.INDEX}, None
 
+    elif f_type == (TFRTypes.TFR_BUILTIN_FUNC,):
+      op_name = name.qn[0]
+      if callable(TFR_BUILTINS[op_name]):
+        return {TFR_BUILTINS[op_name](*[list(arg)[0] for arg in args])}, None
+      return {TFR_BUILTINS[op_name]}, None
+
     elif f_type == (TFRTypes.TF_TENSOR_SHAPE_FUNC,):
       return {TFRTypes.TF_TENSOR_SHAPE_LIST}, None
+
+    elif f_type == (types.FunctionType,):
+      # This is a function call which isn't using tf.raw_op..
+      op_name = name.qn[0]
+
+      # 'new TF operation' produces outputs defined by the composition function.
+      op_def, _ = self._op_defs.lookup(op_name)
+      if len(op_def.output_arg) == 1:
+        return {_get_type_from_proto(op_def.output_arg[0])}, None
+      return ({tuple(_get_type_from_proto(arg) for arg in op_def.output_arg)},
+              None)
 
     raise NotImplementedError('Function:', name, f_type)
 
@@ -502,6 +534,16 @@ class TFRTypeResolver(type_inference.Resolver):
     raise ValueError('Argument is not defined in OpDef: ' + str(name))
 
   def res_slice(self, ns, types_ns, node_or_slice, value, slice_):
+    if not value:
+      return value
+
+    if isinstance(value, set):
+      type_tuple = value.pop()
+      if isinstance(type_tuple, tuple):
+        value = {type_tuple[node_or_slice]}
+      else:
+        value = {type_tuple}
+
     assert len(value) == 1
     value, = tuple(value)
     if value == TFRTypes.TF_TENSOR_SHAPE_LIST:
@@ -510,7 +552,8 @@ class TFRTypeResolver(type_inference.Resolver):
     elif value in (TFRTypes.TENSOR_LIST, TFRTypes.TENSOR):
       # TODO(mdan): This is not entirely correct for multi-element slices.
       return {TFRTypes.TENSOR}
-    raise NotImplementedError('slice of {}'.format(value))
+    else:
+      return {value}
 
   def res_compare(self, ns, types_ns, node, left, right):
     # TODO(fengliuai): make sure left and right are compatible
@@ -632,16 +675,17 @@ class TFRGen(transformer.CodeGenerator):
     self.emit(op_str + ' ' + loc)
 
   def _get_inferred_type(self, node, default=None):
+    """Return single type or a tuple of types if more than one type."""
     types_ = anno.getanno(node, anno.Static.TYPES, None)
     if not types_:
       print('WARN: no Static.TYPES annotation. Fix the type inference pass: ')
       self.debug_print(node)
       return default
-    if types_ and len(types_) > 1:
-      raise ValueError('ambiguous inferred type for "{}": {}'.format(
-          node, types_))
 
-    type_, = types_
+    if len(types_) == 1:
+      type_, = types_
+    else:
+      type_ = types_
 
     if default is not None and type_ != default:
       print('WARN: type annotation {}({}) does not match {}({})'.format(
@@ -653,7 +697,7 @@ class TFRGen(transformer.CodeGenerator):
   def _pack_tensor_list(self, value):
     # This is packing a list of tensors, then the axis is 0.
     axis = self._ssa_name('zero')
-    self._emit_with_loc('\n{} = constant 0 : i64'.format(axis))
+    self._emit_with_loc('\n{} = arith.constant 0 : i64'.format(axis))
     casted = self._ssa_name('pack')
     self.emit('\n{} = tfr.call @tf__pack({}, {})'.format(casted, value, axis))
     self._emit_with_loc(' : (!tfr.tensor_list, i64) -> !tfr.tensor')
@@ -664,7 +708,7 @@ class TFRGen(transformer.CodeGenerator):
   def _index_to_I64(self, value, ty):
     if ty == TFRTypes.INDEX:
       casted = self._ssa_name('casted')
-      self._emit_with_loc('\n{} = index_cast {} : index to i64'.format(
+      self._emit_with_loc('\n{} = arith.index_cast {} : index to i64'.format(
           casted, value))
       return casted, TFRTypes.I64
     else:
@@ -673,7 +717,7 @@ class TFRGen(transformer.CodeGenerator):
   def _i64_to_index(self, value, ty):
     if ty == TFRTypes.I64:
       casted = self._ssa_name('casted')
-      self._emit_with_loc('\n{} = index_cast {} : i64 to index'.format(
+      self._emit_with_loc('\n{} = arith.index_cast {} : i64 to index'.format(
           casted, value))
       return casted, TFRTypes.INDEX
     else:
@@ -776,19 +820,27 @@ class TFRGen(transformer.CodeGenerator):
           ssa_value, _ = value
           self.symbol_table.insert_symbol(key, ssa_value, t)
       elif len(values) == 1:
-        n, _ = values[0]
-        assert ty == TFRTypes.TENSOR_LIST
-        # assign a tensor_list to multiple variables
-        for idx, key in enumerate(targets):
-          idx_name = self._ssa_name('idx')
-          self._emit_with_loc(
-              '\n{} = constant {} : index'.format(idx_name, idx), node)
-          elt_name = self._ssa_name('elt')
-          self.emit('\n{} = tfr.get_element {}[{}]'.format(
-              elt_name, n, idx_name))
-          self._emit_with_loc(' : (!tfr.tensor_list, index) -> !tfr.tensor',
-                              node)
-          self.symbol_table.insert_symbol(key, elt_name, TFRTypes.TENSOR)
+        name, tys = values[0]
+        if ty == TFRTypes.TENSOR_LIST:
+          # assign single tensor_list to multiple variables
+          for idx, key in enumerate(targets):
+            idx_name = self._ssa_name('idx')
+            self._emit_with_loc(
+                '\n{} = arith.constant {} : index'.format(idx_name, idx), node)
+            elt_name = self._ssa_name('elt')
+            self.emit('\n{} = tfr.get_element {}[{}]'.format(
+                elt_name, name, idx_name))
+            self._emit_with_loc(' : (!tfr.tensor_list, index) -> !tfr.tensor',
+                                node)
+            self.symbol_table.insert_symbol(key, elt_name, TFRTypes.TENSOR)
+        else:
+          # assign single value to multiple targets. This single value is
+          # usually a function return. The return type should be in the tuple of
+          # the value.
+          for idx, key in enumerate(targets):
+            ssa_name = '{}#{}'.format(name, idx)
+            ssa_type = tys[idx]
+            self.symbol_table.insert_symbol(key, ssa_name, ssa_type)
       elif len(targets) == 1:
         ssa_names = [n for n, _ in values]
         self.symbol_table.insert_symbol(targets[0], ssa_names, ty)
@@ -800,13 +852,17 @@ class TFRGen(transformer.CodeGenerator):
   def _emit_binary_op(self, op, lhs, lhs_ty, rhs, rhs_ty):
     assert lhs_ty, rhs_ty
     if isinstance(op, ast.Sub):
-      code = 'sub'
+      code = 'arith.sub'
     elif isinstance(op, ast.Add):
-      code = 'add'
+      code = 'arith.add'
+    elif isinstance(op, ast.Mult):
+      code = 'arith.mul'
+    elif isinstance(op, ast.Div):
+      code = 'arith.div'
     else:
       raise NotImplementedError('BinOp operator not recognized' + op)
 
-    if lhs_ty == TFRTypes.I64:
+    if lhs_ty == TFRTypes.I64 or lhs_ty == TFRTypes.I32:
       suffix = 'i'
     elif lhs_ty == TFRTypes.F32:
       suffix = 'f'
@@ -872,6 +928,9 @@ class TFRGen(transformer.CodeGenerator):
     if func_type == TFRTypes.TF_RAW_OP:
       return self._visit_tf_op(func_name, node.args, node.keywords, node)
 
+    if func_type == TFRTypes.TFR_BUILTIN_FUNC:
+      return self._visit_tfr_builtins(func_name, node.args, node)
+
     if func_type == types.FunctionType:
       return self._visit_tf_op(func_name, node.args, node.keywords, node)
 
@@ -925,11 +984,11 @@ class TFRGen(transformer.CodeGenerator):
             '\n{} = tfr.equal {}, {} -> i1'.format(ret, lhs, rhs), node)
       else:
         if lhs_ty == TFRTypes.I64:
-          code = 'cmpi'
+          code = 'arith.cmpi'
         elif lhs_ty == TFRTypes.F32:
-          code = 'cmpf'
+          code = 'arith.cmpf'
         elif lhs_ty == TFRTypes.INDEX:
-          code = 'cmpi'
+          code = 'arith.cmpi'
           # TODO(fengliuai): the reverse type inference should solve the issue.
           rhs, _ = self._i64_to_index(rhs, rhs_ty)
         else:
@@ -947,7 +1006,8 @@ class TFRGen(transformer.CodeGenerator):
     elif isinstance(node.value, bool):
       cst_ty = self._get_inferred_type(node)
       cst_val = str(node.value).lower()
-      self._emit_with_loc('\n{} = constant {}'.format(cst_name, cst_val), node)
+      self._emit_with_loc('\n{} = arith.constant {}'.format(cst_name, cst_val),
+                          node)
     else:
       cst_ty = self._get_inferred_type(node)
       cst_val = node.value
@@ -957,7 +1017,8 @@ class TFRGen(transformer.CodeGenerator):
             node)
       else:
         self._emit_with_loc(
-            '\n{} = constant {} : {}'.format(cst_name, cst_val, cst_ty), node)
+            '\n{} = arith.constant {} : {}'.format(cst_name, cst_val, cst_ty),
+            node)
     return cst_name, cst_ty
 
   def visit_FunctionDef(self, node):
@@ -1098,29 +1159,31 @@ class TFRGen(transformer.CodeGenerator):
 
         if begin is None:
           begin = self._ssa_name('begin')
-          self._emit_with_loc('\n{} = constant 0 : index'.format(begin), node)
+          self._emit_with_loc('\n{} = arith.constant 0 : index'.format(begin),
+                              node)
         elif begin_ty != TFRTypes.INDEX:
           begin_ = self._ssa_name('begin')
           self._emit_with_loc(
-              '\n{} = index_cast {} : {} to index'.format(
+              '\n{} = arith.index_cast {} : {} to index'.format(
                   begin_, begin, begin_ty), node)
           begin = begin_
 
         if end_ty != TFRTypes.INDEX:
           end_ = self._ssa_name('end')
           self._emit_with_loc(
-              '\n{} = index_cast {} : {} to index'.format(end_, end, end_ty),
-              node)
+              '\n{} = arith.index_cast {} : {} to index'.format(
+                  end_, end, end_ty), node)
           end = end_
 
         if step is None:
           step = self._ssa_name('step')
-          self._emit_with_loc('\n{} = constant 1 : index'.format(step), node)
+          self._emit_with_loc('\n{} = arith.constant 1 : index'.format(step),
+                              node)
         elif step_ty != TFRTypes.INDEX:
           step_ = self._ssa_name('step')
           self._emit_with_loc(
-              '\n{} = index_cast {} : {} to index'.format(step_, step, step_ty),
-              node)
+              '\n{} = arith.index_cast {} : {} to index'.format(
+                  step_, step, step_ty), node)
           step = step_
 
         return begin, end, step
@@ -1178,19 +1241,51 @@ class TFRGen(transformer.CodeGenerator):
     """emit mlir constant statement from default value of the ArgDef proto."""
     name = self._ssa_name('cst')
     cst_ty = _get_type_from_proto(None, attr_def)
-    cst_val = _get_val_from_proto(cst_ty, attr_def.default_value)
+    try:
+      cst_val = _get_val_from_proto(cst_ty, attr_def.default_value)
+    except AttributeError:
+      raise AttributeError(
+          f'attribute "{attr_def.name}" does not have default_value. If the '
+          "attribute names from the API and OpDef don't match, please add it "
+          'to _ATTRIBUTE_RENAMES.')
     if cst_ty == TFRTypes.ATTR:
       self._emit_with_loc('\n{} = tfr.constant {} -> {}'.format(
           name, cst_val, cst_ty))
     elif cst_ty == TFRTypes.I1:
-      self._emit_with_loc('\n{} = constant {}'.format(name, cst_val))
+      self._emit_with_loc('\n{} = arith.constant {}'.format(name, cst_val))
     else:
-      self._emit_with_loc('\n{} = constant {} : {}'.format(
+      self._emit_with_loc('\n{} = arith.constant {} : {}'.format(
           name, cst_val, cst_ty))
     return name, cst_ty
 
   def visit_keyword(self, node):
     return node.arg, self.visit(node.value)
+
+  def _visit_tfr_builtins(self, op_name, args, node):
+    arg_strs = []
+    arg_tys = []
+    for arg in args:
+      value, ty = self.visit(arg)
+      arg_strs.append(value)
+      arg_tys.append(ty)
+    tfr_op_name = 'tfr.' + op_name[5:]
+    ret_tys = (
+        TFR_BUILTINS[op_name](*arg_tys)
+        if callable(TFR_BUILTINS[op_name]) else TFR_BUILTINS[op_name])
+    # Convert the tfr builtin returns to a list.
+    if isinstance(ret_tys, tuple):
+      ret_tys = list(ret_tys)
+    else:
+      ret_tys = [ret_tys]
+
+    ret_str, ret_ssa_values = self._get_mlir_ssa_values(op_name, ret_tys)
+
+    arg_str = ', '.join(arg_strs)
+    arg_ty_str = ', '.join(str(ty) for ty in arg_tys)
+    ret_ty_str = ', '.join(str(ty) for ty in ret_tys)
+    self._emit_with_loc('\n{} = {}({}) : ({}) -> ({})'.format(
+        ret_str, tfr_op_name, arg_str, arg_ty_str, ret_ty_str), node)
+    return list(zip(ret_ssa_values, ret_tys))
 
   def _visit_tf_op(self, op_name, args, keywords, node):
     op_def, derived_attrs = self._op_defs.lookup(op_name)
@@ -1220,10 +1315,9 @@ class TFRGen(transformer.CodeGenerator):
       value, (ssa_name, ty) = self.visit(arg)
       ty = self._get_inferred_type(arg.value, ty)
 
-      # TODO(fengliuai): implement the "rename_to" for the customization in
-      # tensorflow/core/api_def/base_api/*
-      if value == 'axis':
-        value = 'split_dim'
+      # TODO(b/203493652): see comment on _ATTRIBUTE_RENAMES
+      if op_name in _ATTRIBUTE_RENAMES and value in _ATTRIBUTE_RENAMES[op_name]:
+        value = _ATTRIBUTE_RENAMES[op_name][value]
 
       kw_args[value] = (ssa_name, ty)
 
@@ -1233,7 +1327,7 @@ class TFRGen(transformer.CodeGenerator):
       if attr_def.name in kw_args:
         value, ty = kw_args[attr_def.name]
         if attr_def in input_args:
-          if ty in _attribute_types:
+          if ty in _ATTRIBUTE_TYPES:
             # the argument shouldn't be used as tf op calls directly.
             value, ty = self._value_to_tensor(value, ty, node)
           if ty is TFRTypes.TENSOR_LIST and not _require_tensor_list(attr_def):
@@ -1261,6 +1355,9 @@ class TFRGen(transformer.CodeGenerator):
     val_and_lookup_type = self.symbol_table.lookup(node.id)
     if val_and_lookup_type:
       (val, lookup_type) = val_and_lookup_type
+    elif node.id in TFR_BUILTINS:
+      val = node.id
+      lookup_type = anno.getanno(node, anno.Static.TYPES, types.FunctionType)
     else:
       op_def, _ = self._op_defs.lookup(node.id)
       val = op_def.name
@@ -1304,7 +1401,7 @@ class TFRGen(transformer.CodeGenerator):
         # TODO(fengliuai): promote to an assignment
         idx_val = self._ssa_name('cst')
         self._emit_with_loc(
-            '\n{} = constant {} : index'.format(idx_val, s.value), node)
+            '\n{} = arith.constant {} : index'.format(idx_val, s.value), node)
       else:
         idx_val, _ = self.visit(s)
     else:
@@ -1331,7 +1428,7 @@ class TFRGen(transformer.CodeGenerator):
     for elt in node.elts:
       val, ty = self.visit(elt)
       ty = self._get_inferred_type(elt, ty)
-      if ty in _attribute_types and out_type == TFRTypes.TENSOR_LIST:
+      if ty in _ATTRIBUTE_TYPES and out_type == TFRTypes.TENSOR_LIST:
         # This list is a tensor list, then cast all the input values to tensors.
         val, ty = self._value_to_tensor(val, ty, node)
       else:
@@ -1353,16 +1450,19 @@ class TFRGen(transformer.CodeGenerator):
     value, ty = self.visit(node.operand)
     if isinstance(node.op, ast.USub):
       zero_value = self._ssa_name('zero')
-      self._emit_with_loc('\n{} = constant 0 : {}'.format(zero_value, ty), node)
       ssa_value = self._ssa_name('cst')
       if ty == TFRTypes.I32 or ty == TFRTypes.I64:
         self._emit_with_loc(
-            '\n{} = subi {}, {} : {}'.format(ssa_value, zero_value, value, ty),
-            node)
+            '\n{} = arith.constant 0 : {}'.format(zero_value, ty), node)
+        self._emit_with_loc(
+            '\n{} = arith.subi {}, {} : {}'.format(ssa_value, zero_value, value,
+                                                   ty), node)
       elif ty == TFRTypes.F32:
         self._emit_with_loc(
-            '\n{} = subf {}, {} : {}'.format(ssa_value, zero_value, value, ty),
-            node)
+            '\n{} = arith.constant 0.0 : {}'.format(zero_value, ty), node)
+        self._emit_with_loc(
+            '\n{} = arith.subf {}, {} : {}'.format(ssa_value, zero_value, value,
+                                                   ty), node)
       else:
         raise NotImplementedError('USub type not recognized: ' + str(ty))
       return ssa_value, ty
@@ -1420,9 +1520,9 @@ def tfr_gen(func, op_defs):
   return mlir_code
 
 
-def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
+def tfr_funcs_gen_from_module(source, op_defs, method_prefix=None,
+                              op_libraries=None):
   """Parse the input source module and emit the TFR functions."""
-  op_defs = OpDefCache()
 
   # Load the op library so the op is added to the op registry. This is
   # required when the op cc_library couldn't be statically linked in open
@@ -1460,5 +1560,14 @@ def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
   # functions called.
   py_funcs = sorted(py_funcs, key=lambda x: x.__code__.co_firstlineno)
   mlir_funcs = [tfr_gen(func, op_defs) for func in py_funcs]
+
+  return mlir_funcs
+
+
+def tfr_gen_from_module(source, method_prefix=None, op_libraries=None,
+                        op_defs=OpDefCache()):
+  """Parse the input source module and emit the TFR and external functions."""
+  mlir_funcs = tfr_funcs_gen_from_module(
+      source, op_defs, method_prefix, op_libraries)
 
   return '\n'.join(mlir_funcs + op_defs.mlir_external_funcs())

@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
@@ -33,8 +34,8 @@ using mlir::Operation;
 using mlir::TF::VarHandleOp;
 
 class RemoveVariablesInSessionInitializerPass
-    : public PassWrapper<RemoveVariablesInSessionInitializerPass,
-                         OperationPass<ModuleOp>> {
+    : public RemoveVariablesInSessionInitializerPassBase<
+          RemoveVariablesInSessionInitializerPass> {
  public:
   void runOnOperation() override;
 };
@@ -106,10 +107,6 @@ void RemoveVariablesInSessionInitializerPass::runOnOperation() {
 }
 
 }  // namespace
-
-static PassRegistration<RemoveVariablesInSessionInitializerPass> pass(
-    "tf-saved-model-remove-vars-in-session-initializer",
-    "Remove variables in tf saved model's session initializer.");
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateRemoveVariablesInSessionInitializerPass() {

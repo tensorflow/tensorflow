@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for sync_replicas_optimizer.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from tensorflow.python.framework import constant_op

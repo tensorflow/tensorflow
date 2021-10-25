@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for TPU Embeddings mid level API on TPU."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import os
 
@@ -55,6 +51,7 @@ from tensorflow.python.tpu import tpu_embedding
 from tensorflow.python.tpu import tpu_embedding_v2
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_strategy_util
+from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
@@ -238,6 +235,9 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
     if not initialize_tpu_embedding:
       saved_fn = tpu.initialize_system_for_tpu_embedding
       tpu.initialize_system_for_tpu_embedding = lambda x: None
+      # Also disable the tpu embedding initialization checking.
+      saved_fn_two = tpu_ops.is_tpu_embedding_initialized
+      tpu_ops.is_tpu_embedding_initialized = lambda: False
 
     # batch_size here does not matter as we aren't training in any of these
     # tests.
@@ -245,6 +245,7 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
 
     if not initialize_tpu_embedding:
       tpu.initialize_system_for_tpu_embedding = saved_fn
+      tpu_ops.is_tpu_embedding_initialized = saved_fn_two
 
     return mid_level
 
@@ -437,7 +438,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     def test_apply():
       mid_level_api.apply_gradients((1, 2, 3))
 
-    with self.assertRaisesRegex(ValueError, 'Expected Tensor.'):
+    with self.assertRaisesRegex(ValueError, 'found non-tensor type'):
       strategy.run(test_apply)
 
   def test_pass_different_structure_to_apply_gradients(self):
@@ -1317,6 +1318,25 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
       return mid_level_api._create_config_proto()
 
     self.assertProtoEquals(tpu_embedding_config(), tpu_embedding_config())
+
+  def test_multiple_creation(self):
+    feature_config = (tpu_embedding_v2_utils.FeatureConfig(
+        table=self.table_user, name='friends', max_sequence_length=2),)
+    optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
+    strategy = self._get_strategy()
+    with strategy.scope():
+      embedding_one = tpu_embedding_v2.TPUEmbedding(
+          feature_config=feature_config, optimizer=optimizer)
+      embedding_two = tpu_embedding_v2.TPUEmbedding(
+          feature_config=feature_config, optimizer=optimizer)
+
+    # The first TPU embedding should be able to be built.
+    # The second one should fail with a runtime error indicating another TPU
+    # embedding has already been initialized on TPU.
+    embedding_one.build(64)
+    with self.assertRaisesRegex(RuntimeError,
+                                'TPU is already initialized for embeddings.'):
+      embedding_two.build(64)
 
 
 def _unpack(strategy, per_replica_output):

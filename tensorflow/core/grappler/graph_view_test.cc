@@ -69,7 +69,7 @@ TEST_F(GraphViewTest, OpPortIdToArgIdShapeN) {
 TEST_F(GraphViewTest, OpPortIdToArgIdSparseSplit) {
   for (int num_splits : {1, 2}) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-    Output a = ops::Const<int64>(s.WithOpName("a"), 1, {10, 10});
+    Output a = ops::Const<int64_t>(s.WithOpName("a"), 1, {10, 10});
     ops::SparseSplit b(s.WithOpName("b"), a, a, a, a, num_splits);
 
     GraphDef graph_def;
@@ -100,7 +100,7 @@ TEST_F(GraphViewTest, OpPortIdToArgIdSparseSplit) {
 TEST_F(GraphViewTest, ParseSingleExample) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const<tstring>(s.WithOpName("a"), "", {});
-  Output b = ops::Const<int64>(s.WithOpName("b"), 1, {1, 1});
+  Output b = ops::Const<int64_t>(s.WithOpName("b"), 1, {1, 1});
   ops::ParseSingleExample c(s.WithOpName("c"), a, {b, b}, 2, {"w", "x"},
                             {"y", "z"}, {DT_INT64, DT_INT64}, {{1}, {1}});
 

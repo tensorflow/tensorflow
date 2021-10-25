@@ -72,6 +72,7 @@ struct SavedModelBundle : public SavedModelBundleInterface {
 class SavedModelBundleLite : public SavedModelBundleInterface {
  public:
   SavedModelBundleLite() = default;
+  SavedModelBundleLite(SavedModelBundleLite&& other) = default;
   SavedModelBundleLite& operator=(SavedModelBundleLite&& other) = default;
 
   SavedModelBundleLite(std::unique_ptr<Session> session,

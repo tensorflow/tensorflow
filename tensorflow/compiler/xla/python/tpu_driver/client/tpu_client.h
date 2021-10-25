@@ -40,6 +40,8 @@ namespace xla {
 
 constexpr char kTpuPlatform[] = "tpu";
 
+class PyTpuClient;
+
 class TpuDevice : public PjRtDevice {
  public:
   TpuDevice(int id, int process_index, const std::array<int, 3>& coords,
@@ -54,6 +56,8 @@ class TpuDevice : public PjRtDevice {
   GetTpuDevices(const tpu_driver::SystemInfo& system_info);
 
   PjRtClient* client() const override { return nullptr; }
+  PyTpuClient* tpu_client() const { return tpu_client_; }
+  void set_tpu_client(PyTpuClient* tpu_client) { tpu_client_ = tpu_client; }
 
   bool IsAddressable() const override { return false; }
 
@@ -80,10 +84,11 @@ class TpuDevice : public PjRtDevice {
   const std::string device_kind_ = "Cloud TPU";
   // Index of the core of the same chip.
   int core_on_chip_;
+  PyTpuClient* tpu_client_;
 };
 
 // Encapsulates the state of Python session with XLA.
-class PyTpuClient {
+class PyTpuClient : public std::enable_shared_from_this<PyTpuClient> {
  public:
   // Initializes a local XLA client for `platform_name`. Returns an error if no
   // such platform exists, or if the platform has no visible devices.
@@ -117,7 +122,7 @@ class PyTpuClient {
   }
   int process_index() const { return process_index_; }
   const absl::string_view platform_name() const { return platform_name_; }
-  const absl::string_view platform_version() const { return "<unknown>"; }
+  const absl::string_view platform_version() const { return platform_version_; }
 
   StatusOr<Shape> ChooseCompactLayoutForShape(Shape subshape) {
     return Unimplemented("ChooseCompactLayoutForShape not implemented.");
@@ -133,6 +138,7 @@ class PyTpuClient {
 
  protected:
   std::string platform_name_;
+  std::string platform_version_;
   std::unique_ptr<tpu_driver::TpuDriver> driver_;
 
   // Includes all devices, including non-local devices on multi-host platforms.
@@ -317,7 +323,7 @@ class PyTpuExecutable {
   int num_replicas() const { return device_assignment_.replica_count(); }
   int num_partitions() const { return device_assignment_.computation_count(); }
 
-  int64 SizeOfGeneratedCodeInBytes() const {
+  int64_t SizeOfGeneratedCodeInBytes() const {
     CHECK_GE(executables_.size(), 1);
     return executables_.begin()->second->size_in_bytes();
   }

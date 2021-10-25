@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities to warm-start TF.Learn Estimators."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 import six

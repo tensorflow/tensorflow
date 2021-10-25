@@ -98,17 +98,14 @@ class TfTypeConversionTarget : public ConversionTarget {
  public:
   explicit TfTypeConversionTarget(MLIRContext &ctx, TfTypeConverter &converter)
       : ConversionTarget(ctx), converter_(converter) {
-    markUnknownOpDynamicallyLegal();
-  }
-
- protected:
-  bool isDynamicallyLegal(Operation *op) const override {
-    // The FuncOp type can contain types that the op's operand and result types
-    // do not contain.
-    if (auto func = dyn_cast<FuncOp>(op)) {
-      if (!converter_.isSignatureLegal(func.getType())) return false;
-    }
-    return converter_.isLegal(op);
+    markUnknownOpDynamicallyLegal([this](Operation *op) {
+      // The FuncOp type can contain types that the op's operand and result
+      // types do not contain.
+      if (auto func = dyn_cast<FuncOp>(op)) {
+        if (!converter_.isSignatureLegal(func.getType())) return false;
+      }
+      return converter_.isLegal(op);
+    });
   }
 
  private:
@@ -163,10 +160,6 @@ void LegalizeTfTypesPass::runOnOperation() {
   if (failed(applyFullConversion(getOperation(), target, std::move(patterns))))
     return signalPassFailure();
 }
-
-static PassRegistration<LegalizeTfTypesPass> registration(
-    "xla-legalize-tf-types",
-    "Replace TensorFlow types with types that are legal in the MHLO dialect");
 
 }  // namespace
 

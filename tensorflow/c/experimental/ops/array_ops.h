@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+// This file is MACHINE GENERATED! Do not edit.
+
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_
 
@@ -22,24 +25,26 @@ namespace tensorflow {
 namespace ops {
 
 Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
-                absl::Span<AbstractTensorHandle*> output, const char* name);
+                AbstractTensorHandle** output, const char* name = nullptr);
 
 Status IdentityN(AbstractContext* ctx,
                  absl::Span<AbstractTensorHandle* const> input,
-                 absl::Span<AbstractTensorHandle*> output, const char* name);
+                 absl::Span<AbstractTensorHandle*> output,
+                 const char* name = nullptr);
 
 Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
-                 absl::Span<AbstractTensorHandle*> y, const char* name);
+                 AbstractTensorHandle** y, const char* name = nullptr);
 
 Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
-             absl::Span<AbstractTensorHandle*> output, const char* name);
+             AbstractTensorHandle** output, DataType out_type = DT_INT32,
+             const char* name = nullptr);
 
 Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
                   AbstractTensorHandle* const dim,
-                  absl::Span<AbstractTensorHandle*> output, const char* name);
+                  AbstractTensorHandle** output, const char* name = nullptr);
 
 Status OnesLike(AbstractContext* ctx, AbstractTensorHandle* const x,
-                absl::Span<AbstractTensorHandle*> y, const char* name);
+                AbstractTensorHandle** y, const char* name = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow

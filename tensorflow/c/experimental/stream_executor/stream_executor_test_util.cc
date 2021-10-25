@@ -38,7 +38,7 @@ TF_Bool DeviceMemoryUsage(const SP_Device* const device, int64_t* const free,
 }
 void CreateStream(const SP_Device* const device, SP_Stream* stream,
                   TF_Status* const status) {
-  stream = nullptr;
+  *stream = nullptr;
 }
 void DestroyStream(const SP_Device* const device, SP_Stream stream) {}
 void CreateStreamDependency(const SP_Device* const device, SP_Stream dependent,
@@ -47,7 +47,7 @@ void GetStreamStatus(const SP_Device* const device, SP_Stream stream,
                      TF_Status* const status) {}
 void CreateEvent(const SP_Device* const device, SP_Event* event,
                  TF_Status* const status) {
-  event = nullptr;
+  *event = nullptr;
 }
 void DestroyEvent(const SP_Device* const device, SP_Event event) {}
 SE_EventStatus GetEventStatus(const SP_Device* const device, SP_Event event) {
@@ -86,6 +86,17 @@ TF_Bool HostCallback(const SP_Device* const device, SP_Stream stream,
   return true;
 }
 
+void MemZero(const SP_Device* device, SP_Stream stream,
+             SP_DeviceMemoryBase* location, uint64_t size, TF_Status* status) {}
+
+void Memset(const SP_Device* device, SP_Stream stream,
+            SP_DeviceMemoryBase* location, uint8_t pattern, uint64_t size,
+            TF_Status* status) {}
+
+void Memset32(const SP_Device* device, SP_Stream stream,
+              SP_DeviceMemoryBase* location, uint32_t pattern, uint64_t size,
+              TF_Status* status) {}
+
 void PopulateDefaultStreamExecutor(SP_StreamExecutor* se) {
   *se = {SP_STREAMEXECUTOR_STRUCT_SIZE};
   se->allocate = Allocate;
@@ -114,6 +125,9 @@ void PopulateDefaultStreamExecutor(SP_StreamExecutor* se) {
   se->block_host_for_event = BlockHostForEvent;
   se->synchronize_all_activity = SynchronizeAllActivity;
   se->host_callback = HostCallback;
+  se->mem_zero = MemZero;
+  se->memset = Memset;
+  se->memset32 = Memset32;
 }
 
 void PopulateDefaultDeviceFns(SP_DeviceFns* device_fns) {

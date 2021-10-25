@@ -13,37 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 """Datasets for random number generators."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import random_seed
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor_spec
-from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
+@deprecation.deprecated(None, "Use `tf.data.Dataset.random(...)`.")
 @tf_export("data.experimental.RandomDataset", v1=[])
-class RandomDatasetV2(dataset_ops.DatasetSource):
+class RandomDatasetV2(dataset_ops.RandomDataset):
   """A `Dataset` of pseudorandom values."""
 
-  def __init__(self, seed=None):
-    """A `Dataset` of pseudorandom values."""
-    self._seed, self._seed2 = random_seed.get_seed(seed)
-    variant_tensor = gen_experimental_dataset_ops.random_dataset(
-        seed=self._seed, seed2=self._seed2, **self._flat_structure)
-    super(RandomDatasetV2, self).__init__(variant_tensor)
 
-  @property
-  def element_spec(self):
-    return tensor_spec.TensorSpec([], dtypes.int64)
-
-
+@deprecation.deprecated(None, "Use `tf.data.Dataset.random(...)`.")
 @tf_export(v1=["data.experimental.RandomDataset"])
 class RandomDatasetV1(dataset_ops.DatasetV1Adapter):
   """A `Dataset` of pseudorandom values."""

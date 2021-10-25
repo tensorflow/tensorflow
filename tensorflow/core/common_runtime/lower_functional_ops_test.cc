@@ -65,7 +65,7 @@ Status Rewrite(std::unique_ptr<Graph>* graph) {
 }
 
 // (counter:int32, pred:bool, x:int32) -> counter < N
-FunctionDef WhileWithIfCond(int32 N) {
+FunctionDef WhileWithIfCond(int32_t N) {
   const Tensor kN = test::AsScalar<int32>(N);
   return FDH::Define(
       // Name

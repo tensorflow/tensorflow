@@ -37,6 +37,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ThreadingOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "UNKNOWN_CARDINALITY"
     mtype: "<type \'int\'>"
   }

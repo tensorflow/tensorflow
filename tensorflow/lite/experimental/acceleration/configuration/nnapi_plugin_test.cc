@@ -35,9 +35,10 @@ namespace {
 
 using delegate::nnapi::NnApiMock;
 
-class SingleAddOpModel : tflite::SingleOpModel {
+class SingleAddOpModel : public tflite::SingleOpModel {
  public:
-  void Build() {
+  // Note the caller owns the memory of the passed-in 'delegate'.
+  void Build(TfLiteDelegate* delegate) {
     int input = AddInput({tflite::TensorType_FLOAT32, {1, 2, 2}});
     int constant = AddConstInput({tflite::TensorType_FLOAT32, {1, 2, 2}},
                                  {1.0f, 1.0f, 1.0f, 1.0f});
@@ -45,7 +46,10 @@ class SingleAddOpModel : tflite::SingleOpModel {
 
     SetBuiltinOp(tflite::BuiltinOperator_ADD, tflite::BuiltinOptions_AddOptions,
                  tflite::CreateAddOptions(builder_).Union());
-    // Set apply_delegate to false to skip applying TfLite default delegates.
+
+    SetDelegate(delegate);
+    // Set 'apply_delegate' to false to manually apply the delegate later and
+    // check its return status.
     BuildInterpreter({GetShape(input), GetShape(constant)},
                      /*num_threads=*/-1,
                      /*allow_fp32_relax_to_fp16=*/false,
@@ -69,8 +73,8 @@ class NNAPIPluginTest : public ::testing::Test {
       supportedOps[0] = true;
       return 0;
     };
-    model_.Build();
   }
+
   template <NNAPIExecutionPreference input, int output>
   void CheckExecutionPreference() {
     // Note - this uses a template since the NNAPI functions are C function
@@ -83,11 +87,11 @@ class NNAPIPluginTest : public ::testing::Test {
     // Since delegation succeeds, the model becomes immutable and hence can't
     // reuse it.
     SingleAddOpModel model;
-    model.Build();
-    EXPECT_EQ(model.Interpreter()->ModifyGraphWithDelegate(delegate_.get()),
-              kTfLiteOk)
+    model.Build(delegate_.get());
+    EXPECT_EQ(model.ApplyDelegate(), kTfLiteOk)
         << " given input: " << input << " expected output: " << output;
   }
+
   template <NNAPIExecutionPriority input, int output>
   void CheckExecutionPriority() {
     // Note - this uses a template since the NNAPI functions are C function
@@ -102,9 +106,8 @@ class NNAPIPluginTest : public ::testing::Test {
     // Since delegation succeeds, the model becomes immutable and hence can't
     // reuse it.
     SingleAddOpModel model;
-    model.Build();
-    EXPECT_EQ(model.Interpreter()->ModifyGraphWithDelegate(delegate_.get()),
-              kTfLiteOk)
+    model.Build(delegate_.get());
+    EXPECT_EQ(model.ApplyDelegate(), kTfLiteOk)
         << " given input: " << input << " expected output: " << output;
   }
 
@@ -117,6 +120,11 @@ class NNAPIPluginTest : public ::testing::Test {
     delegate_ = plugin_->Create();
   }
 
+  TfLiteStatus ApplyDelegate() {
+    model_.Build(delegate_.get());
+    return model_.ApplyDelegate();
+  }
+
   NnApi* nnapi_;
   std::unique_ptr<NnApiMock> nnapi_mock_;
   SingleAddOpModel model_;
@@ -126,16 +134,16 @@ class NNAPIPluginTest : public ::testing::Test {
   std::unique_ptr<delegates::DelegatePluginInterface> plugin_;
 };
 
-TEST_F(NNAPIPluginTest, PassesAcceleratorName) {
+TEST_F(NNAPIPluginTest, PassesAcceleratorNameFailure) {
   // Fails with non-existent "foo".
   CreateDelegate(CreateNNAPISettings(fbb_, fbb_.CreateString("foo")));
-  EXPECT_EQ(model_.Interpreter()->ModifyGraphWithDelegate(delegate_.get()),
-            kTfLiteDelegateError);
+  EXPECT_EQ(kTfLiteDelegateError, ApplyDelegate());
+}
 
+TEST_F(NNAPIPluginTest, PassesAcceleratorNameSuccess) {
   // Succeeds with "test-device" supported by the mock.
   CreateDelegate(CreateNNAPISettings(fbb_, fbb_.CreateString("test-device")));
-  EXPECT_EQ(model_.Interpreter()->ModifyGraphWithDelegate(delegate_.get()),
-            kTfLiteOk);
+  EXPECT_EQ(kTfLiteOk, ApplyDelegate());
 }
 
 TEST_F(NNAPIPluginTest, PassesExecutionPreference) {
@@ -173,8 +181,7 @@ TEST_F(NNAPIPluginTest, PassesCachingParameters) {
   };
   CreateDelegate(CreateNNAPISettings(fbb_, 0, fbb_.CreateString("d"),
                                      fbb_.CreateString("t")));
-  EXPECT_EQ(model_.Interpreter()->ModifyGraphWithDelegate(delegate_.get()),
-            kTfLiteOk);
+  EXPECT_EQ(kTfLiteOk, ApplyDelegate());
 }
 
 TEST_F(NNAPIPluginTest, PassesFalseNNAPICpuFlag) {
@@ -189,8 +196,7 @@ TEST_F(NNAPIPluginTest, PassesFalseNNAPICpuFlag) {
     // Since no CPU, should only pass one device.
     return numDevices - 1;
   };
-  EXPECT_EQ(model_.Interpreter()->ModifyGraphWithDelegate(delegate_.get()),
-            kTfLiteOk);
+  EXPECT_EQ(kTfLiteOk, ApplyDelegate());
 }
 
 TEST_F(NNAPIPluginTest, PassesTrueNNAPICpuFlag) {
@@ -205,8 +211,126 @@ TEST_F(NNAPIPluginTest, PassesTrueNNAPICpuFlag) {
     // With CPU allowed, should pass two devices.
     return numDevices - 2;
   };
-  EXPECT_EQ(model_.Interpreter()->ModifyGraphWithDelegate(delegate_.get()),
-            kTfLiteOk);
+  EXPECT_EQ(kTfLiteOk, ApplyDelegate());
+}
+
+/*
+ * Building a model with three operations that can be used to create multiple
+ * delegated partitions.
+ *
+ *  input1 ---
+ *            | -  ADD -- ROUND --
+ *            |                   | - ADD -- output1
+ *  input2 ---                    |
+ *                                |
+ *  input3 -----------------------
+ */
+class MultiplePartitionsModel : public tflite::MultiOpModel {
+ public:
+  // Note the caller owns the memory of the passed-in 'delegate'.
+  void Build(TfLiteDelegate* delegate) {
+    const tflite::TensorData tensors_data = {tflite::TensorType_FLOAT32,
+                                             {1, 2, 2}};
+    int input1 = AddInput(tensors_data);
+    int input2 = AddInput(tensors_data);
+    int input3 = AddInput(tensors_data);
+    int add_out = AddInnerTensor<float>(tensors_data);
+    int round_out = AddInnerTensor<float>(tensors_data);
+    int output = AddOutput(tensors_data);
+
+    AddBuiltinOp(
+        tflite::BuiltinOperator_ADD, tflite::BuiltinOptions_AddOptions,
+        CreateAddOptions(builder_, ActivationFunctionType_NONE).Union(),
+        {input1, input2}, {add_out});
+
+    AddBuiltinOp(tflite::BuiltinOperator_ROUND, tflite::BuiltinOptions_NONE,
+                 /*builtin_options=*/0, {add_out}, {round_out});
+
+    AddBuiltinOp(
+        tflite::BuiltinOperator_ADD, tflite::BuiltinOptions_AddOptions,
+        CreateAddOptions(builder_, ActivationFunctionType_NONE).Union(),
+        {round_out, input3}, {output});
+
+    SetDelegate(delegate);
+    // Set 'apply_delegate' to false to manually apply the delegate later and
+    // check its return status.
+    BuildInterpreter({GetShape(input1), GetShape(input2), GetShape(input3)},
+                     /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/true);
+  }
+
+  tflite::Interpreter* Interpreter() const { return interpreter_.get(); }
+};
+
+class NNAPIMultiOpPluginTest : public ::testing::Test {
+ protected:
+  NNAPIMultiOpPluginTest() : delegate_(nullptr, [](TfLiteDelegate*) {}) {}
+  void SetUp() override {
+    nnapi_ = const_cast<NnApi*>(NnApiImplementation());
+    nnapi_mock_ = absl::make_unique<NnApiMock>(nnapi_);
+  }
+
+  void CreateDelegate(flatbuffers::Offset<NNAPISettings> settings,
+                      int max_delegated_partitions) {
+    settings_ = flatbuffers::GetTemporaryPointer(
+        fbb_,
+        CreateTFLiteSettings(fbb_, tflite::Delegate_NNAPI, settings,
+                             /* gpu_settings */ 0,
+                             /* hexagon_settings */ 0,
+                             /* xnnpack_settings */ 0,
+                             /* cpu_settings */ 0, max_delegated_partitions));
+
+    plugin_ = delegates::DelegatePluginRegistry::CreateByName("NnapiPlugin",
+                                                              *settings_);
+    delegate_ = plugin_->Create();
+  }
+
+  int CountNnApiPartitions() {
+    return std::count_if(std::begin(model_.Interpreter()->execution_plan()),
+                         std::end(model_.Interpreter()->execution_plan()),
+                         [this](const int node_index) {
+                           return model_.Interpreter()
+                                      ->node_and_registration(node_index)
+                                      ->first.delegate != nullptr;
+                         });
+  }
+
+  TfLiteStatus ApplyDelegate() {
+    model_.Build(delegate_.get());
+    return model_.ApplyDelegate();
+  }
+
+  NnApi* nnapi_;
+  std::unique_ptr<NnApiMock> nnapi_mock_;
+  MultiplePartitionsModel model_;
+  flatbuffers::FlatBufferBuilder fbb_;
+  const TFLiteSettings* settings_ = nullptr;
+  delegates::TfLiteDelegatePtr delegate_;
+  std::unique_ptr<delegates::DelegatePluginInterface> plugin_;
+};
+
+TEST_F(NNAPIMultiOpPluginTest, PassesMaxDelegatedPartitionsFlag) {
+  CreateDelegate(CreateNNAPISettings(
+                     fbb_, 0, 0, 0, NNAPIExecutionPreference_UNDEFINED, 0, 0,
+                     /* allow CPU */ true,
+                     /* execution_priority */
+                     tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
+                     /* allow_dynamic_dimensions */ false,
+                     /* allow_fp16_precision_for_fp32 */ false),
+                 /* max_delegated_partitions */ 1);
+  nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices =
+      [](const ANeuralNetworksModel* model,
+         const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+         bool* supportedOps) -> int {
+    supportedOps[0] = true;
+    supportedOps[1] = false;
+    supportedOps[2] = true;
+    return 0;
+  };
+  EXPECT_EQ(kTfLiteOk, ApplyDelegate());
+  EXPECT_EQ(CountNnApiPartitions(), 1);
 }
 
 }  // namespace

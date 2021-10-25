@@ -40,18 +40,34 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
         std::string error;
         auto* wrapper = ::CalibrationWrapper::CreateWrapperCPPFromBuffer(
             data.ptr(), registerers_by_name, registerers_by_func, &error);
-        if (PyErr_Occurred()) {
-          throw py::error_already_set();
+        if (!wrapper) {
+          throw std::invalid_argument(error);  // throws ValueError in Python
         }
         return wrapper;
       }))
+      .def("Prepare",
+           [](CalibrationWrapper& self, py::handle& input_shapes,
+              std::string signature_key) {
+             return tensorflow::PyoOrThrow(
+                 self.Prepare(input_shapes.ptr(), signature_key));
+           })
       .def("Prepare",
            [](CalibrationWrapper& self, py::handle& input_shapes) {
              return tensorflow::PyoOrThrow(self.Prepare(input_shapes.ptr()));
            })
       .def("Prepare",
+           [](CalibrationWrapper& self, std::string signature_key) {
+             return tensorflow::PyoOrThrow(self.Prepare(signature_key));
+           })
+      .def("Prepare",
            [](CalibrationWrapper& self) {
              return tensorflow::PyoOrThrow(self.Prepare());
+           })
+      .def("FeedTensor",
+           [](CalibrationWrapper& self, py::handle& input_value,
+              std::string signature_key) {
+             return tensorflow::PyoOrThrow(
+                 self.FeedTensor(input_value.ptr(), signature_key));
            })
       .def("FeedTensor",
            [](CalibrationWrapper& self, py::handle& input_value) {

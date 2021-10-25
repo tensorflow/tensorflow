@@ -54,7 +54,19 @@ message TrackableObjectGraph {
     repeated SerializedTensor attributes = 2;
     // Slot variables owned by this object.
     repeated SlotVariableReference slot_variables = 3;
+
+    // The registered saver used to save this object. If this saver is not
+    // present when loading the checkpoint, then loading will fail.
+    RegisteredSaver registered_saver = 4;
   }
 
   repeated TrackableObject nodes = 1;
+}
+
+message RegisteredSaver {
+  // The name of the registered saver/restore function.
+  string name = 1;
+
+  // Unique auto-generated name of the object.
+  string object_name = 2;
 }

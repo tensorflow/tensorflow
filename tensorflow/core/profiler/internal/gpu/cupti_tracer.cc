@@ -21,12 +21,12 @@ limitations under the License.
 #include "absl/container/node_hash_set.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/generated_nvtx_meta.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
 #include "tensorflow/core/profiler/internal/gpu/nvtx_utils.h"
@@ -159,70 +159,80 @@ DecodeDriverMemcpy(CUpti_CallbackId cbid, const void *params) {
   switch (cbid) {
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2: {
       const auto *p = reinterpret_cast<const cuMemcpyHtoD_v2_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyH2D, false};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyH2D,
+                             false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpyHtoDAsync_v2_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyH2D, true};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyH2D,
+                             true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2: {
       const auto *p = reinterpret_cast<const cuMemcpyDtoH_v2_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyD2H, false};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyD2H,
+                             false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpyDtoHAsync_v2_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyD2H, true};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyD2H,
+                             true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2: {
       const auto *p = reinterpret_cast<const cuMemcpyDtoD_v2_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyD2D, false};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyD2D,
+                             false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpyDtoDAsync_v2_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyD2D, true};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyD2D,
+                             true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy: {
       const auto *p = reinterpret_cast<const cuMemcpy_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyOther, false};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyOther,
+                             false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync: {
       const auto *p = reinterpret_cast<const cuMemcpyAsync_params *>(params);
-      return {p->ByteCount, CuptiTracerEventType::MemcpyOther, true};
+      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyOther,
+                             true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2: {
       const auto *p = reinterpret_cast<const cuMemcpy2D_v2_params *>(params);
-      return {Bytes2D(p->pCopy), MemcpyKind(p->pCopy), false};
+      return std::make_tuple(Bytes2D(p->pCopy), MemcpyKind(p->pCopy), false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpy2DAsync_v2_params *>(params);
-      return {Bytes2D(p->pCopy), MemcpyKind(p->pCopy), true};
+      return std::make_tuple(Bytes2D(p->pCopy), MemcpyKind(p->pCopy), true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2: {
       const auto *p = reinterpret_cast<const cuMemcpy3D_v2_params *>(params);
-      return {Bytes3D(p->pCopy), MemcpyKind(p->pCopy), true};
+      return std::make_tuple(Bytes3D(p->pCopy), MemcpyKind(p->pCopy), true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpy3DAsync_v2_params *>(params);
-      return {Bytes3D(p->pCopy), MemcpyKind(p->pCopy), true};
+      return std::make_tuple(Bytes3D(p->pCopy), MemcpyKind(p->pCopy), true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeer: {
       const auto *p2p_params =
           reinterpret_cast<const cuMemcpyPeer_params *>(params);
-      return {p2p_params->ByteCount, CuptiTracerEventType::MemcpyP2P, false};
+      return std::make_tuple(p2p_params->ByteCount,
+                             CuptiTracerEventType::MemcpyP2P, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeerAsync: {
       const auto *p2p_params =
           reinterpret_cast<const cuMemcpyPeerAsync_params *>(params);
-      return {p2p_params->ByteCount, CuptiTracerEventType::MemcpyP2P, true};
+      return std::make_tuple(p2p_params->ByteCount,
+                             CuptiTracerEventType::MemcpyP2P, true);
     }
     default: {
       LOG(ERROR) << "Unsupported memcpy activity observed: " << cbid;
-      return {0, CuptiTracerEventType::Unsupported, false};
+      return std::make_tuple(0, CuptiTracerEventType::Unsupported, false);
     }
   }
 }
@@ -232,58 +242,64 @@ DecodeDriverMemset(CUpti_CallbackId cbid, const void *params) {
   switch (cbid) {
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2: {
       const auto *p = reinterpret_cast<const cuMemsetD8_v2_params *>(params);
-      return {p->N, CuptiTracerEventType::Memset, false};
+      return std::make_tuple(p->N, CuptiTracerEventType::Memset, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2: {
       const auto *p = reinterpret_cast<const cuMemsetD16_v2_params *>(params);
-      return {p->N, CuptiTracerEventType::Memset, false};
+      return std::make_tuple(p->N, CuptiTracerEventType::Memset, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2: {
       const auto *p = reinterpret_cast<const cuMemsetD32_v2_params *>(params);
-      return {p->N, CuptiTracerEventType::Memset, false};
+      return std::make_tuple(p->N, CuptiTracerEventType::Memset, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2: {
       const auto *p = reinterpret_cast<const cuMemsetD2D8_v2_params *>(params);
-      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, false};
+      return std::make_tuple(p->dstPitch * p->Height,
+                             CuptiTracerEventType::Memset, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2: {
       const auto *p = reinterpret_cast<const cuMemsetD2D16_v2_params *>(params);
-      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, false};
+      return std::make_tuple(p->dstPitch * p->Height,
+                             CuptiTracerEventType::Memset, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2: {
       const auto *p = reinterpret_cast<const cuMemsetD2D32_v2_params *>(params);
-      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, false};
+      return std::make_tuple(p->dstPitch * p->Height,
+                             CuptiTracerEventType::Memset, false);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async: {
       const auto *p = reinterpret_cast<const cuMemsetD8Async_params *>(params);
-      return {p->N, CuptiTracerEventType::Memset, true};
+      return std::make_tuple(p->N, CuptiTracerEventType::Memset, true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async: {
       const auto *p = reinterpret_cast<const cuMemsetD16Async_params *>(params);
-      return {p->N, CuptiTracerEventType::Memset, true};
+      return std::make_tuple(p->N, CuptiTracerEventType::Memset, true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async: {
       const auto *p = reinterpret_cast<const cuMemsetD32Async_params *>(params);
-      return {p->N, CuptiTracerEventType::Memset, true};
+      return std::make_tuple(p->N, CuptiTracerEventType::Memset, true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async: {
       const auto *p =
           reinterpret_cast<const cuMemsetD2D8Async_params *>(params);
-      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, true};
+      return std::make_tuple(p->dstPitch * p->Height,
+                             CuptiTracerEventType::Memset, true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async: {
       const auto *p =
           reinterpret_cast<const cuMemsetD2D16Async_params *>(params);
-      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, true};
+      return std::make_tuple(p->dstPitch * p->Height,
+                             CuptiTracerEventType::Memset, true);
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async: {
       const auto *p =
           reinterpret_cast<const cuMemsetD2D32Async_params *>(params);
-      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, true};
+      return std::make_tuple(p->dstPitch * p->Height,
+                             CuptiTracerEventType::Memset, true);
     }
     default: {
       LOG(ERROR) << "Unsupported memset activity observed: " << cbid;
-      return {0, CuptiTracerEventType::Unsupported, false};
+      return std::make_tuple(0, CuptiTracerEventType::Unsupported, false);
     }
   }
 }
@@ -304,43 +320,32 @@ void CUPTIAPI ApiCallback(void *user_data, CUpti_CallbackDomain domain,
 // Allocates an empty aligned-memory buffer. The buffer is used by CUPTI as a
 // ring buffer where device maintains activity profiles that have been
 // collected.
-void CUPTIAPI AllocCuptiActivityBuffer(uint8_t **buffer, size_t *size,
-                                       size_t *maxNumRecords) {
-  // Buffer size and alignment, 32K and 8 as in CUPTI samples.
-  constexpr size_t kBufferSize = 32 * 1024;
-  constexpr int kBufferAlignSize = 8;
-  *buffer = reinterpret_cast<uint8_t *>(
-      port::AlignedMalloc(kBufferSize, kBufferAlignSize));
-  if (*buffer == nullptr) {
-    LOG(WARNING)
-        << "Cupti Buffer not allocated, activity records will be dropped";
-    return;
-  }
-  *size = kBufferSize;
-  *maxNumRecords = 0;  // Cupti to fill as many records as fit in the buffer.
-  VLOG(3) << "Allocated Cupti Buffer, buffer=" << std::hex
+void CUPTIAPI RequestCuptiActivityBuffer(uint8_t **buffer, size_t *size,
+                                         size_t *maxNumRecords) {
+  CuptiTracer::GetCuptiTracerSingleton()->RequestActivityBuffer(buffer, size);
+  VLOG(3) << "Requested CUPTI Buffer, buffer=" << std::hex
           << reinterpret_cast<uintptr_t>(*buffer) << std::dec
           << " size=" << *size;
+  // Request CUPTI to fill as many records as possible in the buffer.
+  *maxNumRecords = 0;
 }
 
 // Callback which is invoked when a buffer containing activity records is
-// available from CUPTI. Frees the buffer after reading activity records from
-// it.
-void CUPTIAPI FreeCuptiActivityBuffer(CUcontext context, uint32_t stream_id,
-                                      uint8_t *buffer, size_t size,
-                                      size_t valid_size) {
-  VLOG(3) << "Freeing Cupti Buffer, buffer:" << std::hex
+// available from CUPTI. Processes the buffer after reading activity records
+// from it.
+void CUPTIAPI ProcessCuptiActivityBuffer(CUcontext context, uint32_t stream_id,
+                                         uint8_t *buffer, size_t size,
+                                         size_t valid_size) {
+  VLOG(3) << "Processing CUPTI Buffer, buffer:" << std::hex
           << reinterpret_cast<uintptr_t>(buffer) << std::dec
           << " size: " << size << " valid_size: " << valid_size;
+  VLOG(3) << "Activity profile for stream " << stream_id;
 
-  if (valid_size > 0) {
-    VLOG(3) << "Activity profile for stream " << stream_id;
-
-    CuptiTracer *cupti_tracer = CuptiTracer::GetCuptiTracerSingleton();
-    cupti_tracer->ProcessActivityBuffer(context, stream_id, buffer, valid_size)
-        .IgnoreError();
+  Status status = CuptiTracer::GetCuptiTracerSingleton()->ProcessActivityBuffer(
+      context, stream_id, buffer, valid_size);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
   }
-  port::AlignedFree(buffer);
 }
 
 void AddKernelEventUponApiExit(CuptiTraceCollector *collector, uint32 device_id,
@@ -374,10 +379,13 @@ CuptiTracerEvent PopulateMemcpyCallbackEvent(
   event.device_id = src_device;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
-  event.memcpy_info.kind = CUPTI_ACTIVITY_MEMCPY_KIND_UNKNOWN;
   event.memcpy_info.num_bytes = num_bytes;
   event.memcpy_info.destination = dst_device;
   event.memcpy_info.async = async;
+  // These are not populated during callback for API activities.
+  event.memcpy_info.copy_kind = CUPTI_ACTIVITY_MEMCPY_KIND_UNKNOWN;
+  event.memcpy_info.dst_mem_kind = CUPTI_ACTIVITY_MEMORY_KIND_UNKNOWN;
+  event.memcpy_info.src_mem_kind = CUPTI_ACTIVITY_MEMORY_KIND_UNKNOWN;
   return event;
 }
 
@@ -594,6 +602,7 @@ void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
       event.name = "MemcpyOther";
       break;
   }
+
   event.source = CuptiTracerEventSource::Activity;
   event.start_time_ns = memcpy->start;
   event.end_time_ns = memcpy->end;
@@ -604,7 +613,7 @@ void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
   AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
       event.device_id, event.correlation_id);
   event.annotation = info.annotation;
-  event.memcpy_info.kind = memcpy->copyKind;
+  event.memcpy_info.copy_kind = memcpy->copyKind;
   event.memcpy_info.num_bytes = memcpy->bytes;
   event.memcpy_info.destination = memcpy->deviceId;
   event.memcpy_info.async = memcpy->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
@@ -629,7 +638,7 @@ void AddMemcpy2ActivityEvent(CuptiTraceCollector *collector,
   AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
       event.device_id, event.correlation_id);
   event.annotation = info.annotation;
-  event.memcpy_info.kind = CUPTI_ACTIVITY_MEMCPY_KIND_PTOP;
+  event.memcpy_info.copy_kind = CUPTI_ACTIVITY_MEMCPY_KIND_PTOP;
   event.memcpy_info.num_bytes = memcpy2->bytes;
   event.memcpy_info.destination = memcpy2->dstDeviceId;
   event.memcpy_info.async = memcpy2->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
@@ -702,7 +711,7 @@ void AddUnifiedMemoryActivityEvent(
   // record->counterKind of unified memory related events.
   constexpr int kPseudoStreamId = 0x10000000;
   event.stream_id = kPseudoStreamId + record->counterKind;
-  event.memcpy_info.kind = CUPTI_ACTIVITY_MEMCPY_KIND_UNKNOWN;
+  event.memcpy_info.copy_kind = CUPTI_ACTIVITY_MEMCPY_KIND_UNKNOWN;
   // Check whether the activity is byte transfer.
   if (record->counterKind ==
           CUPTI_ACTIVITY_UNIFIED_MEMORY_COUNTER_KIND_BYTES_TRANSFER_HTOD ||
@@ -732,7 +741,7 @@ void AddMemoryActivityEvent(CuptiTraceCollector *collector,
   // Assign to default stream (0) so that event is included during Flush().
   event.stream_id = 0;
   event.memory_residency_info.num_bytes = memory->bytes;
-  event.memory_residency_info.kind = memory->memoryKind;
+  event.memory_residency_info.mem_kind = memory->memoryKind;
   event.memory_residency_info.address = memory->address;
   VLOG(5) << "Cuda activity " << event.name
           << " addr: " << reinterpret_cast<void *>(memory->address)
@@ -742,10 +751,11 @@ void AddMemoryActivityEvent(CuptiTraceCollector *collector,
 
 void AddMemsetActivityEvent(CuptiTraceCollector *collector,
                             const CUpti_ActivityMemset *memset) {
+  auto mem_kind = memset->memoryKind;
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::Memset;
   event.source = CuptiTracerEventSource::Activity;
-  event.name = absl::StrCat("Memset ", GetMemoryKindName(memset->memoryKind));
+  event.name = absl::StrCat("Memset ", mem_kind);
   event.start_time_ns = memset->start;
   event.end_time_ns = std::max(memset->end, memset->start + 1);
   event.device_id = memset->deviceId;
@@ -753,7 +763,7 @@ void AddMemsetActivityEvent(CuptiTraceCollector *collector,
   event.context_id = memset->contextId;
   event.stream_id = memset->streamId;
   event.memset_info.num_bytes = memset->bytes;
-  event.memset_info.kind = memset->memoryKind;
+  event.memset_info.mem_kind = mem_kind;
   event.memset_info.async = (memset->flags & CUPTI_ACTIVITY_FLAG_MEMSET_ASYNC);
   VLOG(5) << "Cuda activity " << event.name << " bytes: " << memset->bytes
           << " async: " << event.memset_info.async;
@@ -1512,6 +1522,10 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2:
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2:
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2:
+      // This would be the place to populate the memcpy API activity's src and
+      // dst memory kind by casting cbdata->functionParams. However, we are not
+      // doing that because that will incur significant overhead to get the
+      // memory aperture of each argument.
       AddNormalMemcpyEventUponApiExit(collector, device_id, cbid, cbdata,
                                       start_tsc, end_tsc);
       break;
@@ -1590,6 +1604,11 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
   }
 }
 
+CuptiTracer::CuptiTracer(CuptiInterface *cupti_interface)
+    : num_gpus_(NumGpus()),
+      cupti_interface_(cupti_interface),
+      buffer_pool_(kBufferSizeInBytes) {}
+
 /* static */ CuptiTracer *CuptiTracer::GetCuptiTracerSingleton() {
   static auto *singleton = new CuptiTracer(GetCuptiInterface());
   return singleton;
@@ -1634,6 +1653,7 @@ void CuptiTracer::Enable(const CuptiTracerOptions &option,
   if (option_->enable_activity_api) {
     EnableActivityTracing().IgnoreError();
   }
+  tensorflow::profiler::AnnotationStack::Enable(true);
 }
 
 void CuptiTracer::Disable() {
@@ -1648,6 +1668,7 @@ void CuptiTracer::Disable() {
   collector_ = nullptr;
   option_.reset();
   cupti_driver_api_hook_.reset();
+  tensorflow::profiler::AnnotationStack::Enable(false);
 }
 
 Status CuptiTracer::EnableApiTracing() {
@@ -1708,7 +1729,7 @@ Status CuptiTracer::EnableActivityTracing() {
     // Initialize callback functions for Cupti Activity API.
     VLOG(1) << "Registering CUPTI activity callbacks";
     RETURN_IF_CUPTI_ERROR(cupti_interface_->ActivityRegisterCallbacks(
-        AllocCuptiActivityBuffer, FreeCuptiActivityBuffer));
+        RequestCuptiActivityBuffer, ProcessCuptiActivityBuffer));
 
     VLOG(1) << "Enabling activity tracing for "
             << option_->activities_selected.size() << " activities";
@@ -1787,7 +1808,7 @@ Status CuptiTracer::HandleNVTXCallback(CUpti_CallbackId cbid,
 Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
                                    CUpti_CallbackId cbid,
                                    const CUpti_CallbackData *cbdata) {
-  if (!api_tracing_enabled_) return Status::OK();  // already unsubscribed.
+  if (!api_tracing_enabled_) return Status::OK();    // already unsubscribed.
   if (!cupti_driver_api_hook_) return Status::OK();  // already unsubscribed.
   if (domain == CUPTI_CB_DOMAIN_NVTX) return HandleNVTXCallback(cbid, cbdata);
   if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return Status::OK();
@@ -1869,10 +1890,26 @@ void CuptiTracer::ConfigureActivityUnifiedMemoryCounter(bool enable) {
   }
 }
 
+void CuptiTracer::RequestActivityBuffer(uint8_t **buffer, size_t *size) {
+  *buffer = buffer_pool_.GetOrCreateBuffer();
+  if (*buffer == nullptr) {
+    LOG(WARNING)
+        << "CUPTI Buffer not allocated, activity records will be dropped";
+    *size = 0;
+    return;
+  }
+  *size = buffer_pool_.GetBufferSizeInBytes();
+}
+
 Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
                                           uint8_t *buffer, size_t size) {
+  auto buffer_cleanup =
+      gtl::MakeCleanup([&]() { buffer_pool_.ReclaimBuffer(buffer); });
+  if (size == 0) {
+    return Status::OK();
+  }
   if (!activity_tracing_enabled_) {
-    LOG(WARNING) << "CUPTI activity buffer is freed after flush.";
+    LOG(WARNING) << "CUPTI activity buffer is reclaimed after flush.";
     return Status::OK();
   }
   if (cupti_interface_->Disabled()) return errors::Internal("Disabled.");

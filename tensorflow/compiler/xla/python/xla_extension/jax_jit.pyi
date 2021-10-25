@@ -13,19 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
-import inspect
-from typing import Any, Callable, Sequence, Tuple
+from typing import Any, Callable, Optional, Sequence, Tuple
 
 import numpy as np
 from tensorflow.compiler.xla.python import xla_extension
 
 Client = xla_extension.Client
 
-class CompiledFunction:
-  def __call__(self, *args, **kwargs) -> Any: ...
-  __signature__: inspect.Signature
-  def _cache_size(self) -> int: ...
-  def _clear_cache(self) -> None: ...
+CompiledFunctionCache = xla_extension.CompiledFunctionCache
+CompiledFunction = xla_extension.CompiledFunction
 
 class GlobalJitState:
   disable_jit: bool
@@ -55,10 +51,13 @@ def get_disable_x64_cpp_flag() -> bool: ...
 def set_disable_x64_thread_local(__arg: bool) -> None: ...
 def get_disable_x64_thread_local() -> bool: ...
 
-def jit(__fun: Callable[..., Any],
-        __cache_miss: Callable[..., Any],
-        __get_device: Callable[..., Any],
-        __static_argnums: Sequence[int]) -> CompiledFunction: ...
+def jit(fun: Callable[..., Any],
+        cache_miss: Callable[..., Any],
+        get_device: Callable[..., Any],
+        static_argnums: Sequence[int],
+        static_argnames: Sequence[str] = ...,
+        donate_argnums: Sequence[int] = ...,
+        cache: Optional[CompiledFunctionCache] = ...) -> CompiledFunction: ...
 
 def device_put(
     __obj: Any,

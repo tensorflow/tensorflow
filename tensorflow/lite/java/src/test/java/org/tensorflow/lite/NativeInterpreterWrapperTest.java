@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.HashMap;
 import java.util.Map;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -58,6 +59,11 @@ public final class NativeInterpreterWrapperTest {
   private static final String NONEXISTING_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/nonexisting_model.bin";
 
+  @Before
+  public void setUp() {
+    TestInit.init();
+  }
+
   @Test
   public void testConstructor() {
     try (NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH)) {
@@ -67,9 +73,10 @@ public final class NativeInterpreterWrapperTest {
 
   @Test
   public void testConstructorWithOptions() {
+    InterpreterImpl.Options options = new InterpreterImpl.Options();
+    options.setNumThreads(2).setUseNNAPI(true);
     try (NativeInterpreterWrapper wrapper =
-        new NativeInterpreterWrapper(
-            FLOAT_MODEL_PATH, new Interpreter.Options().setNumThreads(2).setUseNNAPI(true))) {
+        new NativeInterpreterWrapper(FLOAT_MODEL_PATH, options)) {
       assertThat(wrapper).isNotNull();
     }
   }
@@ -81,7 +88,13 @@ public final class NativeInterpreterWrapperTest {
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(INVALID_MODEL_PATH);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("The model is not a valid Flatbuffer");
+      assertThat(e)
+          .hasMessageThat()
+          .containsMatch(
+              String.join(
+                  "|",
+                  "The model is not a valid Flatbuffer",
+                  "does not encode a valid TensorFlow Lite model"));
     }
   }
 
@@ -471,7 +484,7 @@ public final class NativeInterpreterWrapperTest {
       wrapper.run(inputs, outputs);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("Invalid handle to Interpreter.");
+      assertThat(e).hasMessageThat().contains("Internal error: Found invalid handle");
     }
   }
 

@@ -53,13 +53,13 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
                       platform_device_id);
 
   for (int s : {8}) {
-    std::vector<int64> cpu_array(s);
-    memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
-    int64* gpu_array =
-        TypedAllocator::Allocate<int64>(&a, cpu_array.size(), {});
-    se::DeviceMemory<int64> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
+    std::vector<int64_t> cpu_array(s);
+    memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64_t));
+    int64_t* gpu_array =
+        TypedAllocator::Allocate<int64_t>(&a, cpu_array.size(), {});
+    se::DeviceMemory<int64_t> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
     ASSERT_TRUE(stream_exec->SynchronousMemcpy(&gpu_array_ptr, &cpu_array[0],
-                                               s * sizeof(int64)));
+                                               s * sizeof(int64_t)));
     EXPECT_TRUE(a.CheckHeader(gpu_array));
     EXPECT_TRUE(a.CheckFooter(gpu_array));
 
@@ -80,17 +80,18 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
           GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                               platform_device_id);
 
-          std::vector<int64> cpu_array(s);
-          memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
-          int64* gpu_array =
-              TypedAllocator::Allocate<int64>(&a, cpu_array.size(), {});
+          std::vector<int64_t> cpu_array(s);
+          memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64_t));
+          int64_t* gpu_array =
+              TypedAllocator::Allocate<int64_t>(&a, cpu_array.size(), {});
 
-          se::DeviceMemory<int64> gpu_array_ptr{
+          se::DeviceMemory<int64_t> gpu_array_ptr{
               se::DeviceMemoryBase{gpu_array}};
           ASSERT_TRUE(stream_exec->SynchronousMemcpy(
-              &gpu_array_ptr, &cpu_array[0], cpu_array.size() * sizeof(int64)));
+              &gpu_array_ptr, &cpu_array[0],
+              cpu_array.size() * sizeof(int64_t)));
 
-          se::DeviceMemory<int64> gpu_hdr_ptr{
+          se::DeviceMemory<int64_t> gpu_hdr_ptr{
               se::DeviceMemoryBase{gpu_array - 1}};
           // Clobber first word of the header.
           float pi = 3.1417;
@@ -116,18 +117,19 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
           GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                               platform_device_id);
 
-          std::vector<int64> cpu_array(s);
-          memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
-          int64* gpu_array =
-              TypedAllocator::Allocate<int64>(&a, cpu_array.size(), {});
+          std::vector<int64_t> cpu_array(s);
+          memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64_t));
+          int64_t* gpu_array =
+              TypedAllocator::Allocate<int64_t>(&a, cpu_array.size(), {});
 
-          se::DeviceMemory<int64> gpu_array_ptr{
+          se::DeviceMemory<int64_t> gpu_array_ptr{
               se::DeviceMemoryBase{gpu_array}};
           ASSERT_TRUE(stream_exec->SynchronousMemcpy(
-              &gpu_array_ptr, &cpu_array[0], cpu_array.size() * sizeof(int64)));
+              &gpu_array_ptr, &cpu_array[0],
+              cpu_array.size() * sizeof(int64_t)));
 
           // Clobber word of the footer.
-          se::DeviceMemory<int64> gpu_ftr_ptr{
+          se::DeviceMemory<int64_t> gpu_ftr_ptr{
               se::DeviceMemoryBase{gpu_array + s}};
           float pi = 3.1417;
           ASSERT_TRUE(

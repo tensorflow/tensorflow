@@ -165,7 +165,7 @@ static void TestPicker(SimplePhilox* rnd, int size) {
   if (size <= 10) {
     // When picker grows one element at a time
     WeightedPicker picker(size);
-    int32 weight = 1;
+    int32_t weight = 1;
     for (int elem = 0; elem < size; elem++) {
       picker.set_weight(elem, weight);
       weights[elem] = weight;

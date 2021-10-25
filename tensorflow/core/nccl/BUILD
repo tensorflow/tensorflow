@@ -22,6 +22,7 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
+    features = ["-layering_check"],
     licenses = ["notice"],
 )
 

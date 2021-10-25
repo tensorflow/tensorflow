@@ -17,10 +17,6 @@
 Programs that want to build TensorFlow Ops and Graphs without having to import
 the constructors and utilities individually can import this file:
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 import tensorflow as tf
 """
@@ -37,21 +33,22 @@ import traceback
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 
-from tensorflow.python.eager import context
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+from tensorflow.python.eager import context
 
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
 from tensorflow.python import data
 from tensorflow.python import distribute
-from tensorflow.python import keras
+# from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
-from tensorflow.python.layers import layers
+# from tensorflow.python.layers import layers
 from tensorflow.python.module import module
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import bitwise_ops as bitwise
 from tensorflow.python.ops import cond_v2
+from tensorflow.python.ops import composite_tensor_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip
@@ -68,6 +65,7 @@ from tensorflow.python.ops.linalg.sparse import sparse
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops.ragged import ragged_ops as _ragged_ops
 from tensorflow.python.ops.signal import signal
+from tensorflow.python.ops.structured import structured_ops as _structured_ops
 from tensorflow.python.profiler import profiler
 from tensorflow.python.profiler import profiler_client
 from tensorflow.python.profiler import profiler_v2
@@ -144,6 +142,9 @@ from tensorflow.python.compiler.xla import xla
 # MLIR APIs.
 from tensorflow.python.compiler.mlir import mlir
 
+# Structs (aka extension types)
+from tensorflow.python.framework import extension_type as _extension_type
+
 # Required due to `rnn` and `rnn_cell` not being imported in `nn` directly
 # (due to a circular dependency issue: rnn depends on layers).
 nn.dynamic_rnn = rnn.dynamic_rnn
@@ -152,6 +153,11 @@ nn.raw_rnn = rnn.raw_rnn
 nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
 nn.static_state_saving_rnn = rnn.static_state_saving_rnn
 nn.rnn_cell = rnn_cell
+
+# Update dispatch decorator docstrings to contain lists of registered APIs.
+# (This should come after any imports that register APIs.)
+from tensorflow.python.util import dispatch
+dispatch.update_docstrings_with_api_lists()
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

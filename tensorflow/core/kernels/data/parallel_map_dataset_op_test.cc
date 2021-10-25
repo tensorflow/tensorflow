@@ -11,8 +11,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -54,7 +54,7 @@ class ParallelMapDatasetParams : public DatasetParams {
   std::vector<Tensor> GetInputTensors() const override {
     auto input_tensors = other_arguments_;
     input_tensors.emplace_back(
-        CreateTensor<int64>(TensorShape({}), {num_parallel_calls_}));
+        CreateTensor<int64_t>(TensorShape({}), {num_parallel_calls_}));
     return input_tensors;
   }
 
@@ -69,15 +69,14 @@ class ParallelMapDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {
-        {ParallelMapDatasetOp::kFunc, func_},
-        {ParallelMapDatasetOp::kTarguments, type_arguments_},
-        {ParallelMapDatasetOp::kOutputShapes, output_shapes_},
-        {ParallelMapDatasetOp::kOutputTypes, output_dtypes_},
-        {ParallelMapDatasetOp::kUseInterOpParallelism,
-         use_inter_op_parallelism_},
-        {ParallelMapDatasetOp::kDeterministic, deterministic_},
-        {ParallelMapDatasetOp::kPreserveCardinality, preserve_cardinality_}};
+    *attr_vector = {{"f", func_},
+                    {"Targuments", type_arguments_},
+                    {"output_shapes", output_shapes_},
+                    {"output_types", output_dtypes_},
+                    {"use_inter_op_parallelism", use_inter_op_parallelism_},
+                    {"deterministic", deterministic_},
+                    {"preserve_cardinality", preserve_cardinality_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 
@@ -271,28 +270,28 @@ ParallelMapDatasetParams ParallelMapDatasetParamsWithInvalidNumParallelCalls() {
 std::vector<GetNextTestCase<ParallelMapDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/ParallelMapDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {6}, {12}, {18}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {6}, {12}, {18}}),
            /*compare_order=*/false},
           {/*dataset_params=*/ParallelMapDatasetParams3(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams4(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {6}, {12}, {18}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams5(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
            /*compare_order=*/false},
           {/*dataset_params=*/
            ParallelMapDatasetParams6(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
            /*compare_order=*/true}};
 }
 
@@ -372,33 +371,33 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/ParallelMapDatasetParams1(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {6}, {12}, {18}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams2(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {6}, {12}, {18}}),
            /*compare_order=*/false},
           {/*dataset_params=*/ParallelMapDatasetParams3(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams4(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {6}, {12}, {18}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {6}, {12}, {18}}),
            /*compare_order=*/true},
           {/*dataset_params=*/ParallelMapDatasetParams5(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
            /*compare_order=*/false},
           {/*dataset_params=*/
            ParallelMapDatasetParams6(),
            /*breakpoints=*/{0, 1, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape{}, {{0}, {12}, {24}, {36}}),
+           CreateTensors<int64_t>(TensorShape{}, {{0}, {12}, {24}, {36}}),
            /*compare_order=*/true}};
 }
 

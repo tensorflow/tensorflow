@@ -62,13 +62,13 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
                                       input_matrix_shapes[1].dim_size(1)})});
   }
 
-  int64 GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
+  int64_t GetCostPerUnit(const TensorShapes& input_matrix_shapes) const final {
     double m = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double n = static_cast<double>(input_matrix_shapes[0].dim_size(1));
     double num_rhss = static_cast<double>(input_matrix_shapes[1].dim_size(1));
     double cost = std::max(m, n) * std::min(m, n) * (std::min(m, n) + num_rhss);
     return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64>(cost);
+                                                  : static_cast<int64_t>(cost);
   }
 
   bool EnableInputForwarding() const final { return false; }
@@ -86,9 +86,9 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
     OP_REQUIRES(context, l2_regularizer >= 0,
                 errors::InvalidArgument("l2_regularizer must be >= 0."));
 
-    const int64 rows = matrix.rows();
-    const int64 cols = matrix.cols();
-    if (rows == 0 || cols == 0) {
+    const int64_t rows = matrix.rows();
+    const int64_t cols = matrix.cols();
+    if (rows == 0 || cols == 0 || rhs.rows() == 0 || rhs.cols() == 0) {
       // The result is the empty matrix.
       return;
     }
@@ -99,7 +99,7 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
       //   1 / cond(matrix) > sqrt(std::numeric_limits<Scalar>::epsilon()).
       // This branch solves over- or underdetermined least-squares problems
       // via the normal equations and Cholesky decomposition.
-      if (matrix.rows() >= matrix.cols()) {
+      if (rows >= cols) {
         // Overdetermined case (rows >= cols): Solves the ordinary (possibly
         // regularized) least-squares problem
         //   min || A * X - RHS ||_F^2 + l2_regularizer ||X||_F^2

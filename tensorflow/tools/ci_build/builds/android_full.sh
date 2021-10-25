@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds_common.sh"
 configure_android_workspace
 
-CPUS=armeabi-v7a,arm64-v8a,x86
+CPUS=armeabi-v7a,arm64-v8a
 
 OUT_DIR="$(pwd)/out/"
 AAR_LIB_TMP="$(pwd)/aar_libs"
@@ -42,6 +42,7 @@ do
     echo "========== Building native libs for Android ${CPU} =========="
     bazel build --config=monolithic --cpu=${CPU} \
         --compilation_mode=opt --cxxopt=-std=c++14 \
+        --distinct_host_configuration=true \
         --crosstool_top=//external:android/crosstool \
         --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
         //tensorflow/core:portable_tensorflow_lib \
@@ -64,6 +65,7 @@ done
 echo "========== Building TensorFlow Android Jar and Demo =========="
 bazel --bazelrc=/dev/null build --config=monolithic --fat_apk_cpu=${CPUS} \
     --compilation_mode=opt --cxxopt=-std=c++14 \
+    --distinct_host_configuration=true \
     --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
     //tensorflow/tools/android/inference_interface:android_tensorflow_inference_java \

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Extract parse_example op configuration to a proto."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.example import example_parser_configuration_pb2
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -40,7 +36,9 @@ def extract_example_parser_configuration(parse_example_op, sess):
   elif parse_example_op.type == "ParseExampleV2":
     return _extract_from_parse_example_v2(parse_example_op, sess)
   else:
-    raise ValueError("Unexpected op type: %s" % parse_example_op.type)
+    raise ValueError(
+        "Found unexpected type when parsing example. Expected `ParseExample` "
+        f"object. Received type: {parse_example_op.type}")
 
 
 def _extract_from_parse_example(parse_example_op, sess):

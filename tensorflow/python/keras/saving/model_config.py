@@ -18,18 +18,11 @@
 from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.util.tf_export import keras_export
 
-# pylint: disable=g-import-not-at-top
-try:
-  import yaml
-except ImportError:
-  yaml = None
-# pylint: enable=g-import-not-at-top
-
 
 @keras_export('keras.models.model_from_config')
 def model_from_config(config, custom_objects=None):
   """Instantiates a Keras model from its config.
- 
+
   Usage:
   ```
   # for a Functional API model
@@ -63,17 +56,8 @@ def model_from_config(config, custom_objects=None):
 def model_from_yaml(yaml_string, custom_objects=None):
   """Parses a yaml model configuration file and returns a model instance.
 
-  Usage:
-
-  >>> model = tf.keras.Sequential([
-  ...     tf.keras.layers.Dense(5, input_shape=(3,)),
-  ...     tf.keras.layers.Softmax()])
-  >>> try:
-  ...   import yaml
-  ...   config = model.to_yaml()
-  ...   loaded_model = tf.keras.models.model_from_yaml(config)
-  ... except ImportError:
-  ...   pass
+  Note: Since TF 2.6, this method is no longer supported and will raise a
+  RuntimeError.
 
   Args:
       yaml_string: YAML string or open file encoding a model configuration.
@@ -85,19 +69,13 @@ def model_from_yaml(yaml_string, custom_objects=None):
       A Keras model instance (uncompiled).
 
   Raises:
-      ImportError: if yaml module is not found.
+      RuntimeError: announces that the method poses a security risk
   """
-  if yaml is None:
-    raise ImportError('Requires yaml module installed (`pip install pyyaml`).')
-  # The method unsafe_load only exists in PyYAML 5.x+, so which branch of the
-  # try block is covered by tests depends on the installed version of PyYAML.
-  try:
-    # PyYAML 5.x+
-    config = yaml.unsafe_load(yaml_string)
-  except AttributeError:
-    config = yaml.load(yaml_string)
-  from tensorflow.python.keras.layers import deserialize  # pylint: disable=g-import-not-at-top
-  return deserialize(config, custom_objects=custom_objects)
+  raise RuntimeError(
+      'Method `model_from_yaml()` has been removed due to security risk of '
+      'arbitrary code execution. Please use `Model.to_json()` and '
+      '`model_from_json()` instead.'
+  )
 
 
 @keras_export('keras.models.model_from_json')

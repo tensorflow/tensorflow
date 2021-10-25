@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for initializers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import importlib
 import math
 
@@ -57,7 +53,7 @@ class NormalTest(test.TestCase):
 
   def assertAllFinite(self, tensor):
     is_finite = np.isfinite(self.evaluate(tensor))
-    all_true = np.ones_like(is_finite, dtype=np.bool)
+    all_true = np.ones_like(is_finite, dtype=np.bool_)
     self.assertAllEqual(all_true, is_finite)
 
   def _testParamShapes(self, sample_shape, expected):

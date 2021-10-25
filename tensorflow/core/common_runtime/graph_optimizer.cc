@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
@@ -34,15 +35,10 @@ GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
 
 GraphOptimizer::~GraphOptimizer() {}
 
-void GraphOptimizer::Optimize(
-    FunctionLibraryRuntime* runtime, Env* env, const Device* device,
-    std::unique_ptr<Graph>* graph,
-    const std::unordered_map<string, std::vector<PartialTensorShape>>*
-        shape_map,
-    const NodePredicate& cse_consider_fn, const NodePredicate& cf_consider_fn,
-    bool inline_multi_device_functions,
-    bool inline_impl_selection_group_functions,
-    bool inline_with_single_device_body_placer, bool ignore_noinline) {
+void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
+                              const Device* device,
+                              std::unique_ptr<Graph>* graph,
+                              const Options& options) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -54,6 +50,9 @@ void GraphOptimizer::Optimize(
       DumpGraph("RemoveListArrayConverter", g);
       changed = true;
     }
+
+    uint64 inlining_start_us = Env::Default()->NowMicros();
+    uint64 inlining_total_us = 0;
     if (opts_.do_function_inlining() && RemoveDeadNodes(g)) {
       DumpGraph("RemoveDeadNodes", g);
       changed = true;
@@ -62,11 +61,15 @@ void GraphOptimizer::Optimize(
       DumpGraph("RemoveIdentityNodes", g);
       changed = true;
     }
+    if (opts_.do_function_inlining()) {
+      inlining_total_us += Env::Default()->NowMicros() - inlining_start_us;
+    }
 
     if (opts_.do_constant_folding()) {
+      const uint64 pass_start_us = Env::Default()->NowMicros();
       ConstantFoldingOptions cf_opts;
-      cf_opts.shape_map = shape_map;
-      cf_opts.consider = cf_consider_fn;
+      cf_opts.shape_map = options.shape_map;
+      cf_opts.consider = options.cf_consider_fn;
       if (opts_.max_folded_constant_in_bytes() > 0) {
         cf_opts.max_constant_size_in_bytes =
             opts_.max_folded_constant_in_bytes();
@@ -79,29 +82,43 @@ void GraphOptimizer::Optimize(
         DumpGraph("ConstFolding", g);
         changed = true;
       }
+      const uint64 pass_end_us = Env::Default()->NowMicros();
+      metrics::UpdateGraphOptimizerPassTime("constant_folding",
+                                            pass_end_us - pass_start_us);
     }
 
+    inlining_start_us = Env::Default()->NowMicros();
     if (opts_.do_function_inlining() && FixupSourceAndSinkEdges(g)) {
       DumpGraph("FixupSourceAndSinkEdges", g);
       changed = true;
     }
-    if (opts_.do_common_subexpression_elimination() &&
-        OptimizeCSE(g, cse_consider_fn)) {
-      DumpGraph("OptimizeCSE", g);
-      changed = true;
+    if (opts_.do_function_inlining()) {
+      inlining_total_us += Env::Default()->NowMicros() - inlining_start_us;
+    }
+
+    if (opts_.do_common_subexpression_elimination()) {
+      const uint64 pass_start_us = Env::Default()->NowMicros();
+      if (OptimizeCSE(g, options.cse_consider_fn)) {
+        DumpGraph("OptimizeCSE", g);
+        changed = true;
+      }
+      const uint64 pass_end_us = Env::Default()->NowMicros();
+      metrics::UpdateGraphOptimizerPassTime("common_subexpression_elimination",
+                                            pass_end_us - pass_start_us);
     }
     if (opts_.do_function_inlining()) {
+      inlining_start_us = Env::Default()->NowMicros();
       ExpandInlineFunctionsOptions expand_inline_opts;
       expand_inline_opts.native_options.inlined_function_body_placer =
           InlinedFunctionBodyPlacer::SingleDevice();
 
       // Force single device placement strategy for multi-device function body.
-      if (inline_with_single_device_body_placer) {
+      if (options.inline_with_single_device_body_placer) {
         expand_inline_opts.multi_device_options.inlined_function_body_placer =
             InlinedFunctionBodyPlacer::SingleDevice();
       }
 
-      if (!inline_multi_device_functions) {
+      if (!options.inline_multi_device_functions) {
         // GraphOptimizer is running:
         //   (1) After partitioning when executing with a Session API.
         //   (2) For a single device function body after instantiation.
@@ -109,14 +126,14 @@ void GraphOptimizer::Optimize(
         // might lead to multiple device assignments.
         expand_inline_opts.multi_device_options.disable_inlining = true;
       }
-      if (inline_impl_selection_group_functions) {
+      if (options.inline_impl_selection_group_functions) {
         expand_inline_opts.native_options
             .inline_impl_selection_group_functions = true;
         expand_inline_opts.multi_device_options
             .inline_impl_selection_group_functions = true;
       }
 
-      if (ignore_noinline) {
+      if (options.ignore_noinline) {
         expand_inline_opts.multi_device_options.ignore_noinline = true;
         expand_inline_opts.native_options.ignore_noinline = true;
       }
@@ -126,28 +143,20 @@ void GraphOptimizer::Optimize(
         DumpGraph("ExpandInlineFunctions", g);
         changed = true;
       }
+
+      const uint64 inlining_end_us = Env::Default()->NowMicros();
+      metrics::UpdateGraphOptimizerPassTime(
+          "function_inlining",
+          (inlining_end_us - inlining_start_us) + inlining_total_us);
     }
     if (!changed) break;
   }
 
-  // Note that we use the Graph constructor that copies the input
-  // FunctionLibraryDefinition, since the original lib def will go out of scope.
-  std::unique_ptr<Graph> copy(new Graph(g->flib_def()));
-  CopyGraph(*g, copy.get());
-  graph->swap(copy);
+  // Clone the graph to copy the input FunctionLibraryDefinition, since the
+  // original lib def will go out of scope.
+  *graph = g->Clone();
 
   DumpGraph("ReCopy", graph->get());
-}
-
-void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
-                              const Device* device,
-                              std::unique_ptr<Graph>* graph,
-                              const Options& options) {
-  Optimize(
-      runtime, env, device, graph, options.shape_map, options.cse_consider_fn,
-      options.cf_consider_fn, options.inline_multi_device_functions,
-      options.inline_impl_selection_group_functions,
-      options.inline_with_single_device_body_placer, options.ignore_noinline);
 }
 
 void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g,

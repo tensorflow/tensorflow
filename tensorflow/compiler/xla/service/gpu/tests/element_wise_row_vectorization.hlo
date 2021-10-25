@@ -1,0 +1,287 @@
+// RUN: hlo_to_llvm_ir --ptx --sm=70 --xla_disable_all_hlo_passes=true %s | FileCheck %s
+// RUN: hlo_to_llvm_ir --xla_disable_all_hlo_passes=true %s | FileCheck --check-prefix=CHECK-LLVM %s
+// We check that the row loads are vectorized.
+
+HloModule SimpleAddRowBroadcasting
+
+%fused_computation.0 (param_0: f32[672], param_1: f32[512,14,14,672]) -> f32[512,14,14,672]{
+  %param_0 = f32[672]{0} parameter(0)
+  %broadcast = f32[512,14,14,672]{3,2,1,0} broadcast(%param_0), dimensions={3}
+  %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
+  ROOT %add = f32[512,14,14,672]{3,2,1,0} add(%broadcast, %param_1)
+}
+
+ENTRY main {
+  %param_0 = f32[672]{0} parameter(0)
+  %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
+
+  ROOT %fusion.0 = f32[512,14,14,672]{3,2,1,0} fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation.0
+}
+
+// CHECK-LABEL: fusion_0
+// CHECK: .reqntid 168, 1, 1
+// CHECK-NOT: ld.global.nc.f
+// CHECK-NOT: ld.global.nc.b
+
+// -----
+
+HloModule SimpleAddSmallRowBroadcasting
+
+%fused_computation.0 (param_0: f32[48], param_1: f32[512,14,14,48]) -> f32[512,14,14,48]{
+  %param_0 = f32[48]{0} parameter(0)
+  %broadcast = f32[512,14,14,48]{3,2,1,0} broadcast(%param_0), dimensions={3}
+  %param_1 = f32[512,14,14,48]{3,2,1,0} parameter(1)
+  ROOT %add = f32[512,14,14,48]{3,2,1,0} add(%broadcast, %param_1)
+}
+
+ENTRY main {
+  %param_0 = f32[48]{0} parameter(0)
+  %param_1 = f32[512,14,14,48]{3,2,1,0} parameter(1)
+
+  ROOT %fusion.0_small = f32[512,14,14,48]{3,2,1,0} fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation.0
+}
+
+// CHECK-LABEL: fusion_0_small
+// CHECK: .reqntid 12, 11, 1
+// CHECK-NOT: ld.global.nc.f
+// CHECK-NOT: ld.global.nc.b
+
+// -----
+
+// This test an BatchNorm fused kernel found in EfficientNet.
+HloModule EfficientNetSwish
+
+%fused_computation.1 (param_0.89: f32[672], param_1: f32[672], param_2: f32[672], param_3: f32[672], param_4: f16[512,14,14,672], param_5: f32[672], param_6: f16[512,14,14,672], param_7: f32[672]) -> f16[512,14,14,672] {
+  %param_2 = f32[672]{0} parameter(2)
+  %constant_157 = f32[] constant(1), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %broadcast.186 = f32[672]{0} broadcast(f32[] %constant_157), dimensions={}, metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %param_5 = f32[672]{0} parameter(5)
+  %constant_56 = f32[] constant(9.96492327e-06)
+  %broadcast.185 = f32[672]{0} broadcast(f32[] %constant_56), dimensions={}
+  %multiply.155 = f32[672]{0} multiply(f32[672]{0} %param_5, f32[672]{0} %broadcast.185), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %param_3 = f32[672]{0} parameter(3)
+  %multiply.154 = f32[672]{0} multiply(f32[672]{0} %param_3, f32[672]{0} %broadcast.185), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %multiply.153 = f32[672]{0} multiply(f32[672]{0} %multiply.154, f32[672]{0} %multiply.154), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %subtract.15 = f32[672]{0} subtract(f32[672]{0} %multiply.155, f32[672]{0} %multiply.153), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %constant_155 = f32[] constant(0.001), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %broadcast.184 = f32[672]{0} broadcast(f32[] %constant_155), dimensions={}
+  %add.14 = f32[672]{0} add(f32[672]{0} %subtract.15, f32[672]{0} %broadcast.184), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %rsqrt.23 = f32[672]{0} rsqrt(f32[672]{0} %add.14), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %multiply.152 = f32[672]{0} multiply(f32[672]{0} %rsqrt.23, f32[672]{0} %rsqrt.23), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %divide.14 = f32[672]{0} divide(f32[672]{0} %broadcast.186, f32[672]{0} %multiply.152), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %rsqrt.7 = f32[672]{0} rsqrt(f32[672]{0} %divide.14), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %multiply.29 = f32[672]{0} multiply(f32[672]{0} %param_2, f32[672]{0} %rsqrt.7), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %multiply.28 = f32[672]{0} multiply(f32[672]{0} %multiply.29, f32[672]{0} %broadcast.185), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %broadcast.47 = f32[512,14,14,672]{3,2,1,0} broadcast(f32[672]{0} %multiply.28), dimensions={3}
+  %param_6 = f16[512,14,14,672]{3,2,1,0} parameter(6)
+  %constant_194 = f16[] constant(1), metadata={op_type="AddV2" op_name="add"}
+  %broadcast.256 = f16[512,14,14,672]{3,2,1,0} broadcast(f16[] %constant_194), dimensions={}
+  %param_4 = f16[512,14,14,672]{3,2,1,0} parameter(4)
+  %convert.66 = f32[512,14,14,672]{3,2,1,0} convert(f16[512,14,14,672]{3,2,1,0} %param_4), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %broadcast.254 = f32[512,14,14,672]{3,2,1,0} broadcast(f32[672]{0} %multiply.154), dimensions={3}, metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %subtract.82 = f32[512,14,14,672]{3,2,1,0} subtract(f32[512,14,14,672]{3,2,1,0} %convert.66, f32[512,14,14,672]{3,2,1,0} %broadcast.254), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %broadcast.251 = f32[512,14,14,672]{3,2,1,0} broadcast(f32[672]{0} %rsqrt.23), dimensions={3}
+  %multiply.219 = f32[512,14,14,672]{3,2,1,0} multiply(f32[512,14,14,672]{3,2,1,0} %subtract.82, f32[512,14,14,672]{3,2,1,0} %broadcast.251), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %broadcast.250 = f32[512,14,14,672]{3,2,1,0} broadcast(f32[672]{0} %param_2), dimensions={3}, metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %multiply.218 = f32[512,14,14,672]{3,2,1,0} multiply(f32[512,14,14,672]{3,2,1,0} %multiply.219, f32[512,14,14,672]{3,2,1,0} %broadcast.250), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %param_7 = f32[672]{0} parameter(7)
+  %broadcast.249 = f32[512,14,14,672]{3,2,1,0} broadcast(f32[672]{0} %param_7), dimensions={3}, metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %add.79 = f32[512,14,14,672]{3,2,1,0} add(f32[512,14,14,672]{3,2,1,0} %multiply.218, f32[512,14,14,672]{3,2,1,0} %broadcast.249), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %convert.65 = f16[512,14,14,672]{3,2,1,0} convert(f32[512,14,14,672]{3,2,1,0} %add.79), metadata={op_type="FusedBatchNormV3" op_name="foo/batch_normalization/FusedBatchNormV3"}
+  %negate.12 = f16[512,14,14,672]{3,2,1,0} negate(f16[512,14,14,672]{3,2,1,0} %convert.65)
+  %exponential.10 = f16[512,14,14,672]{3,2,1,0} exponential(f16[512,14,14,672]{3,2,1,0} %negate.12)
+  %add.78 = f16[512,14,14,672]{3,2,1,0} add(f16[512,14,14,672]{3,2,1,0} %broadcast.256, f16[512,14,14,672]{3,2,1,0} %exponential.10)
+  %divide.20 = f16[512,14,14,672]{3,2,1,0} divide(f16[512,14,14,672]{3,2,1,0} %broadcast.256, f16[512,14,14,672]{3,2,1,0} %add.78), metadata={op_type="Sigmoid" op_name="foo/activation/Sigmoid"}
+  %subtract.77 = f16[512,14,14,672]{3,2,1,0} subtract(f16[512,14,14,672]{3,2,1,0} %broadcast.256, f16[512,14,14,672]{3,2,1,0} %divide.20), metadata={op_type="Sub" op_name="sub"}
+  %multiply.211 = f16[512,14,14,672]{3,2,1,0} multiply(f16[512,14,14,672]{3,2,1,0} %convert.65, f16[512,14,14,672]{3,2,1,0} %subtract.77), metadata={op_type="Mul" op_name="mul"}
+  %add.75 = f16[512,14,14,672]{3,2,1,0} add(f16[512,14,14,672]{3,2,1,0} %broadcast.256, f16[512,14,14,672]{3,2,1,0} %multiply.211), metadata={op_type="AddV2" op_name="add"}
+  %multiply.210 = f16[512,14,14,672]{3,2,1,0} multiply(f16[512,14,14,672]{3,2,1,0} %divide.20, f16[512,14,14,672]{3,2,1,0} %add.75), metadata={op_type="Mul" op_name="mul_1"}
+  %multiply.209 = f16[512,14,14,672]{3,2,1,0} multiply(f16[512,14,14,672]{3,2,1,0} %param_6, f16[512,14,14,672]{3,2,1,0} %multiply.210), metadata={op_type="Mul" op_name="mul_2"}
+  %convert.8 = f32[512,14,14,672]{3,2,1,0} convert(f16[512,14,14,672]{3,2,1,0} %multiply.209), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %constant_48 = f32[] constant(100352), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %broadcast.46 = f32[512,14,14,672]{3,2,1,0} broadcast(f32[] %constant_48), dimensions={}, metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %multiply.27 = f32[512,14,14,672]{3,2,1,0} multiply(f32[512,14,14,672]{3,2,1,0} %convert.8, f32[512,14,14,672]{3,2,1,0} %broadcast.46), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %param_1 = f32[672]{0} parameter(1)
+  %broadcast.45 = f32[512,14,14,672]{3,2,1,0} broadcast(f32[672]{0} %param_1), dimensions={3}, metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %subtract.10 = f32[512,14,14,672]{3,2,1,0} subtract(f32[512,14,14,672]{3,2,1,0} %multiply.27, f32[512,14,14,672]{3,2,1,0} %broadcast.45), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %param_0.89 = f32[672]{0} parameter(0)
+  %broadcast.44 = f32[512,14,14,672]{3,2,1,0} broadcast(f32[672]{0} %param_0.89), dimensions={3}, metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %multiply.26 = f32[512,14,14,672]{3,2,1,0} multiply(f32[512,14,14,672]{3,2,1,0} %broadcast.44, f32[512,14,14,672]{3,2,1,0} %subtract.82), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %broadcast.42 = f32[512,14,14,672]{3,2,1,0} broadcast(f32[672]{0} %divide.14), dimensions={3}
+  %divide.6 = f32[512,14,14,672]{3,2,1,0} divide(f32[512,14,14,672]{3,2,1,0} %multiply.26, f32[512,14,14,672]{3,2,1,0} %broadcast.42), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %subtract.9 = f32[512,14,14,672]{3,2,1,0} subtract(f32[512,14,14,672]{3,2,1,0} %subtract.10, f32[512,14,14,672]{3,2,1,0} %divide.6), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  %multiply.25 = f32[512,14,14,672]{3,2,1,0} multiply(f32[512,14,14,672]{3,2,1,0} %broadcast.47, f32[512,14,14,672]{3,2,1,0} %subtract.9), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+  ROOT %convert.7 = f16[512,14,14,672]{3,2,1,0} convert(f32[512,14,14,672]{3,2,1,0} %multiply.25), metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+}
+
+ENTRY main {
+  %param_0 = f32[672]{0} parameter(0)
+  %param_1 = f32[672]{0} parameter(1)
+  %param_2 = f32[672]{0} parameter(2)
+  %param_3 = f32[672]{0} parameter(3)
+  %param_4 = f16[512,14,14,672]{3,2,1,0} parameter(4)
+  %param_5 = f32[672]{0} parameter(5)
+  %param_6 = f16[512,14,14,672]{3,2,1,0} parameter(6)
+  %param_7 = f32[672]{0} parameter(7)
+
+  ROOT %fusion.1 = f16[512,14,14,672]{3,2,1,0} fusion(f32[672]{0} %param_0, f32[672]{0} %param_1, f32[672]{0} %param_2, f32[672]{0} %param_3, f16[512,14,14,672]{3,2,1,0} %param_4, f32[672]{0} %param_5, f16[512,14,14,672]{3,2,1,0} %param_6, f32[672]{0} %param_7), kind=kLoop, calls=%fused_computation.1, metadata={op_type="FusedBatchNormGradV3" op_name="gradient_tape/foo/batch_normalization/FusedBatchNormGradV3"}
+}
+
+// CHECK-LABEL: fusion_1
+// CHECK: .reqntid 168, 1, 1
+// CHECK-NOT: ld.global.nc.f
+// CHECK-NOT: ld.global.nc.b
+
+// -----
+
+HloModule TransposeOutput
+
+%fused_computation.2 (param_0: f32[672], param_1: f32[512,14,14,672]) -> f32[512,14,14,672] {
+  %param_0 = f32[672]{0} parameter(0)
+  %broadcast = f32[512,14,14,672]{3,2,1,0} broadcast(%param_0), dimensions={3}
+  %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
+  %add = f32[512,14,14,672]{3,2,1,0} add(%broadcast, %param_1)
+  ROOT  %copy = f32[512,14,14,672]{0,2,3,1} copy(%add)
+}
+
+ENTRY main {
+  %param_0 = f32[672]{0} parameter(0)
+  %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
+
+  ROOT %fusion.2 = f32[512,14,14,672]{0,2,3,1} fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation.2
+}
+// Check that we didn't do anything. The block size didn't change.
+// CHECK-LABEL: fusion_2
+// CHECK: .reqntid 256, 1, 1
+// CHECK: ld.global.nc.f
+
+// -----
+
+HloModule TransposeInput
+
+%fused_computation.3 (param_0: f32[672], param_1: f32[512,14,14,672]) -> f32[512,14,14,672] {
+  %param_0 = f32[672]{0} parameter(0)
+  %broadcast = f32[512,14,14,672]{3,2,1,0} broadcast(%param_0), dimensions={3}
+  %param_1 = f32[512,14,14,672]{0,2,3,1} parameter(1)
+  %copy = f32[512,14,14,672]{3,2,1,0} copy(%param_1)
+  ROOT %add = f32[512,14,14,672]{3,2,1,0} add(%broadcast, %copy)
+}
+
+ENTRY main {
+  %param_0 = f32[672]{0} parameter(0)
+  %param_1 = f32[512,14,14,672]{0,2,3,1} parameter(1)
+
+  ROOT %fusion.3 = f32[512,14,14,672]{3,2,1,0} fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation.3
+}
+// Check that we didn't do anything. The block size didn't change.
+// CHECK-LABEL: fusion_3
+// CHECK: .reqntid 256, 1, 1
+// CHECK: ld.global.nc.f
+
+// -----
+
+HloModule MOF
+
+%fused_computation.4 (param_0: f32[672], param_1: f32[512,14,14,672]) -> (f32[512,14,14,672], f32[512,14,14,672]) {
+  %param_0 = f32[672]{0} parameter(0)
+  %broadcast = f32[512,14,14,672]{3,2,1,0} broadcast(%param_0), dimensions={3}
+  %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
+  %add = f32[512,14,14,672]{3,2,1,0} add(%broadcast, %param_1)
+  ROOT tupe = (f32[512,14,14,672]{3,2,1,0}, f32[512,14,14,672]{3,2,1,0}) tuple(%add, %add)
+}
+
+ENTRY main {
+  %param_0 = f32[672]{0} parameter(0)
+  %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
+
+  ROOT %fusion.4 = (f32[512,14,14,672]{3,2,1,0}, f32[512,14,14,672]) fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation.4
+}
+
+// Check that we didn't do anything. The block size didn't change.
+// CHECK-LABEL: fusion_4
+// CHECK: .reqntid 256, 1, 1
+// CHECK: ld.global.nc.f
+
+// -----
+
+HloModule ScalarBroadcasting
+
+%fused_computation.5 (param_0: f32[], param_1: f32[512,14,14,672]) -> f32[512,14,14,672] {
+  %param_0 = f32[] parameter(0)
+  %broadcast = f32[512,14,14,672]{3,2,1,0} broadcast(%param_0), dimensions={}
+  %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
+  ROOT %add = f32[512,14,14,672]{3,2,1,0} add(%broadcast, %param_1)
+}
+
+ENTRY main {
+  %param_0 = f32[] parameter(0)
+  %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
+
+  ROOT %fusion.5 = f32[512,14,14,672] fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation.5
+}
+
+// CHECK-LABEL: fusion_5
+// CHECK: .reqntid 128, 1, 1
+// CHECK: ld.global.nc.f
+
+// -----
+
+HloModule NotSupportedBroadcasting
+
+%fused_computation.6 (param_0: f32[14,672], param_1: f32[512,14,14,672]) -> f32[512,14,14,672] {
+  %param_0 = f32[14,672]{1,0} parameter(0)
+  %broadcast = f32[512,14,14,672]{3,2,1,0} broadcast(%param_0), dimensions={2,3}
+  %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
+  ROOT %add = f32[512,14,14,672]{3,2,1,0} add(%broadcast, %param_1)
+}
+
+ENTRY main {
+  %param_0 = f32[14,672]{1,0} parameter(0)
+  %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
+
+  ROOT %fusion.6 = f32[512,14,14,672] fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation.6
+}
+
+// Check that we didn't do anything. The block size didn't change.
+// CHECK-LABEL: fusion_6
+// CHECK: .reqntid 256, 1, 1
+// CHECK: ld.global.nc.f
+
+// -----
+HloModule Module
+
+%fused_computation.7 {
+  %constant_2 = f32[] constant(0)
+  %broadcast.1 = f32[32,7,7,352]{2,1,3,0} broadcast(f32[] %constant_2), dimensions={}
+  %param_1.2 = f32[32,7,7,320]{2,1,3,0} parameter(1)
+  %param_2.1 = f32[32,7,7,224]{2,1,3,0} parameter(2)
+  %param_3.1 = f32[32,7,7,128]{2,1,3,0} parameter(3)
+  %tmp_8.1 = f32[32,7,7,1024]{2,1,3,0} concatenate(f32[32,7,7,352]{2,1,3,0} %broadcast.1, f32[32,7,7,320]{2,1,3,0} %param_1.2, f32[32,7,7,224]{2,1,3,0} %param_2.1, f32[32,7,7,128]{2,1,3,0} %param_3.1), dimensions={3}
+  %param_0.1 = f32[32,7,7,1024]{2,1,3,0} parameter(0)
+  ROOT %tmp_10.1 = f32[32,7,7,1024]{2,1,3,0} add(f32[32,7,7,1024]{2,1,3,0} %tmp_8.1, f32[32,7,7,1024]{2,1,3,0} %param_0.1)
+}
+
+ENTRY %computation {
+  %tmp_0 = u8[32,224,224,3]{3,2,1,0} parameter(0)
+  %tmp_9 = f32[32,7,7,1024]{2,1,3,0} constant({...})
+  %tmp_5 = f32[32,7,7,320]{2,1,3,0} constant({...})
+  %tmp_6 = f32[32,7,7,224]{2,1,3,0} constant({...})
+  %tmp_7 = f32[32,7,7,128]{2,1,3,0} constant({...})
+  ROOT %fusion.7 = f32[32,7,7,1024]{2,1,3,0} fusion(f32[32,7,7,1024]{2,1,3,0} %tmp_9, f32[32,7,7,320]{2,1,3,0} %tmp_5, f32[32,7,7,224]{2,1,3,0} %tmp_6, f32[32,7,7,128]{2,1,3,0} %tmp_7), kind=kLoop, calls=%fused_computation.7
+}
+
+
+// This graph triggered a bug where the new indexing was generated
+// CHECK-LLVM-LABEL: @fusion_7
+// CHECK-LLVM-NOT: row_index
+
+// -----
+HloModule RowToLong
+
+ENTRY main {
+  %param_0 = f32[2024]{0} parameter(0)
+  ROOT %broadcastRowToLong = f32[3025,2024]{1,0} broadcast(%param_0), dimensions={1}
+}
+// Check that we didn't emit the simpler row broadcasting.
+// CHECK-LLVM-LABEL: @broadcastRowToLong
+// CHECK-LLVM-NOT: row_index

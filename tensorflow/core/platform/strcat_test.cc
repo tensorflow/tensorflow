@@ -31,13 +31,13 @@ namespace strings {
 
 // Test StrCat of ints and longs of various sizes and signdedness.
 TEST(StrCat, Ints) {
-  const int16 s = -1;
+  const int16_t s = -1;
   const uint16 us = 2;
   const int i = -3;
   const unsigned int ui = 4;
-  const int32 l = -5;
+  const int32_t l = -5;
   const uint32 ul = 6;
-  const int64 ll = -7;
+  const int64_t ll = -7;
   const uint64 ull = 8;
   const ptrdiff_t ptrdiff = -9;
   const size_t size = 10;
@@ -347,7 +347,7 @@ static void CheckHex32(uint32 v) {
   EXPECT_EQ(expected, actual) << " decimal value " << v;
 }
 
-static void CheckHexSigned32(int32 v) {
+static void CheckHexSigned32(int32_t v) {
   using tensorflow::strings::Hex;
   string actual = StrCat(Hex(v, tensorflow::strings::kZeroPad8));
   string expected = Printf("%08x", v);
@@ -371,10 +371,10 @@ static void TestFastPrints() {
   CheckHex64(0x123456789abcdef0ull);
   CheckHex32(0x12345678);
 
-  int8 minus_one_8bit = -1;
+  int8_t minus_one_8bit = -1;
   EXPECT_EQ("ff", tensorflow::strings::StrCat(Hex(minus_one_8bit)));
 
-  int16 minus_one_16bit = -1;
+  int16_t minus_one_16bit = -1;
   EXPECT_EQ("ffff", tensorflow::strings::StrCat(Hex(minus_one_16bit)));
 }
 

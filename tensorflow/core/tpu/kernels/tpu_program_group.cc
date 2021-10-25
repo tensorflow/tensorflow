@@ -231,6 +231,10 @@ void TpuProgramGroup::set_fingerprints() {
   }
 }
 
+const std::string& TpuProgramGroup::fingerprint(int index) const {
+  return fingerprints().at(index);
+}
+
 const XLA_TpuProgram* TpuProgramGroup::tpu_program(int index) const {
   CHECK_GE(index, 0);
   CHECK_LT(index, tpu_programs_.size());

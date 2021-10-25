@@ -38,15 +38,15 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK-SAME:   [[RESULT_BUF:%.*]]: memref<112x112xf32>) {
 
 // Constants.
-// CHECK-DAG:  [[C56:%.*]] = constant 56 : index
-// CHECK-DAG:  [[C0:%.*]] = constant 0 : index
-// CHECK-DAG:  [[C1:%.*]] = constant 1 : index
-// CHECK-DAG:  [[C0_F32:%.*]] = constant 0.000000e+00 : f32
-// CHECK-DAG:  [[CFALSE:%.*]] = constant false
-// CHECK-DAG:  [[C3:%.*]] = constant 3 : index
-// CHECK-DAG:  [[C2:%.*]] = constant 2 : index
-// CHECK-DAG:  [[C112:%.*]] = constant 112 : index
-// CHECK-DAG:  [[CTRUE:%.*]] = constant true
+// CHECK-DAG:  [[C56:%.*]] = arith.constant 56 : index
+// CHECK-DAG:  [[C0:%.*]] = arith.constant 0 : index
+// CHECK-DAG:  [[C1:%.*]] = arith.constant 1 : index
+// CHECK-DAG:  [[C0_F32:%.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-DAG:  [[CFALSE:%.*]] = arith.constant false
+// CHECK-DAG:  [[C3:%.*]] = arith.constant 3 : index
+// CHECK-DAG:  [[C2:%.*]] = arith.constant 2 : index
+// CHECK-DAG:  [[C112:%.*]] = arith.constant 112 : index
+// CHECK-DAG:  [[CTRUE:%.*]] = arith.constant true
 
 // Parallel loop to initialize the output buffer.
 // CHECK:    [[INIT:%.*]] = memref.load [[INIT_BUF]][] : memref<f32>
@@ -79,18 +79,18 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK-SAME:     ) -> (index, index, f32, i1) {
 
 // Compute index I of the ARG buffer and check whether it is in padding area.
-// CHECK:  [[START_I:%.*]] = muli [[II]], [[C2]] : index
-// CHECK:  [[ARG_I:%.*]] = addi [[START_I]], [[WIN_I]] : index
-// CHECK:  [[ARG_I_FITS:%.*]] = cmpi ult, [[ARG_I]], [[C112]] : index
+// CHECK:  [[START_I:%.*]] = arith.muli [[II]], [[C2]] : index
+// CHECK:  [[ARG_I:%.*]] = arith.addi [[START_I]], [[WIN_I]] : index
+// CHECK:  [[ARG_I_FITS:%.*]] = arith.cmpi ult, [[ARG_I]], [[C112]] : index
 
 // Compute index J of the ARG buffer and check whether it is in padding area.
-// CHECK:  [[START_J:%.*]] = muli [[JJ]], [[C2]] : index
-// CHECK:  [[ARG_J:%.*]] = addi [[START_J]], [[WIN_J]] : index
-// CHECK:  [[ARG_J_FITS:%.*]] = cmpi ult, [[ARG_J]], [[C112]] : index
+// CHECK:  [[START_J:%.*]] = arith.muli [[JJ]], [[C2]] : index
+// CHECK:  [[ARG_J:%.*]] = arith.addi [[START_J]], [[WIN_J]] : index
+// CHECK:  [[ARG_J_FITS:%.*]] = arith.cmpi ult, [[ARG_J]], [[C112]] : index
 
 // Update `INBOUNDS`, i.e. whether or not ARG indices are inside the boundaries
 // of the buffer or they are in the padding area.
-// CHECK:  [[INBOUNDS_1:%.*]] = and [[ARG_I_FITS]], [[ARG_J_FITS]] : i1
+// CHECK:  [[INBOUNDS_1:%.*]] = arith.andi [[ARG_I_FITS]], [[ARG_J_FITS]] : i1
 
 // If ARG ivs are in the padding area, then 'select' function does not have to
 // be applied, current selected ivs (SEL_I, SEL_J) and value (SEL_VAL) are
@@ -102,8 +102,8 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
   // INBOUNDS-THEN-BODY, i.e. if INBOUNDS == true
 
   // CHECK: [[ARG_ELEM:%.*]] = memref.load [[ARG_BUF]]{{\[}}[[ARG_I]], [[ARG_J]]]
-  // CHECK: [[IF_INIT_RES:%.*]]:4
-  // CHECK-SAME:  = scf.if [[SEL_INIT]] -> (index, index, f32, i1) {
+  // CHECK: [[IF_INIT_RES:%.*]]:3
+  // CHECK-SAME:  = scf.if [[SEL_INIT]] -> (index, index, f32) {
 
     // INIT-THEN-BODY, i.e. INBOUNDS == true and INIT = true
 
@@ -130,21 +130,20 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
     // CHECK:  [[IF_PRED_RES0:%.*]] = select [[PRED]], [[ARG_I]], [[SEL_I]]
     // CHECK:  [[IF_PRED_RES1:%.*]] = select [[PRED]], [[ARG_J]], [[SEL_J]]
     // CHECK:  [[IF_PRED_RES2:%.*]] = select [[PRED]], [[ARG_ELEM]], [[SEL_VAL]]
-    // CHECK:  [[IF_PRED_RES3:%.*]] = select [[PRED]], [[CTRUE]], [[SEL_INIT]]
 
     // INIT-THEN-BODY yield.
     // CHECK:  scf.yield [[IF_PRED_RES0]], [[IF_PRED_RES1]],
-    // CHECK-SAME:        [[IF_PRED_RES2]], [[IF_PRED_RES3]]
+    // CHECK-SAME:        [[IF_PRED_RES2]]
 
     // INIT-ELSE-BODY, i.e. if INBOUNDS == TRUE and INIT == FALSE, returns ARG
     // ivs and element without computing Select function.
-    // CHECK:  scf.yield [[ARG_I]], [[ARG_J]], [[ARG_ELEM]],
-    // CHECK-SAME:        [[CTRUE]] : index, index, f32, i1
+    // CHECK:  scf.yield [[ARG_I]], [[ARG_J]], [[ARG_ELEM]]
+    // CHECK-SAME:        : index, index, f32
     // CHECK:  }
 
   // INBOUNDS-THEN-BODY yield.
-  // CHECK:  scf.yield [[IF_INIT_RES]]#0, [[IF_INIT_RES]]#1, [[IF_INIT_RES]]#2,
-  // CHECK-SAME:        [[IF_INIT_RES]]#3 : index, index, f32, i1
+  // CHECK:  scf.yield [[IF_INIT_RES]]#0, [[IF_INIT_RES]]#1, [[IF_INIT_RES]]#2
+  // CHECK-SAME:        : index, index, f32
   // CHECK:  }
 
   // INBOUNDS-ELSE-REGION, i.e. if INBOUNDS == FALSE

@@ -35,13 +35,14 @@ from tensorflow.python.keras.layers import local
 from tensorflow.python.keras.layers import merge
 from tensorflow.python.keras.layers import multi_head_attention
 from tensorflow.python.keras.layers import noise
-from tensorflow.python.keras.layers import normalization
-from tensorflow.python.keras.layers import normalization_v2
 from tensorflow.python.keras.layers import pooling
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.keras.layers import rnn_cell_wrapper_v2
 from tensorflow.python.keras.layers import wrappers
+from tensorflow.python.keras.layers.normalization import batch_normalization
+from tensorflow.python.keras.layers.normalization import batch_normalization_v1
+from tensorflow.python.keras.layers.normalization import layer_normalization
 from tensorflow.python.keras.layers.preprocessing import category_crossing
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import discretization
@@ -57,12 +58,14 @@ from tensorflow.python.util.tf_export import keras_export
 
 ALL_MODULES = (base_layer, input_layer, advanced_activations, convolutional,
                convolutional_recurrent, core, cudnn_recurrent, dense_attention,
-               embeddings, einsum_dense, local, merge, noise, normalization,
+               embeddings, einsum_dense, local, merge, noise,
+               batch_normalization_v1, layer_normalization,
                pooling, image_preprocessing, recurrent, wrappers, hashing,
                category_crossing, category_encoding, discretization,
                multi_head_attention, integer_lookup,
                preprocessing_normalization, string_lookup, text_vectorization)
-ALL_V2_MODULES = (rnn_cell_wrapper_v2, normalization_v2, recurrent_v2)
+ALL_V2_MODULES = (rnn_cell_wrapper_v2, batch_normalization, layer_normalization,
+                  recurrent_v2)
 # ALL_OBJECTS is meant to be a global mutable. Hence we need to make it
 # thread-local to avoid concurrent mutations.
 LOCAL = threading.local()
@@ -101,9 +104,10 @@ def populate_deserializable_objects():
   # as in TF 1.13, "BatchNormalizationV1" and "BatchNormalizationV2"
   # were used as class name for v1 and v2 version of BatchNormalization,
   # respectively. Here we explicitly convert them to their canonical names.
-  LOCAL.ALL_OBJECTS['BatchNormalizationV1'] = normalization.BatchNormalization
   LOCAL.ALL_OBJECTS[
-      'BatchNormalizationV2'] = normalization_v2.BatchNormalization
+      'BatchNormalizationV1'] = batch_normalization_v1.BatchNormalization
+  LOCAL.ALL_OBJECTS[
+      'BatchNormalizationV2'] = batch_normalization.BatchNormalization
 
   # Prevent circular dependencies.
   from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top

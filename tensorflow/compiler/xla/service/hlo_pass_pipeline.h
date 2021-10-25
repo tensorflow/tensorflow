@@ -32,6 +32,8 @@ limitations under the License.
 
 namespace xla {
 
+class PhaseOrderPipeline;
+
 // Pipeline of HLO passes.
 class HloPassPipeline : public HloPassInterface {
  public:
@@ -82,6 +84,11 @@ class HloPassPipeline : public HloPassInterface {
   StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) override;
 
   bool IsPassPipeline() override { return true; }
+
+  // Return size of passes_.
+  int PassesSize() { return passes_.size(); }
+  // Return reference to pass specified by index.
+  HloPassInterface& GetPass(int index) { return *passes_[index]; }
 
  private:
   // Returns the set of passes which are enabled. DebugOptions can selectively
@@ -134,6 +141,10 @@ class HloPassPipeline : public HloPassInterface {
   // Default stats instance for when one is not passed in the constructor.
   // Use via compilation_stats_, not directly.
   std::unique_ptr<CompilationStats> empty_compilation_stats_;
+
+  // Allow PhaseOrderPipeline to modify private passes_ member in order to
+  // perform PhaseOrdering.
+  friend class ::xla::PhaseOrderPipeline;
 };
 
 }  // namespace xla

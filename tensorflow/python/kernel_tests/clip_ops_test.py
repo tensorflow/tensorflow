@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.clip_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -159,7 +155,7 @@ class ClipTest(test.TestCase):
       # Use a nonsensical shape.
       clip = constant_op.constant([1.0, 2.0])
       with self.assertRaises(ValueError):
-        _ = clip_ops.clip_by_value(x, -clip, clip)
+        _ = clip_ops.clip_by_value(x, -clip, clip)  # pylint: disable=invalid-unary-operand-type
       with self.assertRaises(ValueError):
         _ = clip_ops.clip_by_value(x, 1.0, clip)
 

@@ -129,8 +129,10 @@ LocalExecutable::RunHelper(const absl::Span<const Shape* const> argument_shapes,
         computation_layout.parameter_count(), argument_shapes.size());
   }
   for (int i = 0, end = argument_shapes.size(); i < end; ++i) {
+    // TODO(b/187081154): Compare tiling info also.
     if (!computation_layout.parameter_layout(i).MatchesLayoutInShape(
-            *argument_shapes[i])) {
+            *argument_shapes[i], /*minor_to_major_only=*/false,
+            /*ignore_fully_empty_tiling=*/true)) {
       return InvalidParameterArgument(
           executable_.get(), i,
           "Argument does not match host shape or layout of computation "
@@ -175,7 +177,7 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
   std::vector<const Shape*> argument_shapes;
   argument_shapes.reserve(arguments.size());
   for (const ShapedBuffer* const arg : arguments) {
-    argument_shapes.push_back(&arg->on_host_shape());
+    argument_shapes.push_back(&arg->on_device_shape());
   }
   return AsyncCallAndBlockHostUntilDone<xla::ScopedShapedBuffer>(
       argument_shapes, run_options, [&](const ExecutableRunOptions& options) {
@@ -188,7 +190,7 @@ StatusOr<ExecutionOutput> LocalExecutable::Run(
   std::vector<const Shape*> argument_shapes;
   argument_shapes.reserve(arguments.size());
   for (const ExecutionInput& arg : arguments) {
-    argument_shapes.push_back(&arg.host_shape());
+    argument_shapes.push_back(&arg.shape());
   }
   return AsyncCallAndBlockHostUntilDone<ExecutionOutput>(
       argument_shapes, run_options, [&](const ExecutableRunOptions& options) {
@@ -243,7 +245,7 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(
   std::vector<const Shape*> argument_shapes;
   argument_shapes.reserve(arguments.size());
   for (const ShapedBuffer* const arg : arguments) {
-    argument_shapes.push_back(&arg->on_host_shape());
+    argument_shapes.push_back(&arg->on_device_shape());
   }
   TF_ASSIGN_OR_RETURN(auto options_and_stream,
                       RunHelper(argument_shapes, run_options));
@@ -324,7 +326,7 @@ StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
   std::vector<const Shape*> argument_shapes;
   argument_shapes.reserve(arguments.size());
   for (const ExecutionInput& arg : arguments) {
-    argument_shapes.push_back(&arg.host_shape());
+    argument_shapes.push_back(&arg.shape());
   }
   return RunAsync(argument_shapes, std::move(arguments), run_options);
 }

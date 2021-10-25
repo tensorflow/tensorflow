@@ -65,8 +65,8 @@ const char* const kXlaHostTransferSequencerAttr =
 const char* const kXlaHasReferenceVarsAttr = "_XlaHasReferenceVars";
 
 void SortControlInputs(GraphDef* gdef) {
-  int64 num_nodes = gdef->node_size();
-  for (int64 i = 0; i < num_nodes; ++i) {
+  int64_t num_nodes = gdef->node_size();
+  for (int64_t i = 0; i < num_nodes; ++i) {
     NodeDef* node = gdef->mutable_node(i);
     // Stable sort control inputs and leave the order of data inputs unchanged.
     std::stable_sort(node->mutable_input()->begin(),
@@ -141,9 +141,6 @@ struct OutputInputTensorPairHasher {
 // everything to use it.
 static const char* const kArgOp = "_Arg";
 static const char* const kRetValOp = "_Retval";
-static const char* const kHostComputeOp = "XlaHostCompute";
-static const char* const kSendFromHostOp = "_XlaSendFromHost";
-static const char* const kRecvAtHostOp = "_XlaRecvAtHost";
 
 class Encapsulator {
  public:
@@ -1168,6 +1165,18 @@ Status EncapsulateSubgraphsPass::Run(
                     options.flib_def);
   }
 
+  // TODO(b/195757077): Remove this once there is a better way to disable
+  // GraphOptimizationPasses that are not needed due to MLIR bridge.
+  for (Node* n : (*options.graph)->nodes()) {
+    // Skip the pass if we found TPUExecute or TPUExecuteAndUpdateVariables ops
+    // in the graph, which indicates the graph is produced by TPU TF-XLA bridge
+    // and doesn't require auto clustering.
+    if (n->type_string() == "TPUExecute" ||
+        n->type_string() == "TPUExecuteAndUpdateVariables") {
+      return Status::OK();
+    }
+  }
+
   std::unique_ptr<Graph> graph_out;
   FunctionLibraryDefinition* const library = options.flib_def;
 
@@ -1306,13 +1315,13 @@ Status EncapsulateSubgraphsPass::Run(
           kXlaClusterAttr, **options.graph, rewrite_subgraph,
           /*reuse_existing_functions=*/false, &graph_out, library),
       "EncapsulateSubgraphsPass failed");
-
   if (VLOG_IS_ON(1)) {
     DumpGraphToFile("encapsulate_subgraphs_after", *graph_out,
                     options.flib_def);
   }
 
   *options.graph = std::move(graph_out);
+
   TF_ASSIGN_OR_RETURN(absl::flat_hash_set<Node*> ref_related_nodes,
                       GetNodesRelatedToRefVariables(**options.graph, flr));
   for (Node* node : (*options.graph)->nodes()) {

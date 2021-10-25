@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# pylint: disable=unused-import
 # pylint: disable=g-classes-have-attributes
 # pylint: disable=g-doc-return-or-yield
 """Built-in metrics."""
 
 import abc
-import math
 import types
 import warnings
 
@@ -33,7 +31,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
@@ -56,7 +53,6 @@ from tensorflow.python.keras.saving.saved_model import metric_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import metrics_utils
-from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_list
@@ -64,13 +60,11 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_variable
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import confusion_matrix
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -615,15 +609,32 @@ class MeanRelativeError(Mean):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.metrics.MeanMetricWrapper')
 class MeanMetricWrapper(Mean):
   """Wraps a stateless metric function with the Mean metric.
+
+  You could use this class to quickly build a mean metric from a function. The
+  function needs to have the signature `fn(y_true, y_pred)` and return a
+  per-sample loss array. `MeanMetricWrapper.result()` will return
+  the average metric value across all samples seen so far.
+
+  For example:
+
+  ```python
+  def accuracy(y_true, y_pred):
+    return tf.cast(tf.math.equal(y_true, y_pred), tf.float32)
+
+  accuracy_metric = tf.keras.metrics.MeanMetricWrapper(fn=accuracy)
+
+  keras_model.compile(..., metrics=accuracy_metric)
+  ```
 
   Args:
     fn: The metric function to wrap, with signature `fn(y_true, y_pred,
       **kwargs)`.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
-    **kwargs: The keyword arguments that are passed on to `fn`.
+    **kwargs: Keyword arguments to pass on to `fn`.
   """
 
   def __init__(self, fn, name=None, dtype=None, **kwargs):
@@ -654,9 +665,9 @@ class MeanMetricWrapper(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    [y_true, y_pred], sample_weight = \
+    [y_true, y_pred], sample_weight = (
         metrics_utils.ragged_assert_compatible_and_get_flat_values(
-            [y_true, y_pred], sample_weight)
+            [y_true, y_pred], sample_weight))
     y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
@@ -979,6 +990,8 @@ class _ConfusionMatrixConditionCount(Metric):
     self.init_thresholds = thresholds
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=0.5)
+    self._thresholds_distributed_evenly = (
+        metrics_utils.is_evenly_distributed_thresholds(self.thresholds))
     self.accumulator = self.add_weight(
         'accumulator',
         shape=(len(self.thresholds),),
@@ -1002,6 +1015,7 @@ class _ConfusionMatrixConditionCount(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
+        thresholds_distributed_evenly=self._thresholds_distributed_evenly,
         sample_weight=sample_weight)
 
   def result(self):
@@ -1301,6 +1315,8 @@ class Precision(Metric):
     default_threshold = 0.5 if top_k is None else metrics_utils.NEG_INF
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=default_threshold)
+    self._thresholds_distributed_evenly = (
+        metrics_utils.is_evenly_distributed_thresholds(self.thresholds))
     self.true_positives = self.add_weight(
         'true_positives',
         shape=(len(self.thresholds),),
@@ -1332,6 +1348,7 @@ class Precision(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
+        thresholds_distributed_evenly=self._thresholds_distributed_evenly,
         top_k=self.top_k,
         class_id=self.class_id,
         sample_weight=sample_weight)
@@ -1343,8 +1360,9 @@ class Precision(Metric):
 
   def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
-    backend.batch_set_value(
-        [(v, np.zeros((num_thresholds,))) for v in self.variables])
+    backend.batch_set_value([(v, np.zeros((num_thresholds,)))
+                             for v in (self.true_positives,
+                                       self.false_positives)])
 
   def get_config(self):
     config = {
@@ -1426,6 +1444,8 @@ class Recall(Metric):
     default_threshold = 0.5 if top_k is None else metrics_utils.NEG_INF
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=default_threshold)
+    self._thresholds_distributed_evenly = (
+        metrics_utils.is_evenly_distributed_thresholds(self.thresholds))
     self.true_positives = self.add_weight(
         'true_positives',
         shape=(len(self.thresholds),),
@@ -1457,6 +1477,7 @@ class Recall(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
+        thresholds_distributed_evenly=self._thresholds_distributed_evenly,
         top_k=self.top_k,
         class_id=self.class_id,
         sample_weight=sample_weight)
@@ -1468,8 +1489,9 @@ class Recall(Metric):
 
   def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
-    backend.batch_set_value(
-        [(v, np.zeros((num_thresholds,))) for v in self.variables])
+    backend.batch_set_value([(v, np.zeros((num_thresholds,)))
+                             for v in (self.true_positives,
+                                       self.false_negatives)])
 
   def get_config(self):
     config = {
@@ -1519,10 +1541,12 @@ class SensitivitySpecificityBase(Metric, metaclass=abc.ABCMeta):
     # Compute `num_thresholds` thresholds in [0, 1]
     if num_thresholds == 1:
       self.thresholds = [0.5]
+      self._thresholds_distributed_evenly = False
     else:
       thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
                     for i in range(num_thresholds - 2)]
       self.thresholds = [0.0] + thresholds + [1.0]
+      self._thresholds_distributed_evenly = True
 
   def update_state(self, y_true, y_pred, sample_weight=None):
     """Accumulates confusion matrix statistics.
@@ -1547,13 +1571,17 @@ class SensitivitySpecificityBase(Metric, metaclass=abc.ABCMeta):
         y_true,
         y_pred,
         thresholds=self.thresholds,
+        thresholds_distributed_evenly=self._thresholds_distributed_evenly,
         class_id=self.class_id,
         sample_weight=sample_weight)
 
   def reset_state(self):
     num_thresholds = len(self.thresholds)
-    backend.batch_set_value(
-        [(v, np.zeros((num_thresholds,))) for v in self.variables])
+    confusion_matrix_variables = (self.true_positives, self.true_negatives,
+                                  self.false_positives, self.false_negatives)
+    backend.batch_set_value([
+        (v, np.zeros((num_thresholds,))) for v in confusion_matrix_variables
+    ])
 
   def get_config(self):
     config = {'class_id': self.class_id}
@@ -1575,13 +1603,11 @@ class SensitivitySpecificityBase(Metric, metaclass=abc.ABCMeta):
 
     Returns maximal dependent value, if no value satiesfies the constraint 0.0.
     """
-    feasible = array_ops.where(predicate(constrained, self.value))
+    feasible = array_ops.where_v2(predicate(constrained, self.value))
     feasible_exists = math_ops.greater(array_ops.size(feasible), 0)
+    max_dependent = math_ops.reduce_max(array_ops.gather(dependent, feasible))
 
-    def get_max():
-      return math_ops.reduce_max(array_ops.gather(dependent, feasible))
-
-    return control_flow_ops.cond(feasible_exists, get_max, lambda: 0.0)
+    return array_ops.where_v2(feasible_exists, max_dependent, 0.0)
 
 
 @keras_export('keras.metrics.SensitivityAtSpecificity')
@@ -1945,7 +1971,7 @@ class AUC(Metric):
   of binary classifiers. Unlike the accuracy, and like cross-entropy
   losses, ROC-AUC and PR-AUC evaluate all the operational points of a model.
 
-  This classes approximates AUCs using a Riemann sum: During the metric
+  This class approximates AUCs using a Riemann sum. During the metric
   accumulation phrase, predictions are accumulated within predefined buckets
   by value. The AUC is then computed by interpolating per-bucket averages. These
   buckets define the evaluated operational points.
@@ -2003,7 +2029,7 @@ class AUC(Metric):
       case, when multilabel data is passed to AUC, each label-prediction pair
       is treated as an individual data point. Should be set to False for
       multi-class data.
-    num_labels: (Optional) The number of labels, used when `multi_label' is
+    num_labels: (Optional) The number of labels, used when `multi_label` is
       True. If `num_labels` is not specified, then state variables get created
       on the first call to `update_state`.
     label_weights: (Optional) list, array, or tensor of non-negative weights
@@ -2027,8 +2053,8 @@ class AUC(Metric):
   >>> m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
   >>> # threshold values are [0 - 1e-7, 0.5, 1 + 1e-7]
   >>> # tp = [2, 1, 0], fp = [2, 0, 0], fn = [0, 1, 2], tn = [0, 2, 2]
-  >>> # recall = [1, 0.5, 0], fp_rate = [1, 0, 0]
-  >>> # auc = ((((1+0.5)/2)*(1-0))+ (((0.5+0)/2)*(0-0))) = 0.75
+  >>> # tp_rate = recall = [1, 0.5, 0], fp_rate = [1, 0, 0]
+  >>> # auc = ((((1+0.5)/2)*(1-0)) + (((0.5+0)/2)*(0-0))) = 0.75
   >>> m.result().numpy()
   0.75
 
@@ -2082,6 +2108,9 @@ class AUC(Metric):
       # If specified, use the supplied thresholds.
       self.num_thresholds = len(thresholds) + 2
       thresholds = sorted(thresholds)
+      self._thresholds_distributed_evenly = (
+          metrics_utils.is_evenly_distributed_thresholds(
+              np.array([0.0] + thresholds + [1.0])))
     else:
       if num_thresholds <= 1:
         raise ValueError('`num_thresholds` must be > 1.')
@@ -2091,6 +2120,7 @@ class AUC(Metric):
       self.num_thresholds = num_thresholds
       thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
                     for i in range(num_thresholds - 2)]
+      self._thresholds_distributed_evenly = True
 
     # Add an endpoint "threshold" below zero and above one for either
     # threshold method to account for floating point imprecisions.
@@ -2243,6 +2273,7 @@ class AUC(Metric):
           y_true,
           y_pred,
           self._thresholds,
+          thresholds_distributed_evenly=self._thresholds_distributed_evenly,
           sample_weight=sample_weight,
           multi_label=self.multi_label,
           label_weights=label_weights)
@@ -2381,14 +2412,16 @@ class AUC(Metric):
           name=self.name)
 
   def reset_state(self):
-    if self.multi_label:
-      backend.batch_set_value(
-          [(v, np.zeros((self.num_thresholds, self._num_labels)))
-           for v in self.variables])
-    else:
-      backend.batch_set_value([
-          (v, np.zeros((self.num_thresholds,))) for v in self.variables
-      ])
+    if self._built:
+      confusion_matrix_variables = (self.true_positives, self.true_negatives,
+                                    self.false_positives, self.false_negatives)
+      if self.multi_label:
+        backend.batch_set_value(
+            [(v, np.zeros((self.num_thresholds, self._num_labels)))
+             for v in confusion_matrix_variables])
+      else:
+        backend.batch_set_value([(v, np.zeros((self.num_thresholds,)))
+                                 for v in confusion_matrix_variables])
 
   def get_config(self):
     if is_tensor_or_variable(self.label_weights):
@@ -2429,8 +2462,8 @@ class CosineSimilarity(MeanMetricWrapper):
 
   Standalone usage:
 
-  >>> # l2_norm(y_true) = [[0., 1.], [1./1.414], 1./1.414]]]
-  >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
+  >>> # l2_norm(y_true) = [[0., 1.], [1./1.414, 1./1.414]]
+  >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414, 1./1.414]]
   >>> # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
   >>> # result = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
   >>> #        = ((0. + 0.) +  (0.5 + 0.5)) / 2
@@ -3381,7 +3414,7 @@ def accuracy(y_true, y_pred):
   [y_pred, y_true], _ = \
       metrics_utils.ragged_assert_compatible_and_get_flat_values(
           [y_pred, y_true])
-  y_pred.shape.assert_is_compatible_with(y_true.shape)
+  y_true.shape.assert_is_compatible_with(y_pred.shape)
   if y_true.dtype != y_pred.dtype:
     y_pred = math_ops.cast(y_pred, y_true.dtype)
   return math_ops.cast(math_ops.equal(y_true, y_pred), backend.floatx())
@@ -3632,7 +3665,7 @@ def get(identifier):
   <class 'function'>
   >>> metric = tf.keras.metrics.get("CategoricalCrossentropy")
   >>> type(metric)
-  <class '...tensorflow.python.keras.metrics.CategoricalCrossentropy'>
+  <class '...keras.metrics.CategoricalCrossentropy'>
 
   You can also specify `config` of the metric to this function by passing dict
   containing `class_name` and `config` as an identifier. Also note that the
@@ -3642,7 +3675,7 @@ def get(identifier):
   ...               "config": {"from_logits": True}}
   >>> metric = tf.keras.metrics.get(identifier)
   >>> type(metric)
-  <class '...tensorflow.python.keras.metrics.CategoricalCrossentropy'>
+  <class '...keras.metrics.CategoricalCrossentropy'>
 
   Args:
     identifier: A metric identifier. One of None or string name of a metric

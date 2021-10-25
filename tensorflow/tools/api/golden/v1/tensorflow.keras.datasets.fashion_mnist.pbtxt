@@ -1,7 +1,0 @@
-path: "tensorflow.keras.datasets.fashion_mnist"
-tf_module {
-  member_method {
-    name: "load_data"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-}

@@ -30,8 +30,8 @@ limitations under the License.
 namespace toco {
 namespace {
 
-absl::InlinedVector<int64, 4> ToInlinedVector(const std::vector<int>& vec) {
-  return absl::InlinedVector<int64, 4>(vec.begin(), vec.end());
+absl::InlinedVector<int64_t, 4> ToInlinedVector(const std::vector<int>& vec) {
+  return absl::InlinedVector<int64_t, 4>(vec.begin(), vec.end());
 }
 
 std::vector<std::string> SliceInput(
@@ -56,6 +56,7 @@ std::vector<std::string> SliceInput(
 
   // Slice along each batch index and remember the slice output for future use.
   std::vector<std::string> slice_outputs;
+  slice_outputs.reserve(batch_size);
   for (int batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
     std::string batch_name =
         absl::StrCat(base_name, "_b", batch_idx, "/slice_", input_name);
@@ -91,9 +92,9 @@ std::vector<std::string> SliceInput(
 }
 
 std::vector<int32> GetTransposePerm(const Array& input_array) {
-  const int32 dims = input_array.shape().dimensions_count();
+  const int32_t dims = input_array.shape().dimensions_count();
   std::vector<int32> perm_array_val(dims);
-  for (int i = 0; i < dims; ++i) {
+  for (int32_t i = 0; i < dims; ++i) {
     perm_array_val[i] = i;
   }
   perm_array_val[dims - 2] = dims - 1;
@@ -103,9 +104,9 @@ std::vector<int32> GetTransposePerm(const Array& input_array) {
 
 std::vector<int32> GetTransposeShape(const Shape& input_shape,
                                      const std::vector<int32>& perm_array_val) {
-  const int32 dims = input_shape.dimensions_count();
+  const int32_t dims = input_shape.dimensions_count();
   std::vector<int32> output_shape(dims);
-  for (int i = 0; i < dims; ++i) {
+  for (int32_t i = 0; i < dims; ++i) {
     output_shape[i] = input_shape.dims(perm_array_val[i]);
   }
   return output_shape;
@@ -209,7 +210,8 @@ TransposeOperator* TransposeInput(const std::string& input, Model* model) {
   // Compute (single batch) MatMul for each output batch. The MatMul outputs are
   // then packed together into one output Tensor.
   std::vector<std::string> pack_inputs;
-  for (int batch_idx = 0; batch_idx < bcast.output_batch_size(); ++batch_idx) {
+  for (int64_t batch_idx = 0; batch_idx < bcast.output_batch_size();
+       ++batch_idx) {
     std::string batch_name =
         absl::StrCat(batch_op->outputs[0], "_b", batch_idx);
     const int a_batch_idx = bcast.IsBroadcastingRequired()
@@ -246,7 +248,7 @@ TransposeOperator* TransposeInput(const std::string& input, Model* model) {
   // Explicitly cast 64-bit sizes to int in order to avoid MSVC warnings.
   std::transform(result_batch_shape.begin(), result_batch_shape.end(),
                  std::back_inserter(result_shape),
-                 [](const int64 dim) { return static_cast<int>(dim); });
+                 [](const int64_t dim) { return static_cast<int>(dim); });
   result_shape.push_back(input_array_a.shape().dims(dims_a - 2));
   result_shape.push_back(input_array_b.shape().dims(dims_b - 1));
 

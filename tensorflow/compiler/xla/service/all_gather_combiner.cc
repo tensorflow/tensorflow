@@ -147,15 +147,11 @@ StatusOr<bool> AllGatherCombiner::Run(HloModule* module) {
     return false;
   }
 
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* hlo : computation->instructions()) {
-      if (hlo->opcode() == HloOpcode::kAllGather &&
-          Cast<HloAllGatherInstruction>(hlo)->constrain_layout()) {
-        VLOG(1) << "Skip AllGatherCombiner because the module contains "
-                   "all-gather with constrained layouts";
-        return false;
-      }
-    }
+  if (hlo_query::ContainsLayoutConstrainedCollective(*module,
+                                                     HloOpcode::kAllGather)) {
+    VLOG(1) << "Skip AllGatherCombiner because the module contains "
+               "all-gather with constrained layouts";
+    return false;
   }
 
   bool changed = false;

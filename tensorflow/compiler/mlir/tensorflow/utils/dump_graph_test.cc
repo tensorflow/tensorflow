@@ -52,7 +52,7 @@ class StringWritableFile : public WritableFile {
 
   Status Sync() override { return Status::OK(); }
 
-  Status Tell(int64* position) override {
+  Status Tell(int64_t* position) override {
     return errors::Unimplemented("Stream not seekable");
   }
 

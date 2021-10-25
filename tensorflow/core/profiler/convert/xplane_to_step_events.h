@@ -24,18 +24,16 @@ namespace tensorflow {
 namespace profiler {
 
 // Convert the host threads in XLine format to StepEvents format. If
-// use_device_step_events is true, we will filter out events that only happens
+// device_step_events is non-null, we will filter out events that only happens
 // on CPU.
 StepEvents ConvertHostThreadsXLineToStepEvents(
-    const XLineVisitor& line, bool use_device_step_events,
-    const StepEvents& device_step_events);
+    const XLineVisitor& line, const StepEvents* device_step_events);
 
 // Convert the host threads in XPlane format to StepEvents format. If
-// use_device_step_events is true, we will filter out events that only happens
+// device_step_events is non-null, we will filter out events that only happens
 // on CPU.
 StepEvents ConvertHostThreadsXPlaneToStepEvents(
-    const XPlane& host_trace, bool use_device_step_events,
-    const StepEvents& device_step_events);
+    const XPlane& host_trace, const StepEvents* device_step_events);
 
 // Convert the device trace in XLine format to StepEvents.
 StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line);

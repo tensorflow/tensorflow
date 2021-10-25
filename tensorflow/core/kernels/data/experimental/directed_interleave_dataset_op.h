@@ -30,6 +30,8 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
   static constexpr const char* const kNumInputDatasets = "N";
+  static constexpr const char* const kStopOnEmptyDataset =
+      "stop_on_empty_dataset";
 
   explicit DirectedInterleaveDatasetOp(OpKernelConstruction* ctx);
 
@@ -38,6 +40,7 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
 
  private:
   class Dataset;
+  bool stop_on_empty_dataset_ = false;
 };
 
 }  // namespace experimental

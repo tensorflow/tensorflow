@@ -24,7 +24,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+class CoordinationServiceAgent;
 class DeviceMgr;
+class EagerContext;
+class WorkerEnv;
+class MasterEnv;
 
 // This library supports a registration/factory-based mechanism for
 // creating TensorFlow server objects. Each server implementation must
@@ -58,6 +62,22 @@ class ServerInterface {
   // Returns a target string that can be used to connect to this server using
   // `tensorflow::NewSession()`.
   virtual const string target() const = 0;
+
+  virtual WorkerEnv* worker_env() = 0;
+  virtual MasterEnv* master_env() = 0;
+
+  // Update the set of workers that can be reached by the server
+  virtual Status UpdateServerDef(const ServerDef& server_def) = 0;
+
+  // Functions to operate on service-specific properties.
+  //
+  // Add master eager context to local eager service in order to handle enqueue
+  // requests from remote workers.
+  virtual Status AddMasterEagerContextToEagerService(
+      const tensorflow::uint64 context_id, EagerContext* context) = 0;
+  // Set coordination service agent instance to coordination service RPC handler
+  virtual Status SetCoordinationServiceAgentInstance(
+      CoordinationServiceAgent* agent) = 0;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(ServerInterface);

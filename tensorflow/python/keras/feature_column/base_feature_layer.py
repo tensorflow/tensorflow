@@ -17,10 +17,6 @@
 # This file was originally under tf/python/feature_column, and was moved to
 # Keras package in order to remove the reverse dependency from TF to Keras.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import re
 
@@ -198,7 +194,7 @@ def _normalize_feature_columns(feature_columns):
   if isinstance(feature_columns, feature_column_v2.FeatureColumn):
     feature_columns = [feature_columns]
 
-  if isinstance(feature_columns, collections.Iterator):
+  if isinstance(feature_columns, collections.abc.Iterator):
     feature_columns = list(feature_columns)
 
   if isinstance(feature_columns, dict):

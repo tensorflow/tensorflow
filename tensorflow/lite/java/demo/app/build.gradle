@@ -31,8 +31,10 @@ android {
 }
 
 repositories {
-    maven {
-        url 'https://google.bintray.com/tensorflow'
+    mavenCentral()
+    maven {  // Only for snapshot artifacts
+        name 'ossrh-snapshot'
+        url 'http://oss.sonatype.org/content/repositories/snapshots'
     }
 }
 
@@ -40,7 +42,11 @@ allprojects {
     repositories {
         // Uncomment if you want to use a local repo.
         // mavenLocal()
-        jcenter()
+        mavenCentral()
+        maven {  // Only for snapshot artifacts
+            name 'ossrh-snapshot'
+            url 'http://oss.sonatype.org/content/repositories/snapshots'
+        }
     }
 }
 

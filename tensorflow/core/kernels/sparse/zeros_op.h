@@ -42,14 +42,14 @@ template <typename Device>
 struct CSRSparseMatrixZeros {
   Status operator()(OpKernelContext* c, DataType dtype,
                     const Tensor& dense_shape_t, CSRSparseMatrix* matrix) {
-    auto dense_shape = dense_shape_t.vec<int64>();
+    auto dense_shape = dense_shape_t.vec<int64_t>();
     const int rank = dense_shape.size();
     if (!(rank == 2 || rank == 3)) {
       return errors::InvalidArgument("sparse tensor must have rank == 2 or 3; ",
                                      "but dense shape has ", rank, " entries");
     }
-    const int64 batch_size = (rank == 2) ? 1 : dense_shape(0);
-    const int64 rows = dense_shape((rank == 2) ? 0 : 1);
+    const int64_t batch_size = (rank == 2) ? 1 : dense_shape(0);
+    const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
 
     Tensor batch_ptr_t(cpu_allocator(), DT_INT32,
                        TensorShape({batch_size + 1}));
@@ -66,13 +66,9 @@ struct CSRSparseMatrixZeros {
     Tensor csr_values_t(allocator, dtype, TensorShape({0}));
     const Device& d = c->eigen_device<Device>();
     functor::SetZeroFunctor<Device, int32> set_zero;
-    Tensor* csr_row_ptr_t_ptr;
-    PersistentTensor csr_row_ptr_pt;
-    TF_RETURN_IF_ERROR(
-        c->allocate_persistent(DT_INT32, TensorShape({batch_size * (rows + 1)}),
-                               &csr_row_ptr_pt, &csr_row_ptr_t_ptr));
-    set_zero(d, csr_row_ptr_t_ptr->flat<int32>());
-    csr_row_ptr_t = std::move(*csr_row_ptr_t_ptr);
+    TF_RETURN_IF_ERROR(c->allocate_temp(
+        DT_INT32, TensorShape({batch_size * (rows + 1)}), &csr_row_ptr_t));
+    set_zero(d, csr_row_ptr_t.flat<int32>());
 
     TF_RETURN_IF_ERROR(CSRSparseMatrix::CreateCSRSparseMatrix(
         dtype, dense_shape_t, batch_ptr_t, csr_row_ptr_t, coo_col_ind_t,

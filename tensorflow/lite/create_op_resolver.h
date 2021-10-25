@@ -18,11 +18,13 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/mutable_op_resolver.h"
+// The following include is not needed but is kept for now to not break
+// compatibility for existing clients; it should be removed with the next
+// non-backwards compatible version of TFLite.
 #include "tensorflow/lite/op_resolver.h"
 
 namespace tflite {
-
 std::unique_ptr<MutableOpResolver> CreateOpResolver();
-}
+}  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_CREATE_OP_RESOLVER_H_

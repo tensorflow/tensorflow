@@ -8,10 +8,6 @@ Construct and execute TensorFlow graphs in Go.
 > without notice. The same goes for the package path:
 > (`github.com/tensorflow/tensorflow/tensorflow/go`).
 
-## Quickstart
-
-Refer to [Installing TensorFlow for Go](https://www.tensorflow.org/install/lang_go)
-
 ## Building the TensorFlow C library from source
 
 If the "Quickstart" instructions above do not work (perhaps the release archives

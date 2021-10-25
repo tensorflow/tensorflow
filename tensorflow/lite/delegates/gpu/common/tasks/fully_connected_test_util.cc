@@ -136,12 +136,16 @@ absl::Status FullyConnectedExtraLargeTest(TestExecutionEnvironment* env) {
           eps = 39.0f;
           break;
       }
-      if (!env->GetGpuInfo().IsRoundToNearestSupported()) {
-        eps *= 4.0f;
-      }
       if (precision == CalculationsPrecision::F32_F16 &&
           env->GetGpuInfo().IsApiMetal() && env->GetGpuInfo().IsIntel()) {
         eps = 3.5f;
+      }
+      if (precision == CalculationsPrecision::F32_F16 &&
+          env->GetGpuInfo().IsGlsl()) {
+        eps = 3.5f;
+      }
+      if (!env->GetGpuInfo().IsRoundToNearestSupported()) {
+        eps *= 4.0f;
       }
       OperationDef op_def;
       op_def.precision = precision;

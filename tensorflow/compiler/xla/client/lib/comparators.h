@@ -48,7 +48,7 @@ XlaComputation CreateScalarGtComputation(
 XlaComputation CreateScalarComparisonComputation(
     const string& name, const std::vector<PrimitiveType>& operand_types,
     const std::vector<
-        absl::optional<XlaOp (*)(XlaOp, XlaOp, absl::Span<const int64>)>>&
+        absl::optional<XlaOp (*)(XlaOp, XlaOp, absl::Span<const int64_t>)>>&
         comparators,
     XlaBuilder* builder);
 

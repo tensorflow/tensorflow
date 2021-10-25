@@ -408,7 +408,7 @@ Attributes GetOpAttributes(const Model& model, const Operator& op) {
     default:
       break;
   }
-  int64 math_ops_count;
+  int64_t math_ops_count;
   if (EstimateArithmeticOpsCount(model, op, &math_ops_count) &&
       (math_ops_count != 0)) {
     attrs["math"] = FormattedNumber(math_ops_count) + "ops";
@@ -581,7 +581,7 @@ struct Node {
 
   // Estimated number of math ops incurred by this node (the sum of the op
   // with this array as 1st output, plus all children nodes).
-  int64 math_ops;
+  int64_t math_ops;
 
   // A map of child nodes keyed by name.
   std::map<const std::string, std::unique_ptr<Node>> children;
@@ -667,10 +667,10 @@ void DumpNode(const Model& model, std::string* output_file,
   }
 }
 
-int64 GetArithmeticOpsCount(const Model& model, const std::string& array_id) {
+int64_t GetArithmeticOpsCount(const Model& model, const std::string& array_id) {
   for (const auto& op : model.operators) {
     if (!op->outputs.empty() && op->outputs[0] == array_id) {
-      int64 count;
+      int64_t count;
       if (EstimateArithmeticOpsCount(model, *op, &count)) {
         return count;
       } else {
@@ -682,7 +682,7 @@ int64 GetArithmeticOpsCount(const Model& model, const std::string& array_id) {
 }
 
 void InsertNode(const Model& model, const std::string& array_id, Node* node,
-                std::vector<std::string> prefixes, int64* math_ops) {
+                std::vector<std::string> prefixes, int64_t* math_ops) {
   if (prefixes.empty()) {
     // Base case: store array in this node.
     node->array_id = array_id;
@@ -707,7 +707,7 @@ void BuildArrayTree(const Model& model, Node* tree) {
   for (const auto& array_id : model.GetArrayMap()) {
     std::vector<std::string> prefixes = absl::StrSplit(array_id.first, '/');
     std::reverse(prefixes.begin(), prefixes.end());
-    int64 math_ops;  // Temporary storage for math ops used during recursion.
+    int64_t math_ops;  // Temporary storage for math ops used during recursion.
     InsertNode(model, array_id.first, tree, prefixes, &math_ops);
   }
 }
@@ -736,7 +736,7 @@ std::string GetGraphLabel(const Model& model, const std::string& graph_name) {
     attrs["optional arrays"] = StringF("%d", model.optional_arrays.size());
   }
   attrs["operators"] = StringF("%d", model.operators.size());
-  int64 ops_count;
+  int64_t ops_count;
   if (EstimateArithmeticOpsCount(model, &ops_count) && (ops_count > 0)) {
     attrs["math"] = FormattedNumber(ops_count) + "ops";
   }

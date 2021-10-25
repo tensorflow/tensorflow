@@ -22,12 +22,14 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -52,6 +54,8 @@ namespace quant {
 // losing accuracy.
 constexpr char kVolatileOpAttrName[] = "volatile";
 
+constexpr double kNearZeroTolerance = 1.0e-6;
+
 enum QuantizationTrait { FullyQuantizable, NotQuantizable };
 extern const char kQuantTraitAttr[];
 extern const absl::string_view QuantTraitValues[];
@@ -61,6 +65,7 @@ using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
 using AccumulatorScaleFunc =
     std::function<QuantParams(const std::vector<QuantParams>&, bool)>;
+using StringSet = absl::flat_hash_set<std::string>;
 
 // Quantization spec of an op, driving the quantization algorithm.
 struct OpQuantSpec {
@@ -85,6 +90,34 @@ struct OpQuantSpec {
   llvm::DenseMap<int, int> coeff_op_quant_dim;
 };
 
+// Used in TFL Numeric Verify
+struct NumericVerifySpec {
+  // Whether to enable numeric verification
+  bool verify_numeric = false;
+
+  // Tolerance level from the quantized value for verification. If the tolerance
+  // is very small(<0.1), only the stats of the diff is displayed.
+  float error_tolerance = 5.0f;
+
+  // Whether to verify numerical correctness layer by layer or by whole model
+  bool whole_model_verify = false;
+
+  // Whether to enable log for failures
+  bool log_if_failed_flag = false;
+};
+
+// Used in TFL Quantize Pass
+struct QuantPassSpec {
+  // Variables to control TFL Numeric Verify
+  NumericVerifySpec numeric_verify;
+
+  // Names of ops to block from quantization
+  const StringSet& ops_blocklist = {};
+
+  // Names of locations to block from quantization
+  const StringSet& nodes_blocklist = {};
+};
+
 // A function signature for getting the particular OpQuantSpec for the provided
 // op.
 typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
@@ -99,6 +132,14 @@ QuantizedType DownCastScale(QuantizedType type, double min, double max,
                             Location loc);
 
 bool IsOpNotQuantizable(Operation* op);
+
+// Specialized version of location to string for flatbuffer exported locations.
+inline std::string GetTensorNameFromLoc(Location loc) {
+  if (auto name_loc = loc.dyn_cast<NameLoc>()) {
+    return name_loc.getName().str();
+  }
+  return "";
+}
 
 template <typename Q, typename DQ>
 struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
@@ -180,14 +221,22 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 
   // Emits an op warning message if the calibrated range is larger than 10.0 and
   // the storage type is less than or equal to 8 bits.
-  void TensorRangeSanityCheck(quant::StatisticsOp op, double min,
-                              double max) const {
+  void TensorRangeSanityCheck(quant::StatisticsOp op, double& min,
+                              double& max) const {
     double range = std::fabs(max - min);
     if (num_bits <= 8 && range >= 10.0) {
-      op.emitWarning(
-          "Tensor range is too wide to be quantized. Use tf.clip_by_value or "
-          "tf.relu6 to narrow the tensor range. Range: " +
-          std::to_string(range) + ", bit width: " + std::to_string(num_bits));
+      op.emitWarning()
+          << "Tensor range is too wide to be quantized. Use tf.clip_by_value "
+             "or tf.relu6 to narrow the tensor range. Range: "
+          << range << ", bit width: " << num_bits;
+    }
+    if (std::abs(max - min) < kNearZeroTolerance) {
+      op.emitWarning() << "Tensor range (" << min << ", " << max
+                       << ") is too narrow and it might cause overflow. "
+                          "Expanding range symmetrically by "
+                       << kNearZeroTolerance;
+      min -= kNearZeroTolerance;
+      max += kNearZeroTolerance;
     }
   }
 };
@@ -208,27 +257,54 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 //
 // Full integer quantization disallows "hybrid" operands or results.
 // Weight quantization allows "hybrid" operands and results.
-template <typename ConcretTy, typename Q, typename DQ, typename VERIFIER>
+template <typename ConcretTy, typename Q, typename DQ, typename VERIFIER,
+          typename RootOp = DQ>
 struct QuantizationPattern : public RewritePattern {
-  using BaseType = QuantizationPattern<ConcretTy, Q, DQ, VERIFIER>;
+  using BaseType = QuantizationPattern<ConcretTy, Q, DQ, VERIFIER, RootOp>;
 
-  explicit QuantizationPattern(MLIRContext* context, bool enable_verify,
-                               float error_tolerance, bool single_layer_verify,
-                               bool log_if_failed = false)
+  explicit QuantizationPattern(MLIRContext* context,
+                               const QuantPassSpec& quant_params)
       // Set the score to a large number so it is always preferred.
-      : RewritePattern(DQ::getOperationName(), 300, context),
-        enable_verify(enable_verify),
-        error_tolerance(error_tolerance),
-        single_layer_verify(single_layer_verify),
-        log_if_failed(log_if_failed) {}
+      : RewritePattern(RootOp::getOperationName(), 300, context),
+        enable_verify(quant_params.numeric_verify.verify_numeric),
+        error_tolerance(quant_params.numeric_verify.error_tolerance),
+        whole_model_verify(quant_params.numeric_verify.whole_model_verify),
+        log_if_failed(quant_params.numeric_verify.log_if_failed_flag),
+        ops_blocklist(quant_params.ops_blocklist),
+        nodes_blocklist(quant_params.nodes_blocklist) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
-    if (op->getNumResults() != 1) {
-      return failure();
+    llvm::SmallVector<Operation*, 4> quantized_ops;
+
+    // Collect all the quantized ops as the user / def of the root op.
+    if (std::is_same<RootOp, DQ>::value) {
+      if (op->getNumResults() != 1) {
+        return failure();
+      }
+      auto users = op->getResult(0).getUsers();
+      quantized_ops.append(users.begin(), users.end());
+    } else if (std::is_same<RootOp, Q>::value) {
+      if (op->getNumOperands() != 1) {
+        return failure();
+      }
+      Value quantize_operand = op->getOperand(0);
+      if (QuantizedType::getQuantizedElementType(quantize_operand.getType())) {
+        // The input of this Q op has been quantized, i.e. rescale.
+        return failure();
+      }
+      DenseFPElementsAttr attr;
+      if (matchPattern(quantize_operand, m_Constant(&attr))) {
+        // Const->Q pattern will be handled seperately.
+        return failure();
+      }
+      if (Operation* quantized_op = quantize_operand.getDefiningOp()) {
+        quantized_ops.push_back(quantized_op);
+      }
     }
-    Value quantized_value = op->getResult(0);
-    for (Operation* quantized_op : quantized_value.getUsers()) {
+
+    // Rewrite the quantized ops from floating-point to quantized version.
+    for (Operation* quantized_op : quantized_ops) {
       // If it is requantize op, we shouldn't rewrite this op.
       if (llvm::isa<Q, DQ>(quantized_op)) {
         return failure();
@@ -238,6 +314,38 @@ struct QuantizationPattern : public RewritePattern {
       // ops dialect, we shouldn't rewrite.
       if (IsOpNotQuantizable(quantized_op)) {
         return failure();
+      }
+
+      if (!ops_blocklist.empty() &&
+          (ops_blocklist.find(quantized_op->getName().getStringRef().str()) !=
+           ops_blocklist.end())) {
+        return failure();
+      }
+
+      if (!nodes_blocklist.empty()) {
+        if (auto name_loc = quantized_op->getLoc().dyn_cast<NameLoc>()) {
+          std::string sloc = name_loc.getName().str();
+          if (!sloc.empty() &&
+              (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
+            return failure();
+          }
+        }
+      }
+
+      // An op with float inputs and outputs are expected when it's used by a
+      // NumericVerify op. Skip this op and look at next users.
+      if (enable_verify) {
+        bool used_by_verifier = false;
+        for (auto result : quantized_op->getResults()) {
+          if (used_by_verifier) break;
+          for (auto user : result.getUsers()) {
+            if (llvm::isa<VERIFIER>(user)) {
+              used_by_verifier = true;
+              break;
+            }
+          }
+        }
+        if (used_by_verifier) continue;
       }
 
       // Collect all the quantized inputs and "clone" the matched op by these
@@ -254,7 +362,7 @@ struct QuantizationPattern : public RewritePattern {
         auto ele_type = operand.getType().cast<TensorType>().getElementType();
         if (auto op_inst = dyn_cast_or_null<DQ>(operand.getDefiningOp())) {
           inputs.push_back(op_inst.input());
-        } else if (ele_type.isSignlessInteger()) {
+        } else if (!ele_type.isF32()) {
           // If the operand is an integer tensor, then it doesn't require the
           // DQ op in the pattern.
           inputs.push_back(operand);
@@ -288,7 +396,7 @@ struct QuantizationPattern : public RewritePattern {
           auto user = llvm::cast<Q>(*result.user_begin());
           outputs_replaced.insert({user.output(), enumerated_result.index()});
           output_types.push_back(user.getType());
-        } else if (result_ele_type.isSignlessInteger()) {
+        } else if (!result_ele_type.isF32()) {
           // If the result is an integer tensor, then it doesn't require the
           // D op in the pattern.
           outputs_replaced.insert({result, enumerated_result.index()});
@@ -335,7 +443,8 @@ struct QuantizationPattern : public RewritePattern {
             if (!matchPattern(q.input(), m_Constant(&attr))) {
               continue;
             }
-            auto cst = rewriter.create<ConstantOp>(new_op->getLoc(), attr);
+            auto cst =
+                rewriter.create<arith::ConstantOp>(new_op->getLoc(), attr);
             quantized_op->setOperand(i, cst.getResult());
           }
         }
@@ -356,7 +465,7 @@ struct QuantizationPattern : public RewritePattern {
               quantized_op->getLoc(), new_op->getResult(i).getType(),
               new_op->getResult(i), quantized_op->getResult(i), tolerance, log);
 
-          if (single_layer_verify) continue;
+          if (!whole_model_verify) continue;
 
           // Find the Dequantize/Dequantize users of the new op results, and
           // replace the usage. Then all the floating-point ops are connected.
@@ -379,9 +488,15 @@ struct QuantizationPattern : public RewritePattern {
 
   bool enable_verify;
   float error_tolerance;
-  bool single_layer_verify;
+  bool whole_model_verify;
   bool log_if_failed;
+  const StringSet ops_blocklist;
+  const StringSet nodes_blocklist;
 };
+
+// Converts quantized tensor type with signed integer type to quantized tensor
+// type with unsigned integer type.
+Type ConvertSignedQuantizedToUnsigned(Type signed_tensor_type, Location loc);
 
 // Converts quantize ops with unsigned quantized types to these with signed
 // quantized types and preserves the scales.
@@ -456,6 +571,11 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
     if (!def) return failure();
     if (llvm::isa<FixedOutputRangeInterface, SameScalesOpInterface>(def) ||
         def->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
+      return failure();
+    }
+
+    // This op should not clobber def, if more than one requant of this value.
+    if (!pre_quantized.hasOneUse()) {
       return failure();
     }
 

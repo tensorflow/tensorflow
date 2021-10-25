@@ -4683,4 +4683,368 @@ cusolverStatus_t CUSOLVERAPI cusolverDnSyevdx(
                   workspaceInBytes, info);
 }
 
+cusolverStatus_t CUSOLVERAPI cusolverDnGesvd_bufferSize(
+    cusolverDnHandle_t handle, cusolverDnParams_t params, signed char jobu,
+    signed char jobvt, int64_t m, int64_t n, cudaDataType dataTypeA,
+    const void *A, int64_t lda, cudaDataType dataTypeS, const void *S,
+    cudaDataType dataTypeU, const void *U, int64_t ldu, cudaDataType dataTypeVT,
+    const void *VT, int64_t ldvt, cudaDataType computeType,
+    size_t *workspaceInBytes) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, signed char, signed char, int64_t,
+      int64_t, cudaDataType, const void *, int64_t, cudaDataType, const void *,
+      cudaDataType, const void *, int64_t, cudaDataType, const void *, int64_t,
+      cudaDataType, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnGesvd_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, jobu, jobvt, m, n, dataTypeA, A, lda,
+                  dataTypeS, S, dataTypeU, U, ldu, dataTypeVT, VT, ldvt,
+                  computeType, workspaceInBytes);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnGesvd(
+    cusolverDnHandle_t handle, cusolverDnParams_t params, signed char jobu,
+    signed char jobvt, int64_t m, int64_t n, cudaDataType dataTypeA, void *A,
+    int64_t lda, cudaDataType dataTypeS, void *S, cudaDataType dataTypeU,
+    void *U, int64_t ldu, cudaDataType dataTypeVT, void *VT, int64_t ldvt,
+    cudaDataType computeType, void *pBuffer, size_t workspaceInBytes,
+    int *info) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, signed char, signed char, int64_t,
+      int64_t, cudaDataType, void *, int64_t, cudaDataType, void *,
+      cudaDataType, void *, int64_t, cudaDataType, void *, int64_t,
+      cudaDataType, void *, size_t, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnGesvd");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, jobu, jobvt, m, n, dataTypeA, A, lda,
+                  dataTypeS, S, dataTypeU, U, ldu, dataTypeVT, VT, ldvt,
+                  computeType, pBuffer, workspaceInBytes, info);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXpotrf_bufferSize(
+    cusolverDnHandle_t handle, cusolverDnParams_t params, cublasFillMode_t uplo,
+    int64_t n, cudaDataType dataTypeA, const void *A, int64_t lda,
+    cudaDataType computeType, size_t *workspaceInBytesOnDevice,
+    size_t *workspaceInBytesOnHost) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, cublasFillMode_t, int64_t,
+      cudaDataType, const void *, int64_t, cudaDataType, size_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXpotrf_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, uplo, n, dataTypeA, A, lda, computeType,
+                  workspaceInBytesOnDevice, workspaceInBytesOnHost);
+}
+
+cusolverStatus_t CUSOLVERAPI
+cusolverDnXpotrf(cusolverDnHandle_t handle, cusolverDnParams_t params,
+                 cublasFillMode_t uplo, int64_t n, cudaDataType dataTypeA,
+                 void *A, int64_t lda, cudaDataType computeType,
+                 void *bufferOnDevice, size_t workspaceInBytesOnDevice,
+                 void *bufferOnHost, size_t workspaceInBytesOnHost, int *info) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, cublasFillMode_t, int64_t,
+      cudaDataType, void *, int64_t, cudaDataType, void *, size_t, void *,
+      size_t, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXpotrf");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, uplo, n, dataTypeA, A, lda, computeType,
+                  bufferOnDevice, workspaceInBytesOnDevice, bufferOnHost,
+                  workspaceInBytesOnHost, info);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXpotrs(
+    cusolverDnHandle_t handle, cusolverDnParams_t params, cublasFillMode_t uplo,
+    int64_t n, int64_t nrhs, cudaDataType dataTypeA, const void *A, int64_t lda,
+    cudaDataType dataTypeB, void *B, int64_t ldb, int *info) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, cublasFillMode_t, int64_t,
+      int64_t, cudaDataType, const void *, int64_t, cudaDataType, void *,
+      int64_t, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXpotrs");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, uplo, n, nrhs, dataTypeA, A, lda, dataTypeB,
+                  B, ldb, info);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXgeqrf_bufferSize(
+    cusolverDnHandle_t handle, cusolverDnParams_t params, int64_t m, int64_t n,
+    cudaDataType dataTypeA, const void *A, int64_t lda,
+    cudaDataType dataTypeTau, const void *tau, cudaDataType computeType,
+    size_t *workspaceInBytesOnDevice, size_t *workspaceInBytesOnHost) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, int64_t, int64_t, cudaDataType,
+      const void *, int64_t, cudaDataType, const void *, cudaDataType, size_t *,
+      size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXgeqrf_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, m, n, dataTypeA, A, lda, dataTypeTau, tau,
+                  computeType, workspaceInBytesOnDevice,
+                  workspaceInBytesOnHost);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXgeqrf(
+    cusolverDnHandle_t handle, cusolverDnParams_t params, int64_t m, int64_t n,
+    cudaDataType dataTypeA, void *A, int64_t lda, cudaDataType dataTypeTau,
+    void *tau, cudaDataType computeType, void *bufferOnDevice,
+    size_t workspaceInBytesOnDevice, void *bufferOnHost,
+    size_t workspaceInBytesOnHost, int *info) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, int64_t, int64_t, cudaDataType,
+      void *, int64_t, cudaDataType, void *, cudaDataType, void *, size_t,
+      void *, size_t, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXgeqrf");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, m, n, dataTypeA, A, lda, dataTypeTau, tau,
+                  computeType, bufferOnDevice, workspaceInBytesOnDevice,
+                  bufferOnHost, workspaceInBytesOnHost, info);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXgetrf_bufferSize(
+    cusolverDnHandle_t handle, cusolverDnParams_t params, int64_t m, int64_t n,
+    cudaDataType dataTypeA, const void *A, int64_t lda,
+    cudaDataType computeType, size_t *workspaceInBytesOnDevice,
+    size_t *workspaceInBytesOnHost) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, int64_t, int64_t, cudaDataType,
+      const void *, int64_t, cudaDataType, size_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXgetrf_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, m, n, dataTypeA, A, lda, computeType,
+                  workspaceInBytesOnDevice, workspaceInBytesOnHost);
+}
+
+cusolverStatus_t CUSOLVERAPI
+cusolverDnXgetrf(cusolverDnHandle_t handle, cusolverDnParams_t params,
+                 int64_t m, int64_t n, cudaDataType dataTypeA, void *A,
+                 int64_t lda, int64_t *ipiv, cudaDataType computeType,
+                 void *bufferOnDevice, size_t workspaceInBytesOnDevice,
+                 void *bufferOnHost, size_t workspaceInBytesOnHost, int *info) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, int64_t, int64_t, cudaDataType,
+      void *, int64_t, int64_t *, cudaDataType, void *, size_t, void *, size_t,
+      int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXgetrf");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, m, n, dataTypeA, A, lda, ipiv, computeType,
+                  bufferOnDevice, workspaceInBytesOnDevice, bufferOnHost,
+                  workspaceInBytesOnHost, info);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXgetrs(
+    cusolverDnHandle_t handle, cusolverDnParams_t params,
+    cublasOperation_t trans, int64_t n, int64_t nrhs, cudaDataType dataTypeA,
+    const void *A, int64_t lda, const int64_t *ipiv, cudaDataType dataTypeB,
+    void *B, int64_t ldb, int *info) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, cublasOperation_t, int64_t,
+      int64_t, cudaDataType, const void *, int64_t, const int64_t *,
+      cudaDataType, void *, int64_t, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXgetrs");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, trans, n, nrhs, dataTypeA, A, lda, ipiv,
+                  dataTypeB, B, ldb, info);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXsyevd_bufferSize(
+    cusolverDnHandle_t handle, cusolverDnParams_t params,
+    cusolverEigMode_t jobz, cublasFillMode_t uplo, int64_t n,
+    cudaDataType dataTypeA, const void *A, int64_t lda, cudaDataType dataTypeW,
+    const void *W, cudaDataType computeType, size_t *workspaceInBytesOnDevice,
+    size_t *workspaceInBytesOnHost) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, cusolverEigMode_t,
+      cublasFillMode_t, int64_t, cudaDataType, const void *, int64_t,
+      cudaDataType, const void *, cudaDataType, size_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXsyevd_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, jobz, uplo, n, dataTypeA, A, lda, dataTypeW,
+                  W, computeType, workspaceInBytesOnDevice,
+                  workspaceInBytesOnHost);
+}
+
+cusolverStatus_t CUSOLVERAPI
+cusolverDnXsyevd(cusolverDnHandle_t handle, cusolverDnParams_t params,
+                 cusolverEigMode_t jobz, cublasFillMode_t uplo, int64_t n,
+                 cudaDataType dataTypeA, void *A, int64_t lda,
+                 cudaDataType dataTypeW, void *W, cudaDataType computeType,
+                 void *bufferOnDevice, size_t workspaceInBytesOnDevice,
+                 void *bufferOnHost, size_t workspaceInBytesOnHost, int *info) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, cusolverEigMode_t,
+      cublasFillMode_t, int64_t, cudaDataType, void *, int64_t, cudaDataType,
+      void *, cudaDataType, void *, size_t, void *, size_t, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXsyevd");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, jobz, uplo, n, dataTypeA, A, lda, dataTypeW,
+                  W, computeType, bufferOnDevice, workspaceInBytesOnDevice,
+                  bufferOnHost, workspaceInBytesOnHost, info);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXsyevdx_bufferSize(
+    cusolverDnHandle_t handle, cusolverDnParams_t params,
+    cusolverEigMode_t jobz, cusolverEigRange_t range, cublasFillMode_t uplo,
+    int64_t n, cudaDataType dataTypeA, const void *A, int64_t lda, void *vl,
+    void *vu, int64_t il, int64_t iu, int64_t *h_meig, cudaDataType dataTypeW,
+    const void *W, cudaDataType computeType, size_t *workspaceInBytesOnDevice,
+    size_t *workspaceInBytesOnHost) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, cusolverEigMode_t,
+      cusolverEigRange_t, cublasFillMode_t, int64_t, cudaDataType, const void *,
+      int64_t, void *, void *, int64_t, int64_t, int64_t *, cudaDataType,
+      const void *, cudaDataType, size_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXsyevdx_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, jobz, range, uplo, n, dataTypeA, A, lda, vl,
+                  vu, il, iu, h_meig, dataTypeW, W, computeType,
+                  workspaceInBytesOnDevice, workspaceInBytesOnHost);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXsyevdx(
+    cusolverDnHandle_t handle, cusolverDnParams_t params,
+    cusolverEigMode_t jobz, cusolverEigRange_t range, cublasFillMode_t uplo,
+    int64_t n, cudaDataType dataTypeA, void *A, int64_t lda, void *vl, void *vu,
+    int64_t il, int64_t iu, int64_t *meig64, cudaDataType dataTypeW, void *W,
+    cudaDataType computeType, void *bufferOnDevice,
+    size_t workspaceInBytesOnDevice, void *bufferOnHost,
+    size_t workspaceInBytesOnHost, int *info) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, cusolverEigMode_t,
+      cusolverEigRange_t, cublasFillMode_t, int64_t, cudaDataType, void *,
+      int64_t, void *, void *, int64_t, int64_t, int64_t *, cudaDataType,
+      void *, cudaDataType, void *, size_t, void *, size_t, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXsyevdx");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, jobz, range, uplo, n, dataTypeA, A, lda, vl,
+                  vu, il, iu, meig64, dataTypeW, W, computeType, bufferOnDevice,
+                  workspaceInBytesOnDevice, bufferOnHost,
+                  workspaceInBytesOnHost, info);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXgesvd_bufferSize(
+    cusolverDnHandle_t handle, cusolverDnParams_t params, signed char jobu,
+    signed char jobvt, int64_t m, int64_t n, cudaDataType dataTypeA,
+    const void *A, int64_t lda, cudaDataType dataTypeS, const void *S,
+    cudaDataType dataTypeU, const void *U, int64_t ldu, cudaDataType dataTypeVT,
+    const void *VT, int64_t ldvt, cudaDataType computeType,
+    size_t *workspaceInBytesOnDevice, size_t *workspaceInBytesOnHost) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, signed char, signed char, int64_t,
+      int64_t, cudaDataType, const void *, int64_t, cudaDataType, const void *,
+      cudaDataType, const void *, int64_t, cudaDataType, const void *, int64_t,
+      cudaDataType, size_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXgesvd_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, jobu, jobvt, m, n, dataTypeA, A, lda,
+                  dataTypeS, S, dataTypeU, U, ldu, dataTypeVT, VT, ldvt,
+                  computeType, workspaceInBytesOnDevice,
+                  workspaceInBytesOnHost);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXgesvd(
+    cusolverDnHandle_t handle, cusolverDnParams_t params, signed char jobu,
+    signed char jobvt, int64_t m, int64_t n, cudaDataType dataTypeA, void *A,
+    int64_t lda, cudaDataType dataTypeS, void *S, cudaDataType dataTypeU,
+    void *U, int64_t ldu, cudaDataType dataTypeVT, void *VT, int64_t ldvt,
+    cudaDataType computeType, void *bufferOnDevice,
+    size_t workspaceInBytesOnDevice, void *bufferOnHost,
+    size_t workspaceInBytesOnHost, int *info) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, signed char, signed char, int64_t,
+      int64_t, cudaDataType, void *, int64_t, cudaDataType, void *,
+      cudaDataType, void *, int64_t, cudaDataType, void *, int64_t,
+      cudaDataType, void *, size_t, void *, size_t, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXgesvd");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, jobu, jobvt, m, n, dataTypeA, A, lda,
+                  dataTypeS, S, dataTypeU, U, ldu, dataTypeVT, VT, ldvt,
+                  computeType, bufferOnDevice, workspaceInBytesOnDevice,
+                  bufferOnHost, workspaceInBytesOnHost, info);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXgesvdp_bufferSize(
+    cusolverDnHandle_t handle, cusolverDnParams_t params,
+    cusolverEigMode_t jobz, int econ, int64_t m, int64_t n,
+    cudaDataType dataTypeA, const void *A, int64_t lda, cudaDataType dataTypeS,
+    const void *S, cudaDataType dataTypeU, const void *U, int64_t ldu,
+    cudaDataType dataTypeV, const void *V, int64_t ldv,
+    cudaDataType computeType, size_t *workspaceInBytesOnDevice,
+    size_t *workspaceInBytesOnHost) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, cusolverEigMode_t, int, int64_t,
+      int64_t, cudaDataType, const void *, int64_t, cudaDataType, const void *,
+      cudaDataType, const void *, int64_t, cudaDataType, const void *, int64_t,
+      cudaDataType, size_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXgesvdp_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, jobz, econ, m, n, dataTypeA, A, lda,
+                  dataTypeS, S, dataTypeU, U, ldu, dataTypeV, V, ldv,
+                  computeType, workspaceInBytesOnDevice,
+                  workspaceInBytesOnHost);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXgesvdp(
+    cusolverDnHandle_t handle, cusolverDnParams_t params,
+    cusolverEigMode_t jobz, int econ, int64_t m, int64_t n,
+    cudaDataType dataTypeA, void *A, int64_t lda, cudaDataType dataTypeS,
+    void *S, cudaDataType dataTypeU, void *U, int64_t ldu,
+    cudaDataType dataTypeV, void *V, int64_t ldv, cudaDataType computeType,
+    void *bufferOnDevice, size_t workspaceInBytesOnDevice, void *bufferOnHost,
+    size_t workspaceInBytesOnHost, int *d_info, double *h_err_sigma) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, cusolverEigMode_t, int, int64_t,
+      int64_t, cudaDataType, void *, int64_t, cudaDataType, void *,
+      cudaDataType, void *, int64_t, cudaDataType, void *, int64_t,
+      cudaDataType, void *, size_t, void *, size_t, int *, double *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXgesvdp");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, jobz, econ, m, n, dataTypeA, A, lda,
+                  dataTypeS, S, dataTypeU, U, ldu, dataTypeV, V, ldv,
+                  computeType, bufferOnDevice, workspaceInBytesOnDevice,
+                  bufferOnHost, workspaceInBytesOnHost, d_info, h_err_sigma);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXgesvdr_bufferSize(
+    cusolverDnHandle_t handle, cusolverDnParams_t params, signed char jobu,
+    signed char jobv, int64_t m, int64_t n, int64_t k, int64_t p,
+    int64_t niters, cudaDataType dataTypeA, const void *A, int64_t lda,
+    cudaDataType dataTypeSrand, const void *Srand, cudaDataType dataTypeUrand,
+    const void *Urand, int64_t ldUrand, cudaDataType dataTypeVrand,
+    const void *Vrand, int64_t ldVrand, cudaDataType computeType,
+    size_t *workspaceInBytesOnDevice, size_t *workspaceInBytesOnHost) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, signed char, signed char, int64_t,
+      int64_t, int64_t, int64_t, int64_t, cudaDataType, const void *, int64_t,
+      cudaDataType, const void *, cudaDataType, const void *, int64_t,
+      cudaDataType, const void *, int64_t, cudaDataType, size_t *, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXgesvdr_bufferSize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, jobu, jobv, m, n, k, p, niters, dataTypeA, A,
+                  lda, dataTypeSrand, Srand, dataTypeUrand, Urand, ldUrand,
+                  dataTypeVrand, Vrand, ldVrand, computeType,
+                  workspaceInBytesOnDevice, workspaceInBytesOnHost);
+}
+
+cusolverStatus_t CUSOLVERAPI cusolverDnXgesvdr(
+    cusolverDnHandle_t handle, cusolverDnParams_t params, signed char jobu,
+    signed char jobv, int64_t m, int64_t n, int64_t k, int64_t p,
+    int64_t niters, cudaDataType dataTypeA, void *A, int64_t lda,
+    cudaDataType dataTypeSrand, void *Srand, cudaDataType dataTypeUrand,
+    void *Urand, int64_t ldUrand, cudaDataType dataTypeVrand, void *Vrand,
+    int64_t ldVrand, cudaDataType computeType, void *bufferOnDevice,
+    size_t workspaceInBytesOnDevice, void *bufferOnHost,
+    size_t workspaceInBytesOnHost, int *d_info) {
+  using FuncPtr = cusolverStatus_t(CUSOLVERAPI *)(
+      cusolverDnHandle_t, cusolverDnParams_t, signed char, signed char, int64_t,
+      int64_t, int64_t, int64_t, int64_t, cudaDataType, void *, int64_t,
+      cudaDataType, void *, cudaDataType, void *, int64_t, cudaDataType, void *,
+      int64_t, cudaDataType, void *, size_t, void *, size_t, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cusolverDnXgesvdr");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, params, jobu, jobv, m, n, k, p, niters, dataTypeA, A,
+                  lda, dataTypeSrand, Srand, dataTypeUrand, Urand, ldUrand,
+                  dataTypeVrand, Vrand, ldVrand, computeType, bufferOnDevice,
+                  workspaceInBytesOnDevice, bufferOnHost,
+                  workspaceInBytesOnHost, d_info);
+}
+
 }  // extern "C"

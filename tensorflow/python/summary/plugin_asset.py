@@ -26,10 +26,6 @@ returns a dictionary of asset contents. The tf.compat.v1.summary.FileWriter
 TensorBoard can retrieve them.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 
 import six

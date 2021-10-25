@@ -17,6 +17,7 @@ limitations under the License.
 // structured control flow and descriptors.
 
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
@@ -50,6 +51,7 @@ struct ShapeToDescriptorsPass
     // Setup target legality.
     ConversionTarget target(ctx);
     target.addIllegalDialect<shape::ShapeDialect>();
+    target.addLegalDialect<arith::ArithmeticDialect>();
     target.addLegalDialect<scf::SCFDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<StandardOpsDialect>();
@@ -58,7 +60,7 @@ struct ShapeToDescriptorsPass
     // Don't mark the primary Cstr/Assuming ops as illegal, so they can be
     // lowered at a later time to assertions.
     target.addLegalOp<shape::AssumingOp, shape::AssumingYieldOp,
-                      shape::CstrRequireOp>();
+                      shape::AssumingAllOp, shape::CstrRequireOp>();
 
     // Setup conversion patterns.
     RewritePatternSet patterns(&getContext());

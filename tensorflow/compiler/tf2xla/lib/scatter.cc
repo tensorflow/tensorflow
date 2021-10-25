@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-xla::StatusOr<xla::XlaOp> XlaScatter(
+StatusOr<xla::XlaOp> XlaScatter(
     const xla::XlaOp& buffer, const xla::XlaOp& updates,
     const xla::XlaOp& indices, bool indices_are_vectors,
     const std::function<xla::XlaOp(xla::XlaOp, xla::XlaOp, xla::XlaBuilder*)>&
@@ -39,12 +39,12 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
   TF_ASSIGN_OR_RETURN(xla::Shape buffer_shape, builder->GetShape(buffer));
   TF_ASSIGN_OR_RETURN(xla::Shape updates_shape, builder->GetShape(updates));
   TF_ASSIGN_OR_RETURN(xla::Shape indices_shape, builder->GetShape(indices));
-  absl::Span<const int64> indices_dims =
+  absl::Span<const int64_t> indices_dims =
       xla::AsInt64Slice(indices_shape.dimensions());
 
   // If the indices are N-dimensional, the minor dimension of indices contains
   // the indices to update. Otherwise the indices are all scalars.
-  int64 num_index_dims = 1;
+  int64_t num_index_dims = 1;
   if (indices_are_vectors) {
     TF_RET_CHECK(!indices_dims.empty());
     num_index_dims = indices_dims.back();
@@ -58,8 +58,8 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
     indices_dims.remove_suffix(1);
   }
 
-  int64 num_indices = 1;
-  for (int64 dim : indices_dims) {
+  int64_t num_indices = 1;
+  for (int64_t dim : indices_dims) {
     num_indices *= dim;
   }
 
@@ -70,7 +70,7 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
 
   // If any of the indexed dimensions are zero in the buffer, the update cannot
   // succeed since it updates a slice of size 1.
-  for (int64 i = 0; i < num_index_dims; ++i) {
+  for (int64_t i = 0; i < num_index_dims; ++i) {
     if (xla::ShapeUtil::GetDimension(buffer_shape, i) == 0) {
       return errors::InvalidArgument("Scatter dimension ", i,
                                      " is of size zero in tensor with shape ",
@@ -140,19 +140,19 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
                                        ? indices_shape.dimensions_size() - 1
                                        : indices_shape.dimensions_size());
 
-  int64 updates_rank = updates_shape.rank();
-  int64 buffer_rank = buffer_shape.rank();
-  int64 num_window_dims_in_updates = buffer_rank - num_index_dims;
+  int64_t updates_rank = updates_shape.rank();
+  int64_t buffer_rank = buffer_shape.rank();
+  int64_t num_window_dims_in_updates = buffer_rank - num_index_dims;
 
   // If the rank of `updates` is 0 and does not match the expected rank of
   // updates, broadcast `updates` to the expected shape of updates.
   auto new_updates = updates;
-  std::vector<int64> expected_updates_dims(indices_dims.begin(),
-                                           indices_dims.end());
-  for (int64 dim = num_index_dims; dim < buffer_rank; ++dim) {
+  std::vector<int64_t> expected_updates_dims(indices_dims.begin(),
+                                             indices_dims.end());
+  for (int64_t dim = num_index_dims; dim < buffer_rank; ++dim) {
     expected_updates_dims.push_back(buffer_shape.dimensions(dim));
   }
-  int64 expected_updates_rank = expected_updates_dims.size();
+  int64_t expected_updates_rank = expected_updates_dims.size();
   if (updates_rank == 0 && expected_updates_rank != 0) {
     new_updates = xla::Broadcast(updates, expected_updates_dims);
     TF_ASSIGN_OR_RETURN(updates_shape, builder->GetShape(new_updates));
@@ -160,13 +160,13 @@ xla::StatusOr<xla::XlaOp> XlaScatter(
   }
 
   if (updates_rank > 0) {
-    for (int64 i = (updates_rank - num_window_dims_in_updates);
+    for (int64_t i = (updates_rank - num_window_dims_in_updates);
          i < updates_rank; ++i) {
       dim_numbers.add_update_window_dims(i);
     }
   }
 
-  for (int64 i = 0; i < num_index_dims; ++i) {
+  for (int64_t i = 0; i < num_index_dims; ++i) {
     dim_numbers.add_inserted_window_dims(i);
     dim_numbers.add_scatter_dims_to_operand_dims(i);
   }

@@ -67,6 +67,7 @@ GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputsImpl(
 Status GraphDefBuilder::ToGraphDef(GraphDef* graph_def) const {
   if (status_.ok()) {
     graph_.ToGraphDef(graph_def);
+    *graph_def->mutable_library() = flib_def_.ToProto();
   }
   return status_;
 }

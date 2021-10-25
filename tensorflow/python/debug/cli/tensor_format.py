@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Format tensors (ndarrays) for screen display and navigation."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import re
 
@@ -536,7 +532,7 @@ def numeric_summary(tensor):
     return debugger_cli_common.RichTextLines([
         "No numeric summary available due to empty tensor."])
   elif (np.issubdtype(tensor.dtype, np.floating) or
-        np.issubdtype(tensor.dtype, np.complex) or
+        np.issubdtype(tensor.dtype, np.complexfloating) or
         np.issubdtype(tensor.dtype, np.integer)):
     counts = [
         ("nan", np.sum(np.isnan(tensor))),
@@ -559,7 +555,7 @@ def numeric_summary(tensor):
           ("std", np.std(valid_array))]
       output.extend(_counts_summary(stats, skip_zeros=False))
     return output
-  elif tensor.dtype == np.bool:
+  elif tensor.dtype == np.bool_:
     counts = [
         ("False", np.sum(tensor == 0)),
         ("True", np.sum(tensor > 0)),]

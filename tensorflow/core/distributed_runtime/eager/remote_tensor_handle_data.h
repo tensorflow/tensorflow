@@ -32,20 +32,20 @@ class RemoteTensorHandleData {
   // the corresponding remote tensor is ready. So the remote tensor should be
   // ready when we create a lazy remote handle. If it refers to a remote output,
   // it's not ready until the shape is set.
-  RemoteTensorHandleData(int64 op_id, int output_num, uint64 context_view_id,
+  RemoteTensorHandleData(int64_t op_id, int output_num, uint64 context_view_id,
                          bool is_ready);
   // Constructor for unshaped remote handles. It controls the lifetime of a
   // remote handel that it refers to.
-  RemoteTensorHandleData(int64 op_id, int output_num, const string& remote_task,
-                         EagerContext* ctx);
+  RemoteTensorHandleData(int64_t op_id, int output_num,
+                         const string& remote_task, EagerContext* ctx);
   ~RemoteTensorHandleData();
 
   // A remote tensor handle does not have a Tensor object, hence it can only
   // support the shape requests.
   Status Shape(TensorShape* shape) const;
   Status NumDims(int* num_dims) const;
-  Status Dim(int dim_index, int64* dim) const;
-  Status NumElements(int64* num_elements) const;
+  Status Dim(int dim_index, int64_t* dim) const;
+  Status NumElements(int64_t* num_elements) const;
   Status Unprotect() { return Status::OK(); }
 
   bool IsReady() const;
@@ -60,7 +60,7 @@ class RemoteTensorHandleData {
 
   // Return the op id and output num. If wait_util_ready is true, block until
   // the remote tensor is ready on a remote worker.
-  Status OpIdAndOutputNum(const bool wait_util_ready, int64* op_id,
+  Status OpIdAndOutputNum(const bool wait_util_ready, int64_t* op_id,
                           int32* output_num) const;
 
   uint64 context_view_id() const { return context_view_id_; }
@@ -72,7 +72,7 @@ class RemoteTensorHandleData {
   TensorShape shape_ TF_GUARDED_BY(mu_);
 
   // IDs required when this class is representing a remote tensor handle.
-  const int64 op_id_;
+  const int64_t op_id_;
   const int32 output_num_;
   string remote_task_ TF_GUARDED_BY(mu_);
   uint64 context_id_;

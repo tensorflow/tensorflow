@@ -200,6 +200,23 @@ class TestIsRagged(test.TestCase):
     self.assertFalse(tf_utils.is_ragged(tensor))
 
 
+class TestIsSparse(test.TestCase):
+
+  def test_is_sparse_return_true_for_sparse_tensor(self):
+    tensor = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+    self.assertTrue(tf_utils.is_sparse(tensor))
+
+  def test_is_sparse_return_true_for_sparse_tensor_value(self):
+    tensor = sparse_tensor.SparseTensorValue(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+    self.assertTrue(tf_utils.is_sparse(tensor))
+
+  def test_is_sparse_return_false_for_list(self):
+    tensor = [1., 2., 3.]
+    self.assertFalse(tf_utils.is_sparse(tensor))
+
+
 class TestIsExtensionType(test.TestCase):
 
   def test_is_extension_type_return_true_for_ragged_tensor(self):

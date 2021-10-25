@@ -216,7 +216,7 @@ func @exp_complex(%arg0 : tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>>) {
   // CHECK-DAG: [[SIN:%.+]] = "mhlo.sine"([[IMAG]])
   // CHECK-DAG: [[OUTR:%.+]] = mhlo.multiply [[COS]], [[EXP]]
   // CHECK-DAG: [[OUTI:%.+]] = mhlo.multiply [[SIN]], [[EXP]]
-  // CHECK-DAG: [[OUT:%.+]] = "mhlo.complex"([[OUTR]], [[OUTI]])
+  // CHECK-DAG: [[OUT:%.+]] = mhlo.complex([[OUTR]], [[OUTI]])
   %0 = "mhlo.exponential"(%arg0) : (tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>>)
 
   // CHECK: [[OUT]]
@@ -232,9 +232,41 @@ func @exp_unranked(%arg0 : tensor<*xcomplex<f32>>) -> (tensor<*xcomplex<f32>>) {
   // CHECK-DAG: [[SIN:%.+]] = "mhlo.sine"([[IMAG]])
   // CHECK-DAG: [[OUTR:%.+]] = mhlo.multiply [[COS]], [[EXP]]
   // CHECK-DAG: [[OUTI:%.+]] = mhlo.multiply [[SIN]], [[EXP]]
-  // CHECK-DAG: [[OUT:%.+]] = "mhlo.complex"([[OUTR]], [[OUTI]])
+  // CHECK-DAG: [[OUT:%.+]] = mhlo.complex([[OUTR]], [[OUTI]])
   %0 = "mhlo.exponential"(%arg0) : (tensor<*xcomplex<f32>>) -> (tensor<*xcomplex<f32>>)
 
   // CHECK: [[OUT]]
   return %0 : tensor<*xcomplex<f32>>
+}
+
+// CHECK-LABEL: @compare_eq
+// CHECK: ([[LHS:%.+]]: tensor<2xcomplex<f32>>, [[RHS:%.+]]: tensor<2xcomplex<f32>>)
+func @compare_eq(%lhs : tensor<2xcomplex<f32>>, %rhs: tensor<2xcomplex<f32>>) -> (tensor<2xi1>) {
+  // CHECK-DAG: [[REAL_LHS:%.+]] = "mhlo.real"([[LHS]])
+  // CHECK-DAG: [[REAL_RHS:%.+]] = "mhlo.real"([[RHS]])
+  // CHECK-DAG: [[OUTR:%.+]] = "mhlo.compare"([[REAL_LHS]], [[REAL_RHS]]) {comparison_direction = "EQ"}
+  // CHECK-DAG: [[IMAG_LHS:%.+]] = "mhlo.imag"([[LHS]])
+  // CHECK-DAG: [[IMAG_RHS:%.+]] = "mhlo.imag"([[RHS]])
+  // CHECK-DAG: [[OUTI:%.+]] = "mhlo.compare"([[IMAG_LHS]], [[IMAG_RHS]]) {comparison_direction = "EQ"}
+  // CHECK-DAG: [[OUT:%.+]] = mhlo.and [[OUTR]], [[OUTI]]
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = "EQ"} : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xi1>
+
+  // CHECK: return [[OUT]]
+  return %0 : tensor<2xi1>
+}
+
+// CHECK-LABEL: @compare_ne
+// CHECK: ([[LHS:%.+]]: tensor<2xcomplex<f32>>, [[RHS:%.+]]: tensor<2xcomplex<f32>>)
+func @compare_ne(%lhs : tensor<2xcomplex<f32>>, %rhs: tensor<2xcomplex<f32>>) -> (tensor<2xi1>) {
+  // CHECK-DAG: [[REAL_LHS:%.+]] = "mhlo.real"([[LHS]])
+  // CHECK-DAG: [[REAL_RHS:%.+]] = "mhlo.real"([[RHS]])
+  // CHECK-DAG: [[OUTR:%.+]] = "mhlo.compare"([[REAL_LHS]], [[REAL_RHS]]) {comparison_direction = "NE"}
+  // CHECK-DAG: [[IMAG_LHS:%.+]] = "mhlo.imag"([[LHS]])
+  // CHECK-DAG: [[IMAG_RHS:%.+]] = "mhlo.imag"([[RHS]])
+  // CHECK-DAG: [[OUTI:%.+]] = "mhlo.compare"([[IMAG_LHS]], [[IMAG_RHS]]) {comparison_direction = "NE"}
+  // CHECK-DAG: [[OUT:%.+]] = mhlo.or [[OUTR]], [[OUTI]]
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = "NE"} : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xi1>
+
+  // CHECK: return [[OUT]]
+  return %0 : tensor<2xi1>
 }

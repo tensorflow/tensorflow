@@ -68,6 +68,16 @@ namespace {
 struct SplitMergedOperandsPass
     : public PassWrapper<SplitMergedOperandsPass, FunctionPass> {
   void runOnFunction() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-split-merged-operands";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Split merged stateful operands for tfl operations.";
+  }
 };
 
 LogicalResult DuplicateValueIfNeeded(Operation* op,
@@ -123,9 +133,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateSplitMergedOperandsPass() {
   return std::make_unique<SplitMergedOperandsPass>();
 }
 
-static PassRegistration<SplitMergedOperandsPass> pass(
-    "tfl-split-merged-operands",
-    "Split merged stateful operands for tfl operations.");
+static PassRegistration<SplitMergedOperandsPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

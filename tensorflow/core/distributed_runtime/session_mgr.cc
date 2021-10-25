@@ -71,7 +71,8 @@ Status SessionMgr::CreateSession(
     const string& session, const ServerDef& server_def,
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
-    bool isolate_session_state, string master_task, int64 master_incarnation) {
+    bool isolate_session_state, string master_task,
+    int64_t master_incarnation) {
   mutex_lock l(mu_);
   if (session.empty()) {
     return errors::InvalidArgument("Session must be non-empty.");
@@ -310,8 +311,7 @@ void SessionMgr::SetLogging(bool active) {
   }
 }
 
-void SessionMgr::RetrieveLogs(tensorflow::int64 step_id,
-                              LoggingResponse* response) {
+void SessionMgr::RetrieveLogs(int64_t step_id, LoggingResponse* response) {
   mutex_lock l(mu_);
   // Legacy Session
   if (legacy_session_) {

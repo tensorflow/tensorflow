@@ -34,7 +34,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/linalg/eye_functor.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -98,7 +98,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64 n = input.dim_size(ndims - 1);
+    const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(
         context, ndims >= 2,
@@ -125,7 +125,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
                          done);
 
     // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    std::unique_ptr<GpuSolver> solver(new GpuSolver(context));
 
     // Make a copy of the (possible adjointed) input that we will use for the
     // factorization step.
@@ -146,7 +146,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
           context, DoConjugateMatrixTranspose(device, input, &input_copy),
           done);
     }
-    const int64 batch_size = input_copy_reshaped.dimension(0);
+    const int64_t batch_size = input_copy_reshaped.dimension(0);
 
     Tensor pivots;
     OP_REQUIRES_OK_ASYNC(
@@ -258,8 +258,8 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
       OP_REQUIRES_OK_ASYNC(context, status, done);
       done();
     };
-    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(info_checker));
+    GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                   std::move(info_checker));
   }
 
  private:

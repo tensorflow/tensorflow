@@ -131,7 +131,7 @@ struct GpuConvDescriptor {
   size_t scratch_size;
   Window window;
   ConvolutionDimensionNumbers dnums;
-  int64 feature_group_count;
+  int64_t feature_group_count;
 };
 
 // Returns the convolution configuration given a XLA HLO instruction.

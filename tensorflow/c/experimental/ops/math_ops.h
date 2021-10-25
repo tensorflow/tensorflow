@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+// This file is MACHINE GENERATED! Do not edit.
+
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_MATH_OPS_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_MATH_OPS_H_
 
@@ -22,53 +25,53 @@ namespace tensorflow {
 namespace ops {
 
 Status Mul(AbstractContext* ctx, AbstractTensorHandle* const x,
-           AbstractTensorHandle* const y, absl::Span<AbstractTensorHandle*> z,
-           const char* name);
+           AbstractTensorHandle* const y, AbstractTensorHandle** z,
+           const char* name = nullptr);
 
 Status Conj(AbstractContext* ctx, AbstractTensorHandle* const input,
-            absl::Span<AbstractTensorHandle*> output, const char* name);
+            AbstractTensorHandle** output, const char* name = nullptr);
 
-Status Add(AbstractContext* ctx, AbstractTensorHandle* const x,
-           AbstractTensorHandle* const y, absl::Span<AbstractTensorHandle*> z,
-           const char* name);
+Status AddV2(AbstractContext* ctx, AbstractTensorHandle* const x,
+             AbstractTensorHandle* const y, AbstractTensorHandle** z,
+             const char* name = nullptr);
 
 Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a,
-              AbstractTensorHandle* const b,
-              absl::Span<AbstractTensorHandle*> product, const char* name,
-              bool transpose_a, bool transpose_b);
+              AbstractTensorHandle* const b, AbstractTensorHandle** product,
+              bool transpose_a = false, bool transpose_b = false,
+              const char* name = nullptr);
 
 Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x,
-           absl::Span<AbstractTensorHandle*> y, const char* name);
+           AbstractTensorHandle** y, const char* name = nullptr);
 
 Status Sum(AbstractContext* ctx, AbstractTensorHandle* const input,
            AbstractTensorHandle* const reduction_indices,
-           absl::Span<AbstractTensorHandle*> output, const char* name,
-           bool keep_dims = false);
+           AbstractTensorHandle** output, bool keep_dims = false,
+           const char* name = nullptr);
 
 Status Sub(AbstractContext* ctx, AbstractTensorHandle* const x,
-           AbstractTensorHandle* const y, absl::Span<AbstractTensorHandle*> z,
-           const char* name);
+           AbstractTensorHandle* const y, AbstractTensorHandle** z,
+           const char* name = nullptr);
 
 Status Div(AbstractContext* ctx, AbstractTensorHandle* const x,
-           AbstractTensorHandle* const y, absl::Span<AbstractTensorHandle*> z,
-           const char* name);
+           AbstractTensorHandle* const y, AbstractTensorHandle** z,
+           const char* name = nullptr);
 
 Status DivNoNan(AbstractContext* ctx, AbstractTensorHandle* const x,
-                AbstractTensorHandle* const y,
-                absl::Span<AbstractTensorHandle*> z, const char* name);
+                AbstractTensorHandle* const y, AbstractTensorHandle** z,
+                const char* name = nullptr);
 
 Status Exp(AbstractContext* ctx, AbstractTensorHandle* const x,
-           absl::Span<AbstractTensorHandle*> y, const char* name);
+           AbstractTensorHandle** y, const char* name = nullptr);
 
 Status Sqrt(AbstractContext* ctx, AbstractTensorHandle* const x,
-            absl::Span<AbstractTensorHandle*> y, const char* name);
+            AbstractTensorHandle** y, const char* name = nullptr);
 
 Status SqrtGrad(AbstractContext* ctx, AbstractTensorHandle* const y,
-                AbstractTensorHandle* const dy,
-                absl::Span<AbstractTensorHandle*> z, const char* name);
+                AbstractTensorHandle* const dy, AbstractTensorHandle** z,
+                const char* name = nullptr);
 
 Status Log1p(AbstractContext* ctx, AbstractTensorHandle* const x,
-             absl::Span<AbstractTensorHandle*> y, const char* name);
+             AbstractTensorHandle** y, const char* name = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow

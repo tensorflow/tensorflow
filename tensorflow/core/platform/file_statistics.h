@@ -22,14 +22,14 @@ namespace tensorflow {
 
 struct FileStatistics {
   // The length of the file or -1 if finding file length is not supported.
-  int64 length = -1;
+  int64_t length = -1;
   // The last modified time in nanoseconds.
-  int64 mtime_nsec = 0;
+  int64_t mtime_nsec = 0;
   // True if the file is a directory, otherwise false.
   bool is_directory = false;
 
   FileStatistics() {}
-  FileStatistics(int64 length, int64 mtime_nsec, bool is_directory)
+  FileStatistics(int64_t length, int64_t mtime_nsec, bool is_directory)
       : length(length), mtime_nsec(mtime_nsec), is_directory(is_directory) {}
   ~FileStatistics() {}
 };

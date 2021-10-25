@@ -46,6 +46,7 @@ namespace xla {
 class CopyInsertion : public HloModulePass {
  public:
   absl::string_view name() const override { return "copy-insertion"; }
+  static constexpr int64_t kUseRegionAnalysisLimit = 0;
 
   // backend specific function that decides whether an instruction
   // can share buffer with its operand.
@@ -53,8 +54,11 @@ class CopyInsertion : public HloModulePass {
   // TODO(b/80315712): Find a better way to tell whether a fusion can share
   // buffer.
   explicit CopyInsertion(
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr)
-      : can_share_buffer_(can_share_buffer) {}
+      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr,
+      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit)
+      : can_share_buffer_(can_share_buffer),
+        use_region_based_live_range_analysis_(
+            use_region_based_live_range_analysis) {}
 
   // Run the pass on the given module. Returns whether the module was changed
   // (copies were inserted).
@@ -65,7 +69,7 @@ class CopyInsertion : public HloModulePass {
   // eligible for copy elision are considered for removal.
   // If check_live_range_ordering is true, check that live ranges are ordered
   // in all the existing aliased buffers.
-  Status RemoveUnnecessaryCopies(const HloOrdering& ordering, HloModule* module,
+  Status RemoveUnnecessaryCopies(HloOrdering* ordering, HloModule* module,
                                  bool check_live_range_ordering = false);
 
   // Add copies to address special constraints on the roots of computations not
@@ -95,6 +99,7 @@ class CopyInsertion : public HloModulePass {
 
  private:
   Status AddCopiesToResolveInterference(HloModule* module);
+  int64_t use_region_based_live_range_analysis_;
 };
 
 }  // namespace xla

@@ -46,7 +46,7 @@ Status TpuCompilationCacheLocalLookup::Lookup(
 }
 
 Status TpuCompilationCacheLocalLookup::Lookup(
-    int64 uid, int proto_index,
+    int64_t uid, int proto_index,
     std::unique_ptr<CompilationCacheEntryRef>* entry,
     CompilationCacheFetchTarget fetch_target) {
   profiler::TraceMe proto_lookup_traceme("Local TPU proto cache lookup by uid",

@@ -46,7 +46,7 @@ bool DotImplementationCanHandleTranspose(
 // Returns the index for an operand to `hlo` that should ideally be column
 // major.  Returns nullopt if there is no such operand or if `hlo` is not a dot
 // or a fusion containing a dot.
-absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
+absl::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo);
 
 // Emit LLVM IR to perform the dot operation on lhs_array and rhs_array and

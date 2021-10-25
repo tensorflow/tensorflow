@@ -65,6 +65,22 @@ tf_module {
     mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
   }
   member {
+    name: "parameter_server_strategy_1worker_2ps_1gpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "parameter_server_strategy_1worker_2ps_cpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "parameter_server_strategy_3worker_2ps_1gpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "parameter_server_strategy_3worker_2ps_cpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
     name: "tpu_strategy"
     mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
   }

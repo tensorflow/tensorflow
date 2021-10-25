@@ -13,14 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
+#include <utility>
 
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
+#include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 
 namespace tflite {
 namespace tools {
+
+namespace {
+
+using nnapi::NnApiSupportLibrary;
+
+// StatefulNnApiDelegate that takes ownership of NnApiSupportLibrary instance
+// passed to the constructor.
+class NnApiSupportLibraryDelegate : public StatefulNnApiDelegate {
+ public:
+  // The constructed object takes ownership of the nnapi_sl.
+  NnApiSupportLibraryDelegate(const NnApiSupportLibrary* nnapi_sl,
+                              Options options)
+      : StatefulNnApiDelegate(nnapi_sl, options), nnapi_sl_(nnapi_sl) {}
+
+ private:
+  std::unique_ptr<const NnApiSupportLibrary> nnapi_sl_;
+};
+
+}  // namespace
 
 class NnapiDelegateProvider : public DelegateProvider {
  public:
@@ -36,6 +57,12 @@ class NnapiDelegateProvider : public DelegateProvider {
                              ToolParam::Create<bool>(true));
     default_params_.AddParam("nnapi_allow_fp16",
                              ToolParam::Create<bool>(false));
+    default_params_.AddParam("nnapi_allow_dynamic_dimensions",
+                             ToolParam::Create<bool>(false));
+    default_params_.AddParam("nnapi_use_burst_mode",
+                             ToolParam::Create<bool>(false));
+    default_params_.AddParam("nnapi_support_library_path",
+                             ToolParam::Create<std::string>(""));
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
@@ -43,6 +70,8 @@ class NnapiDelegateProvider : public DelegateProvider {
   void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
+  std::pair<TfLiteDelegatePtr, int> CreateRankedTfLiteDelegate(
+      const ToolParams& params) const final;
 
   std::string GetName() const final { return "NNAPI"; }
 };
@@ -65,7 +94,24 @@ std::vector<Flag> NnapiDelegateProvider::CreateFlags(ToolParams* params) const {
       CreateFlag<bool>("disable_nnapi_cpu", params,
                        "Disable the NNAPI CPU device"),
       CreateFlag<bool>("nnapi_allow_fp16", params,
-                       "Allow fp32 computation to be run in fp16")};
+                       "Allow fp32 computation to be run in fp16"),
+      CreateFlag<bool>(
+          "nnapi_allow_dynamic_dimensions", params,
+          "Whether to allow dynamic dimension sizes without re-compilation. "
+          "This requires Android 9+."),
+      CreateFlag<bool>(
+          "nnapi_use_burst_mode", params,
+          "use NNAPI Burst mode if supported. Burst mode allows accelerators "
+          "to efficiently manage resources, which would significantly reduce "
+          "overhead especially if the same delegate instance is to be used for "
+          "multiple inferences."),
+      CreateFlag<std::string>(
+          "nnapi_support_library_path", params,
+          "Path from which NNAPI support library will be loaded to construct "
+          "the delegate. In order to use NNAPI delegate with support library, "
+          "--nnapi_accelerator_name must be specified and must be equal to one "
+          "of the devices provided by the support library."),
+  };
 
   return flags;
 }
@@ -82,7 +128,8 @@ void NnapiDelegateProvider::LogParams(const ToolParams& params,
   LOG_TOOL_PARAM(params, std::string, "nnapi_accelerator_name",
                  "NNAPI accelerator name", verbose);
 
-  std::string string_device_names_list = nnapi::GetStringDeviceNamesList();
+  std::string string_device_names_list =
+      nnapi::GetStringDeviceNamesList(NnApiImplementation());
   // Print available devices when possible as it's informative.
   if (!string_device_names_list.empty()) {
     TFLITE_LOG(INFO) << "NNAPI accelerators available: ["
@@ -93,6 +140,10 @@ void NnapiDelegateProvider::LogParams(const ToolParams& params,
                  verbose);
   LOG_TOOL_PARAM(params, bool, "nnapi_allow_fp16", "Allow fp16 in NNAPI",
                  verbose);
+  LOG_TOOL_PARAM(params, bool, "nnapi_allow_dynamic_dimensions",
+                 "Allow dynamic dimensions in NNAPI", verbose);
+  LOG_TOOL_PARAM(params, bool, "nnapi_use_burst_mode",
+                 "Use burst mode in NNAPI", verbose);
 }
 
 TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
@@ -110,6 +161,14 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
 
     if (params.Get<bool>("nnapi_allow_fp16")) {
       options.allow_fp16 = true;
+    }
+
+    if (params.Get<bool>("nnapi_allow_dynamic_dimensions")) {
+      options.allow_dynamic_dimensions = true;
+    }
+
+    if (params.Get<bool>("nnapi_use_burst_mode")) {
+      options.use_burst_computation = true;
     }
 
     std::string string_execution_preference =
@@ -165,16 +224,44 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
     if (max_delegated_partitions >= 0) {
       options.max_number_delegated_partitions = max_delegated_partitions;
     }
-    const auto* nnapi_impl = NnApiImplementation();
-    if (!nnapi_impl->nnapi_exists) {
-      TFLITE_LOG(WARN) << "NNAPI acceleration is unsupported on this platform.";
-      return delegate;
+
+    // Serialization.
+    std::string serialize_dir =
+        params.Get<std::string>("delegate_serialize_dir");
+    std::string serialize_token =
+        params.Get<std::string>("delegate_serialize_token");
+    if (!serialize_dir.empty() && !serialize_token.empty()) {
+      options.cache_dir = serialize_dir.c_str();
+      options.model_token = serialize_token.c_str();
     }
-    return TfLiteDelegatePtr(
-        new StatefulNnApiDelegate(nnapi_impl, options),
-        [](TfLiteDelegate* delegate) {
-          delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
-        });
+
+    if (params.Get<std::string>("nnapi_support_library_path").empty()) {
+      const auto* nnapi_impl = NnApiImplementation();
+      if (!nnapi_impl->nnapi_exists) {
+        TFLITE_LOG(WARN)
+            << "NNAPI acceleration is unsupported on this platform.";
+        return delegate;
+      }
+      return TfLiteDelegatePtr(
+          new StatefulNnApiDelegate(nnapi_impl, options),
+          [](TfLiteDelegate* delegate) {
+            delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
+          });
+    } else {
+      std::string sl_path =
+          params.Get<std::string>("nnapi_support_library_path");
+      auto nnapi_impl = nnapi::loadNnApiSupportLibrary(sl_path);
+      if (!nnapi_impl) {
+        TFLITE_LOG(WARN) << "Couldn't load NNAPI support library from path: "
+                         << sl_path;
+        return delegate;
+      }
+      return TfLiteDelegatePtr(
+          new NnApiSupportLibraryDelegate(nnapi_impl.release(), options),
+          [](TfLiteDelegate* delegate) {
+            delete reinterpret_cast<NnApiSupportLibraryDelegate*>(delegate);
+          });
+    }
   } else if (!params.Get<std::string>("nnapi_accelerator_name").empty()) {
     TFLITE_LOG(WARN)
         << "`--use_nnapi=true` must be set for the provided NNAPI accelerator ("
@@ -186,6 +273,13 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
                      << ") to be used.";
   }
   return delegate;
+}
+
+std::pair<TfLiteDelegatePtr, int>
+NnapiDelegateProvider::CreateRankedTfLiteDelegate(
+    const ToolParams& params) const {
+  auto ptr = CreateTfLiteDelegate(params);
+  return std::make_pair(std::move(ptr), params.GetPosition<bool>("use_nnapi"));
 }
 
 }  // namespace tools

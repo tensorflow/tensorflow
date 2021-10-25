@@ -15,6 +15,11 @@ Android.
 
 <img src="images/android_banana.png" alt="Screenshot of Android example" width="30%">
 
+Note: (1) To integrate an existing model, try
+[TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/image_classifier).
+(2) To customize a model, try
+[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/tutorials/model_maker_image_classification).
+
 ## Get started
 
 If you are new to TensorFlow Lite and are working with Android or iOS, it is
@@ -191,10 +196,11 @@ model to distinguish between different species of tree, despite there being no
 trees in the original training data. To do this, you will need a set of training
 images for each of the new labels you wish to train.
 
-Learn how to perform transfer learning in the
+Learn how to perform transfer learning with the
+<a href="https://www.tensorflow.org/lite/tutorials/model_maker_image_classification">TFLite Model Maker</a>,
+or in the
 <a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/index.html#0">Recognize
-flowers with TensorFlow</a> codelab, or with the
-<a href="https://www.tensorflow.org/lite/tutorials/model_maker_image_classification">Model Maker library</a>.
+flowers with TensorFlow</a> codelab.
 
 <h2>Performance benchmarks</h2>
 

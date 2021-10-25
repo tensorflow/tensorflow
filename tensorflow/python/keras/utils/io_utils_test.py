@@ -15,7 +15,7 @@
 """Tests for io_utils."""
 
 import builtins
-import sys
+from pathlib import Path
 
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.utils import io_utils
@@ -48,12 +48,9 @@ class TestIOUtils(keras_parameterized.TestCase):
         return 'dummypath'
 
     dummy = object()
-    if sys.version_info >= (3, 4):
-      from pathlib import Path  # pylint:disable=g-import-not-at-top
-      # conversion of PathLike
-      self.assertEqual(io_utils.path_to_string(Path('path')), 'path')
-    if sys.version_info >= (3, 6):
-      self.assertEqual(io_utils.path_to_string(PathLikeDummy()), 'dummypath')
+    # conversion of PathLike
+    self.assertEqual(io_utils.path_to_string(Path('path')), 'path')
+    self.assertEqual(io_utils.path_to_string(PathLikeDummy()), 'dummypath')
 
     # pass-through, works for all versions of python
     self.assertEqual(io_utils.path_to_string('path'), 'path')

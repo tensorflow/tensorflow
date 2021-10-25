@@ -34,9 +34,9 @@ class XlaPadOp : public XlaOpKernel {
     const TensorShape padding_value_shape =
         context->InputShape("padding_value");
 
-    std::vector<int64> padding_low;
-    std::vector<int64> padding_high;
-    std::vector<int64> padding_interior;
+    std::vector<int64_t> padding_low;
+    std::vector<int64_t> padding_high;
+    std::vector<int64_t> padding_interior;
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("padding_low",
                                                               &padding_low));
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("padding_high",
@@ -63,7 +63,7 @@ class XlaPadOp : public XlaOpKernel {
                     "rank (",
                     padding_interior.size(), " vs. ", rank, ")"));
 
-    auto non_negative = [](int64 x) { return x >= 0; };
+    auto non_negative = [](int64_t x) { return x >= 0; };
     OP_REQUIRES(
         context, absl::c_all_of(padding_interior, non_negative),
         errors::InvalidArgument("padding_interior must be non-negative, got [",

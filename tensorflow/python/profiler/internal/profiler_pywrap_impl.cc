@@ -170,7 +170,7 @@ RemoteProfilerSessionManagerOptions GetOptionsLocked(
 RemoteProfilerSessionManagerOptions GetOptionsLocked(
     absl::string_view service_addresses, absl::string_view logdir,
     absl::string_view worker_list, bool include_dataset_ops,
-    tensorflow::int32 duration_ms,
+    int32_t duration_ms,
     const absl::flat_hash_map<std::string, absl::variant<int>>& opts,
     bool* is_cloud_tpu_session) {
   auto options = GetOptionsLocked(logdir, opts);

@@ -52,7 +52,7 @@ Status SessionState::DeleteTensor(const string& handle) {
   return Status::OK();
 }
 
-int64 SessionState::GetNewId() {
+int64_t SessionState::GetNewId() {
   mutex_lock l(state_lock_);
   return tensor_id_++;
 }

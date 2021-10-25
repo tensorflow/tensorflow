@@ -6,7 +6,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
 
 # For platform specific build config
@@ -215,8 +215,9 @@ tf_cuda_library(
         ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/lib:profiler_session",
+        "//tensorflow/core/profiler/lib:device_profiler_session",
     ],
 )
 
@@ -278,6 +279,7 @@ cc_library(
         ":worker_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_client",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
     ],
 )
@@ -411,6 +413,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -540,6 +543,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",  # protobuf::Any
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/protobuf:worker_proto_cc",
         "@com_google_absl//absl/memory",
     ],
@@ -549,6 +553,9 @@ tf_cc_test(
     name = "collective_rma_distributed_test",
     size = "small",
     srcs = ["collective_rma_distributed_test.cc"],
+    tags = [
+        "no_windows",  # TODO(b/187863739): Fix failure and remove.
+    ],
     deps = [
         ":collective_rma_distributed",
         ":device_resolver_distributed",
@@ -611,6 +618,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/distributed_runtime:worker",
+        "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/kernels:collective_ops",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -656,12 +665,7 @@ tf_cuda_cc_test(
         "master_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + [
-        "manual",  # TODO(b/27683709): Re-enable when not flaky.
-        "notap",  # TODO(b/27683709): Re-enable when not flaky.
-        "noguitar",  # TODO(b/27683709): Re-enable when not flaky.
-        "no_oss",  # TODO(b/27683709): Re-enable when not flaky.
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":master",
         ":remote_device",
@@ -689,8 +693,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/protobuf:master_proto_cc",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
 )
 
 tf_cuda_cc_test(
@@ -722,8 +725,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "//tensorflow/core/protobuf:master_proto_cc",
-        tf_grpc_cc_dependency(),
-    ],
+    ] + tf_grpc_cc_dependencies(),
 )
 
 tf_cuda_cc_test(

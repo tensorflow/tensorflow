@@ -89,7 +89,7 @@ class ResourceOpKernelTest : public ::testing::Test {
  protected:
   std::unique_ptr<StubResourceOpKernel> CreateOp(int code,
                                                  const string& shared_name) {
-    static std::atomic<int64> count(0);
+    static std::atomic<int64_t> count(0);
     NodeDef node_def;
     TF_CHECK_OK(NodeDefBuilder(strings::StrCat("test-node", count.fetch_add(1)),
                                "StubResourceOp")

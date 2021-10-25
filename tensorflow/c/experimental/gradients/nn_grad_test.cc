@@ -33,29 +33,31 @@ using tensorflow::TF_StatusPtr;
 Status ReluModel(AbstractContext* ctx,
                  absl::Span<AbstractTensorHandle* const> inputs,
                  absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::Relu(ctx, inputs[0], outputs, "Relu");
+  return ops::Relu(ctx, inputs[0], &outputs[0], "Relu");
 }
 
 Status SparseSoftmaxCrossEntropyWithLogitsModel(
     AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
     absl::Span<AbstractTensorHandle*> outputs) {
-  std::vector<AbstractTensorHandle*> temp_outputs(2);
+  AbstractTensorHandle* loss;
+  AbstractTensorHandle* backprop;
   TF_RETURN_IF_ERROR(ops::SparseSoftmaxCrossEntropyWithLogits(
-      ctx, inputs[0], inputs[1], absl::MakeSpan(temp_outputs),
+      ctx, inputs[0], inputs[1], &loss, &backprop,
       "SparseSoftmaxCrossEntropyWithLogits"));
   // `gradient_checker` only works with model that returns only 1 tensor.
   // Although, `ops::SparseSoftmaxCrossEntropyWithLogits` returns 2 tensors, the
   // second tensor isn't needed for computing gradient so we could safely drop
   // it.
-  outputs[0] = temp_outputs[0];
-  temp_outputs[1]->Unref();
+  outputs[0] = loss;
+  backprop->Unref();
   return Status::OK();
 }
 
 Status BiasAddModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::BiasAdd(ctx, inputs[0], inputs[1], outputs, "BiasAdd");
+  return ops::BiasAdd(ctx, inputs[0], inputs[1], &outputs[0], "NHWC",
+                      "BiasAdd");
 }
 
 class CppGradients

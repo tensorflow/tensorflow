@@ -13,9 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"  // from @llvm-project
+#include "mlir/Conversion/LLVMCommon/LoweringOptions.h"  // from @llvm-project
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -55,6 +60,9 @@ class GpuKernelToNVVMPass
         DataLayout(cast<DataLayoutOpInterface>(m.getOperation())));
     llvm_opts.overrideIndexBitwidth(32);
     LLVMTypeConverter converter(m.getContext(), llvm_opts);
+    arith::populateArithmeticToLLVMConversionPatterns(converter, patterns);
+    populateMathToLLVMConversionPatterns(converter, patterns);
+    populateMemRefToLLVMConversionPatterns(converter, patterns);
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToNVVMConversionPatterns(converter, patterns);
     populateComplexToLLVMConversionPatterns(converter, patterns);
@@ -69,7 +77,7 @@ class GpuKernelToNVVMPass
 /// A pass that does the final lowering to ROCDL. It collects all the patterns
 /// that are currently required, currently mixing std, linalg and gpu.
 class GpuKernelToROCDLPass
-    : public GpuKernelToNVVMPassBase<GpuKernelToROCDLPass> {
+    : public GpuKernelToROCDLPassBase<GpuKernelToROCDLPass> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::ROCDL::ROCDLDialect, mlir::LLVM::LLVMDialect>();
   }
@@ -80,6 +88,9 @@ class GpuKernelToROCDLPass
 
     RewritePatternSet patterns(&getContext());
     LLVMTypeConverter converter(m.getContext());
+    arith::populateArithmeticToLLVMConversionPatterns(converter, patterns);
+    populateMathToLLVMConversionPatterns(converter, patterns);
+    populateMemRefToLLVMConversionPatterns(converter, patterns);
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToROCDLConversionPatterns(converter, patterns);
     populateComplexToLLVMConversionPatterns(converter, patterns);

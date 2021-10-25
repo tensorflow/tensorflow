@@ -115,6 +115,10 @@ void LogDeviceAssignment(const Node* node, bool log_device_placement) {
               << "(" << node->type_string()
               << "): " << node->assigned_device_name();
   }
+  if (VLOG_IS_ON(1)) {
+    VLOG(1) << node->name() << "(" << node->type_string()
+            << ") placed on: " << node->assigned_device_name();
+  }
 }
 
 Status AssignAndLog(int assigned_device, Node* node,
@@ -144,14 +148,14 @@ Placer::Placer(Graph* graph, const string& function_name,
       log_device_placement_(log_device_placement) {}
 
 Placer::Placer(Graph* graph, const string& function_name,
+               const FunctionLibraryDefinition* flib_def,
                const DeviceSet* devices, const Device* default_local_device)
-    : Placer(graph, function_name, &graph->flib_def(), devices,
-             default_local_device, true, false) {}
-
+    : Placer(graph, function_name, flib_def, devices, default_local_device,
+             true, false) {}
 Placer::Placer(Graph* graph, const string& function_name,
+               const FunctionLibraryDefinition* flib_def,
                const DeviceSet* devices)
-    : Placer(graph, function_name, &graph->flib_def(), devices, nullptr, true,
-             false) {}
+    : Placer(graph, function_name, flib_def, devices, nullptr, true, false) {}
 
 Placer::~Placer() {}
 
@@ -210,6 +214,8 @@ Status Placer::Run() {
                                   node->name(), ": ", status.error_message()),
           *node);
     }
+
+    // TODO(mdan): This is a constrained optimization solver. Write it like one.
 
     // Returns the first device in sorted devices list so we will always
     // choose the same device.

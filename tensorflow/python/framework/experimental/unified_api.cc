@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
@@ -73,6 +74,7 @@ using tensorflow::Safe_TF_StatusPtr;
 using tensorflow::Status;
 using tensorflow::string;
 using tensorflow::TFE_TensorHandleToNumpy;
+using tensorflow::core::RefCountPtr;
 
 using tensorflow::errors::Internal;
 using tensorflow::errors::InvalidArgument;
@@ -255,5 +257,6 @@ PYBIND11_MODULE(_unified_api, m) {
     return t;
   });
 
-  py::class_<AbstractFunction> AbstractFunction(m, "AbstractFunction");
+  py::class_<AbstractFunction, RefCountPtr<AbstractFunction>> AbstractFunction(
+      m, "AbstractFunction");
 }

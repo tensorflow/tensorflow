@@ -3,11 +3,13 @@ FROM tensorflow/tensorflow:devel
 ENV ANDROID_DEV_HOME /android
 RUN mkdir -p ${ANDROID_DEV_HOME}
 
+RUN apt-get install -y --no-install-recommends default-jdk
+
 # Install Android SDK.
 ENV ANDROID_SDK_FILENAME tools_r25.2.5-linux.zip
 ENV ANDROID_SDK_URL https://dl.google.com/android/repository/${ANDROID_SDK_FILENAME}
 ENV ANDROID_API_LEVEL 23
-ENV ANDROID_NDK_API_LEVEL 18
+ENV ANDROID_NDK_API_LEVEL 21
 # Build Tools Version liable to change.
 ENV ANDROID_BUILD_TOOLS_VERSION 28.0.0
 ENV ANDROID_SDK_HOME ${ANDROID_DEV_HOME}/sdk
@@ -19,7 +21,7 @@ RUN cd ${ANDROID_DEV_HOME} && \
     bash -c "ln -s ${ANDROID_DEV_HOME}/android-sdk-* ${ANDROID_SDK_HOME}"
 
 # Install Android NDK.
-ENV ANDROID_NDK_FILENAME android-ndk-r18b-linux-x86_64.zip
+ENV ANDROID_NDK_FILENAME android-ndk-r19c-linux-x86_64.zip
 ENV ANDROID_NDK_URL https://dl.google.com/android/repository/${ANDROID_NDK_FILENAME}
 ENV ANDROID_NDK_HOME ${ANDROID_DEV_HOME}/ndk
 ENV PATH ${PATH}:${ANDROID_NDK_HOME}
