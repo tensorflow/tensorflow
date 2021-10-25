@@ -1415,7 +1415,7 @@ Status XlaCompiler::CompileGraph(
           << " nonconstant: " << num_nonconst_outputs;
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanStringWithLayout(result->xla_output_shape);
-  result->collective_reduce_info = context->GetCollectiveReduceV2OpInfo();
+  result->collective_info = context->GetCollectiveInfo();
   return Status::OK();
 }
 

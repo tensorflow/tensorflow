@@ -29,7 +29,7 @@ using NVPTXCompilerTest = HloTestBase;
 
 TEST_F(NVPTXCompilerTest, AllReducePerformedInplace) {
   const absl::string_view hlo_string = R"(
-HloModule Module
+HloModule Module, input_output_alias={ {}: (0, {}, may-alias) }
 
 summit {
   lhs = f32[] parameter(0)
@@ -39,41 +39,7 @@ summit {
 
 ENTRY entry {
   param0 = f32[128] parameter(0)
-  param1 = f32[128] parameter(1)
-  add = f32[128] add(param0, param1)
-  ROOT allreduce = f32[128] all-reduce(add), replica_groups={}, to_apply=summit
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  NVPTXCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment,
-                          compiler.AssignBuffers(module.get()));
-
-  HloInstruction* all_reduce = module->entry_computation()->root_instruction();
-
-  ASSERT_EQ(
-      buffer_assignment->GetInstructionAllocation(all_reduce, {}),
-      buffer_assignment->GetInstructionAllocation(all_reduce->operand(0), {}));
-}
-
-TEST_F(NVPTXCompilerTest, AllReducePerformedInplaceTwoOperands) {
-  const absl::string_view hlo_string = R"(
-HloModule Module
-
-summit {
-  lhs = f32[] parameter(0)
-  rhs = f32[] parameter(1)
-  ROOT add = f32[] add(lhs, rhs)
-}
-
-ENTRY entry {
-  param0 = f32[128] parameter(0)
-  param1 = f32[128] parameter(1)
-  add = f32[128] add(param0, param1)
-  sub = f32[128] subtract(param0, param1)
-  ROOT allreduce = (f32[128], f32[128]) all-reduce(add, sub),
+  ROOT allreduce = f32[128] all-reduce(param0),
     replica_groups={}, to_apply=summit
 }
 )";
@@ -85,13 +51,40 @@ ENTRY entry {
                           compiler.AssignBuffers(module.get()));
 
   HloInstruction* all_reduce = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(buffer_assignment->SharesTopLevelSlice(all_reduce,
+                                                     all_reduce->operand(0)));
+}
 
-  ASSERT_EQ(
-      buffer_assignment->GetInstructionAllocation(all_reduce, {0}),
-      buffer_assignment->GetInstructionAllocation(all_reduce->operand(0), {}));
-  ASSERT_EQ(
-      buffer_assignment->GetInstructionAllocation(all_reduce, {1}),
-      buffer_assignment->GetInstructionAllocation(all_reduce->operand(1), {}));
+TEST_F(NVPTXCompilerTest, AllReducePerformedInplaceTwoOperands) {
+  const absl::string_view hlo_string = R"(
+HloModule Module,
+  input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias) }
+
+summit {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  param0 = f32[128] parameter(0)
+  param1 = f32[128] parameter(1)
+  ROOT allreduce = (f32[128], f32[128]) all-reduce(param0, param1),
+    replica_groups={}, to_apply=summit
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  NVPTXCompiler compiler;
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment,
+                          compiler.AssignBuffers(module.get()));
+
+  HloInstruction* all_reduce = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(buffer_assignment->SharesSliceAtIndex(
+      all_reduce, {0}, all_reduce->operand(0), {}));
+  EXPECT_TRUE(buffer_assignment->SharesSliceAtIndex(
+      all_reduce, {1}, all_reduce->operand(1), {}));
 }
 
 }  // namespace gpu

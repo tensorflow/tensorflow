@@ -1784,7 +1784,14 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
         split_size = xla_sharding.tile_assignment_dimensions(dim);
       }
     }
+    if (split_dim == -1 || split_dim >= var->tensor()->dims()) {
+      return errors::InvalidArgument(
+          "sharding split_dim ", split_dim, " for variable: ", variable->name(),
+          " is -1 or large than the number of dimensions ",
+          var->tensor()->dims());
+    }
   }
+
   const string cname = ctx->resource_manager()->default_container();
   std::vector<Node*> per_core_vars;
   for (int core_index = device_ordinal;

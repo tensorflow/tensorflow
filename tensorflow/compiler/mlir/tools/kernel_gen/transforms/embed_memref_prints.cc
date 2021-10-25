@@ -73,10 +73,10 @@ void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
 
   if (element_type.isIndex()) {
     element_type = b->getI64Type();
-    memref_type = MemRefType::get(memref_type.getShape(), element_type,
-                                  memref_type.getAffineMaps(),
-                                  memref_type.getMemorySpaceAsInt());
-    memref = b->create<IndexCastOp>(loc, memref, memref_type);
+    memref_type =
+        MemRefType::get(memref_type.getShape(), element_type,
+                        memref_type.getLayout(), memref_type.getMemorySpace());
+    memref = b->create<arith::IndexCastOp>(loc, memref, memref_type);
   }
 
   auto unranked_type =

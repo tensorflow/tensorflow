@@ -1006,6 +1006,7 @@ cc_library(
         ":node_def_proto_cc",
         ":node_def_util",
         ":op",
+        ":op_def_builder",
         ":op_def_proto_cc",
         ":tensor",
         "//tensorflow/core/lib/core:status",
@@ -1749,6 +1750,9 @@ tf_proto_library(
     srcs = ["dataset_options.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = [
+        ":model_proto",
+    ],
 )
 
 tf_proto_library(

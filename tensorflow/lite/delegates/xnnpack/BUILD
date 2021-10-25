@@ -24,6 +24,7 @@ cc_library(
     name = "xnnpack_delegate",
     srcs = ["xnnpack_delegate.cc"],
     hdrs = ["xnnpack_delegate.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     linkstatic = True,
     deps = [
@@ -70,6 +71,7 @@ cc_library(
     name = "quantization_util",
     srcs = ["quantization_util.cc"],
     hdrs = ["quantization_util.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/kernels/internal:optimized_base",

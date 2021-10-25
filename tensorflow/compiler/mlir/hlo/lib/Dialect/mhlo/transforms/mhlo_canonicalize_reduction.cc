@@ -155,16 +155,16 @@ struct HloCanonicalizeReductionPass
       auto loc = op.getLoc();
       // TODO(disc): uniformed shape_scalar_type with shape_derivation
       auto shape_scalar_type = b.getIntegerType(32);
-      auto one = b.create<ConstantIntOp>(loc, 1ll, shape_scalar_type);
+      auto one = b.create<arith::ConstantIntOp>(loc, 1ll, shape_scalar_type);
 
       // funtion to get total elements in selected dimensions
       auto dim_prod = [&](ArrayRef<int64_t> dims) {
         Value nelems = one;
         for (int64_t v : dims) {
           Value dim_index = b.create<tensor::DimOp>(loc, op.getOperand(0), v);
-          nelems = b.create<MulIOp>(
+          nelems = b.create<arith::MulIOp>(
               loc, nelems,
-              b.create<IndexCastOp>(loc, dim_index, shape_scalar_type));
+              b.create<arith::IndexCastOp>(loc, dim_index, shape_scalar_type));
         }
         return nelems;
       };
@@ -230,7 +230,7 @@ struct HloCanonicalizeReductionPass
         for (int64_t i : dims_to_keep) {
           Value dim_index = b.create<tensor::DimOp>(loc, op.getOperand(0), i);
           result_dims.push_back(
-              b.create<IndexCastOp>(loc, dim_index, shape_scalar_type));
+              b.create<arith::IndexCastOp>(loc, dim_index, shape_scalar_type));
         }
         Value result_shape = b.create<tensor::FromElementsOp>(loc, result_dims);
         for (auto&& e : llvm::zip(op.getResults(), new_op.getResults())) {

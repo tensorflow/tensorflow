@@ -33,12 +33,6 @@ auto* graph_run_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/graph_run_time_usecs",
     "The total time spent on executing graphs in microseconds.");
 
-auto* graph_optimization_usecs =
-    monitoring::Counter<2>::New("/tensorflow/core/graph_optimization_usecs",
-                                "The total time spent running each graph "
-                                "optimization pass in microseconds.",
-                                "kind", "name");
-
 auto* graph_run_time_usecs_histogram = monitoring::Sampler<0>::New(
     {"/tensorflow/core/graph_run_time_usecs_histogram",
      "The wall-clock time spent on executing graphs in microseconds."},
@@ -203,6 +197,15 @@ auto* tpu_variable_distribution_time_usecs = monitoring::Counter<0>::New(
 
 }  // namespace
 
+monitoring::Counter<2>* GetGraphOptimizationCounter() {
+  static auto* graph_optimization_counter =
+      monitoring::Counter<2>::New("/tensorflow/core/graph_optimization_usecs",
+                                  "The total time spent running each graph "
+                                  "optimization pass in microseconds.",
+                                  "kind", "name");
+  return graph_optimization_counter;
+}
+
 void RecordTFDataAutotune(const string& name) {
   tf_data_autotune_counter->GetCell(name)->IncrementBy(1);
 }
@@ -344,7 +347,8 @@ void UpdateGraphPendingQueueLength(uint64 len) {
 void UpdateGraphOptimizationPassTime(const string& pass_name,
                                      const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("GraphOptimizationPass", pass_name)
+    GetGraphOptimizationCounter()
+        ->GetCell("GraphOptimizationPass", pass_name)
         ->IncrementBy(running_time_usecs);
   }
 }
@@ -352,7 +356,8 @@ void UpdateGraphOptimizationPassTime(const string& pass_name,
 void UpdateGrapplerPassTime(const string& pass_name,
                             const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("Grappler", pass_name)
+    GetGraphOptimizationCounter()
+        ->GetCell("Grappler", pass_name)
         ->IncrementBy(running_time_usecs);
   }
 }
@@ -364,7 +369,8 @@ void UpdateMlirGraphOptimizationPassTime(const string& pass_name,
   // checked for name conflicts) but not desirable in end state. Unify these
   // post cleanups.
   if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("TfMlir", pass_name)
+    GetGraphOptimizationCounter()
+        ->GetCell("TfMlir", pass_name)
         ->IncrementBy(running_time_usecs);
   }
 }
@@ -372,7 +378,8 @@ void UpdateMlirGraphOptimizationPassTime(const string& pass_name,
 void UpdateTFDataPassTime(const string& pass_name,
                           const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("TFDataPass", pass_name)
+    GetGraphOptimizationCounter()
+        ->GetCell("TFDataPass", pass_name)
         ->IncrementBy(running_time_usecs);
   }
 }
@@ -380,7 +387,8 @@ void UpdateTFDataPassTime(const string& pass_name,
 void UpdateGraphOptimizerPassTime(const string& pass_name,
                                   const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("GraphOptimizerPass", pass_name)
+    GetGraphOptimizationCounter()
+        ->GetCell("GraphOptimizerPass", pass_name)
         ->IncrementBy(running_time_usecs);
   }
 }

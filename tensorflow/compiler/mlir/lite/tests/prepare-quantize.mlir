@@ -70,7 +70,7 @@ func @prepareNarrowStatistics(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
 // CHECK-LABEL: QuantizeConv2DPerChannel
 func @QuantizeConv2DPerChannel(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 1.5>>,
                                %arg1: tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32:3, {1.0,2.0,3.0}>>) -> tensor<1x112x112x32xf32> {
-  %bias = constant dense<1.0> : tensor<32xf32>
+  %bias = arith.constant dense<1.0> : tensor<32xf32>
   %input = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32, 1.5>>) -> tensor<1x224x224x3xf32>
   %weight = "tfl.dequantize"(%arg1) : (tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32:3, {1.0,2.0,3.0}>>) -> tensor<32x3x3x3xf32>
   %conv = "tfl.conv_2d"(%input, %weight, %bias) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32,
@@ -78,7 +78,7 @@ func @QuantizeConv2DPerChannel(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 
   : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
   return %conv : tensor<1x112x112x32xf32>
 
-// CHECK-NEXT: %[[cst:.*]] = constant dense<1.000000e+00> : tensor<32xf32>
+// CHECK-NEXT: %[[cst:.*]] = arith.constant dense<1.000000e+00> : tensor<32xf32>
 // CHECK-NEXT: %[[qbias:.*]] = "tfl.quantize"(%[[cst]]) {qtype = tensor<32x!quant.uniform<i32:f32:0, {1.500000e+00,3.000000e+00,4.500000e+00}>>, volatile}
 // CHECK-NEXT: %[[bias:.*]] = "tfl.dequantize"(%[[qbias]])
 // CHECK-NEXT: %[[in:.*]] = "tfl.dequantize"(%arg0)
@@ -98,7 +98,7 @@ func @QuantizeConv2DPerChannelConst(%arg0: tensor<1x224x224x3x!quant.uniform<u8:
   : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
   return %conv : tensor<1x112x112x32xf32>
 
-// CHECK-NEXT: %[[cst:.*]] = constant dense<1.000000e+00> : tensor<32xf32>
+// CHECK-NEXT: %[[cst:.*]] = arith.constant dense<1.000000e+00> : tensor<32xf32>
 // CHECK-NEXT: %[[qbias:.*]] = "tfl.quantize"(%[[cst]]) {qtype = tensor<32x!quant.uniform<i32:f32:0, {1.500000e+00,3.000000e+00,4.500000e+00}>>, volatile}
 // CHECK-NEXT: %[[bias:.*]] = "tfl.dequantize"(%[[qbias]])
 // CHECK-NEXT: %[[in:.*]] = "tfl.dequantize"(%arg0)
@@ -110,7 +110,7 @@ func @QuantizeConv2DPerChannelConst(%arg0: tensor<1x224x224x3x!quant.uniform<u8:
 // CHECK-LABEL: QuantizeConv2DPerChannels
 func @QuantizeConv2DPerChannels(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32:3, {1.0,2.0,3.0}>>,
                                %arg1: tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32:3, {1.0,2.0,3.0}>>) -> tensor<1x112x112x32xf32> {
-  %bias = constant dense<1.0> : tensor<32xf32>
+  %bias = arith.constant dense<1.0> : tensor<32xf32>
   %input = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32:3, {1.0,2.0,3.0}>>) -> tensor<1x224x224x3xf32>
   %weight = "tfl.dequantize"(%arg1) : (tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32:3, {1.0,2.0,3.0}>>) -> tensor<32x3x3x3xf32>
   %conv = "tfl.conv_2d"(%input, %weight, %bias) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32,
@@ -118,7 +118,7 @@ func @QuantizeConv2DPerChannels(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32:
   : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
   return %conv : tensor<1x112x112x32xf32>
 
-// CHECK-NEXT: %[[cst:.*]] = constant dense<1.000000e+00> : tensor<32xf32>
+// CHECK-NEXT: %[[cst:.*]] = arith.constant dense<1.000000e+00> : tensor<32xf32>
 // CHECK-NEXT: %[[qbias:.*]] = "tfl.quantize"(%[[cst]]) {qtype = tensor<32x!quant.uniform<i32:f32:0, {1.000000e+00,4.000000e+00,9.000000e+00}>>, volatile}
 // CHECK-NEXT: %[[bias:.*]] = "tfl.dequantize"(%[[qbias]])
 // CHECK-NEXT: %[[in:.*]] = "tfl.dequantize"(%arg0)
@@ -130,7 +130,7 @@ func @QuantizeConv2DPerChannels(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32:
 // CHECK-LABEL: QuantizeConv2D
 func @QuantizeConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>> {
 ^bb0(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>):
-  %cst = constant dense<-1.23697901> : tensor<32xf32>
+  %cst = arith.constant dense<-1.23697901> : tensor<32xf32>
   %2 = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x224x224x3xf32>
   %3 = "tfl.pseudo_qconst"() {qtype = tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x3x3x3xi8>} : () -> tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>
   %4 = "tfl.dequantize"(%3) : (tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>) -> tensor<32x3x3x3xf32>
@@ -138,7 +138,7 @@ func @QuantizeConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>
   %6 = "tfl.quantize"(%5) {qtype = tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>} : (tensor<1x112x112x32xf32>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
   return %6 : tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
 
-// CHECK: %cst = constant dense<-1.23697901> : tensor<32xf32>
+// CHECK: %cst = arith.constant dense<-1.23697901> : tensor<32xf32>
 // CHECK: %0 = "tfl.quantize"(%cst) {qtype = tensor<32x!quant.uniform<i32:f32, 1.7052092479439231E-4>>, volatile}
 // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<32x!quant.uniform<i32:f32, 1.7052092479439231E-4>>)
 // CHECK: %2 = "tfl.dequantize"(%arg0)
@@ -152,7 +152,7 @@ func @QuantizeConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>
 // CHECK-LABEL: QuantizeFullyConnected
 func @QuantizeFullyConnected(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>> {
 ^bb0(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>):
-  %cst = constant dense<-1.23697901> : tensor<32xf32>
+  %cst = arith.constant dense<-1.23697901> : tensor<32xf32>
   %2 = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x224x224x3xf32>
   %3 = "tfl.pseudo_qconst"() {qtype = tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x12xi8>} : () -> tensor<32x12x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>
   %4 = "tfl.dequantize"(%3) : (tensor<32x12x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>) -> tensor<32x12xf32>
@@ -160,7 +160,7 @@ func @QuantizeFullyConnected(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e
   %6 = "tfl.quantize"(%5) {qtype = tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>} : (tensor<1x112x112x32xf32>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
   return %6 : tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
 
-// CHECK: %cst = constant dense<-1.23697901> : tensor<32xf32>
+// CHECK: %cst = arith.constant dense<-1.23697901> : tensor<32xf32>
 // CHECK: %0 = "tfl.quantize"(%cst) {qtype = tensor<32x!quant.uniform<i32:f32, 1.7052092479439231E-4>>, volatile}
 // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<32x!quant.uniform<i32:f32, 1.7052092479439231E-4>>)
 // CHECK: %2 = "tfl.dequantize"(%arg0)
@@ -174,7 +174,7 @@ func @QuantizeFullyConnected(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e
 // CHECK-LABEL: QuantizeDepthwiseConv2D
 func @QuantizeDepthwiseConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>> {
 ^bb0(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>):
-  %cst = constant dense<-1.23697901> : tensor<32xf32>
+  %cst = arith.constant dense<-1.23697901> : tensor<32xf32>
   %2 = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x224x224x3xf32>
   %3 = "tfl.pseudo_qconst"() {qtype = tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x3x3x3xi8>} : () -> tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>
   %4 = "tfl.dequantize"(%3) : (tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>) -> tensor<32x3x3x3xf32>
@@ -182,7 +182,7 @@ func @QuantizeDepthwiseConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500
   %6 = "tfl.quantize"(%5) {qtype = tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>} : (tensor<1x112x112x32xf32>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
   return %6 : tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
 
-// CHECK: %cst = constant dense<-1.23697901> : tensor<32xf32>
+// CHECK: %cst = arith.constant dense<-1.23697901> : tensor<32xf32>
 // CHECK: %0 = "tfl.quantize"(%cst) {qtype = tensor<32x!quant.uniform<i32:f32, 1.7052092479439231E-4>>, volatile}
 // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<32x!quant.uniform<i32:f32, 1.7052092479439231E-4>>)
 // CHECK: %2 = "tfl.dequantize"(%arg0)
@@ -302,7 +302,7 @@ func @QuantizePad2(tensor<2x1x3x!quant.uniform<u8:f32, 0.1>>, tensor<2x1x3xf32>,
 // CHECK-LABEL: QuantizeReshape2D
 func @QuantizeReshape2D(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x36x16xf32> {
 ^bb0(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>):
-  %cst = constant dense<[1, 36, 16]> : tensor<3xi32>
+  %cst = arith.constant dense<[1, 36, 16]> : tensor<3xi32>
   %0 = "tfl.dequantize"(%arg0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16xf32>
   %1 = "tfl.reshape"(%0, %cst) : (tensor<1x6x6x16xf32>, tensor<3xi32>) -> tensor<1x36x16xf32>
   return %1 : tensor<1x36x16xf32>
@@ -366,11 +366,11 @@ func @QuantizeL2Norm(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 1.0>>) -> ten
 
 // CHECK-LABEL: NotQuantizeConcatConstantOperand
 func @NotQuantizeConcatConstantOperand(%arg0: tensor<1x2xf32>) -> tensor<2x2xf32> {
-  %0 = constant dense<1.0> : tensor<1x2xf32>
+  %0 = arith.constant dense<1.0> : tensor<1x2xf32>
   %1 = "tfl.concatenation"(%arg0, %0) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xf32>, tensor<1x2xf32>) -> tensor<2x2xf32>
   return %1 : tensor<2x2xf32>
 
-// CHECK-NEXT: %[[cst:.*]] = constant dense<1.000000e+00> : tensor<1x2xf32>
+// CHECK-NEXT: %[[cst:.*]] = arith.constant dense<1.000000e+00> : tensor<1x2xf32>
 // CHECK-NEXT: %[[cc:.*]] = "tfl.concatenation"(%arg0, %[[cst]])
 // CHECK-NEXT: return %[[cc]]
 }
@@ -489,8 +489,8 @@ func @NotRequantizeAlreadyQuantizedModel(%arg0: tensor<1x73x73x64x!quant.uniform
 // CHECK-LABEL: QuantizeChain
 func @QuantizeChain(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x36x16xf32> {
 ^bb0(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>):
-  %cst = constant dense<-1.23697901> : tensor<32xf32>
-  %cst_0 = constant dense<[1, 36, 16]> : tensor<3xi32>
+  %cst = arith.constant dense<-1.23697901> : tensor<32xf32>
+  %cst_0 = arith.constant dense<[1, 36, 16]> : tensor<3xi32>
   %2 = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x224x224x3xf32>
   %3 = "tfl.pseudo_qconst"() {qtype = tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>, value = dense<-76> : tensor<32x3x3x3xi8>} : () -> tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>
   %4 = "tfl.dequantize"(%3) : (tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>) -> tensor<32x3x3x3xf32>
@@ -506,7 +506,7 @@ func @QuantizeChain(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>
   %10 = "tfl.softmax"(%9) {beta = 1.000000e+00 : f32} : (tensor<1x36x16xf32>) -> tensor<1x36x16xf32>
   return %10 : tensor<1x36x16xf32>
 
-// CHECK: %cst = constant dense<-1.23697901> : tensor<32xf32>
+// CHECK: %cst = arith.constant dense<-1.23697901> : tensor<32xf32>
 // CHECK: %0 = "tfl.quantize"(%cst) {qtype = tensor<32x!quant.uniform<i32:f32, 1.7052092479439231E-4>>, volatile}
 // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<32x!quant.uniform<i32:f32, 1.7052092479439231E-4>>)
 // CHECK: %2 = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>)
@@ -529,10 +529,10 @@ func @QuantizeChain(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>
 
 // CHECK-LABEL: QuantizeConstant
 func @QuantizeConstant() -> tensor<2x3xf32> {
-  %cst = constant dense<[[-3.0, -1.0, 0.0], [0.0, 1.0, 3.0]]> : tensor<2x3xf32>
+  %cst = arith.constant dense<[[-3.0, -1.0, 0.0], [0.0, 1.0, 3.0]]> : tensor<2x3xf32>
   return %cst : tensor<2x3xf32>
 
-// CHECK: %cst = constant dense{{.*}}tensor<2x3xf32>
+// CHECK: %cst = arith.constant dense{{.*}}tensor<2x3xf32>
 // CHECK: %0 = "tfl.quantize"(%cst) {qtype = tensor<2x3x!quant.uniform<u8:f32, 0.023529411764705882:128>>, volatile}
 // CHECK: %1 = "tfl.dequantize"(%0)
 // CHECK: return %1 : tensor<2x3xf32>
@@ -549,55 +549,55 @@ func @NotQuantizeNoneType() -> none {
 
 // CHECK-LABEL: QuantizeZeroSplat
 func @QuantizeZeroSplat() -> tensor<2x3xf32> {
-  %cst = constant dense<0.0> : tensor<2x3xf32>
+  %cst = arith.constant dense<0.0> : tensor<2x3xf32>
   return %cst : tensor<2x3xf32>
 
-// CHECK-NEXT:  %[[cst:.*]] = constant dense<0.000000e+00> : tensor<2x3xf32>
+// CHECK-NEXT:  %[[cst:.*]] = arith.constant dense<0.000000e+00> : tensor<2x3xf32>
 // CHECK-NEXT:  "tfl.quantize"(%[[cst]]) {qtype = tensor<2x3x!quant.uniform<u8:f32, 3.9215686274509805E-9:127>>, volatile}
 }
 
 // CHECK-LABEL: QuantizeZeroScalar
 func @QuantizeZeroScalar() -> tensor<f32> {
-  %cst = constant dense<0.0> : tensor<f32>
+  %cst = arith.constant dense<0.0> : tensor<f32>
   return %cst : tensor<f32>
 
-// CHECK-NEXT:  %[[cst:.*]] = constant dense<0.000000e+00> : tensor<f32>
+// CHECK-NEXT:  %[[cst:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
 // CHECK-NEXT:  "tfl.quantize"(%[[cst]]) {qtype = tensor<!quant.uniform<u8:f32, 3.9215686274509805E-9:127>>, volatile}
 }
 
 // CHECK-LABEL: QuantizePositiveSplat
 func @QuantizePositiveSplat() -> tensor<2x3xf32> {
-  %cst = constant dense<25.4> : tensor<2x3xf32>
+  %cst = arith.constant dense<25.4> : tensor<2x3xf32>
   return %cst : tensor<2x3xf32>
 
-// CHECK-NEXT:  %[[cst:.*]] = constant dense<2.540000e+01> : tensor<2x3xf32>
+// CHECK-NEXT:  %[[cst:.*]] = arith.constant dense<2.540000e+01> : tensor<2x3xf32>
 // CHECK-NEXT:  "tfl.quantize"(%[[cst]]) {qtype = tensor<2x3x!quant.uniform<u8:f32, 0.099607841641295186>>, volatile}
 }
 
 // CHECK-LABEL: QuantizePositiveScalar
 func @QuantizePositiveScalar() -> tensor<f32> {
-  %cst = constant dense<2.54> : tensor<f32>
+  %cst = arith.constant dense<2.54> : tensor<f32>
   return %cst : tensor<f32>
 
-// CHECK-NEXT:  %[[cst:.*]] = constant dense<2.540000e+00> : tensor<f32>
+// CHECK-NEXT:  %[[cst:.*]] = arith.constant dense<2.540000e+00> : tensor<f32>
 // CHECK-NEXT:  "tfl.quantize"(%[[cst]]) {qtype = tensor<!quant.uniform<u8:f32, 0.0099607841641295193>>, volatile}
 }
 
 // CHECK-LABEL: QuantizeNegativeSplat
 func @QuantizeNegativeSplat() -> tensor<2x3xf32> {
-  %cst = constant dense<-2.54> : tensor<2x3xf32>
+  %cst = arith.constant dense<-2.54> : tensor<2x3xf32>
   return %cst : tensor<2x3xf32>
 
-// CHECK-NEXT:  %[[cst:.*]] = constant dense<-2.540000e+00> : tensor<2x3xf32>
+// CHECK-NEXT:  %[[cst:.*]] = arith.constant dense<-2.540000e+00> : tensor<2x3xf32>
 // CHECK-NEXT:  "tfl.quantize"(%[[cst]]) {qtype = tensor<2x3x!quant.uniform<u8:f32, 0.0099607841641295193:255>>, volatile}
 }
 
 // CHECK-LABEL: QuantizeNegativeScalar
 func @QuantizeNegativeScalar() -> tensor<f32> {
-  %cst = constant dense<-25.4> : tensor<f32>
+  %cst = arith.constant dense<-25.4> : tensor<f32>
   return %cst : tensor<f32>
 
-// CHECK-NEXT:  %[[cst:.*]] = constant dense<-2.540000e+01> : tensor<f32>
+// CHECK-NEXT:  %[[cst:.*]] = arith.constant dense<-2.540000e+01> : tensor<f32>
 // CHECK-NEXT:  "tfl.quantize"(%[[cst]]) {qtype = tensor<!quant.uniform<u8:f32, 0.099607841641295186:255>>, volatile}
 }
 
@@ -607,7 +607,7 @@ func @QuantizeSharedBiases(
     %arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 1.0>>,
     %arg1: tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 1.0>>,
     %arg2: tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 2.0>>) -> (tensor<1x56x56x32x!quant.uniform<u8:f32, 1.0>>) {
-  %cst = constant dense<1.0> : tensor<32xf32>
+  %cst = arith.constant dense<1.0> : tensor<32xf32>
   %1 = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32, 1.0>>) -> tensor<1x224x224x3xf32>
   %2 = "tfl.dequantize"(%arg1) : (tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 1.0>>) -> tensor<32x3x3x3xf32>
   %conv1 = "tfl.conv_2d"(%1, %2, %cst) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
@@ -620,10 +620,10 @@ func @QuantizeSharedBiases(
 
   return %6 : tensor<1x56x56x32x!quant.uniform<u8:f32, 1.0>>
 
-// CHECK: %[[cst_0:.*]] = constant dense<1.000000e+00> : tensor<32xf32>
+// CHECK: %[[cst_0:.*]] = arith.constant dense<1.000000e+00> : tensor<32xf32>
 // CHECK: %[[q_0:.*]] = "tfl.quantize"(%[[cst_0]])
 // CHECK: %[[dq_0:.*]] = "tfl.dequantize"(%[[q_0]]) : (tensor<32x!quant.uniform<i32:f32, 2.000000e+00>>)
-// CHECK: %[[cst:.*]] = constant dense<1.000000e+00> : tensor<32xf32>
+// CHECK: %[[cst:.*]] = arith.constant dense<1.000000e+00> : tensor<32xf32>
 // CHECK: %[[q:.*]] = "tfl.quantize"(%[[cst]])
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]]) : (tensor<32x!quant.uniform<i32:f32, 1.000000e+00>>)
 // CHECK: %{{.*}} = "tfl.conv_2d"(%{{.*}}, %{{.*}}, %[[dq]])
@@ -636,7 +636,7 @@ func @QuantizeSharedBiases2(
     %arg0: tensor<32x!quant.uniform<u8:f32, 1.0>>,
     %arg1: tensor<1x112x112x32x!quant.uniform<u8:f32, 1.0>>,
     %arg2: tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 2.0>>) -> (tensor<32x!quant.uniform<u8:f32, 1.0>>, tensor<1x56x56x32x!quant.uniform<u8:f32, 1.0>>) {
-  %cst = constant dense<0.0> : tensor<32xf32>
+  %cst = arith.constant dense<0.0> : tensor<32xf32>
   %1 = "tfl.dequantize"(%arg0) : (tensor<32x!quant.uniform<u8:f32, 1.0>>) -> tensor<32xf32>
   %add = "tfl.add"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<32xf32>, tensor<32xf32>) -> tensor<32xf32>
   %3 = "tfl.quantize"(%add) {qtype = tensor<32xf32>} : (tensor<32xf32>) -> tensor<32x!quant.uniform<u8:f32, 1.0>>
@@ -647,10 +647,10 @@ func @QuantizeSharedBiases2(
   %7 = "tfl.quantize"(%conv2) {qtype = tensor<1x56x56x32x!quant.uniform<u8:f32, 1.0>>} : (tensor<1x56x56x32xf32>) -> tensor<1x56x56x32x!quant.uniform<u8:f32, 1.0>>
   return %3, %7 : tensor<32x!quant.uniform<u8:f32, 1.0>>, tensor<1x56x56x32x!quant.uniform<u8:f32, 1.0>>
 
-// CHECK: %[[cst:.*]] = constant dense<0.000000e+00> : tensor<32xf32>
+// CHECK: %[[cst:.*]] = arith.constant dense<0.000000e+00> : tensor<32xf32>
 // CHECK: %[[q:.*]] = "tfl.quantize"(%[[cst]])
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
-// CHECK: %[[cst_0:.*]] = constant dense<0.000000e+00> : tensor<32xf32>
+// CHECK: %[[cst_0:.*]] = arith.constant dense<0.000000e+00> : tensor<32xf32>
 // CHECK: %[[q_0:.*]] = "tfl.quantize"(%[[cst_0]]) {qtype = tensor<32x!quant.uniform<u8:f32, 3.9215686274509805E-9:127>>, volatile}
 // CHECK: %[[dq_0:.*]] = "tfl.dequantize"(%[[q_0]])
 // CHECK: %{{.*}} = tfl.add %{{.*}}, %[[dq_0]]
@@ -663,7 +663,7 @@ func @QuantizeSharedBiases3(
     %arg0: tensor<32x!quant.uniform<u8:f32, 1.0>>,
     %arg1: tensor<1x112x112x32x!quant.uniform<u8:f32, 1.0>>,
     %arg2: tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 2.0>>) -> (tensor<32x!quant.uniform<u8:f32, 1.0>>, tensor<1x56x56x32x!quant.uniform<u8:f32, 1.0>>) {
-  %cst = constant dense<0.0> : tensor<32xf32>
+  %cst = arith.constant dense<0.0> : tensor<32xf32>
   %5 = "tfl.dequantize"(%arg1) : (tensor<1x112x112x32x!quant.uniform<u8:f32, 1.0>>) -> tensor<1x112x112x32xf32>
   %6 = "tfl.dequantize"(%arg2) : (tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 2.0>>) -> tensor<32x3x3x3xf32>
   %conv2 = "tfl.conv_2d"(%5, %6, %cst) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x112x112x32xf32>, tensor<32x3x3x3xf32>, tensor<32xf32>) -> tensor<1x56x56x32xf32>
@@ -675,10 +675,10 @@ func @QuantizeSharedBiases3(
 
   return %3, %7 : tensor<32x!quant.uniform<u8:f32, 1.0>>, tensor<1x56x56x32x!quant.uniform<u8:f32, 1.0>>
 
-// CHECK: %[[cst:.*]] = constant dense<0.000000e+00> : tensor<32xf32>
+// CHECK: %[[cst:.*]] = arith.constant dense<0.000000e+00> : tensor<32xf32>
 // CHECK: %[[q:.*]] = "tfl.quantize"(%[[cst]]) {qtype = tensor<32x!quant.uniform<i32:f32, 2.000000e+00>>, volatile}
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
-// CHECK: %[[cst_0:.*]] = constant dense<0.000000e+00> : tensor<32xf32>
+// CHECK: %[[cst_0:.*]] = arith.constant dense<0.000000e+00> : tensor<32xf32>
 // CHECK: %[[q_0:.*]] = "tfl.quantize"(%[[cst_0]])
 // CHECK: %[[dq_0:.*]] = "tfl.dequantize"(%[[q_0]])
 // CHECK: %{{.*}} = "tfl.conv_2d"(%{{.*}}, %{{.*}}, %[[dq]])
@@ -692,7 +692,7 @@ func @QuantizeSharedConstantsMultipleUsers(
     %arg1: tensor<32x!quant.uniform<u8:f32, 2.0>>,
     %arg2: tensor<32x!quant.uniform<u8:f32, 3.0>>,
     %arg3: tensor<32x!quant.uniform<u8:f32, 4.0>>) -> (tensor<32xf32>, tensor<32xf32>, tensor<32xf32>, tensor<32xf32>) {
-  %cst = constant dense<0.0> : tensor<32xf32>
+  %cst = arith.constant dense<0.0> : tensor<32xf32>
   %0 = "tfl.dequantize"(%arg0) : (tensor<32x!quant.uniform<u8:f32, 1.0>>) -> tensor<32xf32>
   %1 = "tfl.dequantize"(%arg1) : (tensor<32x!quant.uniform<u8:f32, 2.0>>) -> tensor<32xf32>
   %2 = "tfl.dequantize"(%arg2) : (tensor<32x!quant.uniform<u8:f32, 3.0>>) -> tensor<32xf32>
@@ -718,17 +718,17 @@ func @QuantizeSharedConstantsMultipleUsers(
 // Make sure quantization parameters are scanned from weight, but not from bias.
 // CHECK-LABEL: QuantizeWeight
 func @QuantizeWeight(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
-  %w = constant dense<1.0> : tensor<32x3x3x3xf32>
-  %b = constant dense<-1.0> : tensor<32xf32>
+  %w = arith.constant dense<1.0> : tensor<32x3x3x3xf32>
+  %b = arith.constant dense<-1.0> : tensor<32xf32>
   %c = "tfl.conv_2d"(%arg0, %w, %b) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32,
     fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}
   : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
   return %c : tensor<1x112x112x32xf32>
 
-// CHECK: %[[w:.*]] = constant dense<1.000000e+00> : tensor<32x3x3x3xf32>
+// CHECK: %[[w:.*]] = arith.constant dense<1.000000e+00> : tensor<32x3x3x3xf32>
 // CHECK: %[[q:.*]] = "tfl.quantize"(%[[w]]) {qtype = tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.003937007874015748:1>>, volatile} : (tensor<32x3x3x3xf32>) -> tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.003937007874015748:1>>
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]]) : (tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.003937007874015748:1>>) -> tensor<32x3x3x3xf32>
-// CHECK: %[[b:.*]] = constant dense<-1.000000e+00> : tensor<32xf32>
+// CHECK: %[[b:.*]] = arith.constant dense<-1.000000e+00> : tensor<32xf32>
 // CHECK: %[[c:.*]] = "tfl.conv_2d"(%arg0, %[[dq]], %[[b]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
 // CHECK: return %[[c]] : tensor<1x112x112x32xf32>
 }
@@ -736,12 +736,12 @@ func @QuantizeWeight(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32>
 // Make sure quantization parameters are not scanned if quantize op is presented.
 // CHECK-LABEL: NoRedundantQuantizeWeight
 func @NoRedundantQuantizeWeight() -> tensor<1x112x112x32xf32> {
-  %w = constant dense<1.0> : tensor<1x112x112x32xf32>
+  %w = arith.constant dense<1.0> : tensor<1x112x112x32xf32>
   %q = "tfl.quantize"(%w) {qtype = tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>} : (tensor<1x112x112x32xf32>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
   %dq = "tfl.dequantize"(%q) : (tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>) -> tensor<1x112x112x32xf32>
   return %dq : tensor<1x112x112x32xf32>
 
-// CHECK-NEXT: %[[w:.*]] = constant dense<1.000000e+00> : tensor<1x112x112x32xf32>
+// CHECK-NEXT: %[[w:.*]] = arith.constant dense<1.000000e+00> : tensor<1x112x112x32xf32>
 // CHECK-NEXT: %[[q:.*]] = "tfl.quantize"(%[[w]]) {qtype = tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>}
 // CHECK-NEXT: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // CHECK-NEXT: return %[[dq]] : tensor<1x112x112x32xf32>

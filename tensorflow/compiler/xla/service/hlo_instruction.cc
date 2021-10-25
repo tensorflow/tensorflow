@@ -666,8 +666,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         // vector of pointers essentially) so create a vector of shapes to pass
         // in.
         std::vector<Shape> operand_shapes;
-        for (const ShapeProto& shape_proto :
-             proto.operand_shapes_with_layout()) {
+        const auto& operand_shapes_with_layout =
+            proto.operand_shapes_with_layout();
+        operand_shapes.reserve(operand_shapes_with_layout.size());
+        for (const ShapeProto& shape_proto : operand_shapes_with_layout) {
           operand_shapes.emplace_back(shape_proto);
         }
         instruction =
@@ -784,7 +786,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       auto gather_dimension_numbers = absl::make_unique<GatherDimensionNumbers>(
           proto.gather_dimension_numbers());
       std::vector<int64_t> gather_slice_sizes;
-      for (int64_t bound : proto.gather_slice_sizes()) {
+      const auto& slice_sizes = proto.gather_slice_sizes();
+      gather_slice_sizes.reserve(slice_sizes.size());
+      for (int64_t bound : slice_sizes) {
         gather_slice_sizes.push_back(bound);
       }
       instruction = CreateGather(shape, operands(0), operands(1),
@@ -1824,6 +1828,7 @@ bool HloInstruction::HasSideEffect() const {
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
     absl::Span<HloInstruction* const> elements) {
   std::vector<Shape> element_shapes;
+  element_shapes.reserve(elements.size());
   for (auto element : elements) {
     element_shapes.push_back(element->shape());
   }

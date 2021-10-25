@@ -296,8 +296,7 @@ def create_signature_map(signatures):
 
 def validate_saveable_view(saveable_view):
   """Performs signature-related sanity checks on `saveable_view`."""
-  for name, dep in saveable_view.list_dependencies(
-      saveable_view.root):
+  for name, dep in saveable_view.list_children(saveable_view.root):
     if name == SIGNATURE_ATTRIBUTE_NAME:
       if not isinstance(dep, _SignatureMap):
         raise ValueError(

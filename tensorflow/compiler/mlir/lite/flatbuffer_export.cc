@@ -45,6 +45,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -198,8 +199,9 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
 }
 
 static bool IsConst(Operation* op) {
-  return isa<mlir::ConstantOp, mlir::TF::ConstOp, tfl::ConstOp, tfl::QConstOp,
-             tfl::SparseConstOp, tfl::SparseQConstOp>(op);
+  return isa<mlir::ConstantOp, mlir::arith::ConstantOp, mlir::TF::ConstOp,
+             tfl::ConstOp, tfl::QConstOp, tfl::SparseConstOp,
+             tfl::SparseQConstOp>(op);
 }
 
 static bool IsTFResourceOp(Operation* op) {
@@ -695,14 +697,6 @@ bool Translator::EstimateArithmeticCount(int64_t* count) {
   module_->walk([&](mlir::TFL::TflArithmeticCountOpInterface op) {
     int64_t mac_count = op.GetArithmeticCount(op);
     if (mac_count < 0) {
-      std::string out_str;
-      llvm::raw_string_ostream os(out_str);
-      os << "Cannot get mac count for ";
-      op.print(os);
-      os << "\n";
-      os.flush();
-      LOG(WARNING) << out_str;
-      std::cout << out_str;
       encounter_undetermined_mac = true;
       return;
     }
@@ -720,10 +714,10 @@ std::string Translator::UniqueName(mlir::Value val) {
 Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     Operation* inst) {
   ElementsAttr attr;
-  if (auto cst = dyn_cast<mlir::ConstantOp>(inst)) {
-    // ConstantOp have ElementAttr at this point due to validation of the TFLite
-    // module.
-    attr = cst.getValue().cast<ElementsAttr>();
+  if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
+    // arith::ConstantOp have ElementAttr at this point due to validation of the
+    // TFLite module.
+    attr = cst.value().cast<ElementsAttr>();
   } else if (auto cst = dyn_cast<mlir::TF::ConstOp>(inst)) {
     attr = cst.value();
   } else if (auto cst = dyn_cast<tfl::ConstOp>(inst)) {

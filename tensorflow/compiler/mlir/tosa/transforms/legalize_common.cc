@@ -1162,18 +1162,29 @@ llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
   ElementsAttr dim_elem;
   if (!matchPattern(dim_value, m_Constant(&dim_elem))) return llvm::None;
 
-  assert(dim_elem.getType().getRank() == 0 && "expected scalar tensor");
-  int32_t dim = dim_elem.getValue<IntegerAttr>({}).getInt();
-
+  if (dim_elem.getNumElements() > 1) {
+    op->emitOpError("ExpandDims: expected single dimension to expand");
+    return llvm::None;
+  }
+  int32_t dim = dim_elem.getValue<IntegerAttr>({0}).getInt();
+  int32_t input_size = input_shape.size();
   SmallVector<int64_t> reshape_dims;
-  if (dim < 0 || dim >= input_shape.size()) {  // add dim at end of tensor
-    dim = input_shape.size();
+  if (dim >= input_size) {  // add dim at end of tensor
+    dim = input_size;
     for (int i = 0; i < input_shape.size(); i++) {
       reshape_dims.emplace_back(input_shape[i]);
     }
     reshape_dims.emplace_back(1);
   } else {
-    for (int i = 0; i < input_shape.size(); i++) {
+    if (dim < 0) {
+      dim += input_size;
+      if (dim < 0) {
+        op->emitOpError(
+            "ExpandDims: dimension to expand + size of input shape < 0");
+        return llvm::None;
+      }
+    }
+    for (int i = 0; i < input_size; i++) {
       if (i == dim) {
         reshape_dims.emplace_back(1);
       }
@@ -1220,6 +1231,10 @@ llvm::Optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
       }
     }
   } else {
+    for (auto& dim : squeeze_dims) {
+      dim = dim < 0 ? dim + input_shape.size() : dim;
+    }
+
     // Remove only specified dims.
     // First sort the array so they can be picked off in sequence.
     std::sort(squeeze_dims.begin(), squeeze_dims.end(),
@@ -1942,6 +1957,8 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
 
   auto input_shape = input_type.getShape();
 
+  if (axis < 0) axis += input_type.getRank();
+
   SmallVector<Value> results_vec;
 
   assert(axis >= 0 && axis < input_shape.size());
@@ -2047,6 +2064,26 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
   return results_vec;
 }
 
+// Helper function to reverse negative striding. Only checks for -1 as that is
+// the only legal negative stride.
+static Value reverseNegativeStride(PatternRewriter& rewriter, Operation* op,
+                                   Value input, ArrayRef<int32_t> strides) {
+  Type reverse_ty = UnrankedTensorType::get(
+      input.getType().cast<ShapedType>().getElementType());
+  for (auto it : llvm::enumerate(strides)) {
+    auto axis = it.index();
+    auto stride = it.value();
+    if (stride != -1) continue;
+
+    input = CreateOpAndInfer<tosa::ReverseOp>(rewriter, op->getLoc(),
+                                              reverse_ty, input,
+                                              rewriter.getI64IntegerAttr(axis))
+                .getResult();
+  }
+
+  return input;
+}
+
 // Lowers StridedSlice to a sequence of TOSA ops.
 llvm::Optional<Value> convertStridedSliceOp(
     PatternRewriter& rewriter, Operation* op, Value result_value,
@@ -2097,17 +2134,26 @@ llvm::Optional<Value> convertStridedSliceOp(
     return llvm::None;
   }
 
-  bool all_strides_one =
-      strides_attr.isSplat() && strides_attr.getSplatValue<int32_t>() == 1;
+  if (failed(getVectorFromValue32(strides_value, strides))) {
+    (void)rewriter.notifyMatchFailure(op, "strides isn't a constant");
+    return llvm::None;
+  }
+
+  // Current configuration does not support negative strides greater than 1.
+  // Bail out for now (fix if this proves to be legal).
+  for (auto stride : strides)
+    if (stride < -1) return llvm::None;
+
+  bool all_strides_one = true;
+  for (auto stride : strides) all_strides_one &= abs(stride) == 1;
+
   int32_t strides_size = strides_attr.getNumElements();
 
   // If all of the masks are set we can just bypass the entire thing.
   const int32_t all_masks_one = (1 << strides_size) - 1;
   if (all_strides_one && begin_mask == all_masks_one &&
       end_mask == all_masks_one) {
-    return CreateOpAndInfer<tensor::CastOp>(rewriter, op->getLoc(), result_type,
-                                            input_value)
-        .getResult();
+    return reverseNegativeStride(rewriter, op, input_value, strides);
   }
 
   if (failed(getVectorFromValue32(begin_value, begin))) {
@@ -2122,9 +2168,7 @@ llvm::Optional<Value> convertStridedSliceOp(
 
   if (all_strides_one && begin_mask == all_masks_one &&
       end_mask == all_masks_one) {
-    return CreateOpAndInfer<tensor::CastOp>(rewriter, op->getLoc(), result_type,
-                                            input_value)
-        .getResult();
+    return reverseNegativeStride(rewriter, op, input_value, strides);
   }
 
   if (failed(getVectorFromValue32(end_value, end))) {
@@ -2139,11 +2183,6 @@ llvm::Optional<Value> convertStridedSliceOp(
   }
 
   int32_t input_rank = input_type.getRank();
-
-  if (failed(getVectorFromValue32(strides_value, strides))) {
-    return (void)rewriter.notifyMatchFailure(op, "strides isn't a constant"),
-           llvm::None;
-  }
 
   // If strides is incomplete, pad out to the full size.
   while (strides.size() < input_rank) strides.push_back(1);
@@ -2181,12 +2220,11 @@ llvm::Optional<Value> convertStridedSliceOp(
 
     if (end[i] < 0) end[i] += input_shape[i];
 
-    // TODO(suderman): support reverse stride
     a1_begin[i] = begin[i];
     a1_size[i] = end[i] - begin[i];
 
-    a2_shape[i * 2 + 0] = a1_size[i] / strides[i];
-    a2_shape[i * 2 + 1] = strides[i];
+    a2_shape[i * 2 + 0] = a1_size[i] / abs(strides[i]);
+    a2_shape[i * 2 + 1] = abs(strides[i]);
 
     a3_begin[i * 2 + 0] = 0;
     a3_begin[i * 2 + 1] = 0;
@@ -2194,13 +2232,13 @@ llvm::Optional<Value> convertStridedSliceOp(
     if (shrink_axis_mask & (1 << i)) {
       a3_size[i * 2 + 0] = 1;
     } else {
-      a3_size[i * 2 + 0] = a1_size[i] / strides[i];
+      a3_size[i * 2 + 0] = a1_size[i] / abs(strides[i]);
     }
     a3_size[i * 2 + 1] = 1;
 
     if (!(shrink_axis_mask & (1 << i))) {
       if (new_axis_mask & (1 << i)) a4_shape.push_back(1);
-      a4_shape.push_back((a1_size[i] / strides[i]));
+      a4_shape.push_back((a1_size[i] / abs(strides[i])));
     }
   }
 
@@ -2214,9 +2252,8 @@ llvm::Optional<Value> convertStridedSliceOp(
       rewriter.getI64ArrayAttr(a1_begin), rewriter.getI64ArrayAttr(a1_size));
 
   if (all_strides_one) {
-    return CreateOpAndInfer<tensor::CastOp>(rewriter, op->getLoc(), result_type,
-                                            a1_slice_op)
-        .getResult();
+    return reverseNegativeStride(rewriter, op, a1_slice_op.getResult(),
+                                 strides);
   }
 
   // Step 2: reshape the sliced array
@@ -2233,10 +2270,13 @@ llvm::Optional<Value> convertStridedSliceOp(
       rewriter.getI64ArrayAttr(a3_size));
 
   // Step 4: reshape the now-strided tensor
-  return CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), result_type,
-                                           a3_slice_op.getResult(),
-                                           rewriter.getI64ArrayAttr(a4_shape))
-      .getResult();
+  auto a4_reshape_op =
+      CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), result_type,
+                                        a3_slice_op.getResult(),
+                                        rewriter.getI64ArrayAttr(a4_shape))
+          .getResult();
+
+  return reverseNegativeStride(rewriter, op, a4_reshape_op, strides);
 }
 
 // Lowers FloorDiv to a sequence of TOSA operators.
@@ -2715,6 +2755,16 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   auto input_shape = input_type.getShape();
   auto output_shape = output_type.getShape();
 
+  if (input_type.isDynamicDim(1) || input_type.isDynamicDim(2)) {
+    op->emitOpError("ConvertResizeOp: resize dynamic input not supported.");
+    return llvm::None;
+  }
+
+  if (output_type.isDynamicDim(1) || output_type.isDynamicDim(2)) {
+    op->emitOpError("ConvertResizeOp: resize dynamic output not supported.");
+    return llvm::None;
+  }
+
   size_t input_height = input_shape[1];
   size_t input_width = input_shape[2];
   size_t output_height = output_shape[1];
@@ -3122,7 +3172,7 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
                                       Value result_value, Value params_value,
                                       Value indices_value, int32_t batch_dims,
                                       int32_t axis) {
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
+  auto result_type = result_value.getType().dyn_cast<ShapedType>();
   auto params_type = params_value.getType().dyn_cast<RankedTensorType>();
   auto indices_type = indices_value.getType().dyn_cast<RankedTensorType>();
 

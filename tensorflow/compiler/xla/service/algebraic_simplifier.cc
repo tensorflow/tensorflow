@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/literal_comparison.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
@@ -143,6 +144,23 @@ absl::optional<double> GetConstantValue(const HloInstruction* inst) {
     default:
       return absl::nullopt;
   }
+}
+
+static bool IsScalarConstant(const HloInstruction* hlo,
+                             const LiteralSlice& literal) {
+  return hlo->opcode() == HloOpcode::kConstant &&
+         ShapeUtil::IsEffectiveScalar(hlo->shape()) &&
+         literal_comparison::Equal(hlo->literal(), literal).ok();
+}
+
+static bool IsScalarConstantZero(const HloInstruction* hlo) {
+  return IsScalarConstant(hlo, LiteralUtil::Zero(hlo->shape().element_type()));
+}
+
+static bool IsScalarConstantNegInf(const HloInstruction* hlo) {
+  return !primitive_util::IsComplexType(hlo->shape().element_type()) &&
+         IsScalarConstant(hlo,
+                          LiteralUtil::MinValue(hlo->shape().element_type()));
 }
 
 bool IsNonNegative(const HloInstruction* hlo,
@@ -271,35 +289,16 @@ bool IsConvertPairNoOp(const HloInstruction* convert) {
   //    [operand_convert]         [convert]
   // (src)->convert-(intermediate)->convert-(dest)
   const HloInstruction* operand_convert = convert->operand(0);
-  CHECK_EQ(operand_convert->opcode(), HloOpcode::kConvert);
-  const Shape& src_shape = operand_convert->operand(0)->shape();
-  const Shape& intermediate_shape = operand_convert->shape();
-  const Shape& dest_shape = convert->shape();
-
-  const PrimitiveType src_type = src_shape.element_type();
-  const PrimitiveType intermediate_type = intermediate_shape.element_type();
-  const PrimitiveType dest_type = dest_shape.element_type();
-
-  // src_type must be equal to dest_type.
-  if (src_type != dest_type) {
+  if (operand_convert->opcode() != HloOpcode::kConvert) {
     return false;
   }
+  const PrimitiveType src_type =
+      operand_convert->operand(0)->shape().element_type();
+  const PrimitiveType intermediate_type =
+      operand_convert->shape().element_type();
 
-  // src_type must be a larger container than intermediate_type.
-  if (ShapeUtil::ByteSizeOfPrimitiveType(intermediate_type) <=
-      ShapeUtil::ByteSizeOfPrimitiveType(src_type)) {
-    return false;
-  }
-
-  // Both src_type and intermediate_type must be either floating or integral.
-  bool is_conversion_floating =
-      ShapeUtil::ElementIsFloating(src_shape) &&
-      ShapeUtil::ElementIsFloating(intermediate_shape);
-  bool is_conversion_integral =
-      ShapeUtil::ElementIsIntegral(src_shape) &&
-      ShapeUtil::ElementIsIntegral(intermediate_shape);
-
-  return is_conversion_floating || is_conversion_integral;
+  return src_type == convert->shape().element_type() &&
+         primitive_util::CastPreservesValues(src_type, intermediate_type);
 }
 
 PrecisionConfig SwapOperandsInDotPrecisionConfig(PrecisionConfig config) {
@@ -2118,6 +2117,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   // Virtually pull the transpose into the dot. Now the dot is equivalent to
   // a new dot with "permuted" lhs contracting dims.
   std::vector<int64_t> permutation;
+  permutation.reserve(lhs_contracting_dims.size());
   for (auto dim : lhs_contracting_dims) {
     permutation.push_back(transpose_dims[dim] - lhs_contracting_dims[0]);
   }
@@ -3027,14 +3027,16 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
     }
   }
 
-  // A Broadcast that feeds a unary element-wise operation can sink the
-  // broadcast after the unary element-wise operation.
-  TF_ASSIGN_OR_RETURN(
-      bool sink_succeeded,
-      TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(broadcast));
-  changed_ |= sink_succeeded;
-  if (sink_succeeded) {
-    return Status::OK();
+  if (options_.enable_sink_broadcast()) {
+    // A Broadcast that feeds a unary element-wise operation can sink the
+    // broadcast after the unary element-wise operation.
+    TF_ASSIGN_OR_RETURN(
+        bool sink_succeeded,
+        TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(broadcast));
+    changed_ |= sink_succeeded;
+    if (sink_succeeded) {
+      return Status::OK();
+    }
   }
 
   // A scalar broadcast feeding an instruction which only permutes (reshape,
@@ -3075,6 +3077,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   // Merge two consecutive broadcasts into a single one.
   if (operand->opcode() == HloOpcode::kBroadcast) {
     std::vector<int64_t> new_dimensions;
+    new_dimensions.reserve(operand->dimensions().size());
     for (auto dim : operand->dimensions()) {
       new_dimensions.push_back(dims[dim]);
     }
@@ -3206,8 +3209,7 @@ Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
   //    convert(convert(A, $TYPE1), $TYPE2)) is simplified to Tuple(convert(A,
   //    $TYPE1) , floor(A), A) -> a case where the first convert has a
   //    fan-out
-  if (convert->operand(0)->opcode() == HloOpcode::kConvert &&
-      IsConvertPairNoOp(convert)) {
+  if (IsConvertPairNoOp(convert)) {
     return ReplaceInstruction(convert,
                               convert->mutable_operand(0)->mutable_operand(0));
   }
@@ -4576,6 +4578,55 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   return Status::OK();
 }
 
+// Match on variadic reduce which computes and returns (max, arg_max).
+//
+//                   p0   p2    p1    p3
+//                  /|\ \/ |\    |\   /|
+//                 / | \/\ | \   | \ / |
+//                /  | /\ \|  |  |  /\ |
+//               Ne  Gt |  \  |  | |  ||
+//                 \ /  |  |\ |  | /  ||
+//                  Or /  /  Eq  Lt   ||
+//                  | /  /    \  /    //
+//                  | |  |     And   //
+//                  | |  |      |  //
+//                  select     select
+//                      \     /
+//                       tuple
+//
+static bool MatchArgMax(const HloInstruction* hlo) {
+  // Match on variadic Reduce ArgMax.
+  if (hlo->opcode() != HloOpcode::kReduce || hlo->operand_count() != 4 ||
+      !hlo->shape().IsTuple() ||
+      hlo->operand(1)->opcode() != HloOpcode::kIota ||
+      !IsScalarConstantNegInf(hlo->operand(2)) ||
+      !IsScalarConstantZero(hlo->operand(3))) {
+    return false;
+  }
+
+  // Create matcher for shared sub-expression.
+  auto value_pred =
+      m::OrAnyOrder(m::Compare(m::Parameter(0), m::Parameter(2))
+                        .WithComparisonDirection(ComparisonDirection::kGt),
+                    m::Compare(m::Parameter(0), m::Parameter(0))
+                        .WithComparisonDirection(ComparisonDirection::kNe));
+
+  // Match on argmax reduction computation.
+  return Match(
+      hlo->to_apply()->root_instruction(),
+      m::Tuple(
+          m::Select(value_pred, m::Parameter(0), m::Parameter(2)),
+          m::Select(
+              m::OrAnyOrder(
+                  value_pred,
+                  m::And(
+                      m::Compare(m::Parameter(0), m::Parameter(2))
+                          .WithComparisonDirection(ComparisonDirection::kEq),
+                      m::Compare(m::Parameter(1), m::Parameter(3))
+                          .WithComparisonDirection(ComparisonDirection::kLt))),
+              m::Parameter(1), m::Parameter(3))));
+}
+
 Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
   bool multi_output_reduce = reduce->shape().IsTuple();
@@ -4670,6 +4721,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
        }))) {
     auto transpose_dimensions = arg->dimensions();
     std::vector<int64_t> new_reduce_dimensions;
+    new_reduce_dimensions.reserve(dimensions.size());
     for (auto dim : dimensions) {
       new_reduce_dimensions.push_back(transpose_dimensions[dim]);
     }
@@ -4858,6 +4910,27 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     reduce->SetupDerivedInstruction(new_reduce);
     return ReplaceInstruction(hlo, new_reduce);
   }
+
+  // Replace Use(ReduceMax(Arg)) with Use(Gte(ReduceArgMax, 0)).
+  // Match on Reduce Max with init value -Inf.
+  if (reduce->operand_count() == 2 && IsScalarConstantNegInf(init_value) &&
+      Match(reduce->to_apply()->root_instruction(),
+            m::MaximumAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+    // Match on variadic Reduce ArgMax which is also fed by 'arg'.
+    auto arg_max_candidate =
+        absl::c_find_if(arg->users(), [&](const HloInstruction* user) {
+          return user != reduce && user->operand(0) == arg &&
+                 MatchArgMax(user) &&
+                 reduce->dimensions() == user->dimensions();
+        });
+    if (arg_max_candidate != arg->users().end()) {
+      // Replace 'reduce' uses with GTE(ArgMax, 0).
+      return ReplaceWithNewInstruction(
+          reduce, HloInstruction::CreateGetTupleElement(*arg_max_candidate,
+                                                        /*index=*/0));
+    }
+  }
+
   return Status::OK();
 }
 
@@ -5447,8 +5520,11 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
             std::vector<int64_t> start_indices;
             std::vector<int64_t> end_indices;
             std::vector<int64_t> strides;
-            for (int64_t dim = 0; dim < reshape_operand->shape().rank();
-                 dim++) {
+            const auto rank = reshape_operand->shape().rank();
+            start_indices.reserve(rank);
+            end_indices.reserve(rank);
+            strides.reserve(rank);
+            for (int64_t dim = 0; dim < rank; dim++) {
               if (dim == split_dim) {
                 start_indices.push_back(i * chunk_size);
                 end_indices.push_back(i * chunk_size + chunk_size);

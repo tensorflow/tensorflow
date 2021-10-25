@@ -389,6 +389,16 @@ class HloModule {
     module->metadata_ = std::move(metadata_);
   }
 
+  void set_autofdo_fingerprint(std::string fingerprint) {
+    autofdo_fingerprint_ = fingerprint;
+  }
+
+  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
+
+  void add_profile_type(HloModuleProto::ProfileType profile_type) {
+    profile_types_.push_back(profile_type);
+  }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -445,6 +455,13 @@ class HloModule {
 
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
+
+  // a fingerprint to search autofdo profile entry.
+  std::string autofdo_fingerprint_;
+
+  // An array of ProfileTypes specifying what optimization profiles this module
+  // contains.
+  std::vector<HloModuleProto::ProfileType> profile_types_;
 };
 
 }  // namespace xla

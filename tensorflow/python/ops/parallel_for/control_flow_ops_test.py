@@ -1461,6 +1461,94 @@ class TensorListTest(PForTestCase):
     self._test_loop_fn(loop_fn, 2)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class TensorTest(PForTestCase):
+
+  def test_loop_variant_scatter_update_no_shape(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Flaky in some GPU configurations due to TensorScatterNdUpdate "
+          "nondeterminism.")
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32)
+    ])
+    def shapeless_func(tensor, indices, updates):
+      return array_ops.tensor_scatter_nd_update(tensor, indices, updates)
+
+    def loop_fn(i):
+      tensor = [0, 0, 0, 0, 0, 0, 0, 0]
+      indices = [[i], [i + 1], [i + 3], [i + 2]]
+      updates = [i, i - 10, i + 11, 12]
+      return shapeless_func(tensor, indices, updates)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  def test_loop_variant_scatter_update_singles(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Flaky in some GPU configurations due to TensorScatterNdUpdate "
+          "nondeterminism.")
+
+    def loop_fn(i):
+      tensor = [0, 0, 0, 0, 0, 0, 0, 0]
+      indices = [[i], [i+1], [i+3], [i+2]]
+      updates = [i, i-10, i+11, 12]
+      return array_ops.tensor_scatter_nd_update(tensor, indices, updates)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  def test_loop_variant_scatter_update_slices(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Flaky in some GPU configurations due to TensorScatterNdUpdate "
+          "nondeterminism.")
+
+    def loop_fn(i):
+      tensor = array_ops.zeros([10, 3], dtype=dtypes.int32)
+      indices = [[i+2], [4]]
+      updates = [[1, i*2, 3], [i+4, i-5, 6]]
+      return array_ops.tensor_scatter_nd_update(tensor, indices, updates)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  def test_loop_variant_scatter_update_multi_dim_index(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Flaky in some GPU configurations due to TensorScatterNdUpdate "
+          "nondeterminism.")
+
+    def loop_fn(i):
+      tensor = array_ops.zeros([10, 3], dtype=dtypes.int32)
+      indices = [[i+2, 1], [4, 2]]
+      updates = [i, 5]
+      return array_ops.tensor_scatter_nd_update(tensor, indices, updates)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  def test_loop_variant_scatter_update_folded_indices(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Flaky in some GPU configurations due to TensorScatterNdUpdate "
+          "nondeterminism.")
+
+    def loop_fn(i):
+      tensor = array_ops.zeros([5, 5])
+      indices = [
+          [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]],
+          [[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]],
+      ]
+      updates = [
+          [1, i, 1, 1, 1],
+          [1, 1, i+2, 1, i-5],
+      ]
+      return array_ops.tensor_scatter_nd_update(tensor, indices, updates)
+
+    self._test_loop_fn(loop_fn, 5)
+
+
 class OptionalTest(PForTestCase):
 
   def test_optional_from_value(self):

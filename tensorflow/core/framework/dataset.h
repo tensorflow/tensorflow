@@ -398,16 +398,17 @@ class IteratorContext {
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
+          interleave_depth(ctx->interleave_depth()),
           is_restoring(ctx->is_restoring()),
-          resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
+          options(ctx->options()),
+          resource_mgr(ctx->resource_mgr()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
           split_providers(ctx->split_providers()),
           stats_aggregator(ctx->stats_aggregator()),
           thread_factory(ctx->thread_factory()),
-          thread_pool(ctx->thread_pool()),
-          interleave_depth(ctx->interleave_depth()) {}
+          thread_pool(ctx->thread_pool()) {}
 
     explicit Params(OpKernelContext* ctx)
         : collective_executor(ctx->collective_executor()),
@@ -456,15 +457,23 @@ class IteratorContext {
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
 
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree.
+    int64 interleave_depth = 0;
+
     // Marks whether the iterator is restored from a checkpoint.
     bool is_restoring = false;
+
+    // If non-null, identifies the object used for performance modeling.
+    std::shared_ptr<model::Model> model = nullptr;
+
+    // The input pipeline options.
+    const Options* options = nullptr;
 
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
     ResourceMgr* resource_mgr = nullptr;
-
-    // If non-null, identifies the object used for performance modeling.
-    std::shared_ptr<model::Model> model = nullptr;
 
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
@@ -487,11 +496,6 @@ class IteratorContext {
 
     // A shared thread pool to schedule computation into.
     thread::ThreadPoolInterface* thread_pool = nullptr;
-
-    // Records the number of ParallelInterleave operations in the path from the
-    // root node to this node (not including this node) in the input pipeline
-    // tree.
-    int64 interleave_depth = 0;
   };
 
   explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
@@ -524,11 +528,15 @@ class IteratorContext {
     return params_.function_handle_cache;
   }
 
+  int64 interleave_depth() { return params_.interleave_depth; }
+
   bool is_restoring() { return params_.is_restoring; }
 
-  ResourceMgr* resource_mgr() { return params_.resource_mgr; }
-
   const std::shared_ptr<model::Model>& model() { return params_.model; }
+
+  const Options* options() { return params_.options; }
+
+  ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
@@ -549,8 +557,6 @@ class IteratorContext {
   }
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
-
-  int64 interleave_depth() { return params_.interleave_depth; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
@@ -972,7 +978,10 @@ class DatasetBase : public core::RefCounted {
   virtual int64_t TotalBytes() const { return 0; }
 
   // Returns the cardinality of this dataset.
-  virtual int64_t Cardinality() const { return kUnknownCardinality; }
+  int64_t Cardinality() const { return cardinality_; }
+
+  // Internal implementation of cardinality for a dataset.
+  virtual int64_t CardinalityInternal() const { return kUnknownCardinality; }
 
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;

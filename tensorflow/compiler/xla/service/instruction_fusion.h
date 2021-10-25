@@ -58,6 +58,14 @@ class InstructionFusion : public HloModulePass {
   // array. Expensive operations will not be duplicated.
   static bool IsExpensive(const HloInstruction& instruction);
 
+  // Returns true if it's legal to fuse the producer instruction into consumer
+  // with regard to in-place semantics of the consumer. For example, it is
+  // illegal to fuse a slice into a dynamic-update-slice if the slice output is
+  // used as the update and if slice and dynamic-update-slice indices cannot be
+  // proven to be the same.
+  static bool ShouldFuseInPlaceOp(const HloInstruction* producer,
+                                  const HloInstruction* consumer);
+
  protected:
   // Returns a list of computations on which Fusion is performed.
   virtual std::vector<HloComputation*> GetFusionComputations(HloModule* module);

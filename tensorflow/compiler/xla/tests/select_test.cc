@@ -166,6 +166,9 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsLarge) {
   std::vector<float> v1vec;
   std::vector<float> v2vec;
   std::vector<float> expected_vec;
+  v1vec.reserve(datalen);
+  v2vec.reserve(datalen);
+  expected_vec.reserve(datalen);
   for (int i = 0; i < datalen; ++i) {
     float smaller = i;
     float larger = i * 2;

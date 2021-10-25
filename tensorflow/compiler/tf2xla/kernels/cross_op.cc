@@ -49,6 +49,8 @@ class CrossOp : public XlaOpKernel {
 
     std::vector<int64_t> starts(in0_shape.dims(), 0);
     std::vector<int64_t> limits;
+    const auto& dim_sizes = in0_shape.dim_sizes();
+    limits.reserve(dim_sizes.size());
     for (auto dim_size : in0_shape.dim_sizes()) {
       limits.push_back(dim_size);
     }

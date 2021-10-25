@@ -468,7 +468,10 @@ func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type.stri
         init_func = @__init_func_530, next_func = @__next_func_680,
         next_func.experimental_ints_on_device = true,
         operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
-        output_shapes = [#tf_type.shape<?>], output_types = [f32]} :
+        output_shapes = [#tf_type.shape<?>],
+        output_types = [f32],
+        metadata = ""
+      } :
          (tensor<!tf_type.string>, tensor<*x!tf_type.string>, tensor<!tf_type.string>, tensor<*xi64>, tensor<!tf_type.string>) -> tensor<*x!tf_type.variant>
       %add1 = "tf.Add"(%str, %arg3) : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.string>
       // CHECK: tf_executor.island(%[[CONTROL]]) wraps "tf.GeneratorDataset"
@@ -477,7 +480,10 @@ func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type.stri
         init_func = @__init_func_530, next_func = @__next_func_680,
         next_func.experimental_ints_on_device = true,
         operand_segment_sizes = dense<[2, 2, 1]> : vector<3xi32>,
-        output_shapes = [#tf_type.shape<?>], output_types = [f32]} :
+        output_shapes = [#tf_type.shape<?>],
+        output_types = [f32],
+        metadata = ""
+      } :
          (tensor<!tf_type.string>, tensor<*x!tf_type.string>, tensor<!tf_type.string>, tensor<*xi64>, tensor<!tf_type.string>) -> tensor<*x!tf_type.variant>
       tf_executor.yield
     }

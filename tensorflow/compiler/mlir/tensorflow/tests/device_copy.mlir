@@ -79,7 +79,7 @@ func @while_loop_test(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<*xf3
     "tf.Yield"(%3) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg3: tensor<i32>, %arg4: tensor<*xf32>):
-    %cst = constant dense<1> : tensor<i32>
+    %cst = arith.constant dense<1> : tensor<i32>
     %1 = "tf.Sub"(%arg3, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i32>
     "tf.Yield"(%1, %arg4) : (tensor<i32>, tensor<*xf32>) -> ()
   }) {is_stateless = true} : (tensor<i32>, tensor<*xf32>) -> (tensor<i32>, tensor<*xf32>)

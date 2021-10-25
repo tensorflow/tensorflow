@@ -228,7 +228,6 @@ from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
-
 # ------------------------------------------------------------------------------
 # Context tracking whether in a strategy.update() or .update_non_slot() call.
 
@@ -3554,8 +3553,6 @@ def _batch_reduce_destination(x):
     return x.device
   else:
     return x
-
-
 # ------------------------------------------------------------------------------
 
 

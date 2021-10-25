@@ -19,12 +19,15 @@ import itertools
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
@@ -174,6 +177,37 @@ class TridiagonalMulOpTest(test.TestCase):
     diags = self._randomComplexArray((b, 3, m))
     rhs = self._randomComplexArray((b, m, n))
     self._gradientTest(diags, rhs, dtype=dtypes.complex128)
+
+  def _testErrorWithShapesEager(self, exception_regex, superdiag_shape,
+                                maindiag_shape, subdiag_shape, rhs_shape):
+    with context.eager_mode():
+      superdiag = array_ops.ones(superdiag_shape)
+      maindiag = array_ops.ones(maindiag_shape)
+      subdiag = array_ops.ones(subdiag_shape)
+      rhs = array_ops.ones(rhs_shape)
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  exception_regex):
+        linalg_ops.tridiagonal_mat_mul(superdiag, maindiag, subdiag, rhs)
+
+  def testInvalidShapesEagerGpu(self):
+    if not test.is_gpu_available():
+      self.skipTest('Test requires GPU')
+    self._testErrorWithShapesEager('Input must have rank >= 2, but got ',
+                                   [2], [2], [2], [2])
+    self._testErrorWithShapesEager(
+        'superdiag must have same rank as rhs, but got 3 and 2',
+        [2, 1, 2], [2, 1], [2, 1], [2, 2])
+    self._testErrorWithShapesEager(
+        'maindiag must have same outer dimensions as rhs, but for index 0, got '
+        '3 and 2',
+        [2, 1, 2], [3, 1, 2], [2, 1, 2], [2, 2, 2])
+    self._testErrorWithShapesEager(
+        "subdiag's second-to-last dimension must be 1, but got 3",
+        [2, 1, 2], [2, 1, 2], [2, 3, 2], [2, 2, 2])
+    self._testErrorWithShapesEager(
+        "subdiag's last dimension size must be rhs's second-to-last dimension "
+        "size, but got 3 and 2",
+        [2, 1, 2], [2, 1, 2], [2, 1, 3], [2, 2, 2])
 
   # Benchmark
   class TridiagonalMatMulBenchmark(test.Benchmark):

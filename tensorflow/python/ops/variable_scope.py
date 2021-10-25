@@ -203,7 +203,22 @@ VariableAggregation = variables.VariableAggregation  # pylint: disable=invalid-n
 AUTO_REUSE = _ReuseMode.AUTO_REUSE
 tf_export(v1=["AUTO_REUSE"]).export_constant(__name__, "AUTO_REUSE")
 AUTO_REUSE.__doc__ = """
-When passed in as the value for the `reuse` flag, AUTO_REUSE indicates that
+@compatibility(TF2)
+`tf.compat.v1.AUTO_REUSE` is a legacy API that is a no-op when TF2 behaviors
+are enabled.
+
+If you rely on `get_variable` and auto-reuse, see the
+[model mapping guide](https://www.tensorflow.org/guide/migrate/model_mapping)
+for more info on how to migrate your code.
+
+Note: when you use the `tf.compat.v1.keras.utils.track_tf1_style_variables`
+API as described in the above guide, `get_variable` will always behave as if
+`v1.AUTO_REUSE` is set. Without the decorator, reuse will be ignored and new
+variables will always be created, regardless of if they have already been
+created.
+@end_compatibility
+
+When passed in as the value for the `reuse` flag, `AUTO_REUSE` indicates that
 get_variable() should create the requested variable if it doesn't exist or, if
 it does exist, simply return it.
 """
@@ -1451,7 +1466,34 @@ def get_variable_scope_store():
 
 @tf_export(v1=["get_variable_scope"])
 def get_variable_scope():
-  """Returns the current variable scope."""
+  """Returns the current variable scope.
+
+  @compatibility(TF2)
+  Although it is a legacy `compat.v1` api,
+  `tf.compat.v1.get_variable` is compatible with eager
+  execution and `tf.function`
+
+  However, to maintain variable-scope based variable reuse
+  you will need to combine it with
+  `tf.compat.v1.keras.utils.track_tf1_style_variables`. (Though
+  it will behave as if reuse is always set to `tf.compat.v1.AUTO_REUSE`.)
+
+  See the
+  [migration guide](https://www.tensorflow.org/guide/migrate/model_mapping)
+  for more info.
+
+  The TF2 equivalent, if you are just trying to track
+  variable name prefixes and not control `get_variable`-based variable reuse,
+  would be to use `tf.name_scope` and capture the output of opening the
+  scope (which represents the current name prefix).
+
+  For example:
+  ```python
+  x = tf.name_scope('foo') as current_scope:
+    ...
+  ```
+  @end_compatibility
+  """
   return get_variable_scope_store().current_scope
 
 
@@ -1592,6 +1634,39 @@ def get_variable(name,
 
 
 get_variable_or_local_docstring = ("""%s
+
+@compatibility(TF2)
+Although it is a legacy `compat.v1` api,
+`tf.compat.v1.get_variable` is mostly compatible with eager
+execution and `tf.function` but only if you combine it with the
+`tf.compat.v1.keras.utils.track_tf1_style_variables` decorator. (Though
+it will behave as if reuse is always set to `AUTO_REUSE`.)
+
+See the
+[model migration guide](https://www.tensorflow.org/guide/migrate/model_mapping)
+for more info.
+
+If you do not combine it with
+`tf.compat.v1.keras.utils.track_tf1_style_variables`, `get_variable` will create
+a brand new variable every single time it is called and will never reuse
+variables, regardless of variable names or `reuse` arguments.
+
+The TF2 equivalent of this symbol would be `tf.Variable`, but note
+that when using `tf.Variable` you must make sure you track your variables
+(and regularizer arguments) either manually or via `tf.Module` or
+`tf.keras.layers.Layer` mechanisms.
+
+A section of the 
+[migration guide](https://www.tensorflow.org/guide/migrate/model_mapping#incremental_migration_to_native_tf2)
+provides more details on incrementally migrating these usages to `tf.Variable`
+as well.
+
+Note: The `partitioner` arg is not compatible with TF2 behaviors even when
+using `tf.compat.v1.keras.utils.track_tf1_style_variables`. It can be replaced
+by using `ParameterServerStrategy` and its partitioners. See the
+[multi-gpu migration guide](https://www.tensorflow.org/guide/migrate/multi_worker_cpu_gpu_training)
+and the ParameterServerStrategy guides it references for more info.
+@end_compatibility
 
 %sThis function prefixes the name with the current variable scope
 and performs reuse checks. See the
@@ -2068,6 +2143,30 @@ def _get_unique_variable_scope(prefix):
 @tf_export(v1=["variable_scope"])  # pylint: disable=invalid-name
 class variable_scope(object):
   """A context manager for defining ops that creates variables (layers).
+
+  @compatibility(TF2)
+  Although it is a legacy `compat.v1` api,
+  `tf.compat.v1.variable_scope` is mostly compatible with eager
+  execution and `tf.function` as long as you combine it with the
+  `tf.compat.v1.keras.utils.track_tf1_style_variables` decorator (though
+  it will behave as if reuse is always set to `AUTO_REUSE`.)
+
+  See the
+  [model migration guide](www.tensorflow.org/guide/migrate/model_mapping)
+  for more info on
+  migrating code that relies on `variable_scope`-based variable reuse.
+
+  When you use it with eager execution enabled but without
+  `tf.compat.v1.keras.utils.track_tf1_style_variables`,
+  `tf.compat.v1.variable_scope` will still be able to prefix the names
+  of variables created within the scope but it will not enable variable reuse
+  or error-raising checks around variable reuse (`get_variable` calls within
+  it would always create new variables).
+
+  Once you have switched away from `get_variable`-based variable reuse
+  mechanisms, to switch to TF2 APIs you can just use
+  `tf.name_scope` to prefix variable names.
+  @end_compatibility
 
   This context manager validates that the (optional) `values` are from the same
   graph, ensures that graph is the default graph, and pushes a name scope and a

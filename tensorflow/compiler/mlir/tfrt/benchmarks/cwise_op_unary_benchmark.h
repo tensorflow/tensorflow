@@ -78,17 +78,19 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   converter.AddConversion(FreeReturnedMemref);
 
   // Get an executable that might be specialized to the operands.
-  AsyncValuePtr<Executable> executable =
+  llvm::Expected<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands, exec_ctx);
+  if (auto err = executable.takeError())
+    LOG(FATAL) << "Failed to specialize executable";
 
   // Wait for the compilation completion.
-  host->Await({executable.CopyRef()});
+  host->Await({executable->CopyRef()});
 
-  CHECK(!executable.IsError())
-      << "Failed to get executable: " << StrCat(executable.GetError());
-  CHECK(!executable->IsAsync()) << "async results are not supported";
+  CHECK(!executable->IsError())
+      << "Failed to get executable: " << StrCat(executable->GetError());
+  CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
-  return {std::move(host), &executable.get(), exec_ctx, std::move(converter)};
+  return {std::move(host), &executable->get(), exec_ctx, std::move(converter)};
 }
 
 template <typename T, int rank>
@@ -109,13 +111,13 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err =
-          b.executable->InitializeCallFrame(operands, &call_frame, nullptr))
+  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
   // Execute once.
   b.executable->Execute(call_frame, b.exec_ctx);
-  if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
+  if (auto err =
+          b.executable->ReturnResults(b.converter, b.exec_ctx, &call_frame))
     LOG(FATAL) << "Failed to return compiled kernel results";
 }
 
@@ -136,13 +138,13 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err =
-          b.executable->InitializeCallFrame(operands, &call_frame, nullptr))
+  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
     b.executable->Execute(call_frame, b.exec_ctx);
-    if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
+    if (auto err =
+            b.executable->ReturnResults(b.converter, b.exec_ctx, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 

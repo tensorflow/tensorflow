@@ -120,9 +120,12 @@ class IrArray {
     static bool ShapeIsCompatible(const Shape& a, const Shape& b);
 
     bool ShapeIsCompatible(const Shape& a) const {
-      return ShapeIsCompatible(
-          a, ShapeUtil::MakeShapeWithLayout(a.element_type(), dims_,
-                                            layout_.minor_to_major()));
+      return ShapeIsCompatible(a, AsShapeWithType(a.element_type()));
+    }
+
+    Shape AsShapeWithType(PrimitiveType element_type) const {
+      return ShapeUtil::MakeShapeWithLayout(element_type, dims_,
+                                            layout_.minor_to_major());
     }
 
     // Given that "this" is the target index of a reshape from `input_shape`

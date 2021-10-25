@@ -930,8 +930,10 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         auto gen_slice = [&](HloInstruction* data_partition_id,
                              bool ccw) -> HloInstruction* {
           std::vector<int64_t> new_dims;
-          for (int64_t i = 0; i < slice_operand->shape().dimensions_size();
-               ++i) {
+          const int64_t dimensions_size =
+              slice_operand->shape().dimensions_size();
+          new_dims.reserve(dimensions_size + 1);
+          for (int64_t i = 0; i < dimensions_size; ++i) {
             if (i == slice_sharding_dim) {
               new_dims.push_back(1);
             }
@@ -999,7 +1001,9 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         // Reshape. The reshaped slice will not be used to produce the final
         // result, but used as a hint for the shape inference.
         std::vector<int64_t> reshaped_slice_dims;
-        for (int64_t i = 0; i < slice->shape().dimensions_size(); ++i) {
+        const int64_t dim_size = slice->shape().dimensions_size();
+        reshaped_slice_dims.reserve(dim_size);
+        for (int64_t i = 0; i < dim_size; ++i) {
           auto dim_size = slice->shape().dimensions(i);
           if (i == (slice_sharding_dim + 1)) {
             reshaped_slice_dims.push_back(dim_size * 2);
@@ -2073,6 +2077,7 @@ GetNonContractingPartitionGroupedShardingForOtherOperand(
     absl::Span<const DotConvDimsMapping::DimsMapping> other_contracting_dims) {
   int64_t group_count = 1;
   std::vector<int64_t> output_dims;
+  output_dims.reserve(matching_partitioned_dims.size());
   for (const auto& dim : matching_partitioned_dims) {
     output_dims.push_back(dim.output);
     group_count *= output_sharding.tile_assignment().dim(dim.output);
@@ -2157,6 +2162,7 @@ StatusOr<HloInstruction*> PartitionDotGroupOnNonContracting(
   });
 
   std::vector<int64_t> output_dims;
+  output_dims.reserve(partitioned_non_contracting_dims.size());
   for (const auto& dim : partitioned_non_contracting_dims) {
     output_dims.push_back(dim.output);
   }

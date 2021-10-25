@@ -24,9 +24,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class BitcastDtypesExanderTest : public HloTestBase {};
+class BitcastDtypesExpanderTest : public HloTestBase {};
 
-TEST_F(BitcastDtypesExanderTest, S32toS8) {
+TEST_F(BitcastDtypesExpanderTest, S32toS8) {
   absl::string_view hlo_string = R"(
 HloModule bitcast_to_smaller
 
@@ -69,7 +69,7 @@ ENTRY main {
 )"));
 }
 
-TEST_F(BitcastDtypesExanderTest, S8toS32) {
+TEST_F(BitcastDtypesExpanderTest, S8toS32) {
   absl::string_view hlo_string = R"(
 HloModule bitcast_to_larger
 
@@ -107,6 +107,45 @@ ENTRY main {
 // CHECK:  ROOT %call = s32[10]{0} call(s8[10,4]{1,0} %p), to_apply=%xla.bitcast_convert_s8_10_4__2_s32_10_.16.
 // CHECK: }
 )"));
+}
+
+TEST_F(BitcastDtypesExpanderTest, RewriteInsideWhileTest) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+body {
+  p_body = (f32[2], s32[]) parameter(0)
+  val1 = f32[2] get-tuple-element(p_body), index=0
+  val2 = s32[] get-tuple-element(p_body), index=1
+  const = s32[] constant(42)
+  converted_val2 = s8[4] bitcast-convert(val2)
+  converted_const = s8[4] bitcast-convert(const)
+  add = s8[4] add(converted_val2, converted_const)
+  out_add = s32[] bitcast-convert(add)
+  ROOT root = (f32[2], s32[]) tuple(val1, out_add)
+}
+
+condition {
+  p_cond = (f32[2], s32[]) parameter(0)
+  gte = s32[] get-tuple-element(p_cond), index=1
+  const = s32[] constant(42)
+  ROOT result = pred[] compare(gte, const), direction=EQ
+}
+
+ENTRY entry {
+  param.0 = f32[2] parameter(0)
+  param.1 = s32[] parameter(1)
+  while_init = (f32[2], s32[]) tuple(param.0, param.1)
+  ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Check that we do the rewrite and do not crash in the process.
+  BitcastDtypesExpander expander;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  EXPECT_TRUE(changed);
 }
 
 }  // namespace

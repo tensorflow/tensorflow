@@ -761,6 +761,48 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     result = save.save(root, save_dir)
     self.assertIsNone(result)
 
+  def test_validate_dependencies(self):
+
+    class Valid(tracking.AutoTrackable):
+
+      def _deserialization_dependencies(self):
+        return {x.name: x.ref for x in self._checkpoint_dependencies}
+
+    root = Valid()
+    root.f = variables.Variable(1.0)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+
+  def test_validate_dependencies_error_untracked(self):
+    untracked = variables.Variable(1.0)
+
+    class Invalid(tracking.AutoTrackable):
+
+      def _deserialization_dependencies(self):
+        return {"untracked": untracked}
+    invalid_deps = Invalid()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegex(ValueError, "Found an untracked dependency"):
+      save.save(invalid_deps, save_dir)
+
+  def test_validate_dependencies_error_cyclic(self):
+
+    class Invalid(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.cycle_ref = None
+
+      def _deserialization_dependencies(self):
+        return {"cycle_ref": self.cycle_ref}
+    cycle1 = Invalid()
+    cycle2 = Invalid()
+    cycle1.cycle_ref = cycle2
+    cycle2.cycle_ref = cycle1
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegex(ValueError,
+                                "dependency cycle in the saved Trackable"):
+      save.save(cycle1, save_dir)
+
 
 class VariablePolicyEnumTest(test.TestCase):
 

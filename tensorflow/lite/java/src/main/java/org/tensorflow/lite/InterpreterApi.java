@@ -118,7 +118,12 @@ public interface InterpreterApi extends AutoCloseable {
     /**
      * Advanced: Set if the interpreter is able to be cancelled.
      *
-     * @see Interpreter#setCancelled(boolean).
+     * <p>Interpreters may have an experimental API <a
+     * href="https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter#setCancelled(boolean)">setCancelled(boolean)</a>.
+     * If this interpreter is cancellable and such a method is invoked, a cancellation flag will be
+     * set to true. The interpreter will check the flag between Op invocations, and if it's {@code
+     * true}, the interpreter will stop execution. The interpreter will remain a cancelled state
+     * until explicitly "uncancelled" by {@code setCancelled(false)}.
      */
     public Options setCancellable(boolean allow) {
       this.allowCancellation = allow;
@@ -168,11 +173,11 @@ public interface InterpreterApi extends AutoCloseable {
    *     including int, float, long, and byte. When a {@code Buffer} is used, the caller must ensure
    *     that it is set the appropriate write position. A null value is allowed, and is useful for
    *     certain cases, e.g., if the caller is using a {@link Delegate} that allows buffer handle
-   *     interop, and such a buffer has been bound to the output {@link Tensor} (see also {@link
-   *     Interpreter.Options#setAllowBufferHandleOutput(boolean)}), or if the graph has dynamically
-   *     shaped outputs and the caller must query the output {@link Tensor} shape after inference
-   *     has been invoked, fetching the data directly from the output tensor (via {@link
-   *     Tensor#asReadOnlyBuffer()}).
+   *     interop, and such a buffer has been bound to the output {@link Tensor} (see also <a
+   *     href="https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter.Options#setAllowBufferHandleOutput(boolean)">Interpreter.Options#setAllowBufferHandleOutput(boolean)</a>),
+   *     or if the graph has dynamically shaped outputs and the caller must query the output {@link
+   *     Tensor} shape after inference has been invoked, fetching the data directly from the output
+   *     tensor (via {@link Tensor#asReadOnlyBuffer()}).
    * @throws IllegalArgumentException if {@code input} is null or empty, or if an error occurs when
    *     running inference.
    * @throws IllegalArgumentException (EXPERIMENTAL, subject to change) if the inference is
@@ -212,10 +217,9 @@ public interface InterpreterApi extends AutoCloseable {
    *     Buffer}s of primitive types including int, float, long, and byte. It only needs to keep
    *     entries for the outputs to be used. When a {@code Buffer} is used, the caller must ensure
    *     that it is set the appropriate write position. The map may be empty for cases where either
-   *     buffer handles are used for output tensor data (see {@link
-   *     Interpreter.Options#setAllowBufferHandleOutput(boolean)}), or cases where the outputs are
-   *     dynamically shaped and the caller must query the output {@link Tensor} shape after
-   *     inference has been invoked, fetching the data directly from the output tensor (via {@link
+   *     buffer handles are used for output tensor data, or cases where the outputs are dynamically
+   *     shaped and the caller must query the output {@link Tensor} shape after inference has been
+   *     invoked, fetching the data directly from the output tensor (via {@link
    *     Tensor#asReadOnlyBuffer()}).
    * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} is
    *     null, or if an error occurs when running inference.
@@ -277,7 +281,7 @@ public interface InterpreterApi extends AutoCloseable {
    * Gets index of an input given the op name of the input.
    *
    * @throws IllegalArgumentException if {@code opName} does not match any input in the model used
-   *     to initialize the {@link Interpreter}.
+   *     to initialize the interpreter.
    */
   public int getInputIndex(String opName);
 
@@ -296,7 +300,7 @@ public interface InterpreterApi extends AutoCloseable {
    * Gets index of an output given the op name of the output.
    *
    * @throws IllegalArgumentException if {@code opName} does not match any output in the model used
-   *     to initialize the {@link Interpreter}.
+   *     to initialize the interpreter.
    */
   public int getOutputIndex(String opName);
 
@@ -318,7 +322,7 @@ public interface InterpreterApi extends AutoCloseable {
   /**
    * Returns native inference timing.
    *
-   * @throws IllegalArgumentException if the model is not initialized by the {@link Interpreter}.
+   * @throws IllegalArgumentException if the model is not initialized by the interpreter.
    */
   public Long getLastNativeInferenceDurationNanoseconds();
 

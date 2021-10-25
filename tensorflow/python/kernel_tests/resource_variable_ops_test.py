@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import tensor_pb2
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -809,6 +810,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(assign_without_read)
     self.assertEqual(4.0, self.evaluate(v.value()))
 
+  def testAssignRuntimeShapeCheck(self):
+    with forward_compat.forward_compatibility_horizon(2021, 11, 20):
+      v = resource_variable_ops.ResourceVariable([1.0, 1.0], name="var0")
+
+      @def_function.function
+      def f(shape):
+        t = array_ops.zeros(shape)
+        v.assign(t)
+
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        f(constant_op.constant([3]))
+
   @test_util.run_in_graph_and_eager_modes
   def testLoad(self):
     v = resource_variable_ops.ResourceVariable(1.0, name="var0")
@@ -1340,6 +1353,22 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # eager execution (where the error is realized during kernel execution).
     with self.assertRaisesRegex(Exception, r"shape.*2.*3"):
       state_ops.scatter_update(v, [0, 1], [0, 1, 2])
+
+  def testScatterAddDeterministic(self):
+    with context.eager_mode(), test_util.deterministic_ops():
+      # Normally a nondeterministic codepath occurs when the variable has at
+      # least 1024 elements. Test that op determinism ensures the op is
+      # deterministc.
+      v = resource_variable_ops.ResourceVariable(array_ops.zeros([1024]))
+      delta = ops.IndexedSlices(
+          values=np.random.normal(size=(1_000_000,)),
+          indices=array_ops.zeros((1_000_000,), dtype=np.int32),
+          dense_shape=(1024,))
+      v.scatter_add(delta)
+      for _ in range(5):
+        v2 = resource_variable_ops.ResourceVariable(array_ops.zeros([1024]))
+        v2.scatter_add(delta)
+        self.assertAllEqual(v, v2)
 
   @test_util.run_in_graph_and_eager_modes
   def testAssignIncompatibleShape(self):

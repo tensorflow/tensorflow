@@ -19,7 +19,10 @@ limitations under the License.
 #include <algorithm>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
@@ -86,6 +89,41 @@ string TaskNameFromDeviceName(const string& device_name) {
   string task_name;
   CHECK(DeviceNameUtils::GetTaskName(parsed_device, &task_name));
   return task_name;
+}
+
+struct RankFormatter {
+  void operator()(std::string* out, CollGroupMember m) const {
+    out->append(std::to_string(m.rank));
+  }
+};
+
+Status CheckUserSpecifiedRanks(const std::vector<CollGroupMember> members) {
+  absl::flat_hash_set<int> user_ranks = {};
+  bool at_least_one_member_with_no_rank = false;
+  bool at_least_one_member_with_user_rank = false;
+  for (const auto& m : members) {
+    if (m.rank == -1) {
+      at_least_one_member_with_no_rank = true;
+    } else {
+      at_least_one_member_with_user_rank = true;
+      user_ranks.insert(m.rank);
+    }
+  }
+
+  auto received_ranks = absl::StrJoin(members, ",", RankFormatter());
+  if (at_least_one_member_with_no_rank && at_least_one_member_with_user_rank) {
+    return errors::InvalidArgument(
+        "Only part of the group members have user given rank specified.",
+        "Received ranks: ", received_ranks);
+  }
+
+  if (at_least_one_member_with_user_rank &&
+      user_ranks.size() < members.size()) {
+    return errors::InvalidArgument(
+        "Duplicate ranks specified for group members. Received ranks: ",
+        received_ranks);
+  }
+  return Status::OK();
 }
 }  // namespace
 
@@ -185,6 +223,15 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
           gr->incarnations_by_device_name[device.name()] = device.incarnation();
           CollGroupMember member;
           member.device = device;
+          if (group_params->user_specified_rank == -1 ||
+              (group_params->user_specified_rank >= 0 &&
+               group_params->user_specified_rank < gr->group.group_size)) {
+            member.rank = group_params->user_specified_rank;
+          } else {
+            gr->status = errors::InvalidArgument(
+                "User Provided rank is invalid. It should be between [0, "
+                "group_size)");
+          }
           gr->group.members.push_back(std::move(member));
           new_device = true;
           if (VLOG_IS_ON(1)) {
@@ -223,6 +270,10 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       }
       CHECK_EQ(gr->group.members.size(), gr->group.group_size);
       // We get a full group. Fill in remaining fields in gr->group.
+      auto st = CheckUserSpecifiedRanks(gr->group.members);
+      if (!st.ok()) {
+        gr->status = st;
+      }
       if (new_device) {
         FinishGroup(gr);
       }
@@ -480,7 +531,10 @@ void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
   for (int i = 0; i < cp->group.group_size; ++i) {
     if (cp->group.members[i].device.name() == device) {
       cp->default_rank = i;
-      break;
+    }
+    // Set member rank to default rank if not user specified.
+    if (cp->group.members[i].rank == -1) {
+      cp->group.members[i].rank = i;
     }
   }
 }
@@ -564,12 +618,12 @@ CollectiveParamResolverLocal::GetOrCreateInstanceRec(CollectiveParams* cp,
   return irec;
 }
 
-Status CollectiveParamResolverLocal::LookupAndPopulateGroupParams(
-    CollGroupParams* group) {
+Status CollectiveParamResolverLocal::LookupGroup(int32_t group_key,
+                                                 CollGroupParams* group) {
   mutex_lock l(group_mu_);
-  auto group_rec = group_table_.find(group->group_key);
+  auto group_rec = group_table_.find(group_key);
   if (group_rec == group_table_.end()) {
-    return errors::InvalidArgument("Group ", group->group_key,
+    return errors::InvalidArgument("Group ", group_key,
                                    " is not "
                                    "initialized. Please call group "
                                    "initialization op first before invoking "
@@ -604,7 +658,7 @@ void CollectiveParamResolverLocal::CompleteParamsAsync(
   } else {
     // For Collective V3 ops, group is already initialized. Fetch attributes
     // for the already initialized group to pass to Insitance initialization.
-    auto s = LookupAndPopulateGroupParams(&cp->group);
+    const auto s = LookupGroup(cp->group.group_key, &cp->group);
     if (s.ok()) {
       CompleteInstanceLocal(device.name(), cp, done);
     } else {

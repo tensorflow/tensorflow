@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -79,9 +80,8 @@ class SignlessOpConversion : public OpConversionPattern<T> {
              actual_element_type);
       Type new_type;
       if (auto ranked = result_type.dyn_cast<MemRefType>()) {
-        new_type =
-            MemRefType::get(ranked.getShape(), expected_element_type,
-                            ranked.getAffineMaps(), ranked.getMemorySpace());
+        new_type = MemRefType::get(ranked.getShape(), expected_element_type,
+                                   ranked.getLayout(), ranked.getMemorySpace());
       } else {
         new_type = UnrankedMemRefType::get(expected_element_type,
                                            result_type.getMemorySpace());
@@ -192,8 +192,8 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     auto result_type = op.getType().cast<RankedTensorType>();
     auto result_rank = result_type.getRank();
 
-    Value zero = b->create<ConstantIndexOp>(loc, 0);
-    Value one = b->create<ConstantIndexOp>(loc, 1);
+    Value zero = b->create<arith::ConstantIndexOp>(loc, 0);
+    Value one = b->create<arith::ConstantIndexOp>(loc, 1);
 
     // Compute a reversed scan product. Compute the stride for the dimensions so
     // far, working from minor to major dimensions. Additionally, save the
@@ -205,12 +205,14 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
       Value operand_dim_size =
           ShapedType::isDynamic(operand_shape[i])
               ? b->create<memref::DimOp>(loc, operand, i).getResult()
-              : b->create<ConstantIndexOp>(loc, operand_shape[i]).getResult();
+              : b->create<arith::ConstantIndexOp>(loc, operand_shape[i])
+                    .getResult();
       operand_sizes[i] = operand_dim_size;
 
       operand_strides[i] = stride_so_far;
       if (i > 0) {
-        stride_so_far = b->create<MulIOp>(loc, stride_so_far, operand_dim_size);
+        stride_so_far =
+            b->create<arith::MulIOp>(loc, stride_so_far, operand_dim_size);
       }
     }
 
@@ -223,12 +225,12 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
       output_to_input_dim[dim.value().getSExtValue()] = dim.index();
     }
     for (int i = 0; i < result_rank; ++i) {
-      Value i_val = b->create<ConstantIndexOp>(loc, i);
+      Value i_val = b->create<arith::ConstantIndexOp>(loc, i);
       Value result_dim_size =
           b->create<tensor::ExtractOp>(loc, op.output_dimensions(), i_val);
       if (!result_dim_size.getType().isIndex()) {
-        result_dim_size =
-            b->create<IndexCastOp>(loc, result_dim_size, b->getIndexType());
+        result_dim_size = b->create<arith::IndexCastOp>(loc, result_dim_size,
+                                                        b->getIndexType());
       }
       sizes.push_back(result_dim_size);
 
@@ -247,8 +249,8 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
       //    => stride flattened buffer stride
       // 2) Operand dim < result dim => expansion is needed => stride := 0.
       int dim = it->second;
-      Value is_expansion = b->create<CmpIOp>(
-          loc, CmpIPredicate::slt, operand_sizes[dim], result_dim_size);
+      Value is_expansion = b->create<arith::CmpIOp>(
+          loc, arith::CmpIPredicate::slt, operand_sizes[dim], result_dim_size);
       Value select = b->create<mlir::SelectOp>(loc, is_expansion, zero,
                                                operand_strides[dim]);
       strides.push_back(select);
@@ -276,11 +278,11 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     auto loc = op.getLoc();
     SmallVector<Value, 4> dynamic_operands;
     for (int i = 0; i < result_type.getRank(); ++i) {
-      auto index = b->createOrFold<ConstantIndexOp>(loc, i);
+      auto index = b->createOrFold<arith::ConstantIndexOp>(loc, i);
       Value size =
           b->create<tensor::ExtractOp>(loc, op.output_dimensions(), index);
       if (!size.getType().isIndex()) {
-        size = b->create<IndexCastOp>(loc, size, b->getIndexType());
+        size = b->create<arith::IndexCastOp>(loc, size, b->getIndexType());
       }
       dynamic_operands.push_back(size);
     }
@@ -315,8 +317,9 @@ struct HloLegalizeToMemrefPass
                                          &patterns);
 
     target.addIllegalOp<DynamicReshapeOp, DynamicBroadcastInDimOp>();
-    target.addLegalDialect<BuiltinDialect, memref::MemRefDialect,
-                           StandardOpsDialect, tensor::TensorDialect>();
+    target.addLegalDialect<arith::ArithmeticDialect, BuiltinDialect,
+                           memref::MemRefDialect, StandardOpsDialect,
+                           tensor::TensorDialect>();
 
     auto func = getFunction();
     if (failed(applyPartialConversion(func, target, std::move(patterns))))

@@ -32,7 +32,7 @@ func @else_branch(%arg0: tuple<tensor<f32>>) -> tuple<tensor<f32>> {
 // CHECK:   %[[A0]] = f32[] parameter(0)
 func @main(%arg0: tensor<f32>) -> tuple<tensor<f32>> {
   // CHECK:   %[[VAL0:.+]] = f32[] constant(10)
-  %cst = constant  dense<1.000000e+01> : tensor<f32>
+  %cst = arith.constant  dense<1.000000e+01> : tensor<f32>
 
   // CHECK:   %[[VAL1:.+]] = pred[] compare(f32[] %[[A0]], f32[] %[[VAL0]]), direction=LT
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>

@@ -369,7 +369,9 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
         continue;
       }
       std::vector<HloInstruction*> new_opnds;
-      for (HloInstruction* old_opnd : old_instr->operands()) {
+      const auto& old_opnds = old_instr->operands();
+      new_opnds.reserve(old_opnds.size());
+      for (HloInstruction* old_opnd : old_opnds) {
         CHECK(clone_map.find(old_opnd) != clone_map.end());
         new_opnds.push_back(clone_map[old_opnd]);
       }

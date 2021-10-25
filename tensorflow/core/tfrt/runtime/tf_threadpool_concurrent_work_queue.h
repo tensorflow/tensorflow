@@ -50,10 +50,13 @@ class TfThreadPoolWorkQueue : public tensorflow::tfrt_stub::WorkQueueInterface {
   }
   std::string name() const override { return "TfThreadPoolWorkQueue"; }
 
-  void AddTask(::tfrt::TaskFunction work) override;
+  void AddTask(tfrt::TaskFunction work) override;
 
-  llvm::Optional<::tfrt::TaskFunction> AddBlockingTask(
-      ::tfrt::TaskFunction work, bool allow_queuing) override;
+  void AddTask(const tfrt::ExecutionContext& exec_ctx,
+               tfrt::TaskFunction work) override;
+
+  llvm::Optional<tfrt::TaskFunction> AddBlockingTask(
+      tfrt::TaskFunction work, bool allow_queuing) override;
 
   void Quiesce() override;
 

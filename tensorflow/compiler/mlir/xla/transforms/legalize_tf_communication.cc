@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -56,19 +57,7 @@ constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 // Note, this currently does not handle nested modules/functions or region based
 // ops other than certain control flow ops (`mhlo.if`, `mhlo.while`).
 class LegalizeTFCommunication
-    : public PassWrapper<LegalizeTFCommunication, OperationPass<ModuleOp>> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mhlo::MhloDialect>();
-  }
-
- public:
-  StringRef getArgument() const final {
-    return "xla-legalize-tf-communication";
-  }
-  StringRef getDescription() const final {
-    return "Legalize TF/XLA communication ops (TensorFlow dialect) to the HLO "
-           "dialect";
-  }
+    : public LegalizeTFCommunicationPassBase<LegalizeTFCommunication> {
   void runOnOperation() override;
 };
 
@@ -334,7 +323,7 @@ Value CreateSinkToken(OpBuilder& builder, Location loc, ArrayRef<Value> tokens,
 }
 
 // Replaces `tf._XlaHostComputeMlir` with individual `mhlo.send` and `mhlo.recv`
-// ops per operand and result. Unique Channel Id's are assigned per transfer.
+// ops per operand and result. Unique Channel IDs are assigned per transfer.
 // Sink tokens are created across all `mhlo.send` ops first and then by
 // all `mhlo.recv` ops.
 Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
@@ -874,7 +863,7 @@ void LegalizeTFCommunication::runOnOperation() {
   if (failed(GetFunctionsToRewrite(module, funcs_to_rewrite)))
     return signalPassFailure();
 
-  // Module level counter to make sure Channel Id's are unique.
+  // Module level counter to make sure Channel IDs are unique.
   int64_t channel_id = 1;
   OpBuilder builder(&getContext());
   for (const auto& func_and_name : funcs_to_rewrite) {
@@ -903,7 +892,6 @@ void LegalizeTFCommunication::runOnOperation() {
   }
 }
 
-static PassRegistration<LegalizeTFCommunication> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass() {

@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -85,7 +86,7 @@ constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
 // Array attribute. Same shape as infeed result, but contains a
 // minor_to_major array for every tensor.
 constexpr char kLayoutAttr[] = "layout";
-constexpr char kDefaultLayoutAttrName[] = "minor_to_major";
+constexpr char kDefaultLayoutAttrName[] = "xla_shape";
 
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
@@ -203,6 +204,22 @@ static xla::Layout ExtractLayout(
   return xla::LayoutUtil::MakeDescendingLayout(rank);
 }
 
+static xla::Shape ExtractXlaShape(mlir::Operation* op) {
+  if (auto attr = op->getAttrOfType<mlir::StringAttr>(kDefaultLayoutAttrName)) {
+    return *xla::ParseShape(
+        absl::string_view(attr.getValue().data(), attr.getValue().size()));
+  } else {
+    std::vector<xla::Shape> subshapes;
+    for (mlir::Value result : op->getResults()) {
+      subshapes.push_back(xla::TypeToShape(result.getType()));
+    }
+    if (subshapes.size() > 1) {
+      return xla::ShapeUtil::MakeTupleShape(subshapes);
+    }
+    return subshapes[0];
+  }
+}
+
 #define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)                \
   static std::vector<int64_t> Convert_##attribute(            \
       llvm::Optional<mlir::DenseIntElementsAttr> attribute) { \
@@ -284,7 +301,7 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
 }
 
 static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
-    mlir::mhlo::ConvDimensionNumbers input) {
+    mlir::mhlo::ConvDimensionNumbersAttr input) {
   return xla::ConvertConvDimensionNumbers(input);
 }
 
@@ -686,6 +703,19 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(DotOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
+  if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  xla::PrimitiveType preferred_element_type =
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+  value_map[op] = xla::Dot(
+      lhs, rhs, Unwrap(Convert_precision_config(op.precision_config())),
+      preferred_element_type);
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
@@ -809,7 +839,7 @@ LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
       lhs, rhs, Convert_window_strides(op.window_strides()),
       Convert_padding(op.padding()), Convert_lhs_dilation(op.lhs_dilation()),
       Convert_rhs_dilation(op.rhs_dilation()),
-      Convert_dimension_numbers(op.dimension_numbers()),
+      xla::ConvertConvDimensionNumbers(op.dimension_numbers()),
       Convertuint64_t(op.feature_group_count()),
       Convertuint64_t(op.batch_group_count()),
       Unwrap(Convert_precision_config(op.precision_config())),
@@ -829,9 +859,8 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
-  // XLA client builder API does not support generating custom call instructions
-  // with side effect.
-  if (op.has_side_effect() || op.getNumResults() != 1) return failure();
+  if (op.getNumResults() != 1)
+    return op.emitOpError() << "with multiple results cannot be exported";
   Value result = op.getResult(0);
   llvm::SmallVector<xla::XlaOp> args;
   if (failed(GetTuple(op, op.args(), ctx, args))) return failure();
@@ -841,7 +870,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   value_map[result] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), args,
       xla::TypeToShape(result.getType()), std::string(op.backend_config()),
-      /*has_side_effect=*/false, /*output_operand_aliasing=*/{},
+      op.has_side_effect(), /*output_operand_aliasing=*/{},
       /*literal=*/nullptr, /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/*xla_api_version);
   return success();
@@ -1394,8 +1423,8 @@ LogicalResult ConvertToHloModule::Lower(
   // Explicitly fail for ops that are not supported for export.
   if (inst->getDialect() !=
           inst->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() &&
-      !mlir::isa<mlir::ConstantOp, mlir::CallOp, mlir::tensor::CastOp,
-                 mlir::ReturnOp>(inst)) {
+      !mlir::isa<mlir::ConstantOp, mlir::arith::ConstantOp, mlir::CallOp,
+                 mlir::tensor::CastOp, mlir::ReturnOp>(inst)) {
     inst->emitOpError("unsupported op for export to XLA");
     return failure();
   }
@@ -1408,10 +1437,8 @@ LogicalResult ConvertToHloModule::Lower(
     if (options_.propagate_layouts) {
       auto* shape = xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
                         ->mutable_shape();
-      if (shape->tuple_shapes().empty())
-        // TODO(kramm): merge this with ConvertLayout.
-        *shape->mutable_layout() =
-            ExtractLayout(inst, shape->dimensions().size()).ToProto();
+      // TODO(kramm): merge this with ConvertLayout.
+      *shape = ExtractXlaShape(inst).ToProto();
     }
 
     // For infeed ops stemming back to InfeedDequeueTuple, respect the layout
@@ -1477,9 +1504,13 @@ LogicalResult ConvertToHloModule::Lower(
   }
 
   if (matchPattern(inst, m_Constant(&const_attr))) {
-    xla::Layout layout;
-    layout = ExtractLayout(inst, const_attr.getType().getRank());
-    auto literal_or = CreateArrayLiteralFromAttr(const_attr, layout);
+    if (!inst->getResult(0).getType().isa<ShapedType>()) {
+      return inst->emitError(
+          "expected shaped type during constant mhlo -> hlo translation");
+    }
+
+    auto literal_or =
+        CreateArrayLiteralFromAttr(const_attr, ExtractXlaShape(inst).layout());
     if (!literal_or.ok())
       return inst->emitError(literal_or.status().ToString());
     auto constant = xla::ConstantLiteral(builder, literal_or.ValueOrDie());
@@ -1842,9 +1873,12 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                                /*shape_representation_fn=*/nullptr, options);
 
   ConvertToHloModule::ValueLoweringMap lowering;
-  if (xla_params.size() != block.getArguments().size())
-    return tensorflow::errors::Internal(
-        "xla_params size != block arguments size");
+  // In general xla_params is a superset of block arguments. Constant inputs may
+  // have been removed from block arguments.
+  if (xla_params.size() < block.getArguments().size())
+    return tensorflow::errors::Internal("xla_params size (", xla_params.size(),
+                                        ") < block arguments size (",
+                                        block.getArguments().size(), ")");
   for (BlockArgument& arg : block.getArguments()) {
     auto num = arg.getArgNumber();
     lowering[arg] = xla_params[num];

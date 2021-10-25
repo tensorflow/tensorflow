@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
@@ -65,12 +66,13 @@ Value InsertDynamicAlloc(Location loc, Value result, Value shape_operand,
   SmallVector<Value, 4> dynamic_operands;
   for (auto shape_element : llvm::enumerate(result_type.getShape())) {
     if (shape_element.value() != ShapedType::kDynamicSize) continue;
-    Value index = rewriter->create<ConstantIndexOp>(loc, shape_element.index());
+    Value index =
+        rewriter->create<arith::ConstantIndexOp>(loc, shape_element.index());
     Value alloc_operand =
         rewriter->create<tensor::ExtractOp>(loc, shape_operand, index);
     if (!alloc_operand.getType().isIndex()) {
-      alloc_operand = rewriter->create<IndexCastOp>(loc, alloc_operand,
-                                                    rewriter->getIndexType());
+      alloc_operand = rewriter->create<arith::IndexCastOp>(
+          loc, alloc_operand, rewriter->getIndexType());
     }
     dynamic_operands.push_back(alloc_operand);
   }
@@ -426,6 +428,7 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
     auto& context = getContext();
     OwningRewritePatternList patterns(&context);
     ConversionTarget target(context);
+    target.addLegalDialect<arith::ArithmeticDialect>();
     target.addLegalDialect<lmhlo::LmhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
     target.addLegalDialect<memref::MemRefDialect>();

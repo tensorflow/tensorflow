@@ -3520,24 +3520,7 @@ def bias_add(value, bias, data_format=None, name=None):
       value = ops.convert_to_tensor(value, name="input")
       bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
 
-    # TODO(duncanriach): Implement deterministic functionality at CUDA kernel
-    #   level.
-    if config.is_op_determinism_enabled():
-      # Note that this code does not implement the same error checks as the
-      # pre-existing C++ ops.
-      if data_format == "NCHW":
-        broadcast_shape_head = [1, array_ops.size(bias)]
-        broadcast_shape_tail = array_ops.ones(
-            array_ops.rank(value) - 2, dtype=dtypes.int32)
-        broadcast_shape = array_ops.concat(
-            [broadcast_shape_head, broadcast_shape_tail], 0)
-        return math_ops.add(
-            value, array_ops.reshape(bias, broadcast_shape), name=name)
-      else:  # data_format == 'NHWC' or data_format == None
-        return math_ops.add(value, bias, name=name)
-    else:
-      return gen_nn_ops.bias_add(
-          value, bias, data_format=data_format, name=name)
+    return gen_nn_ops.bias_add(value, bias, data_format=data_format, name=name)
 
 
 def bias_add_v1(value, bias, name=None):
@@ -3611,6 +3594,19 @@ crelu_v2.__doc__ = crelu.__doc__
 @dispatch.add_dispatch_support
 def relu6(features, name=None):
   """Computes Rectified Linear 6: `min(max(features, 0), 6)`.
+
+  In comparison with `tf.nn.relu`, relu6 activation functions have shown to
+  empirically perform better under low-precision conditions (e.g. fixed point
+  inference) by encouraging the model to learn sparse features earlier.
+  Source: [Convolutional Deep Belief Networks on CIFAR-10: Krizhevsky et al.,
+  2010](http://www.cs.utoronto.ca/~kriz/conv-cifar10-aug2010.pdf).
+
+  For example:
+
+  >>> x = tf.constant([-3.0, -1.0, 0.0, 6.0, 10.0], dtype=tf.float32)
+  >>> y = tf.nn.relu6(x)
+  >>> y.numpy()
+  array([0., 0., 0., 6., 6.], dtype=float32)
 
   Args:
     features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
@@ -4932,25 +4928,82 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
 @tf_export("nn.max_pool2d")
 @dispatch.add_dispatch_support
 def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
-  """Performs the max pooling on the input.
+  """Performs max pooling on 2D spatial data such as images.
+
+  This is a more specific version of `tf.nn.max_pool` where the input tensor
+  is 4D, representing 2D spatial data such as images. Using these APIs are
+  equivalent
+
+  Downsamples the input images along theirs spatial dimensions (height and
+  width) by taking its maximum over an input window defined by `ksize`.
+  The window is shifted by `strides` along each dimension.
+
+  For example, for `strides=(2, 2)` and `padding=VALID` windows that extend
+  outside of the input are not included in the output:
+
+  >>> x = tf.constant([[1., 2., 3., 4.],
+  ...                  [5., 6., 7., 8.],
+  ...                  [9., 10., 11., 12.]])
+  >>> # Add the `batch` and `channels` dimensions.
+  >>> x = x[tf.newaxis, :, :, tf.newaxis]
+  >>> result = tf.nn.max_pool2d(x, ksize=(2, 2), strides=(2, 2),
+  ...                           padding="VALID")
+  >>> result[0, :, :, 0]
+  <tf.Tensor: shape=(1, 2), dtype=float32, numpy=
+  array([[6., 8.]], dtype=float32)>
+
+  With `padding=SAME`, we get:
+
+  >>> x = tf.constant([[1., 2., 3., 4.],
+  ...                  [5., 6., 7., 8.],
+  ...                  [9., 10., 11., 12.]])
+  >>> x = x[tf.newaxis, :, :, tf.newaxis]
+  >>> result = tf.nn.max_pool2d(x, ksize=(2, 2), strides=(2, 2),
+  ...                           padding='SAME')
+  >>> result[0, :, :, 0]
+  <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
+  array([[ 6., 8.],
+         [10.,12.]], dtype=float32)>
+
+  We can also specify padding explicitly. The following example adds width-1
+  padding on all sides (top, bottom, left, right):
+
+  >>> x = tf.constant([[1., 2., 3., 4.],
+  ...                  [5., 6., 7., 8.],
+  ...                  [9., 10., 11., 12.]])
+  >>> x = x[tf.newaxis, :, :, tf.newaxis]
+  >>> result = tf.nn.max_pool2d(x, ksize=(2, 2), strides=(2, 2),
+  ...                           padding=[[0, 0], [1, 1], [1, 1], [0, 0]])
+  >>> result[0, :, :, 0]
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=
+  array([[ 1., 3., 4.],
+         [ 9., 11., 12.]], dtype=float32)>
+
+  For more examples and detail, see `tf.nn.max_pool`.
 
   Args:
     input: A 4-D `Tensor` of the format specified by `data_format`.
     ksize: An int or list of `ints` that has length `1`, `2` or `4`. The size of
-      the window for each dimension of the input tensor.
+      the window for each dimension of the input tensor. If only one integer is
+      specified, then we apply the same window for all 4 dims. If two are
+      provided then we use those for H, W dimensions and keep N, C dimension
+      window size = 1.
     strides: An int or list of `ints` that has length `1`, `2` or `4`. The
-      stride of the sliding window for each dimension of the input tensor.
+      stride of the sliding window for each dimension of the input tensor. If
+      only one integer is specified, we apply the same stride to all 4 dims. If
+      two are provided we use those for the H, W dimensions and keep N, C of
+      stride = 1.
     padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. See
       [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
-      for more information. When explicit padding is used and data_format is
-      `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
-      [pad_left, pad_right], [0, 0]]`. When explicit padding used and
-      data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
-      [pad_top, pad_bottom], [pad_left, pad_right]]`. When using explicit
-      padding, the size of the paddings cannot be greater than the sliding
-      window size.
+        for more information. When explicit padding is used and data_format is
+        `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+        [pad_left, pad_right], [0, 0]]`. When explicit padding used and
+        data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+        [pad_top, pad_bottom], [pad_left, pad_right]]`. When using explicit
+        padding, the size of the paddings cannot be greater than the sliding
+        window size.
     data_format: A string. 'NHWC', 'NCHW' and 'NCHW_VECT_C' are supported.
     name: Optional name for the operation.
 
@@ -5624,7 +5677,7 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
       if rate_dtype != x_dtype:
         if not rate_dtype.is_compatible_with(x_dtype):
           raise ValueError(
-              "`x.dtype` must be comptaible with `rate.dtype`. "
+              "`x.dtype` must be compatible with `rate.dtype`. "
               f"Received: x.dtype={x_dtype} and rate.dtype={rate_dtype}")
         rate = gen_math_ops.cast(rate, x_dtype, name="rate")
       one_tensor = constant_op.constant(1, dtype=x_dtype)

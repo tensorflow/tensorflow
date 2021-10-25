@@ -119,8 +119,6 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                  weight_type.getElementType()
                      .dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
     // Per-channel quantization
-    uint32_t output_channels = weight_type.getShape().front();
-
     SmallVector<int32_t> multiplier_arr;
     SmallVector<int32_t> shift_arr;
 
@@ -131,9 +129,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
     int64_t output_zp = output_qtype.getZeroPoint();
     double output_scale = output_qtype.getScale();
 
-    for (uint32_t oc = 0; oc < output_channels; oc++) {
-      double weight_scale = weight_scale_arr[oc];
-
+    for (double weight_scale : weight_scale_arr) {
       int32_t multiplier;
       int32_t shift;
 
@@ -437,6 +433,12 @@ bool getTransposeConv2dPaddingValues(
     int64_t ofm_size = output_type.getDimSize(ofm_dim);
     int64_t dim_dilation = dilations[i].template cast<IntegerAttr>().getInt();
     int64_t dim_stride = strides[i].template cast<IntegerAttr>().getInt();
+
+    // These dimensions need to be static to legalize.
+    if (ShapedType::isDynamic(filter_size) || ShapedType::isDynamic(ifm_size) ||
+        ShapedType::isDynamic(ofm_size)) {
+      return false;
+    }
 
     int effective_filter_size = (filter_size - 1) * dim_dilation + 1;
     int total_padding =

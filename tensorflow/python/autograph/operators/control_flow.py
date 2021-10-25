@@ -999,7 +999,8 @@ def _shape_invariants_mapping_to_positional_list(mapping, keys):
   result = []
   for k in keys:
     map_key, map_val = mapping.get(id(k), (None, None))
-    result.append(map_val if map_key is k else None)
+    result.append(
+        map_val if map_key is k else nest.map_structure(lambda _: None, k))
   return tuple(result)
 
 

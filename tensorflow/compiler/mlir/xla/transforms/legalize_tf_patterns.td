@@ -39,6 +39,10 @@ def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 def CastValueToI64: NativeCodeCall<
   "CastValueToI64($0.getLoc(), $1, &$_builder)">;
 
+def CastValueToElementType: NativeCodeCall<
+  "$_builder.create<ConvertOp>($0.getLoc(), $1, "
+  "getElementTypeOrSelf($2.getType()))">;
+
 // Here, $0 is an ElementsAttr with exactly one element of type integer. $1 is
 // the corresponding value of ranked tensor type whose axis is referred in $0.
 def GetHLOAxisFromTFAxis : NativeCodeCall<
@@ -55,6 +59,19 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
 def CastElementsToI64Elements : NativeCodeCall<
   "hlo::ConvertElementsAttr("
     "$0.cast<ElementsAttr>(), $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
+
+//===----------------------------------------------------------------------===//
+// ApproximateEqual op pattern.
+//===----------------------------------------------------------------------===//
+
+// TODO(kramerb): Assert that $x and $y have the same shape.
+def : Pat<(TF_ApproximateEqualOp:$result $x, $y, $tolerance),
+          (HLOClient_BroadcastCompareOp
+           (HLO_AbsOp:$abs (HLO_SubOp $x, $y)),
+           (CastValueToElementType $result, (HLO_ConstOp $tolerance), $abs),
+           (NullDenseIntElementsAttr),
+           HLO_COMPARISON_DIRECTION_LT,
+           (HLO_DEFAULT_COMPARISON_TYPE))>;
 
 //===----------------------------------------------------------------------===//
 // Assert op pattern.
@@ -122,11 +139,7 @@ def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
 // BroadcastToDimensions is used to compute the broadcast attr to higher
 // dimensions. This computes the broadcast of 'l' to broadcast('l', 'r')
 // without returning the broadcast of 'r' to broadcast('l', 'r').
-//
-// NOTE: This should be optimized for unsigned integers.
-// Requires static shaped inputs to create constant splats and computation of
-// broadcast attributes.
-def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
       (HLO_SelectOp
        (HLOClient_BroadcastAndOp
         (HLOClient_BroadcastCompareOp
@@ -152,6 +165,11 @@ def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
         (HLO_ConstOp:$ones (GetScalarOfType<1> $div)),
         (NullDenseIntElementsAttr)), $div),
       [(SignedIntTensor $l)]>;
+
+// FloorDiv of unsigned is just div.
+def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
+          (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
+          [(UnsignedIntTensor $l)]>;
 
 // Performs a substitution of FloorMod designed to correct for possibly negative
 // values. Pseudocode shown below:
@@ -493,20 +511,18 @@ def : Pat<(TF_EluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$featur
 // TODO(hinsu): Make these patterns to TF to TF lowering. Relu6 lowering will
 // require HLO canonicalization of min and max on a tensor to ClampOp.
 
-// TODO(hinsu): Lower unsigned and quantized types after supporting
-// them in GetScalarOfType.
+// TODO(hinsu): Lower quantized types after supporting them in GetScalarOfType.
 def : Pat<(TF_ReluOp AnyTensor:$input),
           (HLOClient_BroadcastMaxOp
                (HLO_ConstOp:$zero (GetScalarOfType<0> $input)), $input,
                (BinBroadcastDimensions $zero, $input)),
-          [(TF_SintOrFpTensor $input)]>;
+          [(TF_IntOrFpTensor $input)]>;
 
-// TODO(hinsu): Lower unsigned and quantized types after supporting
-// them in GetScalarOfType.
+// TODO(hinsu): Lower quantized types after supporting them in GetScalarOfType.
 def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
           (HLO_ClampOp (HLO_ConstOp (GetScalarOfType<0> $input)), $input,
                        (HLO_ConstOp (GetScalarOfType<6> $input))),
-          [(TF_SintOrFpTensor $input)]>;
+          [(TF_IntOrFpTensor $input)]>;
 
 // ReluGrad(gradients, features) = gradients * (features > 0)
 // The condition that $gradients and $features need to have the same shape is
@@ -811,3 +827,10 @@ def : Pat<(TF_XlaDotV2Op $lhs, $rhs, $dimension_numbers, $precision_config),
                             (ToDotDimNumsAttr $dimension_numbers),
                             (ToPrecisionConfigsAttr $precision_config)),
           [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
+
+//===----------------------------------------------------------------------===//
+// XlaEisumOp op.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_XlaEinsumOp $lhs, $rhs, $equation),
+          (HLO_EinsumOp $lhs, $rhs, $equation)>;

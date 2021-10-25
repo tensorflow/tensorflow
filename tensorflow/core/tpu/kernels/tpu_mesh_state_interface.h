@@ -43,12 +43,19 @@ class TpuMeshStateInterface : public tensorflow::ResourceBase {
   }
 
   static TpuMeshStateInterface* Create() {
-    return new TpuMeshStateInterface(OpsApiFn()->TpuMeshState_CreateFn());
+    XLA_TpuMeshState* state = nullptr;
+    if (OpsApiFn()->TpuMeshState_CreateFn != nullptr) {
+      state = OpsApiFn()->TpuMeshState_CreateFn();
+    }
+    return new TpuMeshStateInterface(state);
   }
 
   const XLA_TpuMeshState* data() const { return mesh_state_; }
 
   tensorflow::TpuMeshCommonState* mesh_common_state() const {
+    if (mesh_state_ == nullptr) {
+      return nullptr;
+    }
     return static_cast<tensorflow::TpuMeshCommonState*>(
         OpsApiFn()->TpuMeshState_MeshCommonStateFn(mesh_state_));
   }
@@ -59,6 +66,9 @@ class TpuMeshStateInterface : public tensorflow::ResourceBase {
   bool NeedsStaticDeviceAssignment(
       const TPUCompileMetadataProto& metadata,
       TpuCoreTypeEnum tpu_core_type) const {
+    if (mesh_state_ == nullptr) {
+      return false;
+    }
     // Static device assignment enables XLA to perform certain optimization when
     // all cores are used in the replicated computation.
     return metadata.num_cores_per_replica() * metadata.num_replicas() ==

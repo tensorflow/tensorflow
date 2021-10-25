@@ -111,6 +111,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
         points_to_analysis_->GetBufferDefinedAt(instruction, index)
             .ValueOrDie();
     std::vector<BufferAlias> expected_aliases;
+    expected_aliases.reserve(expected.size());
     for (auto& pair : expected) {
       expected_aliases.push_back(BufferAlias(pair.first, pair.second));
     }
@@ -675,9 +676,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
   void Run(const bool add_additional_gte0_user) {
     Shape input_shape = ShapeUtil::MakeShape(F32, {8});
     Shape update_shape = ShapeUtil::MakeShape(F32, {3});
-    Shape starts_shape = ShapeUtil::MakeShape(S32, {});
-    Shape tuple_shape =
-        ShapeUtil::MakeTupleShape({input_shape, update_shape, starts_shape});
+    Shape tuple_shape = ShapeUtil::MakeTupleShape({input_shape, update_shape});
 
     auto builder = HloComputation::Builder(TestName());
     // Create tuple-shaped parameter.
@@ -704,9 +703,9 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
           update_shape, HloOpcode::kAdd, update, slice));
     }
 
-    // Create slice 'starts' = GetTupleElement(tuple_param0, 2).
+    // Create slice 'starts' = Constant(0)
     auto starts = builder.AddInstruction(
-        HloInstruction::CreateGetTupleElement(starts_shape, tuple_param0, 2));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(0)));
     // Update 'input' with 'update' at dynamic 'starts' indices.
     builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
         input_shape, input, update, {starts}));
@@ -734,9 +733,6 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
     ExpectHasBuffers(
         points_to_analysis_->GetPointsToSet(fusion_param).element({1}),
         {GetBuffer(fusion_param, {1})});
-    ExpectHasBuffers(
-        points_to_analysis_->GetPointsToSet(fusion_param).element({2}),
-        {GetBuffer(fusion_param, {2})});
 
     // Check that Gte at tuple_index = 0 points-to fusion_param({0})
     auto fused_gte0 = GetUniqueFusionParameterUserAt(fusion_param, 0);
@@ -748,11 +744,6 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
     ExpectHasBuffers(
         points_to_analysis_->GetPointsToSet(fused_gte1).element({}),
         {GetBuffer(fusion_param, {1})});
-    // Check that Gte at tuple_index = 2 points-to fusion_param({2})
-    auto fused_gte2 = GetUniqueFusionParameterUserAt(fusion_param, 2);
-    ExpectHasBuffers(
-        points_to_analysis_->GetPointsToSet(fused_gte2).element({}),
-        {GetBuffer(fusion_param, {2})});
 
     // Check buffer aliases of 'fusion_param' at shape index {0}.
     ExpectHasBufferAliases(fusion_param, /*index=*/{0},
@@ -760,9 +751,6 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
     // Check buffer aliases of 'fusion_param' at shape index {1}.
     ExpectHasBufferAliases(fusion_param, /*index=*/{1},
                            {{fusion_param, {1}}, {fused_gte1, {}}});
-    // Check buffer aliases of 'fusion_param' at shape index {2}.
-    ExpectHasBufferAliases(fusion_param, /*index=*/{2},
-                           {{fusion_param, {2}}, {fused_gte2, {}}});
 
     // Check number of users of 'fusion_param' aliases at shape index {0}.
     ExpectNumUsersOfAliases(fusion_param, {0},
@@ -835,8 +823,8 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
 //                  Fusion
 //                 /      \
 //        FusionParam0   FusionParam1
-//        /     |    \       |
-//     Gte(0) Gte(2) Gte(1)  /
+//        /          \       |
+//     Gte(0) Const  Gte(1)  /
 //        \     |      \    /
 //         \    |       Add
 //          \   |        /
@@ -857,11 +845,11 @@ TEST_F(FusionPointsToAnalysisTest, FusionParam0OneUser) {
 //                  Fusion
 //                 /      \
 //        FusionParam0   FusionParam1
-//        /     |    \       |
-//     Gte(2) Gte(0) Gte(1)  /
-//        \     |      \    /
-//         \    |\      Add
-//          \   | \      /
+//              |    \       |
+//            Gte(0) Gte(1)  /
+//              |      \    /
+//              |\      Add
+//        Const | \      /
 //           |  | Slice /
 //           |  |   \  /
 //           |  |   Add

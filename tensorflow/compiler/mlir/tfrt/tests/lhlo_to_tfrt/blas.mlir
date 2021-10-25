@@ -157,3 +157,42 @@ func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
   // CHECK: tfrt.return [[CHAIN1]] : !tfrt.chain
   "lmhlo.terminator"() : () -> ()
 }
+
+// CHECK:      func @triangular_solve(
+// CHECK-SAME:   %arg0: !tfrt.chain,
+// CHECK-SAME:   %arg1: !tfrt_gpu.stream,
+// CHECK-SAME:   %arg2: !tfrt_gpu.buffer,
+// CHECK-SAME:   %arg3: !tfrt_gpu.buffer,
+// CHECK-SAME:   %arg4: !tfrt_gpu.buffer
+// CHECK-SAME: ) -> !tfrt.chain
+func @triangular_solve(%a: memref<2x2xf32>, %b: memref<2x2xf32>, %output: memref<2x2xf32>) {
+  // CHECK-NOT: cast
+  // CHECK-NOT: async.execute
+
+  // CHECK: [[CHAIN0:%[0-9]+]] = tfrt_gpu.mem.copy %arg4, %arg3, %arg1, %arg0
+  // CHECK-SAME: : !tfrt_gpu.buffer, !tfrt_gpu.buffer
+  // CHECK: [[HANDLE:%[0-9]+]] = tfrt_gpu.blas.create %arg1
+  // CHECK: [[M:%[0-9]+]] = tfrt.constant.i32 2
+  // CHECK: [[N:%[0-9]+]] = tfrt.constant.i32 2
+  // CHECK: [[ALPHA:%[0-9]+]] = tfrt.constant.f32 1.000000e+00
+  // CHECK: [[HEIGHT_A:%[0-9]+]] = tfrt.constant.i32 2
+  // CHECK: [[HEIGHT_B:%[0-9]+]] = tfrt.constant.i32 2
+  // CHECK: [[BATCH_COUNT:%[0-9]+]] = tfrt.constant.i32 1
+  // CHECK: [[CHAIN1:%[0-9]+]] = tfrt_gpu.blas.trsm.batch [[HANDLE]],
+  // CHECK-SAME: CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N,
+  // CHECK-SAME: CUBLAS_DIAG_UNIT, [[M]], [[N]], CUDA_R_32F, [[ALPHA]],
+  // CHECK-SAME: %arg2, [[HEIGHT_A]], %arg4, [[HEIGHT_B]], [[BATCH_COUNT]],
+  // CHECK-SAME: [[CHAIN0]]
+
+  "lmhlo.triangular_solve"(%a, %b, %output) {
+      layout_a = dense<[0, 1]> : tensor<2xindex>,
+      layout_b = dense<[0, 1]> : tensor<2xindex>,
+      layout_output = dense<[0, 1]> : tensor<2xindex>,
+      left_side = true, lower = true, transpose_a = "NO_TRANSPOSE",
+      unit_diagonal = true
+  } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+
+  // CHECK-NOT: cast
+  // CHECK: tfrt.return [[CHAIN1]] : !tfrt.chain
+  "lmhlo.terminator"() : () -> ()
+}

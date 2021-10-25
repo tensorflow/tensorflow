@@ -82,6 +82,11 @@ REGISTER_OP("ResourceUsingOp")
     .Input("resource: resource")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("IsResourceHandleRefCounting")
+    .Input("handle: resource")
+    .Output("result: bool")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("TestStringOutput")
     .Input("input: float")
     .Output("output1: float")
@@ -236,6 +241,22 @@ class ResourceUsingOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ResourceUsingOp").Device(DEVICE_CPU),
                         ResourceUsingOp);
+
+class IsResourceHandleRefCountingOp : public OpKernel {
+ public:
+  explicit IsResourceHandleRefCountingOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const auto& handle = HandleFromInput(ctx, 0);
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &output));
+    output->flat<bool>()(0) = handle.IsRefCounting();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("IsResourceHandleRefCounting").Device(DEVICE_CPU),
+                        IsResourceHandleRefCountingOp);
 
 class TestAttrOp : public OpKernel {
  public:

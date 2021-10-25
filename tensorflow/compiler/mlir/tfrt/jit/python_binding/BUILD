@@ -39,6 +39,7 @@ pybind_extension(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_cpurt_pipeline",
         "//tensorflow/core/platform:dynamic_annotations",
+        "//third_party/eigen3",
         "//third_party/python_runtime:headers",  # build_cleaner: keep
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Transforms",

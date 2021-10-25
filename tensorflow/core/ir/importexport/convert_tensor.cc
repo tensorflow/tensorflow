@@ -128,7 +128,7 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
   case tensorflow::DTYPE:          \
     return ConvertFlatTensor<CTYPE>(input_tensor, type);
 
-  // TODO(fengliuai): customize the conversions for quantized and string types.
+  // TODO(fengliuai): customize the conversions for quantized types.
   switch (input_dtype) {
     CONVERT_FLAT(DT_BOOL, bool)
     CONVERT_FLAT(DT_FLOAT, float)
@@ -150,10 +150,8 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
       return ConvertBf16Tensor(input_tensor, type);
     case tensorflow::DT_HALF:
       return ConvertHalfTensor(input_tensor, type);
-
     case tensorflow::DT_STRING:
       return ConvertStringTensor(input_tensor, type);
-
     default:
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.

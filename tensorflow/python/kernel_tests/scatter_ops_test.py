@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -333,6 +334,22 @@ class ScatterTest(test.TestCase):
         self.evaluate(op(ref, indices, updates))
         indices = np.array([2, 0, 6])
         self.evaluate(op(ref, indices, updates))
+
+  @test_util.run_v1_only("ResrouceVariable has deterministic scatter "
+                         "implementation")
+  @test_util.run_cuda_only
+  def testDeterminismExceptionThrowing(self):
+    v = variables.RefVariable(np.array([1., 2., 3.]))
+    indices = np.array([0, 0, 0])
+    updates = np.array([-3, -4, -5]).astype(np.float32)
+    with test_util.deterministic_ops():
+      with self.assertRaisesRegex(
+          errors.UnimplementedError,
+          "Determinism is not yet supported in GPU implementation of Scatter "
+          "ops"):
+        self.evaluate(state_ops.scatter_update(v, indices, updates))
+
+
 
 
 if __name__ == '__main__':

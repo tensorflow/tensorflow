@@ -60,9 +60,10 @@ from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.profiler import trace
+from tensorflow.python.profiler import trace as profiler_trace
 from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.types import internal
+from tensorflow.python.types import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import deprecation
@@ -281,6 +282,32 @@ def disable_tensor_equality():
   logging.vlog(1, "Disabling tensor equality")
   _tensor_equality_api_usage_gauge.get_cell().set(False)
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
+
+
+# TODO(b/202447704): Merge into TensorSpec.
+class TensorType(trace.TraceType):
+  """Represents Tensor and TensorSpec for function tracing purposes."""
+
+  def __init__(self, signature_context, shape, dtype, name):
+    if signature_context.include_tensor_ranks_only:
+      self._components = (shape.rank, dtype, name)
+    else:
+      self._components = (tuple(shape.as_list()), dtype, name)
+
+  def is_subtype_of(self, other):
+    # TODO(b/202429845): Implement for subtyping.
+    return self == other
+
+  def most_specific_common_supertype(self, others):
+    # TODO(b/202430155) Implement for shape relaxation.
+    return None
+
+  def __hash__(self) -> int:
+    return hash(self._components)
+
+  def __eq__(self, other) -> bool:
+    return isinstance(other,
+                      TensorType) and self._components == other._components
 
 
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
@@ -1029,6 +1056,10 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     """
     return object_identity.Reference(self)
 
+  # TODO(b/202447704): Rename to __tf_tracing_type__ at protocol export.
+  def _tf_tracing_type(self, signature_context):
+    return TensorType(signature_context, self.shape, self.dtype, None)
+
 
 # TODO(agarwal): consider getting rid of this.
 # TODO(mdan): This object should not subclass ops.Tensor.
@@ -1555,7 +1586,7 @@ def pack_eager_tensors(tensors, ctx=None):
   return packed_tensor
 
 
-@trace.trace_wrapper("convert_to_tensor")
+@profiler_trace.trace_wrapper("convert_to_tensor")
 def convert_to_tensor(value,
                       dtype=None,
                       name=None,
@@ -3156,7 +3187,7 @@ class Graph(object):
   def _resource_creator_scope(self, resource_type, creator):
     """Scope which defines a resource creation function used by some resource.
 
-    The resource should be a subclass of CachableResource with a class method
+    The resource should be a subclass of CapturableResource with a class method
     `cls._resource_type`, the output of which is what the `resource_type`
     argument should be. By default, `cls._resource_type` returns the class name,
     `cls.__name__`. Given a scope, creators being added with the same

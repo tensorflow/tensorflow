@@ -94,7 +94,7 @@ set(EIGEN_TEST_NO_EXPLICIT_VECTORIZATION OFF CACHE BOOL "Disable vectorization")
 set(EIGEN_TEST_X87 OFF CACHE BOOL "Disable X87 instructions test")
 set(EIGEN_TEST_32BIT OFF CACHE BOOL "Disable 32-bit instructions test")
 set(EIGEN_TEST_NO_EXPLICIT_ALIGNMENT OFF CACHE BOOL "Disable alignment test")
-set(EIGEN_TEST_NO_EXCEPTIONS OFF CACHE BOOL "Disable alignment test")
+set(EIGEN_TEST_NO_EXCEPTIONS OFF CACHE BOOL "Disable exceptions test")
 set(EIGEN_TEST_SYCL OFF CACHE BOOL "Disable Sycl test")
 set(EIGEN_SYCL_TRISYCL OFF CACHE BOOL "Disable triSYCL test")
 # Make sure only MPL2.0 or more permissively licensed code is included.

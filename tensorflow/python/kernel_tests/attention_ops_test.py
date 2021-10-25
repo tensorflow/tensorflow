@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import image_ops
@@ -296,6 +297,18 @@ class ExtractGlimpseTest(test.TestCase):
       self.assertAllEqual(
           np.asarray([[5, 6, 7], [10, 11, 12], [15, 16, 17]]),
           self.evaluate(result2)[0, :, :, 0])
+
+  def testGlimpseNegativeInput(self):
+    img = np.arange(9).reshape([1, 3, 3, 1])
+    with self.test_session():
+      with self.assertRaises((errors.InternalError, ValueError)):
+        result = image_ops.extract_glimpse_v2(
+            img,
+            size=[1023, -63],
+            offsets=[1023, 63],
+            centered=False,
+            normalized=False)
+        self.evaluate(result)
 
 
 if __name__ == '__main__':

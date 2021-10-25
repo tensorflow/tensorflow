@@ -161,7 +161,7 @@ LogicalResult MoveIntoAssumingOpMatchAndRewrite(Operation *op,
 
         // Yield the previous results and also the new ones.
         auto mapped_results = llvm::to_vector<8>(llvm::map_range(
-            yield_op.operands(),
+            yield_op.getOperands(),
             [&](Value v) { return mapping.lookupOrDefault(v); }));
         mapped_results.append(new_op->getResults().begin(),
                               new_op->getResults().end());
@@ -241,7 +241,8 @@ struct MoveOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
       return llvm::is_contained(new_op->getResults(), v);
     };
     auto yield_op = cast<shape::AssumingYieldOp>(body->getTerminator());
-    if (llvm::none_of(yield_op.operands(), is_new_op_result)) return success();
+    if (llvm::none_of(yield_op.getOperands(), is_new_op_result))
+      return success();
 
     // If the assuming region yields any of the new op's results, these values
     // can instead bypass the assuming region. There is no need to yield them
@@ -259,7 +260,7 @@ struct MoveOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
 
           // Collect new yield operands.
           SmallVector<Value, 2> new_yield_operands;
-          for (Value result : yield_op.operands()) {
+          for (Value result : yield_op.getOperands()) {
             if (is_new_op_result(result)) {
               replacement_values.push_back(result);
             } else {
@@ -316,8 +317,8 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
           // Map result values of preceding assuming op.
           auto yield_op_a =
               llvm::dyn_cast<shape::AssumingYieldOp>(body_a->getTerminator());
-          for (auto pair :
-               llvm::zip(preceding_op->getResults(), yield_op_a.operands())) {
+          for (auto pair : llvm::zip(preceding_op->getResults(),
+                                     yield_op_a.getOperands())) {
             mapping.map(std::get<0>(pair),
                         mapping.lookupOrDefault(std::get<1>(pair)));
           }
@@ -331,10 +332,10 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
           SmallVector<Value, 4> mapped_results;
           auto yield_op_b =
               llvm::dyn_cast<shape::AssumingYieldOp>(body_b->getTerminator());
-          for (Value v : yield_op_a.operands()) {
+          for (Value v : yield_op_a.getOperands()) {
             mapped_results.push_back(mapping.lookupOrDefault(v));
           }
-          for (Value v : yield_op_b.operands()) {
+          for (Value v : yield_op_b.getOperands()) {
             mapped_results.push_back(mapping.lookupOrDefault(v));
           }
           return mapped_results;
@@ -377,36 +378,57 @@ struct EarlyBroadcastInDimOpPattern
 
   LogicalResult matchAndRewrite(DynamicBroadcastInDimOp bcast_op,
                                 PatternRewriter &rewriter) const override {
+    // Dynamic broadcasting only works on ranked tensors.
+    auto result_ty = bcast_op.getType().dyn_cast<RankedTensorType>();
+    if (!result_ty) return failure();
+
+    // Find producer op.
     Operation *producer_op = bcast_op.operand().getDefiningOp();
-    if (!producer_op ||
-        !producer_op->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>() ||
-        !producer_op->hasTrait<mlir::OpTrait::Elementwise>()) {
-      return failure();
-    }
+    if (!producer_op) return failure();
+    auto producer_result_ty =
+        producer_op->getResultTypes().front().dyn_cast<RankedTensorType>();
+    if (!producer_result_ty) return failure();
+
+    // Only apply to broadcasting elementwise producers.
+    bool is_broadcasting_elementwise =
+        (producer_op->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>() &&
+         producer_op->hasTrait<mlir::OpTrait::Elementwise>()) ||
+        producer_op->hasTrait<mlir::mhlo::OpTrait::BroadcastingElementwise>();
+    if (!is_broadcasting_elementwise) return failure();
 
     // Materialize broadcast on operands.
     SmallVector<Value, 2> bcasted_operands;
     Location loc = bcast_op.getLoc();
     ArrayRef<int64_t> ty_shape = bcast_op.getType().getShape();
-    for (Value operand : producer_op->getOperands()) {
+    for (Value producer_operand : producer_op->getOperands()) {
       // The broadcast only works on ranked operations.
-      auto operand_ty = operand.getType().dyn_cast<RankedTensorType>();
-      if (!operand_ty) {
+      auto producer_operand_ty =
+          producer_operand.getType().dyn_cast<RankedTensorType>();
+      if (!producer_operand_ty) {
         return bcast_op.emitError()
                << "Can only move up broadcasts over ranked tensor operands.";
       }
 
+      // Materialize dynamic broadcast. The operand shape is either the same as
+      // the result shape and we can reuse the broadcast dimensions, or it is a
+      // scalar and we can create empty broadcast dimensions.
+      assert((producer_operand_ty.getRank() == 0 ||
+              producer_operand_ty.getRank() == producer_result_ty.getRank()) &&
+             "expect scalar or same shape");
+      auto bcast_dims = producer_operand_ty.getRank() == 0
+                            ? rewriter.getI64TensorAttr({})
+                            : bcast_op.broadcast_dimensions();
       auto bcasted_operand_ty =
-          RankedTensorType::get(ty_shape, operand_ty.getElementType());
+          RankedTensorType::get(ty_shape, producer_operand_ty.getElementType());
       bcasted_operands.push_back(rewriter.create<DynamicBroadcastInDimOp>(
-          loc, bcasted_operand_ty, operand, bcast_op.output_dimensions(),
-          bcast_op.broadcast_dimensions()));
+          loc, bcasted_operand_ty, producer_operand,
+          bcast_op.output_dimensions(), bcast_dims));
     }
 
     // Create a copy of the producer op with the new broadcasted operands.
     OperationState new_producer_op_state(
-        loc, producer_op->getName().getStringRef(), bcasted_operands,
-        bcast_op.getType(), producer_op->getAttrs());
+        loc, producer_op->getName().getStringRef(), bcasted_operands, result_ty,
+        producer_op->getAttrs());
     Operation *new_producer_op =
         rewriter.createOperation(new_producer_op_state);
 
@@ -428,8 +450,10 @@ struct BroadcastPropagationPass
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
     mhlo::PopulateBroadcastsPropagationPatterns(ctx, &patterns);
-    if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
+    GreedyRewriteConfig config;
+    config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
+    if (failed(applyPatternsAndFoldGreedily(getFunction(), std::move(patterns),
+                                            config))) {
       return signalPassFailure();
     }
   }

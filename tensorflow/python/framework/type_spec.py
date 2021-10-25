@@ -27,6 +27,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -40,6 +41,29 @@ tensor_spec = LazyLoader(
     "tensorflow.python.framework.tensor_spec")
 ops = LazyLoader("ops", globals(),
                  "tensorflow.python.framework.ops")
+
+
+# TODO(b/202447704): Merge into TypeSpec.
+class TypeSpecTraceType(trace.TraceType):
+  """A wrapper to support encoding of TypeSpecs through TraceType."""
+
+  def __init__(self, spec):
+    self._spec = spec
+
+  def is_subtype_of(self, other):
+    # TODO(b/202429845): Implement for subtyping.
+    return self == other
+
+  def most_specific_common_supertype(self, others):
+    # TODO(b/202430155) Implement for shape relaxation.
+    return None
+
+  def __hash__(self) -> int:
+    return hash(self._spec)
+
+  def __eq__(self, other) -> bool:
+    return isinstance(
+        other, TypeSpecTraceType) and self._spec == other._spec
 
 
 @tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
@@ -347,6 +371,9 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
     return self.value_type
 
   # === Private Helper Methods ===
+
+  def __tf_tracing_type__(self, _):
+    return TypeSpecTraceType(self)
 
   def __check_tensor_list(self, tensor_list):
     """Raises an exception if tensor_list incompatible w/ flat_tensor_specs."""

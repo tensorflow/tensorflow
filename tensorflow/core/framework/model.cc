@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
@@ -1656,12 +1657,17 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
   optimization_params.set_ram_budget(ram_budget);
   optimization_params.set_model_input_time(model_input_time);
   switch (algorithm) {
+    case AutotuneAlgorithm::DEFAULT:
     case AutotuneAlgorithm::HILL_CLIMB:
       OptimizeHillClimb(snapshot, optimization_params, cancellation_manager);
       break;
     case AutotuneAlgorithm::GRADIENT_DESCENT:
       OptimizeGradientDescent(snapshot, optimization_params,
                               cancellation_manager);
+      break;
+    case AutotuneAlgorithm::MAX_PARALLELISM:
+      OptimizeMaxParallelism(snapshot, optimization_params,
+                             cancellation_manager);
       break;
     default:
       VLOG(2) << "Autotuning algorithm was not recognized. Aborting "
@@ -1833,15 +1839,15 @@ void Model::OptimizeGradientDescent(
   UpdateStateValues(&parameters);
 }
 
-void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
-                              const OptimizationParams& optimization_params,
-                              CancellationManager* cancellation_manager) {
+void Model::OptimizeHillClimbHelper(
+    std::shared_ptr<Node> snapshot,
+    const OptimizationParams& optimization_params,
+    CancellationManager* cancellation_manager, StopPredicate should_stop) {
   VLOG(2) << "Starting optimization of tunable parameters with Hill Climb.";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
   if (parameters.empty()) {
-    VLOG(2) << "The Hill Climb optimization is terminated since no node with "
-               "tunable parameters has recorded elements.";
+    VLOG(2) << "There are no tunable parameters.";
     return;
   }
   VLOG(2) << "Number of tunable parameters: " << parameters.size();
@@ -1865,10 +1871,8 @@ void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
         break;
       }
     }
-    if (output_time < processing_time / optimization_params.cpu_budget() ||
-        all_max ||
-        TotalMaximumBufferedBytes(snapshot) >
-            optimization_params.ram_budget()) {
+    if (all_max || should_stop(processing_time, output_time,
+                               TotalMaximumBufferedBytes(snapshot))) {
       break;
     }
     double best_delta = -1.0L;
@@ -1891,14 +1895,40 @@ void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
     }
     if (!best_parameter) {
       VLOG(2) << "Failed to find a tunable parameter that would further "
-                 "decrease the output time. This means that the autotuning "
+                 "decrease the output time. This suggests that the hill-climb "
                  "optimization got stuck in a local maximum. The optimization "
-                 "attempt will terminate early.";
+                 "attempt will stop now.";
       break;
     }
     best_parameter->value++;
   }
   UpdateStateValues(&parameters);
+}
+
+void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
+                              const OptimizationParams& optimization_params,
+                              CancellationManager* cancellation_manager) {
+  auto should_stop = [&optimization_params](double processing_time,
+                                            double output_time,
+                                            double buffered_bytes) {
+    return output_time < processing_time / optimization_params.cpu_budget() ||
+           buffered_bytes > optimization_params.ram_budget();
+  };
+  OptimizeHillClimbHelper(snapshot, optimization_params, cancellation_manager,
+                          should_stop);
+}
+
+void Model::OptimizeMaxParallelism(
+    std::shared_ptr<Node> snapshot,
+    const OptimizationParams& optimization_params,
+    CancellationManager* cancellation_manager) {
+  auto should_stop = [&optimization_params](double processing_time,
+                                            double output_time,
+                                            double buffered_bytes) {
+    return buffered_bytes > optimization_params.ram_budget();
+  };
+  OptimizeHillClimbHelper(snapshot, optimization_params, cancellation_manager,
+                          should_stop);
 }
 
 double Model::OutputTime(std::shared_ptr<Node> node, double model_input_time,

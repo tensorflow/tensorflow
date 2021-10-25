@@ -742,6 +742,7 @@ tf_py_test(
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
@@ -3400,7 +3401,6 @@ cuda_py_test(
         "no_gpu",  # b/171837334
         "no_oss",  # Test times out on oss-nightly cpu builds
         "no_pip",
-        "nogpu",  # b/171837334
         "nomac",  # b/139946976
         "notap",  # b/31080670
     ],

@@ -824,6 +824,7 @@ bool MemorySpaceAssignment::Allocation::operator==(
          uses() == other.uses() && memory_space() == other.memory_space() &&
          chunk() == other.chunk() && start_time() == other.start_time() &&
          end_time() == other.end_time() &&
+         earliest_available_time() == other.earliest_available_time() &&
          is_copy_allocation() == other.is_copy_allocation() &&
          is_scoped_allocation() == other.is_scoped_allocation();
 }
@@ -1224,6 +1225,25 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   }
 
   AllocateReservedScopedAllocations();
+  std::vector<BufferInterval> sorted_buffer_intervals =
+      GetSortedBufferIntervals();
+  memory_space_assignment::CustomizeSortedBufferInterval(
+      options_.autotuning_config, sorted_buffer_intervals);
+
+  // Calculate the memory pressure for the buffers that can be assigned in the
+  // alternate memory.
+  memory_pressure_ = 0;
+  for (auto& interval : sorted_buffer_intervals) {
+    if (!interval.need_allocation ||
+        !MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
+            interval) ||
+        interval.size > available_heap_size()) {
+      continue;
+    }
+    memory_pressure_ += interval.size;
+  }
+  VLOG(1) << "Memory pressure = " << memory_pressure_;
+
   if (options_.enable_cross_program_prefetch) {
     absl::optional<AlternateMemoryBestFitHeap::BufferInterval>
         prefetch_candidate = FindCrossProgramPrefetchCandidate(
@@ -1235,10 +1255,6 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
     }
   }
 
-  std::vector<BufferInterval> sorted_buffer_intervals =
-      GetSortedBufferIntervals();
-  memory_space_assignment::CustomizeSortedBufferInterval(
-      options_.autotuning_config, sorted_buffer_intervals);
 
   VLOG(1) << "Assigning buffers to alternate memory. Max heap size = "
           << options_.max_size_in_bytes;
@@ -1840,9 +1856,10 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
           << ", buffer occupied ratio = " << buffer_occupied_ratio;
   // Freeing buffer only makes sense if the buffer will be free for a
   // substantial time. Only perform this optimization if the ratio is below the
-  // limit.
+  // limit, and if the memory pressure is above the alternate memory size.
   bool free_buffer =
       (options_.enable_cross_program_prefetch_freeing &&
+       memory_pressure_ > options_.max_size_in_bytes &&
        buffer_occupied_ratio < kCrossProgramPrefetchOccupyFreeingLimit &&
        end_of_program_prefetch_start_time > last_use_time &&
        end_of_program_prefetch_start_time < end_of_program_prefetch_end_time);
@@ -3236,7 +3253,7 @@ StatusOr<HloInstruction*> MemorySpaceAssignment::Allocation::ReplaceTupleWith(
   HloComputation* computation = new_instruction->parent();
   std::vector<HloInstruction*> tuple_args(tuple_shape.tuple_shapes_size());
   CHECK_GE(tuple_shape.tuple_shapes_size(), shape_index[0]);
-  for (int64_t i = 0; i < tuple_shape.tuple_shapes_size(); ++i) {
+  for (int i = 0; i < tuple_shape.tuple_shapes_size(); ++i) {
     const Shape& subshape = tuple_shape.tuple_shapes(i);
     // If tuple is a tuple instruction, we can get the tuple instruction's
     // operand to construct the new tuple to improve compilation time
@@ -3396,7 +3413,7 @@ Status MemorySpaceAssignment::ParentAllocation::Process() {
   // in the default memory space.
   HloInstruction* producing_instruction =
       original_allocation_.AddGetTupleElements();
-  int64_t new_tuple_index = calling_instruction_->shape().tuple_shapes_size();
+  int new_tuple_index = calling_instruction_->shape().tuple_shapes_size();
 
   TF_ASSIGN_OR_RETURN(HloInstruction * new_while_operand,
                       ReplaceTupleWith(producing_instruction,

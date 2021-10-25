@@ -1502,6 +1502,14 @@ class VariablesGradientTest(test_util.TensorFlowTestCase,
         f, inputs, delta=delta)
     self.assertAllClose(num_jac, sym_jac_back, rtol=rtol, atol=atol)
 
+  def testRecomputeGradWrapped(self):
+
+    def f(x):  # pylint: disable=invalid-name
+      return 2 * x
+
+    g = custom_gradient.recompute_grad(f)
+    self.assertIs(g.__wrapped__, f)
+
   def testRecomputeGradZeroSizeInput(self):
 
     def F(x):

@@ -1034,5 +1034,81 @@ class CTCLossTestV3(test.TestCase, parameterized.TestCase):
     self.assertAllClose(grad, ref_grad, atol=2e-6)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class CTCLossDeterministicTest(test.TestCase, parameterized.TestCase):
+
+  def _randomFloats(self, shape):
+    x = (2 * np.random.random_sample(shape) - 1)
+    return constant_op.constant(x, dtype=dtypes.float32)
+
+  def _genInputParams(self,
+                      num_classes=10,
+                      batch_size=32,
+                      max_label_sequence_length=50,
+                      num_frames=100,
+                      logits_time_major=True,
+                      sparse_labels=True):
+    assert num_frames >= max_label_sequence_length
+
+    labels_shape = (batch_size, max_label_sequence_length)
+    # Zero-pad the labels. Zero is the default blank index in the TF2 API.
+    # num_classes includes the blank class
+    unmasked_labels = np.random.randint(
+        1, num_classes, size=labels_shape, dtype=np.int32)
+    labels_lengths = np.random.randint(
+        1, high=max_label_sequence_length, size=batch_size, dtype=np.int32)
+    labels_masks = (np.arange(max_label_sequence_length) <
+                    labels_lengths.reshape(batch_size, 1)).astype(np.int32)
+    labels = unmasked_labels * labels_masks
+    if sparse_labels:
+      labels = ctc_ops.dense_labels_to_sparse(labels, labels_lengths)
+
+    if logits_time_major:
+      logits_shape = (num_frames, batch_size, num_classes)
+    else:
+      logits_shape = (batch_size, num_frames, num_classes)
+    logits = self._randomFloats(logits_shape)
+
+    labels_lengths = constant_op.constant(labels_lengths)
+
+    logits_lengths = [num_frames] * batch_size
+    logits_lengths = constant_op.constant(logits_lengths)
+
+    return labels, logits, labels_lengths, logits_lengths
+
+  def _forwardAndBackward(self, sparse_labels, logits_time_major, seed):
+    np.random.seed(seed)
+    params = self._genInputParams(
+        logits_time_major=logits_time_major, sparse_labels=sparse_labels)
+    labels, logits, labels_lengths, logits_lengths = params
+    output_shape = (labels_lengths.shape[0],)
+    upstream_gradients = self._randomFloats(output_shape)
+    with backprop.GradientTape() as tape:
+      tape.watch(logits)
+      loss = ctc_ops.ctc_loss_v3(
+          labels,
+          logits,
+          labels_lengths,
+          logits_lengths,
+          logits_time_major=logits_time_major,
+          blank_index=0)
+      gradient_injector_output = loss * upstream_gradients
+    return loss, tape.gradient(gradient_injector_output, logits)
+
+  @parameterized.parameters(  # parameterized.product not yet available
+      (False, False), (False, True), (True, False), (True, True))
+  def testForwardAndBackward(self, sparse_labels, logits_time_major):
+    with test_util.deterministic_ops():
+      for seed in range(2):
+        loss_a, gradient_a = self._forwardAndBackward(sparse_labels,
+                                                      logits_time_major, seed)
+        loss_b, gradient_b = self._forwardAndBackward(sparse_labels,
+                                                      logits_time_major, seed)
+        loss_a, loss_b, gradient_a, gradient_b = self.evaluate(
+            (loss_a, loss_b, gradient_a, gradient_b))
+        self.assertAllEqual(loss_a, loss_b, "Loss mismatch")
+        self.assertAllEqual(gradient_a, gradient_b, "Gradient mismatch")
+
+
 if __name__ == "__main__":
   test.main()

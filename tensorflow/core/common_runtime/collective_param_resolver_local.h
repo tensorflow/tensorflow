@@ -62,6 +62,8 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
                              CancellationManager* cancel_mgr,
                              const StatusCallback& done) override;
 
+  Status LookupGroup(int32_t group_key, CollGroupParams* group) override;
+
   void StartAbort(const Status& s) override;
 
  protected:

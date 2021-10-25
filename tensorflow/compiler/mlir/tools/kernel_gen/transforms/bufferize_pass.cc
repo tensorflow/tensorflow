@@ -22,6 +22,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
@@ -48,7 +50,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -98,7 +99,7 @@ class CustomBufferizeTypeConverter : public BufferizeTypeConverter {
       // TODO(pifon) : Change how target materialization is invoked in dialect
       // conversion.
       if (auto memref_type = inputs[0].getType().dyn_cast<MemRefType>()) {
-        assert(!memref_type.getAffineMaps().empty());
+        assert(!memref_type.getLayout().isIdentity());
         return inputs[0];
       }
       assert(inputs[0].getType().isa<TensorType>());
@@ -118,10 +119,10 @@ struct ComputeOpAndFuncBufferizePass
     RewritePatternSet patterns(&getContext());
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<complex::ComplexDialect, lmhlo::LmhloDialect,
-                           AffineDialect, vector::VectorDialect,
-                           memref::MemRefDialect, StandardOpsDialect,
-                           tensor::TensorDialect, math::MathDialect>();
+    target.addLegalDialect<
+        arith::ArithmeticDialect, complex::ComplexDialect, lmhlo::LmhloDialect,
+        AffineDialect, vector::VectorDialect, memref::MemRefDialect,
+        StandardOpsDialect, tensor::TensorDialect, math::MathDialect>();
     target.addLegalOp<UnrealizedConversionCastOp, linalg::TiledLoopOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addDynamicallyLegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>(
@@ -184,10 +185,10 @@ struct TiledLoopBufferizePass
     RewritePatternSet patterns(&getContext());
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<complex::ComplexDialect, lmhlo::LmhloDialect,
-                           AffineDialect, vector::VectorDialect,
-                           memref::MemRefDialect, StandardOpsDialect,
-                           tensor::TensorDialect, math::MathDialect>();
+    target.addLegalDialect<
+        arith::ArithmeticDialect, complex::ComplexDialect, lmhlo::LmhloDialect,
+        AffineDialect, vector::VectorDialect, memref::MemRefDialect,
+        StandardOpsDialect, tensor::TensorDialect, math::MathDialect>();
     target.addLegalOp<UnrealizedConversionCastOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>();
@@ -230,11 +231,11 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     auto& context = getContext();
     ConversionTarget target(context);
     target.addLegalDialect<
-        complex::ComplexDialect, memref::MemRefDialect, StandardOpsDialect,
-        scf::SCFDialect, tensor::TensorDialect,
-        tf_framework::TFFrameworkDialect, AffineDialect, shape::ShapeDialect,
-        lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect,
-        vector::VectorDialect>();
+        arith::ArithmeticDialect, complex::ComplexDialect,
+        memref::MemRefDialect, StandardOpsDialect, scf::SCFDialect,
+        tensor::TensorDialect, tf_framework::TFFrameworkDialect, AffineDialect,
+        shape::ShapeDialect, lmhlo::LmhloDialect, linalg::LinalgDialect,
+        math::MathDialect, vector::VectorDialect>();
     target.addLegalOp<FuncOp, ModuleOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
@@ -248,12 +249,14 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     };
-    target.addDynamicallyLegalOp<ConstantOp, IndexCastOp, RankOp, SelectOp,
+    target.addDynamicallyLegalOp<ConstantOp, arith::ConstantOp,
+                                 arith::IndexCastOp, RankOp, SelectOp,
                                  tf_framework::JITExecuteOp>(typesAreLegal);
 
     RewritePatternSet patterns(&getContext());
     linalg::populateLinalgBufferizePatterns(converter, patterns);
     populateTensorBufferizePatterns(converter, patterns);
+    arith::populateArithmeticBufferizePatterns(converter, patterns);
     populateStdBufferizePatterns(converter, patterns);
     populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
     populateExtraBufferizePatterns(&getContext(), &converter, &patterns);

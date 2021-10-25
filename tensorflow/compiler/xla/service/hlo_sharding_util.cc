@@ -577,7 +577,11 @@ HloSharding GatherOutputSharding(const HloSharding& index_sharding,
 
   const GatherDimensionNumbers& dnums = hlo->gather_dimension_numbers();
   std::vector<int64_t> output_tile_assignment_dims;
-  for (int64_t i = 0, index_dim = 0; i < hlo->shape().rank(); ++i) {
+  const int64_t rank = hlo->shape().rank(),
+                num_dimensions =
+                    index_sharding.tile_assignment().num_dimensions();
+  output_tile_assignment_dims.reserve(rank + num_dimensions);
+  for (int64_t i = 0, index_dim = 0; i < rank; ++i) {
     if (absl::c_binary_search(dnums.offset_dims(), i)) {
       output_tile_assignment_dims.push_back(1);
     } else {
@@ -589,8 +593,7 @@ HloSharding GatherOutputSharding(const HloSharding& index_sharding,
     }
   }
 
-  for (int64_t i = index_sharding.TiledDataRank();
-       i < index_sharding.tile_assignment().num_dimensions(); ++i) {
+  for (int64_t i = index_sharding.TiledDataRank(); i < num_dimensions; ++i) {
     output_tile_assignment_dims.push_back(
         index_sharding.tile_assignment().dim(i));
   }
@@ -761,7 +764,9 @@ HloSharding ScatterDataSharding(const HloSharding& index_sharding,
   const ScatterDimensionNumbers& dnums = hlo->scatter_dimension_numbers();
   std::vector<int64_t> data_tile_assignment_dims;
   std::vector<int64_t> relevant_index_dims;
-  for (int64_t i = 0, index_dim = 0; i < hlo->operand(2)->shape().rank(); ++i) {
+  const int64_t rank = hlo->operand(2)->shape().rank();
+  data_tile_assignment_dims.reserve(rank);
+  for (int64_t i = 0, index_dim = 0; i < rank; ++i) {
     if (absl::c_binary_search(dnums.update_window_dims(), i)) {
       data_tile_assignment_dims.push_back(1);
     } else {
@@ -1041,7 +1046,8 @@ absl::optional<HloSharding> GatherParallelDataOperandSharding(
 
 absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
     const HloSharding& data_operand_sharding, const HloInstruction& hlo,
-    const Shape& output_shape, const Shape& operand_shape) {
+    absl::Span<const int64_t> slice_sizes, const Shape& output_shape,
+    const Shape& operand_shape) {
   const auto& dnums = hlo.gather_dimension_numbers();
   std::vector<int64_t> collapsed_slice_dims(
       dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
@@ -1051,7 +1057,7 @@ absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
                                    dnums.offset_dims().end());
   return PassthroughOperandToGatherOutputOrScatterUpdate(
       operand_shape, data_operand_sharding, output_shape, collapsed_slice_dims,
-      start_index_map, offset_dims, hlo.gather_slice_sizes());
+      start_index_map, offset_dims, slice_sizes);
 }
 
 absl::optional<HloSharding> GatherDataOperandShardingFromOutput(

@@ -232,7 +232,9 @@ SubgraphWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
       }
 
       // Shape
-      // TODO(b/188460235) Avoid generating the weird null dimension tensors.
+      // Some tensors added during op init are not registered formally as
+      // node temporaries. Some didn't get memory allocated for them, and we
+      // should avoid serializing those tensors.
       if (tensor->dims) {
         TfLiteIntArrayView shape_view(tensor->dims);
         std::vector<int> shape =

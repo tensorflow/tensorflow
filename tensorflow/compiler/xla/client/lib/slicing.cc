@@ -173,6 +173,7 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64_t dim, bool sparse) {
       std::vector<int64_t> index_broadcast_dims;
       std::vector<int64_t> input_broadcast_dims;
       std::vector<int64_t> sizes;
+      sizes.reserve(index_shape.rank());
       for (int64_t i = 0; i < index_shape.rank(); ++i) {
         if (i < dim) {
           input_broadcast_dims.push_back(i);
@@ -232,6 +233,8 @@ XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64_t dim,
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     std::vector<int64_t> index_broadcast_dims;
     std::vector<int64_t> sizes;
+    const auto rank = index_shape.rank();
+    sizes.reserve(rank + 1);
     for (int64_t i = 0; i < index_shape.rank(); ++i) {
       if (i < dim) {
         index_broadcast_dims.push_back(i);

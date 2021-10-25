@@ -1047,6 +1047,7 @@ class CollectiveAllReduce(CrossDeviceOps):
   def __init__(self,
                devices,
                group_size,
+               options,
                collective_keys=None,
                canonicalize_devices=True):
     """Initializes the object.
@@ -1055,6 +1056,7 @@ class CollectiveAllReduce(CrossDeviceOps):
       devices: a list of device strings to run collectives on.
       group_size: the global group size. For between-graph replicated training
         it's the total number of devices across all workers.
+      options: a `tf.distribute.experimental.CommunicationOptions`.
       collective_keys: an optional CollectiveKey object.
       canonicalize_devices: Whether to canonicalize devices for workers or not.
     """
@@ -1062,6 +1064,7 @@ class CollectiveAllReduce(CrossDeviceOps):
       raise ValueError("group_size must be divisible by the number of devices.")
 
     self._group_size = group_size
+    self._options = options
     self._collective_keys = (collective_keys or
                              cross_device_utils.CollectiveKeys())
     # This lock guards all collective launches, i.e. calls to
@@ -1092,7 +1095,7 @@ class CollectiveAllReduce(CrossDeviceOps):
     self._limited_nccl = False
     for device in self._devices:
       launcher = cross_device_utils.CollectiveReplicaLauncher(
-          group_key, group_size, self._collective_keys, device)
+          group_key, group_size, self._collective_keys, device, options)
       self._launchers.append(launcher)
       if not launcher.can_order_nccl():
         self._limited_nccl = True
@@ -1112,15 +1115,16 @@ class CollectiveAllReduce(CrossDeviceOps):
     # TODO(b/122840926): reuse this method in _batch_all_reduce.
     flat_values = nest.flatten(value)
 
-    implementation = options.implementation.value
     # If NCCL launches can't be ordered (self._limited_nccl == True), we only
     # use NCCL when batch_size > 1, hoping that there's only one batched
     # all-reduce, which is the gradient aggregation in optimizer. For TF 2.x,
     # NCCL launches are always ordered.
-    if (self._limited_nccl and
-        options.implementation == CommunicationImplementation.NCCL and
+    if (self._limited_nccl and options.implementation
+        == collective_util.CommunicationImplementation.NCCL and
         len(flat_values) == 1):
-      implementation = CommunicationImplementation.AUTO.value
+      options = options.merge(
+          collective_util.Options(
+              implementation=collective_util.CommunicationImplementation.RING))
 
     launcher = self._launchers[replica_id]
     dense_values, dense_indices, sparse_values, sparse_indices = (
@@ -1148,10 +1152,9 @@ class CollectiveAllReduce(CrossDeviceOps):
             "Collective all_reduce tensors: %d all_reduces, num_devices = %d, "
             "group_size = %d, implementation = %s, num_packs = %d",
             len(dense_values), len(self._launchers), self._group_size,
-            implementation, len(packs))
+            options.implementation, len(packs))
 
-      dense_results = launcher.batch_all_reduce(packs, implementation,
-                                                options.timeout_seconds)
+      dense_results = launcher.batch_all_reduce(packs, options)
       if reduce_op == reduce_util.ReduceOp.MEAN:
         for i, v in enumerate(dense_results):
           with ops.device(self._devices[replica_id]):
@@ -1163,12 +1166,11 @@ class CollectiveAllReduce(CrossDeviceOps):
         logging.info(
             "Collective all_reduce IndexedSlices: %d all_reduces, num_devices ="
             "%d, group_size = %d, implementation = %s", len(sparse_values),
-            len(self._launchers), self._group_size, implementation)
+            len(self._launchers), self._group_size, options.implementation)
 
       for indexed_slice in sparse_values:
         sparse_results.append(
-            launcher.all_reduce_indexed_slices(indexed_slice, implementation,
-                                               options.timeout_seconds))
+            launcher.all_reduce_indexed_slices(indexed_slice, options))
 
       if reduce_op == reduce_util.ReduceOp.MEAN:
         for i, v in enumerate(sparse_results):
@@ -1299,20 +1301,21 @@ class CollectiveAllReduce(CrossDeviceOps):
   def _batch_all_gather(self, per_replica_values, axis, options):
     """all gather multiple per-replica-values."""
     batch_size = len(per_replica_values)
-    # Pass options.implementation to the runtime as a communication
-    # implementation hint.
-    implementation = options.implementation.value
     # For now, we use NCCL only when batch_size > 1.
     # TODO(b/132575814): switch to NCCL for all collectives when implementation
     # is NCCL.
-    if (options.implementation == CommunicationImplementation.NCCL and
+    if (self._limited_nccl and options.implementation
+        == collective_util.CommunicationImplementation.NCCL and
         batch_size == 1):
-      implementation = CommunicationImplementation.AUTO.value
+      options = options.merge(
+          collective_util.Options(
+              implementation=collective_util.CommunicationImplementation.RING))
 
     logging.log_first_n(
         logging.INFO, "Collective batch_all_gather: %d all-gathers, "
         "num_devices = %d, group_size = %d, implementation = %s, " %
-        (batch_size, len(self._devices), self._group_size, implementation), 10)
+        (batch_size, len(
+            self._devices), self._group_size, options.implementation), 10)
 
     def compute_gathered_values():
       gathered_values = []
@@ -1321,8 +1324,7 @@ class CollectiveAllReduce(CrossDeviceOps):
           outputs = []
           for i in range(len(self._devices)):
             outputs.append(self._launchers[i].all_gather(
-                per_replica.values[i], axis, implementation,
-                options.timeout_seconds))
+                per_replica.values[i], axis, options))
           gathered_values.append(outputs)
       return gathered_values
 
@@ -1341,8 +1343,8 @@ class CollectiveAllReduce(CrossDeviceOps):
     # distribute_coordinator deep-copies the strategy object, so
     # CollectiveAllReduce needs to support deep copy as well.
     collective_keys = copy.deepcopy(self._collective_keys, memo)
-    return CollectiveAllReduce(self._devices, self._group_size, collective_keys,
-                               self._canonicalize_devices)
+    return CollectiveAllReduce(self._devices, self._group_size, self._options,
+                               collective_keys, self._canonicalize_devices)
 
 
 def select_cross_device_ops(devices, session_config=None):

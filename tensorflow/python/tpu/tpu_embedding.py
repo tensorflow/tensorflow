@@ -495,7 +495,7 @@ class AdagradMomentumParameters(_OptimizationParameters):
       use_nesterov: bool = False,
       exponent: float = 2,
       beta2: float = 1,
-      initial_accumulator: float = 0.1,
+      epsilon: float = 1e-10,
       use_gradient_accumulation: bool = True,
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
@@ -513,7 +513,7 @@ class AdagradMomentumParameters(_OptimizationParameters):
         Sutskever et al., 2013.
       exponent: Exponent for the Adagrad accumulator.
       beta2: Moving average parameter for the Adagrad accumulator.
-      initial_accumulator: initial accumulator for Adagrad accumulator.
+      epsilon: initial accumulator for Adagrad accumulator.
       use_gradient_accumulation: setting this to `False` makes embedding
         gradients calculation less accurate but faster. Please see
         `optimization_parameters.proto` for details.
@@ -539,15 +539,15 @@ class AdagradMomentumParameters(_OptimizationParameters):
         clip_gradient_min=clip_gradient_min,
         clip_gradient_max=clip_gradient_max,
     )
-    if initial_accumulator <= 0:
-      raise ValueError('Adagrad initial_accumulator must be positive')
+    if epsilon <= 0:
+      raise ValueError('Adagrad momentum: epsilon must be positive')
     if exponent <= 0:
-      raise ValueError('Precondition exponent must be positive')
+      raise ValueError('Adagrad momentum: Precondition exponent must >0')
     self.momentum = momentum
     self.use_nesterov = use_nesterov
     self.exponent = exponent
     self.beta2 = beta2
-    self.initial_accumulator = initial_accumulator
+    self.epsilon = epsilon
 
 
 class ProximalAdagradParameters(_OptimizationParameters):
@@ -2199,6 +2199,8 @@ class _AdagradMomentumHandler(_OptimizerHandler):
         self._optimization_parameters.exponent)
     table_descriptor.optimization_parameters.adagrad_momentum.beta2 = (
         self._optimization_parameters.beta2)
+    table_descriptor.optimization_parameters.adagrad_momentum.epsilon = (
+        self._optimization_parameters.epsilon)
 
   def get_default_slot_variable_names(self, table):
     return AdagradMomentumSlotVariableNames(
@@ -2207,8 +2209,7 @@ class _AdagradMomentumHandler(_OptimizerHandler):
 
   def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
                                table_config, table_variables, config_proto):
-    accumulator_initializer = init_ops.constant_initializer(
-        self._optimization_parameters.initial_accumulator)
+    accumulator_initializer = init_ops.zeros_initializer()
     accumulator_variables = _create_partitioned_variables(
         name=slot_variable_names.accumulator,
         num_hosts=num_hosts,

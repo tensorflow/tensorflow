@@ -1013,7 +1013,7 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
   return allow_mixed_precision_
              ? Status::OK()
              : SameElementTypesForOperandsAndToApplyParameters(
-                   *reduce, reduce->operands().size() - 1);
+                   *reduce, reduce->operand_count());
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
@@ -1224,7 +1224,7 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
   return allow_mixed_precision_
              ? Status::OK()
              : SameElementTypesForOperandsAndToApplyParameters(
-                   *map, map->operands().size());
+                   *map, map->operand_count());
 }
 
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
@@ -1241,8 +1241,8 @@ Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
 
   return allow_mixed_precision_
              ? Status::OK()
-             : SameElementTypesForOperandsAndToApplyParameters(*reduce_window,
-                                                               1);
+             : SameElementTypesForOperandsAndToApplyParameters(
+                   *reduce_window, reduce_window->operand_count());
 }
 
 Status ShapeVerifier::HandleSelectAndScatter(HloInstruction* instruction) {

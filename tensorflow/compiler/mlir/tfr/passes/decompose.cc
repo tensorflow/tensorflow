@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -216,7 +217,8 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
           attr_cst =
               builder.create<ConstOp>(op->getLoc(), output_type, attribute);
         } else {
-          attr_cst = builder.create<ConstantOp>(op->getLoc(), attribute);
+          attr_cst =
+              builder.create<mlir::arith::ConstantOp>(op->getLoc(), attribute);
         }
         new_operands.push_back(attr_cst);
       }
@@ -238,8 +240,8 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
         new_results.push_back(new_op.getResult(res.index()));
       } else if (auto list_type = res.value().dyn_cast<TFRTensorListType>()) {
         for (int i = res.index(), j = 0; i < op->getNumResults(); i++, j++) {
-          auto index =
-              builder.create<ConstantOp>(op->getLoc(), builder.getIndexAttr(j));
+          auto index = builder.create<mlir::arith::ConstantOp>(
+              op->getLoc(), builder.getIndexAttr(j));
           auto element_op = builder.create<GetElementOp>(
               op->getLoc(), unconstrainted_tensor_type,
               new_op.getResult(res.index()), index.getResult());
@@ -349,8 +351,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeTFOpsPass(
   return std::make_unique<DecomposeTFOpsPass>(tfr_module);
 }
 
-static PassRegistration<DecomposeTFOpsPass> pass(
-    [] { return CreateDecomposeTFOpsPass(); });
+static PassRegistration<DecomposeTFOpsPass> pass([] {
+  return CreateDecomposeTFOpsPass();
+});
 
 }  // namespace TFR
 }  // namespace mlir

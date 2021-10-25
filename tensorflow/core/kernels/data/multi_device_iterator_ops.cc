@@ -576,7 +576,7 @@ class AnonymousMultiDeviceIteratorOp
  public:
   explicit AnonymousMultiDeviceIteratorOp(OpKernelConstruction* ctx)
       : AnonymousResourceOp<MultiDeviceIterator>(ctx,
-                                                 /* ref_counting */ false,
+                                                 /* ref_counting */ true,
                                                  /* return_deleter */ true) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kDevices, &devices_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));

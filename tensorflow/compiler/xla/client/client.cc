@@ -380,7 +380,9 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
   }
 
   std::vector<DeviceHandle> device_handles;
-  for (const DeviceHandle& device_handle : response.device_handles()) {
+  const auto& response_device_handles = response.device_handles();
+  device_handles.reserve(response_device_handles.size());
+  for (const DeviceHandle& device_handle : response_device_handles) {
     device_handles.push_back(device_handle);
   }
 

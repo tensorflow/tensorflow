@@ -360,6 +360,7 @@ py_strict_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:versions",
@@ -372,6 +373,7 @@ py_strict_library(
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:graph_view",
+        "//tensorflow/python/training/tracking:trackable_utils",
         "//tensorflow/python/training/tracking:util",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -668,7 +670,6 @@ py_strict_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
-        "@enum34_archive//:enum",
         "@six_archive//:six",
     ],
 )

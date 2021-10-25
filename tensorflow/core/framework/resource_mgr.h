@@ -22,6 +22,7 @@ limitations under the License.
 #include <typeinfo>
 #include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/variant.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -270,11 +271,12 @@ class ResourceMgr {
    private:
     TF_DISALLOW_COPY_AND_ASSIGN(ResourceAndName);
   };
-  typedef std::unordered_map<Key, ResourceAndName, KeyHash, KeyEqual> Container;
+  typedef absl::flat_hash_map<Key, ResourceAndName, KeyHash, KeyEqual>
+      Container;
 
   const std::string default_container_;
   mutable mutex mu_;
-  std::unordered_map<string, Container*> containers_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<string, Container*> containers_ TF_GUARDED_BY(mu_);
 
   template <typename T, bool use_dynamic_cast = false>
   Status LookupInternal(const std::string& container, const std::string& name,

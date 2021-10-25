@@ -361,33 +361,6 @@ class Stream {
     return port::UnimplementedError("DNN library is not found.");
   }
 
-  template <typename InputType, typename OutputType>
-  port::Status ConvolveWithExecutionPlan(
-      dnn::ConvolutionKind kind, const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<InputType> input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<InputType> filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<OutputType> output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      DeviceMemoryBase scratch_memory,
-      const dnn::ConvolveExecutionPlan &execution_plan,
-      dnn::ProfileResult *output_profile_result) {
-#if GOOGLE_CUDA
-    dnn::DnnSupport *dnn = parent_->AsDnn();
-    if (dnn) {
-      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
-      return cudnn_dnn->DoConvolveWithExecutionPlan(
-          kind, dnn::ToDataType<InputType>::value,
-          dnn::ToDataType<OutputType>::value, this, input_descriptor,
-          input_data, filter_descriptor, filter_data, output_descriptor,
-          output_data, convolution_descriptor, execution_plan, scratch_memory,
-          output_profile_result);
-    }
-#endif  // GOOGLE_CUDA
-    return port::UnimplementedError("DNN library is not found.");
-  }
-
   template <typename InputT, typename ScaleT, typename SideInputT,
             typename BiasT, typename OutputT>
   port::Status FusedConvolveWithAlgorithm(
@@ -413,36 +386,6 @@ class Stream {
           bias_descriptor, biases, activation_mode, output_descriptor, *output,
           scratch_allocator, algorithm_config, output_profile_result);
     }
-    return port::UnimplementedError("DNN library is not found.");
-  }
-
-  template <typename InputT, typename ScaleT, typename SideInputT,
-            typename BiasT, typename OutputT>
-  port::Status FusedConvolveWithExecutionPlan(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<InputT> &conv_input_data, ScaleT conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<InputT> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<SideInputT> &side_input_data, ScaleT side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<BiasT> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<OutputT> *output, DeviceMemoryBase scratch_memory,
-      const dnn::ConvolveExecutionPlan &execution_plan,
-      dnn::ProfileResult *output_profile_result) {
-#if GOOGLE_CUDA
-    dnn::DnnSupport *dnn = parent_->AsDnn();
-    if (dnn) {
-      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
-      return cudnn_dnn->DoFusedConvolveWithExecutionPlan(
-          this, dnn::ToDataType<InputT>::value, conv_input_descriptor,
-          conv_input_data, conv_input_scale, filter_descriptor, filter_data,
-          convolution_descriptor, side_input_data, side_input_scale,
-          bias_descriptor, biases, activation_mode, output_descriptor, *output,
-          scratch_memory, execution_plan, output_profile_result);
-    }
-#endif  // GOOGLE_CUDA
     return port::UnimplementedError("DNN library is not found.");
   }
 

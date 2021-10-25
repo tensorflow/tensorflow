@@ -133,7 +133,8 @@ struct EngineContext {
   mutex mu;
   TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
 
-  Status GetExecutionContext(int idx, nvinfer1::IExecutionContext** exec_ctx)
+  Status GetExecutionContext(int idx, nvinfer1::IExecutionContext** exec_ctx,
+                             bool* has_device_memory)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
     if (idx >= execution_contexts.size()) {
       return errors::Internal("Requested engine context with index ", idx,
@@ -141,6 +142,7 @@ struct EngineContext {
                               "contexts are present.");
     }
     *exec_ctx = execution_contexts[idx].get();
+    *has_device_memory = execution_contexts[idx].HasDeviceMemory();
     return Status::OK();
   }
 

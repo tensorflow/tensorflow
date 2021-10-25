@@ -8,15 +8,20 @@ func @fuse_pmap_and_batch() -> tensor<!tf_type.variant> attributes {tf.entry_fun
   %2 = "tf.Const"() {value = dense<[0, 1, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
   %3 = "tf.Const"() {value = dense<12> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[TSLICE:.*]] = "tf.TensorSliceDataset"
-  %4 = "tf.TensorSliceDataset"(%2) {device = "", output_shapes = [#tf_type.shape<>]} : (tensor<3xi32>) -> tensor<*x!tf_type.variant>
+  %4 = "tf.TensorSliceDataset"(%2) {device = "", output_shapes = [#tf_type.shape<>], metadata = ""} : (tensor<3xi32>) -> tensor<*x!tf_type.variant>
   // CHECK: "tf.MapAndBatchDataset"(%[[TSLICE]],
   // CHECK-SAME: f = @"__inference_Dataset_map_<lambda>_80",
   %5 = "tf.ParallelMapDataset"(%4, %3) {device = "",
            f = @"__inference_Dataset_map_<lambda>_80",
            output_shapes = [#tf_type.shape<>], output_types = [i32],
            preserve_cardinality = false, sloppy = false,
-           use_inter_op_parallelism = true} : (tensor<*x!tf_type.variant>, tensor<i32>) -> tensor<!tf_type.variant>
-  %6 = "tf.BatchDatasetV2"(%5, %0, %1) {device = "", output_shapes = [#tf_type.shape<>], output_types = [i32], parallel_copy = false} : (tensor<!tf_type.variant>, tensor<i64>, tensor<i1>) -> tensor<!tf_type.variant>
+           use_inter_op_parallelism = true,
+           metadata = ""} : (tensor<*x!tf_type.variant>, tensor<i32>) -> tensor<!tf_type.variant>
+  %6 = "tf.BatchDatasetV2"(%5, %0, %1) {device = "",
+           output_shapes = [#tf_type.shape<>],
+           output_types = [i32],
+           parallel_copy = false,
+           metadata = ""} : (tensor<!tf_type.variant>, tensor<i64>, tensor<i1>) -> tensor<!tf_type.variant>
   return %6 : tensor<!tf_type.variant>
 }
 
