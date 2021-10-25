@@ -264,6 +264,8 @@ This release contains contributions from many people at Google, as well as:
 
     *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
         peak memory returned by `tf.config.experimental.get_memory_info`.
+    *   Added `TF_GPU_ALLOCATOR=cuda_malloc_async` that use cudaMallocAsync
+        from CUDA 11.2. This could become the default in the future.
 
 *   `tf.data`:
 
