@@ -320,7 +320,7 @@ class _SaveableView(object):
 
     # Keep track of untraced functions for later reporting to the user
     if not concrete_functions:
-      self._untraced_functions.append(function._name)  # pylint: disable=protected-access
+      self._untraced_functions.append(function.name)
 
     # Add the concrete functions for later serialization
     for concrete_function in concrete_functions:

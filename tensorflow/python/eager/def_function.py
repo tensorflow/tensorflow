@@ -602,6 +602,10 @@ class Function(core.GenericFunction):
     self._omit_frequent_tracing_warning = False
     ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
 
+  @property
+  def name(self):
+    return self._name
+
   def __getstate__(self):
     """Custom pickling, to omit unpickleable objects."""
     result = self.__dict__.copy()
