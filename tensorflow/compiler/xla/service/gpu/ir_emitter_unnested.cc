@@ -1266,10 +1266,13 @@ std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
     }
 
     if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
-      if (broadcast.broadcast_dimensions().size() == 0) {
+      const auto& broadcast_dimensions_size =
+          broadcast.broadcast_dimensions().size();
+      if (broadcast_dimensions_size == 0) {
         continue;
       }
-      std::vector<int64_t> broadcast_dimensions;
+      llvm::SmallVector<int64_t> broadcast_dimensions;
+      broadcast_dimensions.reserve(broadcast_dimensions_size);
       for (const llvm::APInt& int_value : broadcast.broadcast_dimensions()) {
         broadcast_dimensions.push_back(int_value.getSExtValue());
       }
@@ -2573,10 +2576,13 @@ Status IrEmitterUnnested::EmitScatter(
 
     // Apply inserted_window_dims to the window dimensions.
     int64_t raw_window_multidim_idx = 0;
-    std::vector<llvm::Value*> input_window_multidim;
-    std::vector<int64_t> input_window_bounds;
+    llvm::SmallVector<llvm::Value*> input_window_multidim;
+    llvm::SmallVector<int64_t> input_window_bounds;
+    const int64_t rank = desc.operand_shape.rank();
+    input_window_bounds.reserve(rank);
+    input_window_multidim.reserve(rank);
 
-    for (int64_t i = 0, e = desc.operand_shape.rank(); i != e; ++i) {
+    for (int64_t i = 0; i != rank; ++i) {
       if (llvm::is_contained(desc.dim_numbers.getInsertedWindowDims(), i)) {
         input_window_bounds.push_back(1);  // Trivial dimension.
         input_window_multidim.push_back(index.GetConstantWithIndexType(0));
@@ -3332,6 +3338,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
   TF_RET_CHECK(!mlir::isa<mlir::lmhlo::FusionOp>(op));
 
   std::vector<BufferSlice> slices;
+  slices.reserve(operands.size());
   for (mlir::Value operand : operands) {
     slices.emplace_back();
     auto& slice = slices.back();
@@ -3354,6 +3361,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
     auto outputs = GetHloOutputs(op);
 
     std::vector<BufferSlice> slices;
+    slices.reserve(operands.size() + outputs.size());
     for (mlir::Value operand : operands) {
       slices.emplace_back();
       BufferSlice& slice = slices.back();
