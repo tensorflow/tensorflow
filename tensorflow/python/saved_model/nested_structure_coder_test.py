@@ -385,6 +385,33 @@ class NestedStructureTest(test.TestCase):
 
     self.assertFalse(self._coder.can_encode([NotEncodable()]))
 
+  def testRegisterCustomCodec(self):
+
+    class MyObject(object):
+      pass
+
+    class MyObjectCodec(object):
+      """Codec for MyObject."""
+
+      def can_encode(self, pyobj):
+        return isinstance(pyobj, MyObject)
+
+      def do_encode(self, array, encode_fn):
+        del array, encode_fn
+        return struct_pb2.StructuredValue()
+
+      def can_decode(self, value):
+        del value
+        return False
+
+      def do_decode(self, value, decode_fn):
+        raise NotImplementedError("Test only.")
+
+    coder = nested_structure_coder.StructureCoder()
+    coder.register_codec(MyObjectCodec())
+    my_object = MyObject()
+    self.assertTrue(coder.can_encode(my_object))
+
   def testRegisteredTypeSpec(self):
     expected_warning = ("Encoding a StructuredValue with type "
                         "NestedStructureTest.RegisteredTypeSpec; loading "
