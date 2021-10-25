@@ -498,12 +498,12 @@ TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
 
   // If beta * scale is greater than fits in the number of integer bits, the
   // result is move near the maximum. Otherwise they quantize as expected.
-  // With 4 integer bits we can represent up to 16.0.
-  EXPECT_THAT(quantize(1.0, 16.0, 4), Pair(2147483647, 31));
-  EXPECT_THAT(quantize(1.0, 8.0, 4), Pair(1073741824, 31));
+  // With 4 integer bits we can represent up to 8.0.
+  EXPECT_THAT(quantize(1.0, 8.0, 4), Pair(2147483646, 30));
+  EXPECT_THAT(quantize(1.0, 4.0, 4), Pair(1073741824, 30));
   // But with 5 bits we can go further.
-  EXPECT_THAT(quantize(2.0, 16.0, 5), Pair(2147483647, 31));
-  EXPECT_THAT(quantize(2.0, 8.0, 5), Pair(1073741824, 31));
+  EXPECT_THAT(quantize(2.0, 8.0, 5), Pair(2147483646, 30));
+  EXPECT_THAT(quantize(2.0, 4.0, 5), Pair(1073741824, 30));
 }
 #endif  // GTEST_HAS_DEATH_TEST
 
