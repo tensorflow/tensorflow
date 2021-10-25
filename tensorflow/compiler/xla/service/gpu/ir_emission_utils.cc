@@ -148,7 +148,11 @@ std::array<int64_t, 3> GetReductionTiling(
   if (reduction_dimensions.is_row_reduction) {
     int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
                               kBatchedReductionRaceFreeBound);
+#if TENSORFLOW_USE_ROCM
+    return {tile_z, 1, 16};
+#else
     return {tile_z, 1, 64};
+#endif
   }
 
   // Column reduction.
