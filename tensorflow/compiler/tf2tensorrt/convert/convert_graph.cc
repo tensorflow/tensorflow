@@ -741,7 +741,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   // Segment the graph into subgraphs that can be converted to TensorRT
   segment::SegmentOptions segment_options;
   // TODO(ben,jie,sami): exclude output nodes (DISCUSS IT)
-  for (const auto& node : *(params.output_names)) {
+  for (const auto& node : *(params.input_output_names)) {
     segment_options.exclude_node_list.insert(node);
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
