@@ -415,9 +415,7 @@ Below is the list of currently supported quantized operators:
 
 XNNPACK supports post-training dynamic range quantization: quantized weights
 are being unpacked, and then inference is performed with floating-point
-precision. By default, this feature is disabled. It can be enabled by adding
-`--copt=-DENABLE_TFLITE_XNNPACK_DEQUANTIZED_INT8_WEIGHTS` extra Bazel flag
-when building TensorFlow Lite.
+precision.
 
 ### Sparse Inference
 
