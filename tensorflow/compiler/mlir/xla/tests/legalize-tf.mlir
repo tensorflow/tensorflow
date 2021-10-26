@@ -3100,6 +3100,52 @@ func @squeeze(%arg0: tensor<1x1x10xf32>) -> tensor<1x10xf32> {
 
 // -----
 
+// CHECK-LABEL: squeeze_ranked
+func @squeeze_ranked(%arg0: tensor<?x?x?xf32>) -> tensor<?xf32> {
+  // CHECK: %[[C2:.*]] = arith.constant 2 : index
+  // CHECK: %[[D2:.*]] = tensor.dim %arg0, %[[C2]] : tensor<?x?x?xf32>
+  // CHECK: %[[T:.*]] = tensor.from_elements %[[D2]] : tensor<1xindex>
+  // CHECK: %[[R:.*]] = "chlo.dynamic_reshape"(%arg0, %[[T]]) : (tensor<?x?x?xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: return %[[R]] : tensor<?xf32>
+  %0 = "tf.Squeeze"(%arg0) { squeeze_dims = [0, 1] }: (tensor<?x?x?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: squeeze_ranked_negative
+func @squeeze_ranked_negative(%arg0: tensor<?x?x10xf32>) -> tensor<?x10xf32> {
+  // CHECK: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK: %[[D0:.*]] = tensor.dim %arg0, %[[C0]] : tensor<?x?x10xf32>
+  // CHECK: %[[C2:.*]] = arith.constant 2 : index
+  // CHECK: %[[D2:.*]] = tensor.dim %arg0, %[[C2]] : tensor<?x?x10xf32>
+  // CHECK: %[[T:.*]] = tensor.from_elements %[[D0]], %[[D2]] : tensor<2xindex>
+  // CHECK: %[[R:.*]] = "chlo.dynamic_reshape"(%arg0, %[[T]]) : (tensor<?x?x10xf32>, tensor<2xindex>) -> tensor<?x10xf32>
+  // CHECK: return %[[R]] : tensor<?x10xf32>
+  %0 = "tf.Squeeze"(%arg0) { squeeze_dims = [-2] }: (tensor<?x?x10xf32>) -> tensor<?x10xf32>
+  return %0 : tensor<?x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: squeeze_ranked_oob
+func @squeeze_ranked_oob(%arg0: tensor<?x?x10xf32>) -> tensor<?x10xf32> {
+  // CHECK: "tf.Squeeze"
+  %0 = "tf.Squeeze"(%arg0) { squeeze_dims = [-4] }: (tensor<?x?x10xf32>) -> tensor<?x10xf32>
+  return %0 : tensor<?x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: squeeze_ranked_dynamic
+func @squeeze_ranked_dynamic(%arg0: tensor<?x?xf32>) -> tensor<?xf32> {
+  // CHECK: "tf.Squeeze"
+  %0 = "tf.Squeeze"(%arg0) : (tensor<?x?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: squeeze_dynamic
 func @squeeze_dynamic(%arg0: tensor<?x10xf32>) -> tensor<*xf32> {
   // CHECK: "tf.Squeeze"
