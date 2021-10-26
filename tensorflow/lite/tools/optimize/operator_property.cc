@@ -872,7 +872,6 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = false;
       property.version = 1;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_LEAKY_RELU:
       property.inputs = {{0, {}}};
@@ -889,7 +888,6 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 1;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_RESHAPE:
       property.inputs = {{0, {}}};

@@ -2619,11 +2619,11 @@ def TFL_PReluOp : TFL_Op<"prelu", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$input,
-    TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$alpha
+    ins TFL_TensorOf<[F32, QI8, QI16, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, QI8, QI16, QUI8, TFL_Quint8]>:$alpha
   );
 
-  let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QI16, QUI8, TFL_Quint8]>:$output);
 
   let verifier = [{ return Verify(*this); }];
 
@@ -2715,9 +2715,9 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
       x -> max(-1, min(1, x))
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8]>:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8, QI16]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$y);
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8, QI16]>:$y);
 
   // This builder doesn't work with quantized type, so it can only be used by
   // non-quantization tablegen patterns. Currently, it is used by the
