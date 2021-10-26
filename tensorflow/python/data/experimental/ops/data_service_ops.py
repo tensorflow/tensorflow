@@ -589,20 +589,18 @@ def distribute(processing_mode,
   from `job_name="job"`, it will immediately receive end of input, without
   getting any data.
 
-  **Round Robin data consumption**
+  **Coordinated data read**
 
   By default, when multiple consumers read from the same job, they receive data
-  on a first-come first-served basis. In some use cases, it works better to use
-  a strict round-robin order. For example, the tf.data service can be used to
-  coordinate example sizes across a cluster during sychronous training, so that
-  during each step all replicas train on similar-sized elements. To achieve
-  this, define a dataset which generates rounds of `num_consumers` consecutive
-  similar-sized batches, then enable round-robin reads by setting
-  `consumer_index` and `num_consumers`.
+  on a first-come first-served basis. In some use cases, it is advantageous to
+  coordinate the consumers. At each step, consumers read data from the same
+  worker.
 
-  Consumers read data by cycling through all workers, reading one element from
-  each. First, each consumer will read an element from the first worker, then
-  each consumer will read an element from the second worker, and so on.
+  For example, the tf.data service can be used to coordinate example sizes
+  across a cluster during synchronous training, so that during each step all
+  replicas train on similar-sized elements. To achieve this, define a dataset
+  which generates rounds of `num_consumers` consecutive similar-sized batches,
+  then enable coordinated reads by setting `consumer_index` and `num_consumers`.
 
   NOTE: To keep consumers in sync, round robin data consumption requires that
   the dataset have infinite cardinality. You can get this by adding `.repeat()`
