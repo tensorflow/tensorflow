@@ -1930,16 +1930,15 @@ Status AddFusedContractionNode(
   return Status::OK();
 }
 
-Status AddFusedMatMulBiasAddAndGelu(RemapperContext* ctx,
-                                    std::map<string, int>* matched_nodes_map,
-                                    std::set<int>* remove_node_indices,
-                                    std::vector<bool>* invalidated_nodes,
-                                    std::vector<bool>* nodes_to_delete,
-                                    bool is_gelu_approximate) {
+Status AddFusedMatMulBiasAddAndGelu(
+    RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
+    const std::set<int>& remove_node_indices,
+    std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete,
+    bool is_gelu_approximate) {
   auto* output_node =
-      ctx->graph_view.GetNode(matched_nodes_map->at("output"))->node();
+      ctx->graph_view.GetNode(matched_nodes_map.at("output"))->node();
   auto* matmul_node =
-      ctx->graph_view.GetNode(matched_nodes_map->at("matmul"))->node();
+      ctx->graph_view.GetNode(matched_nodes_map.at("matmul"))->node();
 
   NodeDef fused_node;
   // Fused node should have the name of terminal node of the fusion.
@@ -1952,7 +1951,7 @@ Status AddFusedMatMulBiasAddAndGelu(RemapperContext* ctx,
     fused_node.add_input(matmul_node->input(2));
   } else {
     auto* bias_add_node =
-        ctx->graph_view.GetNode(matched_nodes_map->at("bias_add"))->node();
+        ctx->graph_view.GetNode(matched_nodes_map.at("bias_add"))->node();
     fused_node.add_input(bias_add_node->input(1));
   }
   CopyMatMulAttributes(*matmul_node, &fused_node);
@@ -1966,9 +1965,9 @@ Status AddFusedMatMulBiasAddAndGelu(RemapperContext* ctx,
   mutation->AddNode(std::move(fused_node), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
-  (*invalidated_nodes)[matched_nodes_map->at("output")] = true;
+  (*invalidated_nodes)[matched_nodes_map.at("output")] = true;
 
-  for (const auto& node_idx : *remove_node_indices) {
+  for (const auto& node_idx : remove_node_indices) {
     (*nodes_to_delete)[node_idx] = true;
   }
   return Status::OK();
@@ -2562,7 +2561,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    &remove_node_indices,
                                    &is_gelu_approximate)) {
         TF_RETURN_IF_ERROR(AddFusedMatMulBiasAddAndGelu(
-            &ctx, &matched_nodes_map, &remove_node_indices, &invalidated_nodes,
+            &ctx, matched_nodes_map, remove_node_indices, &invalidated_nodes,
             &nodes_to_delete, is_gelu_approximate));
         continue;
       }
