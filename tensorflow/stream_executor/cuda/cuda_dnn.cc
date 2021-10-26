@@ -2956,9 +2956,9 @@ port::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
 
 cudnnDataType_t GetRnnComputeType(dnn::DataType data_type);
 dnn::DataType GetConvAccumulatorType(dnn::DataType data_type);
-#if CUDNN_VERSION >= 8100
+#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 cudnnBackendHeurMode_t GetCudnnFrontendHeurMode();
-#endif // CUDNN_VERSION >= 8100
+#endif // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     Stream* stream, const CudnnHandle& cudnn,
@@ -3325,7 +3325,7 @@ dnn::DataType GetConvAccumulatorType(dnn::DataType data_type) {
   }
 }
 
-#if CUDNN_VERSION >= 8100
+#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 cudnnBackendHeurMode_t GetCudnnFrontendHeurMode() {
 #if CUDNN_VERSION >= 8200
   return CUDNN_HEUR_MODE_B;
@@ -3333,7 +3333,7 @@ cudnnBackendHeurMode_t GetCudnnFrontendHeurMode() {
   return CUDNN_HEUR_MODE_INSTANT;
 #endif // CUDNN_VERSION >= 8200
 }
-#endif // CUDNN_VERSION >= 8100
+#endif // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 cudnnBackendDescriptorType_t GetCudnnConvolutionType(
