@@ -27,6 +27,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -34,6 +35,24 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.types import trace
+
+# TODO(b/201533914): Simulate an attrs class so that the import is not needed.
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
+
+if attr is not None:
+  @attr.s
+  class TestAttrsClass(object):
+    """Helps test memory leaks for attrs collection."""
+    a = attr.ib()
+    b = attr.ib()
+
+
+class DummyGenericClass:
+  """Helps test memory leaks for GenericType."""
+  pass
 
 
 class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
@@ -164,6 +183,38 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(trace_a, trace_b)
     self.assertTrue(trace_a.is_subtype_of(trace_b))
     self.assertTrue(trace_b.is_subtype_of(trace_a))
+
+
+class CacheKeyMemoryTest(test.TestCase):
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testGeneric(self):
+    function_trace_type.get_arg_spec(1, False, True, True)
+    function_trace_type.get_arg_spec(DummyGenericClass(), False, True, True)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testTensor(self):
+    tensor = array_ops.zeros([10])
+    function_trace_type.get_arg_spec(tensor, False, True, True)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testTuple(self):
+    function_trace_type.get_arg_spec((1, 2, 3), False, True, True)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testDict(self):
+    function_trace_type.get_arg_spec({1: 1, 2: 2, 3: 3}, False, True, True)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testList(self):
+    function_trace_type.get_arg_spec([1, 2, 3], False, True, True)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testAttrs(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+
+    function_trace_type.get_arg_spec(TestAttrsClass(1, 2), False, True, True)
 
 
 class CacheKeyGenerationBenchmark(test.Benchmark):
@@ -306,6 +357,25 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
 
 class TraceTypeEncodingTest(test.TestCase):
 
+  def testKeyCollisionTypeFailsGracefully(self):
+    class CustomSameTrace:
+
+      def __tf_tracing_type__(self, _):
+        return function_trace_type.GenericType(1)
+
+      def __eq__(self, o):
+        return self is o
+
+      def __hash__(self):
+        return 0
+
+    dictionary = {CustomSameTrace(): 1, CustomSameTrace(): 2}
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r'Multiple keys produce the same TraceType for the mapping collection'):
+      function_trace_type.get_arg_spec(dictionary, False, True, True)
+
   def testCustomUnhashableTypeFailsGracefully(self):
 
     class CustomUnhashable:
@@ -316,7 +386,7 @@ class TraceTypeEncodingTest(test.TestCase):
     obj = CustomUnhashable()
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        r'Could not determine tracing type of generic object'):
+        r'Failed to represent object as GenericType'):
       function_trace_type.get_arg_spec(obj, False, True, True)
 
   def testOrderedCollectionTypeEquality(self):
