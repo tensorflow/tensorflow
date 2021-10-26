@@ -112,6 +112,10 @@ void DefaultOptimizationGraphRewrites(
         OptimizationOptions::kShuffleAndRepeatFusion) {
       optimization_default->insert(kShuffleAndRepeatFusionOpt);
     }
+    if (optimization_options.optional_parallel_batch_case() !=
+        OptimizationOptions::kParallelBatch) {
+      optimization_default->insert(kParallelBatchOpt);
+    }
   }
   if (OpDeterminismRequired()) {
     optimization_enabled->insert(kMakeDeterministicOpt);
@@ -741,8 +745,6 @@ Status CopyBatch(CopyBatchParams params,
                  bool parallel_copy,
                  std::function<Status()> allocation_callback,
                  std::vector<Tensor>* out_tensors) {
-  static bool in_experiment =
-      GetExperiments().contains("parallelize_batch_copy");
   const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
   const int64_t num_batch_elements = batch_elements.size();
@@ -786,8 +788,7 @@ Status CopyBatch(CopyBatchParams params,
           std::move(batch_elements.at(index)[component_index]),
           &batch_component, index);
     };
-    if (parallel_copy ||
-        (in_experiment && first_element.AllocatedBytes() > (1 << 15))) {
+    if (parallel_copy && first_element.AllocatedBytes() > (1 << 15)) {
       Status status;
       mutex status_mu;
       BlockingCounter counter(num_batch_elements);
@@ -901,7 +902,6 @@ absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
 
 namespace {
 
-REGISTER_DATASET_EXPERIMENT("parallelize_batch_copy", 100);
 REGISTER_DATASET_EXPERIMENT("max_parallelism", 100);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
 REGISTER_DATASET_EXPERIMENT("inject_prefetch", 0);

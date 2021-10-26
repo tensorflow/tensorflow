@@ -481,12 +481,13 @@ struct GetOptimizationsTestCase {
 
 // Tests the default.
 GetOptimizationsTestCase GetOptimizationTestCase1() {
-  return {/*options=*/Options(),
-          /*expected_enabled=*/{},
-          /*expected_disabled=*/{},
-          /*expected_default=*/
-          {"noop_elimination", "map_and_batch_fusion",
-           "shuffle_and_repeat_fusion", "map_parallelization"}};
+  return {
+      /*options=*/Options(),
+      /*expected_enabled=*/{},
+      /*expected_disabled=*/{},
+      /*expected_default=*/
+      {"noop_elimination", "map_and_batch_fusion", "shuffle_and_repeat_fusion",
+       "map_parallelization", "parallel_batch"}};
 }
 
 // Tests disabling application of default optimizations.
