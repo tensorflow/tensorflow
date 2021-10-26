@@ -140,6 +140,15 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
     self.assertNotEqual(tensor, spec_with_name)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testTensorShapeUnknown(self):
+    context = function_trace_type.SignatureContext()
+    spec_1 = tensor_spec.TensorSpec(
+        None, dtype=dtypes.int32)._tf_tracing_type(context)
+    spec_2 = tensor_spec.TensorSpec(
+        None, dtype=dtypes.int32)._tf_tracing_type(context)
+    self.assertEqual(spec_1, spec_2)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testTupleEquality(self):
     trace_a = function_trace_type.get_arg_spec((1, 2, 3, 4), False, False, True)
     trace_b = function_trace_type.get_arg_spec((1, 2, 2, 4), False, False, True)
