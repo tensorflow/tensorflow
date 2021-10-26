@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 
@@ -536,6 +537,57 @@ template llvm::Optional<Value> getConstTensor<int32_t>(PatternRewriter&,
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
   return (output_element_type.getStorageTypeIntegralWidth() == 8);
+}
+
+LogicalResult ApplyPatternsWithShapeResolution(FuncOp func,
+                                               RewritePatternSet& patterns) {
+  GreedyRewriteConfig config;
+  config.useTopDownTraversal = true;
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
+    return failure();
+  }
+
+  func.walk([&](tosa::ConstOp op) {
+    auto ety = op.value().getType().getElementType();
+    auto new_ty = op.getType().cast<ShapedType>().clone(ety);
+    op.getResult().setType(new_ty);
+  });
+
+  // Insert UnrealizedConversionCasts to guarantee ReturnOp agress with
+  // the FuncOp type.
+  IRRewriter rewriter(func.getContext());
+  func.walk([&](ReturnOp op) {
+    FuncOp parent = dyn_cast<FuncOp>(op->getParentOp());
+    if (!parent) return;
+
+    rewriter.setInsertionPoint(op);
+    FunctionType funcTy = func.getType();
+    auto resultTys = funcTy.getResults();
+
+    bool castAdded = false;
+    SmallVector<Value> castedValues;
+    for (auto it : llvm::zip(op->getOperands(), resultTys)) {
+      Value operand = std::get<0>(it);
+      Type currentTy = operand.getType();
+      Type castTy = std::get<1>(it);
+      if (currentTy == castTy) {
+        castedValues.push_back(operand);
+        continue;
+      }
+
+      castedValues.push_back(
+          rewriter.create<tensor::CastOp>(op.getLoc(), castTy, operand)
+              .getResult());
+
+      castAdded = true;
+    }
+
+    if (castAdded) {
+      rewriter.replaceOpWithNewOp<ReturnOp>(op, castedValues);
+    }
+  });
+
+  return success();
 }
 
 }  // namespace tosa

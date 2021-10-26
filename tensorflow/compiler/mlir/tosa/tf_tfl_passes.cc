@@ -13,24 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tosa/tf_passes.h"
+#include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
 
-#include "mlir/Dialect/Affine/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/Passes.h"           // from @llvm-project
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"               // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/transforms/lift_tflite_flex_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
 namespace mlir {
 namespace tosa {
 
-void createTFtoTOSALegalizationPipeline(
-    OpPassManager& pm, const TOSATFLegalizationPipelineOptions& opts) {
+void createTFTFLtoTOSALegalizationPipeline(
+    OpPassManager& pm, const TOSATFTFLLegalizationPipelineOptions& opts) {
   //----------------------------------------------------------------------------
   // Prepare TFL module for conversion
   //----------------------------------------------------------------------------
   // Inline all functions into main and then delete the functions themselves.
   pm.addPass(mlir::createInlinerPass());
+
+  // Add pass to decompose TFLite mixed quantization to non-quantized variants.
+  pm.addPass(TFL::CreateDecomposeHybridQuantizationPass());
 
   // Now that there is only one function, run some MLIR passes on it.
   pm.addPass(mlir::createCanonicalizerPass());
@@ -41,10 +45,11 @@ void createTFtoTOSALegalizationPipeline(
 
   //----------------------------------------------------------------------------
   // Perform main conversion.
-  // Now that there is only one function, run some MLIR passes on it.
   //----------------------------------------------------------------------------
+  pm.addPass(mlir::TFL::CreateLiftTfliteFlexOpsPass());
   pm.addPass(mlir::tosa::createFuseBiasTFPass());
-  pm.addPass(mlir::tosa::createLegalizeTFPass());
+  pm.addPass(mlir::tosa::createConvertTFLUint8Pass());
+  pm.addPass(mlir::tosa::createLegalizeTFTFLPass());
 
   //----------------------------------------------------------------------------
   // Post conversion cleanup.
@@ -57,10 +62,11 @@ void createTFtoTOSALegalizationPipeline(
   pm.addPass(mlir::createSymbolDCEPass());
 }
 
-void registerTFtoTOSALegalizationPipeline() {
-  mlir::PassPipelineRegistration<TOSATFLegalizationPipelineOptions>(
-      "tf-to-tosa-pipeline", "TensorFlow to TOSA legalization pipeline",
-      createTFtoTOSALegalizationPipeline);
+void registerTFTFLtoTOSALegalizationPipeline() {
+  mlir::PassPipelineRegistration<TOSATFTFLLegalizationPipelineOptions>(
+      "tf-tfl-to-tosa-pipeline",
+      "TensorFlow / TensorFlow Lite to TOSA legalization pipeline",
+      createTFTFLtoTOSALegalizationPipeline);
 }
 
 }  // namespace tosa

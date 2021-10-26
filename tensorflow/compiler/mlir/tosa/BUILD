@@ -188,3 +188,23 @@ cc_library(
         "@llvm-project//mlir:Transforms",
     ],
 )
+
+cc_library(
+    name = "tf_tfl_passes",
+    hdrs = [
+        "tf_tfl_passes.h",
+        "transforms/passes.h",
+    ],
+    srcs = [
+        "tf_tfl_passes.cc",
+        "transforms/legalize_tf_tfl.cc",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    visibility = [":friends"],
+    deps = [
+        ":passes_header",
+        ":tf_passes",
+        ":tfl_passes",
+        "//tensorflow/compiler/mlir/lite:lift_tflite_flex_ops",
+    ],
+)

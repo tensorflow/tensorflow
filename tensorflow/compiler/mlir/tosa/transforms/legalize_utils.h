@@ -121,6 +121,9 @@ llvm::Optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type);
 
+LogicalResult ApplyPatternsWithShapeResolution(FuncOp func,
+                                               RewritePatternSet& patterns);
+
 // Creates a TOSA operation and performs shape inference on the individual
 // op. This allows shape inference during the TFLite to TOSA lowering.
 template <typename TosaOp, typename... Args>

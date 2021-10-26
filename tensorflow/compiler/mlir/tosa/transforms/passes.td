@@ -27,6 +27,12 @@ def TosaLegalizeTFLPass : FunctionPass<"tosa-legalize-tfl"> {
   let dependentDialects = ["TosaDialect"];
 }
 
+def TosaLegalizeTFTFLPass : FunctionPass<"tosa-legalize-tf-tfl"> {
+  let summary = "Legalize from TensorFlow / TensorFlow Lite to TOSA";
+  let constructor = "createLegalizeTFTFLPass()";
+  let dependentDialects = ["TosaDialect"];
+}
+
 def TosaFusebiasTFPass : FunctionPass<"tosa-fuse-bias-tf"> {
   let summary = "Fuse tf.Op + tf.BiasAdd and legalized to TOSA";
   let constructor = "createFuseBiasTFPass()";
