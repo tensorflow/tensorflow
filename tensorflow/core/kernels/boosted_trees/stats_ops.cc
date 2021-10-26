@@ -72,7 +72,10 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
                                                 &stats_summary_list));
     const int64 num_buckets = stats_summary_list[0].dim_size(1);
     // Check for single logit: 1 gradient + 1 hessian value.
-    DCHECK_EQ(stats_summary_list[0].dim_size(2), 2);
+    OP_REQUIRES(context, stats_summary_list[0].dim_size(2) == 2,
+                errors::InvalidArgument("stats_summary_list[0] must have "
+                                        "exactly 2 dimensions, obtained: ",
+                                        stats_summary_list[0].dim_size(2)));
     std::vector<TTypes<float, 3>::ConstTensor> stats_summary;
     stats_summary.reserve(stats_summary_list.size());
     for (const auto& tensor : stats_summary_list) {
@@ -272,11 +275,16 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
         stats_summary_t->tensor<float, 4>();
     const int32 feature_dims = stats_summary_t->dim_size(1);
     // The last bucket is for default/missing value.
-    const int32 num_buckets = stats_summary_t->dim_size(2) - 1;
-    const int32 logits_dim = logits_dim_;
-    const int32 hessian_dim = stats_summary_t->dim_size(3) - logits_dim;
-    DCHECK_GT(hessian_dim, 0);
-    DCHECK_LE(hessian_dim, logits_dim * logits_dim);
+    const int32_t num_buckets = stats_summary_t->dim_size(2) - 1;
+    const int32_t logits_dim = logits_dim_;
+    const int32_t hessian_dim = stats_summary_t->dim_size(3) - logits_dim;
+    OP_REQUIRES(context, hessian_dim > 0,
+                errors::InvalidArgument("hessian dim should be < 0, got ",
+                                        hessian_dim));
+    OP_REQUIRES(context, hessian_dim <= logits_dim * logits_dim,
+                errors::InvalidArgument(
+                    "hessian dim should be <= ", logits_dim * logits_dim,
+                    " but got: ", hessian_dim));
 
     const Tensor* l1_t;
     OP_REQUIRES_OK(context, context->input("l1", &l1_t));
@@ -618,11 +626,17 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
     DCHECK_GT(stats_summaries_list.size(), 0);
     const int32 feature_dims = stats_summaries_list[0].dim_size(1);
     // The last bucket is for default/missing value.
-    const int32 num_buckets = stats_summaries_list[0].dim_size(2) - 1;
-    const int32 logits_dim = logits_dim_;
-    const int32 hessian_dim = stats_summaries_list[0].dim_size(3) - logits_dim;
-    DCHECK_GT(hessian_dim, 0);
-    DCHECK_LE(hessian_dim, logits_dim * logits_dim);
+    const int32_t num_buckets = stats_summaries_list[0].dim_size(2) - 1;
+    const int32_t logits_dim = logits_dim_;
+    const int32_t hessian_dim =
+        stats_summaries_list[0].dim_size(3) - logits_dim;
+    OP_REQUIRES(context, hessian_dim > 0,
+                errors::InvalidArgument("hessian dim should be < 0, got ",
+                                        hessian_dim));
+    OP_REQUIRES(context, hessian_dim <= logits_dim * logits_dim,
+                errors::InvalidArgument(
+                    "hessian dim should be <= ", logits_dim * logits_dim,
+                    " but got: ", hessian_dim));
 
     // Vector of stats_summaries; each element is stats for feature of shape
     // [max_splits, feature_dim, num_buckets, logits_dim + hessian_dim].
@@ -997,9 +1011,12 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
     const Tensor* node_id_range_t;
     OP_REQUIRES_OK(context, context->input("node_id_range", &node_id_range_t));
     const auto node_id_range = node_id_range_t->vec<int32>();
-    const int32 node_id_first = node_id_range(0);  // inclusive
-    const int32 node_id_last = node_id_range(1);   // exclusive
-
+    OP_REQUIRES(
+        context, node_id_range.size() == 2,
+        errors::InvalidArgument("node_id_range should have 2 entries, got: ",
+                                node_id_range.size()));
+    const int32_t node_id_first = node_id_range(0);  // inclusive
+    const int32_t node_id_last = node_id_range(1);   // exclusive
     const Tensor* stats_summary_indices_t;
     OP_REQUIRES_OK(context, context->input("stats_summary_indices",
                                            &stats_summary_indices_t));
@@ -1070,6 +1087,11 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
                       "dims, the last value in stats_summary_shape, which was ",
                       stats_dims, ". At index (", idx,
                       ", 4), stats_summary_indices contains value ", stat_dim));
+      OP_REQUIRES(context, stat_dim >= 0,
+                  errors::InvalidArgument(
+                      "Stat dim, the sum of logits dim and hessian dim in "
+                      "stats_summary_indices, should be >= 0, which was ",
+                      stat_dim, " at index ", idx));
       std::pair<FeatureMapIterator, bool> const& f_insert_result = f_map.insert(
           FeatureMapIterator::value_type(feature_dim, BucketMap()));
       auto& b_map = f_insert_result.first->second;
@@ -1302,6 +1324,12 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
     const Tensor* gradients_t;
     OP_REQUIRES_OK(context, context->input("gradients", &gradients_t));
     const auto gradients = gradients_t->matrix<float>();
+    OP_REQUIRES(
+        context, node_ids.size() == gradients.dimension(0),
+        errors::InvalidArgument(
+            "node_ids size should match 0th dim of gradients. node ids "
+            "size: ",
+            node_ids.size(), ", gradients dim0: ", gradients.dimension(0)));
     // hessians
     const Tensor* hessians_t;
     OP_REQUIRES_OK(context, context->input("hessians", &hessians_t));
@@ -1371,6 +1399,13 @@ class BoostedTreesAggregateStatsOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input("gradients", &gradients_t));
     const auto gradients = gradients_t->matrix<float>();
 
+    OP_REQUIRES(
+        context, node_ids.size() == gradients.dimension(0),
+        errors::InvalidArgument(
+            "node_ids size should match 0th dim of gradients. node ids "
+            "size: ",
+            node_ids.size(), ", gradients dim0: ", gradients.dimension(0)));
+
     // hessians.
     const Tensor* hessians_t;
     OP_REQUIRES_OK(context, context->input("hessians", &hessians_t));
@@ -1400,7 +1435,10 @@ class BoostedTreesAggregateStatsOp : public OpKernel {
     temp_stats_double.setZero();
 
     for (int i = 0; i < batch_size; ++i) {
-      const int32 node = node_ids(i);
+      const int32_t node = node_ids(i);
+      OP_REQUIRES(context, node >= 0,
+                  errors::InvalidArgument(
+                      "node_ids ", i, "th entry should be >=0, got: ", node));
       for (int feature_dim = 0; feature_dim < feature_dims; ++feature_dim) {
         const int32 feature_value = feature(i, feature_dim);
         const int32 bucket =
@@ -1602,13 +1640,18 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
                     feature_shape_t->shape().DebugString()));
     const auto feature_shape = feature_shape_t->vec<int32>();
 
-    const int64 batch_size = gradients_t->dim_size(0);
-    const int64 logits_dims = gradients_t->dim_size(1);
-    const int64 hessians_dims = hessians_t->dim_size(1);
-    const int64 stats_dims = logits_dims + hessians_dims;
-    const int64 num_sparse_entries = feature_indices_t->dim_size(0);
-    const int32 feature_dims = feature_shape(1);
-    DCHECK_LE(num_sparse_entries, batch_size * feature_dims);
+    const int64_t batch_size = gradients_t->dim_size(0);
+    const int64_t logits_dims = gradients_t->dim_size(1);
+    const int64_t hessians_dims = hessians_t->dim_size(1);
+    const int64_t stats_dims = logits_dims + hessians_dims;
+    const int64_t num_sparse_entries = feature_indices_t->dim_size(0);
+    const int32_t feature_dims = feature_shape(1);
+    OP_REQUIRES(context, num_sparse_entries <= batch_size * feature_dims,
+                errors::InvalidArgument(
+                    "feature_indices dim0 should be <= gradients dim0 * "
+                    "feature_shape[1]. features_indices dim0: ",
+                    num_sparse_entries, " gradients dim0: ", batch_size,
+                    ", feature_shape[1]: ", feature_dims));
 
     // Aggregate statistics info to map.
     StatsPartitionMap stats_map;
