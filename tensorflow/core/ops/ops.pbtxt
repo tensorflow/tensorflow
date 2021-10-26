@@ -47245,6 +47245,13 @@ op {
     }
   }
   attr {
+    name: "drop_remainder"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
     name: "output_types"
     type: "list(type)"
     has_minimum: true
