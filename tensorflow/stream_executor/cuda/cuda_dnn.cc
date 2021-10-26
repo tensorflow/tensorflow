@@ -3327,11 +3327,7 @@ dnn::DataType GetConvAccumulatorType(dnn::DataType data_type) {
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 cudnnBackendHeurMode_t GetCudnnFrontendHeurMode() {
-#if CUDNN_VERSION >= 8200
-  return CUDNN_HEUR_MODE_B;
-#else
   return CUDNN_HEUR_MODE_INSTANT;
-#endif // CUDNN_VERSION >= 8200
 }
 #endif // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
