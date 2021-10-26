@@ -114,6 +114,11 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
   ];
 }
 
+def StripNoinlineAttributePass : Pass<"tf-strip-noinline-attribute", "ModuleOp"> {
+  let summary = "Strip the tf._noinline attribute from top-level functions.";
+  let constructor = "TF::CreateStripNoinlineAttributePass()";
+}
+
 def ExecutorConvertControlToDataOutputsPass : Pass<"tf-executor-convert-control-to-data-outputs", "ModuleOp"> {
   let summary = "Chain control outputs of while loop body";
 
