@@ -69,14 +69,6 @@ Status RootDataset::FromOptions(DatasetBase* input, DatasetBase** output) {
     params.autotune_ram_budget =
         value_or_default(options.autotune_options().ram_budget(), 0,
                          model::kRamBudgetShare * port::AvailableRam());
-    LOG(ERROR) << "WILSIN: options.autotune_options().ram_budget() "
-               << options.autotune_options().ram_budget();
-    LOG(ERROR) << "WILSIN: params.autotune_ram_budget "
-               << params.autotune_ram_budget;
-    LOG(ERROR) << "WILSIN: params.autotune_cpu_budget "
-               << params.autotune_cpu_budget;
-    LOG(ERROR) << "WILSIN: params.private_threadpool_size "
-               << params.private_threadpool_size;
   }
   *output = new RootDataset(input, params);
   (*output)->Initialize(/*metadata=*/{});

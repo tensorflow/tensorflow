@@ -1893,9 +1893,6 @@ void Model::OptimizeHillClimbHelper(
   // Initialize the parameter values to minimal before tuning.
   for (auto& pair : parameters) {
     pair.second->value = pair.second->min;
-    LOG(ERROR) << "WILSIN: parameter " << pair.first << ": "
-               << pair.second->name << ", min " << pair.second->min << ", max "
-               << pair.second->max << ", value " << pair.second->value;
   }
   while (!cancellation_manager->IsCancelled()) {
     const double output_time =
