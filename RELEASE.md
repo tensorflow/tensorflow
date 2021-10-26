@@ -38,9 +38,6 @@
 
 # Thanks to our Contributors
 
-This release contains contributions from many people at Google, as well as:
-
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
 # Release 2.7.0
 
@@ -313,9 +310,6 @@ This release contains contributions from many people at Google, as well as:
 
 ## Thanks to our Contributors
 
-This release contains contributions from many people at Google, as well as:
-
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
 # Release 2.6.0
 
