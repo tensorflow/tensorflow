@@ -98,6 +98,21 @@ auto* tf_data_get_next_duration_usecs_histogram = monitoring::Sampler<0>::New(
     {monitoring::Buckets::Explicit(
         {2., 4., 8., 16., 32., 64., 128., 256., 512., 1024., 1e6})});
 
+auto* tf_data_used_vs_budget_ratio_histogram = monitoring::Sampler<0>::New(
+    {"/tensorflow/data/used_vs_budget_ratio",
+     "Ratio of tf.data used ram over ram budget when running optimization."},
+    // Uniform linear buckets with count 10 from 0 to 2
+    {monitoring::Buckets::Explicit(
+        {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0})});
+
+auto* tf_data_buffered_vs_budget_ratio_histogram = monitoring::Sampler<0>::New(
+    {"/tensorflow/data/buffered_vs_budget_ratio",
+     "Ratio of tf.data max buffer bytes over ram budget when running "
+     "optimization."},
+    // Uniform linear buckets with count 10 from 0 to 2
+    {monitoring::Buckets::Explicit(
+        {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0})});
+
 auto* tf_data_iterator_busy_counter =
     monitoring::Counter<0>::New("/tensorflow/data/iterator_busy",
                                 "The time (in microseconds) during which a "
@@ -141,6 +156,12 @@ auto* tf_data_auto_shard_rewrite_batch_size_reason =
         "The reasons that tf.data pipelines are ineligible for autoshard "
         "to rewrite the batch size.",
         "reason");
+
+auto* tf_data_autotune_stopping_criteria_counter =
+    monitoring::Counter<1>::New("/tensorflow/data/autotune_stopping_criteria",
+                                "The number of times each tf.data autotune "
+                                "algorithm stopping criterion is met.",
+                                "name");
 
 auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
@@ -249,6 +270,18 @@ void RecordTFDataGetNextDuration(uint64 duration_us) {
   tf_data_get_next_duration_cell->Add(duration_us);
 }
 
+void RecordTFDataAutotuneUsedRamBudgetRatio(const double ratio) {
+  static auto* tf_data_used_vs_budget_ratio_histogram_cell =
+      tf_data_used_vs_budget_ratio_histogram->GetCell();
+  tf_data_used_vs_budget_ratio_histogram_cell->Add(ratio);
+}
+
+void RecordTFDataAutotuneMaxBufferBudgetRatio(const double ratio) {
+  static auto* tf_data_buffered_vs_budget_ratio_histogram_cell =
+      tf_data_buffered_vs_budget_ratio_histogram->GetCell();
+  tf_data_buffered_vs_budget_ratio_histogram_cell->Add(ratio);
+}
+
 void RecordTFDataIteratorBusy(uint64 duration_us) {
   static auto* tf_data_iterator_busy_cell =
       tf_data_iterator_busy_counter->GetCell();
@@ -289,6 +322,10 @@ void RecordTFDataAutoShardRewriteBatchSize(
     tf_data_auto_shard_rewrite_batch_size_reason->GetCell(reason)->IncrementBy(
         1);
   }
+}
+
+void RecordTFDataAutotuneStoppingCriteria(const string& name) {
+  tf_data_autotune_stopping_criteria_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordParseDenseFeature(int64 num_features) {

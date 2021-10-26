@@ -34,10 +34,9 @@ constexpr char kExperiments[] = "experiments";
 constexpr char kMemBandwidth[] = "mem_bw_used_megabytes_per_sec";
 constexpr char kIntraOpParallelism[] = "intra_op_parallelism";
 constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
-constexpr char kRamBudget[] = "ram_budget_bytes";
-
-// Default share of available RAM that can be used by model's internal buffers.
-constexpr double kRamBudgetShare = 0.5;
+constexpr char kRamBudget[] = "ram_budget_megabytes";
+constexpr char kRamUsage[] = "ram_usage_megabytes";
+constexpr char kMaxBufferBytes[] = "max_buffered_megabytes";
 
 // If value `x` matches `y`, returns default value `z`. Otherwise, return `x`.
 inline int64_t value_or_default(int64_t x, int64_t y, int64_t z) {
@@ -69,7 +68,15 @@ Status RootDataset::FromOptions(DatasetBase* input, DatasetBase** output) {
         options.autotune_options().cpu_budget(), 0, GetCpuBudget());
     params.autotune_ram_budget =
         value_or_default(options.autotune_options().ram_budget(), 0,
-                         kRamBudgetShare * port::AvailableRam());
+                         model::kRamBudgetShare * port::AvailableRam());
+    LOG(ERROR) << "WILSIN: options.autotune_options().ram_budget() "
+               << options.autotune_options().ram_budget();
+    LOG(ERROR) << "WILSIN: params.autotune_ram_budget "
+               << params.autotune_ram_budget;
+    LOG(ERROR) << "WILSIN: params.autotune_cpu_budget "
+               << params.autotune_cpu_budget;
+    LOG(ERROR) << "WILSIN: params.private_threadpool_size "
+               << params.private_threadpool_size;
   }
   *output = new RootDataset(input, params);
   (*output)->Initialize(/*metadata=*/{});
@@ -143,6 +150,22 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
           kMemBandwidth,
           strings::Printf("%lld", static_cast<long long>(mem_bw))));
     }
+    const auto memory_info = port::GetMemoryInfo();
+    const auto memory_usage = memory_info.total - memory_info.free;
+    traceme_metadata.push_back(std::make_pair(
+        kRamUsage,
+        strings::Printf("%lld out of %lld (%.2f%%)",
+                        static_cast<long long>(memory_usage / 1.0e6),
+                        static_cast<long long>(memory_info.total / 1.0e6),
+                        static_cast<double>(memory_usage) /
+                            static_cast<double>(memory_info.total))));
+    if (model_node() != nullptr) {
+      traceme_metadata.push_back(std::make_pair(
+          kMaxBufferBytes,
+          strings::Printf(
+              "%lld", static_cast<long long>(
+                          model_node()->TotalMaximumBufferedBytes() / 1.0e6))));
+    }
     return traceme_metadata;
   }
 
@@ -209,8 +232,9 @@ RootDataset::RootDataset(const DatasetBase* input, Params params)
         kCpuBudget, strings::Printf("%lld", static_cast<long long>(
                                                 params_.autotune_cpu_budget))));
     traceme_metadata_.push_back(std::make_pair(
-        kRamBudget, strings::Printf("%lld", static_cast<long long>(
-                                                params_.autotune_ram_budget))));
+        kRamBudget,
+        strings::Printf("%lld", static_cast<long long>(
+                                    params_.autotune_ram_budget / 1.0e6))));
   }
   if (params_.max_intra_op_parallelism >= 0) {
     traceme_metadata_.push_back(std::make_pair(
