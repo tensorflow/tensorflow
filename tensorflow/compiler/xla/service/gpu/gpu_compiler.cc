@@ -290,6 +290,10 @@ Status GpuCompiler::OptimizeHloModule(
 
       spmd_simplify.AddPass<SortSimplifier>();
       spmd_simplify.AddPass<TupleSimplifier>();
+      spmd_simplify.AddPass<ScatterExpander>(
+          ScatterExpander::kEliminateSimpleScatters);
+      spmd_simplify.AddPass<GatherExpander>(
+          GatherExpander::kEliminateSimpleGathers);
       spmd_simplify.AddPass<WhileLoopConstantSinking>();
       spmd_simplify.AddPass<WhileLoopSimplifier>();
 
