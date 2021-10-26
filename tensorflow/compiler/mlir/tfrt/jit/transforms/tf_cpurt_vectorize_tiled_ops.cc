@@ -25,8 +25,6 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h.inc"
 
-using mlir::linalg::CodegenStrategy;
-
 struct VectorizeTiledOpsPass
     : public VectorizeTiledOpsBase<VectorizeTiledOpsPass> {
   void getDependentDialects(mlir::DialectRegistry &registry) const override {
@@ -39,19 +37,24 @@ struct VectorizeTiledOpsPass
     // Vector transfer options.
     mlir::VectorTransferToSCFOptions vector_transfer_opts;
 
-    // Vectorize linalg.fill operations.
-    if (failed(CodegenStrategy{}
-                   .vectorize(mlir::linalg::FillOp::getOperationName())
-                   .setVectorTransferToSCFOptions(vector_transfer_opts)
-                   .transform(funcOp)))
-      return signalPassFailure();
+    // Vectorize linalg.fill and linalg.generic operations.
+    mlir::OpPassManager dynamicPM("builtin.func");
+    mlir::linalg::CodegenStrategy strategy;
+    strategy.vectorize(mlir::linalg::FillOp::getOperationName())
+        .vectorLowering(
+            mlir::linalg::LinalgVectorLoweringOptions()
+                .setVectorTransferToSCFOptions(vector_transfer_opts));
+    strategy.configurePassPipeline(dynamicPM, funcOp.getContext());
+    if (failed(runPipeline(dynamicPM, funcOp))) return signalPassFailure();
 
-    // Vectorize linalg.generic operations.
-    if (failed(CodegenStrategy{}
-                   .vectorize(mlir::linalg::GenericOp::getOperationName())
-                   .setVectorTransferToSCFOptions(vector_transfer_opts)
-                   .transform(funcOp)))
-      return signalPassFailure();
+    mlir::OpPassManager dynamicPM2("builtin.func");
+    mlir::linalg::CodegenStrategy strategy2;
+    strategy2.vectorize(mlir::linalg::GenericOp::getOperationName())
+        .vectorLowering(
+            mlir::linalg::LinalgVectorLoweringOptions()
+                .setVectorTransferToSCFOptions(vector_transfer_opts));
+    strategy2.configurePassPipeline(dynamicPM2, funcOp.getContext());
+    if (failed(runPipeline(dynamicPM2, funcOp))) return signalPassFailure();
 
     // Vectorize padding.
     mlir::OwningRewritePatternList patterns(funcOp.getContext());
