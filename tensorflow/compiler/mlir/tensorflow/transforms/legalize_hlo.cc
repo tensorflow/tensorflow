@@ -1307,10 +1307,11 @@ class ConvertReduceOpToTfMin
   }
 };
 
-class ConvertReduceOpToTfAll
-    : public ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp> {
+template <typename LogicalOp, typename TfReduceOp>
+class ConvertReduceOpToTfAllAny
+    : public ConvertReduceOpToTfOp<LogicalOp, TfReduceOp> {
  public:
-  using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
+  using ConvertReduceOpToTfOp<LogicalOp, TfReduceOp>::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
     DenseIntElementsAttr init_attr;
@@ -1321,6 +1322,9 @@ class ConvertReduceOpToTfAll
     return success();
   }
 };
+using ConvertReduceOpToTfAll =
+    ConvertReduceOpToTfAllAny<mhlo::AndOp, TF::AllOp>;
+using ConvertReduceOpToTfAny = ConvertReduceOpToTfAllAny<mhlo::OrOp, TF::AnyOp>;
 
 template <typename TfReduce, typename TfArgReduce>
 class ConvertReduceOpToTfArgMinMax
@@ -2340,15 +2344,16 @@ void LegalizeHloToTf::runOnFunction() {
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  patterns->insert<
-      ConvertWhileOp, ConvertSortToTfTopk, ConvertAvgPoolOp, ConvertConvOp,
-      ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
-      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
-      ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
-      ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
-      ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
-      ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
-      ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns
+      ->insert<ConvertWhileOp, ConvertSortToTfTopk, ConvertAvgPoolOp,
+               ConvertConvOp, ConvertConvBackpropInputOp, ConvertDynamicSliceOp,
+               ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
+               ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
+               ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
+               ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+               ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+               ConvertReduceOpToTfAll, ConvertReduceOpToTfAny,
+               ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
   populateWithGenerated(*patterns);
 }
 
