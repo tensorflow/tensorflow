@@ -90,6 +90,7 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         "//tensorflow/lite/kernels/internal:cppmath",
+        "//tensorflow/lite/kernels/internal:types",
     ],
 )
 
