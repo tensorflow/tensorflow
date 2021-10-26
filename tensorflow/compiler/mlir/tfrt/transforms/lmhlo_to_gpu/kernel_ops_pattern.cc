@@ -110,10 +110,10 @@ static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
   // refer to. The lmhlo.alloc index refers to one of the function arguments.
   for (auto pair : llvm::enumerate(get_global_ops)) {
     if (!pair.value()) continue;
-    auto symbol = mlir::SymbolTable::lookupNearestSymbolFrom(
+    Operation* global_op = mlir::SymbolTable::lookupNearestSymbolFrom(
         pair.value(), pair.value().nameAttr());
     auto attr = builder.getIndexAttr(pair.index());
-    builder.clone(*symbol)->setAttr("lmhlo.alloc", attr);
+    builder.clone(*global_op)->setAttr("lmhlo.alloc", attr);
   }
 
   auto func_type = builder.getType<mlir::FunctionType>(
@@ -289,17 +289,23 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
   symbol_table.insert(gpu_module);
   gpu_module->setAttr(tfrt::gpu::getGpuBinaryAttrName(),
                       rewriter.getStringAttr(gpu_module_data));
-  SmallVector<mlir::NamedAttribute, 4> const_attrs;
+
+  // Annotate memref.global ops with the gpu.module symbol, and annotate the
+  // gpu.module op with memref.global symbols which requiring initialization.
+  SmallVector<mlir::Attribute, 4> const_attrs;
   for (const auto& constant : constants) {
-    if (constant.content.empty()) continue;
-    auto type = mlir::RankedTensorType::get(constant.content.size(),
-                                            rewriter.getIntegerType(8));
-    auto attr = mlir::DenseIntElementsAttr::get(type, constant.content);
-    const_attrs.emplace_back(rewriter.getNamedAttr(constant.symbol_name, attr));
+    auto global_op = mlir::SymbolTable::lookupNearestSymbolFrom(
+        op, rewriter.getStringAttr(constant.symbol_name));
+    assert(global_op);
+    global_op->setAttr(tfrt::gpu::getGpuModuleAttrName(),
+                       mlir::SymbolRefAttr::get(gpu_module));
+    if (!constant.content.empty())
+      const_attrs.emplace_back(mlir::SymbolRefAttr::get(global_op));
   }
-  if (!const_attrs.empty())
+  if (!const_attrs.empty()) {
     gpu_module->setAttr(tfrt::gpu::getGpuConstantsAttrName(),
-                        rewriter.getDictionaryAttr(const_attrs));
+                        rewriter.getArrayAttr(const_attrs));
+  }
 
   for (const auto& thunk : *thunks) {
     if (thunk->kind() == Thunk::kCopy) {
@@ -307,14 +313,7 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
           static_cast<const DeviceToDeviceCopyThunk*>(thunk.get());
       auto get_argument = [&](const xla::BufferAllocation::Slice& slice) {
         assert(slice.offset() == 0 && slice.size() == copy_thunk->size_bytes());
-        Value result = arguments[slice.index()];
-        // Annotate defining memref.get_global with the gpu_module symbol.
-        // Unlike kernel thunks below, which use the global in the kernel only.
-        if (auto op = result.getDefiningOp<GetGlobalOp>()) {
-          op->setAttr(tfrt::gpu::getGpuModuleAttrName(),
-                      mlir::SymbolRefAttr::get(gpu_module));
-        }
-        return result;
+        return arguments[slice.index()];
       };
       rewriter.setInsertionPoint(op);
       rewriter.create<mlir::gpu::MemcpyOp>(
