@@ -1166,8 +1166,6 @@ func @test_mul_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.01568123698234
 
 // CHECK-LABEL: test_avg_pool2d_qi8
 // CHECK: %[[VAR0:.*]] = "tosa.avg_pool2d"(%arg0) {kernel = [1, 1], pad = [0, 0, 0, 0], quantization_info = {input_zp = -1 : i32, output_zp = -1 : i32}, stride = [1, 1]}
-// CHECK-SAME: -> tensor<1x32x32x8x!quant.uniform<i32:f32, 0.015684349462389946:-1>>
-// CHECK: %[[VAR1:.*]] = "tosa.cast"(%[[VAR0]])
 // CHECK-SAME: -> tensor<1x32x32x8x!quant.uniform<i8:f32, 0.015684349462389946:-1>>
 func @test_avg_pool2d_qi8(%arg0: tensor<1x32x32x8x!quant.uniform<i8:f32, 0.015684349462389946:-1>>) -> tensor<*x!quant.uniform<i8:f32, 0.015684349462389946:-1>> {
   %0 = "tfl.average_pool_2d"(%arg0)  {filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<1x32x32x8x!quant.uniform<i8:f32, 0.015684349462389946:-1>>) -> tensor<*x!quant.uniform<i8:f32, 0.015684349462389946:-1>>
@@ -1176,15 +1174,12 @@ func @test_avg_pool2d_qi8(%arg0: tensor<1x32x32x8x!quant.uniform<i8:f32, 0.01568
 
 // -----
 
-// CHECK-LABEL: test_avg_pool2d_i8
+// CHECK-LABEL: test_avg_pool2d_i16
 // CHECK: %[[VAR0:.*]] = "tosa.avg_pool2d"(%arg0) {kernel = [1, 1], pad = [0, 0, 0, 0], stride = [1, 1]}
-// CHECK-SAME: -> tensor<1x32x32x8xi32>
-// CHECK: %[[VAR1:.*]] = "tosa.cast"(%[[VAR0]])
-// CHECK-SAME: -> tensor<1x32x32x8xi8>
-func @test_avg_pool2d_i8(%arg0: tensor<1x32x32x8xi8>) -> tensor<1x32x32x8xi8> {
-  %0 = "tosa.avg_pool2d"(%arg0) {kernel = [1, 1], pad = [0, 0, 0, 0], stride = [1, 1]} : (tensor<1x32x32x8xi8>) -> tensor<1x32x32x8xi32>
-  %1 = "tosa.cast"(%0) : (tensor<1x32x32x8xi32>) -> tensor<1x32x32x8xi8>
-  return %1 : tensor<1x32x32x8xi8>
+// CHECK-SAME: -> tensor<1x32x32x8xi16>
+func @test_avg_pool2d_i16(%arg0: tensor<1x32x32x8xi16>) -> tensor<*xi16> {
+  %0 = "tfl.average_pool_2d"(%arg0)  {filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<1x32x32x8xi16>) -> tensor<*xi16>
+  return %0 : tensor<*xi16>
 }
 
 // -----

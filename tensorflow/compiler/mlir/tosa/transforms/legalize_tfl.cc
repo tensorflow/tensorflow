@@ -852,20 +852,7 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
       return failure();
   }
 
-  auto average_etype = output_type.getElementType();
-  if (mlir::quant::UniformQuantizedType output_qtype =
-          average_etype.dyn_cast_or_null<mlir::quant::UniformQuantizedType>()) {
-    if (output_qtype.getStorageTypeIntegralWidth() != 32) {
-      average_etype = mlir::quant::UniformQuantizedType::get(
-          true, rewriter.getIntegerType(32), rewriter.getF32Type(),
-          output_qtype.getScale(), output_qtype.getZeroPoint(),
-          std::numeric_limits<int32_t>::min(),
-          std::numeric_limits<int32_t>::max());
-    }
-  } else if (average_etype.isa<IntegerType>()) {
-    average_etype = rewriter.getI32Type();
-  }
-
+  auto average_etype = input_type.getElementType();
   auto average_type = output_type.clone(average_etype);
 
   Value result = CreateOpAndInfer<tosa::AvgPool2dOp>(
@@ -2969,7 +2956,7 @@ LogicalResult ConvertConstantOp::matchAndRewrite(
   if (e_type.isInteger(64)) {
     e_type = rewriter.getIntegerType(48);
     attr = attr.cast<DenseIntOrFPElementsAttr>().mapValues(
-        e_type, [](const APInt &x) -> APInt { return x.trunc(48); });
+        e_type, [](const APInt& x) -> APInt { return x.trunc(48); });
   }
 
   if (!output_type.hasRank()) {
