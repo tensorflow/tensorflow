@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
+#include "llvm/ADT/Hashing.h"
 
 namespace tensorflow {
 
@@ -27,6 +28,11 @@ struct TfCpuRtPipelineOptions
                          llvm::cl::desc("Enable tiling for vectorization."),
                          llvm::cl::init(false)};
 };
+
+// Make TfCpuRtPipelineOptions hashable.
+inline ::llvm::hash_code hash_value(const TfCpuRtPipelineOptions& opts) {
+  return ::llvm::hash_value(static_cast<bool>(opts.vectorize));
+}
 
 // Creates a pipeline that lowers modules from the Tensorflow dialect to
 // the Linalg on buffers. `TfCpuRtPipelineOptions` contains flags to
