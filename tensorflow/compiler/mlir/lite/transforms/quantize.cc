@@ -200,7 +200,7 @@ void QuantizePass::runOnFunction() {
   auto func = getFunction();
   auto* ctx = func.getContext();
 
-  quant::QuantPassSpec quant_params = {
+  const quant::QuantPassSpec quant_params = {
       {enable_numeric_verify || quant_specs.verify_numeric, error_tolerance,
        enable_whole_model_verify || quant_specs.whole_model_verify,
        enable_log_if_failed},

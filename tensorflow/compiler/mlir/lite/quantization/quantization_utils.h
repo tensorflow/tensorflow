@@ -112,10 +112,10 @@ struct QuantPassSpec {
   NumericVerifySpec numeric_verify;
 
   // Names of ops to block from quantization
-  const StringSet& ops_blocklist = {};
+  StringSet ops_blocklist;
 
   // Names of locations to block from quantization
-  const StringSet& nodes_blocklist = {};
+  StringSet nodes_blocklist;
 };
 
 // A function signature for getting the particular OpQuantSpec for the provided
