@@ -183,36 +183,12 @@ Status XlaOpKernelContext::ConstantInput(absl::string_view name,
 Status XlaOpKernelContext::ConstantInputReshaped(
     int index, absl::Span<const int64_t> new_dims,
     xla::Literal* constant_literal, xla::ValueInferenceMode mode) {
-  XlaExpression e = InputExpression(index);
-  auto* client = compiler() ? compiler()->client() : nullptr;
-  StatusOr<absl::optional<Tensor>> constant_or_status =
-      e.ResolveConstant(client, dynamic_dimension_is_minus_one_, mode);
-  if (!constant_or_status.ok()) {
-    Status status = constant_or_status.status();
-    errors::AppendToMessage(&status, "while evaluating input ", index, " of ",
-                            context_->op_kernel().type_string(),
-                            " operator as a compile-time constant.");
-    return status;
-  }
-  absl::optional<Tensor> constant = constant_or_status.ValueOrDie();
-  if (!constant.has_value()) {
-    return errors::InvalidArgument(
-        "Input ", index, " to node `", context_->op_kernel().name(),
-        "` with op ", context_->op_kernel().type_string(),
-        " must be a compile-time constant.\n\n"
-        "XLA compilation requires that operator arguments that represent "
-        "shapes or dimensions be evaluated to concrete values at compile time. "
-        "This error means that a shape or dimension argument could not be "
-        "evaluated at compile time, usually because the value of the argument "
-        "depends on a parameter to the computation, on a variable, or on a "
-        "stateful operation such as a random number generator.");
-  }
-
-  Tensor temp(constant->dtype());
-  if (!temp.CopyFrom(*constant, TensorShape(new_dims))) {
+  TF_ASSIGN_OR_RETURN(Tensor constant, ConstantInputTensor(index, mode));
+  Tensor temp(constant.dtype());
+  if (!temp.CopyFrom(constant, TensorShape(new_dims))) {
     return errors::InvalidArgument(
         context_->op_kernel().name(), " input ", index, " has shape ",
-        constant->shape().DebugString(),
+        constant.shape().DebugString(),
         " but was asked to be reshaped to incompatible shape ",
         TensorShape(new_dims).DebugString());
   }
@@ -516,6 +492,35 @@ Status XlaOpKernelContext::ConstantInputList(absl::string_view name,
     TF_RETURN_IF_ERROR(ConstantInput(i, &(*outputs)[i], mode));
   }
   return Status::OK();
+}
+
+StatusOr<Tensor> XlaOpKernelContext::ConstantInputTensor(
+    int index, xla::ValueInferenceMode mode) {
+  XlaExpression e = InputExpression(index);
+  auto* client = compiler() ? compiler()->client() : nullptr;
+  StatusOr<absl::optional<Tensor>> constant_or_status =
+      e.ResolveConstant(client, dynamic_dimension_is_minus_one_, mode);
+  if (!constant_or_status.ok()) {
+    Status status = constant_or_status.status();
+    errors::AppendToMessage(&status, "while evaluating input ", index, " of ",
+                            context_->op_kernel().type_string(),
+                            " operator as a compile-time constant.");
+    return status;
+  }
+  absl::optional<Tensor> constant = constant_or_status.ValueOrDie();
+  if (!constant.has_value()) {
+    return errors::InvalidArgument(
+        "Input ", index, " to node `", context_->op_kernel().name(),
+        "` with op ", context_->op_kernel().type_string(),
+        " must be a compile-time constant.\n\n"
+        "XLA compilation requires that operator arguments that represent "
+        "shapes or dimensions be evaluated to concrete values at compile time. "
+        "This error means that a shape or dimension argument could not be "
+        "evaluated at compile time, usually because the value of the argument "
+        "depends on a parameter to the computation, on a variable, or on a "
+        "stateful operation such as a random number generator.");
+  }
+  return *constant;
 }
 
 namespace {
