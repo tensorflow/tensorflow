@@ -48,7 +48,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import function_serialization
-from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import pywrap_saved_model
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
@@ -1114,12 +1113,11 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
   proto = saved_object_graph_pb2.SavedObjectGraph()
   saveable_view.fill_object_graph_proto(proto)
 
-  coder = nested_structure_coder.StructureCoder()
   for concrete_function in saveable_view.concrete_and_gradient_functions:
     name = compat.as_text(concrete_function.name)
     name = saveable_view.function_name_map.get(name, name)
     serialized = function_serialization.serialize_concrete_function(
-        concrete_function, saveable_view.captured_tensor_node_ids, coder)
+        concrete_function, saveable_view.captured_tensor_node_ids)
     if serialized is not None:
       proto.concrete_functions[name].CopyFrom(serialized)
 

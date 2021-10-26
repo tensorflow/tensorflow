@@ -335,7 +335,6 @@ py_strict_library(
     deps = [
         ":builder",
         ":function_serialization",
-        ":nested_structure_coder",
         ":pywrap_saved_model",
         ":registration",
         ":revived_types",
@@ -658,6 +657,17 @@ py_strict_library(
 tf_py_test(
     name = "nested_structure_coder_test",
     srcs = ["nested_structure_coder_test.py"],
+    deps = [
+        ":nested_structure_coder",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+tf_py_test(
+    name = "nested_structure_coder_class_test",
+    srcs = ["nested_structure_coder_class_test.py"],
     deps = [
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",

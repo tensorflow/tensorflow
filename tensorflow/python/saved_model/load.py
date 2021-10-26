@@ -324,7 +324,6 @@ class Loader(object):
 
   def _setup_functions_structures(self):
     """Setup structure for inputs and outputs of restored functions."""
-    coder = nested_structure_coder.StructureCoder()
     for name, proto in sorted(self._proto.concrete_functions.items()):
       concrete_function = self._concrete_functions[name]
       # By setting the structured_outputs directly, we can rely on this
@@ -333,7 +332,8 @@ class Loader(object):
       # with output that is convertible to Tensors and the conversion
       # always happens. For example tf.TensorShape([2, 3]) will be
       # converted to Tensor representing [2, 3].
-      original_outputs = coder.decode_proto(proto.output_signature)
+      original_outputs = nested_structure_coder.decode_proto(
+          proto.output_signature)
       # The original_outputs here had Tensors converted to TensorSpecs, so
       # the restored function's structured_outputs field will not be
       # exactly the same. Fortunately the repacking logic cares only about
@@ -341,7 +341,8 @@ class Loader(object):
       # and types.
       concrete_function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
       concrete_function._func_graph.structured_input_signature = (  # pylint: disable=protected-access
-          coder.decode_proto(proto.canonicalized_input_signature))
+          nested_structure_coder.decode_proto(
+              proto.canonicalized_input_signature))
       concrete_function._initialize_function_spec()  # pylint: disable=protected-access
 
   def _setup_functions_captures(self):
