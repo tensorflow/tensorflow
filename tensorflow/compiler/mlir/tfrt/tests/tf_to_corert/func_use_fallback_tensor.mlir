@@ -163,7 +163,7 @@ func @callee(%arg0: tensor<i32>) -> (tensor<i32>) {
 
 // CHECK-LABEL: func @call_test
 // CHECK-SAME: ([[chain:%.*]]: !tfrt.chain,
-func @call_test(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+func @call_test(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
   %0 = "tf.Add"(%arg0, %arg0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK: [[results_0:%.*]]:2 = tfrt.call @callee([[chain]]
   // CHECK-SAME: (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
@@ -171,8 +171,11 @@ func @call_test(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
   // CHECK-NEXT: [[results_1:%.*]]:2 = tfrt.call @callee([[chain]]
   // CHECK-SAME: (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
   %2 = "tf.PartitionedCall"(%0) {config = "", config_proto = "", executor_type = "", f = @callee} : (tensor<i32>) -> (tensor<i32>)
-  // CHECK: [[results_0]]#1, [[results_1]]#1
-  return %1, %2 : tensor<i32>, tensor<i32>
+  // CHECK-NEXT: [[results_2:%.*]]:2 = tfrt.call @callee([[chain]]
+  // CHECK-SAME: (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
+  %3 = "tf.LegacyCall"(%0) {f = @callee} : (tensor<i32>) -> (tensor<i32>)
+  // CHECK: [[results_0]]#1, [[results_1]]#1, [[results_2]]#1
+  return %1, %2, %3 : tensor<i32>, tensor<i32>, tensor<i32>
 }
 
 func @branch0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {

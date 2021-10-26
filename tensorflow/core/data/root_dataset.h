@@ -42,7 +42,7 @@ class RootDataset : public DatasetBase {
   const DataTypeVector& output_dtypes() const override;
   const std::vector<PartialTensorShape>& output_shapes() const override;
 
-  int64_t Cardinality() const override;
+  int64_t CardinalityInternal() const override;
   Status CheckExternalState() const override;
   string DebugString() const override;
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;

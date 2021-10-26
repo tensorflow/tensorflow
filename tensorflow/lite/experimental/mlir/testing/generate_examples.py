@@ -139,6 +139,10 @@ parser.add_argument(
     action="store_true",
     help="Make tests by setting TF forward compatibility horizon to the future")
 parser.add_argument(
+    "--no_tests_limit",
+    action="store_true",
+    help="Remove the limit of the number of tests.")
+parser.add_argument(
     "--test_sets",
     type=str,
     help=("Comma-separated list of test set names to generate. "
@@ -164,6 +168,7 @@ def main(unused_args):
   options.tflite_convert_function = mlir_convert.mlir_convert
   options.known_bugs = MLIR_CONVERTER_KNOWN_BUGS
   options.make_forward_compat_test = FLAGS.make_forward_compat_test
+  options.no_tests_limit = FLAGS.no_tests_limit
   options.use_experimental_converter = True
   options.mlir_quantizer = FLAGS.mlir_quantizer
 

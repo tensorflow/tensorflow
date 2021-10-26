@@ -182,7 +182,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     // If start_ == stop_ or if the sign of stop_ - start_ and step do not agree
     // (or are zero), return zero.
     if (sgn(stop_ - start_) * sgn(step_) <= 0) {

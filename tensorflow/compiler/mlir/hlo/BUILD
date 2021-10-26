@@ -1844,9 +1844,11 @@ cc_library(
     name = "CAPI",
     srcs = [
         "lib/CAPI/Dialects.cpp",
+        "lib/CAPI/Types.cpp",
     ],
     hdrs = [
         "include/mlir-hlo-c/Dialects.h",
+        "include/mlir-hlo-c/Types.h",
     ],
     deps = [
         ":hlo",

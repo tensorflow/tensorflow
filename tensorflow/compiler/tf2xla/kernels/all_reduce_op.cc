@@ -49,8 +49,7 @@ class CollectiveReduceV2Op : public XlaOpKernel {
     // Store all traversed collective configurations, and generate channel_id
     // for the collective.
     StatusOr<int64_t> channel_id =
-        ctx->xla_context()->RecordCollectiveReduceV2OpInfo(group_key,
-                                                           group_size);
+        ctx->xla_context()->RecordCollectiveInfo(group_key, group_size);
     OP_REQUIRES_OK(ctx, channel_id.status());
 
     DataType dtype = XlaHelpers::SumAccumulationType(ctx->input_type(0));

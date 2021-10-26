@@ -312,7 +312,6 @@ py_strict_library(
         "save_context.py",
     ],
     srcs_version = "PY3",
-    deps = [],
 )
 
 tf_py_test(
@@ -336,7 +335,6 @@ py_strict_library(
     deps = [
         ":builder",
         ":function_serialization",
-        ":nested_structure_coder",
         ":pywrap_saved_model",
         ":registration",
         ":revived_types",
@@ -552,9 +550,12 @@ tf_py_test(
     srcs = ["registration_saving_test.py"],
     deps = [
         ":registration",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/training/tracking",
         "@absl_py//absl/testing:parameterized",
@@ -664,13 +665,23 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "nested_structure_coder_class_test",
+    srcs = ["nested_structure_coder_class_test.py"],
+    deps = [
+        ":nested_structure_coder",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 py_strict_library(
     name = "save_options",
     srcs = ["save_options.py"],
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
-        "@enum34_archive//:enum",
         "@six_archive//:six",
     ],
 )

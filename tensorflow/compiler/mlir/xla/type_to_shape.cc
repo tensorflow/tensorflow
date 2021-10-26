@@ -129,38 +129,35 @@ Shape TypeToShape(mlir::Type type) {
     // For the primitive type case, the shape of the memref is similar to the
     // vector type case (i.e., it is, modulo the layout, the same dimensions
     // and primitive type).
-    if (m.getAffineMaps().empty())
+    if (m.getLayout().isIdentity())
       return ShapeUtil::MakeShape(primitive_type, span);
 
-    if (m.getAffineMaps().size() == 1) {
-      llvm::SmallVector<int64_t, 4> strides;
-      int64_t offset;
-      if (failed(mlir::getStridesAndOffset(m, strides, offset))) return {};
+    llvm::SmallVector<int64_t, 4> strides;
+    int64_t offset;
+    if (failed(mlir::getStridesAndOffset(m, strides, offset))) return {};
 
-      llvm::SmallVector<std::pair<int64_t, int>, 4> strides_with_indices;
-      for (const auto& e : llvm::enumerate(strides)) {
-        strides_with_indices.push_back({e.value(), e.index()});
-      }
-      std::stable_sort(strides_with_indices.begin(),
-                       strides_with_indices.end());
-
-      llvm::SmallVector<int64_t, 4> minor_to_major;
-      int64_t stride = 1;
-      for (const auto& pr : strides_with_indices) {
-        minor_to_major.push_back(pr.second);
-
-        // Either the affine map is not perfectly strided, or the dimensions
-        // recovered from strides don't match the actual dimensions in shapes.
-        if (stride != pr.first && m.getShape()[pr.second] != 1) return {};
-
-        stride *= m.getShape()[pr.second];
-      }
-
-      llvm::SmallVector<int64_t, 4> dimensions(m.getShape().begin(),
-                                               m.getShape().end());
-      return ::xla::ShapeUtil::MakeShapeWithLayout(primitive_type, dimensions,
-                                                   minor_to_major);
+    llvm::SmallVector<std::pair<int64_t, int>, 4> strides_with_indices;
+    for (const auto& e : llvm::enumerate(strides)) {
+      strides_with_indices.push_back({e.value(), e.index()});
     }
+    std::stable_sort(strides_with_indices.begin(), strides_with_indices.end());
+
+    llvm::SmallVector<int64_t, 4> minor_to_major;
+    int64_t stride = 1;
+    for (const auto& pr : strides_with_indices) {
+      minor_to_major.push_back(pr.second);
+
+      // Either the affine map is not perfectly strided, or the dimensions
+      // recovered from strides don't match the actual dimensions in shapes.
+      if (stride != pr.first && m.getShape()[pr.second] != 1) return {};
+
+      stride *= m.getShape()[pr.second];
+    }
+
+    llvm::SmallVector<int64_t, 4> dimensions(m.getShape().begin(),
+                                             m.getShape().end());
+    return ::xla::ShapeUtil::MakeShapeWithLayout(primitive_type, dimensions,
+                                                 minor_to_major);
   } else if (auto t = type.dyn_cast<mlir::RankedTensorType>()) {
     // TODO(jpienaar): This is only handling the base case with primitive
     // element type.

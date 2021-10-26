@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
@@ -1014,6 +1015,11 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnBatchNorm(
 // Convert an XLA HLO constant to a global_memref + get_global_memref pair.
 StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
     const HloInstruction* instr) {
+  auto& cached_value = slices_[std::make_pair(instr, xla::ShapeIndex())];
+  if (cached_value) {
+    return dyn_cast<mlir::memref::GetGlobalOp>(cached_value.getDefiningOp());
+  }
+
   // Insert a global_memref in the module.
   Location loc = getLocation(instr);
 
@@ -1063,8 +1069,6 @@ StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
       builder_.create<memref::GetGlobalOp>(loc, memref_type, constant_name);
 
   // Update the cache to remember this value.
-  auto& cached_value = slices_[std::make_pair(instr, xla::ShapeIndex())];
-  TF_RET_CHECK(cached_value == nullptr);
   cached_value = get_global_memref;
   return get_global_memref;
 }
@@ -1380,16 +1384,18 @@ xla::StatusOr<lmhlo::WhileOp> LhloDialectEmitter::EmitWhileOp(
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
     const xla::HloInstruction* instr, const xla::Shape& current_shape,
     const xla::ShapeIndex& shape_index) {
+  // For constants, the cache is managed inside EmitConstant since it can
+  // be called either from here or when we see a top-level HloConstant instr.
+  if (instr->IsConstant() && shape_index.empty()) {
+    TF_ASSIGN_OR_RETURN(Value constant_memref, EmitConstant(instr));
+    return constant_memref;
+  }
+
   // Cache generated ViewOp and StaticMemRefCastOp by (instruction,
   // shape_index).
   auto& cached_value = slices_[std::make_pair(instr, shape_index)];
   if (cached_value) {
     return cached_value;
-  }
-
-  if (instr->IsConstant() && shape_index.empty()) {
-    TF_ASSIGN_OR_RETURN(Value constant_memref, EmitConstant(instr));
-    return cached_value = constant_memref;
   }
 
   // If the shape happens to have dynamic dimensions, create the memref using

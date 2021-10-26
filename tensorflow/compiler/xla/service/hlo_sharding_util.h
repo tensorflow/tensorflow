@@ -156,7 +156,8 @@ HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
 // sharding.
 absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
     const HloSharding& data_operand_sharding, const HloInstruction& hlo,
-    const Shape& output_shape, const Shape& operand_shape);
+    absl::Span<const int64_t> slice_sizes, const Shape& output_shape,
+    const Shape& operand_shape);
 
 // Returns a data operand sharding of gather by passing through the output's
 // sharding.

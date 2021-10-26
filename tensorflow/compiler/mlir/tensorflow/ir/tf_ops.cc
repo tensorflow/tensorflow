@@ -24,7 +24,6 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
-#include "absl/strings/str_cat.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -68,7 +67,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/common_runtime/lower_function_call_inline_policy.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -155,15 +153,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // a TF operation.
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
-    // Skip inlining for TPUPartitionedCalls.
-    if (isa<TPUPartitionedCallOp>(call)) return false;
-    // Maintain inlining for  `tf.function`s with jit_compile option.
-    if (callable->hasAttr("tf._XlaMustCompile")) return true;
-    auto noinline_attr_name = absl::StrCat("tf.", tensorflow::kNoInlineAttr);
-    if (auto noinline_attr =
-            callable->getAttrOfType<BoolAttr>(noinline_attr_name))
-      return !noinline_attr.getValue();
-    return true;
+    // Check that the TF call operation is one that is legal to inline.
+    return !isa<TPUPartitionedCallOp>(call);
   }
 
   // Returns if its legal to inline 'src' region into the 'dest' region

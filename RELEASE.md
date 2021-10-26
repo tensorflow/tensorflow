@@ -17,6 +17,7 @@
 * `tf.lite`:
   * Where operation support is added for these data types
     'int32/uint32/int8/uint8/int64'
+  * Add builtin support for `Bucketize` op on CPU.
 
 *<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>

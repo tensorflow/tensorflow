@@ -532,12 +532,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
   def __repr__(self):
     type_ = type(self._dataset if isinstance(self, DatasetV1Adapter) else self)
-    output_shapes = nest.map_structure(str, get_legacy_output_shapes(self))
-    output_shapes = str(output_shapes).replace("'", "")
-    output_types = nest.map_structure(repr, get_legacy_output_types(self))
-    output_types = str(output_types).replace("'", "")
-    return ("<%s shapes: %s, types: %s>" % (type_.__name__, output_shapes,
-                                            output_types))
+    return f"<{type_.__name__} element_spec={self.element_spec}>"
 
   def __debug_string__(self):
     """Returns a string showing the type of the dataset and its inputs.
@@ -2235,9 +2230,9 @@ name=None))
     >>> dataset = tf.data.Dataset.range(7).window(3)
     >>> for window in dataset:
     ...   print(window)
-    <...Dataset shapes: (), types: tf.int64>
-    <...Dataset shapes: (), types: tf.int64>
-    <...Dataset shapes: (), types: tf.int64>
+    <...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int64, name=None)>
+    <...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int64, name=None)>
+    <...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int64, name=None)>
 
     Since windows are datasets, they can be iterated over:
 
@@ -2300,8 +2295,8 @@ name=None))
     >>> dataset = dataset.window(2)
     >>> windows = next(iter(dataset))
     >>> windows
-    (<...Dataset shapes: (), types: tf.int32>,
-     <...Dataset shapes: (), types: tf.int32>)
+    (<...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int32, name=None)>,
+     <...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int32, name=None)>)
 
     >>> def to_numpy(ds):
     ...   return list(ds.as_numpy_iterator())
@@ -4598,23 +4593,15 @@ class ConcatenateDataset(DatasetV2):
     self._input_dataset = input_dataset
     self._dataset_to_concatenate = dataset_to_concatenate
 
-    output_types = get_legacy_output_types(input_dataset)
-    if output_types != get_legacy_output_types(dataset_to_concatenate):
-      raise TypeError(f"Incompatible types of input datasets: {output_types} "
-                      f"vs. {get_legacy_output_types(dataset_to_concatenate)}.")
-
-    output_classes = get_legacy_output_classes(input_dataset)
-    if output_classes != get_legacy_output_classes(dataset_to_concatenate):
-      raise TypeError(f"Incompatible classes of input datasets: "
-                      f"{output_classes} vs. "
-                      f"{get_legacy_output_classes(dataset_to_concatenate)}.")
-
-    spec1 = input_dataset.element_spec
-    spec2 = dataset_to_concatenate.element_spec
-    self._structure = nest.pack_sequence_as(spec1, [
-        ts1.most_specific_compatible_type(ts2)
-        for (ts1, ts2) in zip(nest.flatten(spec1), nest.flatten(spec2))
-    ])
+    try:
+      self._structure = tf_nest.map_structure(
+          lambda ts1, ts2: ts1.most_specific_compatible_type(ts2),
+          input_dataset.element_spec, dataset_to_concatenate.element_spec)
+    except (TypeError, ValueError) as e:
+      raise TypeError(
+          f"Incompatible dataset elements:\n"
+          f"  {input_dataset.element_spec} vs. "
+          f"  {dataset_to_concatenate.element_spec}") from e
 
     self._input_datasets = [input_dataset, dataset_to_concatenate]
     self._metadata = dataset_metadata_pb2.Metadata()

@@ -24,8 +24,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -1173,7 +1173,8 @@ class MklConvOp : public OpKernel {
   // descriptor (data format)
   void AllocateTensor(OpKernelContext* context, const ConvFwdPd& conv_prim_desc,
                       Tensor** filter_tensor,
-                      const MklDnnShape* filter_mkl_shape) {
+                      const MklDnnShape* filter_mkl_shape)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     DCHECK(filter_tensor);
     TensorShape filter_tf_shape;
     filter_tf_shape.AddDim(
@@ -1195,11 +1196,8 @@ class MklConvOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_temp(DT_UINT8, cached_filter_md_shape,
                                           &cached_filter_md_));
-    {
-      tf_shared_lock lock(mu_);
-      *reinterpret_cast<memory::desc*>(cached_filter_md_.flat<uint8>().data()) =
-          weights_desc;
-    }
+    *reinterpret_cast<memory::desc*>(cached_filter_md_.flat<uint8>().data()) =
+        weights_desc;
   }
 
   void AllocateTensor(OpKernelContext* context, const ConvFwdPd& conv_prim_desc,

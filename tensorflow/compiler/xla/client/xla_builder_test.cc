@@ -561,7 +561,9 @@ TEST_F(XlaBuilderTest, BuildWithSpecificRootWithWrongBuilder) {
 
 TEST_F(XlaBuilderTest, ProtoMatches) {
   std::vector<XlaComputation> computations;
-  for (int i = 0; i < 2; ++i) {
+  const int n = 2;
+  computations.reserve(n);
+  for (int i = 0; i < n; ++i) {
     XlaBuilder b_call("the_only_to_apply");
     auto p0 = Parameter(&b_call, 0, ShapeUtil::MakeShape(F32, {}), "p0");
     auto p1 = Parameter(&b_call, 1, ShapeUtil::MakeShape(F32, {}), "p1");

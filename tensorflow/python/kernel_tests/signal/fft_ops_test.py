@@ -281,6 +281,7 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.disable_xla("b/155276727")
 class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
   def _tf_fft(self, x, rank, fft_length=None, feed_dict=None):

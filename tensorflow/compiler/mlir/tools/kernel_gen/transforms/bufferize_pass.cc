@@ -99,7 +99,7 @@ class CustomBufferizeTypeConverter : public BufferizeTypeConverter {
       // TODO(pifon) : Change how target materialization is invoked in dialect
       // conversion.
       if (auto memref_type = inputs[0].getType().dyn_cast<MemRefType>()) {
-        assert(!memref_type.getAffineMaps().empty());
+        assert(!memref_type.getLayout().isIdentity());
         return inputs[0];
       }
       assert(inputs[0].getType().isa<TensorType>());
@@ -136,7 +136,12 @@ struct ComputeOpAndFuncBufferizePass
     // Configure bufferize pattern for functions and lhlo.
     mhlo::populateHLOToMemrefConversionPattern(
         &converter, &remove_sign_converter, &patterns,
-        /*enforce_identity_map=*/false);
+        /*enforce_identity_map=*/[](Operation* op) {
+          // Insert a copy if the broadcast escapes.
+          return llvm::any_of(op->getUsers(), [](Operation* user) {
+            return isa<mlir::ReturnOp>(user);
+          });
+        });
     populateFuncOpTypeConversionPattern(patterns, converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);

@@ -44,8 +44,8 @@ template <typename CppType>
       type, llvm::makeArrayRef(data_span.data(), data_span.size()));
 }
 
-StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
-    const Shape& shape, mlir::Builder builder) {
+StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
+                                              mlir::Builder builder) {
   // N.B. IsMonotonicWithDim0Major ignores tiling, and I can't change it because
   // some XLA code relies on it treating tiled layouts as equivalent to untiled
   // layouts, so the check to rule out tiling has to come /before/ the
@@ -55,7 +55,7 @@ StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
   }
   if (!shape.has_layout() ||
       LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
-    return llvm::SmallVector<AffineMap, 1>{};
+    return AffineMap();
   }
   if (!shape.is_static()) {
     return tensorflow::errors::Internal(
@@ -68,10 +68,10 @@ StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
     accumulated_stride *= shape.dimensions(dim);
   }
   if (accumulated_stride == 0) {
-    return llvm::SmallVector<AffineMap, 1>{};
+    return AffineMap();
   }
-  return llvm::SmallVector<AffineMap, 1>{
-      makeStridedLinearLayoutMap(strides, /*offset=*/0, builder.getContext())};
+  return makeStridedLinearLayoutMap(strides, /*offset=*/0,
+                                    builder.getContext());
 }
 
 template <typename T>

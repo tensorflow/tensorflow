@@ -33,12 +33,6 @@ namespace gpu {
 namespace {
 
 class TreeReductionRewriterTest : public GpuCodegenTest {
-  DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_deterministic_reductions(true);
-    return debug_options;
-  }
-
  protected:
   void EnsureDeterminism(absl::string_view hlo_text) {
     std::vector<ExecutionProfile> profiles;

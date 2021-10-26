@@ -84,19 +84,21 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
     operands.emplace_back(TensorToMemrefDesc(tensor));
 
   // Get an executable that might be specialized to the operands.
-  AsyncValuePtr<Executable> executable =
+  llvm::Expected<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands, exec_ctx);
+  if (auto err = executable.takeError())
+    LOG(FATAL) << "Failed to specialize executable";
 
   // Wait for the compilation completion.
-  host->Await({executable.CopyRef()});
+  host->Await({executable->CopyRef()});
 
-  CHECK(!executable.IsError())
-      << "Failed to get executable: " << StrCat(executable.GetError());
-  CHECK(!executable->IsAsync()) << "async results are not supported";
+  CHECK(!executable->IsError())
+      << "Failed to get executable: " << StrCat(executable->GetError());
+  CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
   // Placeholders for returned values.
   llvm::SmallVector<RCReference<AsyncValue>> result_values;
-  for (int i = 0; i < executable->signature().num_results(); ++i)
+  for (int i = 0; i < (*executable)->signature().num_results(); ++i)
     result_values.emplace_back();
   RemainingResults results(result_values);
 
@@ -106,12 +108,13 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = executable->InitializeCallFrame(operands, &call_frame))
+  if (auto err = (*executable)->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
-    executable->Execute(call_frame, exec_ctx);
-    if (auto err = executable->ReturnResults(converter, exec_ctx, &call_frame))
+    (*executable)->Execute(call_frame, exec_ctx);
+    if (auto err =
+            (*executable)->ReturnResults(converter, exec_ctx, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 }

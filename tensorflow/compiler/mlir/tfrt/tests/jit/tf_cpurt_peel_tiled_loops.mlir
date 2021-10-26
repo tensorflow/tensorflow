@@ -83,7 +83,7 @@ func @tanh_3d(%d0: index, %d1: index, %d2: index) {
 
 // -----
 
-func @reduce_row_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
+func @reduce_column_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c1 = arith.constant 1 : index
   %c4 = arith.constant 4 : index
@@ -135,7 +135,7 @@ func @reduce_row_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
   return %5 : tensor<?xf32>
 }
 
-// CHECK-LABEL: func @reduce_row_sum_2d_dynamic
+// CHECK-LABEL: func @reduce_column_sum_2d_dynamic
 
 // CHECK:       linalg.fill
 // CHECK:       linalg.tiled_loop
@@ -159,7 +159,7 @@ func @reduce_row_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
 // -----
 
 
-func @reduce_column_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
+func @reduce_row_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %c4 = arith.constant 4 : index
@@ -210,7 +210,7 @@ func @reduce_column_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
   return %5 : tensor<?xf32>
 }
 
-// CHECK-LABEL: func @reduce_column_sum_2d_dynamic
+// CHECK-LABEL: func @reduce_row_sum_2d_dynamic
 
 // CHECK:       linalg.fill
 // CHECK:       linalg.tiled_loop

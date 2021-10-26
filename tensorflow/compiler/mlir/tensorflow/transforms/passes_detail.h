@@ -21,6 +21,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
 namespace mlir {
+namespace scf {
+class SCFDialect;
+}
 namespace tensor {
 class TensorDialect;
 }

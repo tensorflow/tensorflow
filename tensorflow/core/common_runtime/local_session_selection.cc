@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_DETAIL_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_DETAIL_H_
+#include "tensorflow/core/common_runtime/local_session_selection.h"
 
-#include "mlir/IR/Dialect.h"
-#include "mlir/Pass/Pass.h"
+namespace tensorflow {
 
-namespace mlir {
-namespace mhlo {
+static LocalSessionImpl default_local_session =
+    LocalSessionImpl::kDirectSession;
 
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"
+void SetDefaultLocalSessionImpl(LocalSessionImpl impl) {
+  default_local_session = impl;
+}
 
-}  // namespace mhlo
-}  // namespace mlir
+LocalSessionImpl GetDefaultLocalSessionImpl() { return default_local_session; }
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_DETAIL_H_
+}  // namespace tensorflow

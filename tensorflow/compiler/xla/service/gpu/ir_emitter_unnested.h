@@ -216,6 +216,30 @@ class IrEmitterUnnested : public IrEmitter {
     thunk_sequence_.emplace_back(std::move(thunk));
   }
 
+  // Load data from potentially unaligned address. If address is offset by
+  // `alignment_bytes`, data is read in the unit of `alignment_bytes` to avoid
+  // memory read misalignment in CUDA; otherwise, the entire data are loaded
+  // from the given memory address.
+  //
+  //   address: the memory address to load data from.
+  //   data_type: the type of data to load.
+  //   alignment_bytes: the number of bytes required to align. The number of
+  //     bytes of the data_type must be divisible by alignment_bytes.
+  llvm::Value* CreateLoad(llvm::Value* address, llvm::Type* data_type,
+                          int alignment_bytes);
+
+  // Store data at a potentially unaligned address. If the address is offset by
+  // `alignment_bytes`, data is stored in the unit of `alignment_bytes` to avoid
+  // memory write misalignment in CUDA; otherwise, the entire data is stored at
+  // the given memory address.
+  //
+  //   data: the data to be stored.
+  //   address: the memory address to store data.
+  //   alignment_bytes: the number of bytes required to align. The number of
+  //     bytes of the data_type must be divisible by alignment_bytes.
+  void CreateStore(llvm::Value* data, llvm::Value* address,
+                   int alignment_bytes);
+
   // Input = {static array, dynamic_dim0, dynamic_dim1}
   // Output = {dynamic array(with dynamic dimension meta data at the end)}
   // For a tensor with static dimension [2][<=5] and dynamic dimension [2][3]
@@ -400,7 +424,7 @@ class IrEmitterUnnested : public IrEmitter {
   // and first_reduce are the same instruction. For a kInput fusion,
   // unnested_hlo is the fusion instruction while first_reduce is the first
   // reduce op.
-  ReductionCodegenInfo ComputeReductionCodegenInfo(
+  StatusOr<ReductionCodegenInfo> ComputeReductionCodegenInfo(
       mlir::lmhlo::FusionOp fusion, mlir::mhlo::ReduceOp first_reduce);
 
   // Generates code for input-fusible slices.
@@ -545,23 +569,28 @@ class IrEmitterUnnested : public IrEmitter {
       const ReductionCodegenState& reduction_codegen_state,
       const TilingKernelInfo& tiling_kernel_info);
 
+  // Returns the address to write the reduction output to.
+  llvm::Value* GetOutputAddressForReduction(
+      int partial_result_idx, llvm::Type* index_ty,
+      const ReductionCodegenState& reduction_codegen_state,
+      const TilingKernelInfo& tiling_kernel_info,
+      const IrEmitterUnnested::ReductionOutputMap& output_arrays,
+      const HloReduceInstruction* reduction, int output_idx);
+
   // `current_output`: the value the tile has calculated.
   // `output_address`: address where the output value has to be written.
   void EmitReductionOutputForRowReduction(
-      const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+      const TilingKernelInfo& tiling_kernel_info,
       const ReductionCodegenState& reduction_codegen_state,
       llvm::Type* index_ty, const ReductionOutputMap& output_arrays,
-      const llvm_ir::IrArray::Index& element_index,
       const HloReduceInstruction* reduction, int partial_result_idx);
 
   // Same arguments as EmitReductionOutputForRowReduction.
   void EmitReductionOutputForColumnReduction(
-      const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+      const TilingKernelInfo& tiling_kernel_info,
       const ReductionCodegenState& reduction_codegen_state,
       llvm::Type* index_ty, const ReductionOutputMap& output_arrays,
-      const llvm_ir::IrArray::Index& element_index,
-      const HloReduceInstruction* reduction, int partial_result_idx,
-      const TilingKernelInfo& tiling_kernel_info);
+      const HloReduceInstruction* reduction, int partial_result_idx);
 
   // Emits code for reductions in the output_instructions.
   void EmitIRForReduction(mlir::lmhlo::FusionOp fusion,
@@ -627,9 +656,6 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(mlir::Operation* op,
                                                          mlir::Value init_value,
                                                          mlir::Value dest);
-
-  StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
-      mlir::lmhlo::FusionOp fusion, int output_index);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.

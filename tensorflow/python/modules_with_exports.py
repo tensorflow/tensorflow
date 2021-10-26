@@ -52,6 +52,7 @@ from tensorflow.python.util.tf_export import tf_export
 # _internal APIs
 from tensorflow.python.distribute.combinations import generate
 from tensorflow.python.distribute.experimental.rpc.rpc_ops import *
+from tensorflow.python.distribute.merge_call_interim import *
 from tensorflow.python.distribute.multi_process_runner import *
 from tensorflow.python.distribute.multi_worker_test_base import *
 from tensorflow.python.distribute.strategy_combinations import *

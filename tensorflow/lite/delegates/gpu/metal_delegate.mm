@@ -438,6 +438,18 @@ class Delegate {
     create_info.precision = precision;
     create_info.storage_type = TensorStorageType::BUFFER;
     create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+    for (auto& value : graph.inputs()) {
+      DataType data_type = DeduceDataTypeFromPrecision(create_info.precision);
+      TensorStorageType storage_type = TensorStorageType::BUFFER;
+      Layout layout = value->tensor.shape.b == 1 ? Layout::HWC : Layout::BHWC;
+      create_info.preallocated[value->id] = TensorDescriptor{data_type, storage_type, layout};
+    }
+    for (auto& value : graph.outputs()) {
+      DataType data_type = DeduceDataTypeFromPrecision(create_info.precision);
+      TensorStorageType storage_type = TensorStorageType::BUFFER;
+      Layout layout = value->tensor.shape.b == 1 ? Layout::HWC : Layout::BHWC;
+      create_info.preallocated[value->id] = TensorDescriptor{data_type, storage_type, layout};
+    }
     RETURN_IF_ERROR(
         inference_context_.InitFromGraphWithTransforms(create_info, &graph, metal_device_));
     return absl::OkStatus();

@@ -284,18 +284,21 @@ std::vector<py::array> TfCpurtExecutor::Execute(
     ConvertPyArrayMemrefDesc(arguments[i], &memrefs[i]);
 
   // Get an executable that might be specialized to the operands.
-  AsyncValuePtr<Executable> executable =
+  llvm::Expected<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(memrefs, exec_ctx);
+  if (auto err = executable.takeError())
+    throw std::runtime_error(
+        StrCat("Failed to get Executable: ", std::move(err)));
 
   // Wait for the compilation completion.
-  host_context_.Await({executable.CopyRef()});
+  host_context_.Await({executable->CopyRef()});
 
-  if (executable.IsError())
+  if (executable->IsError())
     throw std::runtime_error(
-        StrCat("Failed to get Executable: ", executable.GetError()));
+        StrCat("Failed to get Executable: ", executable->GetError()));
 
   // Prepare storage for returned values.
-  size_t num_results = executable->signature().num_results();
+  size_t num_results = (*executable)->signature().num_results();
   std::vector<RCReference<AsyncValue>> result_storage;
   result_storage.reserve(num_results);
   for (int i = 0; i < num_results; ++i) result_storage.emplace_back();
@@ -305,7 +308,7 @@ std::vector<py::array> TfCpurtExecutor::Execute(
   // Convert returned memrefs to Tensors.
   PyBindingReturnValueConverter converter(results);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
-  if (auto err = executable->Execute(memrefs, converter, exec_ctx))
+  if (auto err = (*executable)->Execute(memrefs, converter, exec_ctx))
     throw std::runtime_error(StrCat("Unsupported argument: ", err));
 
   // Pull Python arrays out of async values.

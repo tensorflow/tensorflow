@@ -1119,6 +1119,35 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   return kTfLiteOk;
 }
 
+TfLiteStatus Subgraph::RemoveUnusedInputs() {
+  auto graph_info = CreateGraphInfo();
+  std::vector<int> refcounts(graph_info->num_tensors(), 0);
+
+  for (int tensor_index : graph_info->variables()) {
+    refcounts[tensor_index]++;
+  }
+  // Count references to node input tensors.
+  for (size_t i = 0; i < graph_info->num_execution_nodes(); ++i) {
+    const TfLiteNode& node = graph_info->node(i);
+    TfLiteIntArray* node_inputs = node.inputs;
+    for (int j = 0; j < node_inputs->size; ++j) {
+      int tensor_index = node_inputs->data[j];
+      if (tensor_index != kTfLiteOptionalTensor) {
+        refcounts[tensor_index]++;
+      }
+    }
+  }
+
+  // Mark unused inputs as kTfLiteOptionalTensor.
+  for (auto iter = inputs_.begin(); iter != inputs_.end(); iter++) {
+    if (*iter == kTfLiteOptionalTensor) continue;
+    if (refcounts[*iter] == 0) {
+      *iter = kTfLiteOptionalTensor;
+    }
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus Subgraph::Invoke() {
   if (!consistent_) {
     ReportError("Invoke called on model that is not consistent.");

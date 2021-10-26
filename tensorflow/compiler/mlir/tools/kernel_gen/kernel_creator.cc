@@ -155,7 +155,7 @@ class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
     auto is_simple_access_pattern = [](ParallelOp ploop) {
       for (mlir::Operation& nested : ploop.getBody()->without_terminator()) {
         if (auto load_op = llvm::dyn_cast<mlir::memref::LoadOp>(nested)) {
-          if (!load_op.getMemRefType().getAffineMaps().empty() ||
+          if (!load_op.getMemRefType().getLayout().isIdentity() ||
               (!load_op.getIndices().empty() &&
                load_op.getIndices() != ploop.getInductionVars())) {
             return false;
@@ -196,14 +196,15 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
                               llvm::ArrayRef<std::string> architectures,
                               llvm::ArrayRef<int64_t> tile_sizes,
                               llvm::ArrayRef<int64_t> unroll_factors,
-                              int64_t max_supported_rank, bool cpu_codegen) {
+                              int64_t max_supported_rank, bool enable_ftz,
+                              bool cpu_codegen) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
           architectures, tile_sizes, unroll_factors, max_supported_rank,
-          cpu_codegen));
+          enable_ftz, cpu_codegen));
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   pm.addPass(
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
@@ -505,9 +506,9 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
                       SetupContextAndParseModule(context, tf_code));
 
   if (jit_compile) {
-    TF_RETURN_IF_ERROR(LowerTFToJITInvocation(module.get(), architectures,
-                                              tile_sizes, unroll_factors,
-                                              max_supported_rank, cpu_codegen));
+    TF_RETURN_IF_ERROR(LowerTFToJITInvocation(
+        module.get(), architectures, tile_sizes, unroll_factors,
+        max_supported_rank, enable_ftz, cpu_codegen));
   } else {
     TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
                                       max_supported_rank, cpu_codegen));

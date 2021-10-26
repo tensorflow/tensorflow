@@ -659,8 +659,6 @@ xla_test(
     name = "bef_executable_test",
     srcs = ["bef_executable_test.cc"],
     backends = ["gpu"],
-    # TODO(b/202567438)
-    tags = ["notap"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:reference_util",
@@ -744,8 +742,8 @@ filegroup(
 )
 
 tf_cc_test(
-    name = "kernel_thunk_test",
-    srcs = ["kernel_thunk_test.cc"],
+    name = "kernel_launch_test",
+    srcs = ["kernel_launch_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "no_rocm",
     ],

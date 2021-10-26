@@ -275,6 +275,7 @@ REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_CPU), VarHandleOp);
   }
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 TF_CALL_uint32(REGISTER_GPU_KERNELS);
@@ -289,6 +290,7 @@ TF_CALL_uint32(REGISTER_GPU_KERNELS);
                               .TypeConstraint<type>("dtype"), \
                           VarHandleOp)
 TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
+TF_CALL_bfloat16(REGISTER_DEFAULT_KERNELS);
 TF_CALL_int64(REGISTER_DEFAULT_KERNELS);
 TF_CALL_variant(REGISTER_DEFAULT_KERNELS);
 TF_CALL_uint32(REGISTER_DEFAULT_KERNELS);
@@ -355,6 +357,9 @@ class AssignVariableOp : public OpKernel {
              .ok()) {
       relax_constraints_ = false;
     }
+    if (c->HasAttr("validate_shape")) {
+      OP_REQUIRES_OK(c, c->GetAttr("validate_shape", &validate_shape_));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -397,6 +402,17 @@ class AssignVariableOp : public OpKernel {
                     "Trying to assign variable with wrong dtype. Expected ",
                     DataTypeString(variable->tensor()->dtype()), " got ",
                     DataTypeString(dtype_)));
+    if (validate_shape_) {
+      OP_REQUIRES(
+          context,
+          (!variable->is_initialized ||
+           variable->tensor()->shape().IsSameSize(value.shape())),
+          errors::InvalidArgument(
+              "Trying to assign to variable with tensor with wrong shape."
+              " Expected ",
+              variable->tensor()->shape().DebugString(), " got ",
+              value.shape().DebugString()));
+    }
     if (variable->copy_on_read_mode.load()) {
       AllocatorAttributes attr;
       attr.set_gpu_compatible(true);
@@ -416,6 +432,7 @@ class AssignVariableOp : public OpKernel {
  private:
   DataType dtype_;
   bool relax_constraints_;
+  bool validate_shape_ = false;
 };
 
 template <typename Device>
@@ -510,6 +527,7 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
                           AssignVariableOp<GPUDevice, type>);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 TF_CALL_uint32(REGISTER_GPU_KERNELS);

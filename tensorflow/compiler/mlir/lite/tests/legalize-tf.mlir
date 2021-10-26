@@ -2233,3 +2233,10 @@ func @select_v2_with_high_dims_dynamic_shape_both_sides(%arg0: tensor<8x7x6x5x?x
   // CHECK: return %[[SELECT_V2]] : tensor<8x7x6x5x?x3x2x1xf32>
 }
 
+func @Bucketize(%arg0: tensor<3x2xf32>) -> tensor<3x2xi32> {
+  %0 = "tf.Bucketize"(%arg0) {boundaries = [1.0 : f32, 10.0 : f32, 100.0 : f32]} : (tensor<3x2xf32>) -> tensor<3x2xi32>
+  return %0: tensor<3x2xi32>
+
+// CHECK-LABEL: Bucketize
+// CHECK:  "tfl.bucketize"(%arg0) {boundaries = [1.000000e+00 : f32, 1.000000e+01 : f32, 1.000000e+02 : f32]} : (tensor<3x2xf32>) -> tensor<3x2xi32>
+}

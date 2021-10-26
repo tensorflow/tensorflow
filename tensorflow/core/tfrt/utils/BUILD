@@ -95,10 +95,7 @@ cc_library(
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
-        "//conditions:default": [
-            "//tensorflow/core/framework:tensor",
-            "//tensorflow/core/platform:status",
-        ],
+        "//conditions:default": ["//tensorflow/core/framework:tensor"],
     }),
 )
 
@@ -167,6 +164,7 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:op_def_proto_cc",
@@ -195,9 +193,14 @@ tf_cc_test(
         "//tensorflow/cc:array_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:const_op",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:while_loop",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/grappler/utils:grappler_test",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -205,7 +208,6 @@ tf_cc_test(
 cc_library(
     name = "model_metadata",
     hdrs = ["model_metadata.h"],
-    deps = ["@com_google_absl//absl/base:core_headers"],
 )
 
 cc_library(
@@ -230,18 +232,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "test_util",
-    testonly = 1,
-    hdrs = ["test_util.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:threadpool_interface",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "bridge_graph_analysis",
     hdrs = ["bridge_graph_analysis.h"],
     visibility = [
@@ -251,8 +241,16 @@ cc_library(
         "//learning/brain/mlir/bridge:graph_analysis",
         "//tensorflow/core/platform:enable_tf2_utils",
     ]) + [
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core:core_cpu_base",
+    ],
+)
+
+cc_library(
+    name = "thread_pool",
+    hdrs = ["thread_pool.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:threadpool_interface",
     ],
 )

@@ -85,7 +85,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     if (input_cardinality_ == kInfiniteCardinality ||
         to_concatenate_cardinality_ == kInfiniteCardinality) {
       return kInfiniteCardinality;

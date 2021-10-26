@@ -48,7 +48,6 @@ limitations under the License.
 #include "tfrt/support/pointer_util.h"  // from @tf_runtime
 #include "tfrt/support/string_util.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor.h"  // from @tf_runtime
-#include "tfrt/tracing/tracing.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {
@@ -446,17 +445,11 @@ std::string GetTracingMetadata(llvm::ArrayRef<tfrt::AsyncValue*> args,
                                const tfrt::ExecutionContext& exec_ctx,
                                const OpKernelRunner& kernel_runner) {
   auto request_id = exec_ctx.request_ctx()->id();
-  auto current_tracing_level = tfrt::tracing::GetCurrentTracingLevel();
-
-  if (current_tracing_level == tfrt::tracing::TracingLevel::Default) {
-    return profiler::TraceMeEncode({{"id", request_id}});
-  }
-
   // Get Long Name
   auto debug_info = exec_ctx.location().GetDebugInfo();
   auto long_name = debug_info.hasValue() ? debug_info.getValue().info : "";
 
-  if (current_tracing_level == tfrt::tracing::TracingLevel::Verbose) {
+  if (!profiler::TfOpDetailsEnabled()) {
     return profiler::TraceMeEncode(
         {{"id", request_id}, {"long_name", ToAbslStringView(long_name)}});
   }
@@ -846,17 +839,18 @@ class DeviceWithCustomAllocator : public tensorflow::Device {
   tensorflow::Allocator* allocator_ = nullptr;
 };
 
-void FallbackAsyncExecuteOpWithAllocator(tfrt::AsyncKernelFrame* frame) {
-  FallbackKernelAttributeFrame attr_frame(frame);
-
-  const auto& exec_ctx = frame->GetExecutionContext();
+void KernelFallbackExecuteOpCustomAllocatorInternal(
+    llvm::ArrayRef<tfrt::AsyncValue*> args,
+    llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
+    tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
+    const tfrt::ExecutionContext& exec_ctx,
+    const FallbackKernelAttributeFrame& attr_frame) {
   const auto* fallback_request_state =
       exec_ctx.request_ctx()
           ->GetDataIfExists<KernelFallbackCompatRequestState>();
   if (!fallback_request_state) {
     KernelFallbackEmitError(
-        exec_ctx, attr_frame.op_name().GetValue(), /*op_chain=*/nullptr,
-        frame->GetResults(),
+        exec_ctx, attr_frame.op_name().GetValue(), op_chain, results,
         tensorflow::errors::NotFound(
             "KernelFallbackCompatRequestState not found in RequestContext."));
     return;
@@ -870,10 +864,9 @@ void FallbackAsyncExecuteOpWithAllocator(tfrt::AsyncKernelFrame* frame) {
   DCHECK_EQ(kernel_runner->op_kernel()->name(),
             StripTfPrefix(attr_frame.op_name().GetValue()));
 
-  auto all_args = frame->GetArguments();
-  DCHECK_GT(all_args.size(), 0);
-  auto* allocator = all_args[0]->get<tensorflow::Allocator*>();
-  llvm::ArrayRef<tfrt::AsyncValue*> args = all_args.drop_front();
+  DCHECK_GT(args.size(), 0);
+  auto* allocator = args.front()->get<tensorflow::Allocator*>();
+  args = args.drop_front();
 
   DeviceWithCustomAllocator device_with_custom_allocator(
       GetDeviceFromFallbackState(*fallback_request_state, *kernel_runner),
@@ -884,11 +877,38 @@ void FallbackAsyncExecuteOpWithAllocator(tfrt::AsyncKernelFrame* frame) {
   //
   // TODO(b/200575143): Consider allowing async execution and extending the
   // lifetime of the wrapping device.
-  KernelFallbackExecuteOpInternal(args, frame->GetResults(),
-                                  /*op_chain=*/nullptr, attr_frame, exec_ctx,
+  KernelFallbackExecuteOpInternal(args, results,
+                                  /*op_chain=*/op_chain, attr_frame, exec_ctx,
                                   *fallback_request_state, *kernel_runner,
                                   /*is_async=*/false,
                                   &device_with_custom_allocator);
+}
+
+void FallbackAsyncExecuteOpWithAllocator(tfrt::AsyncKernelFrame* frame) {
+  auto args = frame->GetArguments();
+  auto results = frame->GetResults();
+  FallbackKernelAttributeFrame attr_frame(frame);
+  KernelFallbackExecuteOpCustomAllocatorInternal(
+      args, results, /*op_chain=*/nullptr, frame->GetExecutionContext(),
+      attr_frame);
+}
+
+void FallbackAsyncExecuteOpSeqWithAllocator(tfrt::AsyncKernelFrame* frame) {
+  auto args = frame->GetArguments();
+  DCHECK_GT(args.size(), 0);
+  tfrt::AsyncValueRef<tfrt::Chain> op_chain(tfrt::FormRef(args.front()));
+  args = args.drop_front();
+
+  auto results = frame->GetResults();
+  DCHECK_GT(results.size(), 0);
+  auto& out_op_chain = results.front();
+  results = results.drop_front();
+
+  FallbackKernelAttributeFrame attr_frame(frame);
+  KernelFallbackExecuteOpCustomAllocatorInternal(
+      args, results, &op_chain, frame->GetExecutionContext(), attr_frame);
+
+  out_op_chain = std::move(op_chain);
 }
 
 void FallbackCopyTensorIfSmall(
@@ -966,6 +986,8 @@ void RegisterKernelFallbackCompatKernels(tfrt::KernelRegistry* registry) {
                       FallbackAsyncExecuteOpSeq);
   registry->AddKernel("tfrt_fallback_async.executeop.allocator",
                       FallbackAsyncExecuteOpWithAllocator);
+  registry->AddKernel("tfrt_fallback_async.executeop.seq.allocator",
+                      FallbackAsyncExecuteOpSeqWithAllocator);
   registry->AddKernel("tfrt_fallback_async.copy_if_small",
                       TFRT_KERNEL(FallbackCopyTensorIfSmall));
   registry->AddKernel("tfrt_fallback_async.createop",

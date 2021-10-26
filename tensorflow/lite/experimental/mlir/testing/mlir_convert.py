@@ -17,18 +17,27 @@ import os
 import tempfile
 
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
+
 from tensorflow.lite.python import test_util as tflite_test_util
+from tensorflow.lite.python.convert_saved_model import freeze_saved_model
 from tensorflow.lite.testing import zip_test_utils
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 
 
-def mlir_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
-  """Convert a model's graph def into a tflite model with MLIR-based conversion.
+def mlir_convert(
+    options,
+    saved_model_dir,
+    input_tensors,
+    output_tensors,  # pylint: disable=unused-argument
+    **kwargs):
+  """Convert a saved model into a tflite model with MLIR-based conversion.
 
   Args:
     options: A lite.testing.generate_examples_lib.Options instance.
-    graph_def: A GraphDef object.
+    saved_model_dir: Path to the saved model.
     input_tensors: List of input tensor tuples `(name, shape, type)`.
     output_tensors: List of output tensors (names).
     **kwargs: Extra parameters.
@@ -42,23 +51,32 @@ def mlir_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
   #                    something else.
   extra_toco_options = kwargs.get("extra_toco_options",
                                   zip_test_utils.ExtraTocoOptions())
-  input_arrays = [x[0] for x in input_tensors]
-  input_shapes = zip_test_utils.get_input_shapes_map(input_tensors)
-
   tflite_model = None
   log = ""
 
   with tempfile.NamedTemporaryFile() as graphdef_file:
-    graphdef_file.write(graph_def.SerializeToString())
-    graphdef_file.flush()
-    converter = tf.lite.TFLiteConverter.from_frozen_graph(
-        graphdef_file.name, input_arrays, output_tensors, input_shapes)
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    converter = tf.lite.TFLiteConverter.from_saved_model(
+        saved_model_dir, [signature_key])
+    if extra_toco_options.convert_from_graphdef:
+      saved_model_tags = set([tag_constants.SERVING])
+      input_arrays = [x[0] for x in input_tensors]
+      input_shapes = zip_test_utils.get_input_shapes_map(input_tensors)
+      result = freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
+                                  output_tensors, saved_model_tags,
+                                  signature_key)
+      graph_def = result[0]
+      graphdef_file.write(graph_def.SerializeToString())
+      graphdef_file.flush()
+      converter = tf.compat.v1.lite.TFLiteConverter.from_frozen_graph(
+          graphdef_file.name, input_arrays, output_tensors, input_shapes)
+
     converter.allow_custom_ops = extra_toco_options.allow_custom_ops
     converter.experimental_new_quantizer = options.mlir_quantizer
 
     if options.run_with_flex:
-      converter.supported_ops = set([
-          tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS])
+      converter.supported_ops = set(
+          [tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS])
 
     if test_params.get("dynamic_range_quantize", False):
       converter.optimizations = [tf.lite.Optimize.DEFAULT]
@@ -70,13 +88,12 @@ def mlir_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
       min_value, max_value = test_params.get("input_range", (-1, 1))
 
       def representative_dataset(input_tensors):
-        calibration_inputs = []
-        for _, shape, _ in input_tensors:
+        calibration_inputs = {}
+        for name, shape, dtype in input_tensors:
           if shape:
             dims = [1 if dim.value is None else dim.value for dim in shape.dims]
-            calibration_inputs.append(
-                np.random.uniform(min_value, max_value,
-                                  tuple(dims)).astype(np.float32))
+            calibration_inputs[name] = np.random.uniform(
+                min_value, max_value, tuple(dims)).astype(dtype.as_numpy_dtype)
         return calibration_inputs
 
       def representative_dataset_gen():
@@ -85,8 +102,8 @@ def mlir_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
 
       if test_params.get("quant_16x8", False):
         converter.target_spec.supported_ops = [
-            tf.lite.OpsSet.\
-            EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+            tf.lite.OpsSet
+            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
         ]
       else:
         converter.target_spec.supported_ops = [
@@ -136,8 +153,8 @@ def mlir_convert_file(graph_def_filename,
     output_tensors: List of output tensors (names).
     quantization_params: parameters `(inference_type, min_values, max_values)`
       to quantize the model.
-    additional_flags: A string of additional command line flags to be passed
-      to MLIR converter.
+    additional_flags: A string of additional command line flags to be passed to
+      MLIR converter.
 
   Returns:
     output tflite model, log_txt from conversion
@@ -174,90 +191,6 @@ def mlir_convert_file(graph_def_filename,
         input_shapes_str,
         ",".join(output_tensors),
         graph_def_filename,
-        output_file.name,
-    )
-    exit_code = os.system(cmd)
-    log = (
-        cmd + "exited with code %d" % exit_code + "\n------------------\n" +
-        stdout_file.read())
-    return (None if exit_code != 0 else output_file.read()), log
-
-
-def mlir_convert_saved_model(saved_model_dir,
-                             is_signature_def_saved_model,
-                             tags=(),
-                             exported_names=(),
-                             additional_flags=""):
-  """Convert a saved_model into a tflite model with MLIR-based conversion.
-
-  Args:
-    saved_model_dir: Saved model dir.
-    is_signature_def_saved_model: Whether the SavedModel SignatureDef importer
-      or ObjectGraph importer should be used.
-    tags: Set of tags identifying the MetaGraphDef within the SavedModel to
-      analyze. All tags in the tag set must be present.
-    exported_names: Names to export from SavedModel.
-    additional_flags: A string of additional command line flags to be passed to
-      MLIR converter.
-
-  Returns:
-    output tflite model, log_txt from conversion
-    or None, log_txt if it did not convert properly.
-  """
-  bin_path = resource_loader.get_path_to_datafile(
-      "../../../../compiler/mlir/lite/tf_tfl_translate")
-  with tempfile.NamedTemporaryFile() as output_file, \
-       tempfile.NamedTemporaryFile("w+") as stdout_file:
-    tags_str = ",".join(tags)
-    exported_names_str = ",".join(exported_names)
-
-    saved_model_flag = "-savedmodel-objectgraph-to-mlir"
-    if is_signature_def_saved_model:
-      saved_model_flag = "-savedmodel-signaturedefs-to-mlir"
-
-    cmd = ("%s %s --tf-savedmodel-tags=%s --tf-savedmodel-exported-names=%s " +
-           additional_flags + " %s --o=%s")
-    cmd = cmd % (
-        bin_path,
-        saved_model_flag,
-        tags_str,
-        exported_names_str,
-        saved_model_dir,
-        output_file.name,
-    )
-    exit_code = os.system(cmd)
-    log = (
-        cmd + "exited with code %d" % exit_code + "\n------------------\n" +
-        stdout_file.read())
-    return (None if exit_code != 0 else output_file.read()), log
-
-
-def mlir_convert_jax(input_file_name, is_hlotxt_format, additional_flags=""):
-  """Convert a jax model file into a tflite model with MLIR-based conversion.
-
-  Args:
-    input_file_name: Jax hlo proto file.
-    is_hlotxt_format: Whether the input proto is in hlotxt format.
-    additional_flags: A string of additional command line flags to be passed to
-      MLIR converter.
-
-  Returns:
-    output tflite model, log_txt from conversion
-    or None, log_txt if it did not convert properly.
-  """
-  bin_path = resource_loader.get_path_to_datafile(
-      "../../../../compiler/mlir/lite/tf_tfl_translate")
-  hlo_import_type_str = "proto"
-  if is_hlotxt_format:
-    hlo_import_type_str = "hlotxt"
-  with tempfile.NamedTemporaryFile() as output_file, \
-       tempfile.NamedTemporaryFile("w+") as stdout_file:
-    cmd = ("%s --import-hlo --enable-hlo-to-tf-conversion "
-           "--hlo-import-type=%s" + additional_flags + " %s --o=%s")
-    cmd = cmd % (
-        bin_path,
-        hlo_import_type_str,
-        input_file_name,
         output_file.name,
     )
     exit_code = os.system(cmd)

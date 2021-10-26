@@ -29,7 +29,6 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
@@ -37,6 +36,7 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -267,7 +267,7 @@ class MirroredTwoDeviceDistributionTest(
     if context.executing_eagerly():
       item = next(iter(dataset))
     else:
-      if isinstance(dataset, input_lib.DistributedDatasetV1):
+      if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
         item = dataset.make_initializable_iterator().get_next()
       else:
         self.skipTest("unsupported test combination")
@@ -289,7 +289,7 @@ class MirroredTwoDeviceDistributionTest(
     if context.executing_eagerly():
       item = next(iter(dataset))
     else:
-      if isinstance(dataset, input_lib.DistributedDatasetV1):
+      if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
         item = dataset.make_initializable_iterator().get_next()
       else:
         self.skipTest("unsupported test combination")

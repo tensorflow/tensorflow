@@ -74,7 +74,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(RepeatDatasetOp::kDatasetType);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t n = input_->Cardinality();
     if (count_ < 0) {
       if (n == 0) {

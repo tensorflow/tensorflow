@@ -118,6 +118,7 @@ py_library(
     deps = [
         ":cross_device_ops",
         ":distribute_lib",
+        ":merge_call_interim",
         ":mirrored_strategy",
         ":multi_process_runner",
         ":multi_worker_test_base",
@@ -324,6 +325,7 @@ py_library(
         ":distribute_lib",
         ":distribute_utils",
         ":input_lib",
+        ":input_util",
         ":mirrored_run",
         ":multi_worker_util",
         ":numpy_dataset",
@@ -337,6 +339,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
@@ -353,6 +356,7 @@ py_library(
         ":distribute_lib",
         ":distribute_utils",
         ":input_lib",
+        ":input_util",
         ":mirrored_run",
         ":multi_worker_util",
         ":numpy_dataset",
@@ -367,6 +371,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/util:tf_export",
     ],
@@ -393,6 +398,7 @@ py_library(
     deps = [
         ":distribute_lib",
         ":input_lib",
+        ":input_util",
         ":numpy_dataset",
         ":reduce_util",
         ":values",
@@ -400,6 +406,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -418,6 +425,7 @@ py_library(
         ":distribute_lib",
         ":distribute_utils",
         ":input_lib",
+        ":input_util",
         ":mirrored_strategy",
         ":multi_worker_util",
         ":numpy_dataset",
@@ -432,6 +440,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/tpu:tpu_strategy_util",
         "//tensorflow/python/util:tf_export",
@@ -595,6 +604,7 @@ py_library(
         ":distribute_lib",
         ":distribute_utils",
         ":input_lib",
+        ":input_util",
         ":numpy_dataset",
         ":reduce_util",
         ":tpu_replicated_variable",
@@ -617,6 +627,7 @@ py_library(
         "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/impl",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
@@ -1121,6 +1132,7 @@ distribute_py_test(
         ":collective_all_reduce_strategy",
         ":combinations",
         ":input_lib",
+        ":input_util",
         ":mirrored_strategy",
         ":multi_worker_test_base",
         ":reduce_util",
@@ -1133,6 +1145,7 @@ distribute_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/ops/ragged:ragged_tensor",
@@ -2186,6 +2199,7 @@ py_library(
     deps = [
         ":distribute_lib",
         ":distribute_utils",
+        ":input_util",
         ":parameter_server_strategy",
         ":sharded_variable",
         "//tensorflow/python:constant_op",
@@ -2300,5 +2314,28 @@ tpu_py_test(
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/training:checkpoint_management",
         "//tensorflow/python/training/tracking:util",
+    ],
+)
+
+pytype_strict_library(
+    name = "input_util",
+    srcs = ["input_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":input_lib",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/distribute/v1:input_lib",
+    ],
+)
+
+py_library(
+    name = "merge_call_interim",
+    srcs = [
+        "merge_call_interim.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        ":distribute_lib",
+        "//tensorflow/python/util:tf_export",
     ],
 )

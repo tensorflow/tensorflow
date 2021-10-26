@@ -395,6 +395,10 @@ class HloModule {
 
   absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
+  void add_profile_type(HloModuleProto::ProfileType profile_type) {
+    profile_types_.push_back(profile_type);
+  }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -454,6 +458,10 @@ class HloModule {
 
   // a fingerprint to search autofdo profile entry.
   std::string autofdo_fingerprint_;
+
+  // An array of ProfileTypes specifying what optimization profiles this module
+  // contains.
+  std::vector<HloModuleProto::ProfileType> profile_types_;
 };
 
 }  // namespace xla

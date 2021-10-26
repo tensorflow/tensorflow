@@ -17,7 +17,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lift_variables.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
 namespace mlir {
@@ -27,7 +27,7 @@ using ::tensorflow::Session;
 
 // This pass is only available in the tf-opt binary for testing.
 class LiftVariablesTestPass
-    : public LiftVariablesTestPassBase<LiftVariablesTestPass> {
+    : public tf_test::LiftVariablesTestPassBase<LiftVariablesTestPass> {
  public:
   LiftVariablesTestPass() { session_ = new TF::test_util::FakeSession(); }
 
@@ -45,7 +45,7 @@ class LiftVariablesTestPass
 
 // This pass is only available in the tf-opt binary for testing.
 class LiftVariablesInvalidSessionTestPass
-    : public LiftVariablesInvalidSessionTestPassBase<
+    : public tf_test::LiftVariablesInvalidSessionTestPassBase<
           LiftVariablesInvalidSessionTestPass> {
  public:
   void runOnOperation() override {
@@ -57,15 +57,19 @@ class LiftVariablesInvalidSessionTestPass
 };
 
 }  // namespace
+}  // namespace tf_saved_model
+
+namespace tf_test {
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesTestPass() {
-  return std::make_unique<LiftVariablesTestPass>();
+  return std::make_unique<tf_saved_model::LiftVariablesTestPass>();
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLiftVariablesInvalidSessionTestPass() {
-  return std::make_unique<LiftVariablesInvalidSessionTestPass>();
+  return std::make_unique<
+      tf_saved_model::LiftVariablesInvalidSessionTestPass>();
 }
 
-}  // namespace tf_saved_model
+}  // namespace tf_test
 }  // namespace mlir

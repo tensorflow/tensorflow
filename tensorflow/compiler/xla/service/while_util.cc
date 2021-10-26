@@ -103,8 +103,7 @@ WhileUtil::MakeInstructionsLiveIn(
     absl::Span<HloInstruction* const> instructions) {
   CHECK(while_instr->shape().IsTuple());
 
-  int64_t elements_in_old_while_shape =
-      while_instr->shape().tuple_shapes_size();
+  int elements_in_old_while_shape = while_instr->shape().tuple_shapes_size();
   Shape new_while_shape = while_instr->shape();
   for (auto* instruction : instructions) {
     *new_while_shape.add_tuple_shapes() = instruction->shape();
@@ -194,7 +193,7 @@ static StatusOr<std::unique_ptr<HloComputation>> MakeCountedLoopBodyComputation(
                       MakeBinaryHlo(HloOpcode::kAdd, indvar, one));
 
   std::vector<HloInstruction*> loop_body_generator_args;
-  for (int64_t i = 1, e = loop_state_shape.tuple_shapes_size(); i < e; i++) {
+  for (int i = 1, e = loop_state_shape.tuple_shapes_size(); i < e; i++) {
     TF_ASSIGN_OR_RETURN(HloInstruction * tuple_element,
                         MakeGetTupleElementHlo(param, i));
     loop_body_generator_args.push_back(tuple_element);

@@ -32,6 +32,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_replicated_variable
@@ -39,6 +40,7 @@ from tensorflow.python.distribute import tpu_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -920,7 +922,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     """Make iterators for each of the TPU hosts."""
     input_workers = input_lib.InputWorkers(
         tuple(self._device_input_worker_devices.items()))
-    return input_lib.DatasetIterator(
+    return input_lib_v1.DatasetIterator(
         dataset,
         input_workers,
         self._container_strategy(),
@@ -935,15 +937,14 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         tuple(self._device_input_worker_devices.items()))
     num_workers = input_workers.num_workers
     for i in range(num_workers):
-      input_contexts.append(distribute_lib.InputContext(
-          num_input_pipelines=num_workers,
-          input_pipeline_id=i,
-          num_replicas_in_sync=self._num_replicas_in_sync))
-    return input_lib.InputFunctionIterator(
-        input_fn,
-        input_workers,
-        input_contexts,
-        self._container_strategy())
+      input_contexts.append(
+          distribute_lib.InputContext(
+              num_input_pipelines=num_workers,
+              input_pipeline_id=i,
+              num_replicas_in_sync=self._num_replicas_in_sync))
+    return input_lib_v1.InputFunctionIterator(input_fn, input_workers,
+                                              input_contexts,
+                                              self._container_strategy())
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
@@ -984,7 +985,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     if options is None or options.experimental_fetch_to_device:
       self._check_spec(dataset.element_spec)
 
-    return input_lib.get_distributed_dataset(
+    return input_util.get_distributed_dataset(
         dataset,
         self._get_input_workers(options),
         self._container_strategy(),
@@ -1008,7 +1009,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
 
-    distributed_dataset = input_lib.get_distributed_datasets_from_function(
+    distributed_dataset = input_util.get_distributed_datasets_from_function(
         dataset_fn,
         input_workers,
         input_contexts,

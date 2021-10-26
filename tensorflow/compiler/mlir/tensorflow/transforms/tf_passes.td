@@ -505,6 +505,19 @@ def ClusterOutliningPass : Pass<"tf-device-cluster-outlining", "ModuleOp"> {
   let constructor = "TFDevice::CreateClusterOutliningPass()";
 }
 
+def ConvertTfControlFlowToScfPass : Pass<"convert-tf-control-flow-to-scf", "ModuleOp"> {
+  let summary = "Convert TensorFlow control flow to SCF.";
+
+  let description = [{
+    This pass can be used for all direct control flow lowerings from the TensorFlow
+    dialect to the SCF dialect.
+  }];
+
+  let dependentDialects = ["scf::SCFDialect", "tensor::TensorDialect"];
+
+  let constructor = "TF::createConvertTfControlFlowToScfPass()";
+}
+
 def LaunchOutliningPass : Pass<"tf-device-launch-outlining", "ModuleOp"> {
   let summary = "Outlines regions of tf_device.launch operations";
 
@@ -1066,8 +1079,8 @@ def TensorFlowOptimizePass : FunctionPass<"tf-optimize"> {
 def PromoteResourcesToArgsPass : Pass<"tf-promote-resources-to-args", "ModuleOp"> {
   let summary = "Promote resources reads/writes to function inputs/outputs.";
   let description = [{
-    This pass promotes resource accesses in the main function to input arguments
-    and outputs of the main function.
+    This pass promotes resource accesses in function(s) (by default, the main)
+    to input arguments and outputs of the function(s).
 
     Two types of resources are supported:
     (1) A function argument of TF::ResourceType type (this pass).
@@ -1102,6 +1115,13 @@ def PromoteResourcesToArgsPass : Pass<"tf-promote-resources-to-args", "ModuleOp"
   }];
 
   let constructor = "TF::CreatePromoteResourcesToArgsPass()";
+
+let options = [
+    ListOption<"functions_", "functions", "std::string",
+               "Comma separated list of functions whose resources "
+               "read/writes should be promoted to function inputs/outputs.",
+               "llvm::cl::MiscFlags::CommaSeparated">
+  ];
 }
 
 def PromoteVarHandlesToArgsPass : Pass<"tf-promote-var-handles-to-args", "ModuleOp"> {

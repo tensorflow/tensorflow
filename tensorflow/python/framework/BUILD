@@ -2107,8 +2107,8 @@ tf_python_pybind_extension(
 pyx_library(
     name = "fast_tensor_util",
     srcs = ["fast_tensor_util.pyx"],
+    cc_deps = ["//third_party/py/numpy:headers"],
     py_deps = ["//tensorflow/python:util"],
-    deps = ["//third_party/py/numpy:headers"],
 )
 
 py_test(
