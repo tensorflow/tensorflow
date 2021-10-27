@@ -44,6 +44,15 @@ def make_arg_min_max_tests(options):
           "is_last_axis": [True],
           "dynamic_range_quantize": [False, True],
       },
+      {
+          "input_dtype": [tf.float32, tf.int32],
+          "input_shape": [[10], [2, 3, 5, 100]],
+          "output_type": [tf.int32, tf.int64],
+          "is_arg_max": [False, True],
+          "is_last_axis": [False, True],
+          "fully_quantize": [True],
+          "quant_16x8": [False, True],
+      },
   ]
 
   def build_graph(parameters):

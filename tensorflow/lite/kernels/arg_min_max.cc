@@ -102,6 +102,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8:
     case kTfLiteInt32:
       break;
+    case kTfLiteInt16:
+      TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+      break;
 
     default:
       context->ReportError(
@@ -152,14 +155,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
           case kTfLiteInt8:
             TF_LITE_ARG_MIN_MAX(int8_t, int32_t, int32_t);
             break;
+          case kTfLiteInt16:
+            TF_LITE_ARG_MIN_MAX(int16_t, int32_t, int32_t);
+            break;
           case kTfLiteInt32:
             TF_LITE_ARG_MIN_MAX(int32_t, int32_t, int32_t);
             break;
           default:
-            context->ReportError(context,
-                                 "Only float32, uint8, int8 and int32 are "
-                                 "supported currently, got %s.",
-                                 TfLiteTypeGetName(input->type));
+            context->ReportError(
+                context,
+                "Only float32, uint8, int8, int16 and int32 are "
+                "supported currently, got %s.",
+                TfLiteTypeGetName(input->type));
             return kTfLiteError;
         }
       } break;
@@ -174,14 +181,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
           case kTfLiteInt8:
             TF_LITE_ARG_MIN_MAX(int8_t, int32_t, int64_t);
             break;
+          case kTfLiteInt16:
+            TF_LITE_ARG_MIN_MAX(int16_t, int32_t, int64_t);
+            break;
           case kTfLiteInt32:
             TF_LITE_ARG_MIN_MAX(int32_t, int32_t, int64_t);
             break;
           default:
-            context->ReportError(context,
-                                 "Only float32, uint8, int8 and int32 are "
-                                 "supported currently, got %s.",
-                                 TfLiteTypeGetName(input->type));
+            context->ReportError(
+                context,
+                "Only float32, uint8, int8, int16 and int32 are "
+                "supported currently, got %s.",
+                TfLiteTypeGetName(input->type));
             return kTfLiteError;
         }
       } break;
@@ -204,14 +215,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
           case kTfLiteInt8:
             TF_LITE_ARG_MIN_MAX(int8_t, int64_t, int32_t);
             break;
+          case kTfLiteInt16:
+            TF_LITE_ARG_MIN_MAX(int16_t, int64_t, int32_t);
+            break;
           case kTfLiteInt32:
             TF_LITE_ARG_MIN_MAX(int32_t, int64_t, int32_t);
             break;
           default:
-            context->ReportError(context,
-                                 "Only float32, uint8, int8 and int32 are "
-                                 "supported currently, got %s.",
-                                 TfLiteTypeGetName(input->type));
+            context->ReportError(
+                context,
+                "Only float32, uint8, int8, int16 and int32 are "
+                "supported currently, got %s.",
+                TfLiteTypeGetName(input->type));
             return kTfLiteError;
         }
       } break;
@@ -226,14 +241,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
           case kTfLiteInt8:
             TF_LITE_ARG_MIN_MAX(int8_t, int64_t, int64_t);
             break;
+          case kTfLiteInt16:
+            TF_LITE_ARG_MIN_MAX(int16_t, int64_t, int64_t);
+            break;
           case kTfLiteInt32:
             TF_LITE_ARG_MIN_MAX(int32_t, int64_t, int64_t);
             break;
           default:
-            context->ReportError(context,
-                                 "Only float32, uint8, int8 and int32 are "
-                                 "supported currently, got %s.",
-                                 TfLiteTypeGetName(input->type));
+            context->ReportError(
+                context,
+                "Only float32, uint8, int8, int16 and int32 are "
+                "supported currently, got %s.",
+                TfLiteTypeGetName(input->type));
             return kTfLiteError;
         }
       } break;

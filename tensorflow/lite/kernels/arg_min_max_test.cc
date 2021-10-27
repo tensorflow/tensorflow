@@ -169,6 +169,16 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgInt8) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
 }
 
+TEST_P(ArgMinMaxOpTest, GetMaxArgInt16) {
+  ArgMaxOpModel model({1, 1, 1, 4}, TensorType_INT16, 3, AxisType(),
+                      ConstantAxis(), OutputType());
+  model.PopulateTensor<int16_t>(model.input(), {-1, -900, 700, 3});
+  model.Invoke();
+
+  ValidateOutput(model, {2});
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
+}
+
 TEST_P(ArgMinMaxOpTest, GetMaxArgInt) {
   ArgMaxOpModel model({1, 1, 1, 4}, TensorType_INT32, 3, AxisType(),
                       ConstantAxis(), OutputType());
@@ -285,7 +295,7 @@ TEST_P(ArgMinMaxOpTest, GetMinArgFloatLastAxis) {
   }
 }
 
-TEST_P(ArgMinMaxOpTest, GetMaxArgInt8LastAxis) {
+TEST_P(ArgMinMaxOpTest, GetMinArgInt8LastAxis) {
   // Vector size for int8 is 16 elements, so 35 covers two SIMD widths
   // Plus extras for testing
   constexpr int INPUT_SIZE = 35;
@@ -305,7 +315,7 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgInt8LastAxis) {
   }
 }
 
-TEST_P(ArgMinMaxOpTest, GetMaxArgUInt8LastAxis) {
+TEST_P(ArgMinMaxOpTest, GetMinArgUInt8LastAxis) {
   // Vector size for int8 is 16 elements, so 35 covers two SIMD widths
   // Plus extras for testing
   constexpr int INPUT_SIZE = 35;

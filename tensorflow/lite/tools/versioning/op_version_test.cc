@@ -399,6 +399,14 @@ TEST(OpVersionTest, VersioningReduceMaxTest) {
   SimpleVersioningTestExtended(BuiltinOperator_REDUCE_MAX);
 }
 
+TEST(OpVersionTest, VersioningArgMaxTest) {
+  SimpleVersioningTestExtended(BuiltinOperator_ARG_MAX);
+}
+
+TEST(OpVersionTest, VersioningArgMinTest) {
+  SimpleVersioningTestExtended(BuiltinOperator_ARG_MIN);
+}
+
 TEST(OpVersionTest, VersioningReduceProdTest) {
   OpSignature fake_op_sig;
   fake_op_sig.op = BuiltinOperator_REDUCE_PROD;

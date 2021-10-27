@@ -675,6 +675,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
+    case BuiltinOperator_ARG_MAX:
+    case BuiltinOperator_ARG_MIN:
       // In case of int16 inputs, the version is 3.
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 3;
@@ -768,8 +770,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_SUM:
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_TOPK_V2:
-    case BuiltinOperator_ARG_MAX:
-    case BuiltinOperator_ARG_MIN:
     case BuiltinOperator_GREATER:
     case BuiltinOperator_GREATER_EQUAL:
     case BuiltinOperator_LESS:

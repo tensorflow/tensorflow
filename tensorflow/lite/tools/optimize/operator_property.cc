@@ -83,10 +83,10 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.quantize_input_as_activations = true;
       break;
     case BuiltinOperator_ARG_MAX:
+    case BuiltinOperator_ARG_MIN:
       property.inputs = {{0, {}}};
-      // ArgMax has no quantizable output.
+      // ArgMax and ArgMin have no quantizable output.
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_AVERAGE_POOL_2D:
       property.inputs = {{0, {}}};
