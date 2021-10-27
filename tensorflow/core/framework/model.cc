@@ -1877,8 +1877,6 @@ void Model::OptimizeHillClimbHelper(
     CancellationManager* cancellation_manager, StopPredicate should_stop) {
   VLOG(2) << "Starting optimization of tunable parameters with Hill Climb.";
   const double processing_time = TotalProcessingTime(snapshot);
-  RecordHillClimbRamUsage(optimization_params.ram_budget(),
-                          TotalMaximumBufferedBytes(snapshot));
   auto parameters = CollectTunableParameters(snapshot);
   if (parameters.empty()) {
     VLOG(2) << "There are no tunable parameters.";
@@ -1905,12 +1903,8 @@ void Model::OptimizeHillClimbHelper(
         break;
       }
     }
-    const auto max_buffered_bytes = TotalMaximumBufferedBytes(snapshot);
-    if (all_max ||
-        should_stop(processing_time, output_time, max_buffered_bytes)) {
-      RecordHillClimbStoppingCriteria(optimization_params, output_time,
-                                      processing_time, max_buffered_bytes,
-                                      all_max);
+    if (all_max || should_stop(processing_time, output_time,
+                               TotalMaximumBufferedBytes(snapshot))) {
       break;
     }
     double best_delta = -1.0L;
