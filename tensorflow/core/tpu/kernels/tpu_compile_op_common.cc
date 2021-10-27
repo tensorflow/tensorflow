@@ -125,7 +125,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   });
 
   Status compile_status = ComputeInternal(ctx);
-  absl::Cord status_payload;
+  string status_payload;
   // Construct payload if compile_status is not ok and there's no payload for
   // compilation yet.
   if (!compile_status
@@ -134,7 +134,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(compile_status.code());
     proto.set_status_error_message(compile_status.error_message());
-    status_payload = proto.SerializeAsCord();
+    status_payload = proto.SerializeAsString();
   }
   OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
                                 TpuCompileInterface::kTpuCompileErrorPayloadKey,
@@ -318,6 +318,10 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   if (proto_key.size() == 1) {
     // SPMD produces 1 program for all cores.
     num_cores_with_compiled_programs = metadata_.num_cores_per_replica();
+    if (may_modify_variables.size() == 1) {
+      may_modify_variables.resize(metadata_.num_cores_per_replica(),
+                                  may_modify_variables[0]);
+    }
   }
   if (status.ok() &&
       num_cores_with_compiled_programs +
@@ -364,7 +368,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     SerializeToTString(proto, &output.scalar<tstring>()());
     ctx->set_output(0, output);
     status.SetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey,
-                      proto.SerializeAsCord());
+                      output.scalar<tstring>()());
   }
 
   if (status.ok()) {

@@ -148,6 +148,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   bool RunEagerOpAsFunction() const;
 
+  void SetRunEagerOpAsFunction(bool enable) override;
+
   void ListDevices(std::vector<DeviceAttributes>* devices) override;
 
   Status AddDevices(std::vector<std::unique_ptr<Device>> devices) override;
@@ -280,6 +282,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   void ResetGlobalRendezvousForFunction() override {
     mutex_lock l(global_rendezvous_mu_);
+    // Remove the global rendezvous instance from the local rendezvous table
+    // if it uses local rendezvous type, which forces EagerContext to create a
+    // new local rendezvous instance in the table.
+    local_rendezvous_table_->Remove(-1);
     global_rendezvous_for_functions_ =
         core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
   }
@@ -523,14 +529,37 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void UpdateClusterFLRAndInitDevices(
       DistributedFunctionLibraryRuntime* cluster_flr);
 
+  // A constant representing the step id used for the global rendezvous.
+  // This is used to distibguish whether a user-specified step id should be set.
+  // Step id value of kGlobalRendezvous is reserved and should not be specified
+  // by the user.
+  static const int64_t kGlobalRendezvousId;
+
  private:
+  // The class for wrapping a map of step_id to local rendezvous instances.
+  class LocalRendezvousTable {
+   public:
+    LocalRendezvousTable() = default;
+    ~LocalRendezvousTable();
+
+    Rendezvous* FindOrCreate(int64_t step_id, DeviceMgr* device_mgr);
+    void Remove(int64_t step_id);
+    void CleanUpAll();
+
+   private:
+    mutable mutex table_lock_;
+    absl::flat_hash_map<int64_t, Rendezvous*> table_ TF_GUARDED_BY(table_lock_);
+  };
+
   Rendezvous* CreateRendezvous(int64_t step_id) const {
     if (rendezvous_creator_ != nullptr) {
+      VLOG(6) << "Creating rendezvous using the rendezvous_creator_.";
       return rendezvous_creator_(step_id);
     }
 
 #if !defined(IS_MOBILE_PLATFORM)
     if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
+      VLOG(6) << "Creating rendezvous using the worker_env's rendezvous_mgr.";
       auto* remote_r = worker_env_->rendezvous_mgr->Find(step_id);
       remote_r->Initialize(worker_session_.get()).IgnoreError();
       return remote_r;
@@ -538,7 +567,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 #endif
 
     if (remote_device_mgr() == nullptr) {
-      return new IntraProcessRendezvous(local_device_mgr());
+      VLOG(6) << "Creating rendezvous using local_device_mgr.";
+      return local_rendezvous_table_->FindOrCreate(step_id, local_device_mgr());
     }
 
     return nullptr;
@@ -679,6 +709,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       has_cleanup_ TF_GUARDED_BY(executor_map_mu_);
 
   const bool log_memory_;
+
+  // The table of local rendezvous instances for intra-process communication.
+  // This make sures only one local rendezvous instance exists per step id.
+  std::unique_ptr<LocalRendezvousTable> local_rendezvous_table_;
 
   // Whether to use same rendezvous instance across function/eager executions.
   std::atomic<bool> reuse_rendezvous_for_functions_{false};

@@ -185,6 +185,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite/nnapi:nnapi_implementation_headers",
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,  # For registration to always run.

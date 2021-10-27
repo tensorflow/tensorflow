@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for stateful_random_ops.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import re
 
@@ -747,7 +743,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testDeterministicOpsErrors(self):
     try:
-      config.enable_deterministic_ops(True)
+      config.enable_op_determinism()
       random.set_global_generator(None)
       with self.assertRaisesWithPredicateMatch(
           RuntimeError,
@@ -761,7 +757,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
           "is enabled."):
         random.Generator.from_non_deterministic_state()
     finally:
-      config.enable_deterministic_ops(False)
+      config.disable_op_determinism()
 
 
 if __name__ == "__main__":

@@ -29,9 +29,6 @@ flushing to zero or inf, and modulo rounding of intermediate results.
 Requires z3 python bindings; try `pip install z3-solver`.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 import z3
 
 # We do float16 because it lets the solver run much faster.  These results

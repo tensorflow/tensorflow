@@ -143,6 +143,7 @@ struct MlirCommonFlags {
   ConfigProto::Experimental::MlirBridgeRollout tf_mlir_enable_mlir_bridge;
 
   bool tf_mlir_enable_merge_control_flow_pass;
+  bool tf_mlir_enable_convert_control_to_data_outputs_pass;
 };
 
 // Return a pointer to the DumpGraphFlags struct;

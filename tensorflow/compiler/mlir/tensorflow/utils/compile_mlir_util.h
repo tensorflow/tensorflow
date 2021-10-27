@@ -163,20 +163,23 @@ Status CompileGraphToXlaHlo(
 // XlaBuilder. This function adds HLO to a larger HLO computation, so
 // HLO-level inputs are supplied, and HLO-level outputs are produced.
 // xla_params is the HLO-level inputs and returns is the HLO-level outputs.
-Status BuildHloFromGraph(const Graph& graph, xla::XlaBuilder& builder,
-                         llvm::ArrayRef<xla::XlaOp> xla_params,
-                         std::vector<xla::XlaOp>& returns,
-                         llvm::ArrayRef<XlaArgument> args,
-                         llvm::ArrayRef<std::string> control_rets,
-                         llvm::StringRef device_type,
-                         const FunctionLibraryDefinition& flib_def,
-                         const GraphDebugInfo& debug_info,
-                         llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-                             custom_legalization_passes = {});
+Status BuildHloFromGraph(
+    const Graph& graph, xla::XlaBuilder& builder,
+    mlir::MLIRContext& mlir_context, llvm::ArrayRef<xla::XlaOp> xla_params,
+    std::vector<xla::XlaOp>& returns, llvm::ArrayRef<XlaArgument> args,
+    llvm::ArrayRef<std::string> control_rets, llvm::StringRef device_type,
+    const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
+    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+        custom_legalization_passes = {});
 
 static inline Status CompileToHloGraphAnalysisFailedError() {
   return errors::Internal("disabled after graph analysis");
 }
+
+// Register a convenient pipeline for invoking TF/XLA lowering from the command
+// line.
+void RegisterConvertMlirToXlaHloPipelineWithDefaults();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_COMPILE_MLIR_UTIL_H_

@@ -15,10 +15,6 @@
 
 """Library of TPU helper functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import enum
 import typing
@@ -32,6 +28,7 @@ from tensorflow.compiler.tf2xla.python import xla as tf2xla
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2 as embedding_pb2
+from tensorflow.python import tf2
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
@@ -61,7 +58,9 @@ from tensorflow.python.types import core as core_types
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
+
 
 ops.NotDifferentiable("TPUReplicatedInput")
 
@@ -131,7 +130,8 @@ def initialize_system(
     tpu_cancellation_closes_chips: Set the configuration whether
       we want to close TPU chips when a TPU execution is cancelled. If the value
       is None, the behavior will be determined by the command line flag
-      `tpu_cancellation_closes_chips` for the TPU worker.
+      `tpu_cancellation_closes_chips` for the TPU worker. WARNING: this argument
+      only applies to TFRT TPU runtime.
   Returns:
     A serialized `TopologyProto` that describes the TPU system. Note:
       the topology must be evaluated using `Session.run` before it can be used.
@@ -909,6 +909,7 @@ class XLAOptions(
 
 
 @tf_export(v1=["tpu.replicate"])
+@traceback_utils.filter_traceback
 def replicate(
     computation: Callable[..., Any],
     inputs: Optional[List[List[core_types.Tensor]]] = None,
@@ -1537,10 +1538,14 @@ def split_compile_and_replicate(
       from tensorflow.python.tpu import tensor_tracer
       # pylint: enable=g-import-not-at-top
     if tensor_tracer.TensorTracer.is_enabled():
-      tt = tensor_tracer.TensorTracer()
-      output_tensors = tt.trace_tpu(ops.get_default_graph(),
-                                    output_tensors, control_deps,
-                                    num_replicas)
+      if tf2.enabled():
+        logging.warn("TF API ver >= 2.0 detected. "
+                     "Tensor Tracer v1 is not enabled.")
+      else:
+        tt = tensor_tracer.TensorTracer()
+        output_tensors = tt.trace_tpu(ops.get_default_graph(),
+                                      output_tensors, control_deps,
+                                      num_replicas)
 
     context.ExitResult(output_tensors)
   finally:
@@ -1929,6 +1934,7 @@ def split_compile_and_shard(
 
 
 @tf_export(v1=["tpu.shard"])
+@traceback_utils.filter_traceback
 def shard(
     computation: Callable[..., Any],
     inputs: Optional[List[core_types.Tensor]] = None,
@@ -2015,6 +2021,7 @@ def shard(
 
 
 @tf_export(v1=["tpu.batch_parallel"])
+@traceback_utils.filter_traceback
 def batch_parallel(
     computation: Callable[..., Any],
     inputs: Optional[List[List[Optional[core_types.Tensor]]]] = None,
@@ -2077,6 +2084,7 @@ def batch_parallel(
 
 
 @tf_export(v1=["tpu.rewrite"])
+@traceback_utils.filter_traceback
 def rewrite(
     computation: Callable[..., Any],
     inputs: Optional[List[List[Optional[core_types.Tensor]]]] = None,

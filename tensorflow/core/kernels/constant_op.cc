@@ -50,7 +50,7 @@ NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
     DCHECK_EQ(reinterpret_cast<const protobuf::Message*>(&original)
                   ->GetDescriptor()
                   ->field_count(),
-              6)
+              7)
         << "The NodeDef format has changed, and the attr-stripping code may "
            "need to be updated.";
   }
@@ -64,6 +64,9 @@ NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
   // is safe to drop other attrs from the NodeDef.
   AddNodeAttr("dtype", ctx->output_type(0), &ret);
   MergeDebugInfo(original, &ret);
+  if (original.has_experimental_type()) {
+    *ret.mutable_experimental_type() = original.experimental_type();
+  }
   return ret;
 }
 

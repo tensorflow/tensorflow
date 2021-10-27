@@ -14,13 +14,10 @@
 # ==============================================================================
 
 """Gradients for operators defined in control_flow_ops.py."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
@@ -163,9 +160,10 @@ def _ExitGrad(op, grad):
   if isinstance(grad, ops.Tensor):
     grad_ctxt.AddName(grad.name)
   else:
-    if not isinstance(grad, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
+    if not isinstance(
+        grad, (indexed_slices.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError(f"Type {type(grad)} not supported, must be either"
-                      "`ops.IndexedSlices` or `SparseTensor`.")
+                      "`indexed_slices.IndexedSlices` or `SparseTensor`.")
     grad_ctxt.AddName(grad.values.name)
     grad_ctxt.AddName(grad.indices.name)
     dense_shape = grad.dense_shape
@@ -223,7 +221,7 @@ def _EnterGrad(op, grad):
     # Add a gradient accumulator for each loop invariant.
     if isinstance(grad, ops.Tensor):
       result = grad_ctxt.AddBackpropAccumulator(op, grad)
-    elif isinstance(grad, ops.IndexedSlices):
+    elif isinstance(grad, indexed_slices.IndexedSlices):
       result = grad_ctxt.AddBackpropIndexedSlicesAccumulator(op, grad)
     else:
       # TODO(yuanbyu, lukasr): Add support for SparseTensor.

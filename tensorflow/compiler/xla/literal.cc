@@ -419,7 +419,9 @@ Literal Literal::SubLiteral(ShapeIndexView shape_index) {
 std::vector<Literal> Literal::DecomposeTuple() {
   CHECK(shape().IsTuple());
   std::vector<Literal> elements;
-  for (int i = 0; i < ShapeUtil::TupleElementCount(shape()); ++i) {
+  const auto tuple_element_count = ShapeUtil::TupleElementCount(shape());
+  elements.reserve(tuple_element_count);
+  for (int i = 0; i < tuple_element_count; ++i) {
     elements.push_back(Literal(ShapeUtil::GetSubshape(shape(), {i}),
                                /*allocate_arrays=*/false));
     Literal& element = elements.back();
@@ -1185,6 +1187,8 @@ void TupleToStringHelper(const LiteralBase& literal,
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   pieces->push_back("(\n");
   std::vector<string> tuple_pieces;
+  const auto tuple_element_count = ShapeUtil::TupleElementCount(subshape);
+  tuple_pieces.reserve(tuple_element_count);
   for (int i = 0; i < ShapeUtil::TupleElementCount(subshape); ++i) {
     ShapeIndex element_index = shape_index;
     element_index.push_back(i);
@@ -1573,19 +1577,27 @@ StatusOr<Literal> LiteralBase::Convert(
   return ConvertSwitch(*this, primitive_dest_type, /*bitcast=*/false);
 }
 
-StatusOr<Literal> LiteralBase::BitcastConvert(
-    PrimitiveType primitive_dest_type) const {
-  if (primitive_util::BitWidth(shape().element_type()) !=
-      primitive_util::BitWidth(primitive_dest_type)) {
+StatusOr<Literal> LiteralBase::BitcastConvert(const Shape& dest_shape) const {
+  if (ShapeUtil::ByteSizeOf(dest_shape) != ShapeUtil::ByteSizeOf(shape())) {
     return InvalidArgument(
-        "Cannot bitcast convert from %s to %s, bit widths are different: %d != "
-        "%d",
-        PrimitiveType_Name(shape().element_type()),
-        PrimitiveType_Name(primitive_dest_type),
-        primitive_util::BitWidth(shape().element_type()),
-        primitive_util::BitWidth(primitive_dest_type));
+        "Can not bitcast-convert from shape %s to a shape of different size %s",
+        shape().ToString(), dest_shape.ToString());
   }
-  return ConvertSwitch(*this, primitive_dest_type, /*bitcast=*/true);
+  if (dest_shape.IsTuple() || shape().IsTuple()) {
+    return InvalidArgument(
+        "bitcast-convert is not valid for tuple shapes %s->%s",
+        shape().ToString(), dest_shape.ToString());
+  }
+  if (shape().is_dynamic() || dest_shape.is_dynamic()) {
+    return InvalidArgument(
+        "bitcast-convert is not valid for dynamic shape %s->%s",
+        shape().ToString(), dest_shape.ToString());
+  }
+
+  Literal out(dest_shape);
+  std::memcpy(out.root_piece().buffer(), root_piece().buffer(),
+              root_piece().size_bytes());
+  return out;
 }
 
 StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
@@ -1593,7 +1605,9 @@ StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
     return Convert(dest_shape.element_type());
   }
   std::vector<Literal> elements;
-  for (int i = 0; i < ShapeUtil::TupleElementCount(shape()); ++i) {
+  const auto tuple_element_count = ShapeUtil::TupleElementCount(shape());
+  elements.reserve(tuple_element_count);
+  for (int i = 0; i < tuple_element_count; ++i) {
     auto element = LiteralSlice(*this, {i});
     TF_ASSIGN_OR_RETURN(
         auto new_element,
@@ -1606,6 +1620,7 @@ StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
 /* static */ Literal MutableLiteralBase::MoveIntoTuple(
     absl::Span<Literal> elements) {
   std::vector<Shape> element_shapes;
+  element_shapes.reserve(elements.size());
   for (const Literal& element : elements) {
     element_shapes.push_back(element.shape());
   }

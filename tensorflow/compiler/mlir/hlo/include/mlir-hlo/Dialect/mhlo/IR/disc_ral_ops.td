@@ -87,7 +87,7 @@ def RAL_DispatchOp: RAL_Op<"dispatch", []> {
     Variadic<AnyType>:$args,
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
-    DefaultValuedAttr<StrAttr, "">:$backend_config
+    DefaultValuedStrAttr<StrAttr, "">:$backend_config
   );
   let results = (outs Variadic<AnyType>);
 }

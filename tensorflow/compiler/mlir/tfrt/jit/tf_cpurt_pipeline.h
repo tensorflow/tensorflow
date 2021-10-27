@@ -17,13 +17,31 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_PIPELINE_H_
 
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassOptions.h"
+#include "llvm/ADT/Hashing.h"
 
 namespace tensorflow {
 
+struct TfCpuRtPipelineOptions
+    : public mlir::PassPipelineOptions<TfCpuRtPipelineOptions> {
+  Option<bool> vectorize{*this, "vectorize",
+                         llvm::cl::desc("Enable tiling for vectorization."),
+                         llvm::cl::init(false)};
+};
+
+// Make TfCpuRtPipelineOptions hashable.
+inline ::llvm::hash_code hash_value(const TfCpuRtPipelineOptions& opts) {
+  return ::llvm::hash_value(static_cast<bool>(opts.vectorize));
+}
+
 // Creates a pipeline that lowers modules from the Tensorflow dialect to
-// the Linalg on buffers (compatible with the default CPURT compilation
-// pipeline).
-void CreateTfCpuRtPipeline(mlir::OpPassManager& pm);
+// the Linalg on buffers. `TfCpuRtPipelineOptions` contains flags to
+// enable/disable experimental features.
+void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
+                           const TfCpuRtPipelineOptions& options);
+
+// Calls CreateTfCpuRtPipeline with the default TfCpuRtPipelineOptions.
+void CreateDefaultTfCpuRtPipeline(mlir::OpPassManager& pm);
 
 }  // namespace tensorflow
 

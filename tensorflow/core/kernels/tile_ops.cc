@@ -188,7 +188,8 @@ class TileOp : public OpKernel {
           context, multiples_array[i] >= 0,
           errors::InvalidArgument("Expected multiples[", i, "] >= 0, but got ",
                                   multiples_array[i]));
-      output_shape.AddDim(input.dim_size(i) * multiples_array[i]);
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(
+                                  input.dim_size(i) * multiples_array[i]));
     }
     if (output_shape == input.shape()) {
       context->set_output(0, input);

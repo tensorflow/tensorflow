@@ -18,10 +18,6 @@ List TPU modules that aren't included elsewhere here so that they can be scanned
 for tf_export decorations.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.tpu import bfloat16
 from tensorflow.python.tpu import feature_column_v2

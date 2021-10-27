@@ -63,6 +63,25 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_cc_test(
+    name = "auto_shard_test",
+    srcs = ["auto_shard_test.cc"],
+    deps = [
+        ":auto_shard",
+        ":graph_test_utils",
+        ":graph_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 cc_library(
     name = "autotune_buffer_sizes",
     srcs = ["autotune_buffer_sizes.cc"],
@@ -391,7 +410,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
-    ],
+    ] + tf_protos_all(),
 )
 
 cc_library(
@@ -455,10 +474,10 @@ cc_library(
     srcs = ["make_sloppy.cc"],
     hdrs = ["make_sloppy.h"],
     deps = [
+        ":graph_utils",
         ":optimizer_base",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:mutable_graph_view",
-        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
     ] + tf_protos_all(),
@@ -746,6 +765,7 @@ cc_library(
     deps = [
         ":graph_utils",
         ":optimizer_base",
+        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",

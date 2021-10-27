@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Analytics helpers library."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 def track_usage(tool_id, tags):
   """No usage tracking for external library.

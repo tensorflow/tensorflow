@@ -21,9 +21,9 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
 
@@ -70,12 +70,11 @@ struct RunHloModuleOptions {
 // HloModule before it is run on the reference platform. This may be necessary
 // to match the numerics of the test platform.
 Status RunAndCompare(
-    const std::string& hlo_filename, const std::string& test_platform_name,
-    const std::string& reference_platform_name, std::minstd_rand0* engine,
+    const std::string& hlo_filename, HloRunnerInterface* test_runner,
+    HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
     const RunHloModuleOptions& options,
     xla::RunHloModuleIterationLiterals* iteration_literals_proto = nullptr,
-    std::function<Status(const HloModule&,
-                         const ::stream_executor::Platform::Id&, HloModule*)>
+    std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
         reference_module_modifier_hook = {},
     std::function<void(HloModuleConfig*)> config_modifier_hook = {});
 

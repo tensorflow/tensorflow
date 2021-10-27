@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -66,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -95,6 +97,41 @@ void AddOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
   if (operands.size() == 1) return *inputs().begin();
+
+  // Fold if there is only one single non-zero operand or all operands are zero.
+  int non_zero_index = -1;
+  auto IsKnownZero = [](Attribute attr) {
+    if (!attr) return false;
+    auto splat = attr.dyn_cast<SplatElementsAttr>();
+    if (!splat) return false;
+    Type element_ty = splat.getType().getElementType();
+    if (element_ty.isa<FloatType>())
+      return splat.getSplatValue<llvm::APFloat>().isZero();
+    if (element_ty.isa<IntegerType>())
+      return splat.getSplatValue<llvm::APInt>().getSExtValue() == 0;
+    return false;
+  };
+
+  for (auto it : llvm::enumerate(operands)) {
+    if (IsKnownZero(it.value())) continue;
+    if (non_zero_index != -1) {
+      // Don't fold if we find more than 1 non-zero operand.
+      return {};
+    }
+    non_zero_index = it.index();
+  }
+
+  // Only fold when the result shape is fully static.
+  auto result_ty = getType().dyn_cast<ShapedType>();
+  if (!result_ty || !result_ty.hasStaticShape()) return {};
+
+  if (non_zero_index == -1)
+    return SplatElementsAttr::get(
+        result_ty, operands.begin()->cast<DenseElementsAttr>().getSplatValue());
+
+  // Check the non-zero operand's shape matches the result shape.
+  if (result_ty == inputs()[non_zero_index].getType())
+    return inputs()[non_zero_index];
   return {};
 }
 
@@ -319,7 +356,7 @@ static LogicalResult Verify(BatchToSpaceOp op) {
     assert(crops_attr.getNumElements() == 4 &&
            "tf.BatchToSpace crops must have 4 elements");
 
-    auto crops_range = crops_attr.getIntValues();
+    auto crops_range = crops_attr.getValues<APInt>();
     for (const auto &crops_value : crops_range) {
       int64_t crops_value_int = crops_value.getSExtValue();
       if (crops_value_int < 0)
@@ -540,7 +577,7 @@ void BiasAddV1Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
-// BitcastOp
+// arith::BitcastOp
 //===----------------------------------------------------------------------===//
 
 void BitcastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -591,8 +628,8 @@ bool ExtractInputConstShape(BroadcastGradientArgsOp op,
   if (!matchPattern(op.s0(), m_Constant(&s0))) return false;
   if (!matchPattern(op.s1(), m_Constant(&s1))) return false;
 
-  for (auto s : s0.getIntValues()) s0_shape.push_back(s.getSExtValue());
-  for (auto s : s1.getIntValues()) s1_shape.push_back(s.getSExtValue());
+  for (auto s : s0.getValues<APInt>()) s0_shape.push_back(s.getSExtValue());
+  for (auto s : s1.getValues<APInt>()) s1_shape.push_back(s.getSExtValue());
 
   return true;
 }
@@ -2291,23 +2328,34 @@ void EqualOp::build(OpBuilder &builder, OperationState &result, Value x,
 
 namespace {
 
-// Flips the incompatible_shape_error attribute to true if the shapes are
-// identical and static.
+// Flips the incompatible_shape_error attribute to true if the shapes are known
+// to be compatible.
 template <typename Ty>
 static LogicalResult flipComatibleShapeError(Ty op, PatternRewriter &rewriter) {
   if (op.incompatible_shape_error()) {
     return rewriter.notifyMatchFailure(op, "the attribute is already true");
   }
 
-  if (op.x().getType() != op.y().getType()) {
-    return rewriter.notifyMatchFailure(op,
-                                       "require the shapes to be identical");
+  // incompatible_shape_error=false implies that the op will either return a
+  // valid result or a scalar boolean indicating the error. For unranked outputs
+  // we don't know which one it is. TF shape inference turns unranked outputs
+  // into ranked ones if it can statically evaluate the broadcast, see the shape
+  // function of tf.Equal.
+  auto ty = op.getType().template dyn_cast<RankedTensorType>();
+  if (!ty) {
+    return rewriter.notifyMatchFailure(op, "requires a ranked output shape");
   }
 
-  auto src_ty = op.x().getType().template dyn_cast<RankedTensorType>();
-  if (!src_ty || !src_ty.hasStaticShape()) {
-    return rewriter.notifyMatchFailure(op, "require the shapes to be static");
+  // Unless this is a scalar compare, a scalar output indicates that this will
+  // always fail.
+  auto x_ty = op.x().getType().template dyn_cast<RankedTensorType>();
+  auto y_ty = op.y().getType().template dyn_cast<RankedTensorType>();
+  if (ty.getRank() == 0 &&
+      (!x_ty || x_ty.getRank() != 0 || !y_ty || y_ty.getRank() != 0)) {
+    return rewriter.notifyMatchFailure(op, "output rank must match input rank");
   }
+
+  // Shapes are known to be compatible.
   rewriter.template replaceOpWithNewOp<Ty>(op, op.x(), op.y(),
                                            rewriter.getBoolAttr(true));
   return success();
@@ -2911,9 +2959,18 @@ static LogicalResult Verify(MatrixBandPartOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// MatrixDiag Ops
+//===----------------------------------------------------------------------===//
+
+void MatrixDiagOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<MatrixDiagToV3>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // MatrixSetDiagOp
 //===----------------------------------------------------------------------===//
-//
+
 void MatrixSetDiagOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<MatrixSetDiagToV3>(context);
@@ -3008,7 +3065,7 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 
   // Prepare new reduction indices according to operand permutation.
   SmallVector<int32_t, 4> shuffled_reduction;
-  llvm::transform(reductions_value.getIntValues(),
+  llvm::transform(reductions_value.getValues<APInt>(),
                   std::back_inserter(shuffled_reduction),
                   [&](APInt idx) { return permutation[idx.getSExtValue()]; });
 

@@ -29,16 +29,4 @@ limitations under the License.
 // #includes above.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h.inc"
 
-namespace mlir {
-namespace mhlo {
-
-// Custom printer and parser for struct attributes.
-void printConvolutionDimensions(OpAsmPrinter &p, Operation *op,
-                                ConvDimensionNumbers dnums);
-ParseResult parseConvolutionDimensions(OpAsmParser &parser,
-                                       ConvDimensionNumbers &dnums);
-
-}  // namespace mhlo
-}  // namespace mlir
-
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_STRUCTS_H_

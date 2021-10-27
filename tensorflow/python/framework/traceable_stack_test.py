@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.traceable_stack."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.platform import googletest

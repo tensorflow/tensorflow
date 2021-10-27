@@ -60,6 +60,7 @@ cc_library(
     srcs = ["add.cc"],
     hdrs = ["add.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",

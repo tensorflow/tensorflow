@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace mlir {
@@ -100,30 +101,6 @@ static APFloat ConvertToAPFloat(double val, Type type) {
   }
 
   return APFloat(val);
-}
-
-// Returns int, float, or complex DenseElementsAttr with scalar shape with the
-// given element type and the value.
-template <typename T>
-static DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
-  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
-  if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
-    FloatAttr attr = FloatAttr::get(float_ty, raw_value);
-    return DenseElementsAttr::get(scalar_ty, attr);
-  } else if (auto int_ty = ty.dyn_cast_or_null<IntegerType>()) {
-    IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
-    return DenseElementsAttr::get(scalar_ty, attr);
-  } else if (auto complex_ty = ty.dyn_cast_or_null<ComplexType>()) {
-    Type complex_element_ty = complex_ty.getElementType();
-    if (complex_element_ty.isF32()) {
-      return DenseElementsAttr::get(
-          scalar_ty, static_cast<std::complex<float>>(raw_value));
-    } else if (complex_element_ty.isF64()) {
-      return DenseElementsAttr::get(
-          scalar_ty, static_cast<std::complex<double>>(raw_value));
-    }
-  }
-  llvm_unreachable("unsupported type");
 }
 
 // Return true if the passed quantized type is unsigned.
@@ -1111,7 +1088,7 @@ class LowerBatchToSpaceND : public RewritePattern {
     // Compute the product of the block_shape values.
     int64_t block_num_elems = 1;
 
-    for (auto val : block_shape.getIntValues()) {
+    for (auto val : block_shape.getValues<APInt>()) {
       block_num_elems *= val.getSExtValue();
     }
 
@@ -1125,7 +1102,8 @@ class LowerBatchToSpaceND : public RewritePattern {
     //      [block_shape[0], ..., block_shape[M-1],
     //       batch / prod(block_shape),
     //       input_shape[1], ..., input_shape[N-1]]
-    std::vector<int64_t> reshaped_shape;
+    SmallVector<int64_t> reshaped_shape;
+    reshaped_shape.reserve(block_shape.size());
     for (auto val : block_shape) {
       reshaped_shape.push_back(val.getSExtValue());
     }
@@ -1148,7 +1126,7 @@ class LowerBatchToSpaceND : public RewritePattern {
     //       input_shape[M], block_shape[M-1],
     //
     //       input_shape[M+1], ..., input_shape[N-1]]
-    std::vector<int64_t> permutation(reshaped_shape.size());
+    SmallVector<int64_t> permutation(reshaped_shape.size());
     permutation[0] = block_rank;
     for (int i = 0; i < block_rank; ++i) {
       permutation[1 + 2 * i] = block_rank + 1 + i;
@@ -1157,7 +1135,7 @@ class LowerBatchToSpaceND : public RewritePattern {
     std::iota(permutation.begin() + 1 + block_rank * 2, permutation.end(),
               1 + block_rank * 2);
 
-    std::vector<int64_t> transpose_shape(permutation.size());
+    SmallVector<int64_t> transpose_shape(permutation.size());
     for (auto it : llvm::enumerate(permutation)) {
       transpose_shape[it.index()] = reshaped_shape[it.value()];
     }
@@ -1178,8 +1156,9 @@ class LowerBatchToSpaceND : public RewritePattern {
     //       input_shape[M+1],
     //       ...,
     //       input_shape[N-1]]
-    std::vector<int64_t> reshaped_permuted_shape(input_rank);
-    auto block_shape_values = llvm::to_vector<4>(block_shape.getIntValues());
+    SmallVector<int64_t> reshaped_permuted_shape(input_rank);
+    auto block_shape_values =
+        llvm::to_vector<4>(block_shape.getValues<APInt>());
     reshaped_permuted_shape[0] = batch_size / block_num_elems;
     for (int i = 0; i < block_rank; ++i) {
       reshaped_permuted_shape[1 + i] =
@@ -1204,10 +1183,10 @@ class LowerBatchToSpaceND : public RewritePattern {
     //       input_shape[M] * block_shape[M-1] - crops[M-1,0] - crops[M-1,1],
     //
     //       input_shape[M+1], ..., input_shape[N-1]]
-    std::vector<int64_t> start_indices(input_rank, 0);
-    std::vector<int64_t> slice_sizes = reshaped_permuted_shape;
-    std::vector<int64_t> strides(input_rank, 1);
-    auto crop_values = llvm::to_vector<4>(crops.getIntValues());
+    SmallVector<int64_t> start_indices(input_rank, 0);
+    SmallVector<int64_t> slice_sizes = reshaped_permuted_shape;
+    SmallVector<int64_t> strides(input_rank, 1);
+    auto crop_values = llvm::to_vector<4>(crops.getValues<APInt>());
     for (int i = 0; i < block_rank; ++i) {
       int64_t crop_start = crop_values[i * 2].getSExtValue();
       int64_t crop_end = crop_values[i * 2 + 1].getSExtValue();
@@ -1371,7 +1350,7 @@ class LowerResizeNearestNeighbor : public RewritePattern {
     DenseIntElementsAttr out_size_cst;
     if (matchPattern(out_size, m_Constant(&out_size_cst))) {
       llvm::SmallVector<int64_t, 2> cst_size;
-      for (auto val : out_size_cst.getIntValues()) {
+      for (auto val : out_size_cst.getValues<APInt>()) {
         cst_size.push_back(val.getSExtValue());
       }
 
@@ -1715,6 +1694,7 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
   // clang-format off
   patterns->insert<
       LowerAddNOp,
+      LowerExp1mOp,
       ConvertFakeQuantWithMinMaxVarsOp,
       LowerDynamicStitchOp<DynamicStitchOp>,
       LowerDynamicStitchOp<ParallelDynamicStitchOp>,
@@ -1754,6 +1734,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
   // Populate the relevant generated patterns.
   // clang-format off
   patterns->insert<
+      LowerAddOp,
       LowerBiasAddGradOp,
       LowerDivNoNanOp,
       LowerEmptyOp,

@@ -436,6 +436,38 @@ void TF_OpKernelConstruction_GetAttrStringList(TF_OpKernelConstruction* ctx,
   }
 }
 
+void TF_OpKernelConstruction_GetAttrTensor(TF_OpKernelConstruction* ctx,
+                                           const char* attr_name,
+                                           TF_Tensor** val, TF_Status* status) {
+  *val = nullptr;
+  ::tensorflow::Tensor t;
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &t);
+  ::tensorflow::Set_TF_Status_from_Status(status, s);
+
+  if (!status->status.ok()) return;
+
+  *val = TF_TensorFromTensor(t, &status->status);
+}
+
+void TF_OpKernelConstruction_GetAttrTensorList(TF_OpKernelConstruction* ctx,
+                                               const char* attr_name,
+                                               TF_Tensor** vals, int max_values,
+                                               TF_Status* status) {
+  std::vector<::tensorflow::Tensor> v;
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &v);
+  ::tensorflow::Set_TF_Status_from_Status(status, s);
+
+  if (!status->status.ok()) return;
+
+  const auto len = std::min(max_values, static_cast<int>(v.size()));
+  for (int i = 0; i < len; ++i) {
+    vals[i] = TF_TensorFromTensor(v[i], &status->status);
+    if (!status->status.ok()) return;
+  }
+}
+
 bool TF_OpKernelConstruction_HasAttr(TF_OpKernelConstruction* ctx,
                                      const char* attr_name, TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);

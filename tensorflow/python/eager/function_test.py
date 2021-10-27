@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import functools
@@ -670,7 +666,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    with self.assertRaisesRegex(ValueError, r'got.*set'):
+    # TODO(b/201533914): Remove this flag.
+    if function.USE_FULL_TRACE_TYPE:
+      expected_error = errors.InvalidArgumentError
+      expected_message = r'could not be represented through the generic tracing'
+    else:
+      expected_error = ValueError
+      expected_message = r'got.*set'
+
+    with self.assertRaisesRegex(expected_error, expected_message):
       f(set([]))
 
   def testFuncName(self):
@@ -2087,6 +2091,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     it5 = iter(d)
     _ = defined(it5, it5)  # The two iterators are the same, should retrace
+    self.assertLen(total_function_cache(defined), 2)
+
+    it6 = iter(d)
+    _ = defined(it6, it6)  # The two iterators are the same, should not retrace
     self.assertLen(total_function_cache(defined), 2)
 
   def testFunctoolsPartialUnwrappedCorrectly(self):
@@ -4865,7 +4873,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(get_v_plus_one(), 2.0)
 
   def testOpExpandErrorMessage(self):
-    self.skipTest('b/198550525: Currently failing with mlir bridge enabled.')
     @def_function.function
     def test_fn():
       if array_ops.constant(False):
@@ -4874,7 +4881,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return script_ops.eager_py_func(
             func=lambda: array_ops.constant([2.]), inp=(), Tout=dtypes.int32)
 
-    error_pattern = re.compile(r'originated from.*func=lambda', re.DOTALL)
+    error_pattern = re.compile(r'Graph execution error.*func=lambda', re.DOTALL)
     with self.assertRaisesRegex(errors.InvalidArgumentError, error_pattern):
       test_fn()
 
@@ -5228,6 +5235,137 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
       h()
 
     self.assertEqual((v,), tape.watched_variables())
+
+  def testReplaceCaptureWithDeferred(self):
+
+    x = constant_op.constant(1.0)
+    y = constant_op.constant(2.0)
+    z = constant_op.constant(3.0)
+
+    @def_function.function
+    def fn():
+      a = x + y
+      b = a + z
+      return b
+
+    concrete_fn = fn.get_concrete_function()
+    self.assertAllEqual(concrete_fn(), 6.0)
+
+    value = constant_op.constant(4.0)
+
+    def closure():
+      return value
+
+    concrete_fn.replace_capture_with_deferred_capture(
+        concrete_fn.captured_inputs[1],
+        closure,
+        spec=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        placeholder=concrete_fn.inputs[1])
+
+    self.assertAllEqual(concrete_fn(), 8.0)
+
+    value = constant_op.constant(5.0)
+    self.assertAllEqual(concrete_fn(), 9.0)
+
+  def testRaiseReplaceCaptureWithDeferredTypeSpecMismatch(self):
+    bool_captured_tensor = constant_op.constant(True)
+    float_captured_tensor = constant_op.constant([3.], dtype=dtypes.float32)
+    value = constant_op.constant([2.], dtype=dtypes.float32)
+
+    @def_function.function
+    def fn():
+      deferred_tensor = ops.get_default_graph().capture_call_time_value(
+          lambda: value,
+          tensor_spec.TensorSpec(shape=(1,), dtype=dtypes.float32))
+      if bool_captured_tensor:
+        return deferred_tensor
+      else:
+        return deferred_tensor + float_captured_tensor
+
+    concrete_fn = fn.get_concrete_function()
+    self.assertAllEqual(concrete_fn(), [2.])
+
+    new_bool_captured_tensor = constant_op.constant(False)
+    def bool_closure():
+      return new_bool_captured_tensor
+
+    # Test raise if replacing a bool capture with a closure of output type
+    # float32
+    new_float_captured_tensor = constant_op.constant([3.], dtype=dtypes.float32)
+    def float_closure():
+      return new_float_captured_tensor
+
+    with self.assertRaisesRegex(ValueError,
+                                'Attempting to substitute closure with spec*'):
+      concrete_fn.replace_capture_with_deferred_capture(
+          bool_captured_tensor,
+          float_closure,
+          spec=tensor_spec.TensorSpec(shape=(1,), dtype=dtypes.float32))
+
+    # Test replace without a placeholder
+    concrete_fn.replace_capture_with_deferred_capture(
+        bool_captured_tensor,
+        bool_closure,
+        spec=tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool))
+
+    self.assertAllEqual(concrete_fn(), [5.])
+
+  def testConcreteFunctionSetExternalCapture(self):
+    captured_tensor = constant_op.constant([1.])
+    value = constant_op.constant([2.])
+
+    @def_function.function
+    def fn():
+      deferred_tensor = ops.get_default_graph().capture_call_time_value(
+          lambda: value,
+          tensor_spec.TensorSpec(shape=(1,), dtype=dtypes.float32))
+      return deferred_tensor + captured_tensor
+
+    cf = fn.get_concrete_function()
+    self.assertLen(cf._captured_inputs, 2)
+    self.assertEqual(list(map(callable, cf._captured_inputs)), [False, True])
+    self.assertAllEqual(cf(), [3.])
+
+    # Reset capture to a deferred one, reset deferred capture to a capture.
+    cf.set_external_captures([cf._captured_inputs[1], cf._captured_inputs[0]])
+
+    value = constant_op.constant([3.])
+    self.assertAllEqual(cf(), [4.])
+
+  def testGraphReplaceCaptureAndSetExternalCapture(self):
+    bool_captured_tensor = constant_op.constant(True)
+    float_captured_tensor = constant_op.constant([3.], dtype=dtypes.float32)
+    value = constant_op.constant([2.], dtype=dtypes.float32)
+
+    @def_function.function
+    def fn():
+      deferred_tensor = ops.get_default_graph().capture_call_time_value(
+          lambda: value,
+          tensor_spec.TensorSpec(shape=(1,), dtype=dtypes.float32))
+      if bool_captured_tensor:
+        return deferred_tensor
+      else:
+        return deferred_tensor + float_captured_tensor
+
+    concrete_fn = fn.get_concrete_function()
+    self.assertAllEqual(concrete_fn(), [2.])
+
+    new_bool_captured_tensor = constant_op.constant(False)
+
+    def closure():
+      return new_bool_captured_tensor
+
+    concrete_fn.graph.replace_capture_with_deferred_capture(
+        concrete_fn.captured_inputs[0],
+        closure,
+        spec=tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool),
+        placeholder=concrete_fn.inputs[1])
+
+    concrete_fn.set_external_captures([
+        closure, concrete_fn._captured_inputs[1],
+        concrete_fn._captured_inputs[2]
+    ])
+    self.assertAllEqual(concrete_fn(), [5.])
 
   def testDeferredCapture(self):
     value = 1.0

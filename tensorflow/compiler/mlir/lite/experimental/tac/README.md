@@ -250,9 +250,9 @@ Will be transformed into:
   }
 
 func private @func_2_GPU_FLOAT(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<2x1xf32> attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_2"} {
-    %cst = constant dense<1> : tensor<4xi32>
-    %cst_0 = constant dense<2> : tensor<1xi32>
-    %cst_1 = constant dense<[2, 1]> : tensor<2xi32>
+    %cst = arith.constant dense<1> : tensor<4xi32>
+    %cst_0 = arith.constant dense<2> : tensor<1xi32>
+    %cst_1 = arith.constant dense<[2, 1]> : tensor<2xi32>
     %0 = "tfl.reshape"(%arg0, %cst) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<4xi32>) -> tensor<1x1x1x1xf32>
     %1 = "tfl.reshape"(%arg1, %cst) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<4xi32>) -> tensor<1x1x1x1xf32>
     %2 = "tfl.concatenation"(%0, %1) {axis = 3 : i32, fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<1x1x1x2xf32>

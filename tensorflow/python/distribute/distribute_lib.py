@@ -185,10 +185,6 @@ reasonable default behavior.
 """
 # pylint: enable=line-too-long
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import enum  # pylint: disable=g-bad-import-order
@@ -212,6 +208,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -231,7 +228,6 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
-
 
 # ------------------------------------------------------------------------------
 # Context tracking whether in a strategy.update() or .update_non_slot() call.
@@ -429,8 +425,16 @@ class _CurrentDistributionContext(object):
 
     if self._resource_creator_scope:
       try:
-        self._resource_creator_scope.__exit__(exception_type, exception_value,
-                                              traceback)
+        if isinstance(self._resource_creator_scope, list):
+          reversed_resource_creator_scope = self._resource_creator_scope[::-1]
+          nest.map_structure(
+              lambda scope: scope.__exit__(exception_type, exception_value,  # pylint:disable=g-long-lambda
+                                           traceback),
+              reversed_resource_creator_scope)
+
+        else:
+          self._resource_creator_scope.__exit__(exception_type, exception_value,
+                                                traceback)
       except RuntimeError as e:
         six.raise_from(
             RuntimeError("Resource creator scope nesting error: move call "
@@ -1848,7 +1852,7 @@ class Strategy(StrategyBase):
                                                        error_message)
     dst = device_util.current(
     ) or self._extended._default_device or "/device:CPU:0"
-    if isinstance(value, ops.IndexedSlices):
+    if isinstance(value, indexed_slices.IndexedSlices):
       raise NotImplementedError("gather does not support IndexedSlices")
     return self._extended._local_results(
         self._extended._gather_to(value, dst, axis))[0]
@@ -2106,7 +2110,7 @@ class StrategyExtendedV2(object):
     self._require_static_shapes = False
 
   def _resource_creator_scope(self):
-    """Returns one or more ops.resource_creator_scope for some Strategy."""
+    """Returns one or a list of ops.resource_creator_scope for some Strategy."""
     return None
 
   def _container_strategy(self):
@@ -3231,7 +3235,7 @@ class ReplicaContextBase(object):
     has_indexed_slices = False
 
     for v in flattened_value:
-      if isinstance(v, ops.IndexedSlices):
+      if isinstance(v, indexed_slices.IndexedSlices):
         has_indexed_slices = True
 
     if isinstance(reduce_op, six.string_types):
@@ -3415,7 +3419,7 @@ class ReplicaContext(ReplicaContextBase):
        is the same as `value`.
     """
     for v in nest.flatten(value):
-      if isinstance(v, ops.IndexedSlices):
+      if isinstance(v, indexed_slices.IndexedSlices):
         raise NotImplementedError("all_gather does not support IndexedSlices")
 
     if options is None:
@@ -3550,8 +3554,6 @@ def _batch_reduce_destination(x):
     return x.device
   else:
     return x
-
-
 # ------------------------------------------------------------------------------
 
 

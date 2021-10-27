@@ -48,10 +48,6 @@ y = embedding_lookup(vs, ids, partition_strategy="div")
 z = matmul(x, concat(slice_dim, vs))
 ```
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 from tensorflow.python.framework import dtypes

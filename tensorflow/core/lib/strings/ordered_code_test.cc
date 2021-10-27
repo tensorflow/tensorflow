@@ -69,7 +69,7 @@ bool OCReadIncreasing<uint64>(StringPiece* src, uint64* result) {
   return OrderedCode::ReadNumIncreasing(src, result);
 }
 
-// Read/WriteIncreasing<int64>
+// Read/WriteIncreasing<int64_t>
 template <>
 void OCWriteIncreasing<int64_t>(string* dest, const int64_t& val) {
   OrderedCode::WriteSignedNumIncreasing(dest, val);
@@ -362,7 +362,7 @@ TEST(OrderedCodeInvalidEncodingsDeathTest, NonCanonical) {
                  "invalid encoding")
         << n;
 #else
-    TestRead<int64>(non_minimal);
+    TestRead<int64_t>(non_minimal);
 #endif
   }
 }

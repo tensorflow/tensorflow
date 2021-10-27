@@ -43,7 +43,7 @@ void testMemRefVoidReturn(void* data, int x, MemRefType<float, 2> memref) {
 bool testI1Return(int32_t x) { return x; }
 int16_t testI16Return(int32_t x) { return x; }
 int32_t testI32Return(int32_t x) { return x; }
-int64_t testI64Return(int32_t x) { return ((int64_t)x) << 16; }  // NOLINT
+int64_t testI64Return(int32_t x) { return static_cast<uint64_t>(x) << 16; }
 float testf32Return(int32_t x) { return 1.0 / x; }
 double testf64Return(int32_t x) { return 1.0 / x; }
 

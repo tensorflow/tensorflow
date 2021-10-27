@@ -110,16 +110,13 @@ TfLiteStatus QuantizeModel(
   }
 
   pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));
-  pm.addPass(TFL::CreateQuantizePass(
-      verify_numeric, whole_model_verify, legacy_float_scale,
-      denylisted_mlir_op_names, denylisted_nodes));
+  pm.addPass(TFL::CreateQuantizePass(quant_specs, denylisted_mlir_op_names,
+                                     denylisted_nodes));
   pm.addPass(TFL::CreatePostQuantizePass(/*emit_quant_adaptor_ops=*/true));
   pm.addPass(TFL::CreateOptimizeOpOrderPass());
   pm.addPass(TFL::CreateModifyIONodesPass(input_mlir_type, output_mlir_type));
-  if (!denylisted_ops.empty() || !denylisted_nodes.empty()) {
-    // If the first or final ops are not quantized, remove QDQ.
-    pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());
-  }
+  // If the first or final ops are not quantized, remove QDQ.
+  pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());
   if (failed(pm.run(module.get()))) {
     const std::string& err = statusHandler.ConsumeStatus().error_message();
     error_reporter->Report("Failed to quantize: %s", err.c_str());

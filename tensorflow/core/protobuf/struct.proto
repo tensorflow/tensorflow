@@ -154,4 +154,7 @@ message TypeSpecProto {
   //    redundant with the type_spec_class enum, and is only used for error
   //    reporting in older binaries that do not know the tupe_spec_class enum.
   string type_spec_class_name = 3;
+
+  // The number of flat tensor components required by this TypeSpec.
+  int32 num_flat_components = 4;
 }

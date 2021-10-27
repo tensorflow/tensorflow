@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tf.layers.pooling."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.legacy_tf_layers import pooling as pooling_layers
 from tensorflow.python.ops import array_ops

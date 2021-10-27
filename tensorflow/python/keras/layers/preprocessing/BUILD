@@ -392,14 +392,15 @@ distribute_py_test(
     deps = [
         ":category_encoding",
         ":preprocessing_test_utils",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:config",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_test_combinations_lib",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/distribute:strategy_combinations",
     ],
 )
@@ -424,8 +425,8 @@ distribute_py_test(
         "//tensorflow/python:framework_test_combinations_lib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/distribute:strategy_combinations",
     ],
 )

@@ -331,14 +331,15 @@ QuantizeOpTest/INT8,30
 
 # reduce_test
 -Dynamic.+(Mean|Sum|Prod|Max|Min)OpTest/.+
--ConstUint8(Mean|Sum)OpTest/.+
--ConstInt8MeanOpTest.NonSpecialAxisNonSameScale
--ConstInt8MeanOpTest.QuantizedDifferentScale
+-ConstUint8SumOpTest/.+
 ConstUint8(Max|Min)OpTest/.+,29
-ConstUint8(Mean)OpTest/.+
+ConstUint8(Mean)OpTest/.+,29
 -ConstInt8(Max|Min)OpTest/.+,29
--ConstMeanOpTest.*/.+
--MeanOpTestQuantized.*/.+
+ConstInt8MeanOpTest/.+,29
+-ConstMeanOpTest.*/.+Int16
+ConstMeanOpTest.*/.+,29
+-MeanOpTestQuantized.*/.+Int16
+MeanOpTestQuantized.*/.+,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/NotKeepDims,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/KeepDims,29
 ConstFloat(Mean|Any)OpTest/NotKeepDims
@@ -397,6 +398,18 @@ SpaceToDepthOpModel/int8
 # Only accelerated when axis is a constant tensor
 SplitOpTest/SplitOpTest/.+/0,29
 
+# split_v_test
+# NNAPI does not support int16
+-SplitVOpTypedTest/3/.+
+# NNAPI does not support zero-sized slice
+-SplitVOpTypedTest/.+OneDimensional2
+# Only accelerated when both split_sizes and axis are constant
+SplitVOpTypedTest/.+/ConstSplits.+,30
+
+# squared_difference_test
+FloatSquaredDifferenceOpTest/.+,28
+(Integer|Quantized)SquaredDifferenceOpTest/.+,30
+
 # squeeze_test
 FloatSqueezeOpTest/.+,29
 
@@ -441,6 +454,18 @@ TransposeConvOpTest/TransposeConvOpTest/.+/0,29
 # unidirectional_sequence_rnn_test
 UnidirectionalRNNOpTest/BlackBoxTest,29
 UnidirectionalRNNOpTest.TimeMajorBlackBoxTest,29
+
+# unpack_test
+# Unpacking along the last axis is not supported
+-UnpackOpTest/.+/ThreeOutputsAxisOne
+-UnpackOpTest/.+/ThreeOutputsNegativeAxisOne
+-UnpackOpTest/.+/ThreeDimensionsOutputs
+# Unpacking 5D tensor is not supported
+-UnpackOpTest/.+/FiveDimensionsOutputs
+# Unpacking a vector to scalar is not supported
+-UnpackOpTest/.+/VectorToScalar
+# float, int8, uint8 only
+UnpackOpTest/(0|2|3)/.+,30
 )";
 
 }  // namespace tflite

@@ -33,12 +33,6 @@ auto* graph_run_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/graph_run_time_usecs",
     "The total time spent on executing graphs in microseconds.");
 
-auto* graph_optimization_usecs =
-    monitoring::Counter<2>::New("/tensorflow/core/graph_optimization_usecs",
-                                "The total time spent running each graph "
-                                "optimization pass in microseconds.",
-                                "kind", "name");
-
 auto* graph_run_time_usecs_histogram = monitoring::Sampler<0>::New(
     {"/tensorflow/core/graph_run_time_usecs_histogram",
      "The wall-clock time spent on executing graphs in microseconds."},
@@ -104,6 +98,21 @@ auto* tf_data_get_next_duration_usecs_histogram = monitoring::Sampler<0>::New(
     {monitoring::Buckets::Explicit(
         {2., 4., 8., 16., 32., 64., 128., 256., 512., 1024., 1e6})});
 
+auto* tf_data_used_vs_budget_ratio_histogram = monitoring::Sampler<0>::New(
+    {"/tensorflow/data/used_vs_budget_ratio",
+     "Ratio of tf.data used ram over ram budget when running optimization."},
+    // Uniform linear buckets with count 10 from 0 to 2
+    {monitoring::Buckets::Explicit(
+        {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0})});
+
+auto* tf_data_buffered_vs_budget_ratio_histogram = monitoring::Sampler<0>::New(
+    {"/tensorflow/data/buffered_vs_budget_ratio",
+     "Ratio of tf.data max buffer bytes over ram budget when running "
+     "optimization."},
+    // Uniform linear buckets with count 10 from 0 to 2
+    {monitoring::Buckets::Explicit(
+        {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0})});
+
 auto* tf_data_iterator_busy_counter =
     monitoring::Counter<0>::New("/tensorflow/data/iterator_busy",
                                 "The time (in microseconds) during which a "
@@ -133,6 +142,26 @@ auto* tf_data_model_gauge =
 auto* tf_data_auto_shard = monitoring::Gauge<int64, 2>::New(
     "/tensorflow/data/autoshard", "tf.data autoshard statistics.", "id",
     "name");
+
+auto* tf_data_auto_shard_rewrite_batch_size_eligible =
+    monitoring::Counter<1>::New(
+        "/tensorflow/data/autoshard_rewrite_batch_size/eligible",
+        "Whether tf.data pipelines that are eligible for autoshard "
+        "to rewrite the batch size.",
+        "eligible");
+
+auto* tf_data_auto_shard_rewrite_batch_size_reason =
+    monitoring::Counter<1>::New(
+        "/tensorflow/data/autoshard_rewrite_batch_size/reason",
+        "The reasons that tf.data pipelines are ineligible for autoshard "
+        "to rewrite the batch size.",
+        "reason");
+
+auto* tf_data_autotune_stopping_criteria_counter =
+    monitoring::Counter<1>::New("/tensorflow/data/autotune_stopping_criteria",
+                                "The number of times each tf.data autotune "
+                                "algorithm stopping criterion is met.",
+                                "name");
 
 auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
@@ -189,6 +218,15 @@ auto* tpu_variable_distribution_time_usecs = monitoring::Counter<0>::New(
 
 }  // namespace
 
+monitoring::Counter<2>* GetGraphOptimizationCounter() {
+  static auto* graph_optimization_counter =
+      monitoring::Counter<2>::New("/tensorflow/core/graph_optimization_usecs",
+                                  "The total time spent running each graph "
+                                  "optimization pass in microseconds.",
+                                  "kind", "name");
+  return graph_optimization_counter;
+}
+
 void RecordTFDataAutotune(const string& name) {
   tf_data_autotune_counter->GetCell(name)->IncrementBy(1);
 }
@@ -232,6 +270,18 @@ void RecordTFDataGetNextDuration(uint64 duration_us) {
   tf_data_get_next_duration_cell->Add(duration_us);
 }
 
+void RecordTFDataAutotuneUsedRamBudgetRatio(const double ratio) {
+  static auto* tf_data_used_vs_budget_ratio_histogram_cell =
+      tf_data_used_vs_budget_ratio_histogram->GetCell();
+  tf_data_used_vs_budget_ratio_histogram_cell->Add(ratio);
+}
+
+void RecordTFDataAutotuneMaxBufferBudgetRatio(const double ratio) {
+  static auto* tf_data_buffered_vs_budget_ratio_histogram_cell =
+      tf_data_buffered_vs_budget_ratio_histogram->GetCell();
+  tf_data_buffered_vs_budget_ratio_histogram_cell->Add(ratio);
+}
+
 void RecordTFDataIteratorBusy(uint64 duration_us) {
   static auto* tf_data_iterator_busy_cell =
       tf_data_iterator_busy_counter->GetCell();
@@ -258,9 +308,24 @@ void RecordTFDataFilename(const string& name, const string& filename) {
 
 void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
                            int64 num_workers, int64 num_replicas) {
-  tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64>(policy));
+  tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64_t>(policy));
   tf_data_auto_shard->GetCell(id, "num_workers")->Set(num_workers);
   tf_data_auto_shard->GetCell(id, "num_replicas")->Set(num_replicas);
+}
+
+void RecordTFDataAutoShardRewriteBatchSize(
+    bool eligible, const std::vector<string>& ineligible_reason) {
+  tf_data_auto_shard_rewrite_batch_size_eligible
+      ->GetCell(eligible ? "true" : "false")
+      ->IncrementBy(1);
+  for (const string& reason : ineligible_reason) {
+    tf_data_auto_shard_rewrite_batch_size_reason->GetCell(reason)->IncrementBy(
+        1);
+  }
+}
+
+void RecordTFDataAutotuneStoppingCriteria(const string& name) {
+  tf_data_autotune_stopping_criteria_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordParseDenseFeature(int64 num_features) {
@@ -319,7 +384,8 @@ void UpdateGraphPendingQueueLength(uint64 len) {
 void UpdateGraphOptimizationPassTime(const string& pass_name,
                                      const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("GraphOptimizationPass", pass_name)
+    GetGraphOptimizationCounter()
+        ->GetCell("GraphOptimizationPass", pass_name)
         ->IncrementBy(running_time_usecs);
   }
 }
@@ -327,7 +393,8 @@ void UpdateGraphOptimizationPassTime(const string& pass_name,
 void UpdateGrapplerPassTime(const string& pass_name,
                             const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("Grappler", pass_name)
+    GetGraphOptimizationCounter()
+        ->GetCell("Grappler", pass_name)
         ->IncrementBy(running_time_usecs);
   }
 }
@@ -339,7 +406,8 @@ void UpdateMlirGraphOptimizationPassTime(const string& pass_name,
   // checked for name conflicts) but not desirable in end state. Unify these
   // post cleanups.
   if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("TfMlir", pass_name)
+    GetGraphOptimizationCounter()
+        ->GetCell("TfMlir", pass_name)
         ->IncrementBy(running_time_usecs);
   }
 }
@@ -347,7 +415,8 @@ void UpdateMlirGraphOptimizationPassTime(const string& pass_name,
 void UpdateTFDataPassTime(const string& pass_name,
                           const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("TFDataPass", pass_name)
+    GetGraphOptimizationCounter()
+        ->GetCell("TFDataPass", pass_name)
         ->IncrementBy(running_time_usecs);
   }
 }
@@ -355,7 +424,8 @@ void UpdateTFDataPassTime(const string& pass_name,
 void UpdateGraphOptimizerPassTime(const string& pass_name,
                                   const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("GraphOptimizerPass", pass_name)
+    GetGraphOptimizationCounter()
+        ->GetCell("GraphOptimizerPass", pass_name)
         ->IncrementBy(running_time_usecs);
   }
 }

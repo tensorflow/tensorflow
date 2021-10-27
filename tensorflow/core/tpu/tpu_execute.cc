@@ -308,8 +308,7 @@ void TPUCancelExecution(Env* env, int device_ordinal) {
     // an opportunity to delete it.
     (void)env->StartThread(ThreadOptions(), "tpu_execute_exit_countdown",
                            [env]() { ExitCountdown(env); });
-  } else if (internal::TpuCancellationClosesChipsGetOrDefault(
-                 tpu_cancellation_closes_chips)) {
+  } else if (tpu_cancellation_closes_chips) {
     LOG(INFO) << "TPUCancelExecution CloseTPUHost on device " << device_ordinal;
     Status status = TpuNodeContext::CloseTpuHost();
     LOG(INFO) << "TPUCancelExecution CloseTPUHost done: " << status

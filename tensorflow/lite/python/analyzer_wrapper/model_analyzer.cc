@@ -47,10 +47,16 @@ const std::string subgraph_str(const int subgraph_idx) {
   return ss.str();
 }
 
+struct ModelStats {
+  // FlatBuffer buffer usage (in bytes) per subgraph.
+  std::vector<size_t> buffer_usage;
+};
+
 // Dump details of the given tensor.
 void dump_tensor_detail(std::stringstream& out_stream,
                         const tflite::Tensor* tensor, const int tensor_idx,
-                        const int subgraph_idx, const tflite::Model* model) {
+                        const int subgraph_idx, const tflite::Model* model,
+                        ModelStats* stats) {
   out_stream << tensor_str(tensor_idx, subgraph_idx);
   out_stream << "(" << tensor->name()->str() << ") ";
   // Prints `shape_signature` instead of `shape` if it's available since it
@@ -84,6 +90,7 @@ void dump_tensor_detail(std::stringstream& out_stream,
     auto* buffer = model->buffers()->Get(buffer_idx);
     if (buffer->data() && buffer->data()->size() != 0) {
       out_stream << " RO " << buffer->data()->size() << " bytes";
+      stats->buffer_usage[subgraph_idx] += buffer->data()->size();
     }
   }
   out_stream << "\n";
@@ -175,7 +182,8 @@ void dump_model_summary(std::stringstream& out_stream,
 // Dump the statistics of the given TFLite flatbuffer model. It's printed at the
 // end of the analyzer output.
 void dump_model_stats(std::stringstream& out_stream,
-                      const ::tflite::Model* model, size_t model_size) {
+                      const ::tflite::Model* model, size_t model_size,
+                      ModelStats* stats) {
   size_t total_buffer_size = 0;
   size_t total_zero_buffer_size = 0;
   auto* buffers = model->buffers();
@@ -211,11 +219,23 @@ void dump_model_stats(std::stringstream& out_stream,
            "Total data buffer size", total_buffer_size,
            (static_cast<float>(total_buffer_size) / model_size * 100));
   out_stream << temp;
+  if (model->subgraphs()->Length() > 1) {
+    for (int i = 0; i < model->subgraphs()->Length(); ++i) {
+      float subgraph_buffer_ratio =
+          static_cast<float>(stats->buffer_usage[i]) / model_size * 100;
+      snprintf(temp, sizeof(temp),
+               "          - %-12s: %10zu bytes (%05.2f %%)\n",
+               subgraph_str(i).c_str(), stats->buffer_usage[i],
+               subgraph_buffer_ratio);
+      out_stream << temp;
+    }
+  }
   float zero_buffer_ratio =
       static_cast<float>(total_zero_buffer_size) / model_size * 100;
   snprintf(temp, sizeof(temp), "%24s: %10zu bytes (%05.2f %%)\n",
            "(Zero value buffers)", total_zero_buffer_size, zero_buffer_ratio);
   out_stream << temp;
+
   out_stream
       << "\n"
       << "* Buffers of TFLite model are mostly used for constant tensors.\n";
@@ -273,6 +293,8 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
   }
   const ::tflite::Model* model = fb_model->GetModel();
   auto* subgraphs = model->subgraphs();
+  ModelStats stats;
+  stats.buffer_usage.resize(subgraphs->Length());
 
   dump_model_summary(out_stream, model);
 
@@ -320,7 +342,7 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
     for (int j = 0; j < tensors->Length(); ++j) {
       auto tensor = tensors->Get(j);
       out_stream << "  ";  // indents for tensors
-      dump_tensor_detail(out_stream, tensor, j, i, model);
+      dump_tensor_detail(out_stream, tensor, j, i, model, &stats);
     }
     out_stream << "\n";
   }
@@ -332,7 +354,7 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
            "delegate.\nThere could be some runtime incompatibililty happen.\n";
   }
 
-  dump_model_stats(out_stream, model, fb_model->allocation()->bytes());
+  dump_model_stats(out_stream, model, fb_model->allocation()->bytes(), &stats);
 
   return out_stream.str();
 }

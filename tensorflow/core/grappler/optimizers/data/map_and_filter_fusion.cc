@@ -42,7 +42,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-NodeDef MakeFusedNode(const NodeDef& map_node,
+NodeDef MakeFusedNode(const NodeDef& map_node, const NodeDef& filter_node,
                       const FunctionDef& fused_function,
                       MutableGraphView* graph) {
   NodeDef fused_node;
@@ -69,6 +69,7 @@ NodeDef MakeFusedNode(const NodeDef& map_node,
       graph_utils::CopyAttribute(key, map_node, &fused_node);
     }
   }
+  graph_utils::MaybeSetFusedMetadata(map_node, filter_node, &fused_node);
 
   // Add the predicate output attributes.
   (*fused_node.mutable_attr())["output_types"]
@@ -219,8 +220,8 @@ Status MapAndFilterFusion::OptimizeAndCollectStats(Cluster* cluster,
     const auto* fused_function = make_fused_function(map_node, filter_node);
     if (fused_function == nullptr) continue;
 
-    const auto* fused_maps =
-        graph.AddNode(MakeFusedNode(*map_node, *fused_function, &graph));
+    const auto* fused_maps = graph.AddNode(
+        MakeFusedNode(*map_node, *filter_node, *fused_function, &graph));
 
     const auto* new_filter_node = graph.AddNode(MakeFilterNode(
         *fused_maps, *fused_function, &graph, output->mutable_library()));

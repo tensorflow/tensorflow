@@ -47,6 +47,10 @@ def TFGraph_GraphOp : TFGraph_Op<"graph",
       return cast<TFGraphDialect>((*this)->getDialect());
     }
 
+    // Override the getOps() inherited from the OneRegion trait to return a
+    // range of TFOp instead of the generic mlir::Operation.
+    auto getOps() { return getRegion().template getOps<TFOp>(); }
+
     //===------------------------------------------------------------------===//
     // OpAsmOpInterface
     //===------------------------------------------------------------------===//
@@ -100,6 +104,11 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
 
     // Returns true if this function is marked for JIT compilation.
     bool isMarkedForCompilation();
+
+    // Return the function called by this operation if this operation is a call
+    // and the function exists in the symbol_table, otherwise return null.
+    static GraphFuncOp getCalledFunction(Operation *op,
+                                         SymbolTable &symbol_table);
 
     //===------------------------------------------------------------------===//
     // OpAsmOpInterface

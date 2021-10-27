@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
@@ -68,6 +69,9 @@ using ::tensorflow::protobuf::util::MessageDifferencer;
 constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";
+constexpr int64_t kDefaultJobGcCheckIntervalMs = 10 * 60 * 1000;  // 10 minutes.
+constexpr int64_t kDefaultJobGcTimeoutMs = 5 * 60 * 1000;         // 5 minutes.
+constexpr int64_t kDefaultClientTimeoutMs = 2 * 60 * 1000;        // 2 minutes.
 
 constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "HashTable",
@@ -80,6 +84,7 @@ constexpr std::array<const char*, 8> kNodeNameSharingOps = {
     "MutableHashTableOfTensorsV2",
 };
 
+using DispatcherConfig = experimental::DispatcherConfig;
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
 using NamedJobKey = DispatcherState::NamedJobKey;
@@ -126,11 +131,28 @@ void PrepareGraph(GraphDef* graph) {
   }
   StripDevicePlacement(graph->mutable_library());
 }
+
+DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
+  DispatcherConfig new_config(config);
+  if (new_config.job_gc_check_interval_ms() == 0) {
+    new_config.set_job_gc_check_interval_ms(kDefaultJobGcCheckIntervalMs);
+  }
+  if (new_config.job_gc_timeout_ms() == 0) {
+    new_config.set_job_gc_timeout_ms(kDefaultJobGcTimeoutMs);
+  }
+  if (new_config.client_timeout_ms() == 0) {
+    new_config.set_client_timeout_ms(kDefaultClientTimeoutMs);
+  }
+  return new_config;
+}
+
 }  // namespace
 
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
-    const experimental::DispatcherConfig& config)
-    : config_(config), env_(Env::Default()), state_(config_) {
+    const DispatcherConfig& config)
+    : config_(ApplyConfigDefaults(config)),
+      env_(Env::Default()),
+      state_(config_) {
   if (config_.work_dir().empty()) {
     dataset_store_ = absl::make_unique<MemoryDatasetStore>();
   } else {
@@ -193,11 +215,28 @@ Status DataServiceDispatcherImpl::Start() {
           RestoreSplitProviders(*job, split_providers_[job->job_id]));
     }
   }
+  for (const auto& client_id : state_.ListActiveClientIds()) {
+    // Conservatively pretend we just received a heartbeat from all clients, so
+    // that we don't garbage collect jobs too early.
+    latest_client_heartbeats_time_[client_id] =
+        absl::FromUnixMicros(env_->NowMicros());
+  }
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
   started_ = true;
   return Status::OK();
+}
+
+size_t DataServiceDispatcherImpl::NumActiveJobs() TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
+  int64 count = 0;
+  for (const auto& job : state_.ListJobs()) {
+    if (!job->finished) {
+      count++;
+    }
+  }
+  return count;
 }
 
 Status DataServiceDispatcherImpl::RestoreSplitProviders(
@@ -290,6 +329,8 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     update.mutable_register_worker()->set_worker_address(worker_address);
     update.mutable_register_worker()->set_transfer_address(
         request->transfer_address());
+    *update.mutable_register_worker()->mutable_worker_tags() =
+        request->worker_tags();
     TF_RETURN_IF_ERROR(Apply(update));
     TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
     TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, assigned_tasks));
@@ -680,6 +721,8 @@ Status DataServiceDispatcherImpl::AcquireJobClientId(
   acquire_job_client->set_job_client_id(job_client_id);
   acquire_job_client->set_job_id(job->job_id);
   TF_RETURN_IF_ERROR(Apply(update));
+  // Does not release clients before they start to read from the dataset.
+  latest_client_heartbeats_time_[job_client_id] = absl::InfiniteFuture();
   return Status::OK();
 }
 
@@ -711,6 +754,8 @@ Status DataServiceDispatcherImpl::CreatePendingTask(
   std::shared_ptr<const Worker> worker;
   TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
   create_task->set_transfer_address(worker->transfer_address);
+  *create_task->mutable_worker_tags() = {worker->tags.begin(),
+                                         worker->tags.end()};
   TF_RETURN_IF_ERROR(Apply(update));
   return Status::OK();
 }
@@ -728,6 +773,8 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   std::shared_ptr<const Worker> worker;
   TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
   create_task->set_transfer_address(worker->transfer_address);
+  *create_task->mutable_worker_tags() = {worker->tags.begin(),
+                                         worker->tags.end()};
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
   return Status::OK();
@@ -804,6 +851,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
+  latest_client_heartbeats_time_[request->job_client_id()] =
+      absl::FromUnixMicros(env_->NowMicros());
   std::shared_ptr<const Job> job;
   Status s = state_.JobForJobClientId(request->job_client_id(), job);
   if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
@@ -872,6 +921,8 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
     task_info->set_transfer_address(task->transfer_address);
+    *task_info->mutable_worker_tags() = {task->worker_tags.begin(),
+                                         task->worker_tags.end()};
     task_info->set_task_id(task->task_id);
     task_info->set_job_id(job->job_id);
     task_info->set_starting_round(task->starting_round);
@@ -979,13 +1030,41 @@ void DataServiceDispatcherImpl::JobGcThread() {
     if (cancelled_) {
       return;
     }
-    Status s = GcOldJobs();
-    if (!s.ok()) {
-      LOG(WARNING) << "Error garbage collecting old jobs: " << s;
+    {
+      Status s = ReleaseMissingClients();
+      if (!s.ok()) {
+        LOG(WARNING) << "Error releasing missing clients: " << s;
+      }
+    }
+
+    {
+      Status s = GcOldJobs();
+      if (!s.ok()) {
+        LOG(WARNING) << "Error garbage collecting old jobs: " << s;
+      }
     }
     next_check_micros =
         env_->NowMicros() + (config_.job_gc_check_interval_ms() * 1000);
   }
+}
+
+Status DataServiceDispatcherImpl::ReleaseMissingClients()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  int64_t now = env_->NowMicros();
+  for (const auto& client_id : state_.ListActiveClientIds()) {
+    if (absl::FromUnixMicros(now) >
+        latest_client_heartbeats_time_[client_id] +
+            absl::Milliseconds(config_.client_timeout_ms())) {
+      LOG(INFO) << "Releasing timed-out client with id " << client_id;
+      Update update;
+      ReleaseJobClientUpdate* release_client =
+          update.mutable_release_job_client();
+      release_client->set_job_client_id(client_id);
+      release_client->set_time_micros(now);
+      TF_RETURN_IF_ERROR(Apply(update));
+    }
+  }
+  return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {

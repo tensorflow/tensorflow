@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/strings/cord.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -179,7 +177,7 @@ TEST(StatusGroup, AggregateWithMultipleErrorStatus) {
 
 TEST(Status, InvalidPayloadGetsIgnored) {
   Status s = Status();
-  s.SetPayload("Invalid", absl::Cord("Invalid Val"));
+  s.SetPayload("Invalid", "Invalid Val");
   ASSERT_FALSE(s.GetPayload("Invalid").has_value());
   bool is_err_erased = s.ErasePayload("Invalid");
   ASSERT_EQ(is_err_erased, false);
@@ -187,52 +185,21 @@ TEST(Status, InvalidPayloadGetsIgnored) {
 
 TEST(Status, SetPayloadSetsOrUpdatesIt) {
   Status s(error::INTERNAL, "Error message");
-  s.SetPayload("Error key", absl::Cord("Original"));
-  ASSERT_EQ(s.GetPayload("Error key"), "Original");
-  s.SetPayload("Error key", absl::Cord("Updated"));
-  ASSERT_EQ(s.GetPayload("Error key"), "Updated");
+  s.SetPayload("Error key", "Original");
+  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece("Original"));
+  s.SetPayload("Error key", "Updated");
+  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece("Updated"));
 }
 
 TEST(Status, ErasePayloadRemovesIt) {
   Status s(error::INTERNAL, "Error message");
-  s.SetPayload("Error key", absl::Cord("Original"));
+  s.SetPayload("Error key", "Original");
 
   bool is_err_erased = s.ErasePayload("Error key");
   ASSERT_EQ(is_err_erased, true);
   is_err_erased = s.ErasePayload("Error key");
   ASSERT_EQ(is_err_erased, false);
   ASSERT_FALSE(s.GetPayload("Error key").has_value());
-}
-
-TEST(Status, ErrorStatusForEachPayloadIteratesOverAll) {
-  Status s(error::INTERNAL, "Error message");
-  s.SetPayload("key1", absl::Cord("value1"));
-  s.SetPayload("key2", absl::Cord("value2"));
-  s.SetPayload("key3", absl::Cord("value3"));
-
-  absl::flat_hash_map<std::string, absl::Cord> payloads;
-  s.ForEachPayload([&payloads](absl::string_view key, const absl::Cord& value) {
-    payloads[key] = value;
-  });
-
-  EXPECT_EQ(payloads.size(), 3);
-  EXPECT_EQ(payloads["key1"], "value1");
-  EXPECT_EQ(payloads["key2"], "value2");
-  EXPECT_EQ(payloads["key3"], "value3");
-}
-
-TEST(Status, OkStatusForEachPayloadNoIteration) {
-  Status s = Status::OK();
-  s.SetPayload("key1", absl::Cord("value1"));
-  s.SetPayload("key2", absl::Cord("value2"));
-  s.SetPayload("key3", absl::Cord("value3"));
-
-  absl::flat_hash_map<std::string, absl::Cord> payloads;
-  s.ForEachPayload([&payloads](absl::string_view key, const absl::Cord& value) {
-    payloads[key] = value;
-  });
-
-  EXPECT_EQ(payloads.size(), 0);
 }
 
 static void BM_TF_CHECK_OK(::testing::benchmark::State& state) {

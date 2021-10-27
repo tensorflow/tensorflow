@@ -19,10 +19,10 @@ limitations under the License.
 #include <functional>
 #include <iosfwd>
 #include <memory>
+#include <set>
 #include <string>
+#include <unordered_map>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/strings/cord.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -143,16 +143,21 @@ class Status {
   // may attach multiple payloads (with differing type URLs) to any given
   // status object, provided that the status is currently exhibiting an error
   // code (i.e. is not OK).
+  // TODO(b/197552541): Use absl::Cord for payload value type.
 
+  // The Payload-related APIs are cloned from absl::Status.
+  //
   // Returns the payload of a status given its unique `type_url` key, if
-  // present and the status is not ok.
-  absl::optional<absl::Cord> GetPayload(tensorflow::StringPiece type_url) const;
+  // present.
+  absl::optional<tensorflow::StringPiece> GetPayload(
+      tensorflow::StringPiece type_url) const;
 
   // Sets the payload for a non-ok status using a `type_url` key, overwriting
   // any existing payload for that `type_url`.
   //
   // This function does nothing if the Status is ok.
-  void SetPayload(tensorflow::StringPiece type_url, absl::Cord payload);
+  void SetPayload(tensorflow::StringPiece type_url,
+                  tensorflow::StringPiece payload);
 
   // Erases the payload corresponding to the `type_url` key.  Returns `true` if
   // the payload was present.
@@ -162,11 +167,11 @@ class Status {
   // `visitor(type_key, payload)` callable for each one.
   //
   // The order of calls to `visitor()` is not specified and may change at
-  // any time and any mutation on the same 'absl::Status' object during
-  // visitation is forbidden and could result in undefined behavior.
+  // any time and any mutation on the same Status object during visitation is
+  // forbidden and could result in undefined behavior.
   void ForEachPayload(
-      const std::function<void(absl::string_view, const absl::Cord&)>& visitor)
-      const;
+      const std::function<void(tensorflow::StringPiece,
+                               tensorflow::StringPiece)>& visitor) const;
 
  private:
   static const std::string& empty_string();
@@ -175,7 +180,7 @@ class Status {
     tensorflow::error::Code code;
     std::string msg;
     std::vector<StackFrame> stack_trace;
-    absl::flat_hash_map<std::string, absl::Cord> payloads;
+    std::unordered_map<std::string, std::string> payloads;
   };
 
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
@@ -188,6 +193,11 @@ class Status {
 // Helper class to manage multiple child status values.
 class StatusGroup {
  public:
+  StatusGroup();
+  // Constructor to form a StatusGroup from any N set of Status arguments.
+  // Usage: StatusGroup({status_a, status_b, status_c});
+  StatusGroup(std::initializer_list<Status> statuses);
+
   // Utility function to mark a Status as derived. By marking derived status,
   // Derived status messages are ignored when reporting errors to end users.
   static Status MakeDerived(const Status& s);
@@ -196,6 +206,13 @@ class StatusGroup {
   // Enable warning and error log collection for appending to the aggregated
   // status. This function may be called more than once.
   static void ConfigureLogHistory();
+
+  // Returns merged payloads of all statuses. In case multiple statuses have the
+  // same payload key, non-derived statuses have priority over derived ones,
+  // otherwise one payload value will be chosen in an unspecified but
+  // deterministic order.
+  // NOTE: The payload marking derived statuses as derived will not be returned.
+  std::unordered_map<std::string, std::string> GetPayloads() const;
 
   // Return a merged status with combined child status messages with a summary.
   Status as_summary_status() const;
@@ -215,7 +232,18 @@ class StatusGroup {
  private:
   bool ok_ = true;
   size_t num_ok_ = 0;
-  std::vector<Status> children_;
+
+  // Maintain a sorted collection of statuses.
+  struct CompareStatus {
+    bool operator()(const Status& a, const Status& b) const {
+      return a.ToString() > b.ToString();
+    }
+  };
+  // Using std::set instead of absl::btree_set to keep size for certain
+  // dependent libraries under the limit.
+  std::set<Status, CompareStatus> derived_;
+  std::set<Status, CompareStatus> non_derived_;
+
   std::vector<std::string> recent_logs_;  // recent warning and error logs
 };
 

@@ -13,20 +13,18 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.data service ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from absl.testing import parameterized
 
+from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
+from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
@@ -82,7 +80,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testDistributeInvalidCompression(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    with self.assertRaisesRegex(ValueError, "Invalid compression argument"):
+    with self.assertRaisesRegex(ValueError, "Invalid `compression` argument"):
       self.make_distributed_range_dataset(10, cluster, compression="foo")
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -254,7 +252,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testEmptyJobNameDistribute(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    with self.assertRaisesRegex(ValueError, "job_name must not be empty"):
+    with self.assertRaisesRegex(ValueError, "`job_name` must not be empty"):
       dataset_ops.Dataset.range(10).apply(
           data_service_ops.distribute(
               processing_mode="parallel_epochs",
@@ -266,7 +264,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset_id = data_service_ops.register_dataset(
         cluster.dispatcher.target, dataset_ops.Dataset.range(10))
-    with self.assertRaisesRegex(ValueError, "job_name must not be empty"):
+    with self.assertRaisesRegex(ValueError, "`job_name` must not be empty"):
       data_service_ops.from_dataset_id(
           dataset_id=dataset_id,
           processing_mode="parallel_epochs",
@@ -274,9 +272,24 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
           job_name="")
 
   @combinations.generate(test_base.default_test_combinations())
+  def testExplicitProtocolFromDatasetId(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, data_transfer_protocol="grpc")
+    range_ds = dataset_ops.Dataset.range(10)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher.target,
+                                                   range_ds)
+    ds = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id,
+        processing_mode="parallel_epochs",
+        element_spec=range_ds.element_spec,
+        service=cluster.dispatcher.target,
+        data_transfer_protocol="grpc")
+    self.assertDatasetProduces(ds, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
   def testNonStringJobNameDistribute(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    with self.assertRaisesRegex(ValueError, "job_name must be a string"):
+    with self.assertRaisesRegex(ValueError, "`job_name` must be a string"):
       dataset_ops.Dataset.range(10).apply(
           data_service_ops.distribute(
               processing_mode="parallel_epochs",
@@ -288,7 +301,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset_id = data_service_ops.register_dataset(
         cluster.dispatcher.target, dataset_ops.Dataset.range(10))
-    with self.assertRaisesRegex(ValueError, "job_name must be a string"):
+    with self.assertRaisesRegex(ValueError, "`job_name` must be a string"):
       data_service_ops.from_dataset_id(
           dataset_id=dataset_id,
           processing_mode="parallel_epochs",
@@ -430,6 +443,62 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       while cluster.num_tasks_on_workers() > 0:
         time.sleep(0.1)
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testGcClient(self):
+    dispatcher = server_lib.DispatchServer(
+        service_config_pb2.DispatcherConfig(
+            protocol="grpc",
+            job_gc_check_interval_ms=50,
+            job_gc_timeout_ms=20,
+            client_timeout_ms=50))
+    dispatcher_address = dispatcher.target.split("://")[1]
+    _ = server_lib.WorkerServer(
+        server_lib.WorkerConfig(
+            dispatcher_address=dispatcher_address, heartbeat_interval_ms=100))
+
+    num_elements = 1000
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.apply(
+        data_service_ops._distribute(
+            processing_mode=ShardingPolicy.OFF,
+            service=dispatcher.target,
+            task_refresh_interval_hint_ms=10000))
+    get_next = self.getNext(dataset)
+
+    # The client does not heartbeat in 10 seconds. It will be garbage-collected.
+    with self.assertRaisesRegex(errors.NotFoundError, "Unknown job client id"):
+      self.evaluate(get_next())
+      time.sleep(3)
+      self.getIteratorOutput(get_next)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testKeepClientAliveBeforeReading(self):
+    dispatcher = server_lib.DispatchServer(
+        service_config_pb2.DispatcherConfig(
+            protocol="grpc",
+            job_gc_check_interval_ms=50,
+            job_gc_timeout_ms=20,
+            client_timeout_ms=1000))
+    dispatcher_address = dispatcher.target.split("://")[1]
+    _ = server_lib.WorkerServer(
+        server_lib.WorkerConfig(
+            dispatcher_address=dispatcher_address, heartbeat_interval_ms=100))
+
+    num_elements = 1000
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.apply(
+        data_service_ops._distribute(
+            processing_mode=ShardingPolicy.OFF,
+            service=dispatcher.target,
+            task_refresh_interval_hint_ms=100))
+    get_next = self.getNext(dataset)
+
+    # The client regularly heartbeats in 100 milliseconds. It should not be
+    # garbage-collected even if it does not start reading in 3 seconds.
+    time.sleep(3)
+    self.assertEqual(
+        self.getIteratorOutput(get_next), list(range(num_elements)))
+
   @combinations.generate(test_base.default_test_combinations())
   def testApplyDeterminismOption(self):
     elements = list(range(10))
@@ -502,7 +571,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testDistributeNonStringAddresses(self):
     ds = dataset_ops.Dataset.range(10)
-    with self.assertRaisesRegex(ValueError, "service must be a string"):
+    with self.assertRaisesRegex(ValueError, "`service` must be a string"):
       ds = ds.apply(
           data_service_ops.distribute(
               processing_mode="parallel_epochs", service=1))
@@ -511,7 +580,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   def testDistributeEmptyAddress(self):
     ds = dataset_ops.Dataset.range(10)
     with self.assertRaisesWithLiteralMatch(ValueError,
-                                           "service must not be empty"):
+                                           "`service` must not be empty"):
       ds = ds.apply(
           data_service_ops.distribute(
               processing_mode="parallel_epochs", service=""))
@@ -544,7 +613,9 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   def testDistributeInvalidProcessingMode(self):
     ds = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegex(
-        ValueError, "should be a ShardingPolicy, `\"parallel_epochs\"`, or "
+        ValueError,
+        "should be a `tf.data.experimental.service.ShardingPolicy`, "
+        "`\"parallel_epochs\"`, or "
         "`\"distributed_epoch\"`. Got 'invalid'."):
       ds = ds.apply(
           data_service_ops.distribute(
@@ -792,7 +863,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
                                                    ds)
     with self.assertRaisesRegex(
-        ValueError, "In graph mode element_spec must be provided manually."):
+        ValueError, "In graph mode `element_spec` must be provided manually."):
       ds = data_service_ops.from_dataset_id("parallel_epochs",
                                             cluster.dispatcher_address(),
                                             dataset_id)

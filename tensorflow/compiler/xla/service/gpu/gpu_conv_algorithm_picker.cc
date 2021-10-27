@@ -102,27 +102,6 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
   return se::DeviceMemory<uint8>(buffer_addr);
 }
 
-std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
-                                         se::StreamExecutor* stream_exec) {
-  std::vector<AlgorithmDesc> algorithms;
-  bool succ = false;
-  switch (kind) {
-    case CudnnConvKind::kBackwardFilter:
-      succ = stream_exec->GetConvolveBackwardFilterAlgorithms(&algorithms);
-      break;
-    case CudnnConvKind::kBackwardInput:
-      succ = stream_exec->GetConvolveBackwardDataAlgorithms(&algorithms);
-      break;
-    case CudnnConvKind::kForward:
-    case CudnnConvKind::kForwardActivation:
-      succ = stream_exec->GetConvolveAlgorithms(&algorithms);
-      break;
-  }
-  DCHECK(succ);
-
-  return algorithms;
-}
-
 StatusOr<std::vector<se::dnn::ProfileResult>> GetMIOpenAlgorithms(
     const HloCustomCallInstruction* instr,
     absl::Span<se::DeviceMemoryBase> operand_buffers,
@@ -301,10 +280,12 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     autotune_cache_stats.cache_misses++;
   }
 
-  // Make sure any previous activity on this executor is done. We don't want to
-  // interfere with programs that are still running on the GPU.
+  // Make sure any previous activity on this executor is done. We don't want
+  // other work still running on the GPU to interfere with autotuning.
   if (!stream_exec_->SynchronizeAllActivity()) {
-    return InternalError("Failed to synchronize GPU for autotuning.");
+    return InternalError(
+        "Failed to synchronize GPU for autotuning conv instruction: %s",
+        std::get<1>(key) /* instr */);
   }
 
   // allocator either points to this->allocator_ or, if that's null, to a
@@ -418,15 +399,29 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
 
-  for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
+  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind dnn_kind,
+                      GetDNNConvKindFromCudnnConvKind(config.kind));
+
+  std::vector<AlgorithmDesc> algorithms;
+  if (!stream_exec_->GetConvolveAlgorithms(dnn_kind, &algorithms)) {
+    return Status(tensorflow::error::UNKNOWN, "GetConvolveAlgorithms failed.");
+  }
+  for (const AlgorithmDesc& alg : algorithms) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
         absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
                      alg.ToString()),
         2);
 
+    profile_results.emplace_back();
+    AutotuneResult& result = profile_results.back();
+    result.mutable_conv()->set_algorithm(alg.algo_id());
+    result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
+
     if (absl::c_linear_search(disabled_algos, alg)) {
       LOG(INFO) << "Omitted potentially buggy algorithm " << alg.ToString()
                 << " for conv " << instr->ToString();
+      result.mutable_failure()->set_kind(AutotuneResult::DISQUALIFIED);
+      result.mutable_failure()->set_msg("Disqualified for being known-buggy.");
       continue;
     }
 
@@ -437,6 +432,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     if (kind == CudnnConvKind::kForwardActivation &&
         backend_config.activation_mode() == se::dnn::ActivationMode::kNone &&
         alg.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
+      result.mutable_failure()->set_kind(AutotuneResult::DISQUALIFIED);
+      result.mutable_failure()->set_msg("Disqualified for implicit RELU.");
       continue;
     }
 
@@ -457,18 +454,22 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
     if (!launch_status.ok()) {
       VLOG(4) << "Launch failed: " << launch_status;
+      result.mutable_failure()->set_kind(AutotuneResult::DISQUALIFIED);
+      result.mutable_failure()->set_msg(
+          absl::StrCat("Profiling failure on cuDNN engine ", alg.ToString(),
+                       ": ", launch_status.ToString()));
       continue;
     }
 
     if (!profile_result.is_valid()) {
       VLOG(4) << "Launch succeeded but profile result is invalid.";
+      // Not DISQUALIFIED: this means something went wrong internally.
+      result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
+      result.mutable_failure()->set_msg(absl::StrCat(
+          "Launch succeeded but profile result is invalid, with cuDNN engine ",
+          alg.ToString(), ": ", launch_status.ToString()));
       continue;
     }
-
-    profile_results.emplace_back();
-    AutotuneResult& result = profile_results.back();
-    result.mutable_conv()->set_algorithm(alg.algo_id());
-    result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
 
     int64_t scratch_bytes_used =
         scratch_allocator.TotalAllocatedBytesExcludingRedzones();
@@ -588,7 +589,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   // Crash on miscompares and redzone violations if desired.  Do this after
   // logging the autotuning results, otherwise we won't get any data!
   for (const auto& result : profile_results) {
-    if (result.has_failure()) {
+    if (result.has_failure() &&
+        result.failure().kind() != AutotuneResult::DISQUALIFIED) {
       CHECK(!crash_on_checking_failure);
     }
   }
@@ -705,12 +707,30 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
 StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
   CHECK(IsCustomCallToDnnConvolution(*instr));
 
+  const bool strict = instr->parent()
+                          ->parent()
+                          ->config()
+                          .debug_options()
+                          .xla_gpu_strict_conv_algorithm_picker();
+
   StatusOr<AutotuneResult> best_algo_or =
       PickBestAlgorithm(Cast<HloCustomCallInstruction>(instr));
   if (!best_algo_or.ok()) {
-    LOG(WARNING) << "Failed to determine best cudnn convolution algorithm: "
-                 << best_algo_or.status()
-                 << "\n\nConvolution performance may be suboptimal.";
+    auto msg = absl::StrFormat(
+        "Failed to determine best cudnn convolution algorithm for:\n%s\n\n"
+        "Original error: %s",
+        instr->ToString(), best_algo_or.status().ToString());
+
+    if (strict) {
+      return Unknown(
+          "%s\n\nTo ignore this failure and try to use a fallback algorithm "
+          "(which may have suboptimal performance), use "
+          "XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false.  Please "
+          "also file a bug for the root cause of failing autotuning.",
+          msg);
+    }
+    LOG(WARNING)
+        << msg << "\n\nAs a result, convolution performance may be suboptimal.";
     return false;
   }
 

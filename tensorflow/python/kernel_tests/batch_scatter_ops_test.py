@@ -14,15 +14,11 @@
 # ==============================================================================
 """Tests for tensorflow.ops.tf.scatter."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -74,7 +70,8 @@ class ScatterTest(test.TestCase):
           self.evaluate(variables.variables_initializer([ref]))
 
           if method:
-            ref.batch_scatter_update(ops.IndexedSlices(indices, updates))
+            ref.batch_scatter_update(
+                indexed_slices.IndexedSlices(indices, updates))
           else:
             self.evaluate(tf_scatter(ref, indices, updates))
           self.assertAllClose(ref, new)

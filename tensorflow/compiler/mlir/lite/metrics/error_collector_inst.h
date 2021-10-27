@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
-#include "tensorflow/lite/python/metrics_wrapper/converter_error_data.pb.h"
+#include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
 
 namespace mlir {
 namespace TFL {

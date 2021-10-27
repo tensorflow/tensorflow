@@ -14,10 +14,6 @@
 # ==============================================================================
 """It lists ops of RaggedTensor for the interest of test."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
@@ -76,11 +72,27 @@ UNARY_FLOAT_OPS = [
     math_ops.tan,
     math_ops.tanh,
     array_ops.ones_like,
+    array_ops.ones_like_v2,
     array_ops.zeros_like,
+    array_ops.zeros_like_v2,
     special_math_ops.bessel_i0,
     special_math_ops.bessel_i0e,
     special_math_ops.bessel_i1,
+    special_math_ops.bessel_j0,
+    special_math_ops.bessel_j1,
     special_math_ops.bessel_i1e,
+    special_math_ops.bessel_k0,
+    special_math_ops.bessel_k0e,
+    special_math_ops.bessel_k1,
+    special_math_ops.bessel_k1e,
+    special_math_ops.bessel_y0,
+    special_math_ops.bessel_y1,
+    special_math_ops.dawsn,
+    special_math_ops.expint,
+    special_math_ops.fresnel_cos,
+    special_math_ops.fresnel_sin,
+    special_math_ops.spence,
+    string_ops.as_string,
 ]
 UNARY_BOOL_OPS = [
     math_ops.logical_not,
@@ -89,15 +101,19 @@ UNARY_STRING_OPS = [
     string_ops.decode_base64,
     string_ops.encode_base64,
     string_ops.string_strip,
+    string_ops.string_length,
+    string_ops.string_length_v2,
     parsing_ops.decode_compressed,
 ]
 BINARY_FLOAT_OPS = [
     math_ops.add,
     math_ops.atan2,
     math_ops.complex,
+    math_ops.div,
     math_ops.div_no_nan,
     math_ops.divide,
     math_ops.equal,
+    math_ops.floor_div,
     math_ops.floordiv,
     math_ops.floormod,
     math_ops.greater,

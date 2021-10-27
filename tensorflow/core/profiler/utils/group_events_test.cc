@@ -257,7 +257,7 @@ TEST(GroupEventsTest, GroupFunctionalOp) {
       [&](const tensorflow::profiler::XLineVisitor& line) {
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();
@@ -393,7 +393,7 @@ TEST(GroupEventsTest, SemanticArgTest) {
         num_events += line.NumEvents();
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();
@@ -434,7 +434,7 @@ TEST(GroupEventsTest, SemanticIntArgNoMatchTest) {
         num_events += line.NumEvents();
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();
@@ -479,7 +479,7 @@ TEST(GroupEventsTest, SemanticUintArgNoMatchTest) {
         num_events += line.NumEvents();
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();
@@ -518,7 +518,7 @@ TEST(GroupEventsTest, AsyncEventTest) {
         EXPECT_EQ(line.NumEvents(), 3);
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();
@@ -571,7 +571,7 @@ TEST(GroupEventsTest, WorkerTest) {
         EXPECT_EQ(line.NumEvents(), 6);
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();
@@ -639,7 +639,7 @@ TEST(GroupEventsTest, BatchingSessionTest) {
       [&](const tensorflow::profiler::XLineVisitor& line) {
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();

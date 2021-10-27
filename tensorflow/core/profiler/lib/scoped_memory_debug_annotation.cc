@@ -17,7 +17,11 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-thread_local MemoryDebugAnnotation ScopedMemoryDebugAnnotation::annotation_;
+/*static*/ MemoryDebugAnnotation*
+ScopedMemoryDebugAnnotation::ThreadMemoryDebugAnnotation() {
+  static thread_local MemoryDebugAnnotation annotation;
+  return &annotation;
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

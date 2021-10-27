@@ -29,8 +29,8 @@ limitations under the License.
 // For float features you have to use float_list, for string - bytes_list.
 //
 // To do the same with this library:
-//   int id = GetFeatureValues<int64>("tag", example).Get(0);
-//   GetFeatureValues<int64>("tag", &example)->Add(id);
+//   int id = GetFeatureValues<int64_t>("tag", example).Get(0);
+//   GetFeatureValues<int64_t>("tag", &example)->Add(id);
 //
 // Modification of bytes features is slightly different:
 //   auto tag = GetFeatureValues<string>("tag", &example);

@@ -15,10 +15,6 @@
 # pylint: disable=unidiomatic-typecheck
 """Defun decorator for defining graph-mode functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import itertools
@@ -40,6 +36,7 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
+from tensorflow.python.eager import function_trace_type
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
@@ -51,6 +48,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -98,63 +96,12 @@ SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 # are not detected by Global TAP.
 # TODO(jiaweix): remove this flag and related args (b/198782192)
 ENCODE_VARIABLES_BY_RESOURCE_ID = True
+# TODO(b/201533914): Remove this flag and related args
+USE_FULL_TRACE_TYPE = False
 
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
     "Time for tf.function to build a graph (us).")
-
-
-# TODO(b/195985838): cleanup this function.
-def _make_input_signature_hashable(elem):
-  """Rewrite input signature to be hashable.
-
-  We replace nested variables in the input signature with TensorSpec in order to
-  be hashable.
-
-  Args:
-    elem: Input signature element
-
-  Returns:
-    A hashable object for the requested input signature
-  """
-  try:
-    hash(elem)
-  except TypeError:
-    # TODO(slebedev): consider using nest.
-    if isinstance(elem, tuple):
-      return tuple(map(_make_input_signature_hashable, elem))
-
-    # TFE_Py_EncodeArg weakrefs arguments it does not recognize, and we expect
-    # all recognized types to be hashable.
-    assert isinstance(elem, weakref.ReferenceType)
-    v = elem()
-
-    if resource_variable_ops.is_resource_variable(v):
-      # We special case variables here to use unique_id as the cache key. This
-      # ensures we have to retrace whenever a different variable is passed in.
-      # This is needed to support cases where the user may use the id of a
-      # variable in the function perhaps as a lookup in a dictionary.
-      #
-      # This choice leads to more retracing when we could have possibly used the
-      # shape and dtype instead. However, we expect the number of variables in a
-      # program to be bounded, and correspondingly the number of retraces.
-      #
-      # Note we also include the class name to avoid collisions with strings.
-      return v.__class__, v._unique_id  # pylint: disable=protected-access
-
-    if _is_ndarray(v):
-      # Numpy arrays are not hashable, but when calling functions we treat them
-      # in the same way as tf.Tensors.
-      if not hasattr(v, "shape") or not hasattr(v, "dtype"):
-        # TODO(tomhennigan) De-dup with _as_ndarray in _convert_numpy_inputs.
-        v = _as_ndarray(v)
-      return tensor_spec.TensorSpec(v.shape, v.dtype)
-
-    raise ValueError("Arguments to a tf.function must be a nested structure of "
-                     "Tensors, Variables, NumPy arrays, or hashable Python "
-                     f"objects, got {type(v)}.")
-
-  return elem
 
 
 CacheKey = collections.namedtuple("CacheKey", [
@@ -288,30 +235,19 @@ class _InterpolateFunctionError(object):
     if not exc or not isinstance(exc, errors.OpError):
       return False
     message = compat.as_text(exc.message)
-    _, tags = error_interpolation.parse_message(message)
+    _, func_tags, _ = error_interpolation.parse_message(message)
     g = None
-    func_stack = []
-    for t in tags:
-      if t.type == "function_node":
-        # TODO(mdan): Tests should cover this.
-        if t.name == compat.as_str(self._func.name):
-          g = self._func.graph
-        elif g:
-          next_func = g._get_function(t.name)  # pylint: disable=protected-access
-          if next_func is not None and isinstance(next_func,
-                                                  _EagerDefinedFunction):
-            g = next_func.graph
-        if g:
-          func_stack.append(g.name)
-        else:
-          func_stack.append("<unknown>")
+    for func_tag in func_tags:
+      # TODO(mdan): Tests should cover this.
+      if func_tag.name == compat.as_str(self._func.name):
+        g = self._func.graph
+      elif g:
+        next_func = g._get_function(func_tag.name)  # pylint: disable=protected-access
+        if next_func is not None and isinstance(next_func,
+                                                _EagerDefinedFunction):
+          g = next_func.graph
     if g:
-      message = error_interpolation.interpolate(message, g)
-      if len(func_stack) >= 2:
-        message += "\n\nFunction call stack:\n"
-        message += " -> ".join(func_stack)
-        message += "\n"
-      exc._message = message  # pylint: disable=protected-access
+      exc._message = error_interpolation.interpolate(message, g)  # pylint: disable=protected-access
     return False
 
 
@@ -793,7 +729,7 @@ class _DelayedRewriteGradientFunctions(object):
     cleaned_doutputs = []
     for doutput, placeholder in zip(doutputs, self._func_graph.outputs):
       if backprop_util.IsTrainable(placeholder):
-        if isinstance(doutput, ops.IndexedSlices):
+        if isinstance(doutput, indexed_slices.IndexedSlices):
           # Gradient passed to a backward ConcreteFunction must be tf.Tensor,
           # so we convert tf.IndexedSlices to tf.Tensor.
           cleaned_doutputs.append(ops.convert_to_tensor(doutput))
@@ -1284,7 +1220,7 @@ class _TapeGradientFunctions(object):
         # is only really effective when doing tf.gather(variable) as the
         # adjoint functions for most operations are unlikely to preserve the
         # sparsity in IndexedSlices.
-        if isinstance(arg, ops.IndexedSlices):
+        if isinstance(arg, indexed_slices.IndexedSlices):
           arg = ops.convert_to_tensor(arg)
         if output_index in skip_positions:
           continue
@@ -1547,8 +1483,7 @@ class ConcreteFunction(core.ConcreteFunction):
     self._num_positional_args = None
 
     self._func_graph = func_graph
-    self._captured_inputs = self._func_graph.external_captures
-    self._captured_closures = self._func_graph.deferred_external_captures
+    self._captured_inputs = self._func_graph.external_captures + self._func_graph.deferred_external_captures
 
     # function_spec defines the structured signature.
     self._set_function_spec(function_spec)
@@ -1565,22 +1500,19 @@ class ConcreteFunction(core.ConcreteFunction):
       has_resource_vars = any(inp.dtype == dtypes.resource
                               for inp in self.inputs)
 
-      assert not any(
-          (has_resource_vars, self._captured_inputs, self._captured_closures)
-      ), ('Function {name} has "{attr}={value}" attribute and thus can not '
+      assert not any((has_resource_vars, self._captured_inputs)), (
+          'Function {name} has "{attr}={value}" attribute and thus can not '
           "depend on any tensors outside of its signature or modify variables. "
           "\n\nNote: variables are always captured and cause function "
           "re-tracing for every variable called.\n"
-          "  inputs: {inputs}\n  captures: {captured}\n"
-          "  closures: {closures}.\n\n"
+          "  inputs: {inputs}\n  captures: {captured}\n\n"
           "To pass a variable to such function use  "
           "use variable.read_value().".format(
               name=func_graph.name,
               attr=IMPLEMENTS_ATTRIBUTE_NAME,
               value=attrs[IMPLEMENTS_ATTRIBUTE_NAME],
               inputs=self.inputs,
-              captured=self._captured_inputs,
-              closures=self._captured_closures))
+              captured=self._captured_inputs))
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
     self._attrs = _parse_func_attrs(attrs or {})
@@ -2044,15 +1976,129 @@ class ConcreteFunction(core.ConcreteFunction):
     """Returns outputs in `self.graph` as returned by the original function."""
     return self._func_graph.structured_outputs
 
+  def set_external_captures(self, captures):
+    """Updates the function capture values.
+
+    The new values must have tensor types and shapes consistent with the
+    original captures of the concrete function, but it is allowed to change a
+    value captured with a deferred one and vice-versa.
+
+    Args:
+      captures: A list of tensors or closures. Tensors are value captures, and
+        closures are call-time (deferred captures).
+    """
+    # TODO(wxinyi): 1. verify that the new captures' type spec is compatible
+    # with the original's. However, doing so requires MirroredVariable captures
+    # initialized. 2. replace the original/new captures/deferred
+    # captures in the wrapped graph. Doing such for a capture-to-deferred
+    # capture replacement requires more arguments than the deferred capture
+    # itself, e.g. default value, spec.
+    self._captured_inputs = captures
+
+  def replace_capture_with_deferred_capture(self,
+                                            tensor,
+                                            closure,
+                                            spec,
+                                            placeholder=None,
+                                            default_value=None):
+    """Replaces existing capture `tensor` with a deferred capture `closure`.
+
+    This API replaces the capture `tensor` from the concrete function's captured
+    inputs list, and places the deferred capture `closure` in
+    its spot so the order of captured inputs is preserved. This is important
+    because the old `tensor` and the new `closure` will have the same internal
+    placeholder, which can be passed through the `placeholder` argument, or
+    skipped, in which case we find the placeholder from internal inputs by
+    indexing `tensor` in the external captured inputs list. Thus, it is
+    important that the new deferred capture has output spec (specified by the
+    `spec` argument) compatible with the internal placeholder (`placeholder`)
+    and the original capture (`tensor`).
+
+    For example,
+
+    ```python
+    bool_captured_tensor = tf.constant(True)
+    float_captured_tensor = tf.constant([3.], dtype=tf.float32)
+    value = tf.constant([2.], dtype=tf.float32)
+
+    @tf.function
+    def fn():
+      deferred_tensor = ops.get_default_graph().capture_call_time_value(
+          lambda: value,
+          tf.TensorSpec(shape=(1,), dtype=tf.float32))
+      if bool_captured_tensor:
+        return deferred_tensor
+      else:
+        return deferred_tensor + float_captured_tensor
+
+    concrete_fn = fn.get_concrete_function()
+    print(concrete_fn())  # tf.Tensor([2.], shape=(1,), dtype=float32)
+
+    new_bool_captured_tensor = constant_op.constant(False)
+    def bool_closure():
+      return new_bool_captured_tensor
+
+    concrete_fn.replace_capture_with_deferred_capture(
+        bool_captured_tensor,
+        bool_closure,
+        spec=tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool))
+
+    print(concrete_fn())  # tf.Tensor([5.], shape=(1,), dtype=float32)
+    ```
+
+    Args:
+      tensor: Tensor already captured. This `tensor` should be listed in
+        concrete_function.captured_inputs except when it's empty such as when
+        the concrete function is restored from SavedModel.
+      closure: function which takes no arguments, to be evaluated at function
+        call time, returning a nest of tensors compatible with `spec`.
+      spec: nest of TypeSpec for the value to capture.
+      placeholder: optional. The internal placeholder corresponding to the
+        captured `tensor` and the new `closure`.
+      default_value: optional value to use in environments that cannot safely
+        evaluate closure.
+    """
+    capture_index = None
+    for i, capture in enumerate(self._captured_inputs):
+      if id(tensor) == id(capture):
+        capture_index = i
+        break
+
+    if placeholder is None:
+      if capture_index is None:
+        raise ValueError(
+            f"Did not find `tensor` argument {tensor} in the ConcreteFunction's"
+            " captured inputs list, and did not receive a placeholder argument."
+            " Thus we're unable to infer the internal placeholder. ")
+
+      placeholder = self.inputs[-len(self._captured_inputs) + capture_index]
+
+    if not (spec.is_compatible_with(tensor) or
+            spec.is_compatible_with(placeholder)):
+      raise ValueError(
+          f"Attempting to substitute closure with spec {spec} that's "
+          f"incompatible with the original capture {tensor} or the internal "
+          f"placeholder {placeholder}.")
+
+    self._func_graph.replace_capture_with_deferred_capture(
+        tensor=tensor,
+        closure=closure,
+        spec=spec,
+        placeholder=placeholder,
+        default_value=default_value)
+
+    if capture_index is not None:
+      self._captured_inputs[capture_index] = closure
+
   @property
   def captured_inputs(self):
     """Returns external Tensors captured by this function.
 
     self.__call__(*args) passes `args + self.captured_inputs` to the function.
     """
-    from_closures = nest.flatten([x() for x in self._captured_closures],
-                                 expand_composites=True)
-    return self._captured_inputs + from_closures
+    return nest.flatten(
+        [x() if callable(x) else x for x in self._captured_inputs],
+        expand_composites=True)
 
   @property
   def function_def(self):
@@ -2350,7 +2396,7 @@ class ConcreteFunction(core.ConcreteFunction):
 
 _pywrap_utils.RegisterType("Tensor", ops.Tensor)
 _pywrap_utils.RegisterType("EagerTensor", ops.EagerTensor)
-_pywrap_utils.RegisterType("IndexedSlices", ops.IndexedSlices)
+_pywrap_utils.RegisterType("IndexedSlices", indexed_slices.IndexedSlices)
 
 
 def _deterministic_dict_values(dictionary):
@@ -2772,28 +2818,6 @@ class FunctionSpec(object):
     return inputs, kwargs, flat_inputs, filtered_flat_inputs
 
 
-def _as_ndarray(value):
-  """Converts value to an ndarray, assumes _is_ndarray(value)."""
-  # TODO(tomhennigan) Support __array_interface__ too.
-  return value.__array__()
-
-
-def _is_ndarray(value):
-  """Tests whether the given value is an ndarray (and not a TF tensor/var)."""
-  # TODO(tomhennigan) Support __array_interface__ too.
-  return hasattr(value, "__array__") and not (
-      isinstance(value, ops.Tensor)
-      or isinstance(value, resource_variable_ops.BaseResourceVariable)
-      or hasattr(value, "_should_act_as_resource_variable")
-
-      # For legacy reasons we do not automatically promote Numpy strings.
-      or isinstance(value, np.str_)
-      # NumPy dtypes have __array__ as unbound methods.
-      or isinstance(value, type)
-      # CompositeTensors should be flattened instead.
-      or isinstance(value, composite_tensor.CompositeTensor))
-
-
 def _convert_numpy_inputs(inputs):
   """Convert numpy array inputs to tensors."""
   # We assume that any CompositeTensors have already converted their components
@@ -2817,7 +2841,7 @@ def _convert_numpy_inputs(inputs):
         hasattr(value, "_should_act_as_resource_variable") or
         isinstance(value, (np.str_, type, composite_tensor.CompositeTensor))):
       # This case is equivalent to _is_ndarray(value) == True
-      a = _as_ndarray(value)
+      a = value.__array__()
       if not isinstance(a, np.ndarray):
         raise TypeError(f"The output of __array__ must be an np.ndarray, "
                         f"got {type(a)} from {value}.")
@@ -3001,10 +3025,9 @@ class Function(object):
     self._capture_by_value = capture_by_value
     self.tracing_count = 0
     if self.input_signature is not None:
-      self._hashable_input_signature = _make_input_signature_hashable(
-          self.flat_input_signature)
+      self._hashable_input_signature = hash(self.flat_input_signature)
 
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     # _descriptor_cache is a of instance of a class to an instance-specific
     # `Function`, used to make sure defun-decorated methods create different
     # functions for each instance.
@@ -3181,9 +3204,9 @@ class Function(object):
       # This reduces ambiguity, for example, when args contains a dict and
       # kwargs is empty.
       inputs = (args, kwargs)
-      input_signature = pywrap_tfe.TFE_Py_EncodeArg(
-          inputs, include_tensor_ranks_only, ENCODE_VARIABLES_BY_RESOURCE_ID)
-      hashable_input_signature = _make_input_signature_hashable(input_signature)
+      hashable_input_signature = function_trace_type.get_arg_spec(
+          inputs, include_tensor_ranks_only, ENCODE_VARIABLES_BY_RESOURCE_ID,
+          USE_FULL_TRACE_TYPE)
     else:
       del args, kwargs
       assert not include_tensor_ranks_only

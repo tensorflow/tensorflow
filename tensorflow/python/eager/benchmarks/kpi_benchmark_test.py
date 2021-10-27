@@ -31,10 +31,6 @@ to the regular expression is executed.
 e.g. --benchmarks=".*matmul*." will run all matmul related benchmarks.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import time
 

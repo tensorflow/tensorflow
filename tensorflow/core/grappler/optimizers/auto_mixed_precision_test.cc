@@ -1187,6 +1187,87 @@ TEST_F(AutoMixedPrecisionTest, TanhOp) {
       });
 }
 
+class AutoMixedPrecisionCpuTest : public GrapplerTest {
+ protected:
+  void SetUp() override {
+    // Use the same setup as GPUTest to emulate the same allowed f16 ops on GPU.
+    int num_gpus = GetNumAvailableGPUs();
+    // If GPUs are available, require that they all satisfy the min arch.
+    gpu_available_ = (num_gpus > 0);
+#if GOOGLE_CUDA
+    gpu_available_ =
+        gpu_available_ && (num_gpus == GetNumAvailableGPUs(kMinGPUArch));
+#else  // Here we force Tensorflow to use the virtual GFX906
+    gpu_available_ = false;
+#endif
+    if (gpu_available_) {
+      virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 1));
+    } else {
+      DeviceProperties device_properties;
+      device_properties.set_type("GPU");
+#if GOOGLE_CUDA
+      device_properties.mutable_environment()->insert({"architecture", "7"});
+      device_properties.mutable_environment()->insert({"cuda", "9010"});
+#else
+      device_properties.mutable_environment()->insert(
+          {"architecture", "gfx906"});
+#endif
+      virtual_cluster_.reset(
+          new VirtualCluster({{"/GPU:1", device_properties}}));
+    }
+    TF_CHECK_OK(virtual_cluster_->Provision());
+  }
+  void TearDown() override { TF_CHECK_OK(virtual_cluster_->Shutdown()); }
+
+  std::unique_ptr<Cluster> virtual_cluster_;
+  bool gpu_available_;
+};
+
+TEST_F(AutoMixedPrecisionCpuTest, Simple) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output deny1 = ops::Exp(s.WithOpName("deny1"), input);
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), deny1);
+  Output infer1 = ops::Sqrt(s.WithOpName("infer1"), clr1);
+  Output clr2 = ops::Relu(s.WithOpName("clr2"), infer1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), clr2, clr2);
+  Output clr3 = ops::Relu(s.WithOpName("clr3"), allow1);
+  Output infer2 = ops::Log(s.WithOpName("infer2"), clr3);
+  Output clr4 = ops::Relu(s.WithOpName("clr4"), infer2);
+  Output deny2 = ops::SparseMatMul(s.WithOpName("deny2"), clr4, clr4);
+  Output clr5 = ops::Relu(s.WithOpName("clr5"), deny2);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), clr5);
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::CPU};
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  VLOG(1) << output.DebugString();
+
+  GraphView output_view(&output);
+
+  // with cast nodes inserted, now they are equal
+  EXPECT_EQ(output.node_size(), item.graph.node_size());
+  // Matmul is a FP32 op now
+  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("deny1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("infer1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr3")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("infer2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr4")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("deny2")->attr().at("Ta").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("deny2")->attr().at("Tb").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr5")->attr().at("T").type(), DT_FLOAT);
+}
+
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if INTEL_MKL

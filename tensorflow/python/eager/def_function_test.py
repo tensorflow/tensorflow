@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import itertools
 import pickle
@@ -29,16 +25,19 @@ from absl.testing import parameterized
 from six.moves import range
 
 from tensorflow.python.autograph.core import converter
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -325,6 +324,29 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       foo(False)
     self.assertEqual(foo.trace_count, 3)
 
+  def testMethodExtensionType(self):
+
+    class MaskedTensor(extension_type.ExtensionType):
+      values: ops.Tensor
+      mask: ops.Tensor
+
+      @def_function.function
+      def with_default(self, default_value):
+        return array_ops.where_v2(self.mask, self.values, default_value)
+
+      @def_function.function
+      def sum(self):
+        # Use a loop & conditional to test that autograph works correctly.
+        result = 0
+        for i in range(array_ops.size(self.values)):
+          if self.mask[i]:
+            result += self.values[i]
+        return result
+
+    mt = MaskedTensor([1, 2, 3], [True, False, True])
+    self.assertAllEqual(mt.with_default(-1), [1, -1, 3])
+    self.assertAllEqual(mt.sum(), 4)
+
   def test_functools_partial(self):
     self.assertAllClose(
         3.,
@@ -596,20 +618,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     signature_args, _ = conc.structured_input_signature
     self.assertEqual('z', signature_args[0][0].name)
 
-  def test_error_inner_capture(self):
-
-    @def_function.function
-    def f(inputs):
-      num_steps, _ = inputs.shape[:2]
-      outputs = []
-      for t in math_ops.range(num_steps):
-        outputs.append(inputs[t])
-      return outputs
-
-    with self.assertRaisesRegex(errors.InaccessibleTensorError,
-                                'defined in another function or code block'):
-      f(array_ops.zeros(shape=(8, 42, 3)))
-
   def testRuntimeErrorNotSticky(self):
 
     @def_function.function
@@ -685,9 +693,39 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         _ = a + a
 
     with self.assertRaisesRegex(
-        TypeError,
-        re.compile('An op outside of the function.*passed.*Const', re.DOTALL)):
+        TypeError, re.compile('def_function_test.*out of scope', re.DOTALL)):
       failing_function()
+
+  def testSymbolicTensorIllegalCaptureCallTimeError(self):
+    x = None
+
+    @def_function.function
+    def f1(a):
+      nonlocal x
+      x = a
+      return a
+
+    @def_function.function
+    def f2(b):
+      return b + x
+
+    f1(constant_op.constant(1))
+    with self.assertRaisesRegex(
+        TypeError, re.compile('def_function_test.*out of scope', re.DOTALL)):
+      f2(constant_op.constant(2))
+
+  def testSymbolicTensorIllegalCaptureTraceTimeError(self):
+
+    @def_function.function
+    def f(inputs):
+      num_steps, _ = inputs.shape[:2]
+      outputs = []
+      for t in math_ops.range(num_steps):
+        outputs.append(inputs[t])
+      return outputs
+
+    with self.assertRaisesRegex(errors.InaccessibleTensorError, 'out of scope'):
+      f(array_ops.zeros(shape=(8, 42, 3)))
 
   def testNonUniqueNamesGetConcreteFunction(self):
     @def_function.function
@@ -1224,6 +1262,117 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     obj2.testDouble(constant_op.constant('a'))
     self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
     self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+
+  def test_recursive_tf_function(self):
+
+    @def_function.function
+    def recursive_fn(n):
+      if n > 0:
+        return recursive_fn(n - 1)
+      return 1
+
+    self.assertEqual(recursive_fn(5).numpy(), 1)
+
+  def test_recursive_tf_function_with_gradients(self):
+
+    @def_function.function
+    def recursive_fn(n, x):
+      if n > 0:
+        return n * recursive_fn(n - 1, x)
+      else:
+        return x
+
+    x = variables.Variable(1.0)
+    with backprop.GradientTape() as tape:
+      g = recursive_fn(5, x)
+
+    dg_dx = tape.gradient(g, x)
+    self.assertEqual(dg_dx.numpy(), 120)
+
+  def test_recursive_python_function(self):
+
+    def recursive_py_fn(n):
+      if n > 0:
+        return recursive_py_fn(n - 1)
+      return 1
+
+    @def_function.function
+    def recursive_fn(n):
+      return recursive_py_fn(n)
+
+    self.assertEqual(recursive_fn(5).numpy(), 1)
+
+  def test_recursive_python_function_with_gradients(self):
+
+    def recursive_py_fn(n, x):
+      if n > 0:
+        return n * recursive_py_fn(n - 1, x)
+      return x
+
+    @def_function.function
+    def recursive_fn(n, x):
+      return recursive_py_fn(n, x)
+
+    x = variables.Variable(1.0)
+    with backprop.GradientTape() as tape:
+      g = recursive_fn(5, x)
+
+    dg_dx = tape.gradient(g, x)
+    self.assertEqual(dg_dx.numpy(), 120)
+
+  def test_recursive_tf_function_call_each_other(self):
+
+    @def_function.function
+    def recursive_fn1(n):
+      if n <= 1:
+        return 1
+      return recursive_fn2(n - 1)
+
+    @def_function.function
+    def recursive_fn2(n):
+      if n <= 1:
+        return 2
+      return recursive_fn1(n - 1)
+
+    self.assertEqual(recursive_fn1(5).numpy(), 1)
+    self.assertEqual(recursive_fn1(6).numpy(), 2)
+    self.assertEqual(recursive_fn2(5).numpy(), 2)
+    self.assertEqual(recursive_fn2(6).numpy(), 1)
+
+  def test_recursive_tf_function_call_each_other_with_gradients(self):
+
+    @def_function.function
+    def recursive_fn1(n, x):
+      if n <= 1:
+        return x
+      return n * recursive_fn2(n - 1, x)
+
+    @def_function.function
+    def recursive_fn2(n, x):
+      if n <= 1:
+        return 2 * x
+      return n * recursive_fn1(n - 1, x)
+
+    x = variables.Variable(1.0)
+    with backprop.GradientTape() as tape:
+      g1 = recursive_fn1(5, x)
+
+    dg1_dx = tape.gradient(g1, x)
+    self.assertEqual(dg1_dx.numpy(), 120)
+
+    with backprop.GradientTape() as tape:
+      g2 = recursive_fn2(5, x)
+
+    dg2_dx = tape.gradient(g2, x)
+    self.assertEqual(dg2_dx.numpy(), 240)
+
+  def test_recursive_tf_function_with_cond(self):
+    @def_function.function(autograph=False)
+    def recursive_fn(n):
+      return cond_v2.cond_v2(n > 0, recursive_fn(n - 1), 1)
+
+    with self.assertRaises(RecursionError):
+      recursive_fn(constant_op.constant(5))
 
 
 if __name__ == '__main__':

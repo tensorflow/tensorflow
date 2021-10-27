@@ -374,8 +374,13 @@ final class TensorImpl implements Tensor {
       throw new IllegalArgumentException(
           String.format("Mismatched lengths (%d and %d) in dimension %d", shape[dim], len, dim));
     }
+    final int nextDim = dim + 1;
+    // Short-circuit the innermost dimension to avoid unnecessary Array.get() reflection overhead.
+    if (nextDim == shape.length) {
+      return;
+    }
     for (int i = 0; i < len; ++i) {
-      fillShape(Array.get(o, i), dim + 1, shape);
+      fillShape(Array.get(o, i), nextDim, shape);
     }
   }
 

@@ -36,6 +36,7 @@ function run_build () {
 
   "${BAZEL_WRAPPER_PATH}" \
     test \
+    --nodistinct_host_configuration \
     --build_tag_filters="${tag_filters}" \
     --test_tag_filters="${tag_filters}" \
     --action_env=PATH \
@@ -46,7 +47,7 @@ function run_build () {
     --strategy=Javac=standalone \
     --strategy=Closure=standalone \
     --genrule_strategy=standalone \
-    -- ${DEFAULT_BAZEL_TARGETS}
+    -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/java/... -//tensorflow/lite/java/...
 
   # Copy log to output to be available to GitHub
   ls -la "$(bazel info output_base)/java.log"

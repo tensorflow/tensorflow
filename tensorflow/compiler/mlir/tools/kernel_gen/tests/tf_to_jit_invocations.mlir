@@ -10,10 +10,9 @@ func @unary_tanh_rint(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[CALLABLE:.*]] = tf_framework.jit_compile_from_str
   // CHECK-SAME: "
   // CHECK-SAME: module {
-  // CHECK-SAME:   func @main(%arg0: tensor<*xf32>) -> tensor<*xf32> attributes {
-  // CHECK-SAME:     llvm.emit_c_interface,
-  // CHECK-SAME:     tf_entry
-  // CHECK-SAME:   } {
+  // CHECK-SAME:   func @main(%arg0: tensor<*xf32>) -> tensor<*xf32>
+  // CHECK-SAME:     attributes {tf_entry}
+  // CHECK-SAME:   {
   // CHECK-SAME:     %0 = \22tf.Tanh\22(%arg0)
   // CHECK-SAME:     %1 = \22tf.Rint\22(%0)
   // CHECK-SAME:     return %1
@@ -43,10 +42,9 @@ func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> 
   // CHECK: %[[CALLABLE:.*]] = tf_framework.jit_compile_from_str
   // CHECK-SAME: "
   // CHECK-SAME: module {
-  // CHECK-SAME:   func @main(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> attributes {
-  // CHECK-SAME:     llvm.emit_c_interface,
-  // CHECK-SAME:     tf_entry
-  // CHECK-SAME:   } {
+  // CHECK-SAME:   func @main(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32>
+  // CHECK-SAME:     attributes {tf_entry}
+  // CHECK-SAME:   {
   // CHECK-SAME:     %0 = \22tf.Sub\22(%arg0, %arg1)
   // CHECK-SAME:     return %0
   // CHECK-SAME:   }

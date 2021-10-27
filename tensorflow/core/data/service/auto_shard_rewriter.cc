@@ -135,6 +135,8 @@ AutoShardRewriter::GetRewriteConfig() const {
       worker_index_);
   (*config.mutable_parameter_map())[AutoShardDatasetOp::kAutoShardPolicy].set_i(
       auto_shard_policy_);
+  // This parameter is used internally by tf.distribute to rebatch the dataset.
+  // It is not used outside the context of `experimental_distribute_dataset`.
   (*config.mutable_parameter_map())[AutoShardDatasetOp::kNumReplicas].set_i(1);
   return config;
 }

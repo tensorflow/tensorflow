@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -87,6 +88,34 @@ struct OpQuantSpec {
   // from the tensor content and op property. A "-1" value indicates the
   // operand doesn't support per-channel quantization.
   llvm::DenseMap<int, int> coeff_op_quant_dim;
+};
+
+// Used in TFL Numeric Verify
+struct NumericVerifySpec {
+  // Whether to enable numeric verification
+  bool verify_numeric = false;
+
+  // Tolerance level from the quantized value for verification. If the tolerance
+  // is very small(<0.1), only the stats of the diff is displayed.
+  float error_tolerance = 5.0f;
+
+  // Whether to verify numerical correctness layer by layer or by whole model
+  bool whole_model_verify = false;
+
+  // Whether to enable log for failures
+  bool log_if_failed_flag = false;
+};
+
+// Used in TFL Quantize Pass
+struct QuantPassSpec {
+  // Variables to control TFL Numeric Verify
+  NumericVerifySpec numeric_verify;
+
+  // Names of ops to block from quantization
+  StringSet ops_blocklist;
+
+  // Names of locations to block from quantization
+  StringSet nodes_blocklist;
 };
 
 // A function signature for getting the particular OpQuantSpec for the provided
@@ -233,19 +262,16 @@ template <typename ConcretTy, typename Q, typename DQ, typename VERIFIER,
 struct QuantizationPattern : public RewritePattern {
   using BaseType = QuantizationPattern<ConcretTy, Q, DQ, VERIFIER, RootOp>;
 
-  explicit QuantizationPattern(MLIRContext* context, bool enable_verify,
-                               float error_tolerance, bool whole_model_verify,
-                               bool log_if_failed = false,
-                               const StringSet& ops_blocklist = {},
-                               const StringSet& nodes_blocklist = {})
+  explicit QuantizationPattern(MLIRContext* context,
+                               const QuantPassSpec& quant_params)
       // Set the score to a large number so it is always preferred.
       : RewritePattern(RootOp::getOperationName(), 300, context),
-        enable_verify(enable_verify),
-        error_tolerance(error_tolerance),
-        whole_model_verify(whole_model_verify),
-        log_if_failed(log_if_failed),
-        ops_blocklist(ops_blocklist),
-        nodes_blocklist(nodes_blocklist) {}
+        enable_verify(quant_params.numeric_verify.verify_numeric),
+        error_tolerance(quant_params.numeric_verify.error_tolerance),
+        whole_model_verify(quant_params.numeric_verify.whole_model_verify),
+        log_if_failed(quant_params.numeric_verify.log_if_failed_flag),
+        ops_blocklist(quant_params.ops_blocklist),
+        nodes_blocklist(quant_params.nodes_blocklist) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
@@ -417,7 +443,8 @@ struct QuantizationPattern : public RewritePattern {
             if (!matchPattern(q.input(), m_Constant(&attr))) {
               continue;
             }
-            auto cst = rewriter.create<ConstantOp>(new_op->getLoc(), attr);
+            auto cst =
+                rewriter.create<arith::ConstantOp>(new_op->getLoc(), attr);
             quantized_op->setOperand(i, cst.getResult());
           }
         }

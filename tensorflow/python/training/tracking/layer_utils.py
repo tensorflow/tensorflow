@@ -17,10 +17,6 @@
 # TODO(b/110718070): Move these functions back to tensorflow/python/keras/utils
 # once __init__ files no longer require all of tf.keras to be imported together.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import weakref

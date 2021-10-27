@@ -267,10 +267,9 @@ class LiteralBase {
   StatusOr<Literal> ConvertToShape(const Shape& dest_shape) const;
 
   // Converts this literal to another primitive type using a bitcast
-  // conversion. The to and from primitive types must have the same bit
-  // width. Returns an error if the conversion is not possible. This literal
-  // must be array-shaped.
-  StatusOr<Literal> BitcastConvert(PrimitiveType primitive_dest_type) const;
+  // conversion. Returns an error if the conversion is not possible. This
+  // literal must be array-shaped.
+  StatusOr<Literal> BitcastConvert(const Shape& dest_shape) const;
 
   // Converts this literal to another primitive type. Returns an error if the
   // conversion is not possible. This literal must be array-shaped.

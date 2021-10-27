@@ -159,14 +159,14 @@ Tindices GetPowerBucket(const Tindices value, const Tindices bucket_size) {
          1;
 }
 
-#define REGISTER_SPARSE_UTIL_FUNCTIONS(TypeIndex)                           \
-  template float FindConfigValueForKey<float, TypeIndex>(                   \
-      const TTypes<float>::ConstMatrix& config_mat,                         \
-      const std::pair<TypeIndex, TypeIndex>& key);                          \
-  template float FindConfigValueForKey<float, TypeIndex>(                   \
-      const TTypes<float>::ConstMatrix& config_mat, const TypeIndex key);   \
-  template int64 FindConfigValueForKey<int64, TypeIndex>(                   \
-      const TTypes<int64>::ConstMatrix& config_mat, const TypeIndex key);
+#define REGISTER_SPARSE_UTIL_FUNCTIONS(TypeIndex)                         \
+  template float FindConfigValueForKey<float, TypeIndex>(                 \
+      const TTypes<float>::ConstMatrix& config_mat,                       \
+      const std::pair<TypeIndex, TypeIndex>& key);                        \
+  template float FindConfigValueForKey<float, TypeIndex>(                 \
+      const TTypes<float>::ConstMatrix& config_mat, const TypeIndex key); \
+  template int64 FindConfigValueForKey<int64, TypeIndex>(                 \
+      const TTypes<int64_t>::ConstMatrix& config_mat, const TypeIndex key);
 
 REGISTER_SPARSE_UTIL_FUNCTIONS(int32);
 REGISTER_SPARSE_UTIL_FUNCTIONS(int64);

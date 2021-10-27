@@ -113,7 +113,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
@@ -280,8 +280,6 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     Status CopyBatch(IteratorContext* ctx,
                      const std::vector<std::vector<Tensor>>& batch_elements,
                      std::vector<Tensor>* out_tensors) {
-      static bool in_experiment =
-          GetExperiments().contains("parallelize_batch_copy");
       const size_t num_tuple_components = batch_elements[0].size();
       const int64_t num_batch_elements = batch_elements.size();
       for (size_t component_index = 0; component_index < num_tuple_components;
@@ -362,9 +360,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         };
 
-        if (dataset()->parallel_copy_ ||
-            (in_experiment && (batch_component.AllocatedBytes() /
-                               num_batch_elements) >= (1 << 15))) {
+        if (dataset()->parallel_copy_ && (batch_component.AllocatedBytes() /
+                                          num_batch_elements) >= (1 << 15)) {
           BlockingCounter counter(num_batch_elements);
           Status status;
           mutex status_mu;

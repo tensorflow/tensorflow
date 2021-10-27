@@ -3419,12 +3419,12 @@ CUDABlas::CreateBlasLtMatmulPlan(const blas::BlasLtMatmulPlanParams &p) {
 #endif
 }
 
+#if CUDA_VERSION >= 11000
 port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
 CUDABlas::GetBlasLtMatmulAlgorithmsInternal(const blas::IBlasLtMatmulPlan *plan,
                                             size_t max_workspace_size,
                                             int max_algorithm_count,
                                             bool for_remainder_batch) {
-#if CUDA_VERSION >= 11000
   SE_ASSIGN_OR_RETURN(UniqueMatmulPreference preference,
                       CreateCublasLtMatmulPreference(plan, max_workspace_size));
 
@@ -3468,19 +3468,21 @@ CUDABlas::GetBlasLtMatmulAlgorithmsInternal(const blas::IBlasLtMatmulPlan *plan,
         i, result.algo, result.workspaceSize));
   }
   return out_algorithms;
-#else  // if CUDA_VERSION < 11000
-  return port::Status(
-      port::error::UNIMPLEMENTED,
-      "GetBlasLtMatmulAlgorithms is not supported with this version of CUDA");
-#endif
 }
+#endif
 
 port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
 CUDABlas::GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan *plan,
                                     size_t max_workspace_size,
                                     int max_algorithm_count) {
+#if CUDA_VERSION >= 11000
   return GetBlasLtMatmulAlgorithmsInternal(plan, max_workspace_size,
                                            max_algorithm_count);
+#else  // if CUDA_VERSION < 11000
+  return port::Status(
+      port::error::UNIMPLEMENTED,
+      "GetBlasLtMatmulAlgorithms is not supported with this version of CUDA");
+#endif
 }
 
 #if CUDA_VERSION >= 11000

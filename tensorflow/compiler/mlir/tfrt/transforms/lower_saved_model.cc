@@ -29,23 +29,16 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
-
-using llvm::ArrayRef;
-using mlir::failure;
-using mlir::success;
 
 namespace tensorflow {
 namespace {
 
 constexpr char kCpuDeviceName[] =
     "/job:localhost/replica:0/task:0/device:CPU:0";
-
-// Tuple storing {device, container, shared_name} attributes in that order.
-using ResourceKey =
-    std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef>;
 
 bool IsSessionInitializer(mlir::FuncOp op) {
   auto session_initializer_op = mlir::tf_saved_model::GetSessionInitializerOp(
@@ -60,7 +53,7 @@ bool IsSessionInitializer(mlir::FuncOp op) {
   return false;
 }
 
-ResourceKey GetResourceKey(mlir::Operation *op) {
+mlir::TF::ResourceHandle GetResourceHandle(mlir::Operation *op) {
   llvm::StringRef device;
   if (auto attr = op->getAttrOfType<mlir::StringAttr>("device")) {
     device = attr.getValue();
@@ -76,7 +69,7 @@ ResourceKey GetResourceKey(mlir::Operation *op) {
     shared_name = attr.getValue();
   }
 
-  return {device, container, shared_name};
+  return {container, shared_name, device, /*op=*/nullptr};
 }
 
 struct HoistInfo {
@@ -91,13 +84,16 @@ struct HoistInfo {
   // but used by non-hoisted ops. These values will be replaced by results of
   // tf._TfrtGetResource op. The index of each value in this array will be the
   // index used in tf._TfrtGetResource and tf._TfrtSetResource op. This also
-  // stores the ResourceKey which has the shared_name and container attributes
-  // used by later resource alias analysis and side effect analysis passes.
-  llvm::SmallVector<std::pair<mlir::Value, ResourceKey>, 4> hoisted_values;
+  // stores the ResourceHandle which has the shared_name and container
+  // attributes used by later resource alias analysis and side effect analysis
+  // passes.
+  llvm::SmallVector<std::pair<mlir::Value, mlir::TF::ResourceHandle>, 4>
+      hoisted_values;
 };
 
 void ReplaceHoistedValues(
-    llvm::ArrayRef<std::pair<mlir::Value, ResourceKey>> hoisted_values,
+    llvm::ArrayRef<std::pair<mlir::Value, mlir::TF::ResourceHandle>>
+        hoisted_values,
     mlir::OpBuilder &builder) {
   struct HoistedValueInfo {
     llvm::SmallVector<mlir::Value, 4> hoisted_values;
@@ -121,8 +117,6 @@ void ReplaceHoistedValues(
 
   for (auto iter : llvm::enumerate(hoisted_values)) {
     auto value = iter.value().first;
-    auto container = std::get<1>(iter.value().second);
-    auto shared_name = std::get<2>(iter.value().second);
     auto index = iter.index();
     auto &device_map = hoisted_values_by_block_device[hoist_into_block(value)];
 
@@ -137,8 +131,8 @@ void ReplaceHoistedValues(
 
     item.hoisted_values.push_back(value);
     item.indices.push_back(index);
-    item.shared_names.push_back(shared_name);
-    item.containers.push_back(container);
+    item.shared_names.push_back(iter.value().second.name);
+    item.containers.push_back(iter.value().second.container);
   }
 
   // Create tf._TfrtGetResource op for each function and device.
@@ -177,7 +171,7 @@ bool OnlyHasReadEffect(mlir::Operation *op) {
   return interface.onlyHasEffect<mlir::MemoryEffects::Read>();
 }
 
-bool CanHoist(const llvm::DenseSet<ResourceKey> &read_only_vars,
+bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
               mlir::Operation *op) {
   // return ops should not be hoisted.
   if (op->mightHaveTrait<mlir::OpTrait::IsTerminator>()) return false;
@@ -193,7 +187,8 @@ bool CanHoist(const llvm::DenseSet<ResourceKey> &read_only_vars,
   if (auto read_var_op = llvm::dyn_cast<mlir::TF::ReadVariableOp>(op)) {
     if (auto var_handle_op = llvm::dyn_cast_or_null<mlir::TF::VarHandleOp>(
             read_var_op.resource().getDefiningOp())) {
-      if (read_only_vars.count(GetResourceKey(var_handle_op)) > 0) return true;
+      if (read_only_vars.count(GetResourceHandle(var_handle_op)) > 0)
+        return true;
     }
   }
 
@@ -203,7 +198,8 @@ bool CanHoist(const llvm::DenseSet<ResourceKey> &read_only_vars,
           llvm::dyn_cast<mlir::TF::LookupTableSizeV2Op>(op)) {
     if (auto hash_table_op = llvm::dyn_cast_or_null<mlir::TF::HashTableV2Op>(
             lookup_table_size_op.table_handle().getDefiningOp())) {
-      if (read_only_vars.count(GetResourceKey(hash_table_op)) > 0) return true;
+      if (read_only_vars.count(GetResourceHandle(hash_table_op)) > 0)
+        return true;
     }
   }
 
@@ -213,7 +209,8 @@ bool CanHoist(const llvm::DenseSet<ResourceKey> &read_only_vars,
 }
 
 void HoistInvariantOpsInFunction(
-    mlir::FuncOp func, const llvm::DenseSet<ResourceKey> &read_only_vars,
+    mlir::FuncOp func,
+    const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
     const mlir::TF::SideEffectAnalysis::Info &side_effect_analysis,
     mlir::OpBuilder &builder, HoistInfo &module_hoist_info) {
   // Keep the hoisted ops in this function.
@@ -280,7 +277,7 @@ void HoistInvariantOpsInFunction(
                         return hoists.count(user) == 0;
                       })) {
         module_hoist_info.hoisted_values.push_back(
-            {result, GetResourceKey(op)});
+            {result, GetResourceHandle(op)});
       }
     }
   }
@@ -311,7 +308,8 @@ void HoistInvariantOps(mlir::ModuleOp module) {
   mlir::SymbolTable symbol_table(module);
 
   // Find all resources used in non-init functions.
-  llvm::DenseMap<ResourceKey, llvm::SmallVector<mlir::Operation *, 4>>
+  llvm::DenseMap<mlir::TF::ResourceHandle,
+                 llvm::SmallVector<mlir::Operation *, 4>>
       resources;
 
   // Find all callees referenced in the initialization functions.
@@ -321,14 +319,14 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     if (llvm::isa<mlir::TF::VarHandleOp, mlir::TF::HashTableV2Op>(op)) {
       auto func = op->getParentOfType<mlir::FuncOp>();
       if (IsSessionInitializer(func)) return;
-      resources[GetResourceKey(op)].push_back(op);
+      resources[GetResourceHandle(op)].push_back(op);
     } else if (auto func = llvm::dyn_cast<mlir::FuncOp>(op)) {
       if (!IsSessionInitializer(func)) return;
       FindCalleesRecursive(symbol_table, func, init_callees);
     }
   });
 
-  llvm::DenseSet<ResourceKey> read_only_vars;
+  llvm::DenseSet<mlir::TF::ResourceHandle> read_only_vars;
   for (const auto &iter : resources) {
     const auto &key = iter.first;
     const auto &vars = iter.second;
@@ -576,12 +574,12 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteGlobalTensors(
     auto result_types = op.getType().getResults();
     if (failed(PromoteFunctionArgument(op, i, global_tensor_op.type(),
                                        symbol_table)))
-      return failure();
+      return mlir::failure();
 
     if (!CompareTypes(op.getType().getResults(), result_types).empty())
       op.emitOpError("cannot promote exported functions's results");
   }
-  return success();
+  return mlir::success();
 }
 
 mlir::LogicalResult LowerTFSavedModelPass::PromoteFunctionArgument(
@@ -597,7 +595,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteFunctionArgument(
   arg.setType(promoted_type);
 
   // Promote all uses of `arg`.
-  if (failed(PromoteValueUses(arg, arg, symbol_table))) return failure();
+  if (failed(PromoteValueUses(arg, arg, symbol_table))) return mlir::failure();
 
   cleanup_on_failure.release();
 
@@ -607,7 +605,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteFunctionArgument(
 
   func.setType(mlir::FunctionType::get(
       func.getContext(), block.getArgumentTypes(), new_results.getTypes()));
-  return success();
+  return mlir::success();
 }
 
 mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
@@ -620,7 +618,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
   if (auto read_var_op = llvm::dyn_cast<mlir::TF::ReadVariableOp>(op)) {
     read_var_op.value().replaceAllUsesWith(promoted);
     op->erase();
-    return success();
+    return mlir::success();
   }
 
   // Next, we handle control flow ops.
@@ -633,7 +631,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
   auto update_promoted_result_indices =
       [&promoted_result_indices](
           mlir::Operation *op,
-          ArrayRef<mlir::Type> result_types) -> mlir::LogicalResult {
+          llvm::ArrayRef<mlir::Type> result_types) -> mlir::LogicalResult {
     if (op->getNumResults() != result_types.size())
       return op->emitOpError(
           "cannot promote call ops whose op resutls do not fully match the "
@@ -649,7 +647,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
         return op->emitOpError(
             "cannot promote callees with different result types");
     }
-    return success();
+    return mlir::success();
   };
 
   if (auto if_op = llvm::dyn_cast<mlir::TF::IfOp>(op)) {
@@ -667,12 +665,12 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
         // Rescursively promote the uses in branches.
         if (failed(PromoteFunctionArgument(func, arg_index, promoted.getType(),
                                            symbol_table)))
-          return failure();
+          return mlir::failure();
       }
 
       if (failed(update_promoted_result_indices(if_op,
                                                 func.getType().getResults())))
-        return failure();
+        return mlir::failure();
     }
   } else if (auto case_op = llvm::dyn_cast<mlir::TF::CaseOp>(op)) {
     assert(operand_number > 0);
@@ -685,12 +683,12 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
         // Rescursively promote the uses in branches.
         if (failed(PromoteFunctionArgument(branch, arg_index,
                                            promoted.getType(), symbol_table)))
-          return failure();
+          return mlir::failure();
       }
 
       if (failed(update_promoted_result_indices(case_op,
                                                 branch.getType().getResults())))
-        return failure();
+        return mlir::failure();
     }
   } else if (auto while_op = llvm::dyn_cast<mlir::TF::WhileOp>(op)) {
     auto cond = symbol_table.lookup<mlir::FuncOp>(while_op.cond());
@@ -703,7 +701,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
       auto cond_result_type = cond.getType().getResult(0);
       if (failed(PromoteFunctionArgument(cond, arg_index, promoted.getType(),
                                          symbol_table)))
-        return failure();
+        return mlir::failure();
 
       // We cannot promote the result of cond branch as it may change the
       // behavior of this while op.
@@ -714,12 +712,12 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
     if (body.getType().getInput(arg_index) != promoted.getType()) {
       if (failed(PromoteFunctionArgument(body, /*arg_index=*/operand_number,
                                          promoted.getType(), symbol_table)))
-        return failure();
+        return mlir::failure();
     }
 
     if (failed(update_promoted_result_indices(while_op,
                                               body.getType().getResults())))
-      return failure();
+      return mlir::failure();
 
   } else if (auto call_interface = llvm::dyn_cast<mlir::CallOpInterface>(op)) {
     auto callee_name = call_interface.getCallableForCallee()
@@ -734,12 +732,12 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
     if (callee.getType().getInput(arg_index) != promoted.getType()) {
       if (failed(PromoteFunctionArgument(callee, arg_index, promoted.getType(),
                                          symbol_table)))
-        return failure();
+        return mlir::failure();
     }
 
     if (failed(
             update_promoted_result_indices(op, callee.getType().getResults())))
-      return failure();
+      return mlir::failure();
   } else if (auto batch_function_op =
                  llvm::dyn_cast<mlir::TF::BatchFunctionOp>(op)) {
     auto batch_fn = symbol_table.lookup<mlir::FuncOp>(
@@ -750,18 +748,18 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
     if (batch_fn.getType().getInput(arg_index) != promoted.getType()) {
       if (failed(PromoteFunctionArgument(batch_fn, arg_index,
                                          promoted.getType(), symbol_table)))
-        return failure();
+        return mlir::failure();
     }
 
     if (failed(update_promoted_result_indices(op,
                                               batch_fn.getType().getResults())))
-      return failure();
+      return mlir::failure();
   }
 
   // Replace the operand.
   op->setOperand(operand_number, promoted);
 
-  if (promoted_result_indices.empty()) return success();
+  if (promoted_result_indices.empty()) return mlir::success();
 
   // If results are also promoted, we need to create a new op with the new
   // results and replaces all uses recursively.
@@ -790,7 +788,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
         // On failure, replace all uses of new_op with op and erase the new op.
         new_op->replaceAllUsesWith(op);
         new_op->erase();
-        return failure();
+        return mlir::failure();
       }
     } else {
       op->getResult(i).replaceAllUsesWith(new_op->getResult(i));
@@ -800,7 +798,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
   // On success, erase the original op.
   op->erase();
 
-  return success();
+  return mlir::success();
 }
 
 mlir::LogicalResult LowerTFSavedModelPass::PromoteValueUses(
@@ -817,10 +815,10 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteValueUses(
     if (failed(PromoteOpOperand(/*op=*/use.first,
                                 /*operand_number=*/use.second, promoted,
                                 symbol_table)))
-      return failure();
+      return mlir::failure();
   }
 
-  return success();
+  return mlir::success();
 }
 
 // Converts ref variables to resource variables in a few cases.
@@ -884,9 +882,9 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
   auto var_handle_op = builder.create<mlir::TF::VarHandleOp>(
       var_op.getLoc(),
       mlir::RankedTensorType::get(
-          {},
-          mlir::TF::ResourceType::get(ArrayRef<mlir::TensorType>{tensor_type},
-                                      builder.getContext())),
+          {}, mlir::TF::ResourceType::get(
+                  llvm::ArrayRef<mlir::TensorType>{tensor_type},
+                  builder.getContext())),
       var_op.container(), var_op.shared_name());
 
   for (auto op : identity_ops) {
@@ -920,7 +918,7 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     op->setOperand(idx, read_var_op.value());
   }
 
-  return success();
+  return mlir::success();
 }
 
 void ConvertReferenceVariableToResourceVariablePass::runOnOperation() {

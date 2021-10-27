@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/gpu/conversion_function.h"
 
 #include "absl/strings/match.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
+#include "tensorflow/core/runtime_fallback/kernel/tensor_util.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/util/gpu/gpu_utils.h"
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"

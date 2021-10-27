@@ -19,10 +19,6 @@ gradient function for While ops produced by while_loop. This will eventually
 replace the current tf.while_loop implementation once it reaches feature and
 performance parity.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 from tensorflow.core.framework import attr_value_pb2
@@ -32,6 +28,7 @@ from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -225,10 +222,15 @@ def while_loop(cond,
     # Note that external tensors will be treated as loop invariants, i.e.,
     # the value of that tensor in each iteration is the same as it was at the
     # beginning of the loop execution.
-    loop_vars = loop_vars + body_graph.external_captures
+    deferred_external_captures = nest.flatten(
+        [c() for c in body_graph.deferred_external_captures],
+        expand_composites=True)
+    loop_vars = (
+        loop_vars + body_graph.external_captures + deferred_external_captures)
     # TODO(srbs): Update lowering code to create _Enter nodes with
     # is_constant=True for inputs that are directly passed to outputs.
     body_graph.outputs.extend(body_graph.internal_captures)
+    body_graph.outputs.extend(body_graph.deferred_internal_captures)
 
     # Capture the extra `external_captures` of `body_graph` in `cond_graph` so
     # that it expects to receive those as arguments.
@@ -237,7 +239,8 @@ def while_loop(cond,
       assert (cond_graph.external_captures ==
               body_graph.external_captures[:num_cond_captures])
       _duplicate_body_captures_in_cond(
-          cond_graph, body_graph.external_captures[num_cond_captures:])
+          cond_graph, body_graph.external_captures[num_cond_captures:] +
+          deferred_external_captures)
 
     # Make sure that the shapes of the loop outputs are compatible with the
     # shape invariants, or the shapes of the loop vars if the invariants are not
@@ -579,7 +582,7 @@ def _preprocess_grad(grad, body_graph_output, while_op_input, while_op_output):
   # Convert IndexedSlices to dense tensors since it is unlikely that downstream
   # gradient functions with properly handle indexed slices. This is similar to
   # what we do in tf.function gradients.
-  if isinstance(grad, ops.IndexedSlices):
+  if isinstance(grad, indexed_slices.IndexedSlices):
     return ops.convert_to_tensor(grad)
 
   return grad
@@ -816,10 +819,10 @@ def _get_structured_grad_output(outputs, grads, body_grad_graph):
       continue
     output = body_grad_graph.structured_outputs[structured_outputs_idx]
     structured_outputs_idx += 1
-    if isinstance(output, ops.IndexedSlices):
+    if isinstance(output, indexed_slices.IndexedSlices):
       # TODO(skyewm): is there a more robust way to determine the order of
       # flattened IndexedSlices components?
-      result.append(ops.IndexedSlices(
+      result.append(indexed_slices.IndexedSlices(
           values=outputs[outputs_idx],
           indices=outputs[outputs_idx + 1],
           dense_shape=outputs[outputs_idx + 2]))

@@ -15,11 +15,7 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-
-// Here, the element type can be any integer or float type. But, note that only
-// 32 bit integers are supported for the values.
-class GetScalarOfType<int value> : NativeCodeCall<
-  "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
+include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.td"
 
 class GetScalarOfFloatType<string value> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
@@ -54,6 +50,18 @@ def CreateTFCastOpI32 : NativeCodeCall<
 
 def CreateTensorScatterNdOp : NativeCodeCall<
     "$_builder.create<TF::ScatterNdOp>($0.getLoc(), $0.getType(), $1, $2, $3)">;
+
+//===----------------------------------------------------------------------===//
+// Add op patterns.
+//===----------------------------------------------------------------------===//
+
+// We can lower AddOp to AddV2Op, except for string type. AddOp is defined for
+// TF_NumberNotQuantizedOrStrTensor tensor types. TF_NumberNotQuantizedTensor
+// is the same, except not containing TF_Str.
+
+def LowerAddOp : Pat<(TF_AddOp TF_NumberNotQuantizedTensor:$x,
+                               TF_NumberNotQuantizedTensor:$y),
+                     (TF_AddV2Op $x, $y)>;
 
 //===----------------------------------------------------------------------===//
 // BiasAddGrad op patterns.
@@ -482,7 +490,7 @@ def LowerIsFiniteOp : Pat<(TF_IsFiniteOp $x),
 // TensorScatterUpdate op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
+def LowerTensorScatterUpdate_1 : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
           (TF_CastOp
             (TF_TensorScatterUpdateOp
               (CreateTFCastOpI32
@@ -497,8 +505,8 @@ def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
              /*truncate=*/ConstBoolAttrFalse),
           [(TensorOf<[TF_Bool]> $input), (TensorOf<[TF_Bool]> $updates)] >;
 
-def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
-          (TF_AddOp
+def LowerTensorScatterUpdate_2 : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
+          (TF_AddV2Op
              (TF_MulOp
                 (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $updates)),
                    (CreateTensorScatterNdOp $input, $indices,
@@ -506,7 +514,8 @@ def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
                    (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
              $input),
            (CreateTensorScatterNdOp $input, $indices, $updates,
-              (CreateTFShapeOp $input, $input, ConstBoolAttrTrue)))>;
+              (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
+          [(TensorOf<[TF_Int, TF_Float, TF_Complex]> $updates)]>;
 
 //===----------------------------------------------------------------------===//
 // Selu op patterns.
@@ -552,6 +561,20 @@ def LowerSeluGradOp : Pat<(TF_SeluGradOp AnyStaticShapeTensor:$gradients,
                           (TF_ConstOp (getScale $features))),
                         (TF_MulOp
                           $gradients,
-                          (TF_AddOp
+                          (TF_AddV2Op
                             $features,
                             (TF_ConstOp (getScaledAlpha $features)))))>;
+
+
+
+//===----------------------------------------------------------------------===//
+// Expm1 op patterns.
+//===----------------------------------------------------------------------===//
+
+// Expm1(x) = Exp(x) - 1
+def LowerExp1mOp : Pat<
+  (TF_Expm1Op $x),
+  (TF_SubOp
+    (TF_ExpOp $x),
+    (TF_ConstOp (GetScalarOfType<1> $x))
+  )>;

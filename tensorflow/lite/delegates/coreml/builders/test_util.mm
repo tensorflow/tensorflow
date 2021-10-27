@@ -20,16 +20,16 @@ namespace coreml {
 
 const char SingleOpModelWithCoreMlDelegate::kDelegateName[] = "TfLiteCoreMlDelegate";
 
-void SingleOpModelWithCoreMlDelegate::ApplyDelegateAndInvoke() {
+SingleOpModelWithCoreMlDelegate::SingleOpModelWithCoreMlDelegate()
+    : delegate_(nullptr, [](TfLiteDelegate*) {}) {
   auto* delegate_ptr = TfLiteCoreMlDelegateCreate(&params_);
-  ASSERT_TRUE(delegate_ptr != nullptr);
+  EXPECT_TRUE(delegate_ptr != nullptr);
   delegate_ = tflite::Interpreter::TfLiteDelegatePtr(
       delegate_ptr, [](TfLiteDelegate* delegate) { TfLiteCoreMlDelegateDelete(delegate); });
-  // Add delegate.
-  // TODO(karimnosseir): This doesn't actually make the test fail, switch to something else.
-  ASSERT_TRUE(interpreter_->ModifyGraphWithDelegate(delegate_.get()) == kTfLiteOk);
 
-  Invoke();
+  // Note that tflite::SingleOpModel::BuildInterpreter(...) will apply the delegate that's set here
+  // to the model graph.
+  SetDelegate(delegate_.get());
 }
 
 }  // namespace coreml
@@ -68,12 +68,12 @@ void SingleOpModelWithCoreMlDelegate::ApplyDelegateAndInvoke() {
 }
 
 - (void)invokeAndValidate {
-  _model->ApplyDelegateAndInvoke();
+  _model->Invoke();
   [self validateInterpreter:_model->interpreter()];
 }
 
 - (void)invokeAndCheckNotDelegated {
-  _model->ApplyDelegateAndInvoke();
+  _model->Invoke();
   [self checkInterpreterNotDelegated:_model->interpreter()];
 }
 

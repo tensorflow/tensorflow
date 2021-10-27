@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -126,7 +127,7 @@ Value CreateI32SplatConst(Location loc, PatternRewriter *rewriter,
       RankedTensorType::get(shape, rewriter->getIntegerType(32));
   DenseElementsAttr attr =
       DenseElementsAttr::get(type, rewriter->getI32IntegerAttr(val));
-  return rewriter->create<ConstantOp>(loc, type, attr);
+  return rewriter->create<arith::ConstantOp>(loc, type, attr);
 }
 
 Value CreateI64SplatConst(Location loc, PatternRewriter *rewriter,
@@ -135,7 +136,7 @@ Value CreateI64SplatConst(Location loc, PatternRewriter *rewriter,
       RankedTensorType::get(shape, rewriter->getIntegerType(64));
   DenseElementsAttr attr =
       DenseElementsAttr::get(type, rewriter->getI64IntegerAttr(val));
-  return rewriter->create<ConstantOp>(loc, type, attr);
+  return rewriter->create<arith::ConstantOp>(loc, type, attr);
 }
 
 Value CreateI32SplatTensor(Location loc, PatternRewriter *rewriter,
@@ -467,8 +468,8 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
                     }
                     DenseElementsAttr attr =
                         DenseElementsAttr::get(type, shape_attr);
-                    element_shape =
-                        rewriter.create<ConstantOp>(op.getLoc(), type, attr);
+                    element_shape = rewriter.create<arith::ConstantOp>(
+                        op.getLoc(), type, attr);
                     element_shape_acquired = true;
                     break;
                   }
@@ -511,7 +512,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
       // workaround.
       SmallVector<int32_t, 4> new_element_shape_values;
 
-      auto int_values = dense_elem_attr.getIntValues();
+      auto int_values = dense_elem_attr.getValues<APInt>();
       for (auto it = int_values.begin(); it != int_values.end(); ++it) {
         auto dim_value = (*it).getSExtValue();
         if (it == int_values.begin() && dim_value == -1) {
@@ -530,7 +531,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
 
       auto attr = DenseIntElementsAttr::get(
           element_shape.getType().cast<ShapedType>(), new_element_shape_values);
-      auto new_element_shape = rewriter.create<ConstantOp>(
+      auto new_element_shape = rewriter.create<arith::ConstantOp>(
           op.getLoc(), element_shape.getType(), attr);
       element_shape = new_element_shape;
     }
@@ -571,7 +572,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
     // as specified by element_dtype.
     RankedTensorType zero_type = RankedTensorType::get({}, element_dtype);
     Attribute zero_attr = rewriter.getZeroAttr(zero_type);
-    auto zero = rewriter.create<ConstantOp>(loc, zero_type, zero_attr);
+    auto zero = rewriter.create<arith::ConstantOp>(loc, zero_type, zero_attr);
 
     rewriter.replaceOpWithNewOp<TF::FillOp>(op, result_type, list_shape, zero);
     return success();
@@ -596,10 +597,12 @@ struct ConvertTensorListReserve
       return CreateI32SplatConst(op.getLoc(), rewriter, {1}, attr.getInt());
     }
     if (auto const_op = num_elements.getDefiningOp<TF::ConstOp>()) {
-      return CreateI32SplatConst(
-          op->getLoc(), rewriter, {1},
-          (*const_op.value().cast<DenseElementsAttr>().getIntValues().begin())
-              .getSExtValue());
+      return CreateI32SplatConst(op->getLoc(), rewriter, {1},
+                                 (*const_op.value()
+                                       .cast<DenseElementsAttr>()
+                                       .getValues<APInt>()
+                                       .begin())
+                                     .getSExtValue());
     }
     return rewriter->create<TF::ExpandDimsOp>(
         op.getLoc(), RankedTensorType::get({1}, shape_dtype), num_elements,
@@ -882,7 +885,7 @@ struct ConvertTensorListStack
         RankedTensorType::get({-1}, rewriter.getIntegerType(32));
     auto new_shape = rewriter.create<TF::ShapeOp>(loc, shape_type, input);
     SmallVector<int64_t, 8> output_shape(/*Size=*/1, op.num_elements());
-    for (const auto &dim : dense_elem_attr.getIntValues())
+    for (const auto &dim : dense_elem_attr.getValues<APInt>())
       output_shape.push_back(dim.getSExtValue());
     RankedTensorType result_type =
         RankedTensorType::get(output_shape, getElementTypeOrSelf(input));
@@ -921,7 +924,7 @@ struct ConvertTensorListConcatV2
                  : op.emitOpError(error_info);
     }
     llvm::SmallVector<int64_t, 4> output_shape;
-    for (const auto &dim : dense_elem_attr.getIntValues()) {
+    for (const auto &dim : dense_elem_attr.getValues<APInt>()) {
       output_shape.push_back(dim.getSExtValue());
     }
 
@@ -1412,6 +1415,13 @@ void LowerStaticTensorListPass::runOnOperation() {
   // Partial legalization is used below to still allow ops with variant types
   // still.
   auto is_legal = [](Operation *op) {
+    // TODO: Yield ops only have operands. Those operands are generated by
+    // preceding ops. If they are legal (and converts all users), then we can
+    // expect the yield op to be legal. This is modified during LLVM integration
+    // as best effort to fix test failures; probably need a better way to
+    // determine it.
+    if (isa<TF::YieldOp>(op)) return true;
+
     auto is_not_variant = [](Type ty) {
       return !ty.cast<ShapedType>().getElementType().isa<TF::VariantType>();
     };
@@ -1427,7 +1437,7 @@ void LowerStaticTensorListPass::runOnOperation() {
                       TF::TensorListSetItemOp, TF::TensorListStackOp,
                       TF::TensorListResizeOp, TF::TensorListConcatV2Op>();
   // TODO(hinsu): Use TFLite constant op for constants.
-  target.addLegalOp<ConstantOp>();
+  target.addLegalOp<arith::ConstantOp>();
   target.addLegalOp<FuncOp>();
   target.addLegalOp<ReturnOp>();
   target.addLegalOp<TFL::CustomOp>();

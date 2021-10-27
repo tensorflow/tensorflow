@@ -172,7 +172,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
   GraphDef graph_def;
   string output_node;
   TF_RETURN_IF_ERROR(
-      AsGraphDefMinimal(ctx, input, &input_list, &graph_def, &output_node));
+      AsGraphDefForRewrite(ctx, input, &input_list, &graph_def, &output_node));
 
   VLOG(3) << "Before graph rewrites: " << graph_def.DebugString();
   TF_RETURN_IF_ERROR(

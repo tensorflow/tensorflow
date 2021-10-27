@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -134,6 +135,9 @@ class DataServiceDispatcherImpl {
   // Starts the dispatcher. If there is a journal, this will read from the
   // journal to restore the dispatcher's state.
   Status Start();
+
+  // Returns the number of active jobs.
+  size_t NumActiveJobs() TF_LOCKS_EXCLUDED(mu_);
 
   // See dispatcher.proto for API documentation.
 
@@ -271,6 +275,8 @@ class DataServiceDispatcherImpl {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // A thread which periodically checks for jobs to clean up.
   void JobGcThread();
+  // Releases job clients that haven't heartbeated recently.
+  Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old jobs and marks them as finished.
   Status GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
@@ -284,7 +290,7 @@ class DataServiceDispatcherImpl {
                        std::shared_ptr<const DatasetDef>& dataset_def)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  const experimental::DispatcherConfig& config_;
+  const experimental::DispatcherConfig config_;
   Env* env_;
 
   mutex mu_;
@@ -305,6 +311,9 @@ class DataServiceDispatcherImpl {
   // Map from task id to a TaskRemover which determines when to remove the task.
   absl::flat_hash_map<int64_t, std::shared_ptr<TaskRemover>>
       remove_task_requests_ TF_GUARDED_BY(mu_);
+  // Map from client id to the time of the client's last heartbeat.
+  absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
+      TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);

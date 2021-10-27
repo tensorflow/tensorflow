@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/core/platform/ctstring_internal.h"
 #include "tensorflow/core/platform/test.h"
 
 static const char kLongString[] =
@@ -378,5 +379,31 @@ TEST(TF_CTStringTest, ResizeReserve) {
     EXPECT_EQ(223, TF_TString_GetCapacity(&s70));
 
     TF_TString_Dealloc(&s70);
+  }
+}
+
+TEST(TF_CTStringTest, OffsetType) {
+  {
+    TF_TString s71;
+
+    TF_TString_Init(&s71);
+    size_t header_length = 24;
+    size_t size = 8;
+    TF_TString_ResizeUninitialized(&s71, header_length + size);
+    uint32_t save_size = s71.u.offset.size;
+    uint32_t save_offset = s71.u.offset.offset;
+    uint32_t save_count = s71.u.offset.count;
+
+    s71.u.offset.size = TF_TString_ToInternalSizeT(size, TF_TSTR_OFFSET);
+    s71.u.offset.offset = header_length;
+    s71.u.offset.count = 0;
+    EXPECT_EQ(size, TF_TString_GetSize(&s71));
+    EXPECT_EQ(TF_TSTR_OFFSET, TF_TString_GetType(&s71));
+
+    // restore state so string can be deallocated
+    s71.u.offset.size = save_size;
+    s71.u.offset.offset = save_offset;
+    s71.u.offset.count = save_count;
+    TF_TString_Dealloc(&s71);
   }
 }

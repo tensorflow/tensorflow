@@ -71,7 +71,17 @@ class FuseTpuCompileAndExecutePass
 
       assert(exec_op.use_empty());
       exec_op.erase();
-      assert(compile_op.use_empty());
+      // TODO(b/199536923): Once outside compilation is supported for
+      // TPUCompileMlirAndExecuteOp, this should never happen, and we can change
+      // this check into an assert.
+      if (!compile_op.use_empty()) {
+        compile_op.emitOpError(
+            "Some op other than TPUExecuteOp is taking _TPUCompileMlirOp as "
+            "input. This is probably due to outside compilation being used in "
+            "the model.");
+        signalPassFailure();
+        return;
+      }
       compile_op.erase();
     }
   }

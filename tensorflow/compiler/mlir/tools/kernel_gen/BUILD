@@ -1,5 +1,9 @@
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load(
+    "//tensorflow/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
 
 # buildifier: disable=same-origin-load
 load(
@@ -29,6 +33,8 @@ package(
 package_group(
     name = "friends",
     packages = [
+        # Edge TPU compiler needs to use some compiler passes from kernel_gen.
+        "//platforms/darwinn/compiler/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/core/kernels/mlir_generated/...",
     ],
@@ -76,6 +82,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToGPUPass",
         "@llvm-project//mlir:SCFToStandard",
@@ -85,6 +92,7 @@ cc_library(
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:StandardOpsTransforms",
+        "@llvm-project//mlir:StandardToLLVM",
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
@@ -109,6 +117,7 @@ tf_cc_binary(
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:CodeGen",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:MC",
         "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
@@ -183,12 +192,13 @@ cc_library(
 
 cc_library(
     name = "tf_gpu_runtime_wrappers",
-    srcs = [
+    srcs = if_gpu_is_configured([
         "tf_gpu_runtime_wrappers.cc",
-    ],
-    hdrs = [
-        "tf_gpu_runtime_wrappers.h",
-    ],
+    ]),
+    hdrs =
+        if_gpu_is_configured([
+            "tf_gpu_runtime_wrappers.h",
+        ]),
     compatible_with = get_compatible_with_cloud(),
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "-DTENSORFLOW_USE_ROCM=1",

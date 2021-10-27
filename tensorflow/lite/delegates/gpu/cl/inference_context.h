@@ -113,13 +113,7 @@ class InferenceContext {
                              InferenceContext* inference);
 
   void CopyInAndOutIds(const GraphFloat32& graph);
-  absl::Status ConvertOperations(const GpuInfo& gpu_info,
-                                 const GraphFloat32& graph, ModelHints hints);
-  void CreateLinks();
-  absl::Status ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                                   const GpuInfo& gpu_info,
-                                   const GraphFloat32& graph);
-  absl::Status Merge();
+
   absl::Status AllocateMemory(const GpuInfo& gpu_info, CLContext* context);
 
   absl::Status AllocateMemoryForConstTensors(CLContext* context);
@@ -148,21 +142,23 @@ class InferenceContext {
 
   void ReleaseCPURepresentation();
 
-  // performance hacks
-  bool need_flush_ = false;
+  struct ExecutionHints {
+    bool need_flush = false;
 
-  bool flush_periodically_ = false;
-  int flush_period_ = 1;
+    bool flush_periodically = false;
+    int flush_period = 1;
 
-  // In order to reduce memory leak on Mali a pipeline needs to be synchronized
-  // with CPU to prevent growing internal global OpenCL kernel pool. One trick
-  // is to enqueue an event from a previous run. Most of the time is should
-  // already be executed on GPU and should not stall the pipeline.
-  bool need_manual_release_ = false;
-  CLEvent prev_enqueue_start_point_;
+    // In order to reduce memory leak on Mali a pipeline needs to be
+    // synchronized with CPU to prevent growing internal global OpenCL kernel
+    // pool. One trick is to enqueue an event from a previous run. Most of the
+    // time is should already be executed on GPU and should not stall the
+    // pipeline.
+    bool need_manual_release = false;
+    CLEvent prev_enqueue_start_point;
 
-  CalculationsPrecision precision_;
-  TensorStorageType storage_type_;
+    void Init(const GpuInfo& gpu_info);
+  };
+  ExecutionHints execution_hints_;
 
   // Directly mapped nodes from graph, but some of them "inactive" due
   //  to fusion (inactive = fused).
@@ -170,60 +166,7 @@ class InferenceContext {
   //  anywhere.
   std::vector<CLNode> nodes_;
 
-  struct DummyTensor {
-    BHWC shape;
-    TensorDescriptor descriptor;
-
-    bool operator==(const DummyTensor& b) const {
-      return shape == b.shape && descriptor == b.descriptor;
-    }
-  };
-
-  class TensorReserver {
-   public:
-    TensorReserver() : next_(0) {}
-    ValueId Add(const DummyTensor& dummy) {
-      reservations_[next_] = dummy;
-      return next_++;
-    }
-    void Add(ValueId id, const DummyTensor& dummy) {
-      reservations_[id] = dummy;
-    }
-    void SetNext(ValueId id) { next_ = id; }
-    DummyTensor Get(ValueId id) { return reservations_[id]; }
-
-    std::vector<std::pair<ValueId, TensorDescriptor>> GetTensorDescs() const {
-      std::vector<std::pair<ValueId, TensorDescriptor>> result;
-      for (auto& v : reservations_) {
-        TensorDescriptor desc = v.second.descriptor;
-        desc.shape.b = v.second.shape.b;
-        desc.shape.h = v.second.shape.h;
-        desc.shape.w = v.second.shape.w;
-        desc.shape.d = 1;
-        desc.shape.c = v.second.shape.c;
-        result.push_back({v.first, desc});
-      }
-      return result;
-    }
-
-    void Add(const std::vector<std::pair<ValueId, TensorDescriptor>>& tensors) {
-      for (auto& v : tensors) {
-        DummyTensor dummy;
-        dummy.descriptor = v.second;
-        dummy.shape.b = v.second.shape.b;
-        dummy.shape.h = v.second.shape.h;
-        dummy.shape.w = v.second.shape.w;
-        dummy.shape.c = v.second.shape.c;
-        Add(v.first, dummy);
-      }
-    }
-
-   private:
-    absl::flat_hash_map<ValueId, DummyTensor> reservations_;
-    ValueId next_;
-  };
-  TensorReserver tensor_reserver_;
-
+  absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
   absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors_descs_;
   std::map<ValueId, Tensor> const_tensors_;
 

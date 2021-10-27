@@ -66,10 +66,6 @@ bazel run tensorflow/examples/speech_commands:train -- \
 --data_dir=my_wavs --wanted_words=up,down
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import os.path
 import sys

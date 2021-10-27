@@ -535,7 +535,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
 
   // Convert the tensor to DenseHostTensor.
   auto req_ctx =
-      tfrt::RequestContextBuilder(host_ctx, /*resource_context=*/nullptr)
+      tfrt::RequestContextBuilder(host_ctx, context_.GetResourceContext())
           .build();
   if (!req_ctx) {
     *status = tensorflow::Status(
@@ -824,7 +824,7 @@ tensorflow::ImmediateExecutionTensorHandle* ContextInterface::CreateLocalHandle(
     }
   } else {
     auto result_tensor = MakeIndirectAsyncValue(host);
-    tensor_av.AndThen([host, result_tensor = result_tensor.CopyRef(),
+    tensor_av.AndThen([host, result_tensor = result_tensor,
                        tensor_av = tensor_av.CopyRef()]() {
       if (auto* dht =
               llvm::dyn_cast<DenseHostTensor>(&tensor_av.get<Tensor>())) {
@@ -890,8 +890,8 @@ ContextInterface::TFTensorHandleFromInterface(
 
   if (auto* dht = llvm::dyn_cast<tfrt::DenseHostTensor>(&tensor)) {
     return tensorflow::TensorHandle::CreateLocalHandle(
-        tensorflow::tfd::MoveHostBufferToTfTensor(dht->buffer().CopyRef(),
-                                                  dht->dtype(), dht->shape()));
+        tensorflow::tfd::MoveHostBufferToTfTensor(dht->buffer(), dht->dtype(),
+                                                  dht->shape()));
   }
 
   if (auto* sht = llvm::dyn_cast<tfrt::StringHostTensor>(&tensor)) {
@@ -1375,8 +1375,8 @@ tensorflow::Status OperationInterface::Execute(
       auto dst_device_ref = op_->GetDeviceRef();
 
       for (auto& th_arg : th_args) {
-        th_arg = th_arg.TransferTo(exec_ctx, dst_device_ref.CopyRef(),
-                                   op_->GetTensorType());
+        th_arg =
+            th_arg.TransferTo(exec_ctx, dst_device_ref, op_->GetTensorType());
       }
     }
 
@@ -1489,10 +1489,13 @@ tensorflow::Status OperationInterface::Initialize() {
   FunctionCache::FunctionCacheResult result;
 
   tensorflow::TfrtFunctionCompileOptions compile_options;
-  // TODO(tfrt-devs): Formalize the convention of converting TF's device name
-  // to MLIR compilation option's device name.
-  std::string tf_device_name = device_name_;
-  compile_options.default_device = std::move(tf_device_name);
+
+  // Use the host device if the user does not place the function to a specific
+  // device.
+  compile_options.default_device =
+      device_name_.empty() ? context_->GetEagerContext()->HostCPUName()
+                           : device_name_;
+
   // TODO(b/172659131): Do not use TFRT native ops for TF integration for now.
   // Re-enable once we have a concrete plan to implement feature complete
   // TFRT native ops (kernels).

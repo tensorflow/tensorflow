@@ -14,10 +14,6 @@
 # ==============================================================================
 """Double op is a user's defined op for testing purpose."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.lite.python.testdata import double_op_wrapper
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library

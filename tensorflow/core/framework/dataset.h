@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/framework/dataset_metadata.pb.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/function.h"
@@ -84,6 +85,9 @@ constexpr char kColon[] = ":";
 
 constexpr char kTFDataResourceTag[] = "tfdata";
 constexpr char kTraceInfoUnavailable[] = "unavailable";
+constexpr char kMetadata[] = "metadata";
+
+constexpr char kCardinalityAttrForRewrite[] = "_cardinality";
 
 class DatasetBase;
 class SerializationContext;
@@ -289,6 +293,13 @@ class GraphDefBuilderWrapper {
     SetAttrValue(value, attr);
   }
 
+  template <typename T>
+  AttrValue BuildAttrValue(const T& value) {
+    AttrValue attr;
+    SetAttrValue(value, &attr);
+    return attr;
+  }
+
  protected:
   GraphDefBuilder* builder() { return b_; }
 
@@ -387,16 +398,17 @@ class IteratorContext {
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
+          interleave_depth(ctx->interleave_depth()),
           is_restoring(ctx->is_restoring()),
-          resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
+          options(ctx->options()),
+          resource_mgr(ctx->resource_mgr()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
           split_providers(ctx->split_providers()),
           stats_aggregator(ctx->stats_aggregator()),
           thread_factory(ctx->thread_factory()),
-          thread_pool(ctx->thread_pool()),
-          interleave_depth(ctx->interleave_depth()) {}
+          thread_pool(ctx->thread_pool()) {}
 
     explicit Params(OpKernelContext* ctx)
         : collective_executor(ctx->collective_executor()),
@@ -445,15 +457,23 @@ class IteratorContext {
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
 
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree.
+    int64 interleave_depth = 0;
+
     // Marks whether the iterator is restored from a checkpoint.
     bool is_restoring = false;
+
+    // If non-null, identifies the object used for performance modeling.
+    std::shared_ptr<model::Model> model = nullptr;
+
+    // The input pipeline options.
+    const Options* options = nullptr;
 
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
     ResourceMgr* resource_mgr = nullptr;
-
-    // If non-null, identifies the object used for performance modeling.
-    std::shared_ptr<model::Model> model = nullptr;
 
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
@@ -476,11 +496,6 @@ class IteratorContext {
 
     // A shared thread pool to schedule computation into.
     thread::ThreadPoolInterface* thread_pool = nullptr;
-
-    // Records the number of ParallelInterleave operations in the path from the
-    // root node to this node (not including this node) in the input pipeline
-    // tree.
-    int64 interleave_depth = 0;
   };
 
   explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
@@ -513,11 +528,15 @@ class IteratorContext {
     return params_.function_handle_cache;
   }
 
+  int64 interleave_depth() { return params_.interleave_depth; }
+
   bool is_restoring() { return params_.is_restoring; }
 
-  ResourceMgr* resource_mgr() { return params_.resource_mgr; }
-
   const std::shared_ptr<model::Model>& model() { return params_.model; }
+
+  const Options* options() { return params_.options; }
+
+  ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
@@ -538,8 +557,6 @@ class IteratorContext {
   }
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
-
-  int64 interleave_depth() { return params_.interleave_depth; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
@@ -616,25 +633,24 @@ class SerializationContext {
     // Indicates what to do if the dataset depends on external state.
     ExternalStatePolicy external_state_policy = ExternalStatePolicy::kWarn;
 
-    // Indicates whether an attempt to serialize a dataset that does not
-    // implement serialization should result in an error. If set to `false`, the
-    // serialized graph will replace the dataset with a placeholder returned in
-    // `input_list`.
-    bool fail_if_unimplemented = true;
-
-    // Indicates whether (potentially large) data tensors should be
-    // serialized, or replaced with a placeholder returned in `input_list`. The
-    // latter makes sense to do when performing data agnostic graph rewrites to
-    // reduce the memory usage.
-    bool serialize_data_tensors = true;
-
-    // Indicates whether datasets that use random seeds should have the values
-    // of random seeds serialized or not. If the values of random seeds are
-    // serialized, the deserialized dataset will have the same seeds as the
-    // original dataset. Otherwise, the deserialized dataset will use different
-    // seeds. This param does not affect datasets that use fixed seeds; fixed
-    // seeds will always be preserved.
-    bool preserve_random_seeds = true;
+    // Indicates whether the serialization is for rewrites.
+    //
+    // If true:
+    //   * A dataset that doesn't implement serialization is replaced with a
+    //     placeholder returned in `input_list`.
+    //   * Data tensors are replaced with a placeholder returned in
+    //     `input_list`.
+    //   * Datasets that use random seeds should not serialize the random seeds.
+    //     This doesn't affect datasets that use fixed seeds; fixed seeds will
+    //     always be preserved.
+    //   * Cardinality is serialized as an unregistered attribute
+    //     `_cardinality`.
+    // If false:
+    //   * A dataset that doesn't implement serialization should result in an
+    //     error.
+    //   * Data tensors (potentially large) should be serialized.
+    //   * Datasets that use random seeds should serialize the random seeds.
+    bool is_graph_rewrite = false;
 
     // A resource manager for looking up resources during serialization.
     ResourceMgr* resource_mgr;
@@ -653,11 +669,7 @@ class SerializationContext {
     return params_.external_state_policy;
   }
 
-  bool fail_if_unimplemented() const { return params_.fail_if_unimplemented; }
-
-  bool serialize_data_tensors() const { return params_.serialize_data_tensors; }
-
-  bool preserve_random_seeds() const { return params_.preserve_random_seeds; }
+  bool is_graph_rewrite() const { return params_.is_graph_rewrite; }
 
   const ResourceMgr* resource_mgr() const { return params_.resource_mgr; }
 
@@ -892,7 +904,9 @@ class DatasetBase : public core::RefCounted {
   const string& node_name() const { return node_name_; }
 
   // Initializes the dataset.
-  void Initialize();
+  void Initialize(const Metadata& metadata);
+
+  const Metadata& metadata() const { return metadata_; }
 
   const Options& options() const { return options_; }
 
@@ -926,9 +940,10 @@ class DatasetBase : public core::RefCounted {
     std::unique_ptr<IteratorBase> it;
     IteratorContext::Params params(ctx);
     params.is_restoring = true;
-    TF_RETURN_IF_ERROR(MakeIterator(IteratorContext(std::move(params)),
+    IteratorContext restore_ctx(std::move(params));
+    TF_RETURN_IF_ERROR(MakeIterator(&restore_ctx,
                                     /*parent=*/nullptr, output_prefix, &it));
-    TF_RETURN_IF_ERROR(it->Restore(ctx, reader));
+    TF_RETURN_IF_ERROR(it->Restore(&restore_ctx, reader));
     *iterator = std::move(it);
     return Status::OK();
   }
@@ -963,7 +978,10 @@ class DatasetBase : public core::RefCounted {
   virtual int64_t TotalBytes() const { return 0; }
 
   // Returns the cardinality of this dataset.
-  virtual int64_t Cardinality() const { return kUnknownCardinality; }
+  int64_t Cardinality() const { return cardinality_; }
+
+  // Internal implementation of cardinality for a dataset.
+  virtual int64_t CardinalityInternal() const { return kUnknownCardinality; }
 
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;
@@ -981,6 +999,9 @@ class DatasetBase : public core::RefCounted {
   // `errors::FailedPrecondition` with a message that identifies the external
   // state. Otherwise, the method returns `Status::OK()`.
   virtual Status CheckExternalState() const = 0;
+
+  // Indicates whether the dataset is compatible with random access.
+  Status CheckRandomAccessCompatible(const int64 index) const;
 
   // Return the element at a particular index for a randomly accessible dataset.
   virtual Status Get(OpKernelContext* ctx, int64 index,
@@ -1034,6 +1055,9 @@ class DatasetBase : public core::RefCounted {
   void set_options(const Options& options) { options_ = options; }
 
  private:
+  // Computes and stores the cardinality of a given dataset.
+  Status ComputeCardinality();
+
   // Computes the number of source datasets feeding into this dataset. A source
   // dataset is a leaf in the subtree of dataset inputs.
   Status ComputeNumSources();
@@ -1046,10 +1070,12 @@ class DatasetBase : public core::RefCounted {
 
   const string type_string_;
   const string node_name_;
+  Metadata metadata_;
   Options options_;
   // The number of source datasets feeding into the dataset. A source dataset is
   // a leaf in the subtree of dataset inputs.
   int64_t num_sources_ = -1;
+  int64_t cardinality_ = kUnknownCardinality;
 };
 
 // Represents an iterator that is associated with a particular dataset.
@@ -1175,7 +1201,7 @@ class DatasetBaseIterator : public IteratorBase {
   // When modeling is enabled, this method records the fact that this iterator
   // has produced an element and its size in bytes.
   void RecordElement(IteratorContext* ctx, std::vector<Tensor>* out_tensors) {
-    if (node_) {
+    if (collect_resource_usage(ctx)) {
       int64_t num_bytes = GetAllocatedBytes(*out_tensors);
       node_->record_element();
       node_->record_bytes_produced(num_bytes);
@@ -1206,13 +1232,12 @@ class DatasetBaseIterator : public IteratorBase {
   // Returns whether work is currently being recorded, i.e. whether we are
   // currently between a `RecordStart` and a `RecordStop`.
   bool IsRecording(IteratorContext* ctx) {
-    return collect_resource_usage(ctx) && node_->is_recording();
+    return node_ && node_->is_recording();
   }
 
  private:
   bool collect_resource_usage(IteratorContext* ctx) {
-    auto model = ctx->model();
-    return model && model->collect_resource_usage() && node_;
+    return ctx->model() && node_;
   }
 
   string traceme_metadata_;
@@ -1276,7 +1301,15 @@ Status ParseVectorArgument(OpKernelContext* ctx,
 // graph execution engine.
 class DatasetOpKernel : public OpKernel {
  public:
-  explicit DatasetOpKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit DatasetOpKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    if (ctx->HasAttr(kMetadata)) {
+      std::string serialized_metadata;
+      OP_REQUIRES_OK(ctx, ctx->GetAttr(kMetadata, &serialized_metadata));
+      OP_REQUIRES(ctx, metadata_.ParseFromString(serialized_metadata),
+                  errors::InvalidArgument(absl::StrCat(
+                      "Could not parse the 'metadata' attribute.")));
+    }
+  }
 
   void Compute(OpKernelContext* ctx) final;
 
@@ -1293,6 +1326,9 @@ class DatasetOpKernel : public OpKernel {
   // Subclasses should implement this method. It will be called during Compute
   // execution.
   virtual void MakeDataset(OpKernelContext* ctx, DatasetBase** output) = 0;
+
+ private:
+  Metadata metadata_;
 };
 
 // Encapsulates the work required to plug unary Datasets into the core

@@ -59,8 +59,8 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
             quant_specs.default_ranges.second.getValueOr(0.0),
             quant_specs.IsSignedInferenceType()));
   }
-  pass_manager->addNestedPass<mlir::FuncOp>(mlir::TFL::CreateQuantizePass(
-      quant_specs.verify_numeric, quant_specs.whole_model_verify));
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateQuantizePass(quant_specs));
   bool emit_quant_adaptor_ops =
       quant_specs.inference_type != quant_specs.inference_input_type;
   pass_manager->addNestedPass<mlir::FuncOp>(
@@ -69,12 +69,19 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
 
 void AddConvertHloToTfPass(std::string entry_function_name,
                            mlir::OpPassManager* pass_manager) {
+  // Legalize jax random to tflite custom op.
+  // The CreateLegalizeJaxRandom Pass has to stay at because we need to replace
+  // the random function body before being inlined.
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateLegalizeJaxRandomPass());
+
   // Canonicalize, CSE etc.
   pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   // DCE for private symbols.
   pass_manager->addPass(mlir::createSymbolDCEPass());
 
+  pass_manager->addPass(mlir::TF::CreateStripNoinlineAttributePass());
   // Add inline pass.
   pass_manager->addPass(mlir::createInlinerPass());
 
@@ -204,7 +211,14 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
   // Add function inlining pass. Both TF and TFLite dialects are opted into
   // function inliner interface.
   pass_manager->addPass(mlir::createInlinerPass());
-
+  // Reduce operands of TFL::While without changing the outcome.
+  // It needs to stay here because:
+  // 1. WhileOps are in TFL dialect.
+  // 2. The body and cond are inlined.
+  // 3. We need to do this before while canonicalization, otherwise it would be
+  //   difficult to find dependencies.
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateReduceWhileOperandsPass());
   // Canonicalization includes const folding, which is utilized here to optimize
   // away ops that can't get constant folded after PrepareTF pass. For example,
   // tf.Conv2D is split into tf.Transpose and tfl.Conv2D.

@@ -73,7 +73,8 @@ class ReduceDatasetParams : public DatasetParams {
                     {"Targuments", type_arguments_},
                     {"output_types", output_dtypes_},
                     {"output_shapes", output_shapes_},
-                    {"use_inter_op_parallelism", use_inter_op_parallelism_}};
+                    {"use_inter_op_parallelism", use_inter_op_parallelism_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 

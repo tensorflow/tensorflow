@@ -160,6 +160,11 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, transfer the result of tpurt.execute from TPU "
                      "to host."),
       llvm::cl::init(true)};
+  Option<bool> use_tpu_host_allocator_for_inputs{
+      *this, "use-tpu-host-allocator-for-inputs",
+      llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
+                     "program will use tpu host allocator."),
+      llvm::cl::init(false)};
   Option<bool> enable_native_ops{
       *this, "enable-native-ops",
       llvm::cl::desc(

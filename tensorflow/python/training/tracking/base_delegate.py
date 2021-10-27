@@ -106,7 +106,7 @@ class DelegatingTrackableMixin(object):
     return self._trackable._deferred_dependencies
 
   def _lookup_dependency(self, *args, **kwargs):
-    self._trackable._lookup_dependency(*args, **kwargs)
+    return self._trackable._lookup_dependency(*args, **kwargs)
 
   def _add_variable_with_custom_getter(self, *args, **kwargs):
     return self._trackable._add_variable_with_custom_getter(*args, **kwargs)

@@ -13,14 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for bincount_ops.bincount."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
@@ -109,20 +104,19 @@ class BincountTest(test_util.TensorFlowTestCase):
             self.evaluate(bincount_ops.bincount(arr, None)),
             np.bincount(arr, weights))
 
+  @test_util.run_gpu_only
   def test_bincount_determinism_error(self):
-    num_samples = 10000
-    np.random.seed(42)
-    arr = np.random.randint(0, 1000, num_samples)
-    try:
-      config.enable_deterministic_ops(True)
-      with test_util.use_gpu():
-        if test_util.is_gpu_available(cuda_only=True):
-          with self.assertRaisesRegexp(
-              errors_impl.UnimplementedError, "Determinism is not yet "
-              "supported for Bincount."):
-            self.evaluate(bincount_ops.bincount(arr, None))
-    finally:
-      config.enable_deterministic_ops(False)
+    arr = np.random.randint(0, 1000, size=1000)
+    with test_util.deterministic_ops(), self.assertRaisesRegex(
+        errors_impl.UnimplementedError,
+        "Determinism is not yet supported in GPU implementation of Bincount."):
+      self.evaluate(bincount_ops.bincount(arr, None, axis=None))
+    arr = np.random.randint(0, 1000, size=(100, 100))
+    with test_util.deterministic_ops(), self.assertRaisesRegex(
+        errors_impl.UnimplementedError,
+        "Determinism is not yet supported in GPU implementation of "
+        "DenseBincount."):
+      self.evaluate(bincount_ops.bincount(arr, None, axis=-1))
 
   def test_zero_weights(self):
     with self.session():
@@ -136,11 +130,12 @@ class BincountTest(test_util.TensorFlowTestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(bincount_ops.bincount([1, 2, 3, -1, 6, 8]))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_shape_function(self):
     # size must be scalar.
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
-        "Shape must be rank 0 but is rank 1 .*Bincount"):
+        "Shape must be rank 0 but is rank 1(?s).*Bincount"):
       gen_math_ops.bincount([1, 2, 3, 1, 6, 8], [1], [])
     # size must be positive.
     with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),

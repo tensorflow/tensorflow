@@ -15,10 +15,6 @@
 
 """Wrappers for candidate sampling operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_candidate_sampling_ops

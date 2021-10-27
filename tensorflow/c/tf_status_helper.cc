@@ -80,6 +80,7 @@ void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status) {
       assert(0);
       break;
   }
+
   errors::CopyPayloads(status, tf_status->status);
 }
 

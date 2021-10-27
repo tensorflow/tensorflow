@@ -430,8 +430,8 @@ struct LaunchLRNGrad<CPUDevice, T> {
           T gs = grads_shaped(i, j);
           if (gs == T(0)) continue;
 
-          int64_t depth_begin = std::max<int64>(0, j - depth_radius_);
-          int64_t depth_end = std::min<int64>(depth, j + depth_radius_ + 1);
+          int64_t depth_begin = std::max<int64_t>(0, j - depth_radius_);
+          int64_t depth_end = std::min<int64_t>(depth, j + depth_radius_ + 1);
 
           T norm(0);
           for (int64_t k = depth_begin; k < depth_end; ++k) {

@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/types/optional.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -68,7 +69,7 @@ class HloFunctionImporter {
       mlir::OpBuilder* builder);
 
   static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
-                               llvm::StringRef attr_name = "minor_to_major");
+                               llvm::StringRef attr_name);
 
   // TODO(b/179166199): move this to attribute_importer.h.
   // Converts XLA instruction source target pairs to MLIR attribute.
@@ -90,6 +91,7 @@ class HloFunctionImporter {
         module_(module),
         builder_(builder),
         function_map_(function_map) {
+    context_->loadDialect<mlir::arith::ArithmeticDialect>();
     context_->loadDialect<mlir::StandardOpsDialect>();
     context_->loadDialect<mlir::mhlo::MhloDialect>();
   }

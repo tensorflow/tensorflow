@@ -55,12 +55,23 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass(
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
+    const QuantizationSpecs& quant_specs, const StringSet& ops_blocklist = {},
+    const StringSet& nodes_blocklist = {});
+
+// Overloading of CreateQuantizePass which takes only necessary flags to reduce
+// the binary size.
+std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
     bool verify_numeric = false, bool whole_model_verify = false,
     bool legacy_float_scale = false, const StringSet& ops_blocklist = {},
     const StringSet& nodes_blocklist = {});
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
+    const QuantizationSpecs& quant_specs);
+
+// Creates an instance of the TensorFlow Lite dialect PrepareDynamicQuantize
+// pass.
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicQuantizePass(
     const QuantizationSpecs& quant_specs);
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
@@ -112,6 +123,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass();
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
 
+// Creates a pass to remove operands of TFL WhileOp without changing outcomes.
+std::unique_ptr<OperationPass<FuncOp>> CreateReduceWhileOperandsPass();
+
 // Verifies runtime constraints.
 std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass();
 
@@ -126,6 +140,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLowerCustomOpsPass();
 // given.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateInsertCallOnceOpFromSessionInitializerPass();
+
+// Replace the tfl wrapped random function body with tfl.customOp.
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeJaxRandomPass();
 
 // Creates a pass which is responsible for legalizing TensorFlow variables to
 // TensorFlow Lite variables.

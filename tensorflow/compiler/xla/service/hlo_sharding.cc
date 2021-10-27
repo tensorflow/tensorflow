@@ -462,9 +462,13 @@ int64_t HloSharding::RequiredLeaves(const Shape& shape) {
 }
 
 Status HloSharding::CheckLeafCount(const Shape& shape) const {
-  int64_t shape_leaves = RequiredLeaves(shape);
-  TF_RET_CHECK(shape_leaves == tuple_elements_.size())
-      << "Shape " << ShapeUtil::HumanString(shape) << " has " << shape_leaves
+  int64_t leaf_count = ShapeUtil::GetLeafCount(shape);
+  if (leaf_count == 0 && tuple_elements_.size() == 1) {
+    // Allow (but don't require) empty tuples to have a single sharding
+    return Status::OK();
+  }
+  TF_RET_CHECK(leaf_count == tuple_elements_.size())
+      << "Shape " << ShapeUtil::HumanString(shape) << " has " << leaf_count
       << " leaf nodes while this sharding has " << tuple_elements_.size();
   return Status::OK();
 }
@@ -531,6 +535,10 @@ Status HloSharding::ValidateTuple(const Shape& shape,
         StrCat("Sharding is tuple-shaped but validation shape is not."));
   }
   TF_RETURN_IF_ERROR(CheckLeafCount(shape));
+  if (ShapeUtil::GetLeafCount(shape) == 0 && tuple_elements_.empty()) {
+    // Empty tuples are allowed to not have sharding
+    return Status::OK();
+  }
 
   // Now we've validated the number of tuple elements, it's safe to request a
   // shape tree.

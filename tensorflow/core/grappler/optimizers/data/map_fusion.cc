@@ -72,6 +72,8 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
   (*fused_node.mutable_attr())["preserve_cardinality"].set_b(
       value_or_false(first_cardinality) && value_or_false(second_cardinality));
 
+  graph_utils::MaybeSetFusedMetadata(parent_map_node, map_node, &fused_node);
+
   return fused_node;
 }
 

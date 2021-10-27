@@ -74,22 +74,15 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
 namespace {
 
 struct ParallelExecuteToIslandsPass
-    : public PassWrapper<ParallelExecuteToIslandsPass, FunctionPass> {
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tf-parallel-execute-to-islands";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Lowers device parallel_execute to executor islands";
-  }
+    : public TF::ParallelExecuteToIslandsPassBase<
+          ParallelExecuteToIslandsPass> {
   void runOnFunction() override;
 };
 
@@ -211,8 +204,6 @@ void ParallelExecuteToIslandsPass::runOnFunction() {
 std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass() {
   return std::make_unique<ParallelExecuteToIslandsPass>();
 }
-
-static PassRegistration<ParallelExecuteToIslandsPass> pass;
 
 }  // namespace TFDevice
 }  // namespace mlir

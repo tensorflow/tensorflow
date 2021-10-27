@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for test_util.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.lite.python import test_util as tflite_test_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Demo of the tfdbg curses UI: A TF network computing Fibonacci sequence."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 

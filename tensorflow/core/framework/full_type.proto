@@ -173,6 +173,17 @@ enum FullTypeId {
   // will be supported by user types in the future.
   TFT_DATASET = 10102;
 
+  // A mutex lock tensor, produced by tf.raw_ops.MutexLock.
+  // Unlike strict execution models, where ownership of a lock is denoted by
+  // "running after the lock has been acquired", in non-strict mode, lock
+  // ownership is in the true sense: "the op argument representing the lock is
+  // available".
+  // Mutex locks are the dynamic counterpart of control dependencies.
+  // TODO(mdan): Properly document this thing.
+  //
+  // Parametrization: TFT_MUTEX_LOCK[].
+  TFT_MUTEX_LOCK = 10202;
+
   // Type attributes. These always appear in the parametrization of a type,
   // never alone. For example, there is no such thing as a "bool" TensorFlow
   // object (for now).

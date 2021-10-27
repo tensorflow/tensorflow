@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
@@ -100,6 +102,9 @@ class CPUAllocator : public Allocator {
                      << "exceeds " << 100 * kTotalAllocationWarningThreshold
                      << "% of free system memory";
       }
+      if (p != nullptr) {
+        AddTraceMe("MemoryAllocation", p, num_bytes, alloc_size);
+      }
     }
     return p;
   }
@@ -110,8 +115,33 @@ class CPUAllocator : public Allocator {
           port::MallocExtension_GetAllocatedSize(ptr);
       mutex_lock l(mu_);
       stats_.bytes_in_use -= alloc_size;
+      AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
     }
     port::AlignedFree(ptr);
+  }
+
+  void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,
+                  std::size_t req_bytes, std::size_t alloc_bytes) {
+    tensorflow::profiler::TraceMe::InstantActivity(
+        [this, traceme_name, chunk_ptr, req_bytes,
+         alloc_bytes]() TF_NO_THREAD_SAFETY_ANALYSIS {
+          const auto& annotation =
+              profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
+          return tensorflow::profiler::TraceMeEncode(
+              traceme_name, {{"allocator_name", Name()},
+                             {"bytes_reserved", stats_.bytes_reserved},
+                             {"bytes_allocated", stats_.bytes_in_use},
+                             {"peak_bytes_in_use", stats_.peak_bytes_in_use},
+                             {"requested_bytes", req_bytes},
+                             {"allocation_bytes", alloc_bytes},
+                             {"addr", reinterpret_cast<uint64>(chunk_ptr)},
+                             {"tf_op", annotation.pending_op_name},
+                             {"id", annotation.pending_step_id},
+                             {"region_type", annotation.pending_region_type},
+                             {"data_type", annotation.pending_data_type},
+                             {"shape", annotation.pending_shape_func()}});
+        },
+        /*level=*/profiler::TraceMeLevel::kInfo);
   }
 
   absl::optional<AllocatorStats> GetStats() override {

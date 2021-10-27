@@ -1416,7 +1416,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
       const auto& memory_limit_mb = virtual_devices.Get(i).memory_limit_mb();
       std::transform(memory_limit_mb.begin(), memory_limit_mb.end(),
                      std::back_inserter(memory_limit_bytes), [](float mb) {
-                       return static_cast<int64>(mb) * (1ll << 20);
+                       return static_cast<int64_t>(mb) * (1ll << 20);
                      });
     }
     while (next_tf_device_id < memory_limit_bytes.size()) {
@@ -1526,7 +1526,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
             << (bytes_limit >> 20) << " MB memory: "
             << " -> " << GetShortDeviceDescription(platform_device_id, *desc);
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
-  gpu_allocator->SetStream(gpu_device->GetStream());
+  gpu_allocator->SetStreamAndPreallocateMemory(gpu_device->GetStream());
   devices->push_back(std::move(gpu_device));
 
   return Status::OK();

@@ -1,3 +1,47 @@
+# Release 2.8.0
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+# Breaking Changes
+
+*<DOCUMENT BREAKING CHANGES HERE>
+*<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+# Known Caveats
+
+*<CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+*<ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+*<KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+# Major Features and Improvements
+* `tf.lite`:
+  * Where operation support is added for these data types
+    'int32/uint32/int8/uint8/int64'
+  * Add builtin support for `Bucketize` op on CPU.
+
+*<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+# Bug Fixes and Other Changes
+
+*<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+*<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+*<NOTES SHOULD BE GROUPED PER AREA>
+* `tf.data`:
+  * The optimization `parallel_batch` now becomes default if not disabled by
+    users, which will parallelize copying of batch elements.
+
+* `tf.lite`:
+  * GPU
+    * Adds GPU Delegation support for serialization to Java API. This boosts
+      initialization time upto 90% when OpenCL is available.
+
+# Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.7.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
@@ -40,9 +84,10 @@
     [Build TensorFlow Lite with CMake](https://www.tensorflow.org/lite/guide/build_cmake)
     and [Build TensorFlow Lite for ARM boards](https://www.tensorflow.org/lite/guide/build_arm)
     for the migration.
-  * Add experimental API `experimental_from_jax` to support conversion from Jax
-    models to TensorFlow Lite.
-  * Support uint32 data type for cast op.
+  * Deprecate tflite::OpResolver::GetDelegates and the list returned by TfLite's
+    BuiltinOpResolver::GetDelegates is now always empty. Instead, recommend
+    using new method tflite::OpResolver::GetDelegateCreators in order to achieve
+    lazy initialization on TfLite delegate instances.
 
 * TF Core:
     *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
@@ -143,6 +188,60 @@
     distributed computations.
   * Added `sparse` and `ragged` options to `tf.keras.layers.TextVectorization`
     to allow for `SparseTensor` and `RaggedTensor` outputs from the layer.
+*  distribute.experimental.rpc package:
+   * distribute.experimental.rpc package introduces APIs to create a GRPC based
+    server to register tf.function methods and a GRPC client to invoke remote
+    registered methods. RPC APIs are intended for multi-client setups i.e. server
+  and clients are started in separate binaries independently.
+
+   * Example usage to create server:
+     ```
+        server = tf.distribute.experimental.rpc.Server.create("grpc", 
+                "127.0.0.1:1234")
+        @tf.function(input_signature=[
+          tf.TensorSpec([], tf.int32),
+          tf.TensorSpec([], dtypes.int32)
+        ])
+        def _remote_multiply(a, b):
+          return tf.math.multiply(a, b)
+
+        server.register("multiply", _remote_multiply)
+     ```
+    * Example usage to create client:
+      ```
+      client = tf.distribute.experimental.rpc.Client.create("grpc", address)
+      a = tf.constant(2, dtype=tf.int32)
+      b = tf.constant(3, dtype=tf.int32)
+      result = client.multiply(a, b)
+      ```
+* `tf.lite`:
+  * Add experimental API `experimental_from_jax` to support conversion from Jax
+    models to TensorFlow Lite.
+  * Support uint32 data type for cast op.
+  * Add experimental quantization debugger `tf.lite.QuantizationDebugger`
+
+* Extension Types
+  * Add experimental API to define new Python classes that can be handled by
+    TensorFlow APIs.  To create an extension type, simply define a Python class
+    with `tf.experimental.ExtensionType` as its base, and use type annotations
+    to specify the type for each field.  E.g.:
+    ```
+    class MaskedTensor(tf.experimental.ExtensionType):
+      values: tf.Tensor
+      mask: tf.Tensor
+    ```
+    The `tf.ExtensionType` base class works similarly to
+    [`typing.NamedTuple`](https://docs.python.org/3/library/typing.html#typing.NamedTuple)
+    and [`@dataclasses.dataclass`](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass)
+    from the standard Python library.
+  * Extension types are supported by Keras, tf.data, TF-hub, SavedModel,
+    tf.function, control flow ops, py_function, and distribution strategy.
+  * Add "dispatch decorators" that can be used to override the default behavior
+    of TensorFlow ops (such as `tf.add` or `tf.concat`) when they are applied to
+    ExtensionType values.
+  * The `BatchableExtensionType` API can be used to define extension types that
+    support APIs that make use of batching, such as `tf.data.Dataset` and
+    `tf.map_fn`.
 
 ## Bug Fixes and Other Changes
 
@@ -157,9 +256,24 @@
     * Added an experimental session config
       `tf.experimental.disable_functional_ops_lowering` which disables
       functional control flow op lowering optimization. This is useful when
-      executing within a portable runtime where control flow op kernels may not 
+      executing within a portable runtime where control flow op kernels may not
       be loaded due to selective registration.
+    * Added a new experimental argument `experimental_is_anonymous` to the
+      `__init__` function of `tf.lookup.StaticHashTable`,
+      `tf.lookup.StaticVocabularyTable`,
+      `tf.lookup.experimental.MutableHashTable` and
+      `tf.lookup.experimental.DenseHashTable`, to create the table in anonymous
+      mode. In this mode, the table resource can only be accessed via resource
+      handles (not resource names) and will be deleted automatically when all
+      resource handles pointing to it are gone.
 *   `tf.data`:
+    *   Introducing the `tf.data.experimental.at` API which provides random
+        access for input pipelines that consist of transformations that support
+        random access. The initial set of transformations that support random
+        access includes: `tf.data.Dataset.from_tensor_slices`,
+        `tf.data.Dataset.shuffle`, `tf.data.Dataset.batch`,
+        `tf.data.Dataset.shard`, `tf.data.Dataset.map`,
+        `tf.data.Dataset.range`, `tf.data.Dataset.skip`.
     *   Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental
         endpoint.
@@ -167,15 +281,20 @@
         `tf.data.Options.experimental_optimization.autotune*` to a newly created
         `tf.data.Options.autotune.*` and removing support for
         `tf.data.Options.experimental_optimization.autotune_buffers`.
-    *   Added the ability for `TensorSliceDataset` to identify and handle inputs
-        that are files. This will enable creating hermetic SavedModels when
-        using datasets created from files.
+    *   Added support for user-defined names of tf.data core Python API, which
+        can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
     *   Promoting
         `tf.data.experimental.sample_from_datasets` API to
         `tf.data.Dataset.sample_from_datasets` and deprecating the experimental
         endpoint.
+    *   Promoting
+        `tf.data.experimental.choose_from_datasets` API to
+        `tf.data.Dataset.choose_from_datasets` and deprecating the experimental
+        endpoint.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
+    *   The saved_model_cli's `--input_examples` inputs are now restricted to
+        python literals to avoid code injection.
 *   XLA:
     * Added a new API that allows custom call functions to signal errors. The
       old API will be deprecated in a future release. See
@@ -187,6 +306,10 @@
     *   When saving a model, not specifying a namespace whitelist for custom
         ops with a namespace will now default to allowing rather than rejecting
         them all.
+*   `tf.distribute.TPUStrategy`:
+    * Added a new constructor option `experimental_spmd_xla_partitioning` to
+      enable SPMD (Single Program Multiple Data) support for spatial
+      partitioning. See https://www.tensorflow.org/api_docs/python/tf/distribute/TPUStrategy#experimental_split_to_logical_devices.
 
 ## Thanks to our Contributors
 

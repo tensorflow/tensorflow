@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops.matmul."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import operator
 
 import numpy as np
@@ -38,6 +34,7 @@ from tensorflow.python.platform import test as test_lib
 # os.environ["TF_MATMUL_AUTOTUNE_ENABLE"] = "1" to enable it.
 
 
+@test_util.with_eager_op_as_function
 class MatMulMixedType(test_lib.TestCase):
   """Simple test for tf.matmul where Tout is different from T."""
 
@@ -60,6 +57,7 @@ class MatMulMixedType(test_lib.TestCase):
     self.assertAllEqual([[5, 11], [11, 25]], c)
 
 
+@test_util.with_eager_op_as_function
 class MatVecTest(test_lib.TestCase):
   """Simple test for matvec, which is sugar on top of matmul."""
 
@@ -87,6 +85,7 @@ def _GetTransposedMatrices(x, x_name, kwargs):
     return x
 
 
+@test_util.with_eager_op_as_function
 class MatMulTest(test_lib.TestCase):
   pass  # Filled in below
 
@@ -132,6 +131,7 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
   return Test
 
 
+@test_util.with_eager_op_as_function
 class MatMulGradientTest(test_lib.TestCase):
   pass  # Will be filled in below.
 
@@ -168,6 +168,7 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
   return Test
 
 
+@test_util.with_eager_op_as_function
 class MatMulStatsTest(test_lib.TestCase):
 
   @test_util.run_v1_only("Test requires a Graph and NodeDef inspection")
@@ -216,6 +217,7 @@ except AttributeError:
     return r
 
 
+@test_util.with_eager_op_as_function
 class MatMulInfixOperatorTest(test_lib.TestCase):
 
   def testMismatchedShape(self):
@@ -228,8 +230,8 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
 
   def testMismatchedDimensions(self):
     with self.assertRaisesRegex(
-        Exception,
-        r"(In\[0\] mismatch In\[1\] shape|Dimensions must be equal)"):
+        Exception, r"(Matrix size-incompatible: In\[0\]: .* In\[1\]|"
+        r"Dimensions must be equal)"):
       infix_matmul(
           ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
           ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))

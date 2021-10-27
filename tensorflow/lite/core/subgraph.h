@@ -330,9 +330,9 @@ class Subgraph {
   // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
   // The runtime does NOT take ownership of the underlying memory.
   //
-  // NOTE: User needs to call AllocateTensors() after this. In case of input
-  // resizing, buffers will be checked for required data size during
-  // AllocateTensors().
+  // NOTE: User needs to call AllocateTensors() after this.
+  // Invalid/insufficient buffers will cause an error during AllocateTensors or
+  // Invoke (in case of dynamic shapes in the graph).
   //
   // Parameters should satisfy the following conditions:
   // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
@@ -365,6 +365,22 @@ class Subgraph {
   // is linked to the program, calling this function will output memory usage
   // information about tenosrs and ops.
   void DumpMemoryPlannerDebugInfo() const;
+
+  // WARNING: This is an experimental API and subject to change.
+  // Force all intermediate dynamic tensors to be released once they are not
+  // used by the model. Please use this configuration with caution, since it
+  // might reduce the peak memory usage of the model at the cost of a slower
+  // inference speed. This API needs to be called before calling
+  // `AllocateTensors`.
+  void EnsureDynamicTensorsAreReleased() {
+    release_dynamic_tensors_if_unused_ = true;
+  }
+
+  // WARNING: This is an experimental API and subject to change.
+  // Remove unused inputs of the subgraph. It checks usage of inputs and mark it
+  // as kTfLiteOptionalTensor if the input is not used in graph execution.
+  // Currently, it's used to remove unused inputs of WHILE cond subgraphs.
+  TfLiteStatus RemoveUnusedInputs();
 
  private:
   friend class InterpreterBuilder;
@@ -607,10 +623,13 @@ class Subgraph {
   // restored to its pre-delegation state.
   // NOTE: This reverts all delegates previously applied to the Subgraph.
   // 3. kTfLiteApplicationError : Delegation failed to be applied due to the
-  // incompatibility with the TfLite runtime, e.g., the model graph is already
+  // incompatibility with the TF Lite runtime, e.g., the model graph is already
   // immutable when applying the delegate. However, the Subgraph is still in a
   // invokable state.
-  // 4. kTfLiteError: Unexpected/runtime failure.
+  // 4. kTfLiteUnresolvedOps: Delegation failed because the model has an
+  // operator that cannot be resolved. This can happen when the op is not
+  // registered or built with the TF Lite framework.
+  // 5. kTfLiteError: Unexpected/runtime failure.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
   // This un-applies all delegates that have been applied till now, but retains
@@ -669,6 +688,14 @@ class Subgraph {
   // remains valid for the latter's lifetime.
   // Also sets relevant fields on context_ based on known metadata.
   TfLiteStatus SetMetadata(const std::map<std::string, std::string>* metadata);
+
+  // Initializes the mapping between tensor index to the index of the
+  // last operation that uses the tensor as input.
+  void InitializeTensorReleaseMap();
+
+  // Checks the options for releasing dynamic tensors and release dynamic
+  // tensors if configured.
+  void MaybeReleaseDynamicInputs(const TfLiteNode& node, size_t node_index);
 
   // The state of the Interpreter.
   enum State {
@@ -770,8 +797,8 @@ class Subgraph {
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
 
-  // Contains <tensor idx, custom allocation> pairs for all applicable tensors.
-  std::vector<std::pair<int, TfLiteCustomAllocation>> custom_allocations_;
+  // Maps tensor index to custom allocation for all applicable tensors.
+  std::map<int, TfLiteCustomAllocation> custom_allocations_;
 
   // Tracking bit for whether a tensor was resized in the course of an op
   // invocation. This is a useful hint to ensure that dynamic tensor outputs
@@ -825,6 +852,13 @@ class Subgraph {
 
   // Model-metadata owned by the Interpreter.
   const std::map<std::string, std::string>* metadata_ = nullptr;
+
+  // Release dynamic tensor's memory once they are not used by the graph.
+  bool release_dynamic_tensors_if_unused_ = false;
+
+  // Mapping between tensor index to the last index of the execution plan that
+  // uses this tensor.
+  std::map<int, int> tensor_to_last_op_index_;
 };
 
 }  // namespace tflite

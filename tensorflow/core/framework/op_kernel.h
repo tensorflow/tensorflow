@@ -82,6 +82,13 @@ class CollectiveExecutor;
 class StepStatsCollectorInterface;
 class CoordinationServiceAgent;
 
+// A label that is added to kernels that are JIT compiled. These labels will be
+// removed before kernels are looked up, so they can be used without specifying
+// the label. This label is a temporary measure to allow JIT kernels to be
+// disabled if needed.
+extern const char* kJitKernelLabel;
+extern const char* kDisableJitKernelsEnvVar;
+
 class OpKernel {
  public:
   // OpKernel won't be instantiated by the scheduler, so you may perform

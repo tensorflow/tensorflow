@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for convolutional operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import time
 
@@ -2323,7 +2319,7 @@ class Conv2DTest(test.TestCase):
           test_input=False,
           data_format=data_format,
           use_gpu=use_gpu,
-          max_err=0.003)
+          max_err=0.005)
 
   @test_util.deprecated_graph_mode_only
   def testInputGradient1_2_3_4PaddingStride3x2(self):

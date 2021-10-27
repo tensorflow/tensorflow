@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -135,6 +136,56 @@ TEST_F(BitcastConvertTest, ConvertReshape) {
   BitcastConvertType(reshape, F32);
 
   ComputeAndCompareR0<float>(&builder, 42.0f, {});
+}
+
+class BitcastConvertHloTest : public HloTestBase {};
+
+XLA_TEST_F(BitcastConvertHloTest, S32to4S8) {
+  absl::string_view hlo_string = R"(
+HloModule bitcast_to_smaller
+
+ENTRY main {
+  p = s32[10] parameter(0)
+  ROOT out = s8[10,4] bitcast-convert(p)
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(BitcastConvertHloTest, FourS8toS32) {
+  absl::string_view hlo_string = R"(
+HloModule bitcast_to_larger
+
+ENTRY main {
+  p = s8[10,4] parameter(0)
+  ROOT out = s32[10] bitcast-convert(p)
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(BitcastConvertHloTest, F32to2F16) {
+  absl::string_view hlo_string = R"(
+HloModule bitcast_to_smaller
+
+ENTRY main {
+  p = f32[10] parameter(0)
+  ROOT out = f16[10,2] bitcast-convert(p)
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(BitcastConvertHloTest, TwoF16toF32) {
+  absl::string_view hlo_string = R"(
+HloModule bitcast_to_smaller
+
+ENTRY main {
+  p = f16[10,2] parameter(0)
+  ROOT out = f32[10] bitcast-convert(p)
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
 }  // namespace

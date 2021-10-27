@@ -785,12 +785,11 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
   std::vector<float> max_scores;
   max_scores.resize(num_boxes);
   std::vector<int> sorted_class_indices;
-  sorted_class_indices.resize(num_boxes * num_categories_per_anchor);
+  sorted_class_indices.resize(num_boxes * num_classes);
   for (int row = 0; row < num_boxes; row++) {
     const float* box_scores =
         scores + row * num_classes_with_background + label_offset;
-    int* class_indices =
-        sorted_class_indices.data() + row * num_categories_per_anchor;
+    int* class_indices = sorted_class_indices.data() + row * num_classes;
     DecreasingPartialArgSort(box_scores, num_classes, num_categories_per_anchor,
                              class_indices);
     max_scores[row] = box_scores[class_indices[0]];
@@ -804,8 +803,8 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
   for (const auto& selected_index : selected) {
     const float* box_scores =
         scores + selected_index * num_classes_with_background + label_offset;
-    const int* class_indices = sorted_class_indices.data() +
-                               selected_index * num_categories_per_anchor;
+    const int* class_indices =
+        sorted_class_indices.data() + selected_index * num_classes;
 
     for (int col = 0; col < num_categories_per_anchor; ++col) {
       int box_offset = max_categories_per_anchor * output_box_index + col;

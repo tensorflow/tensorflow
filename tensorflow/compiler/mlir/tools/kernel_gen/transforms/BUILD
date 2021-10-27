@@ -49,6 +49,25 @@ cc_library(
 )
 
 cc_library(
+    name = "bufferize_tiled_loop",
+    srcs = ["bufferize_tiled_loop.cc"],
+    hdrs = ["rewriters.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "embed_tf_framework",
     srcs = ["embed_tf_framework.cc"],
     hdrs = ["rewriters.h"],
@@ -106,16 +125,19 @@ cc_library(
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":bufferize",
-        ":embed_tf_framework",
+        ":bufferize_tiled_loop",  # buildcleaner: keep
+        ":embed_tf_framework",  # buildcleaner: keep
         ":kernel_gen_passes_inc_gen",
-        ":tf_framework_legalize_to_llvm",
+        ":tf_framework_legalize_to_llvm",  # buildcleaner: keep
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:ArithmeticToLLVM",
         "@llvm-project//mlir:MathToLibm",
         "@llvm-project//mlir:MathToLLVM",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Affine",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ComplexToLLVM",
@@ -126,18 +148,18 @@ cc_library(
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:NVVMDialect",
-        "@llvm-project//mlir:NVVMToLLVMIRTranslation",
+        "@llvm-project//mlir:NVVMToLLVMIRTranslation",  # buildcleaner: keep
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:ROCDLDialect",
-        "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
+        "@llvm-project//mlir:ROCDLToLLVMIRTranslation",  # buildcleaner: keep
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToStandard",
         "@llvm-project//mlir:Shape",
@@ -153,7 +175,7 @@ cc_library(
         "@llvm-project//mlir:VectorOps",
         "@llvm-project//mlir:VectorToLLVM",
         "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
+        "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_memref",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:type_conversion",
         "//tensorflow/compiler/mlir/tensorflow",

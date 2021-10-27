@@ -185,4 +185,38 @@ REGISTER_OP("CollectiveBcastRecvV2")
       return Status::OK();
     });
 
+REGISTER_OP("CollectiveInitializeCommunicator")
+    .Input("group_key: int32")
+    .Input("rank: int32")
+    .Input("group_size: int32")
+    .Attr("communication_hint: string = 'auto'")
+    .Attr("timeout_seconds: float = 0")
+    .Output("communicator: resource")
+    .SetIsStateful()
+    .SetIsDistributedCommunication()
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("CollectiveReduceV3")
+    .Input("input: T")
+    .Input("communicator: resource")
+    .Input("group_assignment: int32")
+    .Output("data: T")
+    .Attr("T: {bfloat16, float, float16, float64, int32, int64}")
+    .Attr("reduction: {'Min', 'Max', 'Mul', 'Add'}")
+    .Attr("timeout_seconds: float = 0")
+    .SetIsStateful()
+    .SetIsDistributedCommunication()
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("CollectiveAllToAllV3")
+    .Input("input: T")
+    .Input("communicator: resource")
+    .Input("group_assignment: int32")
+    .Output("data: T")
+    .Attr("T: {bfloat16, float, float16, float64, int32, int64}")
+    .Attr("timeout_seconds: float = 0")
+    .SetIsStateful()
+    .SetIsDistributedCommunication()
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 }  // namespace tensorflow

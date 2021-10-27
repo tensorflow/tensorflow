@@ -45,6 +45,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -198,8 +199,9 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
 }
 
 static bool IsConst(Operation* op) {
-  return isa<mlir::ConstantOp, mlir::TF::ConstOp, tfl::ConstOp, tfl::QConstOp,
-             tfl::SparseConstOp, tfl::SparseQConstOp>(op);
+  return isa<mlir::ConstantOp, mlir::arith::ConstantOp, mlir::TF::ConstOp,
+             tfl::ConstOp, tfl::QConstOp, tfl::SparseConstOp,
+             tfl::SparseQConstOp>(op);
 }
 
 static bool IsTFResourceOp(Operation* op) {
@@ -712,10 +714,10 @@ std::string Translator::UniqueName(mlir::Value val) {
 Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     Operation* inst) {
   ElementsAttr attr;
-  if (auto cst = dyn_cast<mlir::ConstantOp>(inst)) {
-    // ConstantOp have ElementAttr at this point due to validation of the TFLite
-    // module.
-    attr = cst.getValue().cast<ElementsAttr>();
+  if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
+    // arith::ConstantOp have ElementAttr at this point due to validation of the
+    // TFLite module.
+    attr = cst.value().cast<ElementsAttr>();
   } else if (auto cst = dyn_cast<mlir::TF::ConstOp>(inst)) {
     attr = cst.value();
   } else if (auto cst = dyn_cast<tfl::ConstOp>(inst)) {
@@ -1341,7 +1343,8 @@ Translator::GetQuantizationForQuantStatsOpOutput(
           ? axis_stats.getValue().cast<mlir::DenseFPElementsAttr>()
           : layer_stats;
 
-  for (auto index_and_value : llvm::enumerate(min_max_attr.getFloatValues())) {
+  for (auto index_and_value :
+       llvm::enumerate(min_max_attr.getValues<llvm::APFloat>())) {
     const llvm::APFloat value = index_and_value.value();
     if (index_and_value.index() % 2 == 0) {
       mins.push_back(value.convertToFloat());

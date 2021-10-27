@@ -14,10 +14,6 @@
 # ==============================================================================
 """Dumping op callbacks: Enables dump-based features in tfdbg v2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import atexit
 import os
 import re

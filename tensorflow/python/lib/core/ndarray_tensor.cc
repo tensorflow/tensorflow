@@ -349,7 +349,6 @@ Status GetPyArrayDescrForTensor(const TF_Tensor* tensor,
     PyObject* fields = PyList_New(1);
     PyList_SetItem(fields, 0, field);
     int convert_result = PyArray_DescrConverter(fields, descr);
-    Py_CLEAR(field);
     Py_CLEAR(fields);
     if (convert_result != 1) {
       return errors::Internal("Failed to create numpy array description for ",

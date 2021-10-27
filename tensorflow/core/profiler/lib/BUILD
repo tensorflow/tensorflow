@@ -272,17 +272,24 @@ cc_library(
 )
 
 filegroup(
-    name = "mobile_srcs",
+    name = "mobile_srcs_no_runtime",
     srcs = [
-        "annotated_traceme.h",
-        "connected_traceme.h",
-        "device_profiler_session.h",
-        "profiler_interface.h",
         "scoped_annotation.h",
         "scoped_memory_debug_annotation.cc",
         "scoped_memory_debug_annotation.h",
         "traceme.h",
         "traceme_encode.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "annotated_traceme.h",
+        "connected_traceme.h",
+        "device_profiler_session.h",
+        "profiler_interface.h",
     ],
     visibility = ["//visibility:public"],
 )

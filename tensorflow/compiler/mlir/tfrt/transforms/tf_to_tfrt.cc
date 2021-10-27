@@ -205,7 +205,8 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
         mlir::TF::TPUExecuteOp, mlir::TF::TPUCompileMlirAndExecuteOp,
         // Specifically handle control flow ops.
         mlir::TF::CaseOp, mlir::TF::IfOp, mlir::TF::WhileOp,
-        mlir::TF::StatefulPartitionedCallOp, mlir::TF::PartitionedCallOp>(op);
+        mlir::TF::StatefulPartitionedCallOp, mlir::TF::PartitionedCallOp,
+        mlir::TF::LegacyCallOp>(op);
   }
 
   mlir::LogicalResult ConvertToFallbackExecuteOp(
@@ -1504,6 +1505,7 @@ void PopulateTFToTFRTConversionPatterns(
       tensor_array_side_effect_analysis, func_use_fallback_tensor);
   patterns->insert<TFRTCallOpConversion<mlir::TF::StatefulPartitionedCallOp>,
                    TFRTCallOpConversion<mlir::TF::PartitionedCallOp>,
+                   TFRTCallOpConversion<mlir::TF::LegacyCallOp>,
                    TFRTCaseOpConversion, TFRTCondOpConversion>(
       context, func_type_converter, corert_converter, func_use_fallback_tensor);
 
@@ -1595,6 +1597,8 @@ class TfToTfrtConversionPass
     tpu_use_bundled_transfer_ = options.tpu_use_bundled_transfer;
     tpu_lower_to_fallback_ = options.tpu_lower_to_fallback;
     tpu_transfer_result_to_host_ = options.tpu_transfer_result_to_host;
+    use_tpu_host_allocator_for_inputs_ =
+        options.use_tpu_host_allocator_for_inputs;
     cost_threshold_ = options.cost_threshold;
     upper_cost_threshold_ = options.upper_cost_threshold;
     merge_inter_dependent_streams_ = options.merge_inter_dependent_streams;
@@ -1617,10 +1621,10 @@ class TfToTfrtConversionPass
 
     if (target_tpurt_)
       AddTPUTargetDialectAndPatterns(
-          &target, &patterns, &context, &corert_converter,
-          TfrtTpuExecuteOpConversionOptions{tpu_use_core_selector_,
-                                            tpu_use_bundled_transfer_,
-                                            tpu_transfer_result_to_host_},
+          &target, &patterns, &context, &corert_converter, &fallback_converter,
+          TfrtTpuExecuteOpConversionOptions{
+              tpu_use_core_selector_, tpu_use_bundled_transfer_,
+              tpu_transfer_result_to_host_, use_tpu_host_allocator_for_inputs_},
           tpu_lower_to_fallback_);
 
     mlir::TypeConverter *func_type_converter;
@@ -1790,6 +1794,14 @@ class TfToTfrtConversionPass
                    llvm::dyn_cast<tfrt::fallback_async::ExecuteOpSeq>(
                        fallback_op)) {
       return execute_op_seq.operands().size();
+    } else if (auto execute_op_allocator =
+                   llvm::dyn_cast<tfrt::fallback_async::ExecuteOpWithAllocator>(
+                       fallback_op)) {
+      return execute_op_allocator.operands().size();
+    } else if (auto execute_op_seq_allocator = llvm::dyn_cast<
+                   tfrt::fallback_async::ExecuteOpSeqWithAllocator>(
+                   fallback_op)) {
+      return execute_op_seq_allocator.operands().size();
     }
     llvm_unreachable("invalid fallback op type");
   }
@@ -1830,6 +1842,12 @@ class TfToTfrtConversionPass
       llvm::cl::desc("If true, transfer the result of tpurt.execute from TPU "
                      "to host."),
       llvm::cl::init(true)};
+
+  Option<bool> use_tpu_host_allocator_for_inputs_{
+      *this, "use-tpu-host-allocator-for-inputs",
+      llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
+                     "program will use tpu host allocator."),
+      llvm::cl::init(false)};
 
   Option<uint64_t> cost_threshold_{
       *this, "tfrt-cost-threshold",

@@ -64,8 +64,9 @@ class RandomDatasetParams : public DatasetParams {
   }
 
   virtual Status GetAttributes(AttributeVector* attributes) const override {
-    *attributes = {{RandomDatasetOp::kOutputTypes, output_dtypes_},
-                   {RandomDatasetOp::kOutputShapes, output_shapes_}};
+    *attributes = {{"output_types", output_dtypes_},
+                   {"output_shapes", output_shapes_},
+                   {"metadata", ""}};
     return Status::OK();
   }
 

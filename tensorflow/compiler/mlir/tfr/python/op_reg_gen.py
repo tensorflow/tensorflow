@@ -18,10 +18,6 @@
 # pylint: disable=missing-function-docstring
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gast as ast
 
 from tensorflow.python.autograph.pyct import transformer

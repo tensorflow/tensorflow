@@ -815,7 +815,7 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   if (ShouldCreateLazyDelegateProviders(num_fp32_tensors_)) {
     (*interpreter)->lazy_delegate_providers_ =
-        op_resolver_.GetDelegates(num_threads_);
+        op_resolver_.GetDelegateCreators();
   }
 
   TfLiteStatus status = ApplyDelegates(interpreter->get());

@@ -17,9 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_REFCOUNT_H_
 
 #include <atomic>
+#include <map>
 #include <memory>
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace core {
@@ -56,6 +59,12 @@ class RefCounted {
   // be instantiated directly. Only subclasses can be instantiated.
   virtual ~RefCounted();
 
+  // Increments reference count by one if the object is not being destructed.
+  // This function is used by WeakRefCounted for securely acquiring a
+  // strong reference. It is only safe to call this as part of the weak
+  // reference implementation.
+  bool TryRef() const;
+
  private:
   mutable std::atomic_int_fast32_t ref_;
 
@@ -65,7 +74,7 @@ class RefCounted {
 
 // A deleter class to form a std::unique_ptr that unrefs objects.
 struct RefCountDeleter {
-  void operator()(tensorflow::core::RefCounted* o) const { o->Unref(); }
+  void operator()(RefCounted* o) const { o->Unref(); }
 };
 
 // A unique_ptr that unrefs the owned object on destruction.
@@ -87,28 +96,132 @@ class ScopedUnref {
   void operator=(const ScopedUnref&) = delete;
 };
 
+// Forward declaration for friend class of WeakRefCounted.
+template <typename T>
+class WeakPtr;
+
+// A base class for RefCounted objects that allow weak references by WeakPtr.
+// WeakRefCounted and every WeakPtr to it, each holds a strong reference to a
+// WeakRefData.
+//
+// If the WeakRefCounted is valid, WeakPtr::GetNewRef() returns a new strong
+// reference to the WeakRefCounted.
+// If the WeakRefCounted is being destructed, `WeakRefCounted::ref_ == 0`;
+// if the WeakRefcounted is already destructed,`WeakRefData::ptr == nullptr`.
+// In either case, WeakPtr::GetNewRef() returns a nullptr.
+class WeakRefCounted : public RefCounted {
+ public:
+  int WeakRefCount() const {
+    // Each weak ref owns one ref to data_, and *this owns the last one.
+    return data_->RefCount() - 1;
+  }
+
+ protected:
+  ~WeakRefCounted() override { data_->Reset(); }
+
+ private:
+  struct WeakRefData : public RefCounted {
+    explicit WeakRefData(WeakRefCounted* ptr) : ptr(ptr) {}
+
+    mutable mutex mu;
+    WeakRefCounted* ptr TF_GUARDED_BY(mu);
+
+    void Reset() {
+      mutex_lock ml(mu);
+      ptr = nullptr;
+    }
+
+    WeakRefCounted* GetNewRef() {
+      mutex_lock ml(mu);
+      if (ptr != nullptr && ptr->TryRef()) {
+        return ptr;
+      }
+      return nullptr;
+    }
+  };
+
+  RefCountPtr<WeakRefData> data_{new WeakRefData(this)};
+
+  template <typename T>
+  friend class WeakPtr;
+  // MSVC14 workaround: access permission of a nested class member is not
+  // treated as an ordinary member in MSVC14.
+  friend struct WeakRefData;
+};
+
+// A weak reference to a WeakRefCounted object. See WeakRefCounted.
+template <typename T>
+class WeakPtr {
+ public:
+  WeakPtr() : data_(nullptr) {}
+  // Creates a weak reference to a WeakRefCounted ptr.
+  // ptr must be valid during the constructor.
+  explicit WeakPtr(WeakRefCounted* ptr) : data_(nullptr) {
+    if (ptr != nullptr) {
+      ptr->data_->Ref();
+      data_.reset(ptr->data_.get());
+    }
+  }
+
+  // Returns a new strong reference to the referred object, or nullptr if the
+  // object is in an invalid state (being destructed or already destructed).
+  RefCountPtr<T> GetNewRef() const {
+    RefCountPtr<T> ref;
+    if (data_ != nullptr) {
+      WeakRefCounted* ptr = data_->GetNewRef();
+      ref.reset(static_cast<T*>(ptr));
+    }
+    return std::move(ref);
+  }
+
+ private:
+  // NOTE(feyu): change this to a IntrusivePtr to make WeakPtr copiable.
+  RefCountPtr<WeakRefCounted::WeakRefData> data_;
+};
+
 // Inlined routines, since these are performance critical
 inline RefCounted::RefCounted() : ref_(1) {}
 
-inline RefCounted::~RefCounted() { DCHECK_EQ(ref_.load(), 0); }
+inline RefCounted::~RefCounted() {
+  // A destructing object has ref_ == 0.
+  // It is a bug if the object is resurrected (ref_ > 0) before delete is
+  // called by Unref().
+  DCHECK_EQ(ref_.load(), 0);
+}
 
 inline void RefCounted::Ref() const {
-  DCHECK_GE(ref_.load(), 1);
-  ref_.fetch_add(1, std::memory_order_relaxed);
+  // Ref() uses relaxed order because it is never called with old_ref == 0.
+  // When old_ref >= 1, no actions depend on the new value of ref.
+  int_fast32_t old_ref = ref_.fetch_add(1, std::memory_order_relaxed);
+  DCHECK_GT(old_ref, 0);
+}
+
+inline bool RefCounted::TryRef() const {
+  // This is not on a hot path.
+  // Be conservative and use seq_cst to prevent racing with Unref() when
+  // old_ref == 0, as done in LLVM libstdc++.
+  int_fast32_t old_ref = ref_.load();
+  while (old_ref != 0) {
+    if (ref_.compare_exchange_weak(old_ref, old_ref + 1)) {
+      return true;
+    }
+  }
+  // Already destructing, cannot increase ref.
+  return false;
 }
 
 inline bool RefCounted::Unref() const {
   DCHECK_GT(ref_.load(), 0);
-  // If ref_==1, this object is owned only by the caller. Bypass a locked op
-  // in that case.
-  if (RefCountIsOne() || ref_.fetch_sub(1) == 1) {
-    // Make DCHECK in ~RefCounted happy
-    DCHECK((ref_.store(0), true));
+  // acq_rel is used to prevent reordering introduces object access after
+  // destruction.
+
+  // Using release alone is a bug on systems where acq_rel differs from release.
+  // (e.g. arm), according to Herb Sutter's 2012 talk on "Atomic<> Weapons".
+  if (ref_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
     delete this;
     return true;
-  } else {
-    return false;
   }
+  return false;
 }
 
 inline int_fast32_t RefCounted::RefCount() const {

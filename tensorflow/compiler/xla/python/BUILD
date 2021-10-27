@@ -20,6 +20,7 @@ package(
 pytype_library(
     name = "xla_client",
     srcs = ["xla_client.py"],
+    pytype_srcs = ["xla_client.pyi"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
@@ -27,6 +28,8 @@ pytype_library(
         "@absl_py//absl/logging",
     ],
 )
+
+exports_files(["xla_client.pyi"])
 
 pyx_library(
     name = "custom_call_for_test",
@@ -165,6 +168,22 @@ cc_library(
 )
 
 cc_library(
+    name = "python_utils",
+    hdrs = ["python_utils.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "traceback",
     srcs = ["traceback.cc"],
     hdrs = ["traceback.h"],
@@ -207,6 +226,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":python_ref_manager",
+        ":python_utils",
         ":traceback",
         ":types",
         "//tensorflow/compiler/xla:comparison_util",
@@ -276,6 +296,7 @@ cc_library(
     deps = [
         ":py_client",
         ":python_ref_manager",
+        ":python_utils",
         ":pytree",
         ":types",
         "//tensorflow/compiler/xla:shape_util",
@@ -314,6 +335,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:approx_topk",
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:lu_decomposition",
         "//tensorflow/compiler/xla/client/lib:math",
@@ -361,10 +383,12 @@ cc_library(
     deps = [
         ":jax_jit",
         ":py_client",
+        ":python_utils",
         ":types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

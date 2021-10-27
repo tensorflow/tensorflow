@@ -558,6 +558,10 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
       const Shape& shape, HloInstruction* operand, int64_t index);
 
+  // Creates a get tuple element instruction.
+  static std::unique_ptr<HloInstruction> CreateGetTupleElement(
+      HloInstruction* operand, int64_t index);
+
   // Creates a trace instruction that logs the input operand in the computation.
   static std::unique_ptr<HloInstruction> CreateTrace(const string& tag,
                                                      HloInstruction* operand);
@@ -922,6 +926,15 @@ class HloInstruction {
   // ...
   static std::unique_ptr<HloInstruction> CreateReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::Span<HloInstruction* const> init_values,
+      absl::Span<const int64_t> dimensions_to_reduce,
+      HloComputation* reduce_computation);
+
+  // Helper version where the operands are given by a single instruction which
+  // either is a tuple of size `init_values`, or a single input, in which case
+  // size of `init_values` is one.
+  static std::unique_ptr<HloInstruction> CreateReduce(
+      const Shape& shape, HloInstruction* tuple_of_instructions,
       absl::Span<HloInstruction* const> init_values,
       absl::Span<const int64_t> dimensions_to_reduce,
       HloComputation* reduce_computation);
@@ -1627,12 +1640,18 @@ class HloInstruction {
 
   // Sets the string identifier for this instruction. Name will be sanitized to
   // match the regexp "[a-zA-Z_][a-zA-Z0-9_.-]*".
-  void SetAndSanitizeName(const string& name) {
+  //
+  // See also HloModule::SetAndUniquifyInstrName(), which does this plus
+  // UniqufyName().
+  void SetAndSanitizeName(absl::string_view name) {
     name_ = NameUniquer::GetSanitizedName(name);
   }
 
   // Use the given NameUniquer to select a unique name for the instruction based
   // on the instruction's existing name.
+  //
+  // See also HloModule::SetAndUniquifyInstrName(), which does this plus
+  // SetAndSanitizeName().
   void UniquifyName(NameUniquer* name_uniquer);
 
   // Clear the unique ID of the instruction so that it can be re-assigned, such

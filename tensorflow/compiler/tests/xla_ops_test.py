@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for XLA op wrappers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from absl.testing import parameterized
@@ -598,7 +594,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                         [[673, 674], [683, 684], [693, 694]]]),
               dtype=dtype))
 
-  @test_util.disable_mlir_bridge('Error handling')
   def testDynamicSliceWithIncorrectStartIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
@@ -609,10 +604,9 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         session.run(output)
       self.assertRegex(
           invalid_arg_error.exception.message,
-          (r'start_indices must be a vector with length equal to input rank, '
-           r'but input rank is 3 and start_indices has shape \[2\].*'))
+          (r'op has mismatched number of slice sizes \(3\) and number of start'
+           r' indices \(2\)'))
 
-  @test_util.disable_mlir_bridge('Error handling')
   def testDynamicSliceWithIncorrectSizeIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
@@ -623,8 +617,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         session.run(output)
       self.assertRegex(
           invalid_arg_error.exception.message,
-          (r'size_indices must be a vector with length equal to input rank, '
-           r'but input rank is 3 and size_indices has shape \[2\].*'))
+          (r'op has mismatched number of slice sizes \(2\) and number of start'
+           r' indices \(3\)'))
 
 
 class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
@@ -1021,7 +1015,7 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
     initial_state = array_ops.placeholder(np.uint64, shape=(None,))
     shape = (None, 3)
     with self.assertRaisesRegex(TypeError,
-                                'Failed to convert object .* to Tensor'):
+                                'Failed to convert elements .* to Tensor'):
       res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
 
 

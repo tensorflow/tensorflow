@@ -14,10 +14,6 @@
 # ==============================================================================
 """Helpers for working with signatures in tf.saved_model.save."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import logging
 
 from tensorflow.python.eager import def_function
@@ -300,8 +296,7 @@ def create_signature_map(signatures):
 
 def validate_saveable_view(saveable_view):
   """Performs signature-related sanity checks on `saveable_view`."""
-  for name, dep in saveable_view.list_dependencies(
-      saveable_view.root):
+  for name, dep in saveable_view.list_children(saveable_view.root):
     if name == SIGNATURE_ATTRIBUTE_NAME:
       if not isinstance(dep, _SignatureMap):
         raise ValueError(

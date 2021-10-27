@@ -14,10 +14,6 @@
 # ==============================================================================
 """SavedModel utility functions implementation."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import struct_pb2
@@ -95,8 +91,7 @@ def _build_composite_tensor_info_internal(tensor):
   """Utility function to build TensorInfo proto from a CompositeTensor."""
   spec = tensor._type_spec  # pylint: disable=protected-access
   tensor_info = meta_graph_pb2.TensorInfo()
-  struct_coder = nested_structure_coder.StructureCoder()
-  spec_proto = struct_coder.encode_structure(spec)
+  spec_proto = nested_structure_coder.encode_structure(spec)
   tensor_info.composite_tensor.type_spec.CopyFrom(spec_proto.type_spec_value)
   for component in nest.flatten(tensor, expand_composites=True):
     tensor_info.composite_tensor.components.add().CopyFrom(
@@ -184,10 +179,9 @@ def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
         _get_tensor(tensor_info.coo_sparse.values_tensor_name),
         _get_tensor(tensor_info.coo_sparse.dense_shape_tensor_name))
   elif encoding == "composite_tensor":
-    struct_coder = nested_structure_coder.StructureCoder()
     spec_proto = struct_pb2.StructuredValue(
         type_spec_value=tensor_info.composite_tensor.type_spec)
-    spec = struct_coder.decode_proto(spec_proto)
+    spec = nested_structure_coder.decode_proto(spec_proto)
     components = [_get_tensor(component.name) for component in
                   tensor_info.composite_tensor.components]
     return nest.pack_sequence_as(spec, components, expand_composites=True)

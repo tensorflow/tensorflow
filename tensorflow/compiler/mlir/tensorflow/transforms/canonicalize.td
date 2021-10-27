@@ -17,6 +17,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
+include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.td"
 
 /// TODO(b/130756570): Support OpBase constraints in PatternRewrites.
 def SingleResultAndOperandHaveSameElementType : Constraint<
@@ -115,7 +116,7 @@ def BatchToSpaceToBatchToSpaceND :
 //===----------------------------------------------------------------------===//
 
 def BiasAddV1ToBiasAdd : Pat<(TF_BiasAddV1Op $arg0, $arg1),
-  (TF_BiasAddOp $arg0, $arg1, ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">)>;
+  (TF_BiasAddOp $arg0, $arg1, ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">)>;
 
 //===----------------------------------------------------------------------===//
 // Bitcast op patterns.
@@ -202,6 +203,18 @@ def MatrixSetDiagToV3 : Pat<(TF_MatrixSetDiagOp $input, $diag),
 def MatrixSetDiagV2ToV3 : Pat<(TF_MatrixSetDiagV2Op $input, $diag, $k),
                               (TF_MatrixSetDiagV3Op $input, $diag, $k,
                                 (GetStrAttr<"LEFT_LEFT">))>;
+
+//===----------------------------------------------------------------------===//
+// MatrixDiag Op.
+//===----------------------------------------------------------------------===//
+
+def MatrixDiagToV3 : Pat<(TF_MatrixDiagOp $diag),
+                         (TF_MatrixDiagV3Op $diag,
+                           (TF_ConstOp (GetI32Attr<0>)),
+                           (TF_ConstOp (GetI32Attr<-1>)),
+                           (TF_ConstOp (GetI32Attr<-1>)),
+                           (TF_ConstOp (GetScalarOfType<0> $diag)),
+                           (GetStrAttr<"RIGHT_LEFT">))>;
 
 //===----------------------------------------------------------------------===//
 // QuantizeAndDequantizeV2 op patterns.

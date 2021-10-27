@@ -55,10 +55,6 @@ self.x = self_x    # the result is not properly captured
 ```
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import traceback
 
@@ -920,7 +916,7 @@ class _PythonLoopChecker(object):
     if len(new_ops) < INEFFICIENT_UNROLL_MIN_OPS:
       return False
 
-    ag_logging.warn(
+    ag_logging.warning(
         'Large unrolled loop detected. Did you mean to use a TF loop?'
         ' The following ops were created after iteration %s: %s'
         '\nSee'
@@ -1003,7 +999,8 @@ def _shape_invariants_mapping_to_positional_list(mapping, keys):
   result = []
   for k in keys:
     map_key, map_val = mapping.get(id(k), (None, None))
-    result.append(map_val if map_key is k else None)
+    result.append(
+        map_val if map_key is k else nest.map_structure(lambda _: None, k))
   return tuple(result)
 
 

@@ -56,10 +56,11 @@ class FlatMapDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{FlatMapDatasetOp::kFunc, func_},
-                    {FlatMapDatasetOp::kTarguments, type_arguments_},
-                    {FlatMapDatasetOp::kOutputShapes, output_shapes_},
-                    {FlatMapDatasetOp::kOutputTypes, output_dtypes_}};
+    *attr_vector = {{"f", func_},
+                    {"Targuments", type_arguments_},
+                    {"output_shapes", output_shapes_},
+                    {"output_types", output_dtypes_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 

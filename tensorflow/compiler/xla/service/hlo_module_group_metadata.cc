@@ -97,8 +97,9 @@ Status HloModuleGroupMetadata::Build() {
       for (HloComputation* peer_computation : peers) {
         const TrackedInstruction* peer_tracked =
             GetTrackedInstruction(peer_computation);
-        TF_RET_CHECK(peer_tracked != nullptr)
-            << "Peer instruction is not a possible companion";
+        if (peer_tracked == nullptr) {
+          continue;
+        }
         TF_RET_CHECK(*tracked == *peer_tracked)
             << "Peer instruction does not match the computation kind";
         TF_RETURN_IF_ERROR(

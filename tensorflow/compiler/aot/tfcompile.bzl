@@ -312,6 +312,7 @@ def tf_library(
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
             "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
+            "//tensorflow/compiler/xla/service/cpu:runtime_custom_call_status",
             "//tensorflow/compiler/xla/service/cpu:runtime_key_value_sort",
             "//tensorflow/compiler/xla/service/cpu:runtime_matmul",
             "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",

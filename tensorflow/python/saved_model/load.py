@@ -14,10 +14,6 @@
 # ==============================================================================
 """Import a trackable object from a SavedModel."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import sys
 
@@ -54,6 +50,7 @@ from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import graph_view
+from tensorflow.python.training.tracking import trackable_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
@@ -68,10 +65,19 @@ def _unused_handle():
   error_message = ("Trying to access a placeholder that is not supposed to be "
                    "executed. This means you are executing a graph generated "
                    "from the cross-replica context in an in-replica context.")
+  save_error_message = (
+      "It seems that you are trying to save a "
+      "tf.types.experimental.ConcreteFunction that involves a distributed "
+      "model, and the model contains parts that are loaded form a SavedModel. "
+      "It's supported to save such tf.types.experimental.ConcreteFunction. Try"
+      " save a tf.function with input_signature instead, and file a bug there "
+      "are still issues.")
 
   assert_op = control_flow_ops.Assert(
-      array_ops.placeholder_with_default(False, shape=()),
-      [error_message])
+      array_ops.placeholder_with_default(False, shape=()), [error_message])
+  if (not context.executing_eagerly()
+     ) and ops.get_default_graph().building_function:
+    ops.get_default_graph().mark_as_unsaveable(save_error_message)
 
   with ops.control_dependencies([assert_op]):
     return array_ops.placeholder(dtype=dtypes.resource)
@@ -140,6 +146,8 @@ class Loader(object):
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
 
+    self._pretty_printer = util.ObjectGraphProtoPrettyPrinter(self._proto)
+
     # Stores user-defined node_filters argument.
     self._node_filters = filters
     # Stores map of string paths to integers.
@@ -149,7 +157,7 @@ class Loader(object):
       # If node_filters is a dict, then the values may contain already created
       # trackable objects. In this case, create a dictionary mapping node IDs to
       # the already created nodes. This dict will be updated in
-      # `_retrieve_all_filtered_nodes` with tracked dependencies.
+      # `_retrieve_all_filtered_nodes` with tracked children.
       for node_path, node in filters.items():
         if isinstance(node, tuple):
           self._loaded_nodes[self._node_path_to_id[node_path]] = node
@@ -160,15 +168,18 @@ class Loader(object):
     # loaded. This list includes ids of child nodes.
     self._filtered_nodes = self._retrieve_all_filtered_nodes()
 
+    # Order all nodes or filtered nodes using the dependencies.
+    self._ordered_node_ids = self._generate_ordered_node_ids()
+
     self._load_all()
 
     if not save_options.experimental_skip_checkpoint:
       self._restore_checkpoint()
-      for node in self._nodes:
-        if isinstance(node, tracking.CapturableResource):
-          init_op = node._initialize()  # pylint: disable=protected-access
-          if not context.executing_eagerly():
-            ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+    for node in self._nodes:
+      if isinstance(node, tracking.CapturableResource):
+        init_op = node._initialize()  # pylint: disable=protected-access
+        if not context.executing_eagerly():
+          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
 
   def _convert_node_paths_to_ints(self):
     """Maps all string node paths in node_filters to the int node ids."""
@@ -196,7 +207,7 @@ class Loader(object):
     """Traverses through the object graph to get the IDs of all nodes to load.
 
     As a side-effect, if node_filters is a dictionary that contains already-
-    created objects, then the dependencies tracked by those objects will be
+    created objects, then the children tracked by those objects will be
     added to node_filters.
 
     Returns:
@@ -313,7 +324,6 @@ class Loader(object):
 
   def _setup_functions_structures(self):
     """Setup structure for inputs and outputs of restored functions."""
-    coder = nested_structure_coder.StructureCoder()
     for name, proto in sorted(self._proto.concrete_functions.items()):
       concrete_function = self._concrete_functions[name]
       # By setting the structured_outputs directly, we can rely on this
@@ -322,7 +332,8 @@ class Loader(object):
       # with output that is convertible to Tensors and the conversion
       # always happens. For example tf.TensorShape([2, 3]) will be
       # converted to Tensor representing [2, 3].
-      original_outputs = coder.decode_proto(proto.output_signature)
+      original_outputs = nested_structure_coder.decode_proto(
+          proto.output_signature)
       # The original_outputs here had Tensors converted to TensorSpecs, so
       # the restored function's structured_outputs field will not be
       # exactly the same. Fortunately the repacking logic cares only about
@@ -330,7 +341,8 @@ class Loader(object):
       # and types.
       concrete_function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
       concrete_function._func_graph.structured_input_signature = (  # pylint: disable=protected-access
-          coder.decode_proto(proto.canonicalized_input_signature))
+          nested_structure_coder.decode_proto(
+              proto.canonicalized_input_signature))
       concrete_function._initialize_function_spec()  # pylint: disable=protected-access
 
   def _setup_functions_captures(self):
@@ -349,7 +361,7 @@ class Loader(object):
       # TODO(andresp): This is only injecting the captured inputs into the
       # concrete function, note that we did not modify the FuncGraph
       # itself.
-      concrete_function._captured_inputs = bound_inputs  # pylint: disable=protected-access
+      captured_inputs_list = []
       concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
       if bound_inputs:
         for bound_input, internal_capture in zip(
@@ -357,7 +369,20 @@ class Loader(object):
           if distribute_utils.is_distributed_variable(bound_input):
             concrete_function.graph.capture_distributed_variable(
                 bound_input, internal_capture)
+            captured_inputs_list.append(bound_input)
+          elif distribute_utils.is_distributed_table(bound_input):
+            closure, spec = bound_input.resource_handle_call_time_value()
+            concrete_function.graph.replace_capture_with_deferred_capture(
+                bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
+                closure,
+                spec,
+                default_value=bound_input._coordinator_instance.resource_handle,  # pylint: disable=protected-access
+                placeholder=internal_capture)
+            captured_inputs_list.append(
+                concrete_function.graph.deferred_external_captures[-1])
+
           else:
+            captured_inputs_list.append(bound_input)
             concrete_function.graph.replace_capture(bound_input,
                                                     internal_capture)
             if internal_capture.dtype == dtypes.resource:
@@ -376,6 +401,8 @@ class Loader(object):
             # placeholder for this input.
             concrete_function.graph.capture(bound_input)
 
+      concrete_function.set_external_captures(captured_inputs_list)
+
   def _get_tensor_from_node(self, node_id, fn_name):
     """Resolves a node id into a tensor to be captured for a function."""
     if self._node_filters is not None and self._nodes[node_id] is None:
@@ -387,6 +414,8 @@ class Loader(object):
     with ops.init_scope():
       obj = self._nodes[node_id]
       if distribute_utils.is_distributed_variable(obj):
+        return obj
+      elif distribute_utils.is_distributed_table(obj):
         return obj
       elif resource_variable_ops.is_resource_variable(obj):
         return obj.handle
@@ -407,18 +436,48 @@ class Loader(object):
       node_setters[node_id] = setter
     return nodes, node_setters
 
-  def _iter_all_nodes(self):
+  def _generate_ordered_node_ids(self):
+    """Orders the node ids so that dependencies appear first."""
     if self._filtered_nodes is None:
-      return enumerate(self._proto.nodes)
+      unordered_ids = range(len(self._proto.nodes))
     else:
-      return [(node_id, self._proto.nodes[node_id])
-              for node_id in self._filtered_nodes]
+      unordered_ids = list(self._filtered_nodes)
+
+    dependency_map = {}
+    for node_id in unordered_ids:
+      deps = dependency_map[node_id] = []
+      if self._loaded_nodes.get(node_id) is not None:
+        # Deps are only used if the node has not been created.
+        continue
+      for reference in self._proto.nodes[node_id].dependencies:
+        dep = reference.node_id
+        deps.append(dep)
+        if self._filtered_nodes is not None and dep not in self._filtered_nodes:
+          raise ValueError(
+              "Unable to partially load SavedModel since the specified filter "
+              "does not include all deserialization dependencies. Please "
+              "include this path in the filter: "
+              f"{self._pretty_printer.node_names[dep]}")
+
+    try:
+      return list(trackable_utils.order_by_dependency(dependency_map))
+    except trackable_utils.CyclicDependencyError:
+      # This should not happen since there is already a validation for cycles
+      # when saving, but raise an error just in case.
+      raise ValueError("Encountered a cycle in the deserialization dependencies"
+                       "in the SavedModel. This is extremely unexpected, please"
+                       "file a bug and make sure you are not manually modifying"
+                       " the SavedModel.")
+
+  def _iter_all_nodes(self):
+    for node_id in self._ordered_node_ids:
+      yield node_id, self._proto.nodes[node_id]
 
   def _load_nodes(self):
     """Load all saved objects."""
     # `nodes` maps from node ids to recreated objects
     # `node_setters` maps from node ids to setter functions
-    # (same signature as setattr) for setting dependencies.
+    # (same signature as setattr) for setting children.
     nodes, node_setters = self._initialize_loaded_nodes()
 
     # Figure out which objects are slot variables. These objects are created
@@ -435,13 +494,16 @@ class Loader(object):
         # Defer recreating slot variables so we can use the public Optimizer
         # interface.
         continue
-      node, setter = self._recreate(proto, node_id)
+      node, setter = self._recreate(proto, node_id, nodes)
       nodes[node_id] = node
       node_setters[node_id] = setter
 
     # Now that we have created the variables being optimized, we have enough
     # information to re-create slot variables for them.
     for node_id, proto in self._iter_all_nodes():
+      if node_id not in nodes:
+        # This is a slot variable that has not been created yet.
+        continue
       optimizer_object = nodes[node_id]
       for slot_variable_proto in proto.slot_variables:
         optimized_variable = nodes[
@@ -489,6 +551,13 @@ class Loader(object):
       for object_id, obj in dict(checkpoint.object_by_proto_id).items():
         position = base.CheckpointPosition(checkpoint=checkpoint,
                                            proto_id=object_id)
+        registered_saver = position.get_registered_saver_name()
+        if registered_saver:
+          raise NotImplementedError(
+              "Loading a SavedModel that uses registered checkpoint saver is "
+              f"not supported in graph mode. The loaded object {obj} uses the "
+              f"saver registered with the name {registered_saver}.")
+
         restore_ops = position.restore_ops()
         if restore_ops:
           if resource_variable_ops.is_resource_variable(obj):
@@ -522,12 +591,13 @@ class Loader(object):
       node_id = self._node_path_to_id[node_id]
     return self._nodes[node_id]
 
-  def _recreate(self, proto, node_id):
+  def _recreate(self, proto, node_id, nodes):
     """Creates a Python object from a SavedObject protocol buffer.
 
     Args:
       proto: a SavedObject proto
       node_id: int, the index of this object in the SavedObjectGraph node list.
+      nodes: dict mapping int node_ids -> created objects.
 
     Returns:
       The recreated object, and the set-attribute function for reconnecting
@@ -535,8 +605,12 @@ class Loader(object):
     """
     registered_class = registration.get_registered_class(proto.registered_name)
     if registered_class:
+      dependencies = {}
+      for reference in proto.dependencies:
+        dependencies[reference.local_name] = nodes[reference.node_id]
       obj = registered_class._deserialize_from_proto(  # pylint: disable=protected-access
-          proto=proto.serialized_user_proto)
+          proto=proto.serialized_user_proto,
+          dependencies=dependencies)
       return obj, type(obj)._add_trackable_child  # pylint: disable=protected-access
     else:
       return self._recreate_default(proto, node_id)

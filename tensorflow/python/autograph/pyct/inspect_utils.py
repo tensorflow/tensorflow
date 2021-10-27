@@ -17,10 +17,6 @@
 This module contains whatever inspect doesn't offer out of the box.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import inspect
 import itertools
 import linecache

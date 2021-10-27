@@ -69,15 +69,14 @@ class ParallelMapDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {
-        {ParallelMapDatasetOp::kFunc, func_},
-        {ParallelMapDatasetOp::kTarguments, type_arguments_},
-        {ParallelMapDatasetOp::kOutputShapes, output_shapes_},
-        {ParallelMapDatasetOp::kOutputTypes, output_dtypes_},
-        {ParallelMapDatasetOp::kUseInterOpParallelism,
-         use_inter_op_parallelism_},
-        {ParallelMapDatasetOp::kDeterministic, deterministic_},
-        {ParallelMapDatasetOp::kPreserveCardinality, preserve_cardinality_}};
+    *attr_vector = {{"f", func_},
+                    {"Targuments", type_arguments_},
+                    {"output_shapes", output_shapes_},
+                    {"output_types", output_dtypes_},
+                    {"use_inter_op_parallelism", use_inter_op_parallelism_},
+                    {"deterministic", deterministic_},
+                    {"preserve_cardinality", preserve_cardinality_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 

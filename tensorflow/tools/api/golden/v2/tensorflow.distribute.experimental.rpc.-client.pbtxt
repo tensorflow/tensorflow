@@ -1,0 +1,16 @@
+path: "tensorflow.distribute.experimental.rpc.Client"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.experimental.rpc.rpc_ops.Client\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "call"
+    argspec: "args=[\'self\', \'method_name\', \'args\', \'output_specs\', \'timeout_in_ms\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0\'], "
+  }
+  member_method {
+    name: "create"
+    argspec: "args=[\'rpc_layer\', \'address\', \'name\', \'timeout_in_ms\'], varargs=None, keywords=None, defaults=[\'\', \'0\'], "
+  }
+}

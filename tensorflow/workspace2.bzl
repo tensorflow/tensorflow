@@ -19,7 +19,6 @@ load("//third_party/llvm:setup.bzl", "llvm_setup")
 # Import third party repository rules. See go/tfbr-thirdparty.
 load("//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("//third_party/absl:workspace.bzl", absl = "repo")
-load("//third_party/aws:workspace.bzl", aws = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("//third_party/clog:workspace.bzl", clog = "repo")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
@@ -52,12 +51,12 @@ load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("@tf_toolchains//toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("@tf_toolchains//toolchains/remote:configure.bzl", "remote_execution_configure")
 load("@tf_toolchains//toolchains/clang6:repo.bzl", "clang6_configure")
+load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
     absl()
-    aws()
     benchmark()
     clog()
     cpuinfo()
@@ -135,11 +134,11 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "f3b3256b6dcde8002159df50380b86087ae9ee927464b4179a22028be8a5ac20",
-        strip_prefix = "XNNPACK-0f6613555829d59cbc165f1be87bdcd5137e23d2",
+        sha256 = "4500f1802f6df4daa81222f4d2dada82536d9af50cc013d3a6c75d109de46dc2",
+        strip_prefix = "XNNPACK-ccbaedf11c70a3ff4db0ef17cfeacd710ffc3492",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/0f6613555829d59cbc165f1be87bdcd5137e23d2.zip",
-            "https://github.com/google/XNNPACK/archive/0f6613555829d59cbc165f1be87bdcd5137e23d2.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/ccbaedf11c70a3ff4db0ef17cfeacd710ffc3492.zip",
+            "https://github.com/google/XNNPACK/archive/ccbaedf11c70a3ff4db0ef17cfeacd710ffc3492.zip",
         ],
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
@@ -190,34 +189,34 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "82795714f11649b2a3f797d99bd07d117cde97215f55654b028ca00f3b33e0cb",
-        strip_prefix = "oneDNN-2.3-rc2",
+        sha256 = "930a2327c4fe4018a604f67ca3c0ebea01436aad7ce1f4e01d088732bd19d16f",
+        strip_prefix = "oneDNN-2.4.1",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.4.1.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.4.1.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        sha256 = "ccb2dbd9da36cd873cf573b4201d61bdba7438f12b144e6c7d061eb12a641751",
-        strip_prefix = "oneDNN-2.3",
+        sha256 = "a7f2a4d80d5406d156dfc1d7b27d10b0af5ed061cf0b6197d3d12cddc6790fcb",
+        strip_prefix = "oneDNN-2.4",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.3.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v2.3.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.4.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.4.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "18011eb6dc999f030df609ff2b528e0067ab9f76921fa0b53e35859e06a0aa10",
-        strip_prefix = "ComputeLibrary-21.05",
+        sha256 = "1c62d41be62c14c8ff196d6aaa9f9efe0597b82a923350d922e8cde217dd1d86",
+        strip_prefix = "ComputeLibrary-21.08",
         build_file = "//third_party/compute_library:BUILD",
         patch_file = "//third_party/compute_library:compute_library.patch",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/ARM-software/ComputeLibrary/archive/v21.05.tar.gz",
-            "https://github.com/ARM-software/ComputeLibrary/archive/v21.05.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/ARM-software/ComputeLibrary/archive/v21.08.tar.gz",
+            "https://github.com/ARM-software/ComputeLibrary/archive/v21.08.tar.gz",
         ],
     )
 
@@ -498,8 +497,8 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "absl_py",
-        sha256 = "588a23406b2e28ea368897dbebc1210165414e87212d4fdd4b2ee968f0a772c6",
-        strip_prefix = "abseil-py-pypi-v0.10.0",
+        sha256 = "0be59b82d65dfa1f995365dcfea2cc57989297b065fda696ef13f30fcc6c8e5b",
+        strip_prefix = "abseil-py-pypi-v0.15.0",
         system_build_file = "//third_party/systemlibs:absl_py.BUILD",
         system_link_files = {
             "//third_party/systemlibs:absl_py.absl.BUILD": "absl/BUILD",
@@ -508,8 +507,8 @@ def _tf_repositories():
             "//third_party/systemlibs:absl_py.absl.logging.BUILD": "absl/logging/BUILD",
         },
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-py/archive/pypi-v0.10.0.tar.gz",
-            "https://github.com/abseil/abseil-py/archive/pypi-v0.10.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-py/archive/pypi-v0.15.0.tar.gz",
+            "https://github.com/abseil/abseil-py/archive/pypi-v0.15.0.tar.gz",
         ],
     )
 
@@ -610,12 +609,12 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "ed936c0b02c06d42cf84b39dd12bb14b62d77c7c4e875ade022280df5dcc81d7",
-        strip_prefix = "curl-7.78.0",
+        sha256 = "370b11201349816287fb0ccc995e420277fbfcaf76206e309b3f60f0eda090c2",
+        strip_prefix = "curl-7.79.1",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.78.0.tar.gz",
-            "https://curl.haxx.se/download/curl-7.78.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.79.1.tar.gz",
+            "https://curl.haxx.se/download/curl-7.79.1.tar.gz",
         ],
     )
 
@@ -1091,6 +1090,10 @@ def workspace():
     _tf_repositories()
 
     tfrt_dependencies()
+
+    # TODO(rostam): Delete after the release of Bazel built-in cc_shared_library.
+    # Initializes Bazel package rules' external dependencies.
+    rules_pkg_dependencies()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

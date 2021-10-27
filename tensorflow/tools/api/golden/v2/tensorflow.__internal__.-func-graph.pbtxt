@@ -224,6 +224,10 @@ tf_class {
     argspec: "args=[\'self\', \'tensor\', \'placeholder\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "replace_capture_with_deferred_capture"
+    argspec: "args=[\'self\', \'tensor\', \'closure\', \'spec\', \'placeholder\', \'default_value\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "reset_captures"
     argspec: "args=[\'self\', \'capture_list\'], varargs=None, keywords=None, defaults=None"
   }

@@ -15,10 +15,6 @@
 # ==============================================================================
 """Tests for lite.py functionality related to TensorFlow 2.0."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ctypes
 import functools
 import os
@@ -285,6 +281,25 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(
         'The inference_input_type and inference_output_type '
         'must be tf.float32.', str(error.exception))
+
+  @parameterized.named_parameters(
+      ('EnableMlirQuantizer', True),  # enable mlir quantizer
+      ('DisableMlirQuantizer', False))  # disable mlir quantizer
+  def testQuantizationRemovesQDQsForFloatIO(self, mlir_quantizer):
+    func, calibration_gen = self._getSqrtModel()
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [func.get_concrete_function()])
+    converter.representative_dataset = calibration_gen
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.experimental_new_quantizer = mlir_quantizer
+    quantized_model = converter.convert()
+
+    interpreter = Interpreter(model_content=quantized_model)
+    interpreter.allocate_tensors()
+    # The model should have only one sqrt op.
+    op_details = interpreter._get_ops_details()
+    self.assertLen(op_details, 1)
+    self.assertEqual(op_details[0]['op_name'], 'SQRT')
 
   @parameterized.named_parameters(
       ('_Default', False, False, dtypes.float32),

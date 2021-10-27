@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.shuffle()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 
@@ -413,6 +409,11 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).shuffle(1, name="shuffle")
+    self.assertDatasetProduces(dataset, [42])
 
 
 class ShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,

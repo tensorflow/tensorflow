@@ -293,6 +293,7 @@ tf_cc_test(
         ":delegate",
         ":delegate_data",
         ":test_util",
+        "//tensorflow/lite/kernels:kernel_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

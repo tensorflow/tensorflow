@@ -323,11 +323,11 @@ static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
   if (perm0.getNumElements() != perm1.getNumElements()) return false;
 
   SmallVector<int64_t, 8> perm0_values;
-  for (const auto &value : perm0.getIntValues())
+  for (const auto &value : perm0.getValues<APInt>())
     perm0_values.push_back(value.getSExtValue());
 
   SmallVector<int64_t, 8> perm1_values;
-  for (const auto &value : perm1.getIntValues())
+  for (const auto &value : perm1.getValues<APInt>())
     perm1_values.push_back(value.getSExtValue());
 
   for (int i = 0; i < perm0_values.size(); ++i) {

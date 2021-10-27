@@ -28,10 +28,6 @@ to the regular expression is executed.
 e.g. --benchmarks=".*matmul*." will run all matmul related benchmarks.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 import numpy as np
@@ -1488,6 +1484,24 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       tensor_shape.TensorShape(shape_tuple)
 
     self._run(fn, 100000)
+
+  def _boolean_mask_input(self):
+    n = 3000
+    return (array_ops.ones([n, n]), array_ops.fill([n, n], True))
+
+  def _boolean_mask_fn(self, input_tensor, mask):
+    return array_ops.boolean_mask(input_tensor, mask)
+
+  def benchmark_tf_boolean_mask_eager(self):
+    input_tensor, mask = self._boolean_mask_input()
+
+    self._run(lambda: self._boolean_mask_fn(input_tensor, mask), 10000)
+
+  def benchmark_tf_boolean_mask_graph(self):
+    input_tensor, mask = self._boolean_mask_input()
+    compiled_fn = def_function.function(self._boolean_mask_fn)
+
+    self._run(lambda: compiled_fn(input_tensor, mask), 10000)
 
 
 if __name__ == "__main__":

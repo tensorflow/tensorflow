@@ -48,11 +48,14 @@ load(
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
+def register_extension_info(**kwargs):
+    pass
+
 # version for the shared libraries, can
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.7.0"
+VERSION = "2.8.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -753,21 +756,23 @@ def tf_cc_binary(
         names = [pattern % (name, "") for pattern in SHARED_LIBRARY_NAME_PATTERNS]
     else:
         names = [name]
+
+    # Optional MKL dependency, we also tell buildcleaner to ignore this dep using a tag.
+    mkl_dep = if_mkl_ml([clean_dep("//third_party/mkl:intel_binary_blob")])
+    tags = kwargs.pop("tags", []) + ["req_dep=" + clean_dep("//third_party/mkl:intel_binary_blob")]
+
     for name_os in names:
         cc_binary(
             name = name_os,
             copts = copts,
             srcs = srcs + tf_binary_additional_srcs(),
-            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
-                [
-                    clean_dep("//third_party/mkl:intel_binary_blob"),
-                ],
-            ) + if_static(
+            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_dep + if_static(
                 extra_deps = [],
                 otherwise = [
                     clean_dep("//tensorflow:libtensorflow_framework_import_lib"),
                 ],
             ),
+            tags = tags,
             data = depset(data + added_data_deps),
             linkopts = linkopts + _rpath_linkopts(name_os),
             visibility = visibility,
@@ -783,6 +788,11 @@ def tf_cc_binary(
             }),
             visibility = visibility,
         )
+
+register_extension_info(
+    extension = tf_cc_binary,
+    label_regex_for_dep = "{extension_name}",
+)
 
 # A simple wrap around native.cc_binary rule.
 # When using this rule, you should realize it doesn't link to any tensorflow
@@ -2226,9 +2236,9 @@ def py_binary(name, deps = [], **kwargs):
         **kwargs
     )
 
-def pytype_library(**kwargs):
+def pytype_library(name, pytype_deps = [], pytype_srcs = [], **kwargs):
     # Types not enforced in OSS.
-    native.py_library(**kwargs)
+    native.py_library(name = name, **kwargs)
 
 def tf_py_test(
         name,

@@ -399,7 +399,7 @@ REGISTER_OP("ShapeDataInt64")
       std::vector<shape_inference::DimensionHandle> dims;
       dims.reserve(shape_data->NumElements());
       for (int i = 0; i < shape_data->NumElements(); ++i) {
-        dims.emplace_back(c->MakeDim(shape_data->flat<int64>()(i)));
+        dims.emplace_back(c->MakeDim(shape_data->flat<int64_t>()(i)));
       }
 
       c->set_output(0, c->MakeShape(dims));

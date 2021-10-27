@@ -61,7 +61,7 @@ upper_tabs:
         path: https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0
         status: external
       - title: "Person detection"
-        path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection
+        path: https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/person_detection
         status: external
 
     - name: "Guide"
@@ -96,6 +96,12 @@ upper_tabs:
         path: /lite/guide/hosted_models
       - title: "API updates"
         path: /lite/convert/api_updates
+      - title: "Model Analyzer"
+        path: /lite/guide/model_analyzer
+        status: nightly
+      - title: "Authoring tool"
+        path: /lite/guide/authoring
+        status: nightly
 
       - heading: "Create a model"
       - title: "TensorFlow Lite Model Maker"
@@ -186,6 +192,9 @@ upper_tabs:
         status: experimental
       - title: "Quantization specification"
         path: /lite/performance/quantization_spec
+      - title: "Inspecting quantization errors"
+        path: /lite/performance/quantization_debugger
+        status: nightly
 
       - heading: "Build TensorFlow Lite"
       - title: "Build for Android"
@@ -245,6 +254,9 @@ upper_tabs:
       - title: "Audio classification"
         path: /lite/examples/audio_classification/overview
       - heading: "Others"
+      - title: "Jax Model Conversion"
+        path: /lite/examples/jax_conversion/overview
+        status: nightly
       - title: "On-device training"
         path: /lite/examples/on_device_training/overview
         status: nightly

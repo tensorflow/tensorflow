@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -73,6 +74,14 @@ void RecordTFDataExperiment(const string& name);
 // `ItertatorResource::GetNext()`.
 void RecordTFDataGetNextDuration(uint64 duration_us);
 
+// Records the histogram of ratios of tf.data autotune algorithm used RAM over
+// the ram budget.
+void RecordTFDataAutotuneUsedRamBudgetRatio(const double ratio);
+
+// Records the histogram of ratios of tf.data autotune algorithm max buffer
+// bytes over the ram budget.
+void RecordTFDataAutotuneMaxBufferBudgetRatio(const double ratio);
+
 // Records the number of times each tf.data fingerprint is used
 // to measure duplicate pre-processing.
 //
@@ -110,6 +119,19 @@ void RecordTFDataFilename(const string& name, const string& filename);
 void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
                            int64 num_workers, int64 num_replicas);
 
+// Records statistics of whether we can rewrite batch size in tf.data auto
+// sharding.
+//
+// The `id` is a unique identifier of the input pipeline. The `eligible`
+// indicates whether the input pipeline is eligible for the rewrite. The
+// `ineligible_reason` is the reason if the input pipeline is ineligible.
+void RecordTFDataAutoShardRewriteBatchSize(
+    bool eligible, const std::vector<string>& ineligible_reason);
+
+// Records the number of times each tf.data autotuning algorithm stopping
+// criterion is met.
+void RecordTFDataAutotuneStoppingCriteria(const string& name);
+
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);
 
@@ -146,6 +168,61 @@ void RecordUnusedOutput(const string& op_name);
 //
 // TODO(jtkeeling): Should we record building/optimizing tf.functions?
 void UpdateGraphBuildTime(const uint64 running_time_usecs);
+
+// Convenience class allowing RAII style of reporting for a monitoring::Counter.
+template <int NumLabels>
+class ScopedCounter final {
+ public:
+  ScopedCounter(monitoring::Counter<NumLabels>* const counter,
+                const std::array<std::string, NumLabels>& labels)
+      : counter_(counter), labels_(labels) {
+    Init();
+  }
+
+  // Report counter and stop it. Counter needs to be reset to perform
+  // next measurement.
+  void ReportAndStop() {
+    if (started_) {
+      started_ = false;
+      ReportInternal(std::make_index_sequence<NumLabels>());
+    }
+  }
+
+  // Start the measurement with the new set of labels.
+  void Reset(const std::array<std::string, NumLabels>& labels) {
+    labels_ = labels;
+    Init();
+  }
+
+  // Start the measurement with the existing set of labels.
+  void Reset() { Init(); }
+
+  ~ScopedCounter() { ReportAndStop(); }
+
+ private:
+  template <std::size_t... S>
+  void ReportInternal(std::index_sequence<S...>) {
+    uint64 time_interval =
+        tensorflow::Env::Default()->NowMicros() - start_time_;
+    if (time_interval > 0) {
+      counter_->GetCell(labels_[S]...)->IncrementBy(time_interval);
+    }
+  }
+
+  void Init() {
+    start_time_ = tensorflow::Env::Default()->NowMicros();
+    started_ = true;
+  }
+
+  monitoring::Counter<NumLabels>* counter_;
+  std::array<std::string, NumLabels> labels_;
+  bool started_{false};
+  uint64 start_time_;
+};
+
+// Returns a counter used to capture timing metrics for graph optimization
+// passes.
+monitoring::Counter<2>* GetGraphOptimizationCounter();
 
 // Updates the metrics stored about graph optimizations.
 void UpdateGraphOptimizationPassTime(const string& pass_name,

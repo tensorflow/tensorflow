@@ -14,10 +14,6 @@
 # ==============================================================================
 """XLA LocalClient interface for interacting with TPUs via the TPU driver."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import logging
 
 # Import xla_client to load shared C++ extensions (just CompileOptions at the

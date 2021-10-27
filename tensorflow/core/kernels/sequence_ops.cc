@@ -73,10 +73,10 @@ class RangeOp : public OpKernel {
     }
     int64_t size = 0;
     if (std::is_integral<T>::value) {
-      size = static_cast<int64>(
+      size = static_cast<int64_t>(
           (std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta));
     } else {
-      size = static_cast<int64>(std::ceil(std::abs((limit - start) / delta)));
+      size = static_cast<int64_t>(std::ceil(std::abs((limit - start) / delta)));
     }
     TensorShape shape;
     OP_REQUIRES_OK(context, shape.AddDimWithStatus(size));
@@ -178,13 +178,10 @@ class LinSpaceOp : public OpKernel {
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 
-// NOTE(touts): We register the op on GPU but it still runs on CPU
-// because its inputs and outputs are tagged as HostMemory.
-#define REGISTER_GPU_KERNEL(T) REGISTER_KERNEL_ALL_NUMS(DEVICE_GPU, T)
-TF_CALL_float(REGISTER_GPU_KERNEL);
-TF_CALL_double(REGISTER_GPU_KERNEL);
-#undef REGISTER_GPU_KERNEL
-
+#define REGISTER_DEFAULT_KERNEL(T) REGISTER_KERNEL_ALL_NUMS(DEVICE_DEFAULT, T)
+TF_CALL_float(REGISTER_DEFAULT_KERNEL);
+TF_CALL_double(REGISTER_DEFAULT_KERNEL);
+#undef REGISTER_DEFAULT_KERNEL
 
 #undef REGISTER_CPU_KERNEL
 #undef REGISTER_KERNEL_ALL_NUMS

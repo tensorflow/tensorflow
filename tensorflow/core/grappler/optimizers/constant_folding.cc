@@ -1620,14 +1620,16 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
 }
 
 Status ConstantFolding::FoldGraph(
-    const GraphProperties& properties, GraphDef* output,
+    const GraphProperties& properties, GraphDef* optimized_graph,
     absl::flat_hash_set<string>* nodes_to_not_simplify) {
-  std::unordered_set<string> processed_nodes;
+  // We build a new optimized_graph by inserting the folded nodes into it, then
+  // copy other nodes that might be needed at the end of this function.
+  absl::flat_hash_set<string> processed_nodes;
   std::deque<NodeDef*> queue;
   for (int i = 0; i < graph_->node_size(); i++) {
-    bool foldable = IsFoldable(graph_->node(i), &properties);
-    VLOG(2) << "foldable(" << graph_->node(i).name() << ") = " << foldable;
-    if (foldable) {
+    const NodeDef& node = graph_->node(i);
+    if (IsFoldable(node, &properties) &&
+        !nodes_to_not_simplify->count(node.name())) {
       queue.push_back(graph_->mutable_node(i));
     }
   }
@@ -1642,7 +1644,7 @@ Status ConstantFolding::FoldGraph(
     std::vector<NodeDef*> fanout =
         node_map_->GetOutputsOrderedByNodeName(node->name());
     bool result_too_large = false;
-    Status s = FoldNode(node, output, &result_too_large);
+    Status s = FoldNode(node, optimized_graph, &result_too_large);
     processed_nodes.insert(node->name());
     if (!s.ok()) {
       VLOG(1) << "Failed to fold node " << node->DebugString()
@@ -1651,9 +1653,10 @@ Status ConstantFolding::FoldGraph(
         nodes_to_not_simplify->emplace(node->name());
       }
     } else {
-      for (auto& output : fanout) {
-        if (IsFoldable(*output, &properties)) {
-          queue.push_back(output);
+      for (auto& fanout_node : fanout) {
+        if (IsFoldable(*fanout_node, &properties) &&
+            !nodes_to_not_simplify->count(fanout_node->name())) {
+          queue.push_back(fanout_node);
         }
       }
     }
@@ -1661,11 +1664,11 @@ Status ConstantFolding::FoldGraph(
 
   // Delete the newly created nodes that don't feed anything.
   std::vector<int> nodes_to_delete;
-  for (int i = 0; i < output->node_size(); i++) {
-    const auto& fanout = node_map_->GetOutputs(output->node(i).name());
+  for (int i = 0; i < optimized_graph->node_size(); i++) {
+    const auto& fanout = node_map_->GetOutputs(optimized_graph->node(i).name());
     if (fanout.empty()) nodes_to_delete.push_back(i);
   }
-  EraseNodesFromGraph(std::move(nodes_to_delete), output);
+  EraseNodesFromGraph(std::move(nodes_to_delete), optimized_graph);
 
   for (int i = 0; i < graph_->node_size(); ++i) {
     NodeDef* node = graph_->mutable_node(i);
@@ -1675,7 +1678,7 @@ Status ConstantFolding::FoldGraph(
     const auto& fanout = node_map_->GetOutputs(node->name());
     if (!fanout.empty() || !has_fetch_ ||
         nodes_to_preserve_.find(node->name()) != nodes_to_preserve_.end()) {
-      *(output->add_node()) = std::move(*node);
+      *(optimized_graph->add_node()) = std::move(*node);
     }
   }
   return Status::OK();
@@ -3950,6 +3953,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
                                             GrapplerItem* item,
                                             GraphProperties* properties,
                                             GraphDef* optimized_graph) {
+  optimized_graph->Clear();
   graph_ = &item->graph;
   node_map_.reset(new NodeMap(graph_));
   nodes_allowlist_.clear();
@@ -3977,6 +3981,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
     *optimized_graph = *graph_;
   }
   node_map_.reset(new NodeMap(optimized_graph));
+
   TF_RETURN_IF_ERROR(
       SimplifyGraph(optimized_graph, properties, &nodes_to_not_simplify));
 
@@ -4031,7 +4036,6 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     graph_modified_ = false;
     item_to_optimize.graph.Swap(optimized_graph);
-    optimized_graph->Clear();
     node_count = item_to_optimize.graph.node_size();
     TF_RETURN_IF_ERROR(RunOptimizationPass(cluster, &item_to_optimize,
                                            &properties, optimized_graph));

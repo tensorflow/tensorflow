@@ -345,10 +345,11 @@ See also
 [`XlaBuilder::BitcastConvertType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
-operation from a data shape to a target shape. The dimensions must match, and
-the conversion is an element-wise one; e.g. `s32` elements become `f32` elements
-via bitcast routine. Bitcast is implemented as a low-level cast, so machines
-with different floating-point representations will give different results.
+operation from a data shape to a target shape. The input and output size must
+match: e.g. `s32` elements become `f32` elements via bitcast routine, and one
+`s32` element will become four `s8` elements. Bitcast is implemented as a
+low-level cast, so machines with different floating-point representations will
+give different results.
 
 <b> `BitcastConvertType(operand, new_element_type)` </b>
 
@@ -357,9 +358,42 @@ Arguments          | Type            | Semantics
 `operand`          | `XlaOp`         | array of type T with dims D
 `new_element_type` | `PrimitiveType` | type U
 
-The dimensions of the operand and the target shape must match. The bit-width of
-the source and destination element types must be equal. The source
-and destination element types must not be tuples.
+The dimensions of the operand and the target shape must match, apart from the
+last dimension which will change by the ratio of the primitive size before and
+after the conversion.
+
+The source and destination element types must not be tuples.
+
+### Bitcast-converting to primitive type of different width
+
+`BitcastConvert` HLO instruction supports the case where the size of the output
+element type `T'` is not equal to the size of the input element `T`. As the
+whole operation is conceptually a bitcast and does not change the underlying
+bytes, the shape of the output element has to change. For `B = sizeof(T), B' =
+sizeof(T')`, there are two possible cases.
+
+First, when `B > B'`, the output shape gets a new minor-most dimension of size
+`B/B'`. For example:
+
+```
+  f16[10,2]{1,0} %output = f16[10,2]{1,0} bitcast-convert(f32[10]{0} %input)
+```
+
+The rule remains the same for effective scalars:
+
+```
+  f16[2]{0} %output = f16[2]{0} bitcast-convert(f32[] %input)
+```
+
+Alternatively, for `B' > B` the instruction requires the last logical dimension
+of the input shape to be equal to `B'/B`, and this dimension is dropped during
+the conversion:
+
+```
+  f32[10]{0} %output = f32[10]{0} bitcast-convert(f16[10,2]{1,0} %input)
+```
+
+Note that conversions between different bitwidths are not elementwise.
 
 ## Broadcast
 
@@ -1468,7 +1502,7 @@ as `batch_dims`.
 The output is an array of rank `batch_dims.size` + `offset_dims.size`.
 
 The `operand.rank` must equal the sum of `offset_dims.size` and
-`collapsed_slice_dims`. Also, `slice_sizes.size` has to be equal to
+`collapsed_slice_dims.size`. Also, `slice_sizes.size` has to be equal to
 `operand.rank`.
 
 If `index_vector_dim` is equal to `start_indices.rank` we implicitly consider
@@ -1520,10 +1554,11 @@ calculated as follows:
 4.  `In` is `O`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
     addition.
 
-`remapped_offset_dims` is a monotonic function with domain [`0`, `offset.size`)
-and range [`0`, `operand.rank`) \ `collapsed_slice_dims`. So if, e.g.,
-`offset.size` is `4`, `operand.rank` is `6` and `collapsed_slice_dims` is {`0`,
-`2`} then `remapped_offset_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
+`remapped_offset_dims` is a monotonic function with domain [`0`,
+`offset_dims.size`) and range [`0`, `operand.rank`) \ `collapsed_slice_dims`. So
+if, e.g., `offset_dims.size` is `4`, `operand.rank` is `6` and
+`collapsed_slice_dims` is {`0`, `2`} then `remapped_offset_dims` is {`0`→`1`,
+`1`→`3`, `2`→`4`, `3`→`5`}.
 
 If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
 are sorted (in ascending `start_index_map` order) by the user. If they are not

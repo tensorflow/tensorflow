@@ -18,8 +18,8 @@ func @test_recv_input_and_send_output(%arg0: !disc_ral.context) {
   // CHECK: "disc_ral.dispatch"(%[[CTX]], %c1, %[[T1]])
   // CHECK-SAME: {backend_config = "cpu", call_target_name = "ral_send_output", has_side_effect = false} :
   // CHECK-SAME: (!disc_ral.context, index, memref<?x?xf32>) -> ()
-  %c1 = constant 1 : index
-  %c0 = constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c0 = arith.constant 0 : index
   %0 = "disc_ral.recv_input"(%arg0, %c0) : (!disc_ral.context, index) -> memref<?x?xf32>
   %1 = "disc_ral.recv_input"(%arg0, %c1) : (!disc_ral.context, index) -> memref<?x?xf32>
   "disc_ral.send_output"(%arg0, %c0, %0) : (!disc_ral.context, index, memref<?x?xf32>) -> ()

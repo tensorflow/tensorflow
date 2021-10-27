@@ -329,6 +329,11 @@ class HloModule {
                                   /*preserve_entry_layouts=*/true);
   }
 
+  void SetAndUniquifyInstrName(HloInstruction* instr, absl::string_view name) {
+    instr->SetAndSanitizeName(name);
+    instr->UniquifyName(&instruction_name_uniquer_);
+  }
+
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
   // Checks if this config has a list of entry parameters' HLO shardings for
@@ -382,6 +387,16 @@ class HloModule {
   // transferred out of a module before it's destroyed.
   void MoveMetadataToModule(HloModule* module) {
     module->metadata_ = std::move(metadata_);
+  }
+
+  void set_autofdo_fingerprint(std::string fingerprint) {
+    autofdo_fingerprint_ = fingerprint;
+  }
+
+  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
+
+  void add_profile_type(HloModuleProto::ProfileType profile_type) {
+    profile_types_.push_back(profile_type);
   }
 
  private:
@@ -440,6 +455,13 @@ class HloModule {
 
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
+
+  // a fingerprint to search autofdo profile entry.
+  std::string autofdo_fingerprint_;
+
+  // An array of ProfileTypes specifying what optimization profiles this module
+  // contains.
+  std::vector<HloModuleProto::ProfileType> profile_types_;
 };
 
 }  // namespace xla

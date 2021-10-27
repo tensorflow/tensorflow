@@ -13,7 +13,7 @@ the following example applications that can help you get started.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/pose_estimation/android">
 Android example</a>
-<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/posenet/ios">
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/pose_estimation/ios">
 iOS example</a>
 
 If you are familiar with the

@@ -16,13 +16,13 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 cpurt = tf_cpurt.TfCpurtExecutor()
 
 
-class TfMeanTest(googletest.TestCase):
+class TfMeanTest(test.TestCase):
 
   def test_mean_2d(self):
     mlir_function = """
@@ -42,4 +42,4 @@ class TfMeanTest(googletest.TestCase):
 
 if __name__ == '__main__':
   np.random.seed(0)
-  googletest.main()
+  test.main()

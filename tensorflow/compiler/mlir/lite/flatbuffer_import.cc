@@ -38,7 +38,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Endian.h"
@@ -46,6 +45,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -307,25 +307,12 @@ bool IsBasicLSTMOp(tflite::BuiltinOptionsUnion op_union) {
 }
 
 // Gets the MLIR op name with the dialect name for the flatbuffer operator.
-StatusOr<std::string> GetMlirOpName(const tflite::OperatorT& op,
-                                    const tflite::OperatorCodeT& op_code) {
+std::string GetMlirOpName(const tflite::OperatorT& op,
+                          const tflite::OperatorCodeT& op_code) {
   if (IsBasicLSTMOp(op.builtin_options)) {
     return std::string("tfl.basic_lstm");
   }
-
-  auto builtin_code = tflite::GetBuiltinCode(&op_code);
-  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    return std::string("tfl.custom");
-  }
-  if (builtin_code == tflite::BuiltinOperator_IF) {
-    return std::string("tf.If");
-  }
-  if (builtin_code == tflite::BuiltinOperator_WHILE) {
-    return std::string("tfl.while");
-  }
-
-  llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
-  return llvm::Twine("tfl.", op_name.lower()).str();
+  return mlir::GetMlirOpNameFromOpCode(op_code);
 }
 
 // The buffers in TFLite flatbuffers have their contents stored as a vector of
@@ -399,7 +386,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
         values.emplace_back(semantics, int_repr);
       }
 
-      return DenseElementsAttr::get(shaped_type, values);
+      return mlir::ElementsAttr(DenseElementsAttr::get(shaped_type, values));
     }
     case 32: {
       assert(bytes_len % 4 == 0);
@@ -415,7 +402,8 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
                                             llvm::support::unaligned>(data);
         values.push_back(absl::bit_cast<float>(bit_repr));
       }
-      return DenseElementsAttr::get(shaped_type, ArrayRef<float>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<float>(values)));
     }
     case 64: {
       assert(bytes_len % 8 == 0);
@@ -431,7 +419,8 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
                                             llvm::support::unaligned>(data);
         values.push_back(absl::bit_cast<double>(bit_repr));
       }
-      return DenseElementsAttr::get(shaped_type, ArrayRef<double>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<double>(values)));
     }
   }
   return errors::InvalidArgument("unsupported bit width", elem_type.getWidth());
@@ -459,22 +448,27 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
       for (auto b : buffer) {
         values.emplace_back(b != 0);
       }
-      return DenseElementsAttr::get(shaped_type, ArrayRef<bool>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<bool>(values)));
     }
     case 8: {
-      return DenseElementsAttr::get(shaped_type, ArrayRef<uint8_t>(buffer));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<uint8_t>(buffer)));
     }
     case 16: {
       auto values = ReadAsLittleEndian<uint16_t>(buffer);
-      return DenseElementsAttr::get(shaped_type, ArrayRef<uint16_t>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<uint16_t>(values)));
     }
     case 32: {
       auto values = ReadAsLittleEndian<uint32_t>(buffer);
-      return DenseElementsAttr::get(shaped_type, ArrayRef<uint32_t>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<uint32_t>(values)));
     }
     case 64: {
       auto values = ReadAsLittleEndian<uint64_t>(buffer);
-      return DenseElementsAttr::get(shaped_type, ArrayRef<uint64_t>(values));
+      return mlir::ElementsAttr(
+          DenseElementsAttr::get(shaped_type, ArrayRef<uint64_t>(values)));
     }
     default:
       return errors::Unimplemented("Cannot handle bit width ", bit_width);
@@ -801,7 +795,7 @@ StatusOr<Operation*> ConvertOp(
 
   const tflite::OperatorCodeT& op_code = *op_codes.at(op.opcode_index);
 
-  TF_ASSIGN_OR_RETURN(const std::string op_name, GetMlirOpName(op, op_code));
+  const std::string op_name = GetMlirOpName(op, op_code);
 
   OperationState op_state(loc, op_name);
 
@@ -891,7 +885,8 @@ StatusOr<Operation*> ConvertOp(
       if (shape_ty != nullptr && shape_ty.hasRank() && shape_ty.getRank() > 1) {
         llvm::SmallVector<mlir::Attribute, 4> shape;
         int32_t dim_size = 0;
-        for (const auto& dim : llvm::enumerate(shape_attr.getIntValues())) {
+        for (const auto& dim :
+             llvm::enumerate(shape_attr.getValues<llvm::APInt>())) {
           const int64_t size = dim.value().getSExtValue();
           shape.push_back(
               builder.getI32IntegerAttr(static_cast<int32_t>(size)));
@@ -1446,9 +1441,10 @@ OwningModuleRef tflite::FlatBufferToMlir(
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally) {
-  context->loadDialect<
-      mlir::StandardOpsDialect, mlir::quant::QuantizationDialect,
-      mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect>();
+  context->loadDialect<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+                       mlir::quant::QuantizationDialect,
+                       mlir::TFL::TensorFlowLiteDialect,
+                       mlir::TF::TensorFlowDialect>();
 
   auto model_ptr =
       FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());

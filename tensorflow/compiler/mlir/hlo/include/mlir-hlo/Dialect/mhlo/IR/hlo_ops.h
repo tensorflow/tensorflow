@@ -36,6 +36,7 @@ limitations under the License.
 
 // clang-format off
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
 #include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h"
@@ -61,6 +62,12 @@ class MhloDialect : public Dialect {
 
   // Prints a type registered to this dialect.
   void printType(Type type, DialectAsmPrinter &os) const override;
+
+  // Parses an attribute registered to this dialect.
+  Attribute parseAttribute(DialectAsmParser &parser, Type type) const override;
+
+  // Prints an attribute registered to this dialect.
+  void printAttribute(Attribute attr, DialectAsmPrinter &os) const override;
 };
 
 class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {

@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/Twine.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace {
 
@@ -58,6 +60,23 @@ StatusOr<mlir::StringAttr> GetPaddingAttr(TfLitePadding pad_params,
 }
 
 }  // namespace
+
+std::string mlir::GetMlirOpNameFromOpCode(
+    const tflite::OperatorCodeT& op_code) {
+  auto builtin_code = tflite::GetBuiltinCode(&op_code);
+  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
+    return std::string("tfl.custom");
+  }
+  if (builtin_code == tflite::BuiltinOperator_IF) {
+    return std::string("tf.If");
+  }
+  if (builtin_code == tflite::BuiltinOperator_WHILE) {
+    return std::string("tfl.while");
+  }
+
+  llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
+  return llvm::Twine("tfl.", op_name.lower()).str();
+}
 
 // TODO(jpienaar): This is a placeholder. This should be done in more efficient
 // way when part of the translation of module.
@@ -121,6 +140,18 @@ ConvertI64ArrayAttrForOptionWriter(mlir::ArrayAttr attrArray,
     intVec.push_back(attr.cast<mlir::IntegerAttr>().getInt());
   }
   return builder->CreateVector(intVec);
+}
+
+static flatbuffers::Offset<flatbuffers::Vector<float>>
+ConvertF32ArrayAttrForOptionWriter(mlir::ArrayAttr attrArray,
+                                   flatbuffers::FlatBufferBuilder* builder) {
+  std::vector<float> floatVec;
+  floatVec.reserve(attrArray.getValue().size());
+  for (auto attr : attrArray.getValue()) {
+    floatVec.push_back(
+        attr.cast<mlir::FloatAttr>().getValue().convertToFloat());
+  }
+  return builder->CreateVector(floatVec);
 }
 
 // F32Attr already returns a float as required by flatbuffer builders.
@@ -189,6 +220,12 @@ static mlir::Attribute BuildI64ArrayAttr(std::vector<int32_t> value,
                                          mlir::Builder builder) {
   std::vector<int64_t> typecast(value.begin(), value.end());
   return builder.getI64ArrayAttr(typecast);
+}
+
+static mlir::Attribute BuildF32ArrayAttr(std::vector<float> value,
+                                         mlir::Builder builder) {
+  std::vector<float> typecast(value.begin(), value.end());
+  return builder.getF32ArrayAttr(typecast);
 }
 
 static mlir::Attribute BuildPositiveI32Attr(int32_t value,

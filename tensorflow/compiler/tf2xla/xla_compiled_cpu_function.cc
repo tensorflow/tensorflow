@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 
 #include <cassert>
+
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 
 namespace tensorflow {
@@ -52,9 +53,10 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
 }
 
 bool XlaCompiledCpuFunction::Run() {
+  XlaCustomCallStatus status;
   raw_function_(buffer_table_[result_index_], &run_options_, nullptr,
-                buffer_table_, profile_counters_);
-  return true;
+                buffer_table_, &status, profile_counters_);
+  return !xla::CustomCallStatusGetMessage(&status).has_value();
 }
 
 XlaCompiledCpuFunction::~XlaCompiledCpuFunction() {

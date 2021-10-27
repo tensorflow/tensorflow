@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.random_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -464,11 +460,11 @@ class DeterministicOpsTest(test.TestCase):
   def setUp(self):
     super().setUp()
     random_seed.set_random_seed(None)
-    config.enable_deterministic_ops(True)
+    config.enable_op_determinism()
 
   def tearDown(self):
     super().tearDown()
-    config.enable_deterministic_ops(False)
+    config.disable_op_determinism()
 
   def testDeterministicOpsErrors(self):
     with self.assertRaisesRegex(

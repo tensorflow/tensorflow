@@ -115,6 +115,11 @@ def SameOperandsAndResultsScale : OpInterface<"SameScalesOpInterface"> {
       "bool", "RequiredSameOperandsAndResultsScale",
       (ins "bool":$sign, "int":$bit_width), [{}], [{return true;}]
     >,
+    InterfaceMethod<
+      [{Returns whether operands and results must have the same quantized axis.}],
+      "bool", "RequiredSameQuantizedAxes",
+      (ins), [{}], [{return true;}]
+    >,
   ];
 
   let verify = [{
@@ -145,4 +150,6 @@ class AffineOpCoefficient<int dim, int index> : NativeOpTrait<
 // apply quantization on this op.
 def NoQuantizableResult : NativeOpTrait<"quant::NoQuantizableResult">;
 
+// Specify this trait if the op supports dynamic quantization.
+def DynamicQuantizableOp : NativeOpTrait<"quant::DynamicQuantizableOp">;
 #endif // TF_Quantization

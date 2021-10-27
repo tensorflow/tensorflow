@@ -16,10 +16,6 @@
 # pylint: disable=g-long-lambda
 """Tests for tensorflow.ops.control_flow_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import math
 import re
@@ -45,6 +41,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import function
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -235,7 +232,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       values = constant_op.constant([1, 2, 3, 4, 5, 6])
       indices = constant_op.constant([0, 2, 4, 6, 8, 10])
-      data = ops.IndexedSlices(values, indices)
+      data = indexed_slices.IndexedSlices(values, indices)
       pred = ops.convert_to_tensor(True)
       switch_op = control_flow_ops.switch(data, pred)
       merge_op = control_flow_ops.merge(switch_op)[0]
@@ -447,10 +444,12 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       values = constant_op.constant([10])
       indices = constant_op.constant([0])
-      x = ops.IndexedSlices(values, indices)
+      x = indexed_slices.IndexedSlices(values, indices)
       pred = math_ops.less(1, 2)
-      fn1 = lambda: ops.IndexedSlices(math_ops.add(x.values, 1), indices)
-      fn2 = lambda: ops.IndexedSlices(math_ops.subtract(x.values, 1), indices)
+      fn1 = lambda: indexed_slices.IndexedSlices(
+          math_ops.add(x.values, 1), indices)
+      fn2 = lambda: indexed_slices.IndexedSlices(
+          math_ops.subtract(x.values, 1), indices)
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       val = r.values
@@ -463,12 +462,12 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     def foo():
       values = constant_op.constant([10])
       indices = constant_op.constant([0])
-      x = ops.IndexedSlices(values, indices)
+      x = indexed_slices.IndexedSlices(values, indices)
       with self.assertRaisesRegex(TypeError,
                                   "Cannot reconcile tf.cond 0-th outputs"):
         control_flow_ops.cond(
-            constant_op.constant(True),
-            lambda: ops.IndexedSlices(math_ops.add(x.values, 1), indices),
+            constant_op.constant(True), lambda: indexed_slices.IndexedSlices(
+                math_ops.add(x.values, 1), indices),
             lambda: math_ops.add(x.values, 1), indices)
     foo()
 
@@ -544,10 +543,12 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       values = constant_op.constant([10])
       i_32 = ops.convert_to_tensor([0], name="one", dtype=dtypes.int32)
       i_64 = ops.convert_to_tensor([0], name="one", dtype=dtypes.int64)
-      x = ops.IndexedSlices(values, i_32)
+      x = indexed_slices.IndexedSlices(values, i_32)
       pred = math_ops.less(1, 2)
-      fn1 = lambda: ops.IndexedSlices(math_ops.add(x.values, 1), i_32)
-      fn2 = lambda: ops.IndexedSlices(math_ops.subtract(x.values, 1), i_64)
+      fn1 = lambda: indexed_slices.IndexedSlices(
+          math_ops.add(x.values, 1), i_32)
+      fn2 = lambda: indexed_slices.IndexedSlices(
+          math_ops.subtract(x.values, 1), i_64)
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       val = r.values
@@ -1300,7 +1301,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.evaluate(variables.global_variables_initializer())
 
       if control_flow_util.ENABLE_CONTROL_FLOW_V2:
-        self.assertIsInstance(grad, ops.IndexedSlices)
+        self.assertIsInstance(grad, indexed_slices.IndexedSlices)
 
       grad_value = sess.run(grad, feed_dict={c: 1})
       self.assertAllEqual(gradient_checker_v2._to_numpy(grad_value), [1.0, 1.0])
@@ -1324,7 +1325,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     self.evaluate(variables.global_variables_initializer())
     grad_val = self.evaluate(grad)
-    self.assertIsInstance(grad_val, ops.IndexedSlicesValue)
+    self.assertIsInstance(grad_val, indexed_slices.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad_val), [[0., 0.],
                                                                   [1., 1.],
                                                                   [1., 1.],
@@ -1358,16 +1359,16 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     grad = foo()
     self.evaluate(variables.global_variables_initializer())
     var_grad, x1_grad, x2_grad = self.evaluate(grad)
-    self.assertIsInstance(var_grad, ops.IndexedSlicesValue)
+    self.assertIsInstance(var_grad, indexed_slices.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(var_grad), [[0., 0.],
                                                                   [1., 1.],
                                                                   [1., 1.],
                                                                   [0., 0]])
-    self.assertIsInstance(x1_grad, ops.IndexedSlicesValue)
+    self.assertIsInstance(x1_grad, indexed_slices.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(x1_grad), [[0., 0., 0.],
                                                                  [0., 0., 0.],
                                                                  [2., 2., 2.]])
-    self.assertIsInstance(x1_grad, ops.IndexedSlicesValue)
+    self.assertIsInstance(x1_grad, indexed_slices.IndexedSlicesValue)
     self.assertEqual(gradient_checker_v2._to_numpy(x2_grad), 6.)
 
   @test_util.run_v1_only("b/120545219")
@@ -2219,7 +2220,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       indices = constant_op.constant([0, 3], name="indices")
       shape = constant_op.constant([10, 2], name="dense_shape")
       i = constant_op.constant(0)
-      x = ops.IndexedSlices(values, indices, dense_shape=shape)
+      x = indexed_slices.IndexedSlices(values, indices, dense_shape=shape)
 
       def c(i, _):
         return i < 10
@@ -2227,7 +2228,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def b(i, x):
         return [
             i + 1,
-            ops.IndexedSlices(x.values * 2.0, x.indices, x.dense_shape)
+            indexed_slices.IndexedSlices(x.values * 2.0, x.indices,
+                                         x.dense_shape)
         ]
 
       _, r = control_flow_ops.while_loop(c, b, [i, x])
@@ -3872,7 +3874,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       indices = constant_op.constant([0, 3], name="indices")
       shape = constant_op.constant([10], name="dense_shape")
       i = constant_op.constant(0)
-      x = ops.IndexedSlices(values, indices, dense_shape=shape)
+      x = indexed_slices.IndexedSlices(values, indices, dense_shape=shape)
 
       def c(i, _):
         return i < 10
@@ -3880,7 +3882,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def b(i, x):
         return [
             i + 1,
-            ops.IndexedSlices(x.values * 2.0, x.indices, x.dense_shape)
+            indexed_slices.IndexedSlices(x.values * 2.0, x.indices,
+                                         x.dense_shape)
         ]
 
       _, r = control_flow_ops.while_loop(c, b, [i, x])
@@ -4399,7 +4402,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       v = variables.VariableV1(
           np.array([[0.0, 1.0], [10.0, 11.0], [20.0, 21.0]]).astype(np.float32))
-      v_at_1 = ops.IndexedSlices(v, constant_op.constant([1]))
+      v_at_1 = indexed_slices.IndexedSlices(v, constant_op.constant([1]))
       gather_v_at_1 = array_ops.gather(v_at_1.values, v_at_1.indices)
       v_at_1_after_init = control_flow_ops.with_dependencies([v.initializer],
                                                              v_at_1)
@@ -4885,14 +4888,14 @@ class TupleTest(test.TestCase):
         v1 = variables.VariableV1(
             np.array([[0.0, 1.0], [10.0, 11.0], [20.0, 21.0]]).astype(
                 np.float32))
-        v1_at_1 = ops.IndexedSlices(
+        v1_at_1 = indexed_slices.IndexedSlices(
             control_flow_ops.with_dependencies([v1.initializer], v1._ref()),  # pylint: disable=protected-access
             constant_op.constant([1]))
 
         v2 = variables.VariableV1(
             np.array([[0.1, 1.1], [10.1, 11.1], [20.1, 21.1]]).astype(
                 np.float32))
-        v2_at_1 = ops.IndexedSlices(
+        v2_at_1 = indexed_slices.IndexedSlices(
             control_flow_ops.with_dependencies([v2.initializer], v2._ref()),  # pylint: disable=protected-access
             constant_op.constant([1]))
 

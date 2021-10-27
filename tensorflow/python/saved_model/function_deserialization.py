@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tools for deserializing `Function`s."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import re
 from absl import logging
@@ -76,7 +72,7 @@ def _call_concrete_function(function, inputs):
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
     elif isinstance(expected, resource_variable_ops.VariableSpec):
       tensor_inputs.append(arg)
-  result = function._call_flat(tensor_inputs, function._captured_inputs)  # pylint: disable=protected-access
+  result = function._call_flat(tensor_inputs, function.captured_inputs)  # pylint: disable=protected-access
   if isinstance(result, ops.Operation):
     return None
   return result
@@ -123,9 +119,10 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
   return True
 
 
-def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
+def _deserialize_function_spec_as_nonmethod(function_spec_proto):
   """Deserialize a FunctionSpec object from its proto representation."""
-  typeless_fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+  typeless_fullargspec = nested_structure_coder.decode_proto(
+      function_spec_proto.fullargspec)
 
   # Convert a method function into a non method.
   if function_spec_proto.is_method:
@@ -145,7 +142,8 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
       kwonlyargs=typeless_fullargspec.kwonlyargs,
       kwonlydefaults=typeless_fullargspec.kwonlydefaults,
       annotations=typeless_fullargspec.annotations)
-  input_signature = coder.decode_proto(function_spec_proto.input_signature)
+  input_signature = nested_structure_coder.decode_proto(
+      function_spec_proto.input_signature)
 
   # See `tf.function` and the JitCompile proto for details.
   jit_compile = {
@@ -175,10 +173,8 @@ def setup_bare_concrete_function(saved_bare_concrete_function,
   concrete_function._num_positional_args = (
       saved_bare_concrete_function.allowed_positional_arguments)
   if saved_bare_concrete_function.HasField("function_spec"):
-    coder = nested_structure_coder.StructureCoder()
     function_spec = _deserialize_function_spec_as_nonmethod(
-        saved_bare_concrete_function.function_spec,
-        coder)
+        saved_bare_concrete_function.function_spec)
     concrete_function._set_function_spec(function_spec)
   # pylint: enable=protected-access
   concrete_function.add_to_graph()
@@ -242,7 +238,6 @@ def recreate_function(saved_function, concrete_functions):
   # instead of creating a new `Function` backed by a Python layer to
   # glue things together. Current approach is nesting functions deeper for each
   # serialization cycle.
-  coder = nested_structure_coder.StructureCoder()
 
   # Note: handling method functions is tricky since make_decorator does not
   # allows control of "ismethod". Additionally since restored functions do
@@ -254,8 +249,7 @@ def recreate_function(saved_function, concrete_functions):
   # there are SavedModels which have "ismethod" populated and have an extra
   # argument that they expect to be ignored, we do it at deserialization.
   function_spec = _deserialize_function_spec_as_nonmethod(
-      saved_function.function_spec,
-      coder)
+      saved_function.function_spec)
 
   def restored_function_body(*args, **kwargs):
     """Calls a restored function or raises an error if no matching function."""

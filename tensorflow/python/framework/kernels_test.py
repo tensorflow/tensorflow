@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for querying registered kernels."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest

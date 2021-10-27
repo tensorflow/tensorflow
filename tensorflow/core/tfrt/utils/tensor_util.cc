@@ -119,7 +119,7 @@ llvm::Expected<tensorflow::Tensor> TFRTTensorToTFTensor(const Tensor& tensor,
   // Tensor so we don't have to re-implement it.
   if (auto* dht = llvm::dyn_cast<DenseHostTensor>(&tensor)) {
     return tensorflow::tfd::MoveHostBufferToTfTensor(
-        dht->buffer().CopyRef(), dht->dtype(), dht->shape());
+        dht->buffer(), dht->dtype(), dht->shape());
   }
   if (auto* sht = llvm::dyn_cast<StringHostTensor>(&tensor)) {
     return tensorflow::tfd::CopyShtToTfTensor(*sht);

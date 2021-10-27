@@ -122,8 +122,8 @@ absl::Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
 absl::Status ExtractAxisFromIndex(const TfLiteTensor& tflite_tensor, int index,
                                   Axis* axis) {
   const TfLiteIntArray* dims = tflite_tensor.dims;
-  if (index == -1) {
-    index = dims->size - 1;
+  if (index < 0) {
+    index = dims->size + index;
   }
   if (index < 0 || index >= dims->size) {
     return absl::OutOfRangeError("Index for axis out of range");

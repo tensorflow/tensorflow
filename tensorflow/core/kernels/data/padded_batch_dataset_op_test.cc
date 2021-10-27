@@ -80,11 +80,11 @@ class PaddedBatchDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {
-        {PaddedBatchDatasetOp::kParallelCopy, parallel_copy_},
-        {PaddedBatchDatasetOp::kToutputTypes, output_dtypes_},
-        {PaddedBatchDatasetOp::kOutputShapes, output_shapes_},
-        {PaddedBatchDatasetOp::kNumPaddedShapes, num_padded_shapes_}};
+    *attr_vector = {{"parallel_copy", parallel_copy_},
+                    {"Toutput_types", output_dtypes_},
+                    {"output_shapes", output_shapes_},
+                    {"N", num_padded_shapes_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 

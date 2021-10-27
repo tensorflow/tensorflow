@@ -297,29 +297,18 @@ cc_library(
 )
 
 cc_library(
-    name = "error",
-    srcs = ["error.cc"],
-    hdrs = ["error.h"],
-    deps = [
-        ":platform",
-        ":status",
-        ":strcat",
-        ":types",
-    ],
-)
-
-cc_library(
     name = "errors",
+    srcs = ["errors.cc"],
     hdrs = ["errors.h"],
     deps = [
         ":logging",
         ":macros",
+        ":platform",
         ":status",
         ":str_util",
         ":strcat",
-        "@com_google_absl//absl/container:flat_hash_map",
+        ":types",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:cord",
     ],
 )
 
@@ -587,6 +576,22 @@ cc_library(
     hdrs = ["refcount.h"],
     deps = [
         ":logging",
+        ":mutex",
+        ":thread_annotations",
+    ],
+)
+
+tf_cc_test(
+    name = "refcount_test",
+    size = "small",
+    srcs = [
+        "refcount_test.cc",
+    ],
+    deps = [
+        ":env",
+        ":refcount",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -713,11 +718,9 @@ cc_library(
         ":stringprintf",
         ":types",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:cord",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -849,9 +852,9 @@ cc_library(
     testonly = True,
     hdrs = ["test_benchmark.h"],
     deps = [
-        "@com_google_benchmark//:benchmark",
         ":platform",
-    ] + tf_testing_deps("test_benchmark"),
+        "@com_google_benchmark//:benchmark",
+    ],
 )
 
 cc_library(
@@ -1341,8 +1344,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings:cord",
     ],
 )
 
@@ -1534,7 +1535,6 @@ filegroup(
         "crash_analysis.h",
         "dynamic_annotations.h",
         "env.h",
-        "error.h",
         "errors.h",
         "file_statistics.h",
         "file_system.h",
@@ -1767,8 +1767,7 @@ filegroup(
         "env.cc",
         "env.h",
         "env_time.h",
-        "error.cc",
-        "error.h",
+        "errors.cc",
         "errors.h",
         "file_statistics.h",
         "file_system.cc",

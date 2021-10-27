@@ -537,11 +537,9 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
   }
 
   // Fast-path for ShardedDeviceArray.
-  static PyObject* sda_type = []() {
-    return py::type::handle_of<jax::ShardedDeviceArray>().ptr();
-  }();
-  if (arg.get_type().ptr() == sda_type) {
-    jax::ShardedDeviceArray* sda = py::cast<jax::ShardedDeviceArray*>(arg);
+  if (jax::ShardedDeviceArray::IsShardedDeviceArray(arg)) {
+    jax::ShardedDeviceArray* sda =
+        jax::ShardedDeviceArray::AsShardedDeviceArrayUnchecked(arg);
 
     // TODO(jblespiau): See if we can be faster not accessing the aval attribute
     // and storing these directly.

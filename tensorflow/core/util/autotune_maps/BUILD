@@ -129,6 +129,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/stream_executor:dnn_proto_cc",
+        "//tensorflow/stream_executor:lazy_op_runner",
         "//tensorflow/stream_executor:stream_header",
     ],
 )

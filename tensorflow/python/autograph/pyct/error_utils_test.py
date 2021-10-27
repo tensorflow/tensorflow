@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for error_utils module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
 from tensorflow.python.autograph.pyct import error_utils

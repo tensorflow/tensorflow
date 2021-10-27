@@ -303,6 +303,17 @@ llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
 // Gets the LLVM address space that should be used for global variables (e.g.
 // XLA's rng state).
 unsigned GetGlobalMemoryAddressSpace();
+
+// Emits a block which does "return void". Leaves the insert point as is.
+llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilder<>* b);
+
+// Emits `if (condition) return`. Assumes that the current function returns
+// void.
+//
+// Can either use a supplied `return_block`, or generate a new one.
+void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilder<>* b,
+                     llvm::BasicBlock* return_block = nullptr);
+
 }  // namespace llvm_ir
 }  // namespace xla
 

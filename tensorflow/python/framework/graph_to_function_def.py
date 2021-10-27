@@ -14,15 +14,10 @@
 # =============================================================================
 """Utility to convert a Graph to a FunctionDef."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import op_def_pb2
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import op_def_registry
 
 
@@ -159,14 +154,12 @@ def graph_to_function_def(graph, operations, inputs, outputs, out_names=None):
     func.signature.output_arg.extend(
         [_tensor_to_argdef(o, used_names=used_names) for o in outputs])
   elif len(outputs) != len(out_names):
-    raise errors_impl.InvalidArgumentError(
-        None, None,
-        "output names must be either empty or equal in size to outputs. "
-        "output names size = %d outputs size = %d" %
-        (len(out_names), len(outputs)))
+    raise ValueError(
+        f"out_names must be either empty or equal in size to outputs. "
+        f"len(out_names) = {len(out_names)} len(outputs) = {len(outputs)}")
   elif len(out_names) != len(set(out_names)):
     raise ValueError(
-        "Must not have duplicates in out_names: %s" % ", ".join(out_names))
+        f"Must not have duplicates in out_names. Received: {out_names}")
   else:
     func.signature.output_arg.extend(
         [_tensor_to_argdef(o, name=n) for o, n in zip(outputs, out_names)])
