@@ -429,10 +429,13 @@ template <
         OpT, AddV2Op, SubOp, MulOp, DivOp, RealDivOp>::value>::type * = nullptr>
 OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
                                         ArrayRef<Attribute> operands) {
-  auto lhs_type = arithmetic_op.x().getType().template cast<ShapedType>();
-  auto rhs_type = arithmetic_op.y().getType().template cast<ShapedType>();
+  auto lhs_type = arithmetic_op.x().getType().template dyn_cast<ShapedType>();
+  if (!lhs_type) return {};
+  auto rhs_type = arithmetic_op.y().getType().template dyn_cast<ShapedType>();
+  if (!rhs_type) return {};
   auto result_type =
-      arithmetic_op.getResult().getType().template cast<ShapedType>();
+      arithmetic_op.getResult().getType().template dyn_cast<ShapedType>();
+  if (!result_type) return {};
 
   // We can fold arithmetic operation only of we can prove that we will not
   // accidentally hide a broadcasting error.

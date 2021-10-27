@@ -50,7 +50,8 @@ static bool ShouldBeFolded(Operation* inst) {
   auto get_size = [&](TypeRange types) {
     int64_t size = 0;
     for (auto t : types) {
-      auto tensor_type = t.cast<TensorType>();
+      auto tensor_type = t.dyn_cast<TensorType>();
+      if (!tensor_type) continue;
       // Ignore types with undefined bit widths.
       if (!tensor_type.getElementType().isIntOrFloat()) continue;
       if (!tensor_type.hasStaticShape()) {
