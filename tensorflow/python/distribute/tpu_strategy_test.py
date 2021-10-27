@@ -43,6 +43,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -1142,6 +1143,23 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
 
     with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
       iter(strategy.distribute_datasets_from_function(dataset_fn))
+
+  def test_create_iterator_on_device(self):
+
+    @def_function.function
+    def create_iter():
+      with ops.device("/device:TPU:0"):
+        return gen_dataset_ops.anonymous_iterator_v2(
+            output_types=[dtypes.float32], output_shapes=[[]])
+
+    handle, deleter = create_iter()
+
+    @def_function.function
+    def delete_iter():
+      with ops.device("/device:TPU:0"):
+        gen_dataset_ops.delete_iterator(handle=handle, deleter=deleter)
+
+    delete_iter()
 
 
 class TPUStrategyDistributionTest(
