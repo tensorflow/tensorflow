@@ -50,13 +50,9 @@ constexpr DataType ToDataType<int32>::value;
 
 AlgorithmDesc::AlgorithmDesc(
     int64_t engine_id,
-    const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs,
-    absl::optional<uint64_t> workspace_size) {
+    const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs) {
   proto_.set_is_cudnn_frontend(true);
   proto_.set_algo_id(engine_id);
-  if (workspace_size) {
-    proto_.mutable_workspace_size()->set_value(*workspace_size);
-  }
   for (const auto& pair : tuning_knobs) {
     (*proto_.mutable_tuning_knobs())[pair.first] = pair.second;
   }
