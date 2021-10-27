@@ -254,8 +254,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
     TF_RETURN_IF_ERROR(stream->parent()->GetConvolveRunners(
         CudnnUseFrontend(), kind, element_type, element_type, stream,
-        input_desc, input_ptr, filter_desc, filter_ptr, output_desc, output_ptr,
-        conv_desc, &rz_allocator, &runners));
+        input_desc, filter_desc, output_desc, conv_desc, &runners));
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
             const std::unique_ptr<const se::dnn::ConvRunner>& runner,
