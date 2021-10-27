@@ -387,6 +387,16 @@ else()
     "${TFLITE_SOURCE_DIR}/nnapi/nnapi_implementation_disabled.cc"
   )
 endif()
+if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
+   populate_tflite_source_vars("delegates/external"
+    TFLITE_DELEGATES_EXTERNAL_SRCS
+    FILTER "(_test_list|_disabled)\\.(cc|h)$"
+   )
+   list(APPEND TFLITE_DELEGATES_EXTERNAL_SRCS
+     ${TFLITE_SOURCE_DIR}/tools/command_line_flags.cc
+   )
+   set(TFLITE_DELEGATES_EXTERNAL_INCL "delegates/external")
+endif()
 if(TFLITE_ENABLE_XNNPACK)
   find_package(fp16_headers REQUIRED)
   find_package(xnnpack REQUIRED)
@@ -458,6 +468,7 @@ endif()
 set(TFLITE_INCLUDE_DIRS
   "${TENSORFLOW_SOURCE_DIR}"
   "${TFLITE_FLATBUFFERS_SCHEMA_DIR}"
+  "${TFLITE_DELEGATES_EXTERNAL_INCL}"
 )
 include_directories(
   BEFORE
@@ -469,6 +480,7 @@ add_library(tensorflow-lite
   ${TFLITE_CORE_API_SRCS}
   ${TFLITE_CORE_SRCS}
   ${TFLITE_C_SRCS}
+  ${TFLITE_DELEGATES_EXTERNAL_SRCS}
   ${TFLITE_DELEGATES_FLEX_SRCS}
   ${TFLITE_DELEGATES_GPU_SRCS}
   ${TFLITE_DELEGATES_NNAPI_SRCS}
@@ -514,6 +526,10 @@ target_link_libraries(tensorflow-lite
     ${CMAKE_DL_LIBS}
     ${TFLITE_TARGET_DEPENDENCIES}
 )
+
+if (ANDROID_TOOLCHAIN)
+    list(APPEND tensorflow-lite log)
+endif()
 
 if (NOT BUILD_SHARED_LIBS)
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFL_STATIC_LIBRARY_BUILD")

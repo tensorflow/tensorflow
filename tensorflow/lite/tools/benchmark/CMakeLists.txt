@@ -79,6 +79,11 @@ if(TFLITE_ENABLE_GPU)
   )
 endif()  # TFLITE_ENABLE_GPU
 
+if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
+  list(APPEND TFLITE_BENCHMARK_SRCS
+	  ${TFLITE_SOURCE_DIR}/tools/delegates/external_delegate_provider.cc)
+endif()
+
 add_executable(benchmark_model
   EXCLUDE_FROM_ALL
   ${TFLITE_BENCHMARK_SRCS}

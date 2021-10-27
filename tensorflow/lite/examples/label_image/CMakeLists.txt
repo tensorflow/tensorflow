@@ -55,6 +55,11 @@ if(TFLITE_ENABLE_GPU)
   )
 endif()  # TFLITE_ENABLE_GPU
 
+if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
+  list(APPEND TFLITE_LABEL_IMAGE_SRCS
+          ${TFLITE_SOURCE_DIR}/tools/delegates/external_delegate_provider.cc)
+endif()
+
 add_executable(label_image
   EXCLUDE_FROM_ALL
   ${TFLITE_LABEL_IMAGE_SRCS}
