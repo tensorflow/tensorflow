@@ -27,6 +27,7 @@ from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -127,8 +128,8 @@ class _RefVariableProcessor(_OptimizableVariable):
       else:
         return update_op
     else:
-      assert isinstance(g, ops.IndexedSlices), ("Gradient ", g, " is neither a "
-                                                "tensor nor IndexedSlices.")
+      assert isinstance(g, indexed_slices.IndexedSlices), (
+          "Gradient ", g, " is neither a tensor nor IndexedSlices.")
       if self._v.constraint is not None:
         raise RuntimeError(
             "Cannot use a constraint function on a sparse variable.")
@@ -166,7 +167,7 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
 
   def update_op(self, optimizer, g):
     # pylint: disable=protected-access
-    if isinstance(g, ops.IndexedSlices):
+    if isinstance(g, indexed_slices.IndexedSlices):
       if self._v.constraint is not None:
         raise RuntimeError(
             "Cannot use a constraint function on a sparse variable.")
@@ -685,7 +686,7 @@ class Optimizer(
           raise TypeError(
               "Gradient must be convertible to a Tensor"
               " or IndexedSlices, or None: %s" % g)
-        if not isinstance(g, (ops.Tensor, ops.IndexedSlices)):
+        if not isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices)):
           raise TypeError(
               "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       p = _get_processor(v)
@@ -786,7 +787,7 @@ class Optimizer(
       except TypeError:
         raise TypeError("Gradient must be convertible to a Tensor"
                         " or IndexedSlices, or None: %s" % g)
-      if not isinstance(g, (ops.Tensor, ops.IndexedSlices)):
+      if not isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices)):
         raise TypeError(
             "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       p = _get_processor(v)
@@ -1124,7 +1125,7 @@ class Optimizer(
     """
     summed_values, unique_indices = _deduplicate_indexed_slices(
         values=grad.values, indices=grad.indices)
-    gradient_no_duplicate_indices = ops.IndexedSlices(
+    gradient_no_duplicate_indices = indexed_slices.IndexedSlices(
         indices=unique_indices,
         values=summed_values,
         dense_shape=grad.dense_shape)

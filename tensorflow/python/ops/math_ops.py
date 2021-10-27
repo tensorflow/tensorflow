@@ -76,6 +76,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -619,8 +620,8 @@ def scalar_mul(scalar, x, name=None):
       scalar, dtype=x.dtype.base_dtype, name="scalar")
   shape = scalar.get_shape()
   if shape.ndims == 0:
-    if isinstance(x, ops.IndexedSlices):
-      return ops.IndexedSlices(
+    if isinstance(x, indexed_slices.IndexedSlices):
+      return indexed_slices.IndexedSlices(
           gen_math_ops.mul(scalar, x.values, name), x.indices, x.dense_shape)
     else:
       return gen_math_ops.mul(scalar, x, name)
@@ -987,9 +988,9 @@ def cast(x, dtype, name=None):
     if isinstance(x, sparse_tensor.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
       x = sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
-    elif isinstance(x, ops.IndexedSlices):
+    elif isinstance(x, indexed_slices.IndexedSlices):
       values_cast = cast(x.values, base_type, name=name)
-      x = ops.IndexedSlices(values_cast, x.indices, x.dense_shape)
+      x = indexed_slices.IndexedSlices(values_cast, x.indices, x.dense_shape)
     else:
       # TODO(josh11b): If x is not already a Tensor, we could return
       # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
@@ -3878,12 +3879,12 @@ def _as_indexed_slices(x, optimize=True):
     TypeError: If 'x' is not a Tensor or an IndexedSlices object.
   """
   # TODO(touts): op_scope
-  if not isinstance(x, (ops.Tensor, ops.IndexedSlices)):
+  if not isinstance(x, (ops.Tensor, indexed_slices.IndexedSlices)):
     raise TypeError(f"Not a Tensor or IndexedSlices: {type(x)}.")
-  if isinstance(x, ops.IndexedSlices):
+  if isinstance(x, indexed_slices.IndexedSlices):
     return x
   x_shape = array_ops.shape_internal(x, optimize=optimize)
-  return ops.IndexedSlices(x, range(0, x_shape[0]), x_shape)
+  return indexed_slices.IndexedSlices(x, range(0, x_shape[0]), x_shape)
 
 
 def _as_indexed_slices_list(inputs, optimize=True):
@@ -3914,8 +3915,8 @@ def _as_indexed_slices_list(inputs, optimize=True):
   for o in outputs:
     if o.indices.dtype == dtypes.int32:
       casted_outputs.append(
-          ops.IndexedSlices(o.values, cast(o.indices, dtypes.int64),
-                            o.dense_shape))
+          indexed_slices.IndexedSlices(o.values, cast(o.indices, dtypes.int64),
+                                       o.dense_shape))
     else:
       casted_outputs.append(o)
   return casted_outputs
@@ -4040,12 +4041,14 @@ def add_n(inputs, name=None):
     raise ValueError("Inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape.")
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
-  if not all(isinstance(x, (ops.Tensor, ops.IndexedSlices)) for x in inputs):
+  if not all(
+      isinstance(x, (ops.Tensor, indexed_slices.IndexedSlices))
+      for x in inputs):
     raise ValueError("Inputs must be an iterable of at least one "
                      "Tensor/IndexedSlices with the same dtype and shape.")
 
   if len(inputs) == 1:
-    if isinstance(inputs[0], ops.IndexedSlices):
+    if isinstance(inputs[0], indexed_slices.IndexedSlices):
       values = ops.convert_to_tensor(inputs[0])
     else:
       values = inputs[0]

@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -977,7 +978,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1001,7 +1002,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1026,7 +1027,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1051,7 +1052,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1075,7 +1076,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1099,7 +1100,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1123,7 +1124,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1177,7 +1178,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -2264,7 +2265,7 @@ def _GatherGrad(op, grad):
   values_shape = array_ops.concat([size, params_shape[1:]], 0)
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
-  return (ops.IndexedSlices(values, indices, params_shape), None)
+  return (indexed_slices.IndexedSlices(values, indices, params_shape), None)
 
 
 def _to_proto_fn(v, export_scope=None):

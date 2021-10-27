@@ -28,6 +28,7 @@ from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
@@ -687,7 +688,7 @@ class OptimizerV2(trackable.Trackable):
         raise NotImplementedError("Trying to update a Tensor ", var)
 
       apply_kwargs = {}
-      if isinstance(grad, ops.IndexedSlices):
+      if isinstance(grad, indexed_slices.IndexedSlices):
         if var.constraint is not None:
           raise RuntimeError(
               "Cannot use a constraint function on a sparse variable.")

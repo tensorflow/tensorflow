@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import memory_checker
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -584,7 +585,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_add(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([2.5], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 4.0], self.evaluate(v))
 
@@ -597,7 +598,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_sub(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([1.5], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 1.0], self.evaluate(v))
 
@@ -610,7 +611,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_max(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([5.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 5.0], self.evaluate(v))
 
@@ -620,7 +621,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_max(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 3.5], self.evaluate(v))
 
@@ -633,7 +634,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_min(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([5.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 4.0], self.evaluate(v))
 
@@ -643,7 +644,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_min(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 2.0], self.evaluate(v))
 
@@ -656,7 +657,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_mul(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([3.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 12.0], self.evaluate(v))
 
@@ -669,7 +670,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_div(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 3.0], self.evaluate(v))
 
@@ -682,7 +683,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_update(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([3.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 3.0], self.evaluate(v))
 
@@ -1062,12 +1063,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
 
     var = resource_variable_ops.ResourceVariable([1., 2.])
     self.evaluate(variables.global_variables_initializer())
-    slices = ops.IndexedSlices(indices=[1], values=[2])
+    slices = indexed_slices.IndexedSlices(indices=[1], values=[2])
     def assert_eq(tensor, vals):
       self.assertAllEqual(self.evaluate(tensor), vals)
     assert_eq(var.scatter_add(slices).scatter_add(slices), [1., 6.])
     assert_eq(var.scatter_sub(slices).scatter_sub(slices), [1., 2.])
-    slices2 = ops.IndexedSlices(indices=[0], values=[3])
+    slices2 = indexed_slices.IndexedSlices(indices=[0], values=[3])
     assert_eq(var.scatter_max(slices2).scatter_add(slices), [3., 4.])
     assert_eq(var.scatter_add(slices).scatter_min(slices), [3., 2.])
     assert_eq(var.scatter_mul(slices).scatter_mul(slices), [3., 8.])
@@ -1080,8 +1081,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
 
     batch_var = resource_variable_ops.ResourceVariable(array_ops.ones((2, 2)))
     self.evaluate(variables.global_variables_initializer())
-    batch_slices1 = ops.IndexedSlices(indices=[[1], [0]], values=[[2], [2]])
-    batch_slices2 = ops.IndexedSlices(indices=[[1], [1]], values=[[3], [3]])
+    batch_slices1 = indexed_slices.IndexedSlices(
+        indices=[[1], [0]], values=[[2], [2]])
+    batch_slices2 = indexed_slices.IndexedSlices(
+        indices=[[1], [1]], values=[[3], [3]])
     assert_eq(
         batch_var.batch_scatter_update(batch_slices1)
         .batch_scatter_update(batch_slices2),
@@ -1302,7 +1305,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
               element_dtype=dtypes.float32, element_shape=[])
       ])
       v.scatter_update(
-          ops.IndexedSlices(
+          indexed_slices.IndexedSlices(
               list_ops.tensor_list_from_tensor([1., 2.], element_shape=[]), 0))
       self.assertAllEqual(
           list_ops.tensor_list_get_item(v[0], 0, element_dtype=dtypes.float32),
