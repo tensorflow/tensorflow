@@ -541,8 +541,8 @@ def relu_layer(x, weights, biases, name=None):
 @custom_gradient.custom_gradient
 def swish(features, beta = 1.0):
   # pylint: disable=g-doc-args
-  """Computes the SiLU or Swish activation function: `x * sigmoid(βx)`.
-  β: Hyperparamter for Swish activation function. Default value 1.0.
+  """Computes the SiLU or Swish activation function: `x * sigmoid(beta * x)`.
+  beta : Hyperparameter for Swish activation function. Default value 1.0.
 
   The SiLU activation function was introduced in "Gaussian Error Linear Units
   (GELUs)" [Hendrycks et al. 2016](https://arxiv.org/abs/1606.08415) and
@@ -554,7 +554,7 @@ def swish(features, beta = 1.0):
 
   Args:
     features: A `Tensor` representing preactivation values.
-    beta: A 'Tensor' representing value of β hyperparameter.
+    beta: A 'Tensor' representing value of beta hyperparameter.
 
   Returns:
     The activation value.
