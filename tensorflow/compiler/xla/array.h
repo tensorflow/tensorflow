@@ -508,6 +508,9 @@ class Array {
 
   // Returns a string representation of the array suitable for debugging.
   string ToString() const {
+    if (sizes_.empty()) {
+      return "";
+    }
     std::vector<string> pieces;
     std::vector<int64_t> index(sizes_.size());
     do {
@@ -523,20 +526,23 @@ class Array {
         }
       }
 
-      pieces.push_back(absl::StrCat(values_[calculate_index(index)]));
+      int value_index = calculate_index(index);
+      if (value_index < num_elements()) {
+        pieces.push_back(absl::StrCat(values_[value_index]));
+      }
 
       // Emit comma if it isn't the last element
-      if (index.back() != sizes_.back() - 1) {
+      if (index.back() < sizes_.back() - 1) {
         pieces.push_back(", ");
       }
 
       // Emit closing square brackets
       for (int64_t i = sizes_.size() - 1; i >= 0; --i) {
-        if (index[i] != sizes_[i] - 1) {
+        if (index[i] < sizes_[i] - 1) {
           break;
         }
         pieces.push_back("]");
-        if (i != 0 && index[i - 1] != sizes_[i - 1] - 1) {
+        if (i != 0 && index[i - 1] < sizes_[i - 1] - 1) {
           pieces.push_back(",\n");
         }
       }
