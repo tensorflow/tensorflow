@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -105,6 +106,11 @@ void RecordTFDataOptimization(const string& name, int64_t num_changes);
 
 // Records that a tf.data service worker has been created.
 void RecordTFDataServiceWorkerCreated();
+
+// Records that a tf.data service job has been created.
+void RecordTFDataServiceJobsCreated(
+    const tensorflow::data::ProcessingModeDef& processing_mode,
+    bool is_coordinated_read);
 
 // Records the file name read by a tf.data Dataset.
 //

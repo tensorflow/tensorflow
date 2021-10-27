@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -130,6 +131,10 @@ auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
 auto* tf_data_service_workers_created_counter =
     monitoring::Counter<0>::New("/tensorflow/data/service/workers_created",
                                 "Number of tf.data service workers created");
+
+auto* tf_data_service_jobs_created_counter = monitoring::Counter<2>::New(
+    "/tensorflow/data/service/jobs_created", "Number of tf.data service jobs.",
+    "processing_mode", "coordinated_read");
 
 auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
@@ -300,6 +305,19 @@ void RecordTFDataOptimization(const string& name, int64_t num_changes) {
 
 void RecordTFDataServiceWorkerCreated() {
   tf_data_service_workers_created_counter->GetCell()->IncrementBy(1);
+}
+
+void RecordTFDataServiceJobsCreated(
+    const tensorflow::data::ProcessingModeDef& processing_mode,
+    bool is_coordinated_read) {
+  const std::string sharding_policy_str =
+      data::ProcessingModeDef::ShardingPolicy_Name(
+          processing_mode.sharding_policy());
+  const std::string coordinated_read_str =
+      is_coordinated_read ? "true" : "false";
+  tf_data_service_jobs_created_counter
+      ->GetCell(sharding_policy_str, coordinated_read_str)
+      ->IncrementBy(1);
 }
 
 void RecordTFDataFilename(const string& name, const string& filename) {

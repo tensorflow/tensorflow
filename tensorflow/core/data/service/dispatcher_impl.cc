@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
@@ -684,13 +685,16 @@ Status DataServiceDispatcherImpl::CreateJob(
     key->set_name(request.job_key().job_name());
     key->set_index(request.job_key().job_name_index());
   }
-  if (request.optional_num_consumers_case() ==
-      GetOrCreateJobRequest::kNumConsumers) {
+  const bool is_coordinated_read = (request.optional_num_consumers_case() ==
+                                    GetOrCreateJobRequest::kNumConsumers);
+  if (is_coordinated_read) {
     create_job->set_num_consumers(request.num_consumers());
   }
   create_job->set_target_workers(request.target_workers());
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
+  tensorflow::metrics::RecordTFDataServiceJobsCreated(
+      request.processing_mode_def(), is_coordinated_read);
   return Status::OK();
 }
 
