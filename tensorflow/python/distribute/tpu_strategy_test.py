@@ -39,6 +39,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -83,6 +84,7 @@ def get_tpu_strategy(enable_packed_var=False):
 
 
 # TPU tests which don't use TPUStrategy.
+@test_util.with_eager_op_as_function
 class TPUTest(test.TestCase):
 
   def test_multiple_initialize_system(self):
@@ -162,6 +164,7 @@ class TPUTest(test.TestCase):
 
 
 @parameterized.named_parameters([("PackedVar", True), ("", False)])
+@test_util.with_eager_op_as_function
 class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
   def test_handle_in_cross_replica_context(self, enable_packed_var):
@@ -1045,6 +1048,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       train_steps(w, dist_iterator, 1)
 
 
+@test_util.with_eager_op_as_function
 class TPUStrategyDataPrefetchTest(test.TestCase):
 
   def test_prefetch_to_device_default(self):
@@ -1162,6 +1166,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
     delete_iter()
 
 
+@test_util.with_eager_op_as_function
 class TPUStrategyDistributionTest(
     strategy_test_lib.DistributionTestBase,
     strategy_test_lib.TwoDeviceDistributionTestBase):
@@ -1295,6 +1300,7 @@ class TPUStrategyDistributionTest(
     self._test_trainable_variable(strategy)
 
 
+@test_util.with_eager_op_as_function
 class DeviceAssignmentTest(test.TestCase):
 
   def test_core_assignment(self):
