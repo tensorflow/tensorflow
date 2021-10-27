@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TF_PASSES_H
-#define TENSORFLOW_COMPILER_MLIR_TOSA_TF_PASSES_H
+#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TF_TFL_PASSES_H
+#define TENSORFLOW_COMPILER_MLIR_TOSA_TF_TFL_PASSES_H
 
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
@@ -22,16 +22,16 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 
-struct TOSATFLegalizationPipelineOptions
-    : public PassPipelineOptions<TOSATFLegalizationPipelineOptions> {};
+struct TOSATFTFLLegalizationPipelineOptions
+    : public PassPipelineOptions<TOSATFTFLLegalizationPipelineOptions> {};
 
 // Legalizes TF dialect(s) to Tosa.
-void createTFtoTOSALegalizationPipeline(
-    OpPassManager& pm, const TOSATFLegalizationPipelineOptions& opts);
+void createTFTFLtoTOSALegalizationPipeline(
+    OpPassManager& pm, const TOSATFTFLLegalizationPipelineOptions& opts);
 
-void registerTFtoTOSALegalizationPipeline();
+void registerTFTFLtoTOSALegalizationPipeline();
 
 }  // namespace tosa
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TF_PASSES_H
+#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TF_TFL_PASSES_H

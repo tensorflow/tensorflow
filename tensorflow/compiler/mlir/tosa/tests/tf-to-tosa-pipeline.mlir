@@ -1,4 +1,5 @@
 // RUN: tf-opt --tf-to-tosa-pipeline  --verify-each %s | FileCheck %s
+// RUN: tf-opt --tf-tfl-to-tosa-pipeline  --verify-each %s | FileCheck %s
 
 // Operations for testing tf-to-tosa-pipeline
 // TODO: These tests are fairly minimal. Expand the checks to be more robust.
@@ -876,8 +877,7 @@ func @test_gather(%arg0: tensor<13x21x3xf32>) -> tensor<7x7x21x3xf32> {
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<1> : tensor<1x1xi32>}
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 13, 63]}
 // CHECK-DAG: %[[VAR5:.*]] = "tosa.mul"(%[[VAR0]], %[[VAR1]]) {shift = 0 : i32}
-// CHECK-DAG: %[[VAR6:.*]] = "tosa.reduce_sum"(%[[VAR5]]) {axis = 1 : i64}
-// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [1, 42]}
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR5]]) {new_shape = [1, 42]}
 // CHECK-DAG: %[[VAR8:.*]] = "tosa.gather"(%[[VAR2]], %[[VAR7]])
 // CHECK: %[[VAR9:.*]] = "tosa.reshape"(%[[VAR8]]) {new_shape = [6, 7, 21, 3]}
 func @test_gather_nd(%arg0: tensor<13x21x3xf32>) -> tensor<6x7x21x3xf32> {
