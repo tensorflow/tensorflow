@@ -395,7 +395,7 @@ class TraceTypeEncodingTest(test.TestCase):
     obj = CustomUnhashable()
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        r'Failed to represent object as GenericType'):
+        r'could not be represented through the generic tracing type'):
       function_trace_type.get_arg_spec(obj, False, True, True)
 
   def testOrderedCollectionTypeEquality(self):

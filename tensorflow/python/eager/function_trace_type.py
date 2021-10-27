@@ -288,13 +288,17 @@ def get_arg_spec(inputs, include_tensor_ranks_only,
     A TraceType object representing the function arguments.
   """
 
-  # TODO(b/201533914): Drop GenericType once TFE_Py_EncodeArg returns TraceType.
   signature_context = SignatureContext(include_tensor_ranks_only)
   try:
-    return GenericType(
-        pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
-                                    include_tensor_ranks_only,
-                                    encode_variables_by_resource_id,
-                                    use_full_trace_type))
+    encoding = pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
+                                           include_tensor_ranks_only,
+                                           encode_variables_by_resource_id,
+                                           use_full_trace_type)
+    if use_full_trace_type:
+      return encoding
+    else:
+      # TODO(b/201533914): Drop when use_full_trace_type flag is removed.
+      return GenericType(encoding)
+
   except core._NotOkStatusException as e:  # pylint: disable=protected-access
     raise core._status_to_exception(e) from None  # pylint: disable=protected-access
