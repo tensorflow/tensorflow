@@ -1444,12 +1444,12 @@ def saver_with_op_caching(obj, attached_dependencies=None):
           attached_dependencies=attached_dependencies))
 
 
-def _assert_trackable(obj, name):
+def _assert_trackable(obj):
   if not isinstance(
       obj, (base.Trackable, def_function.Function)):
     raise ValueError(
-        f"`Checkpoint` was expecting {name} to be a trackable object (an "
-        f"object derived from `Trackable`), got {obj}. If you believe this "
+        "`Checkpoint` was expecting a trackable object (an object "
+        f"derived from `Trackable`), got {obj}. If you believe this "
         "object should be trackable (i.e. it is part of the "
         "TensorFlow Python API and manages state), please open an issue.")
 
@@ -1978,7 +1978,7 @@ class Checkpoint(tracking.AutoTrackable):
     self._save_assign_op = None
 
     if root:
-      _assert_trackable(root, "root")
+      _assert_trackable(root)
       saver_root = root
       attached_dependencies = []
 
@@ -1997,7 +1997,7 @@ class Checkpoint(tracking.AutoTrackable):
       # Call getattr instead of directly using v because setattr converts
       # v to a Trackable data structure when v is a list/dict/tuple.
       converted_v = getattr(self, k)
-      _assert_trackable(converted_v, k)
+      _assert_trackable(converted_v)
 
       if root:
         # Make sure that root doesn't already have dependencies with these names
