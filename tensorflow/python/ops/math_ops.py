@@ -1037,9 +1037,10 @@ def saturate_cast(value, dtype, name=None):
     return cast(value, dtype, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_float"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_float(x, name="ToFloat"):
   """Casts a tensor to type `float32`.
 
@@ -1076,9 +1077,10 @@ def to_float(x, name="ToFloat"):
   return cast(x, dtypes.float32, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_double"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_double(x, name="ToDouble"):
   """Casts a tensor to type `float64`.
 
@@ -1115,9 +1117,10 @@ def to_double(x, name="ToDouble"):
   return cast(x, dtypes.float64, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_int32"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_int32(x, name="ToInt32"):
   """Casts a tensor to type `int32`.
 
@@ -1154,9 +1157,10 @@ def to_int32(x, name="ToInt32"):
   return cast(x, dtypes.int32, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_int64"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_int64(x, name="ToInt64"):
   """Casts a tensor to type `int64`.
 
@@ -1193,9 +1197,10 @@ def to_int64(x, name="ToInt64"):
   return cast(x, dtypes.int64, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_bfloat16"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_bfloat16(x, name="ToBFloat16"):
   """Casts a tensor to type `bfloat16`.
 
@@ -1232,9 +1237,10 @@ def to_bfloat16(x, name="ToBFloat16"):
   return cast(x, dtypes.bfloat16, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_complex64"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_complex64(x, name="ToComplex64"):
   """Casts a tensor to type `complex64`.
 
@@ -1271,9 +1277,10 @@ def to_complex64(x, name="ToComplex64"):
   return cast(x, dtypes.complex64, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_complex128"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 def to_complex128(x, name="ToComplex128"):
   """Casts a tensor to type `complex128`.
 
@@ -1580,11 +1587,12 @@ def truediv(x, y, name=None):
   return _truediv_python3(x, y, name)
 
 
+@tf_export(v1=["div"])
+@dispatch.register_binary_elementwise_api
+@dispatch.add_dispatch_support
 @deprecation.deprecated(
     date=None,
     instructions="Deprecated in favor of operator or tf.math.divide.")
-@tf_export(v1=["div"])
-@dispatch.add_dispatch_support
 def div(x, y, name=None):
   """Divides x / y elementwise (using Python 2 division operator semantics).
 
@@ -5552,6 +5560,7 @@ dispatch.register_binary_elementwise_api(gen_bitwise_ops.left_shift)
 dispatch.register_binary_elementwise_api(gen_bitwise_ops.right_shift)
 dispatch.register_unary_elementwise_api(gen_bitwise_ops.invert)
 dispatch.register_binary_elementwise_api(gen_math_ops.atan2)
+dispatch.register_binary_elementwise_api(gen_math_ops.floor_div)
 dispatch.register_binary_elementwise_api(gen_math_ops.floor_mod)
 dispatch.register_binary_elementwise_api(gen_math_ops.greater)
 dispatch.register_binary_elementwise_api(gen_math_ops.greater_equal)
