@@ -91,7 +91,7 @@ ENTRY %TestComputation {
   ROOT %custom-call.1 = (f16[128,64,112,112]{1,3,2,0}, u8[0]{0}) custom-call(%param_0, %param_1), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=bf01_01oi->bf01, custom_call_target="__cudnn$convForward", backend_config="{conv_result_scale:1}"
 })";
 
-  std::string expected_mlir_pattern1 =
+  std::string expected_mlir_pattern =
       R"(
 CHECK: func @Conv(%arg0: memref<128x112x112x64xf16>, %arg1: memref<128x224x224x4xf16>, %arg2: memref<64x7x7x4xf16>) {
 CHECK-NEXT:   affine.for %arg3 = 0 to 128 {
@@ -140,11 +140,9 @@ CHECK-NEXT:   return
 CHECK-NEXT: }
 )";
 
-  std::string gen_ir = CompileHloConvAndGetMlir(hlo_text);
-  std::string pattern_v1 = expected_mlir_pattern1 + expected_mlir_pattern21 + expected_mlir_pattern3;
-  std::string pattern_v2 = expected_mlir_pattern1 + expected_mlir_pattern22 + expected_mlir_pattern3;
   EXPECT_TRUE(
-     (RunFileCheck(gen_ir, pattern_v1).ValueOrDie() || RunFileCheck(gen_ir, pattern_v2).ValueOrDie()));
+      RunFileCheck(CompileHloConvAndGetMlir(hlo_text), expected_mlir_pattern)
+          .ValueOrDie());
 }
 
 }  // namespace
