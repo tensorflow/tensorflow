@@ -18,15 +18,18 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_python_pip_deps python3.9
-# Update bazel
-install_bazelisk
-
 # Export required variables for running pip.sh
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="CPU"
-export TF_PYTHON_VERSION='python3.9'
-export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
+
+# Create and activate venv for TF build dependencies
+python3.9 -m venv ~/.venv/tf
+source ~/.venv/tf/bin/activate
+export PYTHON_BIN_PATH="$(which python)"
+
+install_ubuntu_pip_venv_deps
+# Update bazel
+install_bazelisk
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
@@ -42,3 +45,7 @@ export TF_PROJECT_NAME="tensorflow_cpu"
 export TF_PIP_TEST_ROOT="pip_test"
 
 ./tensorflow/tools/ci_build/builds/pip_new.sh
+
+# Deactivate virtual environment and clean up
+deactivate
+rm -rf ~/.venv/tf
