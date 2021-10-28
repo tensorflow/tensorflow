@@ -36,15 +36,13 @@ from tensorflow.python.util.tf_export import tf_export
 def get_output_specs_from_function(func: tf_function.ConcreteFunction):
   output_specs = nest.map_structure(type_spec.type_spec_from_value,
                                     func.structured_outputs)
-  encoder = nested_structure_coder.StructureCoder()
-  output_specs_proto = encoder.encode_structure(output_specs)
+  output_specs_proto = nested_structure_coder.encode_structure(output_specs)
   return output_specs_proto.SerializeToString()
 
 
 def get_input_specs_from_function(func: tf_function.ConcreteFunction):
   arg_specs, _ = func.structured_input_signature
-  encoder = nested_structure_coder.StructureCoder()
-  arg_specs_proto = encoder.encode_structure(arg_specs)
+  arg_specs_proto = nested_structure_coder.encode_structure(arg_specs)
   return arg_specs_proto.SerializeToString()
 
 
@@ -340,14 +338,13 @@ class GrpcClient(Client):
       raise NotImplementedError(
           "Client creation is supported only in eager mode.")
     self._server_address = address
-    decoder = nested_structure_coder.StructureCoder()
     self._method_registry = {}
     for method in methods.numpy():
 
       m = rpc_pb2.RegisteredMethod()
       m.ParseFromString(method)
-      output_specs = decoder.decode_proto(m.output_specs)
-      input_specs = decoder.decode_proto(m.input_specs)
+      output_specs = nested_structure_coder.decode_proto(m.output_specs)
+      input_specs = nested_structure_coder.decode_proto(m.input_specs)
       self._method_registry[m.method] = output_specs
       # TODO(ishark): Perhaps doc string can also be taken as input during
       # function registration.
