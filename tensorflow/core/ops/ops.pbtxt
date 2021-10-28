@@ -13610,6 +13610,7 @@ op {
     name: "device_names"
     type: "list(string)"
   }
+  is_stateful: true
 }
 op {
   name: "Diag"
