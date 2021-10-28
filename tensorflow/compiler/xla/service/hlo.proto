@@ -459,8 +459,15 @@ message HloModuleProto {
     LAYOUT = 3;
   }
 
-  // The optimization profiles that this module contains.
-  repeated ProfileType profile_type = 15;
+  // Information about the optimization profile that this module contains.
+  message ProfileInfo {
+    // The optimization profiles that this module contains.
+    ProfileType profile_type = 1;
+    // Speedup of tuned config compared to default config.
+    double relative_speedup = 2;
+  }
+
+  repeated ProfileInfo profile_info = 13;
 }
 
 // Serialization of LogicalBuffer.
