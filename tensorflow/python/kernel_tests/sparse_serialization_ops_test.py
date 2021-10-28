@@ -20,10 +20,12 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
@@ -463,6 +465,18 @@ class SerializeSparseTest(test.TestCase):
   def testDeserializeManyFailsInvalidProto(self):
     self._testDeserializeFailsInvalidProtoHelper(
         sparse_ops.serialize_sparse, sparse_ops.deserialize_many_sparse)
+
+  def testDeserializeInvalidVariant(self):
+    mu = gen_resource_variable_ops.mutex_v2()
+    mu_lock = gen_resource_variable_ops.mutex_lock(mutex=mu)
+
+    @def_function.function
+    def f():
+      return sparse_ops.deserialize_sparse(
+          serialized_sparse=mu_lock, dtype=dtypes.int32)
+
+    with self.assertRaisesRegex(ValueError, r"Shape must be at least rank 1"):
+      f()
 
 
 if __name__ == "__main__":
