@@ -43,6 +43,15 @@ from tensorflow.python.keras.layers import wrappers
 from tensorflow.python.keras.layers.normalization import batch_normalization
 from tensorflow.python.keras.layers.normalization import batch_normalization_v1
 from tensorflow.python.keras.layers.normalization import layer_normalization
+from tensorflow.python.keras.layers.preprocessing import category_crossing
+from tensorflow.python.keras.layers.preprocessing import category_encoding
+from tensorflow.python.keras.layers.preprocessing import discretization
+from tensorflow.python.keras.layers.preprocessing import hashing
+from tensorflow.python.keras.layers.preprocessing import image_preprocessing
+from tensorflow.python.keras.layers.preprocessing import integer_lookup
+from tensorflow.python.keras.layers.preprocessing import normalization as preprocessing_normalization
+from tensorflow.python.keras.layers.preprocessing import string_lookup
+from tensorflow.python.keras.layers.preprocessing import text_vectorization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_inspect as inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -51,7 +60,10 @@ ALL_MODULES = (base_layer, input_layer, advanced_activations, convolutional,
                convolutional_recurrent, core, cudnn_recurrent, dense_attention,
                embeddings, einsum_dense, local, merge, noise,
                batch_normalization_v1, layer_normalization,
-               pooling, recurrent, wrappers, multi_head_attention)
+               pooling, image_preprocessing, recurrent, wrappers, hashing,
+               category_crossing, category_encoding, discretization,
+               multi_head_attention, integer_lookup,
+               preprocessing_normalization, string_lookup, text_vectorization)
 ALL_V2_MODULES = (rnn_cell_wrapper_v2, batch_normalization, layer_normalization,
                   recurrent_v2)
 # ALL_OBJECTS is meant to be a global mutable. Hence we need to make it
