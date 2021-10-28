@@ -146,7 +146,6 @@ py_library(
         ":control_flow_ops",
         ":cudnn_rnn_ops_gen",
         ":distributed_framework_test_lib",
-        ":filesystem_ops",
         ":functional_ops",
         ":gradient_checker",
         ":gradient_checker_v2",
@@ -631,13 +630,6 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow:__subpackages__",
         "//tensorflow/python/kernel_tests:__pkg__",
-    ],
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "filesystem_ops_gen",
-    visibility = [
-        "//tensorflow:__subpackages__",
     ],
 )
 
@@ -1602,16 +1594,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/util",
-    ],
-)
-
-py_library(
-    name = "filesystem_ops",
-    srcs = ["ops/filesystem_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":filesystem_ops_gen",
-        "//tensorflow/python/framework:for_generated_wrappers",
     ],
 )
 
