@@ -2559,6 +2559,9 @@ Status QuantizeV2Shape(InferenceContext* c) {
   if (!s.ok() && s.code() != error::NOT_FOUND) {
     return s;
   }
+  if (axis < -1) {
+    return errors::InvalidArgument("axis should be at least -1, got ", axis);
+  }
   const int minmax_rank = (axis == -1) ? 0 : 1;
   TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
   ShapeHandle minmax;
