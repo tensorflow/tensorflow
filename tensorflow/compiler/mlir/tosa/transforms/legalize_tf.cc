@@ -253,13 +253,12 @@ LogicalResult ConvertTFAddV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_addv2_op = cast<TF::AddV2Op>(op);
 
-  RankedTensorType output_type =
-      tf_addv2_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  auto output_type = tf_addv2_op.getResult().getType().dyn_cast<ShapedType>();
+  // Not a shaped output
   if (!output_type) return failure();
 
-  rewriter.replaceOpWithNewOp<tosa::AddOp>(op, output_type, tf_addv2_op.x(),
-                                           tf_addv2_op.y());
+  CreateReplaceOpAndInfer<tosa::AddOp>(rewriter, op, output_type,
+                                       tf_addv2_op.x(), tf_addv2_op.y());
   return success();
 }
 
@@ -2272,10 +2271,19 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
 }
 
 void LegalizeTF::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
   auto* ctx = &getContext();
+  OwningRewritePatternList patterns(ctx);
   auto func = getFunction();
+  populateLegalizeTFPatterns(ctx, patterns);
 
+  if (ApplyPatternsWithShapeResolution(func, std::move(patterns)).failed()) {
+    signalPassFailure();
+  }
+}
+
+}  // anonymous namespace
+
+void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
   // Add the generated patterns to the list.
   populateWithGenerated(patterns);
   patterns.insert<ConvertTFMatMulOp>(ctx);
@@ -2359,10 +2367,7 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFRightShiftOp>(ctx);
   patterns.insert<ConvertTFOneHotOp>(ctx);
   patterns.insert<ConvertTFBatchMatMulV2Op>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
-
-}  // anonymous namespace
 
 // Creates an instance of the TensorFlow dialect LegalizeTF pass.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass() {

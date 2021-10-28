@@ -133,8 +133,8 @@ xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp& operand,
 }
 
 XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn() {
-  return [](const TensorShape& shape, DataType dtype,
-            bool use_fast_memory) -> StatusOr<xla::Shape> {
+  return [](const TensorShape& shape, DataType dtype, bool use_fast_memory,
+            TpuLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
     return xla_shape;
@@ -174,9 +174,10 @@ Status RewriteLayoutWithShardedShape(
         XLAShapeToTensorShape(per_device_xla_shape, &per_device_tensor_shape));
     TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
                                             xla_shape->element_type()));
-    TF_ASSIGN_OR_RETURN(per_device_xla_shape,
-                        shape_representation_fn(per_device_tensor_shape, dtype,
-                                                use_fast_memory));
+    TF_ASSIGN_OR_RETURN(
+        per_device_xla_shape,
+        shape_representation_fn(per_device_tensor_shape, dtype, use_fast_memory,
+                                TpuLayoutPreference::kNoPreference));
     *xla_shape->mutable_layout() = per_device_xla_shape.layout();
   }
   return Status::OK();
@@ -206,8 +207,9 @@ StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
   TF_RETURN_IF_ERROR(XLAShapeToTensorShape(original_shape, &shape));
   TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
                                           original_shape.element_type()));
-  TF_ASSIGN_OR_RETURN(auto to_shape,
-                      shape_representation_fn(shape, dtype, fast_mem));
+  TF_ASSIGN_OR_RETURN(auto to_shape, shape_representation_fn(
+                                         shape, dtype, fast_mem,
+                                         TpuLayoutPreference::kNoPreference));
   if (sharding) {
     TF_ASSIGN_OR_RETURN(auto hlo_sharding,
                         xla::HloSharding::FromProto(*sharding));

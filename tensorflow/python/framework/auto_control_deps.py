@@ -21,6 +21,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import auto_control_deps_utils as utils
 from tensorflow.python.framework import dtypes as dtypes_module
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import registry
@@ -222,12 +223,13 @@ class AutomaticControlDependencies(object):
     Returns:
       a copy of the `Tensor`.
     """
-    if isinstance(tensor, ops.IndexedSlices):
+    if isinstance(tensor, indexed_slices.IndexedSlices):
       values = array_ops.identity(tensor.values)
       indices = array_ops.identity(tensor.indices)
       self._returned_tensors.add(indices)
       self._returned_tensors.add(values)
-      return ops.IndexedSlices(values, indices, dense_shape=tensor.dense_shape)
+      return indexed_slices.IndexedSlices(
+          values, indices, dense_shape=tensor.dense_shape)
     elif isinstance(tensor, sparse_tensor.SparseTensor):
       values = array_ops.identity(tensor.values)
       indices = array_ops.identity(tensor.indices)

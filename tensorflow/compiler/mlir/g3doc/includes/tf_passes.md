@@ -609,6 +609,7 @@ tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} 
 -default-device : The default device to assign.
 ```
 ### `-tf-stack-ops-decomposition`: Decompose stack operations into local variable operations. Needs static shapes.
+### `-tf-strip-noinline-attribute`: Strip the tf._noinline attribute from top-level functions.
 ### `-tf-tensor-array-ops-decomposition`: Decompose tensor array operations into local variable operations.
 A pass that converts tensor array operations to tensor operations and
 read/assign ops on local variables. A later resource lifting pass can further

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
 namespace data {
@@ -31,6 +32,37 @@ constexpr int64_t Model::kOptimizationPeriodMinMs;
 constexpr int64_t Model::kOptimizationPeriodMaxMs;
 
 namespace {
+
+// Records the ram usage of hill climbing algorithm.
+void RecordHillClimbRamUsage(int64 ram_budget, double max_buffered_bytes) {
+  const auto memory_info = port::GetMemoryInfo();
+  // Records ratio of memory used since RootDataset was created over the ram
+  // budget.
+  const auto original_free_memory = ram_budget / kRamBudgetShare;
+  const auto current_free_memory = memory_info.free;
+  metrics::RecordTFDataAutotuneUsedRamBudgetRatio(
+      (original_free_memory - current_free_memory) / ram_budget);
+  // Records ratio of maximum buffer bytes tf.data could use over the ram
+  // budget.
+  metrics::RecordTFDataAutotuneMaxBufferBudgetRatio(
+      max_buffered_bytes / static_cast<double>(ram_budget));
+}
+
+// Records the reasons each time the autotune hill climb hits the stopping
+// criteria.
+void RecordHillClimbStoppingCriteria(
+    const Model::OptimizationParams& optimization_params, double output_time,
+    double processing_time, double max_buffered_bytes, bool all_max) {
+  if (output_time < processing_time / optimization_params.cpu_budget()) {
+    metrics::RecordTFDataAutotuneStoppingCriteria("output_time");
+  }
+  if (all_max) {
+    metrics::RecordTFDataAutotuneStoppingCriteria("all_max");
+  }
+  if (max_buffered_bytes > optimization_params.ram_budget()) {
+    metrics::RecordTFDataAutotuneStoppingCriteria("max_buffered_bytes");
+  }
+}
 
 // Helper function for node traversal that doesn't skip any nodes.
 inline bool IsAnyNode(const std::shared_ptr<Node> node) { return true; }

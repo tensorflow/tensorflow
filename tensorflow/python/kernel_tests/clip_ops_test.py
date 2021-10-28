@@ -18,7 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -177,11 +177,11 @@ class ClipTest(test.TestCase):
       indices = constant_op.constant(indices)
       shape = constant_op.constant(shape)
       # IndexedSlices mode
-      indexed_slices = ops.IndexedSlices(values, indices, shape)
+      indexed_slices = indexed_slices_lib.IndexedSlices(values, indices, shape)
       clipped = clip_ops.clip_by_value(indexed_slices, clip_value_min,
                                        clip_value_max)
       # clipped should be IndexedSlices
-      self.assertIsInstance(clipped, ops.IndexedSlices)
+      self.assertIsInstance(clipped, indexed_slices_lib.IndexedSlices)
 
     self.assertAllClose(clipped.values, expected)
 
@@ -371,7 +371,7 @@ class ClipTest(test.TestCase):
     # Norm clipping when clip_norm < 5
     with self.session():
       x0 = constant_op.constant([-2.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
-      x1 = ops.IndexedSlices(
+      x1 = indexed_slices_lib.IndexedSlices(
           constant_op.constant([1.0, -2.0]), constant_op.constant([3, 4]))
       # Global norm of x0 and x1 = sqrt(1 + 4^2 + 2^2 + 2^2) = 5
       clip_norm = 4.0
@@ -391,7 +391,7 @@ class ClipTest(test.TestCase):
 
   def testClipByGlobalNormPreservesDenseShape(self):
     dense_shape = (1,)
-    slices = ops.IndexedSlices(
+    slices = indexed_slices_lib.IndexedSlices(
         constant_op.constant([1.0]),
         constant_op.constant([0]),
         dense_shape=dense_shape)

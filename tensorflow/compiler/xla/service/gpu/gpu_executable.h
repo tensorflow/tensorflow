@@ -160,10 +160,9 @@ class GpuExecutable : public Executable {
   // clients, such as Tensorflow, that use a single stream of execution for
   // computations, and allow host-side deallocation from the allocator before
   // GPU execution completes.
-  Status ExecuteThunks(const ThunkSchedule& thunk_schedule,
-                       const ServiceExecutableRunOptions* run_options,
-                       const BufferAllocations& buffer_allocations,
-                       bool block_host_until_done);
+  Status ExecuteThunksOrBef(const ServiceExecutableRunOptions* run_options,
+                            const BufferAllocations& buffer_allocations,
+                            bool block_host_until_done);
 
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;

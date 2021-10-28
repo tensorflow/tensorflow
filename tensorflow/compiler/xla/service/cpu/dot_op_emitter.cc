@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -334,14 +335,27 @@ Status DotOpEmitter::EmitLinalgMatmul() {
                          .setUseFullTileBuffersByDefault(true)
                          .setUseAlloca(true))
             .vectorize(mlir::linalg::GenericOp::getOperationName())
-            .setVectorTransformsOptions(
-                mlir::vector::VectorTransformsOptions()
+            .vectorLowering(
+                mlir::linalg::LinalgVectorLoweringOptions()
                     .setVectorTransformsOptions(
-                        mlir::vector::VectorContractLowering::OuterProduct))
-            .setVectorTransferToSCFOptions(
-                mlir::VectorTransferToSCFOptions().setUnroll(true));
+                        mlir::vector::VectorTransformsOptions()
+                            .setVectorTransformsOptions(
+                                mlir::vector::VectorContractLowering::
+                                    OuterProduct))
+                    .setVectorTransferToSCFOptions(
+                        mlir::VectorTransferToSCFOptions().enableFullUnroll()));
+        // TODO: this should be within a pass and we should be able to create a
+        // nested OpPassManager.
+        // Created a nested OpPassManager, populate the strategy and run.
+        // mlir::OpPassManager dynamicPM("builtin.func");
+        // strategy.configurePassPipeline(dynamicPM, function.getContext());
         // Propagate pass failure?
-        (void)strategy.transform(function);
+        // (void)mlir::runPipeline(dynamicPM, function);
+        mlir::PassManager pm(function.getContext(),
+                             function.getOperationName());
+        strategy.configurePassPipeline(pm, function.getContext());
+        // Propagate pass failure?
+        (void)pm.run(function);
       });
 }
 

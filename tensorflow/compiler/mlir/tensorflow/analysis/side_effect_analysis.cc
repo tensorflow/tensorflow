@@ -129,9 +129,6 @@ bool MayHaveSideEffect(Operation* op) {
   if (isa_and_nonnull<TF::TensorFlowDialect>(op->getDialect()))
     return TensorFlowDialect::CanHaveSideEffects(op);
 
-  // TODO(b/202424532) TFRT currently relies on `ReturnOp` being side-effecting,
-  // remove this special case once this is fixed.
-  if (isa<mlir::ReturnOp>(op)) return true;
   if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) return false;
   // Conservatively assume that there can be side effects.
   return true;
@@ -487,6 +484,19 @@ void SideEffectAnalysisInfo::AnalyzeFunction(FuncOp func_op) {
       return a->isBeforeInBlock(b);
     });
   }
+
+  // Populate the control sinks (i.e. side-effecting ops with no control
+  // successors) in the top level block.
+  for (const auto& entry : sorted_control_predecessors_) {
+    auto* op = entry.getFirst();
+    if (op->getBlock() == &func_op.front() &&
+        sorted_control_successors_.count(op) == 0) {
+      sorted_control_sinks_.push_back(op);
+    }
+  }
+  llvm::sort(sorted_control_sinks_, [](Operation* a, Operation* b) {
+    return a->isBeforeInBlock(b);
+  });
 }
 
 void SideEffectAnalysisInfo::AnalyzeRegion(Region* region) {
@@ -515,6 +525,12 @@ void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
           op,
           op_side_effect_collector_.GetSideEffectsForOp(op),
           alias_analysis_);
+
+  // If the side-effecting op is a control source (i.e. it has no control
+  // predecessors), then `control_predecessors_` won't be updated below.
+  // However, we still want to track this op as it may have side effects visible
+  // to ops outside the function.
+  if (!side_effects_by_resource_id.empty()) control_predecessors_[op];
 
   // Traverse all resource IDs and their associated side effects.
   bool had_unknown_resource_read = false;

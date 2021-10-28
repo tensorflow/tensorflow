@@ -5417,7 +5417,8 @@ class ConvertInfeedDequeueTupleOp
         rewriter.getI32IntegerAttr(0));
 
     // Emit get_tuple_element for each result.
-    std::vector<Value> results;
+    llvm::SmallVector<Value> results;
+    results.reserve(result_types.size());
     for (auto idx_and_type : llvm::enumerate(result_types)) {
       auto tuple_element = rewriter.create<GetTupleElementOp>(
           op.getLoc(), idx_and_type.value(), data_tuple,
@@ -6558,6 +6559,55 @@ class ConvertDynamicExpandDimsOp : public OpRewritePattern<TF::ExpandDimsOp> {
   }
 };
 
+class ConvertDynamicSqueezeOp : public OpRewritePattern<TF::SqueezeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::SqueezeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto input = op.input();
+    auto input_ty = input.getType().cast<ShapedType>();
+    auto result_ty = op.getType().cast<ShapedType>();
+    if (!result_ty.hasRank() || !input_ty.hasRank() ||
+        result_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    // The fully dynamic case is unsupported.
+    if (op.squeeze_dims().empty()) {
+      return failure();
+    }
+
+    SmallVector<int64_t> squeeze_dims;
+    int64_t input_rank = input_ty.getRank();
+    for (const auto &squeeze_dim_apint :
+         op.squeeze_dims().getAsValueRange<IntegerAttr>()) {
+      int64_t squeeze_dim = squeeze_dim_apint.getSExtValue();
+      // Handle negative inputs.
+      if (squeeze_dim < 0) squeeze_dim += input_rank;
+      assert(squeeze_dim >= 0 && squeeze_dim < input_rank &&
+             "squeeze dim out of bounds");
+
+      squeeze_dims.push_back(squeeze_dim);
+    }
+
+    // Collect the unsqueezed dimensions.
+    llvm::SmallVector<Value> dims;
+    for (int64_t i = 0; i != input_rank; ++i) {
+      if (llvm::is_contained(squeeze_dims, i)) continue;
+      dims.push_back(rewriter.create<tensor::DimOp>(op.getLoc(), input, i));
+    }
+
+    auto from_extents =
+        rewriter.create<tensor::FromElementsOp>(op.getLoc(), dims);
+    // chlo::DynamicReshapeOp checks if the reshape is legal and will fail if
+    // any non-1 dimension is squeezed.
+    rewriter.replaceOpWithNewOp<chlo::DynamicReshapeOp>(op, result_ty, input,
+                                                        from_extents);
+    return success();
+  }
+};
+
 // Converts a TF QR op to HLO.
 class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
  public:
@@ -7110,6 +7160,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertCumsumOp,
     ConvertDiagPartOp,
     ConvertDynamicExpandDimsOp,
+    ConvertDynamicSqueezeOp,
     ConvertEinsumOp,
     ConvertRFFTOp,
     ConvertIRFFTOp,

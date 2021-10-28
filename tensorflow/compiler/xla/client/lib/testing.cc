@@ -53,7 +53,9 @@ XlaOp BuildFakeDataOpOnDevice(const Shape& shape, XlaBuilder* builder) {
         AsInt64Slice(shape.dimensions()));
   }
   std::vector<XlaOp> parts;
-  for (const Shape& s : shape.tuple_shapes()) {
+  const auto& tuple_shapes = shape.tuple_shapes();
+  parts.reserve(tuple_shapes.size());
+  for (const Shape& s : tuple_shapes) {
     parts.push_back(BuildFakeDataOpOnDevice(s, builder));
   }
   return Tuple(builder, parts);

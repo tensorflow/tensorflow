@@ -48,6 +48,12 @@ TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
   return primary_subgraph().ReleaseNonPersistentMemory();
 }
 
+void Interpreter::EnsureDynamicTensorsAreReleased() {
+  for (auto& subgraph : subgraphs_) {
+    subgraph->EnsureDynamicTensorsAreReleased();
+  }
+}
+
 TfLiteStatus Interpreter::ResetVariableTensors() {
   for (auto& subgraph : subgraphs_) {
     TF_LITE_ENSURE_STATUS(subgraph->ResetVariableTensors());

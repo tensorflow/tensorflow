@@ -644,7 +644,7 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
 
 Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(tuple));
-  std::vector<llvm::Value*> base_ptrs;
+  llvm::SmallVector<llvm::Value*> base_ptrs;
   for (auto operand : tuple->operands()) {
     base_ptrs.push_back(GetEmittedValueFor(operand));
   }
@@ -735,7 +735,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
 
   // Create the inner loop to iterate over the window.
   llvm_ir::ForLoopNest window_loops(IrName(select_and_scatter, "window"), &b_);
-  std::vector<int64_t> window_size;
+  llvm::SmallVector<int64_t> window_size;
   for (const auto& dim : window.dimensions()) {
     window_size.push_back(dim.size());
   }
@@ -746,7 +746,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // Compute the operand index to visit and evaluate the condition whether the
   // operand index is within the bounds. The unsigned comparison includes
   // checking whether the operand index >= 0.
-  std::vector<llvm::Value*> operand_multi_index(source_index.size());
+  llvm::SmallVector<llvm::Value*> operand_multi_index(source_index.size());
   llvm::Value* in_bounds_condition = b_.getTrue();
   for (int64_t i = 0; i < rank; ++i) {
     llvm::Value* strided_index =
@@ -816,7 +816,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // location is computed by calling the `scatter` function with the source
   // value and the current output value.
   SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(), &b_);
-  std::vector<llvm::Value*> selected_multi_index;
+  llvm::SmallVector<llvm::Value*> selected_multi_index;
   for (int64_t i = 0; i < rank; ++i) {
     llvm::Value* selected_index_address_slot =
         InBoundsGEP(selected_index_address, {b_.getInt32(i)});
@@ -1923,7 +1923,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
           : 1;
 
   // Determine the dimensions that get lowered as loops.
-  std::vector<int64_t> outer_dims;
+  llvm::SmallVector<int64_t> outer_dims;
   for (int64_t i = 0; i < num_dims - inner_dims.size() - 1; ++i) {
     outer_dims.push_back(LayoutUtil::Major(layout, i));
   }

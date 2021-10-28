@@ -717,18 +717,20 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
       PickBestAlgorithm(Cast<HloCustomCallInstruction>(instr));
   if (!best_algo_or.ok()) {
     auto msg = absl::StrFormat(
-        "Failed to determine best cudnn convolution algorithm: "
-        "%s\n\nConvolution performance may be suboptimal.",
-        best_algo_or.status().ToString());
+        "Failed to determine best cudnn convolution algorithm for:\n%s\n\n"
+        "Original error: %s",
+        instr->ToString(), best_algo_or.status().ToString());
 
     if (strict) {
       return Unknown(
-          "%s  To ignore this failure and try to use a fallback algorithm, use "
+          "%s\n\nTo ignore this failure and try to use a fallback algorithm "
+          "(which may have suboptimal performance), use "
           "XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false.  Please "
           "also file a bug for the root cause of failing autotuning.",
           msg);
     }
-    LOG(WARNING) << msg;
+    LOG(WARNING)
+        << msg << "\n\nAs a result, convolution performance may be suboptimal.";
     return false;
   }
 

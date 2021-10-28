@@ -41,6 +41,13 @@ namespace tflite {
 namespace xnnpack {
 namespace {
 
+template <typename T>
+void SafeCopyCustomData(const TfLiteNode& node, T* target) {
+  const size_t safe_size =
+      std::min(static_cast<size_t>(node.custom_initial_data_size), sizeof(T));
+  std::memcpy(target, node.custom_initial_data, safe_size);
+}
+
 // Forward declaration.
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate);
 
@@ -1519,8 +1526,7 @@ class Subgraph {
         if (strcmp(registration->custom_name, "Convolution2DTransposeBias") ==
             0) {
           TfLiteTransposeConvParams deconv_params = {kTfLitePaddingUnknown};
-          std::memcpy(&deconv_params, node->custom_initial_data,
-                      node->custom_initial_data_size);
+          SafeCopyCustomData(*node, &deconv_params);
 
           return VisitMediaPipeDeconvolutionNode(
               subgraph, context, node_index, node, context->tensors,
@@ -1528,16 +1534,14 @@ class Subgraph {
         } else if (strcmp(registration->custom_name,
                           "MaxPoolingWithArgmax2D") == 0) {
           TfLitePoolParams pool_params = {kTfLitePaddingUnknown};
-          std::memcpy(&pool_params, node->custom_initial_data,
-                      node->custom_initial_data_size);
+          SafeCopyCustomData(*node, &pool_params);
 
           return VisitMediaPipeMaxPoolingNode(subgraph, context, node_index,
                                               node, context->tensors,
                                               &pool_params, xnnpack_tensors);
         } else if (strcmp(registration->custom_name, "MaxUnpooling2D") == 0) {
           TfLitePoolParams pool_params = {kTfLitePaddingUnknown};
-          std::memcpy(&pool_params, node->custom_initial_data,
-                      node->custom_initial_data_size);
+          SafeCopyCustomData(*node, &pool_params);
 
           return VisitMediaPipeUnpoolingNode(subgraph, context, node_index,
                                              node, context->tensors,

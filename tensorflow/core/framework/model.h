@@ -52,6 +52,9 @@ constexpr char kBufferSize[] = "buffer_size";
 // A key used to identify the input time of the model.
 constexpr char kModelInputTimeKey[] = "model_input_time";
 
+// Default share of available RAM that can be used by model's internal buffers.
+constexpr double kRamBudgetShare = 0.5;
+
 enum class TraversalOrder {
   BFS = 0,
   REVERSE_BFS = 1,

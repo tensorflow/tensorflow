@@ -148,8 +148,15 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   // TODO(fchern): Approx-topk followed by variadic reduce might run faster
   // than running variadic reduce directly.
   if (top_k == 1) {
-    return Reduce(builder, operands, init_values, reduction_computation,
-                  {reduction_dim});
+    auto val_args = Reduce(builder, operands, init_values,
+                           reduction_computation, {reduction_dim});
+    Shape op_shape = operands_shapes[0];
+    op_shape.mutable_dimensions()[reduction_dim] = 1;
+    auto top1_vals =
+        Reshape(GetTupleElement(val_args, 0), op_shape.dimensions());
+    auto top1_args =
+        Reshape(GetTupleElement(val_args, 1), op_shape.dimensions());
+    return Tuple(builder, {top1_vals, top1_args});
   }
 
   uint64_t tpu_tiling = rank == 1 ? kTpuChunkTiling : kTpuLaneTiling;

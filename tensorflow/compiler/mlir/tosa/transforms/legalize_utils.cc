@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 
@@ -536,6 +537,65 @@ template llvm::Optional<Value> getConstTensor<int32_t>(PatternRewriter&,
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
   return (output_element_type.getStorageTypeIntegralWidth() == 8);
+}
+
+LogicalResult ApplyPatternsWithShapeResolution(
+    FuncOp func, const FrozenRewritePatternSet& patterns) {
+  // We use top-down traversal so that shape inference can fully infer types
+  // during pattern rewrite.
+  GreedyRewriteConfig config;
+  config.useTopDownTraversal = true;
+  if (failed(applyPatternsAndFoldGreedily(func, patterns, config))) {
+    return failure();
+  }
+
+  // Check that constant attributes types and op types match up. If the lowering
+  // needs to change a type (e.g. fp16 -> fp32) its possible the return type
+  // could be incorrect.
+  //
+  // This should be investigate for whether it is still necessary due to quant
+  // type stripping changing.
+  func.walk([&](tosa::ConstOp op) {
+    auto ety = op.value().getType().getElementType();
+    auto new_ty = op.getType().cast<ShapedType>().clone(ety);
+    op.getResult().setType(new_ty);
+  });
+
+  // Insert UnrealizedConversionCasts to guarantee ReturnOp agrees with
+  // the FuncOp type.
+  IRRewriter rewriter(func.getContext());
+  func.walk([&](ReturnOp op) {
+    FuncOp parent = dyn_cast<FuncOp>(op->getParentOp());
+    if (parent != func) return;
+
+    rewriter.setInsertionPoint(op);
+    FunctionType func_ty = func.getType();
+    auto result_tys = func_ty.getResults();
+
+    bool cast_added = false;
+    SmallVector<Value> return_values;
+    for (auto it : llvm::zip(op->getOperands(), result_tys)) {
+      Value operand = std::get<0>(it);
+      Type current_ty = operand.getType();
+      Type cast_ty = std::get<1>(it);
+      if (current_ty == cast_ty) {
+        return_values.push_back(operand);
+        continue;
+      }
+
+      return_values.push_back(
+          rewriter.create<tensor::CastOp>(op.getLoc(), cast_ty, operand)
+              .getResult());
+
+      cast_added = true;
+    }
+
+    if (cast_added) {
+      rewriter.replaceOpWithNewOp<ReturnOp>(op, return_values);
+    }
+  });
+
+  return success();
 }
 
 }  // namespace tosa

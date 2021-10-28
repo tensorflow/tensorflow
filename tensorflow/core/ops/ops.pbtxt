@@ -13610,6 +13610,7 @@ op {
     name: "device_names"
     type: "list(string)"
   }
+  is_stateful: true
 }
 op {
   name: "Diag"
@@ -47242,6 +47243,13 @@ op {
         type_id: TFT_VAR
         s: "output_types"
       }
+    }
+  }
+  attr {
+    name: "drop_remainder"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
   attr {

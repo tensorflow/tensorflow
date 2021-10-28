@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
@@ -98,7 +99,7 @@ def _compute_theoretical_jacobian(x, x_shape, x_data, dy, dy_shape, dx,
   sess = ops.get_default_session()
   for col in range(dy_size):
     dy_data_flat[col] = 1
-    if isinstance(dx, ops.IndexedSlices):
+    if isinstance(dx, indexed_slices.IndexedSlices):
       backprop_indices, backprop_values = sess.run(
           [dx.indices, dx.values],
           feed_dict=_extra_feeds(extra_feed_dict, {x: x_data, dy: dy_data}))

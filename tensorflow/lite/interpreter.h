@@ -458,6 +458,14 @@ class Interpreter {
   /// WARNING: Experimental interface, subject to change
   TfLiteStatus ReleaseNonPersistentMemory();
 
+  /// WARNING: This is an experimental API and subject to change.
+  /// Force all intermediate dynamic tensors to be released once they are not
+  /// used by the model. Please use this configuration with caution, since it
+  /// might reduce the peak memory usage of the model at the cost of a slower
+  /// inference speed. `AllocateTensors` needs to be called right after this
+  /// API.
+  void EnsureDynamicTensorsAreReleased();
+
   // Update allocations for all tensors. This will redim dependent tensors
   // using the input tensor dimensionality as given. This is relatively
   // expensive. This *must be* called after the interpreter has been created

@@ -208,6 +208,11 @@ class XlaOpKernelContext {
       absl::string_view name, std::vector<xla::Literal>* outputs,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 
+  // Returns the Tensor representation of the constant input.
+  StatusOr<Tensor> ConstantInputTensor(
+      int index,
+      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+
   // Returns an XlaExpression describing the value of 'index'.
   const XlaExpression& InputExpression(int index);
   const XlaExpression& InputExpression(absl::string_view name);

@@ -22,6 +22,7 @@ from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend
@@ -1092,8 +1093,8 @@ mixed_precision.register_loss_scale_wrapper(optimizer_v2.OptimizerV2,
 def _multiply_gradient(gradient, scale):
   """Multiply a (possibly sparse) gradient by the given scale factor."""
   scale = math_ops.cast(scale, gradient.dtype)
-  if isinstance(gradient, ops.IndexedSlices):
-    return ops.IndexedSlices(
+  if isinstance(gradient, indexed_slices.IndexedSlices):
+    return indexed_slices.IndexedSlices(
         gradient.values * scale,
         gradient.indices,
         dense_shape=gradient.dense_shape)

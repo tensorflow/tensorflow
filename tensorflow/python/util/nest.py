@@ -160,7 +160,6 @@ def is_namedtuple(instance, strict=False):
 
 _is_namedtuple = is_namedtuple  # This function was private up to TF2.5.
 
-# See the swig file (util.i) for documentation.
 _is_mapping_view = _pywrap_utils.IsMappingView
 _is_attrs = _pywrap_utils.IsAttrs
 _is_composite_tensor = _pywrap_utils.IsCompositeTensor
@@ -305,12 +304,9 @@ def _yield_sorted_items(iterable):
       yield item
 
 
-# See the swig file (util.i) for documentation.
-is_sequence = _pywrap_utils.IsSequence
+_is_nested = _pywrap_utils.IsNested
 
-
-# See the swig file (util.i) for documentation.
-is_sequence_or_composite = _pywrap_utils.IsSequenceOrComposite
+_is_nested_or_composite = _pywrap_utils.IsNestedOrComposite
 
 
 @tf_export("nest.is_nested")
@@ -326,7 +322,32 @@ def is_nested(seq):
   Returns:
     True if the input is a nested structure.
   """
-  return is_sequence(seq)
+  return _is_nested(seq)
+
+
+def is_nested_or_composite(seq):
+  """Returns true if its input is a nested structure or a composite.
+
+  Refer to [tf.nest](https://www.tensorflow.org/api_docs/python/tf/nest)
+  for the definition of a nested structure.
+
+  Args:
+    seq: the value to test.
+
+  Returns:
+    True if the input is a nested structure or a composite.
+  """
+  return _is_nested_or_composite(seq)
+
+
+# FIXME(feyu): Remove the back-compat names before closing b/201685523, after
+# all users of is_sequence are moved to the new names. (cl/405503918)
+def is_sequence(seq):
+  return _is_nested(seq)
+
+
+def is_sequence_or_composite(seq):
+  return _is_nested_or_composite(seq)
 
 
 @tf_export("nest.flatten")
@@ -585,15 +606,20 @@ def flatten_dict_items(dictionary):
   return _pywrap_nest.FlattenDictItems(dictionary)
 
 
-def _packed_nest_with_indices(structure, flat, index, is_seq, sequence_fn=None):
+def _packed_nest_with_indices(structure,
+                              flat,
+                              index,
+                              is_nested_fn,
+                              sequence_fn=None):
   """Helper function for pack_sequence_as.
 
   Args:
     structure: structure to mimic.
     flat: Flattened values to output substructure for.
     index: Index at which to start reading from flat.
-    is_seq: Function used to test if a value should be treated as a sequence.
-    sequence_fn: Function used to generate a new sequence instance.
+    is_nested_fn: Function used to test if a value should be treated as a
+      nested structure.
+    sequence_fn: Function used to generate a new strcuture instance.
 
   Returns:
     The tuple (new_index, child), where:
@@ -609,8 +635,8 @@ def _packed_nest_with_indices(structure, flat, index, is_seq, sequence_fn=None):
   packed = []
   sequence_fn = sequence_fn or _sequence_like
   for s in _yield_value(structure):
-    if is_seq(s):
-      new_index, child = _packed_nest_with_indices(s, flat, index, is_seq,
+    if is_nested_fn(s):
+      new_index, child = _packed_nest_with_indices(s, flat, index, is_nested_fn,
                                                    sequence_fn)
       packed.append(sequence_fn(s, child))
       index = new_index
@@ -623,19 +649,19 @@ def _packed_nest_with_indices(structure, flat, index, is_seq, sequence_fn=None):
 def _pack_sequence_as(structure, flat_sequence, expand_composites,
                       sequence_fn=None):
   """Implements sequence packing, with the option to alter the structure."""
-  is_seq = is_sequence_or_composite if expand_composites else is_sequence
+  is_nested_fn = _is_nested_or_composite if expand_composites else _is_nested
   sequence_fn = sequence_fn or _sequence_like
   def truncate(value, length):
     value_str = str(value)
     return value_str[:length] + (value_str[length:] and "...")
 
-  if not is_seq(flat_sequence):
+  if not is_nested_fn(flat_sequence):
     raise TypeError(
         "Attempted to pack value:\n  {}\ninto a structure, but found "
         "incompatible type `{}` instead.".format(
             truncate(flat_sequence, 100), type(flat_sequence)))
 
-  if not is_seq(structure):
+  if not is_nested_fn(structure):
     if len(flat_sequence) != 1:
       raise ValueError(
           "The target structure is of type `{}`\n  {}\nHowever the input "
@@ -646,8 +672,8 @@ def _pack_sequence_as(structure, flat_sequence, expand_composites,
     return flat_sequence[0]
 
   try:
-    final_index, packed = _packed_nest_with_indices(structure, flat_sequence,
-                                                    0, is_seq, sequence_fn)
+    final_index, packed = _packed_nest_with_indices(structure, flat_sequence, 0,
+                                                    is_nested_fn, sequence_fn)
     if final_index < len(flat_sequence):
       raise IndexError
   except IndexError:
@@ -970,14 +996,15 @@ def map_structure_with_tuple_paths(func, *structure, **kwargs):
                                               **kwargs)
 
 
-def _yield_flat_up_to(shallow_tree, input_tree, is_seq, path=()):
+def _yield_flat_up_to(shallow_tree, input_tree, is_nested_fn, path=()):
   """Yields (path, value) pairs of input_tree flattened up to shallow_tree.
 
   Args:
     shallow_tree: Nested structure. Traverse no further than its leaf nodes.
     input_tree: Nested structure. Return the paths and values from this tree.
       Must have the same upper structure as shallow_tree.
-    is_seq: Function used to test if a value should be treated as a sequence.
+    is_nested_fn: Function used to test if a value should be treated as a
+      nested structure.
     path: Tuple. Optional argument, only used when recursing. The path from the
       root of the original shallow_tree, down to the root of the shallow_tree
       arg of this recursive call.
@@ -987,16 +1014,15 @@ def _yield_flat_up_to(shallow_tree, input_tree, is_seq, path=()):
     shallow_tree, and value is the value of the corresponding node in
     input_tree.
   """
-  if not is_seq(shallow_tree):
+  if not is_nested_fn(shallow_tree):
     yield (path, input_tree)
   else:
     input_tree = dict(_yield_sorted_items(input_tree))
     for shallow_key, shallow_subtree in _yield_sorted_items(shallow_tree):
       subpath = path + (shallow_key,)
       input_subtree = input_tree[shallow_key]
-      for leaf_path, leaf_value in _yield_flat_up_to(shallow_subtree,
-                                                     input_subtree, is_seq,
-                                                     path=subpath):
+      for leaf_path, leaf_value in _yield_flat_up_to(
+          shallow_subtree, input_subtree, is_nested_fn, path=subpath):
         yield (leaf_path, leaf_value)
 
 
@@ -1043,9 +1069,9 @@ def assert_shallow_structure(shallow_tree,
     ValueError: If the sequence lengths of `shallow_tree` are different from
       `input_tree`.
   """
-  is_seq = is_sequence_or_composite if expand_composites else is_sequence
-  if is_seq(shallow_tree):
-    if not is_seq(input_tree):
+  is_nested_fn = _is_nested_or_composite if expand_composites else _is_nested
+  if is_nested_fn(shallow_tree):
+    if not is_nested_fn(input_tree):
       raise TypeError(
           "If shallow structure is a sequence, input must also be a sequence. "
           "Input has type: %s." % type(input_tree))
@@ -1207,13 +1233,15 @@ def flatten_up_to(shallow_tree, input_tree, check_types=True,
     ValueError: If the structure lengths of `shallow_tree` are different from
       `input_tree`.
   """
-  is_seq = is_sequence_or_composite if expand_composites else is_sequence
+  is_nested_fn = _is_nested_or_composite if expand_composites else _is_nested
   assert_shallow_structure(shallow_tree,
                            input_tree,
                            check_types=check_types,
                            expand_composites=expand_composites)
   # Discard paths returned by _yield_flat_up_to.
-  return [v for _, v in _yield_flat_up_to(shallow_tree, input_tree, is_seq)]
+  return [
+      v for _, v in _yield_flat_up_to(shallow_tree, input_tree, is_nested_fn)
+  ]
 
 
 def flatten_with_tuple_paths_up_to(shallow_tree,
@@ -1312,12 +1340,12 @@ def flatten_with_tuple_paths_up_to(shallow_tree,
     ValueError: If the structure lengths of `shallow_tree` are different from
       `input_tree`.
   """
-  is_seq = is_sequence_or_composite if expand_composites else is_sequence
+  is_nested_fn = _is_nested_or_composite if expand_composites else _is_nested
   assert_shallow_structure(shallow_tree,
                            input_tree,
                            check_types=check_types,
                            expand_composites=expand_composites)
-  return list(_yield_flat_up_to(shallow_tree, input_tree, is_seq))
+  return list(_yield_flat_up_to(shallow_tree, input_tree, is_nested_fn))
 
 
 @tf_export("__internal__.nest.map_structure_up_to", v1=[])
@@ -1474,7 +1502,7 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
 
   check_types = kwargs.pop("check_types", True)
   expand_composites = kwargs.pop("expand_composites", False)
-  is_seq = is_sequence_or_composite if expand_composites else is_sequence
+  is_nested_fn = _is_nested_or_composite if expand_composites else _is_nested
 
   for input_tree in inputs:
     assert_shallow_structure(
@@ -1492,7 +1520,8 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
           check_types,
           expand_composites=expand_composites) for input_tree in inputs)
   flat_path_gen = (
-      path for path, _ in _yield_flat_up_to(shallow_tree, inputs[0], is_seq))
+      path
+      for path, _ in _yield_flat_up_to(shallow_tree, inputs[0], is_nested_fn))
   results = [
       func(*args, **kwargs) for args in zip(flat_path_gen, *flat_value_gen)
   ]
@@ -1532,9 +1561,9 @@ def get_traverse_shallow_structure(traverse_fn, structure,
       or if any leaf values in the returned structure or scalar are not type
       `bool`.
   """
-  is_seq = is_sequence_or_composite if expand_composites else is_sequence
+  is_nested_fn = _is_nested_or_composite if expand_composites else _is_nested
   to_traverse = traverse_fn(structure)
-  if not is_seq(structure):
+  if not is_nested_fn(structure):
     if not isinstance(to_traverse, bool):
       raise TypeError("traverse_fn returned structure: %s for non-structure: %s"
                       % (to_traverse, structure))
@@ -1550,7 +1579,7 @@ def get_traverse_shallow_structure(traverse_fn, structure,
         level_traverse.append(
             get_traverse_shallow_structure(traverse_fn, branch,
                                            expand_composites=expand_composites))
-  elif not is_seq(to_traverse):
+  elif not is_nested_fn(to_traverse):
     raise TypeError("traverse_fn returned a non-bool scalar: %s for input: %s"
                     % (to_traverse, structure))
   else:
@@ -1611,8 +1640,8 @@ def yield_flat_paths(nest, expand_composites=False):
     Tuples containing index or key values which form the path to a specific
     leaf value in the nested structure.
   """
-  is_seq = is_sequence_or_composite if expand_composites else is_sequence
-  for k, _ in _yield_flat_up_to(nest, nest, is_seq):
+  is_nested_fn = _is_nested_or_composite if expand_composites else _is_nested
+  for k, _ in _yield_flat_up_to(nest, nest, is_nested_fn):
     yield k
 
 

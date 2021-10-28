@@ -19,11 +19,11 @@ was saved into a SavedModel. This may include concrete function inputs and
 outputs, signatures, function specs, etc.
 
 Example use:
-coder = nested_structure_coder.StructureCoder()
 # Encode into proto.
-signature_proto = coder.encode_structure(function.input_signature)
+signature_proto = nested_structure_coder.encode_structure(
+    function.input_signature)
 # Decode into a Python object.
-restored_signature = coder.decode_proto(signature_proto)
+restored_signature = nested_structure_coder.decode_proto(signature_proto)
 """
 
 import collections
@@ -50,6 +50,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
@@ -63,28 +64,15 @@ class NotEncodableError(Exception):
 class StructureCoder(object):
   """Encoder and decoder for nested structures into protos."""
 
-  _codecs = []
-
   @classmethod
   def register_codec(cls, x):
-    cls._codecs.append(x)
-
-  @classmethod
-  def _get_encoders(cls):
-    return [(c.can_encode, c.do_encode) for c in cls._codecs]
-
-  @classmethod
-  def _get_decoders(cls):
-    return [(c.can_decode, c.do_decode) for c in cls._codecs]
+    register_codec(x)
 
   def _map_structure(self, pyobj, coders):
-    for can, do in coders:
-      if can(pyobj):
-        recursion_fn = functools.partial(self._map_structure, coders=coders)
-        return do(pyobj, recursion_fn)
-    raise NotEncodableError(
-        f"No encoder for object {str(pyobj)} of type {type(pyobj)}.")
+    _map_structure(pyobj, coders)
 
+  @deprecation.deprecated(None,
+                          "Use the encode_structure function (not method).")
   def encode_structure(self, nested_structure):
     """Encodes nested structures composed of encodable types into a proto.
 
@@ -97,8 +85,9 @@ class StructureCoder(object):
     Raises:
       NotEncodableError: For values for which there are no encoders.
     """
-    return self._map_structure(nested_structure, self._get_encoders())
+    return encode_structure(nested_structure)
 
+  @deprecation.deprecated(None, "Use the can_encode function (not method).")
   def can_encode(self, nested_structure):
     """Determines whether a nested structure can be encoded into a proto.
 
@@ -108,12 +97,9 @@ class StructureCoder(object):
     Returns:
       True if the nested structured can be encoded.
     """
-    try:
-      self.encode_structure(nested_structure)
-    except NotEncodableError:
-      return False
-    return True
+    return can_encode(nested_structure)
 
+  @deprecation.deprecated(None, "Use the decode_proto function (not method).")
   def decode_proto(self, proto):
     """Decodes proto representing a nested structure.
 
@@ -126,7 +112,81 @@ class StructureCoder(object):
     Raises:
       NotEncodableError: For values for which there are no encoders.
     """
-    return self._map_structure(proto, self._get_decoders())
+    return decode_proto(proto)
+
+
+def register_codec(x):
+  """Registers a codec to use for encoding/decoding.
+
+  Args:
+    x: The codec object to register. The object must implement can_encode,
+      do_encode, can_decode, and do_decode. See the various _*Codec classes for
+      examples.
+  """
+  _codecs.append(x)
+
+
+def _get_encoders():
+  return [(c.can_encode, c.do_encode) for c in _codecs]
+
+
+def _get_decoders():
+  return [(c.can_decode, c.do_decode) for c in _codecs]
+
+
+def _map_structure(pyobj, coders):
+  for can, do in coders:
+    if can(pyobj):
+      recursion_fn = functools.partial(_map_structure, coders=coders)
+      return do(pyobj, recursion_fn)
+  raise NotEncodableError(
+      f"No encoder for object {str(pyobj)} of type {type(pyobj)}.")
+
+
+def encode_structure(nested_structure):
+  """Encodes nested structures composed of encodable types into a proto.
+
+  Args:
+    nested_structure: Structure to encode.
+
+  Returns:
+    Encoded proto.
+
+  Raises:
+    NotEncodableError: For values for which there are no encoders.
+  """
+  return _map_structure(nested_structure, _get_encoders())
+
+
+def can_encode(nested_structure):
+  """Determines whether a nested structure can be encoded into a proto.
+
+  Args:
+    nested_structure: Structure to encode.
+
+  Returns:
+    True if the nested structured can be encoded.
+  """
+  try:
+    encode_structure(nested_structure)
+  except NotEncodableError:
+    return False
+  return True
+
+
+def decode_proto(proto):
+  """Decodes proto representing a nested structure.
+
+  Args:
+    proto: Proto to decode.
+
+  Returns:
+    Decoded structure.
+
+  Raises:
+    NotEncodableError: For values for which there are no encoders.
+  """
+  return _map_structure(proto, _get_decoders())
 
 
 class _ListCodec(object):
@@ -147,9 +207,6 @@ class _ListCodec(object):
 
   def do_decode(self, value, decode_fn):
     return [decode_fn(element) for element in value.list_value.values]
-
-
-StructureCoder.register_codec(_ListCodec())
 
 
 def _is_tuple(obj):
@@ -192,9 +249,6 @@ class _TupleCodec(object):
     return tuple(decode_fn(element) for element in value.tuple_value.values)
 
 
-StructureCoder.register_codec(_TupleCodec())
-
-
 class _DictCodec(object):
   """Codec for dicts."""
 
@@ -213,9 +267,6 @@ class _DictCodec(object):
 
   def do_decode(self, value, decode_fn):
     return {key: decode_fn(val) for key, val in value.dict_value.fields.items()}
-
-
-StructureCoder.register_codec(_DictCodec())
 
 
 class _NamedTupleCodec(object):
@@ -250,9 +301,6 @@ class _NamedTupleCodec(object):
     return named_tuple_type(**dict(items))
 
 
-StructureCoder.register_codec(_NamedTupleCodec())
-
-
 class _Float64Codec(object):
   """Codec for floats."""
 
@@ -273,9 +321,6 @@ class _Float64Codec(object):
     return value.float64_value
 
 
-StructureCoder.register_codec(_Float64Codec())
-
-
 class _Int64Codec(object):
   """Codec for Python integers (limited to 64 bit values)."""
 
@@ -294,9 +339,6 @@ class _Int64Codec(object):
   def do_decode(self, value, decode_fn):
     del decode_fn
     return int(value.int64_value)
-
-
-StructureCoder.register_codec(_Int64Codec())
 
 
 class _StringCodec(object):
@@ -323,9 +365,6 @@ class _StringCodec(object):
     return compat.as_str(value.string_value)
 
 
-StructureCoder.register_codec(_StringCodec())
-
-
 class _NoneCodec(object):
   """Codec for None."""
 
@@ -346,9 +385,6 @@ class _NoneCodec(object):
     return None
 
 
-StructureCoder.register_codec(_NoneCodec())
-
-
 class _BoolCodec(object):
   """Codec for booleans."""
 
@@ -367,9 +403,6 @@ class _BoolCodec(object):
   def do_decode(self, value, decode_fn):
     del decode_fn
     return value.bool_value
-
-
-StructureCoder.register_codec(_BoolCodec())
 
 
 class _TensorShapeCodec(object):
@@ -393,9 +426,6 @@ class _TensorShapeCodec(object):
     return tensor_shape.TensorShape(value.tensor_shape_value)
 
 
-StructureCoder.register_codec(_TensorShapeCodec())
-
-
 class _TensorTypeCodec(object):
   """Codec for `TensorType`."""
 
@@ -414,9 +444,6 @@ class _TensorTypeCodec(object):
   def do_decode(self, value, decode_fn):
     del decode_fn
     return dtypes.DType(value.tensor_dtype_value)
-
-
-StructureCoder.register_codec(_TensorTypeCodec())
 
 
 class _TensorSpecCodec(object):
@@ -449,9 +476,6 @@ class _TensorSpecCodec(object):
             struct_pb2.StructuredValue(
                 tensor_dtype_value=value.tensor_spec_value.dtype)),
         name=(name if name else None))
-
-
-StructureCoder.register_codec(_TensorSpecCodec())
 
 
 class _BoundedTensorSpecCodec(object):
@@ -488,9 +512,6 @@ class _BoundedTensorSpecCodec(object):
         minimum=tensor_util.MakeNdarray(btsv.minimum),
         maximum=tensor_util.MakeNdarray(btsv.maximum),
         name=(name if name else None))
-
-
-StructureCoder.register_codec(_BoundedTensorSpecCodec())
 
 
 class _TypeSpecCodec(object):
@@ -604,4 +625,19 @@ class _TypeSpecCodec(object):
     return type_spec_class._deserialize(decode_fn(type_spec_proto.type_state))
 
 
-StructureCoder.register_codec(_TypeSpecCodec())
+_codecs = [
+    _ListCodec(),
+    _TupleCodec(),
+    _NamedTupleCodec(),
+    _StringCodec(),
+    _Float64Codec(),
+    _NoneCodec(),
+    _Int64Codec(),
+    _TensorShapeCodec(),
+    _BoolCodec(),
+    _BoundedTensorSpecCodec(),
+    _TensorTypeCodec(),
+    _DictCodec(),
+    _TensorSpecCodec(),
+    _TypeSpecCodec(),
+]

@@ -26,6 +26,7 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework.func_graph import FuncGraph
@@ -202,9 +203,9 @@ def _DefaultGradYs(grad_ys,
       # Create a grad_y tensor in the name scope of the gradient.
       # Required for TensorArrays to identify which gradient call a
       # grad_y value is coming from.
-      if isinstance(grad_y, ops.IndexedSlices):
+      if isinstance(grad_y, indexed_slices.IndexedSlices):
         new_grad_ys.append(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=(array_ops.identity(
                     grad_y.indices, name="grad_ys_%d_indices" % i)
                          if isinstance(grad_y.indices, ops.Tensor) else
@@ -729,7 +730,7 @@ def _HasAnyNotNoneGrads(grads, op):
   """Return true iff op has real gradient."""
   out_grads = _GetGrads(grads, op)
   for out_grad in out_grads:
-    if isinstance(out_grad, (ops.Tensor, ops.IndexedSlices)):
+    if isinstance(out_grad, (ops.Tensor, indexed_slices.IndexedSlices)):
       return True
     if out_grad and isinstance(out_grad, collections_abc.Sequence):
       if any(g is not None for g in out_grad):
@@ -958,12 +959,12 @@ def _AggregatedGrads(grads,
   out_grads = _GetGrads(grads, op)
   for i, out_grad in enumerate(out_grads):
     if loop_state:
-      if isinstance(out_grad, (ops.Tensor, ops.IndexedSlices)):
+      if isinstance(out_grad, (ops.Tensor, indexed_slices.IndexedSlices)):
         assert control_flow_util.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
     if (isinstance(out_grad, collections_abc.Sequence) and not all(
-        isinstance(g, (ops.Tensor, ops.IndexedSlices))
+        isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices))
         for g in out_grad
         if g is not None)):
       raise TypeError(f"Invalid gradient {out_grad} [index = {i}]. Gradients "

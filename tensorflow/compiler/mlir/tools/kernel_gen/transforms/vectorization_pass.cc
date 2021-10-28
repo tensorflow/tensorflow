@@ -311,28 +311,32 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
               return tiles;
             });
     auto alignment = 16;
-    if (failed(
-            mlir::linalg::CodegenStrategy()
-                .tile(mlir::linalg::GenericOp::getOperationName(),
-                      tiling_options)
-                .promote(mlir::linalg::GenericOp::getOperationName(),
-                         mlir::linalg::LinalgPromotionOptions()
-                             .setAlignment(alignment)
-                             .setUseFullTileBuffersByDefault(true)
-                             .setUseAlloca(true))
-                .vectorize(mlir::linalg::GenericOp::getOperationName())
-                .setEnableVectorTransferLowering(false)
-                .setEnableVectorTransferPartialRewrite(true)
+
+    mlir::linalg::CodegenStrategy strategy;
+    strategy.tile(mlir::linalg::GenericOp::getOperationName(), tiling_options)
+        .promote(mlir::linalg::GenericOp::getOperationName(),
+                 mlir::linalg::LinalgPromotionOptions()
+                     .setAlignment(alignment)
+                     .setUseFullTileBuffersByDefault(true)
+                     .setUseAlloca(true))
+        .vectorize(mlir::linalg::GenericOp::getOperationName())
+        .vectorLowering(
+            mlir::linalg::LinalgVectorLoweringOptions()
+                .enableTransferLowering(false)
+                .enableTransferPartialRewrite()
                 .setVectorTransformsOptions(
                     mlir::vector::VectorTransformsOptions()
                         .setVectorTransferSplit(
                             mlir::vector::VectorTransferSplit::VectorTransfer))
-                .setEnableVectorToSCFConversion(true)
+                .enableTransferToSCFConversion()
                 .setVectorTransferToSCFOptions(
-                    mlir::VectorTransferToSCFOptions().setUnroll(true))
-                .setEnableVectorContractLowering(true)
-                .transform(f)))
-      return signalPassFailure();
+                    mlir::VectorTransferToSCFOptions().enableFullUnroll())
+                .enableContractionLowering());
+
+    // Created a nested OpPassManager, populate the strategy and run.
+    OpPassManager dynamicPM("builtin.func");
+    strategy.configurePassPipeline(dynamicPM, f.getContext());
+    if (failed(runPipeline(dynamicPM, f))) return signalPassFailure();
 
     // Stage 2: Remove extent 1 dims to ensure correct 1-ranked vectorization
     auto ctx = f.getContext();

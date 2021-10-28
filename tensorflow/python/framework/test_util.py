@@ -56,6 +56,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import gpu_util
 from tensorflow.python.framework import importer
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
@@ -2469,8 +2470,8 @@ class TensorFlowTestCase(googletest.TestCase):
           return ragged_tensor_value.RaggedTensorValue(
               self._eval_tensor(tensor.values),
               self._eval_tensor(tensor.row_splits))
-        elif isinstance(tensor, ops.IndexedSlices):
-          return ops.IndexedSlicesValue(
+        elif isinstance(tensor, indexed_slices.IndexedSlices):
+          return indexed_slices.IndexedSlicesValue(
               values=tensor.values.numpy(),
               indices=tensor.indices.numpy(),
               dense_shape=tensor.dense_shape.numpy())

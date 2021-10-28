@@ -20,6 +20,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -36,7 +37,7 @@ def _indexedslice(x, noshape=False):
   values = x[indices]
   if noshape:
     dense_shape = None
-  return ops.IndexedSlices(
+  return indexed_slices.IndexedSlices(
       indices=indices.tolist(), values=values, dense_shape=dense_shape)
 
 
@@ -116,7 +117,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=tensor_shape.TensorShape([3, 3]))
       accum_op = q.apply_indexed_slices_grad(
-          ops.IndexedSlices(
+          indexed_slices.IndexedSlices(
               indices=[0, 2],
               values=np.array([[0, 0, 1], [3, 0, 4]]).astype(np.float32)))
       accum_op.run()
@@ -182,7 +183,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=())
 
-      grad_indexed_slices = ops.IndexedSlices(
+      grad_indexed_slices = indexed_slices.IndexedSlices(
           indices=[0, 1], values=np.array([[1, 0], [0, 2]]).astype(np.float32))
       accum_op = q.apply_indexed_slices_grad(grad_indexed_slices)
       accum_op.run()
@@ -203,7 +204,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=(), reduction_type="SUM")
 
-      grad_indexed_slices = ops.IndexedSlices(
+      grad_indexed_slices = indexed_slices.IndexedSlices(
           indices=[0, 1], values=np.array([[1, 0], [0, 2]]).astype(np.float32))
       accum_op = q.apply_indexed_slices_grad(grad_indexed_slices)
       accum_op.run()
@@ -230,7 +231,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=())
 
-      grad_indexed_slices = ops.IndexedSlices(
+      grad_indexed_slices = indexed_slices.IndexedSlices(
           indices=[0, 1], values=np.array([[1, 0], [0, 2]]).astype(np.float32))
       accum_op = q.apply_indexed_slices_grad(grad_indexed_slices, local_step=0)
       accum_op.run()
@@ -246,7 +247,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       self.assertAllEqual(val.values, [[0.5, 0.5], [0, 2], [3, 0]])
       self.assertAllEqual(val.dense_shape, [-1, 2])
 
-      grad_indexed_slices = ops.IndexedSlices(
+      grad_indexed_slices = indexed_slices.IndexedSlices(
           indices=[0, 1],
           values=np.array([[10, 0], [0, 20]]).astype(np.float32))
       accum_op = q.apply_indexed_slices_grad(grad_indexed_slices, local_step=1)
@@ -678,7 +679,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
               [3, 3], dtype=dtypes_lib.int32))
       accum_op.run()
       accum_op = q.apply_indexed_slices_grad(
-          ops.IndexedSlices(
+          indexed_slices.IndexedSlices(
               indices=constant_op.constant(
                   [0, 2], dtype=dtypes_lib.int32),
               values=constant_op.constant(

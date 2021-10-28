@@ -100,6 +100,7 @@ py_strict_test(
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

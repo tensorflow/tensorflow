@@ -81,6 +81,7 @@ void AddConvertHloToTfPass(std::string entry_function_name,
   // DCE for private symbols.
   pass_manager->addPass(mlir::createSymbolDCEPass());
 
+  pass_manager->addPass(mlir::TF::CreateStripNoinlineAttributePass());
   // Add inline pass.
   pass_manager->addPass(mlir::createInlinerPass());
 
