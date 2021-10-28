@@ -52,6 +52,11 @@ constexpr uint32_t kFractionRoundingThreshold = 0x00200000;
 
 void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
                         int* shift) {
+#if TFLITE_SINGLE_ROUNDING
+  // Single-rounding MultiplyByQuantizedMultiplier only supports positive
+  // multipliers.
+  TFLITE_DCHECK(double_multiplier >= 0);
+#endif
   if (double_multiplier == 0.) {
     *quantized_multiplier = 0;
     *shift = 0;

@@ -201,6 +201,8 @@ inline int32_t MultiplyByQuantizedMultiplier(int64_t x,
 #ifdef USE_NEON
 inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
     int32x4x4_t input_val, int32_t quantized_multiplier, int shift) {
+  TFLITE_DCHECK(quantized_multiplier >= 0);
+
   const int right_shift = std::min(-1, shift);
   const int left_shift = shift - right_shift;
 

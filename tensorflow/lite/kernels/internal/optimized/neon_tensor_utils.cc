@@ -146,6 +146,7 @@ inline int32_t AccumulateNeonLane(const int32x4_t lane) {
 #if TFLITE_SINGLE_ROUNDING
 inline int32x4x2_t MultiplyByQuantizedMultiplier2Rows(
     int32x4x2_t input_val, int32_t quantized_multiplier, int shift) {
+  TFLITE_DCHECK(quantized_multiplier >= 0);
   const int right_shift = std::min(-1, shift);
   const int left_shift = shift - right_shift;
 
