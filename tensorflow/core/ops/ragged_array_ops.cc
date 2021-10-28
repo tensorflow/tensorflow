@@ -99,6 +99,13 @@ REGISTER_OP("RaggedCross")
       int dense_start = num_ragged * 2 + num_sparse * 3;
       for (int i = 0; i < dense_types.size(); ++i) {
         ShapeHandle dense_input = c->input(i + dense_start);
+        int32 rank = c->Rank(dense_input);
+        if (rank == InferenceContext::kUnknownRank) {
+          continue;
+        } else if (rank != 2) {
+          return errors::InvalidArgument(
+              "tf.ragged.cross only supports inputs with rank=2");
+        }
         int64_t batch_size = c->Value(c->Dim(dense_input, 0));
         if (batch_size != InferenceContext::kUnknownDim) {
           ShapeHandle row_splits = c->Vector(batch_size + 1);
