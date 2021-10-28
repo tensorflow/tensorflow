@@ -2522,139 +2522,83 @@ class Conv2DTest(test.TestCase):
           strides=[1, 1, 1, 1],
           padding=[0, 0, 0, 0])
 
-  @test_util.deprecated_graph_mode_only
   def testOpEdgeCases(self):
-    with self.cached_session() as sess:
-      # Illegal strides.
-      with self.assertRaisesRegex(errors_impl.UnimplementedError,
-                                  "strides in the batch and depth"):
-        input_placeholder = array_ops.placeholder(dtypes.float32)
-        input_val = np.ones([10, 10])
-        filter_placeholder = array_ops.placeholder(dtypes.float32)
-        filter_val = np.ones([10, 10])
-        sess.run(
-            nn_ops.conv2d(
-                input_placeholder,
-                filter_placeholder,
-                strides=[2, 1, 1, 1],
-                padding="SAME"),
-            feed_dict={
-                input_placeholder: input_val,
-                filter_placeholder: filter_val
-            })
-      with self.assertRaisesRegex(errors_impl.UnimplementedError,
-                                  "strides in the batch and depth"):
-        input_placeholder = array_ops.placeholder(dtypes.float32)
-        filter_placeholder = array_ops.placeholder(dtypes.float32)
-        input_val = np.ones([10, 10])
-        filter_val = np.ones([10, 10])
-        sess.run(
-            nn_ops.conv2d(
-                input_placeholder,
-                filter_placeholder,
-                strides=[1, 1, 1, 2],
-                padding="SAME"),
-            feed_dict={
-                input_placeholder: input_val,
-                filter_placeholder: filter_val
-            })
+    # Illegal strides.
+    with self.assertRaisesRegex((ValueError, errors_impl.UnimplementedError),
+                                "strides in the batch and depth"):
+      input_val = np.ones([2, 4, 10, 10])
+      filter_val = np.ones([2, 4, 10, 10])
+      self.evaluate(
+          nn_ops.conv2d(
+              input_val, filter_val, strides=[2, 1, 1, 1], padding="SAME"))
+    with self.assertRaisesRegex((ValueError, errors_impl.UnimplementedError),
+                                "strides in the batch and depth"):
+      input_val = np.ones([2, 4, 10, 10])
+      filter_val = np.ones([2, 4, 10, 10])
+      self.evaluate(
+          nn_ops.conv2d(
+              input_val, filter_val, strides=[1, 1, 1, 2], padding="SAME"))
 
-      # Filter larger than input.
-      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
-        input_placeholder = array_ops.placeholder(
-            dtypes.float32, shape=[32, 20, 20, 3])
-        input_val = np.ones([32, 20, 20, 3])
-        filter_placeholder = array_ops.placeholder(
-            dtypes.float32, shape=[20, 21, 3, 2])
-        filter_val = np.ones([20, 21, 3, 2])
+    # TODO(b/195689143): Will enable when fixed for V2 behavior
+    # # Filter larger than input.
+    # with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+    #   input_val = np.ones([32, 20, 20, 3])
+    #   filter_val = np.ones([20, 21, 3, 2])
+    #   self.evaluate(
+    #       nn_ops.conv2d(
+    #           input_val, filter_val, strides=[1, 1, 1, 1], padding="VALID"))
+    # with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+    #   input_val = np.ones([32, 20, 20, 3])
+    #   filter_val = np.ones([21, 20, 3, 2])
+    #   self.evaluate(
+    #       nn_ops.conv2d(
+    #           input_val, filter_val, strides=[1, 1, 1, 1], padding="VALID"))
+    #
+    # # Filter larger than input + padding.
+    # with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+    #   input_val = np.ones([32, 20, 20, 3])
+    # filter_val = np.ones([24, 25, 3, 2])
+    #   self.evaluate(
+    #       nn_ops.conv2d(
+    #           input_val,
+    #           filter_val,
+    #           strides=[1, 1, 1, 1],
+    #           padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
 
-        sess.run(
-            nn_ops.conv2d(
-                input_placeholder,
-                filter_placeholder,
-                strides=[1, 1, 1, 1],
-                padding="VALID"),
-            feed_dict={
-                input_placeholder: input_val,
-                filter_placeholder: filter_val
-            })
-      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
-        input_placeholder = array_ops.placeholder(
-            dtypes.float32, shape=[32, 20, 20, 3])
-        input_val = np.ones([32, 20, 20, 3])
-        filter_placeholder = array_ops.placeholder(
-            dtypes.float32, shape=[21, 20, 3, 2])
-        filter_val = np.ones([21, 20, 3, 2])
-        sess.run(
-            nn_ops.conv2d(
-                input_placeholder,
-                filter_placeholder,
-                strides=[1, 1, 1, 1],
-                padding="VALID"),
-            feed_dict={
-                input_placeholder: input_val,
-                filter_placeholder: filter_val
-            })
+    # Filter dimensions must be greater than 0.
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "filter must not have zero elements"
+        "|has a non-positive dimension"):
+      input_val = np.ones([1, 1, 1, 1])
+      filter_val = np.ones([1, 0, 1, 1])
+      self.evaluate(
+          nn_ops.conv2d(
+              input_val, filter_val, strides=[1, 1, 1, 1], padding="SAME"))
 
-      # Filter larger than input + padding.
-      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
-        input_placeholder = array_ops.placeholder(
-            dtypes.float32, shape=[32, 20, 20, 3])
-        input_val = np.ones([32, 20, 20, 3])
-        filter_placeholder = array_ops.placeholder(
-            dtypes.float32, shape=[24, 25, 3, 2])
-        filter_val = np.ones([24, 25, 3, 2])
-        sess.run(
-            nn_ops.conv2d(
-                input_placeholder,
-                filter_placeholder,
-                strides=[1, 1, 1, 1],
-                padding=[[0, 0], [2, 2], [2, 2], [0, 0]]),
-            feed_dict={
-                input_placeholder: input_val,
-                filter_placeholder: filter_val
-            })
-
-      # Negative padding during backprop.
-      with self.assertRaisesRegex(
-          errors_impl.InvalidArgumentError,
-          "All elements of explicit_paddings must be nonnegative"):
-        filter_placeholder = array_ops.placeholder(
-            dtypes.float32, shape=[18, 18, 3, 2])
-        filter_val = np.ones([18, 18, 3, 2])
-        out_backprop = array_ops.placeholder(
-            dtypes.float32, shape=[32, 3, 2, 2])
-        out_backprop_val = np.ones([32, 3, 2, 2])
-        sess.run(
-            nn_ops.conv2d_backprop_input([32, 20, 20, 3],
-                                         filter_placeholder,
-                                         out_backprop,
-                                         strides=[1, 1, 1, 1],
-                                         padding=[[0, 0], [-1, 0], [0, 0],
-                                                  [0, 0]]),
-            feed_dict={
-                filter_placeholder: filter_val,
-                out_backprop: out_backprop_val
-            })
-      with self.assertRaisesRegex(
-          errors_impl.InvalidArgumentError,
-          "All elements of explicit_paddings must be nonnegative"):
-        input_placeholder = array_ops.placeholder(
-            dtypes.float32, shape=[32, 20, 20, 3])
-        input_val = np.ones([32, 20, 20, 3])
-        out_backprop = array_ops.placeholder(
-            dtypes.float32, shape=[32, 3, 2, 2])
-        out_backprop_val = np.ones([32, 3, 2, 2])
-        sess.run(
-            nn_ops.conv2d_backprop_filter(
-                input_placeholder, [18, 18, 3, 2],
-                out_backprop,
-                strides=[1, 1, 1, 1],
-                padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]),
-            feed_dict={
-                input_placeholder: input_val,
-                out_backprop: out_backprop_val
-            })
+    # Negative padding during backprop.
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        "All elements of explicit_paddings must be nonnegative"):
+      filter_val = np.ones([18, 18, 3, 2])
+      out_backprop_val = np.ones([32, 3, 2, 2])
+      self.evaluate(
+          nn_ops.conv2d_backprop_input([32, 20, 20, 3],
+                                       filter_val,
+                                       out_backprop_val,
+                                       strides=[1, 1, 1, 1],
+                                       padding=[[0, 0], [-1, 0], [0, 0], [0,
+                                                                          0]]))
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        "All elements of explicit_paddings must be nonnegative"):
+      input_val = np.ones([32, 20, 20, 3])
+      out_backprop_val = np.ones([32, 3, 2, 2])
+      self.evaluate(
+          nn_ops.conv2d_backprop_filter(
+              input_val, [18, 18, 3, 2],
+              out_backprop_val,
+              strides=[1, 1, 1, 1],
+              padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]))
 
 
 class DepthwiseConv2DTest(test.TestCase):
@@ -2664,10 +2608,10 @@ class DepthwiseConv2DTest(test.TestCase):
     """Verifies the output values of the convolution function.
 
     Args:
-      tensor_in_sizes: Input tensor dimensions in
-        [batch, input_rows, input_cols, input_depth].
-      filter_in_sizes: Filter tensor dimensions in
-        [filter_rows, filter_cols, input_depth, depth_multiplier].
+      tensor_in_sizes: Input tensor dimensions in [batch, input_rows,
+        input_cols, input_depth].
+      filter_in_sizes: Filter tensor dimensions in [filter_rows, filter_cols,
+        input_depth, depth_multiplier].
       stride: Stride.
       padding: Padding type.
       expected: An array containing the expected operation outputs.
