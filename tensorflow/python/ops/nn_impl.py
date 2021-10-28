@@ -560,6 +560,7 @@ def swish(features, beta = 1.0):
   # pylint: enable=g-doc-args
   features = ops.convert_to_tensor(features, name="features")
   beta = ops.convert_to_tensor(beta, name="beta")
+  beta = math_ops.cast(beta, features.dtype)
 
   def grad(dy):
     """Gradient for the Swish activation function"""
