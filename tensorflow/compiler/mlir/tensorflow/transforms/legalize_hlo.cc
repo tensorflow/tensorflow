@@ -1636,7 +1636,8 @@ bool IsSpatialPoolingWithoutDilation(
 // * div(reduce_sum_window(x), reduce_sum_window(constant(1)))
 class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
  public:
-  using OpConversionPattern::OpConversionPattern;
+  explicit ConvertAvgPoolOp(MLIRContext *context)
+      : OpConversionPattern(context, /*benefit=*/10) {}
 
   LogicalResult matchAndRewrite(
       mhlo::DivOp div_op, ArrayRef<Value> args,
