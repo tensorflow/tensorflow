@@ -40,11 +40,11 @@ namespace full_type {
 // same can be said about the shape inference function.
 
 // Helper for a type inference function which has the same type as the input.
-// The n arg allow multiple outputs, e.g. (T -> (T, T)).
+// The n arg allow multiple outputs, e.g. (T -> Product[T, T]).
 ForwardTypeInferenceFn ReplicateInputs(int n = 1);
 
 // Helper for a type inference function which has the same type as a variadic
-// number of inputs, e.g. (T, T -> T), (T, T, T -> T), etc.
+// number of inputs, e.g. (T, T -> Product[T]), (T, T, T -> Product[T]), etc.
 // Assumes all inputs are of identical type.
 ForwardTypeInferenceFn ReplicateIdenticalInputs();
 
