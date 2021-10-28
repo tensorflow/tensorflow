@@ -791,6 +791,10 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
     return InternalError("Failed to lower TFRT Dialect to BEF.");
   }
 
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    DumpToFileInDirOrStdout(*hlo_module, "", "tfrt_bef", bef);
+  }
+
   auto ptr = static_cast<uint8_t*>(
       tfrt::AlignedAlloc(tfrt::GetRequiredBefAlignment(), bef.size()));
   std::copy(bef.begin(), bef.end(), ptr);

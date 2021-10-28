@@ -12,8 +12,8 @@ func @dyn_broadcast(%operand: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
   } : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
   return %result : tensor<?x?x?xf32>
 }
-// CHECK: %[[SHAPE:.*]] = tensor.from_elements
 // CHECK: %[[OPERAND:.*]] = memref.buffer_cast %[[ARG]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements
 
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
@@ -56,8 +56,8 @@ func @dyn_broadcast_unsigned(%operand: tensor<?x?xui32>) -> tensor<?x?x?xui32> {
   return %result : tensor<?x?x?xui32>
 }
 
-// CHECK: %[[SHAPE:.*]] = tensor.from_elements
 // CHECK: %[[OPERAND:.*]] = memref.buffer_cast %[[ARG]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements
 // CHECK: %[[COPERAND:.*]] = builtin.unrealized_conversion_cast %[[OPERAND]] : memref<?x?xui32> to memref<?x?xi32>
 
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
@@ -100,8 +100,8 @@ func @dyn_reshape_unsigned(%operand: tensor<?x?xui32>) -> tensor<?x?x?xui32> {
   return %result : tensor<?x?x?xui32>
 }
 
-// CHECK: %[[SHAPE:.*]] = tensor.from_elements
 // CHECK: %[[OPERAND:.*]] = memref.buffer_cast %[[ARG]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements
 // CHECK: %[[BSHAPE:.*]] = memref.buffer_cast %[[SHAPE]]
 // CHECK: %[[COPERAND:.*]] = builtin.unrealized_conversion_cast %[[OPERAND]] : memref<?x?xui32> to memref<?x?xi32>
 

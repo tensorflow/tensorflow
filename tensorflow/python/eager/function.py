@@ -2324,7 +2324,7 @@ class ConcreteFunction(core.ConcreteFunction):
       """Returns a string describing the spec for a single argument."""
       if isinstance(spec, tensor_spec.TensorSpec):
         return "{} Tensor, shape={}".format(spec.dtype.name, spec.shape)
-      elif nest.is_sequence(spec):
+      elif nest.is_nested(spec):
         pieces = nest.flatten(spec, expand_composites=False)
         markers = [_Marker("<{}>".format(i + 1)) for i in range(len(pieces))]
         structure = nest.pack_sequence_as(spec, markers)

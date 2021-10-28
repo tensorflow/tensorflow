@@ -54,7 +54,6 @@ py_library(
         "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers/normalization",
         "//tensorflow/python/keras/layers/preprocessing",
-        "//tensorflow/python/keras/premade",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )

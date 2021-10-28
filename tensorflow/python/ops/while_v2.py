@@ -195,7 +195,7 @@ def while_loop(cond,
       # `orig_loop_vars` and `args`, converts flows in `args` to TensorArrays
       # and packs it into the structure of `orig_loop_vars`.
       outputs = body(*_pack_sequence_as(orig_loop_vars, args))
-      if not nest.is_sequence_or_composite(outputs):
+      if not nest.is_nested_or_composite(outputs):
         outputs = [outputs]
       # Compare the structure of input and output of body converting the
       # top-level tuples to list to be compatible with legacy while_loop.

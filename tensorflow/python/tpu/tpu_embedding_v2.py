@@ -1113,7 +1113,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     # expand_composites here is important, we need to check the device of each
     # underlying tensor.
     for input_tensor, input_path in zip(flat_inputs, flat_paths):
-      if nest.is_sequence_or_composite(input_tensor):
+      if nest.is_nested_or_composite(input_tensor):
         input_tensors = nest.flatten(input_tensor, expand_composites=True)
       else:
         input_tensors = [input_tensor]
