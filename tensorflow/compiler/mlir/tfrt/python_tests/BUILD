@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 licenses(["notice"])
 
@@ -249,5 +250,56 @@ py_strict_test(
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/platform",
+    ],
+)
+
+td_library(
+    name = "python_test_attrs_td_files",
+    srcs = ["python_test_attrs.td"],
+    deps = [
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "python_test_attrs_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-dialect-decls"],
+            "python_test_attrs.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "python_test_attrs.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "python_test_attrs.td",
+    deps = [":python_test_attrs_td_files"],
+)
+
+cc_library(
+    name = "python_test_attrs",
+    srcs = [
+        "python_test_attrs.cc",
+    ],
+    hdrs = [
+        "python_test_attrs.h",
+    ],
+    deps = [
+        ":python_test_attrs_inc_gen",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "python_test_attrs_registration",
+    srcs = ["python_test_attrs_registration.cc"],
+    hdrs = ["python_test_attrs_registration.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":python_test_attrs",
+        "@llvm-project//mlir:IR",
     ],
 )
