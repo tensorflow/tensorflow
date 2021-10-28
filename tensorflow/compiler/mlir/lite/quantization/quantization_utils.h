@@ -247,16 +247,16 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 // matched pattern are rewritten by its quantized alternatives.
 //
 // The concrete pattern, extends from this base pattern, can specify whether it
-// allows "hybrid" operands or results. These "hybrid" operands and results
-// don't have quantization parameters propagated to, so will be in float in the
-// quantized results. The concrete pattern should define the following two
-// functions:
+// allows "hybrid" operands and results for the operations in the current
+// context. These "hybrid" operands and results don't have quantization
+// parameters propagated to, so will be in float in the quantized results. The
+// concrete pattern should define the following two functions:
 //
-//   bool AllowHybridOperand() const
-//   bool AllowHybridResult() const
+//   bool AllowHybridOperand(Operation *) const
+//   bool AllowHybridResult(Operation *) const
 //
 // Full integer quantization disallows "hybrid" operands or results.
-// Weight quantization allows "hybrid" operands and results.
+// Dynamic range quantization allows "hybrid" operands and results.
 template <typename ConcretTy, typename Q, typename DQ, typename VERIFIER,
           typename RootOp = DQ>
 struct QuantizationPattern : public RewritePattern {
@@ -366,7 +366,8 @@ struct QuantizationPattern : public RewritePattern {
           // If the operand is an integer tensor, then it doesn't require the
           // DQ op in the pattern.
           inputs.push_back(operand);
-        } else if (static_cast<const ConcretTy*>(this)->AllowHybridOperand()) {
+        } else if (static_cast<const ConcretTy*>(this)->AllowHybridOperand(
+                       quantized_op)) {
           inputs.push_back(operand);
         } else {
           return failure();
@@ -401,7 +402,8 @@ struct QuantizationPattern : public RewritePattern {
           // D op in the pattern.
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
-        } else if (static_cast<const ConcretTy*>(this)->AllowHybridResult()) {
+        } else if (static_cast<const ConcretTy*>(this)->AllowHybridResult(
+                       quantized_op)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else {
