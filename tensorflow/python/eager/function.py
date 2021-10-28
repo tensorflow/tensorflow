@@ -3023,7 +3023,7 @@ class Function(object):
       self._hashable_input_signature = _make_input_signature_hashable(
           self.flat_input_signature)
 
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     # _descriptor_cache is a of instance of a class to an instance-specific
     # `Function`, used to make sure defun-decorated methods create different
     # functions for each instance.
