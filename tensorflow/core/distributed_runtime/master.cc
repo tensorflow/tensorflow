@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/master.pb.h"
@@ -58,7 +59,7 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-const char* const kGrpcProtocol = "grpc://";
+constexpr char kGrpcPrefixRegex[] = "^grpc.*://";
 }  // namespace
 
 Master::Master(MasterEnv* env, double session_gc_seconds)
@@ -377,17 +378,11 @@ void Master::CreateSession(const CreateSessionRequest* req,
 
     if (req->config().has_cluster_def()) {
       worker_cache_factory_options.cluster_def = &req->config().cluster_def();
+      // If the target starts with gRPC protocol prefix, remove the prefix
+      string normalized_string(req->target());
+      RE2::Replace(&normalized_string, kGrpcPrefixRegex, "");
 
       // Set the server_def's job_name and task_index fields.
-      string normalized_string;
-      string grpc_protocol(kGrpcProtocol);
-      if (req->target().compare(0, grpc_protocol.length(), grpc_protocol) ==
-          0) {
-        normalized_string =
-            req->target().substr(grpc_protocol.length(), string::npos);
-      } else {
-        normalized_string = req->target();
-      }
       for (auto&& job : req->config().cluster_def().job()) {
         for (auto&& task : job.tasks()) {
           if (task.second == normalized_string) {
