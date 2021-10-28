@@ -7818,3 +7818,12 @@ tf_cc_test(
         "//tensorflow/core:testlib",
     ],
 )
+
+tf_kernel_library(
+    name = "filesystem_ops",
+    srcs = ["filesystem_ops.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
