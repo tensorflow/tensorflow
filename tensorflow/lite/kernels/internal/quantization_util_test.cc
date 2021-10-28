@@ -490,6 +490,7 @@ TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
     return std::pair<int32_t, int>{q, s};
   };
 
+#if TFLITE_SINGLE_ROUNDING
   // If beta * scale is greater than fits in the number of integer bits, the
   // result is move near the maximum. Otherwise they quantize as expected.
   // With 4 integer bits we can represent up to 8.0.
@@ -498,6 +499,16 @@ TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
   // But with 5 bits we can go further.
   EXPECT_THAT(quantize(2.0, 8.0, 5), Pair(2147483646, 30));
   EXPECT_THAT(quantize(2.0, 4.0, 5), Pair(1073741824, 30));
+#else
+  // If beta * scale is greater than fits in the number of integer bits, the
+  // result is move near the maximum. Otherwise they quantize as expected.
+  // With 4 integer bits we can represent up to 16.0.
+  EXPECT_THAT(quantize(1.0, 16.0, 4), Pair(2147483647, 31));
+  EXPECT_THAT(quantize(1.0, 8.0, 4), Pair(1073741824, 31));
+  // But with 5 bits we can go further.
+  EXPECT_THAT(quantize(2.0, 16.0, 5), Pair(2147483647, 31));
+  EXPECT_THAT(quantize(2.0, 8.0, 5), Pair(1073741824, 31));
+#endif
 }
 #endif  // GTEST_HAS_DEATH_TEST
 

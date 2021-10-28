@@ -416,6 +416,26 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "quantization_util_single_rounding",
+    srcs = ["quantization_util.cc"],
+    hdrs = ["quantization_util.h"],
+    defines = [
+        "TFLITE_SINGLE_ROUNDING=1",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
+    deps = [
+        ":compatibility",
+        ":cppmath",
+        ":types",
+    ],
+)
+
 cc_test(
     name = "quantization_util_test_single_rounding",
     srcs = ["quantization_util_test.cc"],
@@ -424,7 +444,7 @@ cc_test(
     ],
     deps = [
         ":common",
-        ":quantization_util",
+        ":quantization_util_single_rounding",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -291,6 +291,12 @@ void PreprocessSoftmaxScaling(double beta, double input_scale,
   // result is double equivalent of Q0.31 (actually with more precision). Thus
   // this generates a Q(input_integer_bits).(31-input_integer_bits)
   // representation.
+#if TFLITE_SINGLE_ROUNDING
+  const double max_real_multiplier = (1LL << 30) - 1.0;
+#else
+  const double max_real_multiplier = (1LL << 31) - 1.0;
+#endif
+
 #ifdef TFLITE_EMULATE_FLOAT
   const double input_beta = IntegerDoubleMultiply(beta, input_scale);
   int shift;
@@ -298,12 +304,14 @@ void PreprocessSoftmaxScaling(double beta, double input_scale,
   shift += (31 - input_integer_bits);
   double input_beta_real_multiplier =
       DoubleFromFractionAndShift(fraction, shift);
-  if (IntegerDoubleCompare(input_beta_real_multiplier, (1LL << 30) - 1.0) > 0) {
-    input_beta_real_multiplier = (1LL << 30) - 1.0;
+  if (IntegerDoubleCompare(input_beta_real_multiplier, max_real_multiplier) >
+      0) {
+    input_beta_real_multiplier = max_real_multiplier;
   }
 #else   // TFLITE_EMULATE_FLOAT
-  const double input_beta_real_multiplier = std::min<double>(
-      beta * input_scale * (1 << (31 - input_integer_bits)), (1LL << 30) - 1.0);
+  const double input_beta_real_multiplier =
+      std::min<double>(beta * input_scale * (1 << (31 - input_integer_bits)),
+                       max_real_multiplier);
 #endif  // TFLITE_EMULATE_FLOAT
 
   QuantizeMultiplierGreaterThanOne(input_beta_real_multiplier,
