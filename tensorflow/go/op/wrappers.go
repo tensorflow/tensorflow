@@ -12294,6 +12294,27 @@ func AssertNextDataset(scope *Scope, input_dataset tf.Output, transformations tf
 	return op.Output(0)
 }
 
+// Set configuration of the file system.
+//
+// Arguments:
+//	scheme: File system scheme.
+//	key: The name of the configuration option.
+//	value: The value of the configuration option.
+//
+// Returns the created operation.
+func FileSystemSetConfiguration(scope *Scope, scheme tf.Output, key tf.Output, value tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FileSystemSetConfiguration",
+		Input: []tf.Input{
+			scheme, key, value,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Return the index of device the op runs.
 //
 // Given a list of device names, this operation returns the index of the device
