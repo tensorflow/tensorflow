@@ -654,7 +654,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kRng: {
-      auto shape = func_builder->create<mlir::ConstantOp>(
+      auto shape = func_builder->create<mlir::arith::ConstantOp>(
           loc, Convert(result_type.cast<RankedTensorType>().getShape()));
       switch (instruction->random_distribution()) {
         case xla::RNG_UNIFORM:
@@ -738,6 +738,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kReduceWindow: {
+      llvm::SmallVector<Type, 4> return_types = {result_type};
+      if (mlir::TupleType tuple_ty = result_type.dyn_cast<mlir::TupleType>()) {
+        return_types = llvm::to_vector<6>(tuple_ty.getTypes());
+      }
       llvm::SmallVector<int64_t, 4> sizes, strides, base_dilations,
           win_dilations;
       llvm::SmallVector<int64_t, 8> padding;
@@ -759,10 +763,18 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "window_dilations", ConvertDimensions(win_dilations)));
       attributes.push_back(ConvertPadding(padding));
       auto reduce = func_builder->create<mlir::mhlo::ReduceWindowOp>(
-          loc, result_type, operands, attributes);
+          loc, return_types, operands, attributes);
       TF_RETURN_IF_ERROR(
           ImportAsRegion(*instruction->to_apply(), &reduce.body()));
-      return reduce.getOperation();
+
+      // Check if the output needs to be tupled.
+      if (return_types.size() == 1 && return_types.front() == result_type) {
+        return reduce.getOperation();
+      }
+
+      return func_builder
+          ->create<mlir::mhlo::TupleOp>(loc, result_type, reduce.getResults())
+          .getOperation();
     }
     case HloOpcode::kMap: {
       auto op = func_builder->create<mlir::mhlo::MapOp>(
@@ -827,8 +839,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kAdd: {
       // HLO add ops on PRED elements are actually boolean or, but MHLO dialect
       // AddOps on i1 are just addition with overflow; so, we have to implement
-      // the special behavior of HLO add ops on PRED here by creating an OrOp
-      // instead.
+      // the special behavior of HLO add ops on PRED here by creating an
+      // arith::OrIOp instead.
       if (instruction->shape().element_type() == PRED) {
         return func_builder
             ->create<mlir::mhlo::OrOp>(loc, result_type, operands, attributes)
@@ -1146,7 +1158,7 @@ StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
   if (shape.IsToken()) return builder_->getUnitAttr();
   if (shape.IsTuple()) {
     std::vector<mlir::Attribute> tuple_layouts;
-    for (int64_t i = 0; i < shape.tuple_shapes_size(); i++) {
+    for (int i = 0; i < shape.tuple_shapes_size(); i++) {
       TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
                           ConvertShapeToMlirLayout(shape.tuple_shapes(i)));
       tuple_layouts.push_back(layout);

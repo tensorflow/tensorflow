@@ -15,6 +15,7 @@
 
 import enum
 import inspect
+import typing
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
 
 import numpy as np
@@ -228,6 +229,11 @@ class OpSharding_Type(enum.IntEnum):
   MAXIMAL: int
   TUPLE: int
   OTHER: int
+
+class OpSharding:
+  Type: typing.Type[OpSharding_Type]
+  type: OpSharding_Type
+  replicate_on_last_dim: bool
 
 class ChannelHandle_ChannelType(enum.IntEnum):
   CHANNEL_TYPE_INVALID: int

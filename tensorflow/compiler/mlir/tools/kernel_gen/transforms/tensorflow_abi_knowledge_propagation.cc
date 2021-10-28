@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "llvm/ADT/Bitfields.h"
 #include "llvm/ADT/DenseMap.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -183,9 +184,9 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           // TODO(herhut): Remove this once canonicalization handles this.
           if (cast.isDynamicStride(last_stride)) {
             auto dyn_stride = cast.getDynamicStride(last_stride)
-                                  .getDefiningOp<ConstantIndexOp>();
+                                  .getDefiningOp<arith::ConstantIndexOp>();
             if (dyn_stride) {
-              inner_stride_is_constant.insert({result, dyn_stride.getValue()});
+              inner_stride_is_constant.insert({result, dyn_stride.value()});
             }
           } else {
             inner_stride_is_constant.insert(

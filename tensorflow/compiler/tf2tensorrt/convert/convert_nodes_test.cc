@@ -6271,6 +6271,7 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
 auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
   Scope s = Scope::NewRootScope();
   std::vector<Input> values;
+  values.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     const string input_name = StrCat("values_", i);
     values.push_back(ops::Placeholder(s.WithOpName(input_name), dtype));
@@ -6319,12 +6320,12 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
   struct TestParams {
     std::vector<std::vector<int>> input_shapes;
     std::vector<std::vector<int>> input_values;
+    std::vector<bool> inputs_are_tensors;
     int axis;
     std::vector<int> expected_output_dims;
     std::vector<int> expected_output;
     Status conversion_status;
     Status run_status;
-    bool input_as_weight;
   };
 
   const std::vector<std::vector<int>> common_input{CreateVectorIota<int>(6),
@@ -6334,6 +6335,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
       {
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/1,
           /*expected_output_dims=*/{1, 2, 2, 3},
           /*expected_output=*/CreateVectorIota<int>(12),
@@ -6341,6 +6343,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
       {
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/2,
           /*expected_output_dims=*/{1, 1, 4, 3},
           /*expected_output=*/CreateVectorIota<int>(12),
@@ -6348,6 +6351,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
       {
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/3,
           /*expected_output_dims=*/{1, 1, 2, 6},
           /*expected_output=*/
@@ -6357,6 +6361,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*input_shapes=*/{{1, 1}, {1, 2}, {1, 3}, {1, 1}, {1, 1}, {1, 2}},
           /*input_values=*/
           {{1}, {2, 3}, {4, 5, 6}, {7}, {8}, {9, 10}},
+          /*inputs_are_tensors=*/{true, true, true, true, true, true},
           /*axis=*/1,
           /*expected_output_dims=*/{1, 10},
           /*expected_output=*/
@@ -6366,19 +6371,37 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           // An input is a weight
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, false},
           /*axis=*/1,
           /*expected_output_dims=*/{1, 2, 2, 3},
           /*expected_output=*/CreateVectorIota<int>(12),
-          /*conversion_status=*/
-          errors::Unimplemented("The input \"values_1\" for ConcatV2 "
-                                "must be a tensor, at my_concat"),
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? errors::Unimplemented(
+                    "The input \"values_1\" for ConcatV2 must be a tensor, at "
+                    "my_concat")
+              : Status::OK(),
           /*run_status=*/Status::OK(),
-          /*input_as_weight=*/true,
+      },
+      {
+          // An input is a weight
+          /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
+          /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{false, false},
+          /*axis=*/1,
+          /*expected_output_dims=*/{1, 2, 2, 3},
+          /*expected_output=*/CreateVectorIota<int>(12),
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? errors::Unimplemented(
+                    "The input \"values_0\" for ConcatV2 must be a tensor, at "
+                    "my_concat")
+              : Status::OK(),
+          /*run_status=*/Status::OK(),
       },
       {
           // Axis is batch dimension, should fail in implicit batch mode.
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/0,
           /*expected_output_dims=*/{2, 1, 2, 3},
           /*expected_output=*/CreateVectorIota<int>(12),
@@ -6392,6 +6415,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           // Inconsistent input shape, runtime error in dynamic shape mode.
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 3, 2}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/1,
           /*expected_output_dims=*/{2, 1, 2, 3},
           /*expected_output=*/CreateVectorIota<int>(12),
@@ -6406,11 +6430,14 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
     Reset();
     const int num_inputs = p.input_shapes.size();
     EXPECT_EQ(num_inputs, p.input_values.size());
+
     NodeDef node_def = get_concat_nodedef(tf_type_, num_inputs);
+
     // Create inputs.
     for (int j = 0; j < num_inputs; ++j) {
       string name = StrCat("values_", j);
-      if (j == 1 && p.input_as_weight) {
+
+      if (!p.inputs_are_tensors[j]) {
         AddTestWeights(name, p.input_shapes[j], p.input_values[j], tf_type_);
       } else {
         AddTestTensor(name, p.input_shapes[j], p.input_values[j]);
@@ -6774,6 +6801,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
 NodeDef GetPackNodeDef(DataType dtype, int num_inputs, int axis) {
   Scope s = Scope::NewRootScope();
   std::vector<Input> values;
+  values.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     const string input_name = StrCat("values_", i);
     values.push_back(ops::Placeholder(s.WithOpName(input_name), dtype));

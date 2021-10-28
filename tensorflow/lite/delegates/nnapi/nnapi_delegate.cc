@@ -5445,7 +5445,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
                   reg->builtin_code == kTfLiteBuiltinReduceMax ||
                   reg->builtin_code == kTfLiteBuiltinReduceMin ||
                   reg->builtin_code == kTfLiteBuiltinReduceProd ||
-                  reg->builtin_code == kTfLiteBuiltinSum) &&
+                  reg->builtin_code == kTfLiteBuiltinSum ||
+                  reg->builtin_code == kTfLiteBuiltinMean) &&
                  (input_pos == 1)) {
         // The axis needs, be converted to a tensor if specified as scalar
         const TfLiteTensor& axis_tensor =

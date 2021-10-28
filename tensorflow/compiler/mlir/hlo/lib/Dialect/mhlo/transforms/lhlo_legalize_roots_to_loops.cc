@@ -153,10 +153,10 @@ LogicalResult lowerWithScheduleLoop(
     const ShapeConstraintAnalysis* shape_constraint_analysis = nullptr) {
   const auto loc = dominant_op->getLoc();
   OpBuilder b(root_ops.back());
-  auto zero = b.create<ConstantOp>(loc, b.getIndexType(),
-                                   b.getIntegerAttr(b.getIndexType(), 0));
-  auto one = b.create<ConstantOp>(loc, b.getIndexType(),
-                                  b.getIntegerAttr(b.getIndexType(), 1));
+  auto zero = b.create<arith::ConstantOp>(
+      loc, b.getIndexType(), b.getIntegerAttr(b.getIndexType(), 0));
+  auto one = b.create<arith::ConstantOp>(loc, b.getIndexType(),
+                                         b.getIntegerAttr(b.getIndexType(), 1));
   auto num_elements =
       codegen_utils::emitNumElementsComputation(b, loc, dominant_op);
   Value var;

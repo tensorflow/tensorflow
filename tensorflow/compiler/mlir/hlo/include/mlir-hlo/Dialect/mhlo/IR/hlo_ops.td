@@ -252,7 +252,7 @@ def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
 }
 def HLO_ImagOp: HLO_UnaryElementwiseOp<"imag",
     [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>],
-    HLO_ComplexTensor> {
+    HLO_FpOrComplexTensor> {
   let summary = "Imag operator";
   let description = [{
     Returns `Imag(operand)` element-wise.
@@ -343,7 +343,7 @@ def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
 }
 def HLO_RealOp: HLO_UnaryElementwiseOp<"real",
     [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>],
-    HLO_ComplexTensor> {
+    HLO_FpOrComplexTensor> {
   let summary = "Real operator";
   let description = [{
     Returns `Real(operand)` element-wise.
@@ -689,7 +689,7 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
 
   let arguments = (ins
     HLO_Token:$token,
-    DefaultValuedAttr<StrAttr, "">:$infeed_config,
+    DefaultValuedStrAttr<StrAttr, "">:$infeed_config,
     OptionalAttr<ArrayAttr>:$layout
   );
   let results = (outs HLO_Tuple);
@@ -713,7 +713,7 @@ def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
   let arguments = (ins
     HLO_TensorOrTuple:$operand,
     HLO_Token:$token,
-    DefaultValuedAttr<StrAttr, "">:$outfeed_config
+    DefaultValuedStrAttr<StrAttr, "">:$outfeed_config
   );
   let results = (outs HLO_Token);
   let hasCustomHLOConverter = 1;
@@ -1209,7 +1209,7 @@ def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training", [NoSideEffect]> {
   let results = (outs HLO_Tuple);
 }
 
-def HLO_BitcastConvertOp : HLO_Op<"bitcast_convert",
+def HLO_BitcastConvertOp : HLO_ShapedInterfaceOp<"bitcast_convert",
     [NoSideEffect]> {
   let summary = "BitcastConvert operator";
   let description = [{
@@ -1227,7 +1227,7 @@ def HLO_BitcastConvertOp : HLO_Op<"bitcast_convert",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_BroadcastOp : HLO_Op<"broadcast",
+def HLO_BroadcastOp : HLO_ShapedInterfaceOp<"broadcast",
       [NoSideEffect, SameOperandsAndResultElementType]> {
   let summary = "Broadcast a tensor to a higher rank by prepending dimensions";
   let description = [{
@@ -1339,7 +1339,7 @@ def HLO_CholeskyOp : HLO_Op<"cholesky",
   let results = (outs HLO_FpOrComplexTensor);
 }
 
-def HLO_ClampOp : HLO_Op<"clamp", [NoSideEffect,
+def HLO_ClampOp : HLO_ShapedInterfaceOp<"clamp", [NoSideEffect,
   SameOperandsAndResultElementType, HLO_BroadcastingElementwise]> {
   let summary = "Clamp operator";
   let description = [{
@@ -1493,17 +1493,17 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
     See https://www.tensorflow.org/xla/operation_semantics#customcall.
   }];
   let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$args,
+    Variadic<HLO_TensorOrTokenOrTuple>:$args,
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
-    DefaultValuedAttr<StrAttr, "">:$backend_config,
+    DefaultValuedStrAttr<StrAttr, "">:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
     DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
                       "CustomCallApiVersion::API_VERSION_ORIGINAL">:
                       $api_version
   );
-  let results = (outs Variadic<HLO_TensorOrTuple>);
+  let results = (outs Variadic<HLO_TensorOrTokenOrTuple>);
   let hasCustomHLOConverter = 1;
 }
 
@@ -2055,8 +2055,7 @@ def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
 // MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
 
-def HLO_RngUniformOp : HLO_Op<"rng_uniform",
-      [InferTensorType<["inferReturnTypeComponents"]>]> {
+def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify]> {
   let summary = "RNG with uniform distribution.";
   let description = [{
     Constructs an output of a given shape with random numbers generated
@@ -2084,8 +2083,7 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform",
   }];
 }
 
-def HLO_RngNormalOp : HLO_Op<"rng_normal",
-      [InferTensorType<["inferReturnTypeComponents"]>]> {
+def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify]> {
   let summary = "RNG with normal distribution.";
   let description = [{
     Constructs an output of a given shape with random numbers generated

@@ -179,6 +179,7 @@ StatusOr<Shape> XlaBuilder::GetShape(XlaOp op) const {
 StatusOr<std::vector<Shape>> XlaBuilder::GetOperandShapes(
     absl::Span<const XlaOp> operands) const {
   std::vector<Shape> operand_shapes;
+  operand_shapes.reserve(operands.size());
   for (XlaOp operand : operands) {
     TF_ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(operand));
     operand_shapes.push_back(*shape);
@@ -655,7 +656,10 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
 
       std::vector<int64_t> to_size;
       std::vector<bool> to_size_is_dynamic;
-      for (int i = 0; i < shape.rank(); i++) {
+      const auto rank = shape.rank();
+      to_size.reserve(rank);
+      to_size_is_dynamic.reserve(rank);
+      for (int i = 0; i < rank; i++) {
         to_size.push_back(shape.dimensions(i));
         to_size_is_dynamic.push_back(shape.is_dynamic_dimension(i));
       }
@@ -3014,7 +3018,9 @@ XlaOp XlaBuilder::AllToAllArray(XlaOp operand, int64_t split_dimension,
     all_to_all = Reshape(all_to_all, sizes);
 
     std::vector<int64_t> permutation;
-    for (int64_t i = 0; i < operand_shape->rank(); ++i) {
+    const auto rank = operand_shape->rank();
+    permutation.reserve(rank + 1);
+    for (int64_t i = 0; i < rank; ++i) {
       int64_t dim_after_reshape = i >= split_dimension ? i + 1 : i;
       if (i == concat_dimension) {
         permutation.push_back(split_dimension);

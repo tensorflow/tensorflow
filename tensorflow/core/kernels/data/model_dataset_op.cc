@@ -63,9 +63,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         cpu_budget_(cpu_budget),
         ram_budget_(ram_budget),
         traceme_metadata_(
-            {{"algorithm", algorithm == model::AutotuneAlgorithm::HILL_CLIMB
-                               ? "hill climb"
-                               : "gradient descent"},
+            {{"algorithm", model::AutotuneAlgorithm_Name(algorithm)},
              {"cpu_budget",
               strings::Printf("%lld", static_cast<long long>(cpu_budget))},
              {"ram_budget",
@@ -90,7 +88,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override { return "ModelDatasetOp::Dataset"; }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);

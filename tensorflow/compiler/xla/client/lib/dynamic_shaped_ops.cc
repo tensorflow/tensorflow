@@ -38,7 +38,7 @@ Shape FindMaxShape(absl::Span<const Shape*> shapes) {
     // Recurse into sub-element.
     std::vector<Shape> results;
     results.reserve(shapes[0]->tuple_shapes_size());
-    for (int64_t i = 0; i < shapes[0]->tuple_shapes_size(); ++i) {
+    for (int i = 0; i < shapes[0]->tuple_shapes_size(); ++i) {
       std::vector<const Shape*> subshapes;
       subshapes.reserve(shapes.size());
       for (int64_t j = 0; j < shapes.size(); ++j) {
@@ -73,7 +73,7 @@ XlaOp ReconsileBranchDifference(const Shape& left_branch_shape,
     // Recurse into sub-element.
     std::vector<XlaOp> results;
     results.reserve(left_branch_shape.tuple_shapes_size());
-    for (int64_t i = 0; i < left_branch_shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < left_branch_shape.tuple_shapes_size(); ++i) {
       XlaOp sub_tuple = GetTupleElement(left_root, i);
       XlaOp elem = ReconsileBranchDifference(left_branch_shape.tuple_shapes(i),
                                              right_branch_shape.tuple_shapes(i),

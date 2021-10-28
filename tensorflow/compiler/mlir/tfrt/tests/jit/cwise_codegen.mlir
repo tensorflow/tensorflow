@@ -2,8 +2,8 @@
 
 #map = affine_map<(d0, d1) -> (d0, d1)>
 func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
   %dim0 = tensor.dim %input, %c0 : tensor<?x?xf32>
   %dim1 = tensor.dim %input, %c1 : tensor<?x?xf32>
   %init = linalg.init_tensor [%dim0, %dim1] : tensor<?x?xf32>
@@ -21,9 +21,9 @@ func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
 // CHECK-LABEL:   func @tanh_2d(
 // CHECK-SAME:                  %[[INPUT:.*]]: tensor<?x?xf32>) -> tensor<?x?xf32> {
-// CHECK-DAG:       %[[C0:.*]] = constant 0 : index
-// CHECK-DAG:       %[[C1:.*]] = constant 1 : index
-// CHECK-DAG:       %[[C8:.*]] = constant 8 : index
+// CHECK-DAG:       %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:       %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:       %[[C8:.*]] = arith.constant 8 : index
 // CHECK-NOT:       tensor.dim
 // CHECK-DAG:       %[[DIM0:.*]] = tensor.dim %[[INPUT]], %[[C0]]
 // CHECK-DAG:       %[[DIM1:.*]] = tensor.dim %[[INPUT]], %[[C1]]

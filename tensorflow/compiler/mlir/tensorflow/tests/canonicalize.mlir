@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: func @tfAssertTrue
 func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {
-  %t = constant dense<true> : tensor<i1>
+  %t = arith.constant dense<true> : tensor<i1>
   // CHECK-NOT: tf.Assert
   "tf.Assert"(%t, %arg0) {summarize = 3} : (tensor<i1>, tensor<1x1x6x2xf32>) -> ()
   return
@@ -10,7 +10,7 @@ func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {
 
 // CHECK-LABEL: func @tfAssertFalse
 func @tfAssertFalse(%arg0: tensor<1x1x6x2xf32>) {
-  %f = constant dense<false> : tensor<i1>
+  %f = arith.constant dense<false> : tensor<i1>
   // CHECK: tf.Assert
   "tf.Assert"(%f, %arg0) {summarize = 3} : (tensor<i1>, tensor<1x1x6x2xf32>) -> ()
   return
@@ -653,7 +653,7 @@ func @testPackShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x2xf32>,
 
 // CHECK-LABEL: testTileMultiplesAllOnes
 func @testTileMultiplesAllOnes(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
-  %cst = constant dense <[1, 1]> : tensor<2xi32>
+  %cst = arith.constant dense <[1, 1]> : tensor<2xi32>
   // CHECK: return %arg0
   %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x3xf32>
   return %0: tensor<2x3xf32>
@@ -673,6 +673,54 @@ func @testStaticAndIdenticalTypeForNotEqualOp(%arg0: tensor<2xi32>, %arg1: tenso
   // CHECK-SAME:   incompatible_shape_error = true
   %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
+}
+
+// CHECK-LABEL: func @testUnknownBroadcastForNotEqualOp
+func @testUnknownBroadcastForNotEqualOp(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<*xi1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = false
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<?xi32>, tensor<?xi32>) -> tensor<*xi1>
+  return %0: tensor<*xi1>
+}
+
+// CHECK-LABEL: func @testKnownGoodBroadcastForNotEqualOp
+func @testKnownGoodBroadcastForNotEqualOp(%arg0: tensor<1x?xi32>, %arg1: tensor<?x1xi32>) -> tensor<?x?xi1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = true
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<1x?xi32>, tensor<?x1xi32>) -> tensor<?x?xi1>
+  return %0: tensor<?x?xi1>
+}
+
+// CHECK-LABEL: func @testKnownBadBroadcastForNotEqualOp
+func @testKnownBadBroadcastForNotEqualOp(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<i1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = false
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<?xi32>, tensor<?xi32>) -> tensor<i1>
+  return %0: tensor<i1>
+}
+
+// CHECK-LABEL: func @testUnrankedRHSForNotEqualOp
+func @testUnrankedRHSForNotEqualOp(%arg0: tensor<i32>, %arg1: tensor<*xi32>) -> tensor<i1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = false
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<i32>, tensor<*xi32>) -> tensor<i1>
+  return %0: tensor<i1>
+}
+
+// CHECK-LABEL: func @testUnrankedLHSForNotEqualOp
+func @testUnrankedLHSForNotEqualOp(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> tensor<i1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = false
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
+  return %0: tensor<i1>
+}
+
+// CHECK-LABEL: func @testScalarForNotEqualOp
+func @testScalarForNotEqualOp(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = true
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %0: tensor<i1>
 }
 
 // CHECK-LABEL: testLogicalNotOfEqual
@@ -811,7 +859,7 @@ func @identityTranspose(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x5x6xf32> {
 
 // CHECK-LABEL: @identityTransposeConst
 func @identityTransposeConst(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x5x6xf32> {
-  %0 = constant dense<[0, 1, 2, 3, 4]> : tensor<5xi32>
+  %0 = arith.constant dense<[0, 1, 2, 3, 4]> : tensor<5xi32>
   %1 = "tf.Transpose"(%arg0, %0) : (tensor<2x3x4x5x6xf32>, tensor<5xi32>) -> tensor<2x3x4x5x6xf32>
 
   return %1 : tensor<2x3x4x5x6xf32>
@@ -842,8 +890,8 @@ func @cancellableTranspose(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32> {
 
 // CHECK-LABEL: @cancellableTransposeConst
 func @cancellableTransposeConst(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32> {
-  %0 = constant dense<[0, 3, 1, 2]> : tensor<4xi32>
-  %1 = constant dense<[0, 2, 3, 1]> : tensor<4xi32>
+  %0 = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
+  %1 = arith.constant dense<[0, 2, 3, 1]> : tensor<4xi32>
   %2 = "tf.Transpose"(%arg0, %0) : (tensor<1x4x4x8xf32>, tensor<4xi32>) -> tensor<1x8x4x4xf32>
   %3 = "tf.Transpose"(%2, %1) : (tensor<1x8x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x8xf32>
 
@@ -1194,8 +1242,8 @@ func @eliminatePassThroughCaseRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %ar
 
 // CHECK-LABEL: foldCase
 func @foldCase(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
-  %2 = constant dense<1> : tensor<i32>
-  %3 = constant dense<0> : tensor<i32>
+  %2 = arith.constant dense<1> : tensor<i32>
+  %3 = arith.constant dense<0> : tensor<i32>
 
   // CHECK: PartitionedCall
   // CHECK-SAME: device = "noodle"
@@ -1262,14 +1310,14 @@ func @testWhileRegionSimplePassThrough(%arg0 : tensor<*xf32>, %arg1 : tensor<i32
     {
       // condition, check if count has reached 0
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
-      %zero = constant dense<0> : tensor<i32>
+      %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "tf.Yield"(%ne) : (tensor<i1>) -> ()
     },
     {
       // loop body
       ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
-      %one = constant dense<1> : tensor<i32>
+      %one = arith.constant dense<1> : tensor<i32>
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%barg0, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
     }
@@ -1286,14 +1334,14 @@ func @testWhileRegionReturnExternValues(%arg0 : tensor<*xf32>, %arg1 : tensor<i3
     {
       // condition, check if count has reached 0
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
-      %zero = constant dense<0> : tensor<i32>
+      %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "tf.Yield"(%ne) : (tensor<i1>) -> ()
     },
     {
       // loop body
       ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
-      %one = constant dense<1> : tensor<i32>
+      %one = arith.constant dense<1> : tensor<i32>
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%arg0, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
     }
@@ -1311,14 +1359,14 @@ func @testWhileRegionMultiplePassThrough(%arg0 : tensor<*xf32>, %arg1 : tensor<*
     {
       // condition, check if count has reached 0
       ^bb0(%carg0 : tensor<*xf32>, %carg1 : tensor<*xf32>, %carg2 : tensor<*xf32>, %carg3 : tensor<i32>):
-      %zero = constant dense<0> : tensor<i32>
+      %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg3, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "tf.Yield"(%ne) : (tensor<i1>) -> ()
     },
     {
       // loop body
       ^bb0(%barg0 : tensor<*xf32>, %barg1 : tensor<*xf32>, %barg2 : tensor<*xf32>, %barg3 : tensor<i32>):
-      %one = constant dense<1> : tensor<i32>
+      %one = arith.constant dense<1> : tensor<i32>
       %sub = "tf.Sub"(%barg3, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%barg0, %barg1, %barg2, %sub) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> ()
     }
@@ -1341,7 +1389,7 @@ func @testWhileRegionMultiplePassThroughNonContiguous(%arg0 : tensor<*xf32>, %ar
     {
       // condition, check if count has reached 0
       ^bb0(%carg0 : tensor<*xf32>, %carg1 : tensor<*xf32>, %carg2 : tensor<*xf32>, %carg3 : tensor<i32>):
-      %zero = constant dense<0> : tensor<i32>
+      %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg3, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "tf.Yield"(%ne) : (tensor<i1>) -> ()
     },
@@ -1349,7 +1397,7 @@ func @testWhileRegionMultiplePassThroughNonContiguous(%arg0 : tensor<*xf32>, %ar
       // loop body
       ^bb0(%barg0 : tensor<*xf32>, %barg1 : tensor<*xf32>, %barg2 : tensor<*xf32>, %barg3 : tensor<i32>):
       %arg1neg = "tf.Neg"(%barg1) : (tensor<*xf32>) -> tensor<*xf32>
-      %one = constant dense<1> : tensor<i32>
+      %one = arith.constant dense<1> : tensor<i32>
       %sub = "tf.Sub"(%barg3, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%barg0, %arg1neg, %barg2, %sub) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> ()
     }
@@ -1376,14 +1424,14 @@ func @testWhileRegionPassThroughTypeMismatch(%arg0 : tensor<*xf32>, %arg1 : tens
     {
       // condition, check if count has reached 0
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
-      %zero = constant dense<0> : tensor<i32>
+      %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "tf.Yield"(%ne) : (tensor<i1>) -> ()
     },
     {
       // loop body
       ^bb0(%barg0: tensor<?x?xf32>, %barg1: tensor<i32>):
-      %one = constant dense<1> : tensor<i32>
+      %one = arith.constant dense<1> : tensor<i32>
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%barg0, %sub) : (tensor<?x?xf32>, tensor<i32>) -> ()
     }
@@ -1398,14 +1446,14 @@ func @testWhileRegionPassThroughTypeMismatch(%arg0 : tensor<*xf32>, %arg1 : tens
 // eliminate them.
 // CHECK-LABEL: testWhileRegionUnusedValue
 func @testWhileRegionUnusedValue(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %arg2: tensor<i32>) -> tensor<*xf32> {
-  %cst = constant dense <33.0> : tensor<f32>
+  %cst = arith.constant dense <33.0> : tensor<f32>
   // Verify that last 2 operands of while (unused) are removed
   // CHECK: %[[WHILE_OUT:.*]]:2 = "tf.WhileRegion"(%arg0, %arg1)
   %0:4 = "tf.WhileRegion"(%arg0, %arg1, %arg2, %cst) (
     {
       // condition, check if count has reached 0
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>, %carg2:tensor<i32>, %carg3:tensor<f32>):
-      %zero = constant dense<0> : tensor<i32>
+      %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "tf.Yield"(%ne) : (tensor<i1>) -> ()
     },
@@ -1413,10 +1461,10 @@ func @testWhileRegionUnusedValue(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %ar
       // loop body
       ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>, %barg2:tensor<i32>, %barg3:tensor<f32>):
       %add = "tf.Add"(%barg0, %barg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-      %one = constant dense<1> : tensor<i32>
+      %one = arith.constant dense<1> : tensor<i32>
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-      %dummy0 = constant dense<7> : tensor<i32>
-      %dummy1 = constant dense<3.0> : tensor<f32>
+      %dummy0 = arith.constant dense<7> : tensor<i32>
+      %dummy1 = arith.constant dense<3.0> : tensor<f32>
       "tf.Yield"(%add, %sub, %dummy0, %dummy1) : (tensor<*xf32>, tensor<i32>, tensor<i32>, tensor<f32>) -> ()
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>,  tensor<i32>, tensor<f32>) -> (tensor<*xf32>, tensor<i32>,  tensor<i32>, tensor<f32>)
@@ -1443,7 +1491,7 @@ func @testIfDropOutputShapes(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: testNMSV3ToNMSV4
 func @testNMSV3ToNMSV4(%arg0: tensor<3x4xf32>, %arg1: tensor<3xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<2xi32> {
-  %max_size = constant dense<2> : tensor<i32>
+  %max_size = arith.constant dense<2> : tensor<i32>
   // CHECK: "tf.NonMaxSuppressionV4"
   %0 = "tf.NonMaxSuppressionV3"(%arg0, %arg1, %max_size, %arg2, %arg3): (tensor<3x4xf32>, tensor<3xf32>, tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<2xi32>)
   return %0 : tensor<2xi32>

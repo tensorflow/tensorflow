@@ -428,7 +428,7 @@ Value MaterializeScalarRankSpecializationCase(
     function_ref<void(OpBuilder &, Location)> else_builder_fn) {
   // Materialize predicate: All operands are scalars, except the expected
   // non-scalars.
-  Value one = b.create<ConstantIndexOp>(loc, 1);
+  Value one = b.create<arith::ConstantIndexOp>(loc, 1);
   Value all_others_are_scalar;
   for (auto it : llvm::zip(op.operands(), shapes)) {
     Value operand, shape;
@@ -437,12 +437,12 @@ Value MaterializeScalarRankSpecializationCase(
         IsScalarTensorType(operand.getType())) {
       continue;
     }
-    auto literal =
-        b.create<CmpIOp>(loc, CmpIPredicate::eq,
-                         b.create<shape::NumElementsOp>(loc, shape), one);
+    auto literal = b.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::eq,
+        b.create<shape::NumElementsOp>(loc, shape), one);
     all_others_are_scalar =
         all_others_are_scalar
-            ? b.create<mlir::AndOp>(loc, all_others_are_scalar, literal)
+            ? b.create<mlir::arith::AndIOp>(loc, all_others_are_scalar, literal)
                   .getResult()
             : literal.result();
   }
@@ -511,11 +511,11 @@ Value MaterializeEqualShapesRankSpecializationCase(
   for (Value s : llvm::drop_begin(non_scalar_shapes)) {
     auto literal =
         b.create<shape::ShapeEqOp>(loc, non_scalar_shapes.front(), s);
-    all_shapes_eq_or_scalar =
-        all_shapes_eq_or_scalar
-            ? b.create<mlir::AndOp>(loc, all_shapes_eq_or_scalar, literal)
-                  .result()
-            : literal;
+    all_shapes_eq_or_scalar = all_shapes_eq_or_scalar
+                                  ? b.create<mlir::arith::AndIOp>(
+                                         loc, all_shapes_eq_or_scalar, literal)
+                                        .result()
+                                  : literal;
   }
 
   auto if_op = b.create<scf::IfOp>(
@@ -597,9 +597,9 @@ Value RecusivelyMaterializeTargetRankSpecializationCases(
     OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
     const SmallVector<Value, 8> &shapes, Value max_rank,
     int64_t min_target_rank, int64_t max_target_rank) {
-  Value condition =
-      b.create<CmpIOp>(loc, CmpIPredicate::ule, max_rank,
-                       b.create<ConstantIndexOp>(loc, min_target_rank));
+  Value condition = b.create<arith::CmpIOp>(
+      loc, arith::CmpIPredicate::ule, max_rank,
+      b.create<arith::ConstantIndexOp>(loc, min_target_rank));
 
   // If only a unique target rank is left, we can lower to an assert instead
   // of the usual if operation.
@@ -650,7 +650,9 @@ Value MaterializeGenericRankSpecializationCases(
       max_rank = rank;
     } else {
       max_rank = b.create<mlir::SelectOp>(
-          loc, b.create<CmpIOp>(loc, CmpIPredicate::sgt, max_rank, rank),
+          loc,
+          b.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt, max_rank,
+                                  rank),
           max_rank, rank);
     }
   }

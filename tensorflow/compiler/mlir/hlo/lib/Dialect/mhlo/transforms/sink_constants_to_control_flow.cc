@@ -32,13 +32,14 @@ namespace {
 // A pass that sinks constants implicitly captured in control flow regions. This
 // is necessary to export to XLA.
 //
-// TODO(hinsu): Generalize this pass to handle all the ops with regions. Any
-// value used within the region that is defined outside of op's region should be
-// sank to the regions and not just the constants. Ops such as If and While
-// whose computations doesn't require fixed signature like Sort or Reduce have
-// an option to pass outside values as operands of the op to avoid recomputing
-// those within internally. Note that doing so is the only option in case of
-// values defined outside that are BlockArguments of any of the parent region.
+// TODO(b/203775547): Generalize this pass to handle all the ops with regions.
+// Any value used within the region that is defined outside of op's region
+// should be sank to the regions and not just the constants. Ops such as If and
+// While whose computations doesn't require fixed signature like Sort or Reduce
+// have an option to pass outside values as operands of the op to avoid
+// recomputing those within internally. Note that doing so is the only option in
+// case of values defined outside that are BlockArguments of any of the parent
+// region.
 class SinkConstantsToControlFlowPass
     : public SinkConstantsToControlFlowPassBase<
           SinkConstantsToControlFlowPass> {

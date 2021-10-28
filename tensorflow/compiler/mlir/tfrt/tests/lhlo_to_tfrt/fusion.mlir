@@ -6,7 +6,7 @@
 
 // CHECK: module attributes {gpu.container_module} {
 // CHECK: gpu.module @[[gpu_module:.*]] attributes {
-// CHECK-SAME: nvvm.cubin = "
+// CHECK-SAME: binary = "
 // CHECK-SAME:   .visible .entry _fusion(
 // CHECK-SAME:     .param .u64 _fusion_param_0
 // CHECK-SAME:   )
@@ -17,12 +17,12 @@
 // CHECK: func @fusion(%arg0: memref<4096xf32>) {
 func @fusion(%arg0: memref<4096xf32>) {
 
-    // CHECK: %[[bx:.*]] = constant 4 : index
-    // CHECK: %[[by:.*]] = constant 1 : index
-    // CHECK: %[[bz:.*]] = constant 1 : index
-    // CHECK: %[[tx:.*]] = constant 256 : index
-    // CHECK: %[[ty:.*]] = constant 1 : index
-    // CHECK: %[[tz:.*]] = constant 1 : index
+    // CHECK: %[[bx:.*]] = arith.constant 4 : index
+    // CHECK: %[[by:.*]] = arith.constant 1 : index
+    // CHECK: %[[bz:.*]] = arith.constant 1 : index
+    // CHECK: %[[tx:.*]] = arith.constant 256 : index
+    // CHECK: %[[ty:.*]] = arith.constant 1 : index
+    // CHECK: %[[tz:.*]] = arith.constant 1 : index
     // CHECK: gpu.launch_func @[[gpu_module]]::@[[kernel]]
     // CHECK-SAME: blocks in (%[[bx]], %[[by]], %[[bz]])
     // CHECK-SAME: threads in (%[[tx]], %[[ty]], %[[tz]])
@@ -47,15 +47,15 @@ memref.global "private" constant @ones : memref<8xf32> = dense<
 
 // CHECK: module attributes {gpu.container_module} {
 // CHECK: gpu.module @[[gpu_module:.*]] attributes {
-// CHECK-SAME: constants = {ones = dense<[{{.*}}]> : tensor<32xi8>}
-// CHECK-SAME: nvvm.cubin = "
+// CHECK-SAME: binary = "
 // CHECK-SAME:   .visible .global .align 64 .b8 zero[4] = {0, 0, 0, 128};
 // CHECK-SAME:   .visible .global .align 64 .b8 ones[32];
 // CHECK-SAME:   .visible .entry _fusion(
 // CHECK-SAME:     .param .u64 _fusion_param_0,
 // CHECK-SAME:     .param .u64 _fusion_param_1
 // CHECK-SAME:   )
-// CHECK-SAME: "} {
+// CHECK-SAME: ",
+// CHECK-SAME: constants = {ones = dense<[{{.*}}]> : tensor<32xi8>}} {
 // CHECK: gpu.func @[[kernel:.*]](
 // CHECK-SAME:   %arg0: memref<8x128xf32>, %arg1: memref<8xf32>
 // CHECK-SAME: ) kernel {
@@ -67,12 +67,12 @@ func @fusion(%arg0: memref<8x128xf32>, %arg1: memref<8xf32>) {
     %zero = memref.get_global @zero : memref<f32>
     %ones = memref.get_global @ones : memref<8xf32>
 
-    // CHECK: %[[bx:.*]] = constant 1 : index
-    // CHECK: %[[by:.*]] = constant 1 : index
-    // CHECK: %[[bz:.*]] = constant 1 : index
-    // CHECK: %[[tx:.*]] = constant 2 : index
-    // CHECK: %[[ty:.*]] = constant 1 : index
-    // CHECK: %[[tz:.*]] = constant 1 : index
+    // CHECK: %[[bx:.*]] = arith.constant 1 : index
+    // CHECK: %[[by:.*]] = arith.constant 1 : index
+    // CHECK: %[[bz:.*]] = arith.constant 1 : index
+    // CHECK: %[[tx:.*]] = arith.constant 2 : index
+    // CHECK: %[[ty:.*]] = arith.constant 1 : index
+    // CHECK: %[[tz:.*]] = arith.constant 1 : index
     // CHECK: gpu.launch_func @[[gpu_module]]::@[[kernel]]
     // CHECK-SAME: blocks in (%[[bx]], %[[by]], %[[bz]])
     // CHECK-SAME: threads in (%[[tx]], %[[ty]], %[[tz]])

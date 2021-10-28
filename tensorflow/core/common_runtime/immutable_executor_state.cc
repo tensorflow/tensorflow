@@ -316,6 +316,10 @@ Status ImmutableExecutorState::BuildControlFlowInfo(const Graph* g,
     } else if (IsExit(curr_node)) {
       // Exit to the parent frame.
       parent = parent_nodes[curr_id];
+      if (!parent) {
+        return errors::InvalidArgument(
+            "Invalid Exit op: Cannot find a corresponding Enter op.");
+      }
       frame_name = cf_info->frame_names[parent->id()];
       parent = parent_nodes[parent->id()];
     } else {

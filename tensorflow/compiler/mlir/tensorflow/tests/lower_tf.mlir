@@ -1274,9 +1274,11 @@ func @selu(%arg0: tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32> {
     // CHECK-DAG:   %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
     // CHECK-DAG:   %[[SCALE:.*]] = "tf.Const"() {value = dense<1.05070102> : tensor<f32>} : () -> tensor<f32>
     // CHECK-DAG:   %[[SCALED_ALPHA:.*]] = "tf.Const"() {value = dense<1.75809932> : tensor<f32>} : () -> tensor<f32>
+    // CHECK-NEXT:  %[[ONE:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
     // CHECK-DAG:   %[[PRED:.*]] = "tf.Greater"(%[[FEATURES]], %[[ZERO]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xi1>
     // CHECK-NEXT:  %[[SCALED_FEATURES:.*]] = "tf.Mul"(%[[FEATURES]], %[[SCALE]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xf32>
-    // CHECK-NEXT:  %[[ELU_VAL:.*]] = "tf.Expm1"(%[[FEATURES]]) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+    // CHECK-NEXT:  %[[EXP:.*]] = "tf.Exp"(%[[FEATURES]]) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+    // CHECK-NEXT:  %[[ELU_VAL:.*]] = "tf.Sub"(%[[EXP]], %[[ONE]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xf32>
     // CHECK-NEXT:  %[[SELU_VAL:.*]] = "tf.Mul"(%[[ELU_VAL]], %[[SCALED_ALPHA]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xf32>
     // CHECK-NEXT:  %[[RES:.*]] = "tf.SelectV2"(%[[PRED]], %[[SCALED_FEATURES]], %[[SELU_VAL]]) : (tensor<1x4x4x3xi1>, tensor<1x4x4x3xf32>, tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
     // CHECK-NEXT:  return %[[RES]] : tensor<1x4x4x3xf32>
@@ -1298,4 +1300,15 @@ func @selu_grad(%gradients: tensor<4x8xf32>, %features: tensor<4x8xf32>) -> tens
     // CHECK-NEXT:  return %[[RES]] : tensor<4x8xf32>
     %2 = "tf.SeluGrad"(%gradients, %features) : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
     return %2 : tensor<4x8xf32>
+}
+
+// CHECK-LABEL: func @expm1
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<3x4xf32>)
+func @expm1(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
+  %0 = "tf.Expm1"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+  // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[EXP:.*]] = "tf.Exp"(%[[ARG0]]) : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  // CHECK: %[[RESULT:.*]] = "tf.Sub"(%[[EXP]], %[[ONE]]) : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xf32>
+  // CHECK: return %[[RESULT]]
 }

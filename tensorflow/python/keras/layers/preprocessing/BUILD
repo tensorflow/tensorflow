@@ -482,6 +482,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/189956080)
         "noguitar",  # b/190034522
+	"no_rocm", # 2x2GPU multiworkermirrored
     ],
     deps = [
         ":discretization",

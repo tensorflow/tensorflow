@@ -124,18 +124,20 @@ Value elementalLower<lmhlo::RealDynamicSliceOp>(OpBuilder* b, Location loc,
   SmallVector<Value, 4> input_index;
   for (int dim = 0; dim < rank; ++dim) {
     SmallVector<Value, 4> dim_index;
-    dim_index.push_back(b->create<ConstantOp>(
+    dim_index.push_back(b->create<arith::ConstantOp>(
         loc, b->getIndexType(), b->getIntegerAttr(b->getIndexType(), dim)));
     auto start_index_load =
         b->create<LoadOp>(loc, start_indices_memref, ValueRange{dim_index});
     auto start_index =
-        b->create<IndexCastOp>(loc, b->getIndexType(), start_index_load);
+        b->create<arith::IndexCastOp>(loc, b->getIndexType(), start_index_load);
     auto stride_load =
         b->create<LoadOp>(loc, strides_memref, ValueRange{dim_index});
-    auto stride = b->create<IndexCastOp>(loc, b->getIndexType(), stride_load);
+    auto stride =
+        b->create<arith::IndexCastOp>(loc, b->getIndexType(), stride_load);
     // input_dim = out_dim * stride + start_index
-    auto input_dim = b->create<AddIOp>(
-        loc, b->create<MulIOp>(loc, output_index[dim], stride), start_index);
+    auto input_dim = b->create<arith::AddIOp>(
+        loc, b->create<arith::MulIOp>(loc, output_index[dim], stride),
+        start_index);
     input_index.push_back(input_dim);
   }
 
@@ -169,18 +171,18 @@ Value elementalLowerImplForBroadcastInDimOps(OpBuilder* b, Location loc,
           operand_memref.getType().cast<MemRefType>().getShape()[input_dim];
       if (static_dim_size == 1) {
         // we know this dim is to be broadcasted at compile time
-        auto zero = b->create<ConstantOp>(
+        auto zero = b->create<arith::ConstantOp>(
             loc, b->getIndexType(), b->getIntegerAttr(b->getIndexType(), 0));
         input_index.push_back(zero);
       } else if (static_dim_size == ShapedType::kDynamicSize) {
         // we are not sure if this dim is to be broadcasted at compile time
         auto dim_size = b->create<DimOp>(loc, operand_memref, input_dim);
-        auto one = b->create<ConstantOp>(
+        auto one = b->create<arith::ConstantOp>(
             loc, b->getIndexType(), b->getIntegerAttr(b->getIndexType(), 1));
-        auto zero = b->create<ConstantOp>(
+        auto zero = b->create<arith::ConstantOp>(
             loc, b->getIndexType(), b->getIntegerAttr(b->getIndexType(), 0));
-        auto dim_size_is_1 =
-            b->create<CmpIOp>(loc, CmpIPredicate::eq, dim_size, one);
+        auto dim_size_is_1 = b->create<arith::CmpIOp>(
+            loc, arith::CmpIPredicate::eq, dim_size, one);
         input_index.push_back(b->create<mlir::SelectOp>(
             loc, dim_size_is_1, zero, output_index[dim]));
       } else {
@@ -246,15 +248,15 @@ memref::ReinterpretCastOp createMemRef1DReinterpretCast(OpBuilder& b,
                                                         Location loc,
                                                         Value memref) {
   auto memref_ty = memref.getType().cast<MemRefType>();
-  assert(memref_ty.getAffineMaps().empty());
+  assert(memref_ty.getLayout().isIdentity());
   Value size = codegen_utils::emitNumElementsComputation(b, loc, memref);
-  Value stride = b.create<mlir::ConstantOp>(
+  Value stride = b.create<mlir::arith::ConstantOp>(
       loc, b.getIndexType(), b.getIntegerAttr(b.getIndexType(), 1));
-  Value zero = b.create<mlir::ConstantOp>(
+  Value zero = b.create<mlir::arith::ConstantOp>(
       loc, b.getIndexType(), b.getIntegerAttr(b.getIndexType(), 0));
   auto memref_1d_type =
       MemRefType::get({MemRefType::kDynamicSize}, memref_ty.getElementType(),
-                      memref_ty.getAffineMaps(), memref_ty.getMemorySpace());
+                      memref_ty.getLayout(), memref_ty.getMemorySpace());
   return b.create<memref::ReinterpretCastOp>(
       loc, memref_1d_type, memref, zero, ValueRange{size}, ValueRange{stride});
 }

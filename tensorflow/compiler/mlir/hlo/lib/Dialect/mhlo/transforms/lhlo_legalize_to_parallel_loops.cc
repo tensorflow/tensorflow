@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
@@ -76,14 +77,14 @@ void ConvertToReductionOperator(Location loc, scf::ReduceOp reduce_op,
                                      lhlo_block, b));
 }
 
-// Returns result of ConstantOp if `dim` is static, otherwise uses DimOp to
-// extract dimension at runtime.
+// Returns result of arith::ConstantOp if `dim` is static, otherwise uses DimOp
+// to extract dimension at runtime.
 Value GetStaticOrDynamicDim(mlir::Location loc, Value shaped_value,
                             size_t dim_index, int64_t dim, OpBuilder* b) {
   return dim == ShapedType::kDynamicSize
              ? b->create<memref::DimOp>(loc, shaped_value, dim_index)
                    .getResult()
-             : b->create<ConstantIndexOp>(loc, dim);
+             : b->create<arith::ConstantIndexOp>(loc, dim);
 }
 
 struct MappedIvs {
@@ -112,27 +113,30 @@ MappedIvs MapWindowIvsToInput(OpTy op, Value operand, ValueRange ivs,
   auto operand_shape = operand.getType().template cast<MemRefType>().getShape();
 
   // `in_bounds` is false when the mapped indices are in the padding area.
-  mapped_ivs.in_bounds = b->create<mlir::ConstantOp>(
+  mapped_ivs.in_bounds = b->create<mlir::arith::ConstantOp>(
       loc, b->getI1Type(), b->getIntegerAttr(b->getI1Type(), 1));
   for (unsigned i = 0, e = ivs.size(); i < e; ++i) {
     auto stride = window_strides.template getValue<llvm::APInt>(i);
     auto pad_low = padding.template getValue<llvm::APInt>({i, 0});
 
-    Value stride_val = b->create<ConstantIndexOp>(loc, stride.getSExtValue());
-    Value pad_low_val = b->create<ConstantIndexOp>(loc, pad_low.getSExtValue());
+    Value stride_val =
+        b->create<arith::ConstantIndexOp>(loc, stride.getSExtValue());
+    Value pad_low_val =
+        b->create<arith::ConstantIndexOp>(loc, pad_low.getSExtValue());
 
-    Value center = b->create<MulIOp>(loc, ivs[i], stride_val);
-    Value offset = b->create<SubIOp>(loc, window_ivs[i], pad_low_val);
-    Value index = b->create<AddIOp>(loc, center, offset);
+    Value center = b->create<arith::MulIOp>(loc, ivs[i], stride_val);
+    Value offset = b->create<arith::SubIOp>(loc, window_ivs[i], pad_low_val);
+    Value index = b->create<arith::AddIOp>(loc, center, offset);
     Value upper_bound =
         GetStaticOrDynamicDim(loc, operand, i, operand_shape[i], b);
     // We must check whether 0 <= index_i < shape_i, as otherwise we are in
     // the pad and then we have to use the neutral element for reduction.
     // Equivalently, it can be computed as the unsigned comparison index_i <
     // shape_i, since a negative value wraps to a large positive value.
-    mapped_ivs.in_bounds = b->create<mlir::AndOp>(
+    mapped_ivs.in_bounds = b->create<mlir::arith::AndIOp>(
         loc, mapped_ivs.in_bounds,
-        b->create<CmpIOp>(loc, CmpIPredicate::ult, index, upper_bound));
+        b->create<arith::CmpIOp>(loc, arith::CmpIPredicate::ult, index,
+                                 upper_bound));
     mapped_ivs.ivs.push_back(index);
   }
   return mapped_ivs;
@@ -141,8 +145,8 @@ MappedIvs MapWindowIvsToInput(OpTy op, Value operand, ValueRange ivs,
 // Returns scf::Parallel over a shaped value with static or dynamic shape.
 scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
                                   OpBuilder* b) {
-  Value zero = b->create<ConstantIndexOp>(loc, 0);
-  Value one = b->create<ConstantIndexOp>(loc, 1);
+  Value zero = b->create<arith::ConstantIndexOp>(loc, 0);
+  Value one = b->create<arith::ConstantIndexOp>(loc, 1);
 
   ArrayRef<int64_t> shape =
       shaped_value.getType().cast<ShapedType>().getShape();
@@ -245,8 +249,8 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 
       Value ub = GetStaticOrDynamicDim(loc, operand, dim.index(), dim.value(),
                                        rewriter);
-      Value lb = rewriter->create<ConstantIndexOp>(loc, 0);
-      Value step = rewriter->create<ConstantIndexOp>(loc, 1);
+      Value lb = rewriter->create<arith::ConstantIndexOp>(loc, 0);
+      Value step = rewriter->create<arith::ConstantIndexOp>(loc, 1);
       (is_reducing_dim ? reduce_lower : parallel_lower).push_back(lb);
       (is_reducing_dim ? reduce_upper : parallel_upper).push_back(ub);
       (is_reducing_dim ? reduce_step : parallel_step).push_back(step);
@@ -272,7 +276,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
         out_indices.push_back(iv);
       }
     } else {
-      out_indices.push_back(rewriter->create<ConstantIndexOp>(loc, 0));
+      out_indices.push_back(rewriter->create<arith::ConstantIndexOp>(loc, 0));
     }
 
     rewriter->create<memref::StoreOp>(loc, reduction_result, out, out_indices);
@@ -393,8 +397,8 @@ class ReduceWindowOpConverter
     Value init_value = rewriter->create<memref::LoadOp>(
         loc, reduce_window_op.init_values()[0]);
 
-    Value zero = rewriter->create<ConstantIndexOp>(loc, 0);
-    Value one = rewriter->create<ConstantIndexOp>(loc, 1);
+    Value zero = rewriter->create<arith::ConstantIndexOp>(loc, 0);
+    Value one = rewriter->create<arith::ConstantIndexOp>(loc, 1);
 
     // Create an outer parallel loop that spans the output of ReduceWindowOp.
     Value output = reduce_window_op.out()[0];
@@ -406,8 +410,8 @@ class ReduceWindowOpConverter
     for (const auto& window_dim : reduce_window_op.window_dimensions()) {
       window_step.push_back(one);
       window_lower.push_back(zero);
-      window_upper.push_back(
-          rewriter->create<ConstantIndexOp>(loc, window_dim.getSExtValue()));
+      window_upper.push_back(rewriter->create<arith::ConstantIndexOp>(
+          loc, window_dim.getSExtValue()));
     }
     auto window_loop = rewriter->create<scf::ParallelOp>(
         loc, window_lower, window_upper, window_step, ValueRange(init_value));
@@ -543,8 +547,8 @@ class SelectAndScatterOpConverter
                                 scf::ParallelOp loop_over_src,
                                 OpBuilder* b) const {
     auto loc = s_and_s_op.getLoc();
-    Value zero = b->create<ConstantIndexOp>(loc, 0);
-    Value one = b->create<ConstantIndexOp>(loc, 1);
+    Value zero = b->create<arith::ConstantIndexOp>(loc, 0);
+    Value one = b->create<arith::ConstantIndexOp>(loc, 1);
 
     auto element_type =
         s_and_s_op.out().getType().cast<MemRefType>().getElementType();
@@ -552,9 +556,9 @@ class SelectAndScatterOpConverter
 
     // `iter_args` = [iv_1, ..., iv_N, selected_value, is_initialized]
     SmallVector<Value, 4> iter_args(rank, zero);
-    iter_args.push_back(b->create<mlir::ConstantOp>(
+    iter_args.push_back(b->create<mlir::arith::ConstantOp>(
         loc, element_type, b->getFloatAttr(element_type, 0)));
-    iter_args.push_back(b->create<mlir::ConstantOp>(
+    iter_args.push_back(b->create<mlir::arith::ConstantOp>(
         loc, b->getI1Type(), b->getIntegerAttr(b->getI1Type(), 0)));
 
     // Create a nested loop that traverses the window.
@@ -562,7 +566,8 @@ class SelectAndScatterOpConverter
     WindowLoops result;
     for (const auto& window_dim :
          s_and_s_op.window_dimensions()->getValues<APInt>()) {
-      Value upper = b->create<ConstantIndexOp>(loc, window_dim.getSExtValue());
+      Value upper =
+          b->create<arith::ConstantIndexOp>(loc, window_dim.getSExtValue());
       result.inner_loop =
           b->create<scf::ForOp>(loc, zero, upper, one, iter_args);
       if (b->getInsertionBlock() == loop_over_src.getBody()) {
@@ -649,7 +654,7 @@ class SelectAndScatterOpConverter
                                            IterArgs* ivs_val_flag,
                                            OpBuilder* b) const {
     auto loc = s_and_s_op.getLoc();
-    Value true_i1 = b->create<mlir::ConstantOp>(
+    Value true_i1 = b->create<mlir::arith::ConstantOp>(
         loc, b->getI1Type(), b->getIntegerAttr(b->getI1Type(), 1));
 
     TypeRange iter_arg_types{ivs_val_flag->to_vector()};
@@ -704,8 +709,8 @@ struct LhloLegalizeToParallelLoopsPass
     : public LhloLegalizeToParallelLoopsPassBase<
           LhloLegalizeToParallelLoopsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry
-        .insert<StandardOpsDialect, memref::MemRefDialect, scf::SCFDialect>();
+    registry.insert<arith::ArithmeticDialect, StandardOpsDialect,
+                    memref::MemRefDialect, scf::SCFDialect>();
   }
 
   void runOnFunction() override {
@@ -721,8 +726,9 @@ struct LhloLegalizeToParallelLoopsPass
     // clang-format on
 
     ConversionTarget target(getContext());
-    target.addLegalDialect<linalg::LinalgDialect, memref::MemRefDialect,
-                           StandardOpsDialect, scf::SCFDialect, LmhloDialect>();
+    target.addLegalDialect<arith::ArithmeticDialect, linalg::LinalgDialect,
+                           memref::MemRefDialect, StandardOpsDialect,
+                           scf::SCFDialect, LmhloDialect>();
     target.addIllegalOp<lmhlo::ReduceOp, lmhlo::ReduceWindowOp,
                         lmhlo::SelectAndScatterOp>();
 

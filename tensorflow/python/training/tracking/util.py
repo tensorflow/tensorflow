@@ -99,7 +99,7 @@ def get_session():
   return session
 
 
-class _ObjectGraphProtoPrettyPrinter(object):
+class ObjectGraphProtoPrettyPrinter(object):
   """Lazily traverses an object graph proto to pretty print names.
 
   If no calls to `node_names` are made this object has no performance
@@ -170,7 +170,7 @@ class _CheckpointRestoreCoordinatorDeleter(object):
     else:
       log_fn = logging.warning
     printed_warning = False
-    pretty_printer = _ObjectGraphProtoPrettyPrinter(self.object_graph_proto)
+    pretty_printer = ObjectGraphProtoPrettyPrinter(self.object_graph_proto)
     for node_id in range(len(self.object_graph_proto.nodes)):
       if node_id not in self.matched_proto_ids:
         log_fn("Unresolved object in checkpoint: "
@@ -759,7 +759,7 @@ class CheckpointLoadStatus(_LoadStatus):
         or if there are any checkpointed values which have not been matched to
         Python objects.
     """
-    pretty_printer = _ObjectGraphProtoPrettyPrinter(
+    pretty_printer = ObjectGraphProtoPrettyPrinter(
         self._checkpoint.object_graph_proto)
     self.assert_existing_objects_matched()
     for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):

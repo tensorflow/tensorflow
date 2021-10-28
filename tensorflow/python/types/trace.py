@@ -28,6 +28,7 @@ traced (a process known as retracing).
 import abc
 from typing import Optional, Sequence
 from typing_extensions import Protocol
+from typing_extensions import runtime_checkable
 
 
 class TraceType(abc.ABC):
@@ -57,18 +58,19 @@ class TraceType(abc.ABC):
     pass
 
 
-class SignatureContext():
-  """Contains information scoped to the entirety of signature tracing.
+class TracingContext():
+  """Contains information scoped to the tracing of multiple objects.
 
-  `SignatureContext` is a container class for flags and variables that have
+  `TracingContext` is a container class for flags and variables that have
   any kind of influence on the tracing behaviour of the class implementing
-  the __tf_trace_protocol__. This context will be shared across all
-  __tf_trace_protocol__ calls while constructing the TraceType for a particular
-  set of arguments.
+  the __tf_tracing_type__. This context will be shared across all
+  __tf_tracing_type__ calls while constructing the TraceType for a particular
+  set of objects.
   """
   pass
 
 
+@runtime_checkable
 class SupportsTracingType(Protocol):
   """The Trace Control Protocol for functions.
 
@@ -78,5 +80,5 @@ class SupportsTracingType(Protocol):
   """
 
   @abc.abstractmethod
-  def __tf_tracing_type__(self, context: SignatureContext) -> TraceType:
+  def __tf_tracing_type__(self, context: TracingContext) -> TraceType:
     pass

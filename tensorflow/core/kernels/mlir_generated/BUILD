@@ -588,6 +588,7 @@ tf_cuda_cc_test(
             "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
         ],
     ),
+    shard_count = 20,
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
         "no_rocm",  # failed since 7de9cf4
@@ -671,6 +672,10 @@ gpu_kernel_library(
 # TODO(b/25387198): Add an int32 kernel.
 gpu_kernel_library(
     name = "gpu_abs_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+    ],
     op = "abs",
     tile_size = "256",
     types = [
@@ -902,6 +907,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_sign_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+    ],
     op = "sign",
     tile_size = "256",
     types = [
@@ -968,7 +977,12 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_sub_kernels",
-    jit_types = ["i16"],
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+    ],
     op = "sub",
     tile_size = "1024",
     types = [
@@ -1014,6 +1028,11 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_div_kernels",
+    jit_types = [
+        "i8",
+        "ui32",
+        "ui64",
+    ],
     op = "div",
     tile_size = "1024",
     types = [
@@ -1198,6 +1217,12 @@ gpu_kernel_library(
 [
     gpu_kernel_library(
         name = "gpu_" + op + "_kernels",
+        jit_types = [
+            "i8",
+            "ui16",
+            "ui32",
+            "ui64",
+        ],
         op = op,
         tile_size = "1024",
         types = [
@@ -1236,13 +1261,18 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_floor_div_kernels",
+    jit_types = [
+        "i8",
+        "ui32",
+        "ui64",
+    ],
     op = "floor_div",
     tile_size = "1024",
-    # TODO(b/196539835): Enable for integer types also once unsigned integers
-    # and unranked tensors are supported.
     types = [
         "f16",
         "f32",
+        "i16",
+        "i64",
         "f64",
     ],
     unroll_factors = "4",
@@ -1360,6 +1390,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_pow_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+    ],
     op = "pow",
     tile_size = "1024",
     types = [

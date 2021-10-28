@@ -21,8 +21,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// A simple TensorBuffer implementation that allows us to create Tensors that
-// take ownership of pre-allocated memory.
+/// A simple TensorBuffer implementation that allows us to create Tensors that
+/// take ownership of pre-allocated memory.
 class MlirTensorBuffer : public TensorBuffer {
  public:
   MlirTensorBuffer(const void* ptr, size_t size, Allocator* allocator)
@@ -67,6 +67,50 @@ class MlirTensorBuffer : public TensorBuffer {
 TensorBuffer* GetMlirTensorBuffer(const void* ptr, size_t size,
                                   Allocator* allocator) {
   return new MlirTensorBuffer(ptr, size, allocator);
+}
+
+/// Convert tensors to memory descriptors and back.
+
+UnrankedMemRef ConvertTensorToDescriptor(const Tensor& tensor,
+                                         DescriptorBuffer& buffer) {
+  UnrankedMemRef result;
+  result.rank = tensor.dims();
+
+  // Resize the descriptor buffer to the needed size to make sure the pointer
+  // does not move afterwards.
+  size_t descriptor_size_in_bytes = GetSizeOfDescriptor(tensor.dims());
+  buffer.resize_for_overwrite(descriptor_size_in_bytes);
+  result.descriptor = buffer.data();
+
+  // Fill the descriptor.
+  void** pointers = static_cast<void**>(result.descriptor);
+  pointers[0] = tensor.data();
+  pointers[1] = tensor.data();
+  intptr_t* int_pointers = static_cast<intptr_t*>(result.descriptor);
+  int_pointers[2] = 0;
+
+  // Fill size.
+  for (int i = 0; i < result.rank; ++i) {
+    int_pointers[3 + i] = tensor.dim_size(i);
+  }
+
+  // Fill strides.
+  int64_t stride = 1;
+  for (int i = result.rank - 1; i >= 0; --i) {
+    int_pointers[i + result.rank + 3] = stride;
+    stride *= tensor.dim_size(i);
+  }
+
+  return result;
+}
+
+TensorShape ExtractShapeFromDescriptor(UnrankedMemRef unranked_descriptor) {
+  TensorShape shape;
+  intptr_t* pointers = static_cast<intptr_t*>(unranked_descriptor.descriptor);
+  for (int i = 0; i < unranked_descriptor.rank; ++i) {
+    shape.AddDim(pointers[3 + i]);
+  }
+  return shape;
 }
 
 }  // namespace tensorflow

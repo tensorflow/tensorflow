@@ -490,7 +490,7 @@ def LowerIsFiniteOp : Pat<(TF_IsFiniteOp $x),
 // TensorScatterUpdate op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
+def LowerTensorScatterUpdate_1 : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
           (TF_CastOp
             (TF_TensorScatterUpdateOp
               (CreateTFCastOpI32
@@ -505,7 +505,7 @@ def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
              /*truncate=*/ConstBoolAttrFalse),
           [(TensorOf<[TF_Bool]> $input), (TensorOf<[TF_Bool]> $updates)] >;
 
-def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
+def LowerTensorScatterUpdate_2 : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
           (TF_AddV2Op
              (TF_MulOp
                 (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $updates)),
@@ -514,7 +514,8 @@ def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
                    (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
              $input),
            (CreateTensorScatterNdOp $input, $indices, $updates,
-              (CreateTFShapeOp $input, $input, ConstBoolAttrTrue)))>;
+              (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
+          [(TensorOf<[TF_Int, TF_Float, TF_Complex]> $updates)]>;
 
 //===----------------------------------------------------------------------===//
 // Selu op patterns.
@@ -563,3 +564,17 @@ def LowerSeluGradOp : Pat<(TF_SeluGradOp AnyStaticShapeTensor:$gradients,
                           (TF_AddV2Op
                             $features,
                             (TF_ConstOp (getScaledAlpha $features)))))>;
+
+
+
+//===----------------------------------------------------------------------===//
+// Expm1 op patterns.
+//===----------------------------------------------------------------------===//
+
+// Expm1(x) = Exp(x) - 1
+def LowerExp1mOp : Pat<
+  (TF_Expm1Op $x),
+  (TF_SubOp
+    (TF_ExpOp $x),
+    (TF_ConstOp (GetScalarOfType<1> $x))
+  )>;

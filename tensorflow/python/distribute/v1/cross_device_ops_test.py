@@ -465,8 +465,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
       else:
         devices = ["/device:CPU:0"]
 
+      comm_options = collective_util.Options(implementation=communication)
       if use_strategy_object:
-        comm_options = collective_util.Options(implementation=communication)
         strategy = (mwms_lib.CollectiveAllReduceStrategy
                     ._from_local_devices(devices, comm_options))  # pylint: disable=protected-access
         return strategy, devices, ""
@@ -474,6 +474,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
             devices=devices,
             group_size=len(devices),
+            options=comm_options,
             collective_keys=collective_keys)
         return collective_all_reduce_ops, devices, ""
     else:
@@ -490,6 +491,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
             "/job:%s/task:%d/replica:0/device:CPU:0" % (task_type, task_id)
         ]
 
+      comm_options = collective_util.Options(implementation=communication)
       if use_strategy_object:
         resolver = cluster_resolver.SimpleClusterResolver(
             cluster_spec=multi_worker_util.normalize_cluster_spec(
@@ -497,7 +499,6 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
             task_type=task_type,
             task_id=task_id,
             num_accelerators={"GPU": num_gpus})
-        comm_options = collective_util.Options(implementation=communication)
         strategy = mwms_lib.CollectiveAllReduceStrategy(
             communication_options=comm_options, cluster_resolver=resolver)
         return (strategy, devices,
@@ -506,6 +507,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
             devices=devices,
             group_size=len(devices) * NUM_WORKERS,
+            options=comm_options,
             collective_keys=collective_keys)
         return (collective_all_reduce_ops, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])

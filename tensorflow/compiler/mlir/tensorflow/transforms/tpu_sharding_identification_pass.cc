@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -47,18 +48,9 @@ constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kUseSpmdAttr[] = "use_spmd_for_xla_partitioning";
 
 struct TPUShardingIdentificationPass
-    : public PassWrapper<TPUShardingIdentificationPass,
-                         OperationPass<ModuleOp>> {
-  StringRef getArgument() const final {
-    return "tf-tpu-sharding-identification";
-  }
-
-  StringRef getDescription() const final {
-    return "Identifies and handles inputs/outputs of TPU computation that is "
-           "sharded across logical cores.";
-  }
-
-  void runOnOperation() override;
+    : public TF::TPUShardingIdentificationPassBase<
+          TPUShardingIdentificationPass> {
+  void runOnOperation() final;
 };
 
 // Returns XLA sharding from TPUPartitionedInput op connected to a
@@ -386,8 +378,6 @@ void TPUShardingIdentificationPass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUShardingIdentificationPass() {
   return std::make_unique<TPUShardingIdentificationPass>();
 }
-
-static PassRegistration<TPUShardingIdentificationPass> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

@@ -94,6 +94,18 @@ void RecordInputBatchSizeV2(int32_t batch_size, const string& model_name,
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
 }
 
+// Record the actual batch size without padding.
+void RecordBatchSize(int32_t batch_size, const string& model_name,
+                     const string& op_name) {
+  static auto* cell = tensorflow::monitoring::Sampler<2>::New(
+      {"/tensorflow/serving/batching/batch_size",
+       "Tracks the batch size distribution on the batch result by model_name "
+       "(if available).",
+       "model_name", "op_name"},
+      monitoring::Buckets::Exponential(1, 1.5, 20));
+  cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
+}
+
 void RecordProcessedBatchSize(int32_t batch_size, const string& model_name,
                               const string& op_name) {
   static auto* cell = tensorflow::monitoring::PercentileSampler<2>::New(
@@ -413,6 +425,8 @@ Status BatchResourceBase::ConcatInputTensors(
                            context->op_kernel().name_view().data());
   RecordProcessedBatchSizeV2(padded_batch_size, GetModelName(context),
                              string(context->op_kernel().name_view()));
+  RecordBatchSize(batch.size(), GetModelName(context),
+                  string(context->op_kernel().name_view()));
 
   // All tasks should have the same number of input edges.
   const int num_inputs = batch.task(0).inputs.size();

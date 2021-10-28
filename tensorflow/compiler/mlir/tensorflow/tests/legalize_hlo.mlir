@@ -1467,7 +1467,7 @@ func @convert_slice(%arg0: tensor<1x4672xf32>) -> tensor<1x519xf32> {
 
 // CHECK-LABEL:   func @reshape(
 // CHECK-SAME:                  %[[VAL_0:.*]]: tensor<4x6xf32>) -> tensor<2x2x6xf32> {
-// CHECK:           %[[VAL_1:.*]] = constant dense<[2, 2, 6]> : tensor<3xi64>
+// CHECK:           %[[VAL_1:.*]] = arith.constant dense<[2, 2, 6]> : tensor<3xi64>
 // CHECK:           %[[VAL_2:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_1]]) : (tensor<4x6xf32>, tensor<3xi64>) -> tensor<2x2x6xf32>
 // CHECK:           return %[[VAL_2]] : tensor<2x2x6xf32>
 // CHECK:         }
@@ -1480,10 +1480,10 @@ func @reshape(%arg0: tensor<4x6xf32>) -> tensor<2x2x6xf32> {
 // CHECK-LABEL:   func @convert_dot_1d_2d(
 // CHECK-SAME:                            %[[VAL_0:.*]]: tensor<256xf32>,
 // CHECK-SAME:                            %[[VAL_1:.*]]: tensor<256x1xf32>) -> tensor<1xf32> {
-// CHECK:           %[[VAL_2:.*]] = constant dense<[1, 256]> : tensor<2xi64>
+// CHECK:           %[[VAL_2:.*]] = arith.constant dense<[1, 256]> : tensor<2xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_2]]) : (tensor<256xf32>, tensor<2xi64>) -> tensor<1x256xf32>
 // CHECK:           %[[VAL_4:.*]] = "tf.BatchMatMulV2"(%[[VAL_3]], %[[VAL_1]]) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x1xf32>) -> tensor<1x1xf32>
-// CHECK:           %[[VAL_5:.*]] = constant dense<1> : tensor<1xi64>
+// CHECK:           %[[VAL_5:.*]] = arith.constant dense<1> : tensor<1xi64>
 // CHECK:           %[[VAL_6:.*]] = "tf.Reshape"(%[[VAL_4]], %[[VAL_5]]) : (tensor<1x1xf32>, tensor<1xi64>) -> tensor<1xf32>
 // CHECK:           return %[[VAL_6]] : tensor<1xf32>
 // CHECK:         }
@@ -1495,10 +1495,10 @@ func @convert_dot_1d_2d(%arg0: tensor<256xf32>, %arg1: tensor<256x1xf32>) -> ten
 // CHECK-LABEL:   func @convert_dot_2d_1d(
 // CHECK-SAME:                            %[[VAL_0:.*]]: tensor<1x256xf32>,
 // CHECK-SAME:                            %[[VAL_1:.*]]: tensor<256xf32>) -> tensor<1xf32> {
-// CHECK:           %[[VAL_2:.*]] = constant dense<[256, 1]> : tensor<2xi64>
+// CHECK:           %[[VAL_2:.*]] = arith.constant dense<[256, 1]> : tensor<2xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_1]], %[[VAL_2]]) : (tensor<256xf32>, tensor<2xi64>) -> tensor<256x1xf32>
 // CHECK:           %[[VAL_4:.*]] = "tf.BatchMatMulV2"(%[[VAL_0]], %[[VAL_3]]) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x1xf32>) -> tensor<1x1xf32>
-// CHECK:           %[[VAL_5:.*]] = constant dense<1> : tensor<1xi64>
+// CHECK:           %[[VAL_5:.*]] = arith.constant dense<1> : tensor<1xi64>
 // CHECK:           %[[VAL_6:.*]] = "tf.Reshape"(%[[VAL_4]], %[[VAL_5]]) : (tensor<1x1xf32>, tensor<1xi64>) -> tensor<1xf32>
 // CHECK:           return %[[VAL_6]] : tensor<1xf32>
 // CHECK:         }
@@ -1510,12 +1510,12 @@ func @convert_dot_2d_1d(%arg0: tensor<1x256xf32>, %arg1: tensor<256xf32>) -> ten
 // CHECK-LABEL:   func @convert_dot_1d_1d(
 // CHECK-SAME:                            %[[VAL_0:.*]]: tensor<256xf32>,
 // CHECK-SAME:                            %[[VAL_1:.*]]: tensor<256xf32>) -> tensor<f32> {
-// CHECK:           %[[VAL_2:.*]] = constant dense<[1, 256]> : tensor<2xi64>
+// CHECK:           %[[VAL_2:.*]] = arith.constant dense<[1, 256]> : tensor<2xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_2]]) : (tensor<256xf32>, tensor<2xi64>) -> tensor<1x256xf32>
-// CHECK:           %[[VAL_4:.*]] = constant dense<[256, 1]> : tensor<2xi64>
+// CHECK:           %[[VAL_4:.*]] = arith.constant dense<[256, 1]> : tensor<2xi64>
 // CHECK:           %[[VAL_5:.*]] = "tf.Reshape"(%[[VAL_1]], %[[VAL_4]]) : (tensor<256xf32>, tensor<2xi64>) -> tensor<256x1xf32>
 // CHECK:           %[[VAL_6:.*]] = "tf.BatchMatMulV2"(%[[VAL_3]], %[[VAL_5]]) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x1xf32>) -> tensor<1x1xf32>
-// CHECK:           %[[VAL_7:.*]] = constant dense<> : tensor<0xi64>
+// CHECK:           %[[VAL_7:.*]] = arith.constant dense<> : tensor<0xi64>
 // CHECK:           %[[VAL_8:.*]] = "tf.Reshape"(%[[VAL_6]], %[[VAL_7]]) : (tensor<1x1xf32>, tensor<0xi64>) -> tensor<f32>
 // CHECK:           return %[[VAL_8]] : tensor<f32>
 // CHECK:         }
@@ -1540,10 +1540,10 @@ func @convert_dot_2d_2d(%arg0: tensor<1x256xf32>, %arg1: tensor<256x1xf32>) -> t
 // CHECK-SAME:                            %[[VAL_1:.*]]: tensor<19x19xf32>)
 // CHECK:           %[[VAL_2:.*]] = "tf.Const"{{.*}}value = dense<[0, 2, 1]> : tensor<3xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Transpose"(%[[VAL_0]], %[[VAL_2]]) {{.*}} -> tensor<4x16x19xf32>
-// CHECK:           %[[VAL_4:.*]] = constant dense<[64, 19]> : tensor<2xi64>
+// CHECK:           %[[VAL_4:.*]] = arith.constant dense<[64, 19]> : tensor<2xi64>
 // CHECK:           %[[VAL_5:.*]] = "tf.Reshape"(%[[VAL_3]], %[[VAL_4]]) : {{.*}} -> tensor<64x19xf32>
 // CHECK:           %[[VAL_6:.*]] = "tf.BatchMatMulV2"(%[[VAL_5]], %[[VAL_1]]) {adj_x = false, adj_y = false} : {{.*}} -> tensor<64x19xf32>
-// CHECK:           %[[VAL_7:.*]] = constant dense<[4, 16, 19]> : tensor<3xi64>
+// CHECK:           %[[VAL_7:.*]] = arith.constant dense<[4, 16, 19]> : tensor<3xi64>
 // CHECK:           %[[VAL_8:.*]] = "tf.Reshape"(%[[VAL_6]], %[[VAL_7]]) : {{.*}} -> tensor<4x16x19xf32>
 // CHECK:           return %[[VAL_8]]
 // CHECK:         }
@@ -1554,7 +1554,7 @@ func @convert_dot_3d_2d(%arg0: tensor<4x19x16xf32>, %arg1: tensor<19x19xf32>) ->
 
 // CHECK-LABEL:   func @broadcast_in_dim_tf_style(
 // CHECK-SAME:                                    %[[VAL_0:.*]]: tensor<8x1x16xf32>) -> tensor<3x8x8x16xf32> {
-// CHECK:           %[[VAL_1:.*]] = constant dense<[3, 8, 8, 16]> : tensor<4xi64>
+// CHECK:           %[[VAL_1:.*]] = arith.constant dense<[3, 8, 8, 16]> : tensor<4xi64>
 // CHECK:           %[[VAL_2:.*]] = "tf.BroadcastTo"(%[[VAL_0]], %[[VAL_1]]) : (tensor<8x1x16xf32>, tensor<4xi64>) -> tensor<3x8x8x16xf32>
 // CHECK:           return %[[VAL_2]] : tensor<3x8x8x16xf32>
 // CHECK:         }
@@ -1565,9 +1565,9 @@ func @broadcast_in_dim_tf_style(%arg0: tensor<8x1x16xf32>) -> tensor<3x8x8x16xf3
 
 // CHECK-LABEL:   func @broadcast_in_dim_general_case(
 // CHECK-SAME:                                        %[[VAL_0:.*]]: tensor<3x1x16xf32>) -> tensor<3x8x8x16xf32> {
-// CHECK:           %[[VAL_1:.*]] = constant dense<[3, 1, 1, 16]> : tensor<4xi64>
+// CHECK:           %[[VAL_1:.*]] = arith.constant dense<[3, 1, 1, 16]> : tensor<4xi64>
 // CHECK:           %[[VAL_2:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_1]]) : (tensor<3x1x16xf32>, tensor<4xi64>) -> tensor<3x1x1x16xf32>
-// CHECK:           %[[VAL_3:.*]] = constant dense<[3, 8, 8, 16]> : tensor<4xi64>
+// CHECK:           %[[VAL_3:.*]] = arith.constant dense<[3, 8, 8, 16]> : tensor<4xi64>
 // CHECK:           %[[VAL_4:.*]] = "tf.BroadcastTo"(%[[VAL_2]], %[[VAL_3]]) : (tensor<3x1x1x16xf32>, tensor<4xi64>) -> tensor<3x8x8x16xf32>
 // CHECK:           return %[[VAL_4]] : tensor<3x8x8x16xf32>
 // CHECK:         }
@@ -1583,12 +1583,12 @@ func @broadcast_in_dim_general_case(%arg0: tensor<3x1x16xf32>) -> tensor<3x8x8x1
 // CHECK:           %[[VAL_3:.*]] = "tf.Transpose"(%[[VAL_0]], %[[VAL_2]]) : (tensor<3x2x6x5x1xf32>, tensor<5xi64>) -> tensor<3x5x1x2x6xf32>
 // CHECK:           %[[VAL_4:.*]] = "tf.Const"() {value = dense<[0, 1, 3, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
 // CHECK:           %[[VAL_5:.*]] = "tf.Transpose"(%[[VAL_1]], %[[VAL_4]]) : (tensor<3x2x4x6xf32>, tensor<4xi64>) -> tensor<3x2x6x4xf32>
-// CHECK:           %[[VAL_6:.*]] = constant dense<[3, 5, 12]> : tensor<3xi64>
+// CHECK:           %[[VAL_6:.*]] = arith.constant dense<[3, 5, 12]> : tensor<3xi64>
 // CHECK:           %[[VAL_7:.*]] = "tf.Reshape"(%[[VAL_3]], %[[VAL_6]]) : (tensor<3x5x1x2x6xf32>, tensor<3xi64>) -> tensor<3x5x12xf32>
-// CHECK:           %[[VAL_8:.*]] = constant dense<[3, 12, 4]> : tensor<3xi64>
+// CHECK:           %[[VAL_8:.*]] = arith.constant dense<[3, 12, 4]> : tensor<3xi64>
 // CHECK:           %[[VAL_9:.*]] = "tf.Reshape"(%[[VAL_5]], %[[VAL_8]]) : (tensor<3x2x6x4xf32>, tensor<3xi64>) -> tensor<3x12x4xf32>
 // CHECK:           %[[VAL_10:.*]] = "tf.BatchMatMulV2"(%[[VAL_7]], %[[VAL_9]]) {adj_x = false, adj_y = false} : (tensor<3x5x12xf32>, tensor<3x12x4xf32>) -> tensor<3x5x4xf32>
-// CHECK:           %[[VAL_11:.*]] = constant dense<[3, 5, 1, 4]> : tensor<4xi64>
+// CHECK:           %[[VAL_11:.*]] = arith.constant dense<[3, 5, 1, 4]> : tensor<4xi64>
 // CHECK:           %[[VAL_12:.*]] = "tf.Reshape"(%[[VAL_10]], %[[VAL_11]]) : (tensor<3x5x4xf32>, tensor<4xi64>) -> tensor<3x5x1x4xf32>
 // CHECK:           return %[[VAL_12]] : tensor<3x5x1x4xf32>
 // CHECK:         }
@@ -1608,10 +1608,10 @@ func @convert_dot_general(%arg0: tensor<3x2x6x5x1xf32>, %arg1: tensor<3x2x4x6xf3
 // CHECK-LABEL:   func @convert_dot_general_repeated(
 // CHECK-SAME:                                       %[[VAL_0:.*]]: tensor<1x1x1024xf32>,
 // CHECK-SAME:                                       %[[VAL_1:.*]]: tensor<1024x1024xf32>) -> tensor<1x1x1024xf32> {
-// CHECK:           %[[VAL_2:.*]] = constant dense<[1, 1024]> : tensor<2xi64>
+// CHECK:           %[[VAL_2:.*]] = arith.constant dense<[1, 1024]> : tensor<2xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_2]]) : {{.*}} -> tensor<1x1024xf32>
 // CHECK:           %[[VAL_4:.*]] = "tf.BatchMatMulV2"(%[[VAL_3]], %[[VAL_1]]) {adj_x = false, adj_y = false} : {{.*}} -> tensor<1x1024xf32>
-// CHECK:           %[[VAL_5:.*]] = constant dense<[1, 1, 1024]> : tensor<3xi64>
+// CHECK:           %[[VAL_5:.*]] = arith.constant dense<[1, 1, 1024]> : tensor<3xi64>
 // CHECK:           %[[VAL_6:.*]] = "tf.Reshape"(%[[VAL_4]], %[[VAL_5]]) : {{.*}} -> tensor<1x1x1024xf32>
 // CHECK:           return %[[VAL_6]] : tensor<1x1x1024xf32>
 // CHECK:         }
@@ -1707,7 +1707,7 @@ func @convert_conv2d_explicit_padding(%arg0: tensor<64x8x8x8xf32>, %arg1: tensor
 // CHECK-LABEL:   func @convert_depthwise_conv2d(
 // CHECK-SAME:                                   %[[VAL_0:.*]]: tensor<1x8x8x207xf32>,
 // CHECK-SAME:                                   %[[VAL_1:.*]]: tensor<3x3x1x3312xf32>) -> tensor<1x8x8x16xf32> {
-// CHECK:           %[[CST:.*]] = constant dense<[3, 3, 207, 16]> : tensor<4xi64>
+// CHECK:           %[[CST:.*]] = arith.constant dense<[3, 3, 207, 16]> : tensor<4xi64>
 // CHECK:           %[[VAL_2:.*]] = "tf.Reshape"(%[[VAL_1]], %[[CST]]) : (tensor<3x3x1x3312xf32>, tensor<4xi64>) -> tensor<3x3x207x16xf32>
 // CHECK:           %[[VAL_3:.*]] = "tf.DepthwiseConv2dNative"(%[[VAL_0]], %[[VAL_2]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
 // CHECK:           return %[[VAL_3]] : tensor<1x8x8x16xf32>
@@ -2034,7 +2034,7 @@ func @convert_maxpool_same(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x8x8x8xf32> 
 // CHECK-LABEL:   func @convert_pad(
 // CHECK-SAME:                      %[[VAL_0:.*]]: tensor<8x128xf32>,
 // CHECK-SAME:                      %[[VAL_1:.*]]: tensor<f32>) -> tensor<11x131xf32> {
-// CHECK:           %[[VAL_2:.*]] = constant dense<{{\[\[}}1, 2], [0, 3]]> : tensor<2x2xi64>
+// CHECK:           %[[VAL_2:.*]] = arith.constant dense<{{\[\[}}1, 2], [0, 3]]> : tensor<2x2xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.PadV2"(%[[VAL_0]], %[[VAL_2]], %[[VAL_1]]) : (tensor<8x128xf32>, tensor<2x2xi64>, tensor<f32>) -> tensor<11x131xf32>
 // CHECK:           return %[[VAL_3]] : tensor<11x131xf32>
 // CHECK:         }
@@ -2226,7 +2226,7 @@ func @convert_gather(%arg0: tensor<147456xf16>, %arg1: tensor<192x256x1xi32>) ->
 // CHECK-LABEL:   func @convert_gather_nd(
 // CHECK-SAME:                            %[[VAL_0:.*]]: tensor<98x128xf32>,
 // CHECK-SAME:                            %[[VAL_1:.*]]: tensor<4x64xi32>)
-// CHECK:           %[[VAL_2:.*]] = constant dense<[4, 64, 1]> : tensor<3xi64>
+// CHECK:           %[[VAL_2:.*]] = arith.constant dense<[4, 64, 1]> : tensor<3xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_1]], %[[VAL_2]]) : {{.*}} -> tensor<4x64x1xi32>
 // CHECK:           %[[VAL_4:.*]] = "tf.GatherNd"(%[[VAL_0]], %[[VAL_3]]) : {{.*}} -> tensor<4x64x128xf32>
 // CHECK:           return %[[VAL_4]]
@@ -2343,7 +2343,7 @@ func @convert_dynamic_slice_ui32(%arg0: tensor<7x3xf32>, %arg1: tensor<ui32>, %a
 // CHECK-SAME:                                 %[[VAL_0:.*]]: tensor<20x6xf32>,
 // CHECK-SAME:                                 %[[VAL_1:.*]]: tensor<4xi32>,
 // CHECK-SAME:                                 %[[VAL_2:.*]]: tensor<4x6xf32>) -> tensor<20x6xf32> {
-// CHECK:           %[[VAL_3:.*]] = constant dense<[4, 1]> : tensor<2xi64>
+// CHECK:           %[[VAL_3:.*]] = arith.constant dense<[4, 1]> : tensor<2xi64>
 // CHECK:           %[[VAL_4:.*]] = "tf.Reshape"(%[[VAL_1]], %[[VAL_3]]) : {{.*}} -> tensor<4x1xi32>
 // CHECK:           %[[VAL_5:.*]] = "tf.TensorScatterUpdate"(%[[VAL_0]], %[[VAL_4]], %[[VAL_2]]) : {{.*}} -> tensor<20x6xf32>
 // CHECK:           return %[[VAL_5]] : tensor<20x6xf32>
@@ -2593,9 +2593,9 @@ func @convert_not(%arg0: tensor<5x3x1xi1>) -> tensor<5x3x1xi1> {
 // -----
 
 // CHECK-LABEL:  func @while_with_variadic() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
-// CHECK-DAG:      %[[CST_0:.*]] = constant dense<1> : tensor<i32>
-// CHECK-DAG:      %[[CST_1:.*]] = constant dense<0> : tensor<i32>
-// CHECK-DAG:      %[[CST_2:.*]] = constant dense<1000> : tensor<i32>
+// CHECK-DAG:      %[[CST_0:.*]] = arith.constant dense<1> : tensor<i32>
+// CHECK-DAG:      %[[CST_1:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK-DAG:      %[[CST_2:.*]] = arith.constant dense<1000> : tensor<i32>
 // CHECK:          %[[WHILEREGION_0:.*]]:3 = "tf.WhileRegion"(%[[CST_1]], %[[CST_0]], %[[CST_2]]) ( {
 // CHECK:          ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>):  // no predecessors
 // CHECK:            %[[LESS_0:.*]] = "tf.Less"(%arg0, %arg2) : (tensor<i32>, tensor<i32>) -> tensor<i1>
@@ -2608,9 +2608,9 @@ func @convert_not(%arg0: tensor<5x3x1xi1>) -> tensor<5x3x1xi1> {
 // CHECK:          return %[[WHILEREGION_0]]#0, %[[WHILEREGION_0]]#1, %[[WHILEREGION_0]]#2 : tensor<i32>, tensor<i32>, tensor<i32>
 // CHECK:        }
 func @while_with_variadic() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
-  %cst = constant dense<1> : tensor<i32>
-  %cst_0 = constant dense<0> : tensor<i32>
-  %cst_1 = constant dense<1000> : tensor<i32>
+  %cst = arith.constant dense<1> : tensor<i32>
+  %cst_0 = arith.constant dense<0> : tensor<i32>
+  %cst_1 = arith.constant dense<1000> : tensor<i32>
   %0:3 = "mhlo.while"(%cst_0, %cst, %cst_1) ( {
   ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>):  // no predecessors
     %1 = "mhlo.compare"(%arg0, %arg2) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
@@ -2674,9 +2674,9 @@ func @invalid_while_with_tuple(%arg0: tuple<tensor<i32>, tuple<tensor<i32>, tupl
 // -----
 
 // CHECK-LABEL:  func @while_with_reduce(%arg0: tensor<1x256xf32>, %arg1: tensor<1xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1xf32>) {
-// CHECK-DAG:      %[[CST_0:.*]] = constant dense<1> : tensor<i32>
-// CHECK-DAG:      %[[CST_1:.*]] = constant dense<0> : tensor<i32>
-// CHECK-DAG:      %[[CST_2:.*]] = constant dense<1000> : tensor<i32>
+// CHECK-DAG:      %[[CST_0:.*]] = arith.constant dense<1> : tensor<i32>
+// CHECK-DAG:      %[[CST_1:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK-DAG:      %[[CST_2:.*]] = arith.constant dense<1000> : tensor<i32>
 // CHECK:          %[[WHILEREGION_0:.*]]:5 = "tf.WhileRegion"(%[[CST_1]], %[[CST_0]], %[[CST_2]], %arg0, %arg1) ( {
 // CHECK:          ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<1x256xf32>, %arg6: tensor<1xf32>):  // no predecessors
 // CHECK:            %[[LESS_0:.*]] = "tf.Less"(%arg2, %arg4) : (tensor<i32>, tensor<i32>) -> tensor<i1>
@@ -2693,9 +2693,9 @@ func @invalid_while_with_tuple(%arg0: tuple<tensor<i32>, tuple<tensor<i32>, tupl
 // CHECK:          return %[[WHILEREGION_0]]#0, %[[WHILEREGION_0]]#1, %[[WHILEREGION_0]]#2, %[[WHILEREGION_0]]#4 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<1xf32>
 // CHECK:        }
 func @while_with_reduce(%arg0: tensor<1x256xf32>, %arg1: tensor<1xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1xf32>) {
-  %cst = constant dense<1> : tensor<i32>
-  %cst_0 = constant dense<0> : tensor<i32>
-  %cst_1 = constant dense<1000> : tensor<i32>
+  %cst = arith.constant dense<1> : tensor<i32>
+  %cst_0 = arith.constant dense<0> : tensor<i32>
+  %cst_1 = arith.constant dense<1000> : tensor<i32>
   %0:5 = "mhlo.while"(%cst_0, %cst, %cst_1, %arg0 , %arg1) ( {
   ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<1x256xf32>, %arg6: tensor<1xf32>):  // no predecessors
     %1 = "mhlo.compare"(%arg2, %arg4) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
@@ -2774,7 +2774,7 @@ func @convert_reduce_to_all(%arg0: tensor<1x2x3x4x5xi1>, %arg1: tensor<2xi64>) -
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           %[[VAL_3:.*]] = "tf.Range"(%cst, %cst_0, %cst_1) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<6xi32>
-// CHECK:           %[[VAL_4:.*]] = constant dense<[3, 6]> : tensor<2xi64>
+// CHECK:           %[[VAL_4:.*]] = arith.constant dense<[3, 6]> : tensor<2xi64>
 // CHECK:           %[[VAL_5:.*]] = "tf.BroadcastTo"(%0, %cst_2) : (tensor<6xi32>, tensor<2xi64>) -> tensor<3x6xi32>
 // CHECK:           %[[K:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           %[[VALUES:.*]], %[[INDICES:.*]] = "tf.TopKV2"(%[[ARG_0]], %[[K]]) {sorted = true} : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
@@ -2794,7 +2794,7 @@ func @convert_sort_to_topk_iota_broadcast(%arg0: tensor<3x6xf32>) -> (tensor<3x6
 // CHECK-LABEL:   func @convert_sort_to_topk_iotacst_broadcast(
 // CHECK-SAME:                                                 %[[ARG_0:.*]]: tensor<3x6xf32>) -> (tensor<3x6xf32>, tensor<3x6xi32>) {
 // CHECK-DAG:       %[[VAL_0:.*]] = "tf.Const"() {value = dense<[0, 1, 2, 3, 4, 5]> : tensor<6xi32>} : () -> tensor<6xi32>
-// CHECK-DAG:       %[[VAL_1:.*]] = constant dense<[3, 6]> : tensor<2xi64>
+// CHECK-DAG:       %[[VAL_1:.*]] = arith.constant dense<[3, 6]> : tensor<2xi64>
 // CHECK:           %[[VAL_2:.*]] = "tf.BroadcastTo"(%cst, %cst_0) : (tensor<6xi32>, tensor<2xi64>) -> tensor<3x6xi32>
 // CHECK:           %[[K:.*]] = "tf.Const"() {value = dense<6> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           %[[VALUES:.*]], %[[INDICES:.*]] = "tf.TopKV2"(%[[ARG_0]], %[[K]]) {sorted = true} : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)

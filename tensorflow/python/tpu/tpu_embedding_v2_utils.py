@@ -726,7 +726,7 @@ class TableConfig(object):
   def __init__(self,
                vocabulary_size: int,
                dim: int,
-               initializer: Optional[Callable[[Any], None]],
+               initializer: Optional[Callable[[Any], None]] = None,
                optimizer: Optional[_Optimizer] = None,
                combiner: Text = "mean",
                name: Optional[Text] = None):

@@ -51,6 +51,7 @@ load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("@tf_toolchains//toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("@tf_toolchains//toolchains/remote:configure.bzl", "remote_execution_configure")
 load("@tf_toolchains//toolchains/clang6:repo.bzl", "clang6_configure")
+load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -188,35 +189,34 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "a19e5fcf04d6ff775cc5f9d9d0ef01e4c74e77519caf4077052f16f037eba6a6",
-        strip_prefix = "oneDNN-2.4-rc",
+        sha256 = "930a2327c4fe4018a604f67ca3c0ebea01436aad7ce1f4e01d088732bd19d16f",
+        strip_prefix = "oneDNN-2.4.1",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.4-rc.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v2.4-rc.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.4.1.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.4.1.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        patch_file = "//third_party/mkl_dnn:onednn_acl_primitives.patch",
-        sha256 = "ccb2dbd9da36cd873cf573b4201d61bdba7438f12b144e6c7d061eb12a641751",
-        strip_prefix = "oneDNN-2.3",
+        sha256 = "a7f2a4d80d5406d156dfc1d7b27d10b0af5ed061cf0b6197d3d12cddc6790fcb",
+        strip_prefix = "oneDNN-2.4",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.3.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v2.3.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.4.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.4.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "18011eb6dc999f030df609ff2b528e0067ab9f76921fa0b53e35859e06a0aa10",
-        strip_prefix = "ComputeLibrary-21.05",
+        sha256 = "1c62d41be62c14c8ff196d6aaa9f9efe0597b82a923350d922e8cde217dd1d86",
+        strip_prefix = "ComputeLibrary-21.08",
         build_file = "//third_party/compute_library:BUILD",
         patch_file = "//third_party/compute_library:compute_library.patch",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/ARM-software/ComputeLibrary/archive/v21.05.tar.gz",
-            "https://github.com/ARM-software/ComputeLibrary/archive/v21.05.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/ARM-software/ComputeLibrary/archive/v21.08.tar.gz",
+            "https://github.com/ARM-software/ComputeLibrary/archive/v21.08.tar.gz",
         ],
     )
 
@@ -497,8 +497,8 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "absl_py",
-        sha256 = "0d37dc61cf29b04e42ed13b5fe3f578c05a1d07c75e5d7df826f0c2dc8dd2f53",
-        strip_prefix = "abseil-py-pypi-v0.14.1",
+        sha256 = "0be59b82d65dfa1f995365dcfea2cc57989297b065fda696ef13f30fcc6c8e5b",
+        strip_prefix = "abseil-py-pypi-v0.15.0",
         system_build_file = "//third_party/systemlibs:absl_py.BUILD",
         system_link_files = {
             "//third_party/systemlibs:absl_py.absl.BUILD": "absl/BUILD",
@@ -507,8 +507,8 @@ def _tf_repositories():
             "//third_party/systemlibs:absl_py.absl.logging.BUILD": "absl/logging/BUILD",
         },
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-py/archive/pypi-v0.14.1.tar.gz",
-            "https://github.com/abseil/abseil-py/archive/pypi-v0.14.1.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-py/archive/pypi-v0.15.0.tar.gz",
+            "https://github.com/abseil/abseil-py/archive/pypi-v0.15.0.tar.gz",
         ],
     )
 
@@ -1090,6 +1090,10 @@ def workspace():
     _tf_repositories()
 
     tfrt_dependencies()
+
+    # TODO(rostam): Delete after the release of Bazel built-in cc_shared_library.
+    # Initializes Bazel package rules' external dependencies.
+    rules_pkg_dependencies()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

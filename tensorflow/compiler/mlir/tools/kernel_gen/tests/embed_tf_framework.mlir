@@ -45,11 +45,11 @@ func @tf_entry_no_ctx(%size : index) attributes {tf_entry} {
 // CHECK-LABEL: func @assert(
 // CHECK-SAME: [[CTX:%.*]]: !tf_framework.op_kernel_context
 func @assert(%arg0: !tf_framework.op_kernel_context) attributes {tf_entry} {
-  %true = constant true
+  %true = arith.constant true
   assert %true, "the one and only"
   return
 }
-// CHECK:   [[TRUE:%.*]] = constant true
+// CHECK:   [[TRUE:%.*]] = arith.constant true
 // CHECK-NEXT: tf_framework.assert [[CTX]], [[TRUE]], INVALID_ARGUMENT
 
 // -----

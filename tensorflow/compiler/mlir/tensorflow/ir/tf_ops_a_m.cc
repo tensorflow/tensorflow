@@ -577,7 +577,7 @@ void BiasAddV1Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
-// BitcastOp
+// arith::BitcastOp
 //===----------------------------------------------------------------------===//
 
 void BitcastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -2328,23 +2328,34 @@ void EqualOp::build(OpBuilder &builder, OperationState &result, Value x,
 
 namespace {
 
-// Flips the incompatible_shape_error attribute to true if the shapes are
-// identical and static.
+// Flips the incompatible_shape_error attribute to true if the shapes are known
+// to be compatible.
 template <typename Ty>
 static LogicalResult flipComatibleShapeError(Ty op, PatternRewriter &rewriter) {
   if (op.incompatible_shape_error()) {
     return rewriter.notifyMatchFailure(op, "the attribute is already true");
   }
 
-  if (op.x().getType() != op.y().getType()) {
-    return rewriter.notifyMatchFailure(op,
-                                       "require the shapes to be identical");
+  // incompatible_shape_error=false implies that the op will either return a
+  // valid result or a scalar boolean indicating the error. For unranked outputs
+  // we don't know which one it is. TF shape inference turns unranked outputs
+  // into ranked ones if it can statically evaluate the broadcast, see the shape
+  // function of tf.Equal.
+  auto ty = op.getType().template dyn_cast<RankedTensorType>();
+  if (!ty) {
+    return rewriter.notifyMatchFailure(op, "requires a ranked output shape");
   }
 
-  auto src_ty = op.x().getType().template dyn_cast<RankedTensorType>();
-  if (!src_ty || !src_ty.hasStaticShape()) {
-    return rewriter.notifyMatchFailure(op, "require the shapes to be static");
+  // Unless this is a scalar compare, a scalar output indicates that this will
+  // always fail.
+  auto x_ty = op.x().getType().template dyn_cast<RankedTensorType>();
+  auto y_ty = op.y().getType().template dyn_cast<RankedTensorType>();
+  if (ty.getRank() == 0 &&
+      (!x_ty || x_ty.getRank() != 0 || !y_ty || y_ty.getRank() != 0)) {
+    return rewriter.notifyMatchFailure(op, "output rank must match input rank");
   }
+
+  // Shapes are known to be compatible.
   rewriter.template replaceOpWithNewOp<Ty>(op, op.x(), op.y(),
                                            rewriter.getBoolAttr(true));
   return success();

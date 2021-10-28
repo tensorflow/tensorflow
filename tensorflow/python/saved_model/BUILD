@@ -312,7 +312,6 @@ py_strict_library(
         "save_context.py",
     ],
     srcs_version = "PY3",
-    deps = [],
 )
 
 tf_py_test(
@@ -373,6 +372,7 @@ py_strict_library(
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:graph_view",
+        "//tensorflow/python/training/tracking:trackable_utils",
         "//tensorflow/python/training/tracking:util",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -670,7 +670,6 @@ py_strict_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
-        "@enum34_archive//:enum",
         "@six_archive//:six",
     ],
 )

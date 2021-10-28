@@ -88,6 +88,7 @@ XlaOp SortAndSliceBuilder(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   slice_limit_indices.insert(slice_limit_indices.begin(),
                              operands_shapes[0].dimensions().begin(),
                              operands_shapes[0].dimensions().end());
+  slice_limit_indices[reduction_dim] = top_k;
 
   std::vector<XlaOp> sliced_results;
   sliced_results.reserve(num_operands);
@@ -194,6 +195,7 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   }
 
   std::vector<XlaOp> partial_reduce_args;
+  partial_reduce_args.reserve(operands.size() + init_values.size());
   for (const auto& op : operands) {
     partial_reduce_args.push_back(op);
   }
@@ -204,6 +206,7 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
       CeilOfRatio<int64_t>(CeilOfRatio(n, tpu_tiling), (1 << log2_reduction)) *
       tpu_tiling;
   std::vector<Shape> approx_output_shapes;
+  approx_output_shapes.reserve(operands_shapes.size());
   for (auto op_shape : operands_shapes) {
     op_shape.mutable_dimensions()[reduction_dim] = output_reduction_size;
     approx_output_shapes.push_back(op_shape);

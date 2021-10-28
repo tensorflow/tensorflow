@@ -226,7 +226,8 @@ LogicalResult ConvertTFRandomUniformOp::matchAndRewrite(
         offset += num_samples;
       }
       auto output_data = DenseFPElementsAttr::get(output_type, data);
-      rewriter.replaceOpWithNewOp<ConstantOp>(op, output_type, output_data);
+      rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, output_type,
+                                                     output_data);
       return success();
     }
   }
@@ -287,7 +288,7 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
 
     auto permute_attr = DenseIntElementsAttr::get(
         RankedTensorType::get({2}, rewriter.getI32Type()), {1, 0});
-    auto permute = rewriter.create<ConstantOp>(
+    auto permute = rewriter.create<arith::ConstantOp>(
         op->getLoc(), permute_attr.getType(), permute_attr);
     llvm::SmallVector<int64_t, 2> new_shape{type.getShape()[1],
                                             type.getShape()[0]};
@@ -955,6 +956,7 @@ void LegalizeTF::runOnFunction() {
   // It is legal to have TF ops in the graph still which can be
   // used later or in the case of SELECT were we allow TF ops in the final
   // graph.
+  target.addLegalOp<mlir::arith::ConstantOp>();
   target.addLegalOp<mlir::ConstantOp>();
   target.addLegalOp<ConstOp>();
   if (run_tfl_runtime_verification_) {

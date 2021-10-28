@@ -1610,6 +1610,13 @@ cc_library(
 )
 
 cc_library(
+    name = "local_session_selection",
+    srcs = ["local_session_selection.cc"],
+    hdrs = ["local_session_selection.h"],
+    copts = tf_copts(),
+)
+
+cc_library(
     name = "session_options",
     srcs = ["session_options.cc"],
     hdrs = [
@@ -1900,6 +1907,7 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":core_cpu_internal",
+        ":local_session_selection",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",

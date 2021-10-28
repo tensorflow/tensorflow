@@ -152,11 +152,6 @@ class PerDeviceCollector {
                               GetStatTypeStr(StatType::kCorrelationId)),
                           event.correlation_id);
     }
-    if (!event.annotation.empty()) {
-      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
-                              GetStatTypeStr(StatType::kKernelAnnotation)),
-                          *plane->GetOrCreateStatMetadata(event.annotation));
-    }
     if (!event.nvtx_range.empty()) {
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kNVTXRange)),

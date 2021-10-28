@@ -9,8 +9,8 @@ func @assuming(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2 : !shape.wi
   }
   %1 = shape.shape_of %0#0 : tensor<?x?xf32> -> tensor<2xindex>
   %2 = shape.shape_of %0#1 : tensor<?x?xf32> -> tensor<2xindex>
-  %3 = index_cast %1 : tensor<2xindex> to tensor<2xi32>
-  %4 = index_cast %2 : tensor<2xindex> to tensor<2xi32>
+  %3 = arith.index_cast %1 : tensor<2xindex> to tensor<2xi32>
+  %4 = arith.index_cast %2 : tensor<2xindex> to tensor<2xi32>
   %5 = mhlo.add %3, %4 : tensor<2xi32>
 // CHECK: %5 = mhlo.add %3, %4 : tensor<2xi32>:
 // CHECK-NEXT: s0 + s1 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]; s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0];
@@ -92,7 +92,7 @@ func @select(%arg0: tensor<i1>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>) 
 
 // CHECK-LABEL: Testing : dim
 func @dim(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %t = tensor.from_elements %d0, %d0 : tensor<2xindex>
 // CHECK: tensor.from_elements %0, %0 : tensor<2xindex>:
@@ -106,7 +106,7 @@ func @dim(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
 // CHECK-LABEL: Testing : extract
 func @extract(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   %shape = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
-  %c1 = constant 1 : index
+  %c1 = arith.constant 1 : index
   %d0 = tensor.extract %shape[%c1] : tensor<2xindex>
   %t = tensor.from_elements %d0, %d0 : tensor<2xindex>
 // CHECK: tensor.from_elements %1, %1 : tensor<2xindex>:
@@ -126,8 +126,8 @@ func @symbolic_constraint(
 ) -> tensor<2xi32> {
   %0 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
   %1 = shape.shape_of %arg1 : tensor<?x?xf32> -> tensor<2xindex>
-  %2 = index_cast %0 : tensor<2xindex> to tensor<2xi32>
-  %3 = index_cast %1 : tensor<2xindex> to tensor<2xi32>
+  %2 = arith.index_cast %0 : tensor<2xindex> to tensor<2xi32>
+  %3 = arith.index_cast %1 : tensor<2xindex> to tensor<2xi32>
   %4 = mhlo.add %2, %3 : tensor<2xi32>
 // CHECK: %4 = mhlo.add %2, %3 : tensor<2xi32>:
 // CHECK-NEXT: s0 + s1 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]; s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[0]
@@ -150,12 +150,12 @@ func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
     "mhlo.return"(%26) : (tensor<f32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
   %4 = "mhlo.convert"(%3) : (tensor<?xf32>) -> tensor<?xf32>
-  %cst = constant dense<1> : tensor<1xi32>
+  %cst = arith.constant dense<1> : tensor<1xi32>
   %5 = shape.shape_of %4 : tensor<?xf32> -> tensor<1xindex>
 // CHECK: %5 = shape.shape_of
 // CHECK-NEXT:   s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
-  %c1 = constant 1 : index
-  %c0 = constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c0 = arith.constant 0 : index
   %6 = tensor.extract %5[%c0] : tensor<1xindex>
 // CHECK: %6 = tensor.extract
 // CHECK-NEXT:   s0 with s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
@@ -191,10 +191,10 @@ func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
     "mhlo.return"(%26) : (tensor<f32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
   %17 = "mhlo.convert"(%16) : (tensor<?xf32>) -> tensor<?xf32>
-  %cst_0 = constant dense<1> : tensor<1xi32>
+  %cst_0 = arith.constant dense<1> : tensor<1xi32>
   %18 = shape.shape_of %17 : tensor<?xf32> -> tensor<1xindex>
-  %c1_1 = constant 1 : index
-  %c0_2 = constant 0 : index
+  %c1_1 = arith.constant 1 : index
+  %c0_2 = arith.constant 0 : index
   %19 = tensor.extract %18[%c0_2] : tensor<1xindex>
   %20 = tensor.from_elements %19, %c1_1 : tensor<2xindex>
   %21 = "mhlo.dynamic_reshape"(%17, %20) : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x1xf32>
@@ -225,7 +225,7 @@ func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32
   %5 = "mhlo.transpose"(%4) {permutation = dense<[0, 2, 1, 3]> : tensor<4xi64>} : (tensor<?x8x?x64xf32>) -> tensor<?x?x8x64xf32>
   %6 = "mhlo.transpose"(%5) {permutation = dense<[0, 1, 3, 2]> : tensor<4xi64>} : (tensor<?x?x8x64xf32>) -> tensor<?x?x64x8xf32>
   %7 = shape.shape_of %6 : tensor<?x?x64x8xf32> -> tensor<4xindex>
-  %8 = index_cast %7 : tensor<4xindex> to tensor<4xi32>
+  %8 = arith.index_cast %7 : tensor<4xindex> to tensor<4xi32>
   %9 = "mhlo.slice"(%8) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1xi32>
   %10 = "mhlo.reshape"(%9) : (tensor<1xi32>) -> tensor<i32>
   %11 = "mhlo.slice"(%8) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1xi32>

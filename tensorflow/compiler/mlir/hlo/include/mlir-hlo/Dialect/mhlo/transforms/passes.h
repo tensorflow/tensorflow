@@ -144,7 +144,7 @@ std::unique_ptr<OperationPass<FuncOp>>
 createLhloLegalizeRootsToParallelLoopsPass();
 
 // Input inline fusion pass for fusion codegen
-std::unique_ptr<OperationPass<lmhlo::FusionOp>> createInputInlineFusionPass();
+std::unique_ptr<FunctionPass> createInputInlineFusionPass();
 
 }  // namespace lmhlo
 

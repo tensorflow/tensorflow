@@ -859,9 +859,8 @@ LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
-  // XLA client builder API does not support generating custom call instructions
-  // with side effect.
-  if (op.has_side_effect() || op.getNumResults() != 1) return failure();
+  if (op.getNumResults() != 1)
+    return op.emitOpError() << "with multiple results cannot be exported";
   Value result = op.getResult(0);
   llvm::SmallVector<xla::XlaOp> args;
   if (failed(GetTuple(op, op.args(), ctx, args))) return failure();
@@ -871,7 +870,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   value_map[result] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), args,
       xla::TypeToShape(result.getType()), std::string(op.backend_config()),
-      /*has_side_effect=*/false, /*output_operand_aliasing=*/{},
+      op.has_side_effect(), /*output_operand_aliasing=*/{},
       /*literal=*/nullptr, /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/*xla_api_version);
   return success();
@@ -1424,8 +1423,8 @@ LogicalResult ConvertToHloModule::Lower(
   // Explicitly fail for ops that are not supported for export.
   if (inst->getDialect() !=
           inst->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() &&
-      !mlir::isa<mlir::ConstantOp, mlir::CallOp, mlir::tensor::CastOp,
-                 mlir::ReturnOp>(inst)) {
+      !mlir::isa<mlir::ConstantOp, mlir::arith::ConstantOp, mlir::CallOp,
+                 mlir::tensor::CastOp, mlir::ReturnOp>(inst)) {
     inst->emitOpError("unsupported op for export to XLA");
     return failure();
   }
@@ -1874,9 +1873,12 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                                /*shape_representation_fn=*/nullptr, options);
 
   ConvertToHloModule::ValueLoweringMap lowering;
-  if (xla_params.size() != block.getArguments().size())
-    return tensorflow::errors::Internal(
-        "xla_params size != block arguments size");
+  // In general xla_params is a superset of block arguments. Constant inputs may
+  // have been removed from block arguments.
+  if (xla_params.size() < block.getArguments().size())
+    return tensorflow::errors::Internal("xla_params size (", xla_params.size(),
+                                        ") < block arguments size (",
+                                        block.getArguments().size(), ")");
   for (BlockArgument& arg : block.getArguments()) {
     auto num = arg.getArgNumber();
     lowering[arg] = xla_params[num];

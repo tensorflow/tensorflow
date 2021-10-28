@@ -423,7 +423,7 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
     // tuple outer buffer containing pointers to the internal
     // elements.
     std::vector<llvm::Value*> tuple_element_addresses;
-    for (int64_t i = 0; i < data_shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < data_shape.tuple_shapes_size(); ++i) {
       TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
                           assignment_.GetUniqueSlice(infeed, {0, i}));
 
@@ -537,7 +537,7 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
 
   TF_RET_CHECK(!ShapeUtil::IsNestedTuple(operand_shape));
 
-  for (int64_t i = 0; i < operand_shape.tuple_shapes_size(); ++i) {
+  for (int i = 0; i < operand_shape.tuple_shapes_size(); ++i) {
     const Shape& tuple_element_shape =
         ShapeUtil::GetTupleElementShape(operand_shape, i);
     llvm::Value* tuple_element = llvm_ir::EmitGetTupleElement(
@@ -2240,7 +2240,7 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
   // PadToStatic has a dynamic tensor as input and variadic size of outputs:
   // (static_tensor, dynamic_dim_0, dynamic_dim_1, ... )
   // Dynamic dimension sizes starts from output index 1.
-  for (int64_t i = 1; i < hlo->shape().tuple_shapes_size(); ++i) {
+  for (int i = 1; i < hlo->shape().tuple_shapes_size(); ++i) {
     // Read from the metadata section of the dynamic input (operand 0).
     const Shape& dim_shape = ShapeUtil::GetSubshape(hlo->shape(), {i});
     TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
@@ -3098,29 +3098,11 @@ llvm::BasicBlock* IrEmitter::GetReturnBlock() {
 
 void IrEmitter::EmitEarlyReturnIfErrorStatus() {
   // Use the runtime helper to get the success/failure state as a boolean.
-  auto succeeded =
+  llvm::Value* succeeded =
       EmitCallToFunc(runtime::kStatusIsSuccessSymbolName, {GetStatusArgument()},
                      b_.getInt1Ty(), /*does_not_throw=*/true,
                      /*only_accesses_arg_memory=*/true);
-  llvm::BasicBlock* continued;
-  if (b_.GetInsertBlock()->getTerminator() == nullptr) {
-    // If we are generating code into an incomplete basic block we can just
-    // create a new basic block to jump to after our conditional branch.
-    continued = llvm_ir::CreateBasicBlock(/*insert_before=*/nullptr,
-                                          /*name=*/"", &b_);
-  } else {
-    // If we are generating code into a basic block that already has code, we
-    // need to split that block so as to not disturb the existing code.
-    auto original = b_.GetInsertBlock();
-    continued = original->splitBasicBlock(b_.GetInsertPoint());
-    // Remove the auto-generated unconditional branch to replace with our
-    // conditional branch.
-    original->getTerminator()->eraseFromParent();
-    b_.SetInsertPoint(original);
-  }
-  CondBr(succeeded, continued, GetReturnBlock());
-
-  b_.SetInsertPoint(continued, continued->getFirstInsertionPt());
+  llvm_ir::EmitEarlyReturn(succeeded, &b_, GetReturnBlock());
 }
 
 llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(

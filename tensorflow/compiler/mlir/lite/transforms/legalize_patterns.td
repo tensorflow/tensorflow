@@ -16,6 +16,7 @@ limitations under the License.
 // TFLite legalization patterns
 
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
@@ -75,13 +76,13 @@ def LegalizeTFConstToTFLConst: Pat<(TF_ConstOp ElementsAttr:$value),
 // Convert to std constant for statically shaped, non-opaque constants.
 def ConvertTfConstToStdConst : Pat<
   (TF_ConstOp:$res NonOpaqueElementsAttr:$value),
-  (ConstantOp $value),
+  (Arith_ConstantOp $value),
   [(AnyStaticShapeTensor $res)], (addBenefit 10)>;
 
 //===----------------------------------------------------------------------===//
 // Unary ops patterns.
 //===----------------------------------------------------------------------===//
-def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">;
+def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
 
 // Constraint that Attr has values [1, X, Y, 1]
 def IsIntList1XY1 : AttrConstraint<CPred<"TFIntListIs1XY1($_self)">>;
@@ -147,7 +148,7 @@ def LegalizeLog : Pat<(TF_LogOp $arg), (TFL_LogOp $arg)>;
 def LegalizeLog1p : Pat<
   (TF_Log1pOp F32Tensor:$arg),
   (TFL_LogOp (TFL_AddOp $arg,
-                  (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+                  (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
                   TFL_AF_None))>;
 
 def LegalizeNot : Pat<(TF_LogicalNotOp $arg), (TFL_LogicalNotOp $arg)>;
@@ -213,7 +214,7 @@ def LegalizeSoftmax : Pat<(TF_SoftmaxOp $arg),
                           (TFL_SoftmaxOp $arg, ConstF32Attr<"1.0">)>;
 def LegalizeSoftPlus : Pat<(TF_SoftplusOp F32Tensor:$arg0),
     (TFL_LogOp (TFL_AddOp (TFL_ExpOp $arg0),
-                (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+                (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
                 TFL_AF_None))>;
 def LegalizeSqueeze : Pat<(TF_SqueezeOp $arg, $squeeze_dims),
                           (TFL_SqueezeOp $arg, $squeeze_dims)>;
@@ -250,7 +251,7 @@ def LegalizeGatherNd : Pat<(TF_GatherNdOp $params, $indices),
                            (TFL_GatherNdOp $params, $indices)>;
 
 def LegalizeGatherV2 : Pat<
-  (TF_GatherV2Op $params, $indices, (ConstantOp ElementsAttr:$axis), $batch_dims),
+  (TF_GatherV2Op $params, $indices, (Arith_ConstantOp ElementsAttr:$axis), $batch_dims),
   (TFL_GatherOp $params, $indices, ExtractSingleElementAsInt32:$axis,
     (convertIntAttrTo32Bit $batch_dims))>;
 
@@ -295,8 +296,8 @@ def LegalizeBatchMatMulUnknownBatch : Pat<
   (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;
 
 def LegalizeFakeQuantWithMinMaxVars: Pat<
-  (TF_FakeQuantWithMinMaxVarsOp $inputs, (ConstantOp F32ElementsAttr:$min),
-    (ConstantOp F32ElementsAttr:$max), $num_bits, $narrow_range),
+  (TF_FakeQuantWithMinMaxVarsOp $inputs, (Arith_ConstantOp F32ElementsAttr:$min),
+    (Arith_ConstantOp F32ElementsAttr:$max), $num_bits, $narrow_range),
   (TFL_DequantizeOp
     (TFL_QuantizeOp $inputs, (ConvertToQuantTypeFromAttrs $inputs, $min, $max,
                               $num_bits, $narrow_range)))>;
@@ -304,8 +305,8 @@ def LegalizeFakeQuantWithMinMaxVars: Pat<
 // TODO(rocky): Not all of the attributes are handled correctly.  Make this
 // more general if there is a need.
 def LegalizeQuantizeAndDequantizeV4 : Pat<
-  (TF_QuantizeAndDequantizeV4Op $inputs, (ConstantOp F32ElementsAttr:$min),
-    (ConstantOp F32ElementsAttr:$max),
+  (TF_QuantizeAndDequantizeV4Op $inputs, (Arith_ConstantOp F32ElementsAttr:$min),
+    (Arith_ConstantOp F32ElementsAttr:$max),
     $signed_input, $num_bits, $range_given, $round_mode, $narrow_range, $axis),
   (TFL_DequantizeOp
     (TFL_QuantizeOp $inputs, (ConvertToQuantTypeFromAttrs $inputs, $min, $max,
@@ -450,7 +451,7 @@ def LegalizeConv2DBackpropInput : Pat<
      IsAllOnes:$dilations),
   (TFL_TransposeConvOp $input_sizes,
      (TF_TransposeOp $filter,
-       (ConstantOp ConstantAttr<I32VectorElementsAttr<4>, "{2, 0, 1, 3}">)),
+       (Arith_ConstantOp ConstantAttr<I32VectorElementsAttr<4>, "{2, 0, 1, 3}">)),
      $out_backprop,
      /*bias=*/ (CreateNoneValue $input_sizes),
      /*padding=*/ $padding,
@@ -512,3 +513,7 @@ def LegalizeComplexAbs : Pat<(TF_ComplexAbsOp $arg), (TFL_ComplexAbsOp $arg)>;
 def LegalizeReal : Pat<(TF_RealOp $arg), (TFL_RealOp $arg)>;
 
 def LegalizeImag : Pat<(TF_ImagOp $arg), (TFL_ImagOp $arg)>;
+
+def LegalizeBucketize : Pat<
+  (TF_BucketizeOp $input, F32ArrayAttr:$boundaries),
+  (TFL_BucketizeOp $input, $boundaries)>;

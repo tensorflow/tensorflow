@@ -585,6 +585,7 @@ std::vector<string> GetROCDLPaths(std::string amdgpu_version,
 
   // Construct full path to ROCDL bitcode libraries.
   std::vector<string> result;
+  result.reserve(rocdl_filenames->size() + 1);
   for (auto& filename : *rocdl_filenames) {
     result.push_back(tensorflow::io::JoinPath(rocdl_dir_path, filename));
   }

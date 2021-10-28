@@ -63,6 +63,32 @@ py_strict_test(
 )
 
 py_strict_test(
+    name = "tf_logical_ops_test",
+    srcs = ["tf_logical_ops_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "tf_math_ops_test",
+    srcs = ["tf_math_ops_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+    ],
+)
+
+py_strict_test(
     name = "tf_matmul_test",
     srcs = ["tf_matmul_test.py"],
     python_version = "PY3",

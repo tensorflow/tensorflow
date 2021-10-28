@@ -13,5 +13,9 @@
 /tensorflow/python/eager @rohan100jain @kkimdev
 /tensorflow/python/tools/api/generator/ @annarev
 /tensorflow/tools/docs/ @markdaoust
+/tensorflow/compiler/mlir/ @aminim @jpienaar
+/tensorflow/core/ir/ @aminim @jpienaar
+/tensorflow/core/transforms/ @aminim @jpienaar
+
 
 /third_party/systemlibs/ @perfinion

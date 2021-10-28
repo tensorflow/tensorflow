@@ -72,7 +72,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
   PointXY = collections.namedtuple("Point", ["x", "y"])  # pylint: disable=invalid-name
   unsafe_map_pattern = ("nest cannot guarantee that it is safe to map one to "
                         "the other.")
-  bad_pack_pattern = ("Attempted to pack value:\n  .+\ninto a sequence, but "
+  bad_pack_pattern = ("Attempted to pack value:\n  .+\ninto a structure, but "
                       "found incompatible type `<(type|class) 'str'>` instead.")
 
   if attr:
@@ -279,8 +279,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
   def testPackSequenceAs_wrongLengthsError(self):
     with self.assertRaisesRegex(
-        ValueError,
-        "Structure had 2 elements, but flat_sequence had 3 elements."):
+        ValueError, "Structure had 2 atoms, but flat_sequence had 3 items."):
       nest.pack_sequence_as(["hello", "world"],
                             ["and", "goodbye", "again"])
 
@@ -288,8 +287,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     val = ragged_tensor.RaggedTensor.from_row_splits(values=[1],
                                                      row_splits=[0, 1])
     with self.assertRaisesRegex(
-        ValueError,
-        "Structure had 2 elements, but flat_sequence had 1 elements."):
+        ValueError, "Structure had 2 atoms, but flat_sequence had 1 items."):
       nest.pack_sequence_as(val, [val], expand_composites=True)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly

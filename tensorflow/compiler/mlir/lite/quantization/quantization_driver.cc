@@ -131,8 +131,9 @@ class QuantizationDriver {
   // Duplicates the constant op if it has multiple uses, and replaces
   // target_op->operand[operand_index] with the newly created op. This also
   // replaces corresponsing quantization states.
-  ConstantOp DuplicateConstantOpIfNeeded(ConstantOp op, Operation *target_op,
-                                         int operand_index);
+  arith::ConstantOp DuplicateConstantOpIfNeeded(arith::ConstantOp op,
+                                                Operation *target_op,
+                                                int operand_index);
 
   // Adjusts bias scale that is derived from other scales (fc, conv ops) to
   // prevent overflow of quantized bias values. This also changes quantization
@@ -330,8 +331,8 @@ class QuantizationDriver {
     fn_.walk([&](Operation *op) {
       if (op->hasTrait<OpTrait::IsTerminator>() ||
           op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp>(
-              op))
+          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp,
+                    arith::ConstantOp>(op))
         return;
       if (current_op == op) llvm::dbgs() << "===>>>";
       llvm::dbgs() << op->getName() << " : (";
@@ -757,7 +758,7 @@ QuantParams QuantizationDriver::GetQuantParamsForSameScaleConstraint(
 }
 
 void QuantizationDriver::PreprocessConstantOps() {
-  fn_.walk([&](ConstantOp cst) {
+  fn_.walk([&](arith::ConstantOp cst) {
     // Non-float tensors are neither weights nor require quantization.
     auto type = cst.getType().dyn_cast<ShapedType>();
     if (!type || !type.getElementType().isa<FloatType>()) return;
@@ -803,7 +804,7 @@ void QuantizationDriver::PreprocessConstantOps() {
         // different users.
         if (uses.size() > 1) {
           auto new_cst =
-              builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+              builder_.create<arith::ConstantOp>(cst.getLoc(), cst.value());
           user->setOperand(operand_num, new_cst);
         }
       }
@@ -887,7 +888,7 @@ bool QuantizationDriver::PropagateParams() {
     if (llvm::is_contained(quantized_, op)) continue;
     quantized_.insert(op);
 
-    if (auto cst = llvm::dyn_cast<ConstantOp>(op)) {
+    if (auto cst = llvm::dyn_cast<arith::ConstantOp>(op)) {
       // If the workflow requires inferring ranges from the content
       // (post-training quantization) and it is weight (filter) and hasn't
       // been quantized, we infer the quantization parameters from the content.
@@ -962,15 +963,14 @@ bool QuantizationDriver::PropagateParams() {
   return changed;
 }
 
-ConstantOp QuantizationDriver::DuplicateConstantOpIfNeeded(ConstantOp op,
-                                                           Operation *target_op,
-                                                           int operand_index) {
+arith::ConstantOp QuantizationDriver::DuplicateConstantOpIfNeeded(
+    arith::ConstantOp op, Operation *target_op, int operand_index) {
   if (op.getResult().hasOneUse()) {
     return op;
   }
   OpBuilder builder(op->getContext());
   builder.setInsertionPointAfter(op);
-  ConstantOp new_op = llvm::cast<ConstantOp>(builder.clone(*op));
+  arith::ConstantOp new_op = llvm::cast<arith::ConstantOp>(builder.clone(*op));
   target_op->getOpOperand(operand_index).set(new_op.getResult());
   InitializeOperandState(target_op, operand_index, new_op.getResult());
   InitializeResultState(new_op, 0, new_op.getResult());
@@ -985,11 +985,11 @@ bool QuantizationDriver::ShouldCheckBiasScale(
   // FC and Conv* ops. Restriction for the weight can be relaxed if there are
   // needs for adjusting scale of variable weights.
   auto affine_op = llvm::dyn_cast<AffineQuantizedOpInterface>(op);
-  auto bias_op = op->getOperand(bias_index).getDefiningOp<ConstantOp>();
+  auto bias_op = op->getOperand(bias_index).getDefiningOp<arith::ConstantOp>();
   if (!affine_op || !bias_op || input_indices.size() != 2) return false;
   if (!bias_op.value().isa<DenseFPElementsAttr>()) return false;
   filter_index = affine_op.GetAffineOperandIndex();
-  if (!op->getOperand(filter_index).getDefiningOp<ConstantOp>()) {
+  if (!op->getOperand(filter_index).getDefiningOp<arith::ConstantOp>()) {
     return false;
   }
   if (filter_index == input_indices[0]) {
@@ -1025,7 +1025,7 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
 
   quant::QuantState input_state = GetOperandQuantState(op, input_index);
   quant::QuantState filter_state = GetOperandQuantState(op, filter_index);
-  auto bias_op = op->getOperand(bias_index).getDefiningOp<ConstantOp>();
+  auto bias_op = op->getOperand(bias_index).getDefiningOp<arith::ConstantOp>();
   const double input_scale =
       input_state.params.cast<UniformQuantizedType>().getScale();
 
@@ -1052,7 +1052,7 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
             params.getExpressedType(), new_bias_scale, 0,
             params.getStorageTypeMin(), params.getStorageTypeMax()));
     auto filter_op = DuplicateConstantOpIfNeeded(
-        op->getOperand(filter_index).getDefiningOp<ConstantOp>(), op,
+        op->getOperand(filter_index).getDefiningOp<arith::ConstantOp>(), op,
         filter_index);
     if (!filter_op) {
       return SetOperandParams(op, bias_index, params);
@@ -1094,7 +1094,7 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
             params.getStorageTypeMin(), params.getStorageTypeMax()));
 
     auto filter_op = DuplicateConstantOpIfNeeded(
-        op->getOperand(filter_index).getDefiningOp<ConstantOp>(), op,
+        op->getOperand(filter_index).getDefiningOp<arith::ConstantOp>(), op,
         filter_index);
     changed |= SetOperandParams(
         op, filter_index,

@@ -1,10 +1,10 @@
 // RUN: tf-tfrt-opt %s --tf-cpurt-pad-tiled-ops | FileCheck %s
 
 func @reduce(%in: tensor<?x?xf32>) -> tensor<?xf32> {
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
-  %c4 = constant 4 : index
-  %cst = constant 0.000000e+00 : f32
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %cst = arith.constant 0.000000e+00 : f32
 
   %0 = tensor.dim %in, %c0 : tensor<?x?xf32>
   %undef = linalg.init_tensor [%0] : tensor<?xf32>
@@ -38,7 +38,7 @@ func @reduce(%in: tensor<?x?xf32>) -> tensor<?xf32> {
             ins(%in_sub : tensor<?x?xf32>)
             outs(%init_tmp_result : tensor<?xf32>) {
     ^bb0(%arg6: f32, %arg7: f32):
-      %20 = addf %arg6, %arg7 : f32
+      %20 = arith.addf %arg6, %arg7 : f32
       linalg.yield %20 : f32
     } -> tensor<?xf32>
     %updated_out_sub = linalg.generic {
@@ -48,7 +48,7 @@ func @reduce(%in: tensor<?x?xf32>) -> tensor<?xf32> {
             ins(%tmp_result : tensor<?xf32>)
             outs(%out_sub : tensor<?xf32>) {
     ^bb0(%arg6: f32, %arg7: f32):
-      %20 = addf %arg6, %arg7 : f32
+      %20 = arith.addf %arg6, %arg7 : f32
       linalg.yield %20 : f32
     } -> tensor<?xf32>
     %insert_out = tensor.insert_slice %updated_out_sub into %out_[%i] [%12] [1]

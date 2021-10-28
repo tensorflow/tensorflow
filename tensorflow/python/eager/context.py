@@ -28,7 +28,7 @@ import six
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import coordination_service_pb2
+from tensorflow.core.protobuf import coordination_config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
@@ -461,7 +461,7 @@ class Context(object):
     self._collective_scoped_allocator_enabled_ops = None
     self._collective_use_nccl_communication = None
     self._collective_device_filters = None
-    self._coordination_service = None
+    self._coordination_service_config = None
 
     self._device_lock = threading.Lock()
     self._physical_devices = None
@@ -715,23 +715,30 @@ class Context(object):
                                      service_leader="",
                                      enable_health_check=True,
                                      cluster_register_timeout_in_ms=0,
-                                     heartbeat_timeout_in_ms=0):
+                                     heartbeat_timeout_in_ms=0,
+                                     coordinated_jobs=None):
     """Enable distributed coordination service with specified configs."""
     if self._context_handle:
       logging.warning("Configuring coordination service type may not be "
                       "effective because the context is already initialized.")
-    config = coordination_service_pb2.CoordinationServiceConfigs()
+    config = coordination_config_pb2.CoordinationServiceConfig()
     config.service_type = service_type
     if service_leader:
       config.service_leader = pydev.canonical_name(service_leader)
     config.enable_health_check = enable_health_check
     config.cluster_register_timeout_in_ms = cluster_register_timeout_in_ms
     config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
-    self._coordination_service = config
+    if coordinated_jobs is not None:
+      if isinstance(coordinated_jobs, list):
+        config.coordinated_jobs.extend(coordinated_jobs)
+      else:
+        raise ValueError("`coordinated_jobs` must be a list of job names or "
+                         "None, but got: %s" % (coordinated_jobs,))
+    self._coordination_service_config = config
 
   @property
   def coordination_service(self):
-    return self._coordination_service
+    return self._coordination_service_config
 
   def set_config_key_value(self, key, value):
     ensure_initialized()
@@ -1135,9 +1142,9 @@ class Context(object):
         config.device_filters.append(f)
 
     # Configure coordination service
-    if self._coordination_service:
-      config.experimental.coordination_service.CopyFrom(
-          self._coordination_service)
+    if self._coordination_service_config:
+      config.experimental.coordination_config.CopyFrom(
+          self._coordination_service_config)
 
     return config
 

@@ -35,6 +35,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -591,6 +592,54 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     self.assertLen(inferred_shapes, 2)
     self.assertTrue(inferred_shapes[0].is_compatible_with(actual_shapes[0]))
     self.assertTrue(inferred_shapes[1].is_compatible_with(actual_shapes[1]))
+
+  @test_util.run_v2_only
+  def testSavedModelSaveRestore(self, is_anonymous):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
+
+    root = tracking.AutoTrackable()
+
+    default_value = -1
+    keys = constant_op.constant([11, 12, 13], dtypes.int64)
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    root.table = self.getHashTable()(
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_value,
+        experimental_is_anonymous=is_anonymous)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec((), dtypes.int64)])
+    def lookup(key):
+      return root.table.lookup(key)
+
+    @def_function.function(input_signature=[])
+    def size():
+      return root.table.size()
+
+    @def_function.function(input_signature=[])
+    def is_ref_counting():
+      return test_ops.is_resource_handle_ref_counting(
+          root.table.resource_handle)
+
+    root.lookup = lookup
+    root.size = size
+    root.is_ref_counting = is_ref_counting
+
+    self.assertEqual(root.table.size(), 3)
+    self.assertEqual(root.lookup(12), 1)
+    self.assertEqual(root.lookup(10), -1)
+    self.assertLen(root.table.export()[0], 3)
+    self.assertEqual(root.is_ref_counting(), is_anonymous)
+
+    saved_model_save.save(root, save_path)
+
+    del root
+    loaded = saved_model_load.load(save_path)
+    self.assertEqual(loaded.size(), 3)
+    self.assertEqual(loaded.lookup(12), 1)
+    self.assertEqual(loaded.lookup(10), -1)
+    self.assertEqual(loaded.is_ref_counting(), is_anonymous)
 
 
 @parameterized.named_parameters(
@@ -1391,6 +1440,54 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
         None, num_oov_buckets=1, experimental_is_anonymous=is_anonymous)
     self.assertIsNone(table.resource_handle)
 
+  @test_util.run_v2_only
+  def testSavedModelSaveRestore(self, is_anonymous):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
+
+    root = tracking.AutoTrackable()
+
+    vocab_file = self._createVocabFile("feat_to_id_3.txt", ("11", "12", "13"))
+    vocab_size = 3
+    oov_buckets = 1
+    root.table = self.getVocabularyTable()(
+        lookup_ops.TextFileIdTableInitializer(
+            vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
+        oov_buckets,
+        experimental_is_anonymous=is_anonymous)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec((), dtypes.int64)])
+    def lookup(key):
+      return root.table.lookup(key)
+
+    @def_function.function(input_signature=[])
+    def size():
+      return root.table.size()
+
+    @def_function.function(input_signature=[])
+    def is_ref_counting():
+      return test_ops.is_resource_handle_ref_counting(
+          root.table.resource_handle)
+
+    root.lookup = lookup
+    root.size = size
+    root.is_ref_counting = is_ref_counting
+
+    self.assertEqual(root.table.size(), 4)
+    self.assertEqual(root.lookup(12), 1)
+    self.assertEqual(root.lookup(10), 3)
+    self.assertEqual(root.is_ref_counting(), is_anonymous)
+
+    saved_model_save.save(root, save_path)
+
+    del root
+    loaded = saved_model_load.load(save_path)
+    self.assertEqual(loaded.size(), 4)
+    self.assertEqual(loaded.lookup(12), 1)
+    self.assertEqual(loaded.lookup(10), 3)
+    self.assertEqual(loaded.is_ref_counting(), is_anonymous)
+
 
 @parameterized.named_parameters(
     (f"_{is_anonymous}", is_anonymous) for is_anonymous in [False, True])
@@ -1955,19 +2052,35 @@ class DenseHashTableOpTest(test.TestCase):
     def lookup(key):
       return root.table.lookup(key)
 
-    root.lookup = lookup
+    @def_function.function(input_signature=[])
+    def size():
+      return root.table.size()
 
-    self.assertAllEqual(0, root.table.size())
+    @def_function.function(input_signature=[])
+    def is_ref_counting():
+      return test_ops.is_resource_handle_ref_counting(
+          root.table.resource_handle)
+
+    root.lookup = lookup
+    root.size = size
+    root.is_ref_counting = is_ref_counting
+
+    self.assertEqual(root.table.size(), 0)
     root.table.insert(keys, values)
-    self.assertAllEqual(3, self.evaluate(root.table.size()))
-    self.assertAllEqual(32, len(self.evaluate(root.table.export()[0])))
+    self.assertEqual(root.table.size(), 3)
+    self.assertEqual(root.table.lookup(12), 1)
+    self.assertEqual(root.table.lookup(10), -1)
+    self.assertEqual(len(root.table.export()[0]), 32)
+    self.assertEqual(root.is_ref_counting(), is_anonymous)
 
     saved_model_save.save(root, save_path)
 
     del root
     loaded = saved_model_load.load(save_path)
+    self.assertEqual(loaded.size(), 3)
     self.assertEqual(loaded.lookup(12), 1)
     self.assertEqual(loaded.lookup(10), -1)
+    self.assertEqual(loaded.is_ref_counting(), is_anonymous)
 
   @test_util.run_v1_only("Saver V1 only")
   def testVectorSaveRestore(self, is_anonymous):
@@ -3440,6 +3553,57 @@ class MutableHashTableOpTest(test.TestCase):
                                         dtypes.string)
     output = table.lookup(input_string)
     self.assertAllEqual([-1, 0, 1, 2, -1], self.evaluate(output))
+
+  @test_util.run_v2_only
+  def testSavedModelSaveRestore(self, is_anonymous):
+    save_dir = os.path.join(self.get_temp_dir(), "save_restore")
+    save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
+
+    root = tracking.AutoTrackable()
+
+    default_value = -1
+    keys = constant_op.constant([11, 12, 13], dtypes.int64)
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    root.table = lookup_ops.MutableHashTable(
+        dtypes.int64,
+        dtypes.int64,
+        default_value,
+        experimental_is_anonymous=is_anonymous)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec((), dtypes.int64)])
+    def lookup(key):
+      return root.table.lookup(key)
+
+    @def_function.function(input_signature=[])
+    def size():
+      return root.table.size()
+
+    @def_function.function(input_signature=[])
+    def is_ref_counting():
+      return test_ops.is_resource_handle_ref_counting(
+          root.table.resource_handle)
+
+    root.lookup = lookup
+    root.size = size
+    root.is_ref_counting = is_ref_counting
+
+    self.assertEqual(root.table.size(), 0)
+    root.table.insert(keys, values)
+    self.assertEqual(root.table.size(), 3)
+    self.assertEqual(root.table.lookup(12), 1)
+    self.assertEqual(root.table.lookup(10), -1)
+    self.assertEqual(len(root.table.export()[0]), 3)
+    self.assertEqual(root.is_ref_counting(), is_anonymous)
+
+    saved_model_save.save(root, save_path)
+
+    del root
+    loaded = saved_model_load.load(save_path)
+    self.assertEqual(loaded.size(), 3)
+    self.assertEqual(loaded.lookup(12), 1)
+    self.assertEqual(loaded.lookup(10), -1)
+    self.assertEqual(loaded.is_ref_counting(), is_anonymous)
 
   @test_util.run_v1_only("Multiple sessions")
   def testSharing(self, is_anonymous):

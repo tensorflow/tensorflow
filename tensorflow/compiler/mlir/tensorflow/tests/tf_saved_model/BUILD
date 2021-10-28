@@ -11,6 +11,10 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:pywrap_mlir",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -20,6 +24,10 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:pywrap_mlir",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
     ],
 )
 

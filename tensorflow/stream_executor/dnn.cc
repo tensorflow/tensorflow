@@ -50,7 +50,7 @@ constexpr DataType ToDataType<int32>::value;
 
 AlgorithmDesc::AlgorithmDesc(
     int64_t engine_id,
-    const absl::flat_hash_map<int64_t, int64_t>& tuning_knobs) {
+    const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs) {
   proto_.set_is_cudnn_frontend(true);
   proto_.set_algo_id(engine_id);
   for (const auto& pair : tuning_knobs) {
@@ -91,11 +91,11 @@ std::string AlgorithmDesc::ToString() const {
   }
 }
 
-absl::flat_hash_map<int64_t, int64_t> AlgorithmDesc::TuningKnobs() const {
-  absl::flat_hash_map<int64_t, int64_t> result;
+std::vector<std::pair<int64_t, int64_t>> AlgorithmDesc::TuningKnobs() const {
+  std::vector<std::pair<int64_t, int64_t>> result;
   result.reserve(proto_.tuning_knobs().size());
   for (const auto& pair : proto_.tuning_knobs()) {
-    result.emplace(pair.first, pair.second);
+    result.emplace_back(pair.first, pair.second);
   }
   return result;
 }
@@ -248,6 +248,8 @@ std::string DataLayoutString(DataLayout layout) {
       return "BatchDepthYX";
     case DataLayout::kBatchDepthYX4:
       return "BatchDepthYX4";
+    case DataLayout::kBatchDepthYX32:
+      return "BatchDepthYX32";
     default:
       LOG(FATAL) << "Unknown data layout " << static_cast<int32>(layout);
   }
@@ -262,6 +264,8 @@ std::string FilterLayoutString(FilterLayout layout) {
       return "OutputYXInput";
     case FilterLayout::kOutputInputYX4:
       return "OutputInputYX4";
+    case FilterLayout::kOutputInputYX32:
+      return "OutputInputYX32";
     case FilterLayout::kInputYXOutput:
       return "InputYXOutput";
     case FilterLayout::kYXInputOutput:
@@ -549,6 +553,7 @@ std::string BatchDescriptor::ToShortString() const {
     case DataLayout::kBatchDepthYX:
       return absl::StrCat(batch, depth, spatial, suffix);
     case DataLayout::kBatchDepthYX4:
+    case DataLayout::kBatchDepthYX32:
       return absl::StrCat(batch, depth, spatial, suffix, "(VECT_C)");
     default:
       LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout());
@@ -653,6 +658,7 @@ std::string FilterDescriptor::ToShortString() const {
     case FilterLayout::kOutputYXInput:
       return absl::StrCat(od, spatial, id);
     case FilterLayout::kOutputInputYX4:
+    case FilterLayout::kOutputInputYX32:
       return absl::StrCat(od, id, spatial, "(VECT_C)");
     case FilterLayout::kInputYXOutput:
       return absl::StrCat(id, spatial, od);

@@ -155,6 +155,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"node_ordinal", kNodeOrdinal},
       {"model_id", kModelId},
       {"queue_addr", kQueueAddr},
+      {"queue_id", kQueueId},
       {"request_id", kRequestId},
       {"run_id", kRunId},
       {"graph_type", kGraphType},
@@ -195,7 +196,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"Memset_details", kMemsetDetails},
       {"MemoryResidency_details", kMemoryResidencyDetails},
       {"kernel_details", kKernelDetails},
-      {"annotation", kKernelAnnotation},
       {"nvtx_range", kNVTXRange},
       {"stream", kStream},
       // Stats added when processing traces.
@@ -206,6 +206,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"tf_op", kTfOp},
       {"hlo_op", kHloOp},
       {"hlo_module", kHloModule},
+      {"program_id", kProgramId},
       {"equation", kEquation},
       {"is_eager", kIsEager},
       {"tf_function_call", kTfFunctionCall},
@@ -221,8 +222,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"Scaled Value", kScaledValue},
       {"Thread Id", kThreadId},
       // XLA metadata map related.
-      {"SELF_DURATION_PS", kSelfDurationPs},
-      {"MIN_DURATION_PS", kMinDurationPs},
       {"Hlo Proto", kHloProto},
       // Device capability related.
       {"clock_rate", kDevCapClockRateKHz},

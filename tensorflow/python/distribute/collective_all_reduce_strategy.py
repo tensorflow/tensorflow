@@ -29,6 +29,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
@@ -37,11 +38,13 @@ from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
+from tensorflow.python.platform import remote_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training.tracking import base
@@ -398,11 +401,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices),
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     # CrossDeviceOps for per host tensors.
     self._host_cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=[self._worker_device],
         group_size=self._num_workers,
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
@@ -463,6 +468,16 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           scoped_allocator_enabled_ops=("CollectiveReduce",),
           device_filters=("/job:%s/task:%d" % (task_type, task_id),))
       self._collective_ops_configured = True
+      if context.context().coordination_service is None:
+        coordination_service = remote_utils.coordination_service_type(
+            cluster_resolver.rpc_layer)
+        coordinated_jobs = ["chief", "worker"]
+        if coordination_service and task_type in coordinated_jobs:
+          context.context().configure_coordination_service(
+              service_type=coordination_service,
+              service_leader=multi_worker_util.coordination_leader(
+                  cluster_spec),
+              coordinated_jobs=coordinated_jobs)
 
     # Starting a std server in eager mode and in independent worker mode.
     if (context.executing_eagerly() and
@@ -475,7 +490,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
       # If coordination service is enabled, use its internal heartbeat to detect
       # peer failures instead of the Python-level health check.
-      if config_proto.experimental.coordination_service.service_type:
+      if config_proto.experimental.coordination_config.service_type:
         self._enable_check_health = False
 
       if hasattr(cluster_resolver, "port"):
@@ -513,11 +528,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=local_devices,
         group_size=len(local_devices) * self._num_workers,
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     # CrossDeviceOps for per host tensors.
     self._host_cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         devices=[self._worker_device],
         group_size=self._num_workers,
+        options=self._communication_options,
         collective_keys=self._collective_keys)
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
@@ -627,7 +644,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           "of tf.distribute.MirroredStrategy"
       )
     input_context = self._make_input_context()
-    return input_lib.get_distributed_dataset(
+    return input_util.get_distributed_dataset(
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
@@ -644,7 +661,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           "`distribute_datasets_from_function` "
           "of tf.distribute.MirroredStrategy")
     input_context = self._make_input_context()
-    return input_lib.get_distributed_datasets_from_function(
+    return input_util.get_distributed_datasets_from_function(
         dataset_fn=dataset_fn,
         input_workers=self._input_workers_with_options(options),
         input_contexts=[input_context],
@@ -665,7 +682,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   def _make_dataset_iterator(self, dataset):
     """Distributes the dataset to each local GPU."""
     input_context = self._make_input_context()
-    return input_lib.DatasetIterator(
+    return input_lib_v1.DatasetIterator(
         dataset,
         self._input_workers,
         self._container_strategy(),
@@ -678,9 +695,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
     """Distributes the input function to each local GPU."""
     input_context = self._make_input_context()
-    return input_lib.InputFunctionIterator(input_fn, self._input_workers,
-                                           [input_context],
-                                           self._container_strategy())
+    return input_lib_v1.InputFunctionIterator(input_fn, self._input_workers,
+                                              [input_context],
+                                              self._container_strategy())
 
   def _configure(self,
                  session_config=None,

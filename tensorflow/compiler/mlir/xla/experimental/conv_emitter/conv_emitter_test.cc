@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -51,8 +52,8 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
       hlo_module.entry_computation()->root_instruction();
 
   mlir::MLIRContext context;
-  context.loadDialect<mlir::AffineDialect, mlir::memref::MemRefDialect,
-                      mlir::StandardOpsDialect>();
+  context.loadDialect<mlir::AffineDialect, mlir::arith::ArithmeticDialect,
+                      mlir::memref::MemRefDialect, mlir::StandardOpsDialect>();
   mlir::OwningModuleRef mlir_module(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 
@@ -90,7 +91,7 @@ ENTRY %TestComputation {
   ROOT %custom-call.1 = (f16[128,64,112,112]{1,3,2,0}, u8[0]{0}) custom-call(%param_0, %param_1), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=bf01_01oi->bf01, custom_call_target="__cudnn$convForward", backend_config="{conv_result_scale:1}"
 })";
 
-  std::string expected_mlir_pattern1 =
+  std::string expected_mlir_pattern =
       R"(
 CHECK: func @Conv(%arg0: memref<128x112x112x64xf16>, %arg1: memref<128x224x224x4xf16>, %arg2: memref<64x7x7x4xf16>) {
 CHECK-NEXT:   affine.for %arg3 = 0 to 128 {
@@ -100,7 +101,7 @@ CHECK-NEXT:         affine.for %arg6 = 0 to 7 {
 CHECK-NEXT:           %0 = memref.alloc() : memref<32x16xf32>
 CHECK-NEXT:           affine.for %arg7 = 0 to 32 {
 CHECK-NEXT:             affine.for %arg8 = 0 to 16 {
-CHECK-NEXT:               %cst = constant 0.000000e+00 : f32
+CHECK-NEXT:               %cst = arith.constant 0.000000e+00 : f32
 CHECK-NEXT:               affine.store %cst, %0[%arg7, %arg8] : memref<32x16xf32>
 CHECK-NEXT:             }
 CHECK-NEXT:           }
@@ -111,23 +112,13 @@ CHECK-NEXT:                 affine.for %arg10 = 0 to 32 {
 CHECK-NEXT:                   affine.for %arg11 = 0 to 16 {
 CHECK-NEXT:                     affine.for %arg12 = 0 to 4 {
 CHECK-NEXT:                       %1 = affine.load %arg1[%arg3, %arg5 * 2 + %arg8 - 3, (%arg6 * 16 + %arg11) * 2 + %arg9 - 3, %arg7 * 4 + %arg12] : memref<128x224x224x4xf16>
-CHECK-NEXT:                       %2 = fpext %1 : f16 to f32
+CHECK-NEXT:                       %2 = arith.extf %1 : f16 to f32
 CHECK-NEXT:                       %3 = affine.load %arg2[%arg4 * 32 + %arg10, %arg8, %arg9, %arg7 * 4 + %arg12] : memref<64x7x7x4xf16>
-CHECK-NEXT:                       %4 = fpext %3 : f16 to f32
-)";
-   std::string expected_mlir_pattern21 = 
-R"(CHECK-NEXT:                       %5 = affine.load %0[%arg10, %arg11] : memref<32x16xf32>
-CHECK-NEXT:                       %6 = mulf %2, %4 : f32
-CHECK-NEXT:                       %7 = addf %5, %6 : f32
-)";
-   std::string expected_mlir_pattern22 = 
-R"(CHECK-NEXT:                       %5 = mulf %2, %4 : f32
-CHECK-NEXT:                       %6 = affine.load %0[%arg10, %arg11] : memref<32x16xf32>
-CHECK-NEXT:                       %7 = addf %6, %5 : f32
-)";
-
-   std::string expected_mlir_pattern3 = 
-R"(CHECK-NEXT:                       affine.store %7, %0[%arg10, %arg11] : memref<32x16xf32>
+CHECK-NEXT:                       %4 = arith.extf %3 : f16 to f32
+CHECK-NEXT:                       %5 = affine.load %0[%arg10, %arg11] : memref<32x16xf32>
+CHECK-NEXT:                       %6 = arith.mulf %2, %4 : f32
+CHECK-NEXT:                       %7 = arith.addf %5, %6 : f32
+CHECK-NEXT:                       affine.store %7, %0[%arg10, %arg11] : memref<32x16xf32>
 CHECK-NEXT:                     }
 CHECK-NEXT:                   }
 CHECK-NEXT:                 }
@@ -137,7 +128,7 @@ CHECK-NEXT:           }
 CHECK-NEXT:           affine.for %arg7 = 0 to 32 {
 CHECK-NEXT:             affine.for %arg8 = 0 to 16 {
 CHECK-NEXT:               %1 = affine.load %0[%arg7, %arg8] : memref<32x16xf32>
-CHECK-NEXT:               %2 = fptrunc %1 : f32 to f16
+CHECK-NEXT:               %2 = arith.truncf %1 : f32 to f16
 CHECK-NEXT:               affine.store %2, %arg0[%arg3, %arg5, %arg6 * 16 + %arg8, %arg4 * 32 + %arg7] : memref<128x112x112x64xf16>
 CHECK-NEXT:             }
 CHECK-NEXT:           }
@@ -149,11 +140,9 @@ CHECK-NEXT:   return
 CHECK-NEXT: }
 )";
 
-  std::string gen_ir = CompileHloConvAndGetMlir(hlo_text);
-  std::string pattern_v1 = expected_mlir_pattern1 + expected_mlir_pattern21 + expected_mlir_pattern3;
-  std::string pattern_v2 = expected_mlir_pattern1 + expected_mlir_pattern22 + expected_mlir_pattern3;
   EXPECT_TRUE(
-     (RunFileCheck(gen_ir, pattern_v1).ValueOrDie() || RunFileCheck(gen_ir, pattern_v2).ValueOrDie()));
+      RunFileCheck(CompileHloConvAndGetMlir(hlo_text), expected_mlir_pattern)
+          .ValueOrDie());
 }
 
 }  // namespace

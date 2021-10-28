@@ -106,7 +106,7 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, range(42))
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testOptionalElementSpec(self):
+  def testElementSpecOptional(self):
     range_dataset = dataset_ops.Dataset.range(42)
     dict_dataset = dataset_ops.Dataset.from_tensor_slices({"a": [1, 2],
                                                            "b": [3, 4]})
@@ -116,6 +116,13 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     io.save(dataset, self._test_dir)
     dataset_loaded = io.load(self._test_dir)
     self.assertDatasetsEqual(dataset, dataset_loaded)
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testElementSpecRequired(self):
+    dataset = dataset_ops.Dataset.range(42)
+    io.save(dataset, self._test_dir)
+    with self.assertRaises(ValueError):
+      _ = io.load(self._test_dir)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testRepeatAndPrefetch(self):

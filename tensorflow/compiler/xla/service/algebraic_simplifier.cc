@@ -289,35 +289,16 @@ bool IsConvertPairNoOp(const HloInstruction* convert) {
   //    [operand_convert]         [convert]
   // (src)->convert-(intermediate)->convert-(dest)
   const HloInstruction* operand_convert = convert->operand(0);
-  CHECK_EQ(operand_convert->opcode(), HloOpcode::kConvert);
-  const Shape& src_shape = operand_convert->operand(0)->shape();
-  const Shape& intermediate_shape = operand_convert->shape();
-  const Shape& dest_shape = convert->shape();
-
-  const PrimitiveType src_type = src_shape.element_type();
-  const PrimitiveType intermediate_type = intermediate_shape.element_type();
-  const PrimitiveType dest_type = dest_shape.element_type();
-
-  // src_type must be equal to dest_type.
-  if (src_type != dest_type) {
+  if (operand_convert->opcode() != HloOpcode::kConvert) {
     return false;
   }
+  const PrimitiveType src_type =
+      operand_convert->operand(0)->shape().element_type();
+  const PrimitiveType intermediate_type =
+      operand_convert->shape().element_type();
 
-  // src_type must be a larger container than intermediate_type.
-  if (ShapeUtil::ByteSizeOfPrimitiveType(intermediate_type) <=
-      ShapeUtil::ByteSizeOfPrimitiveType(src_type)) {
-    return false;
-  }
-
-  // Both src_type and intermediate_type must be either floating or integral.
-  bool is_conversion_floating =
-      ShapeUtil::ElementIsFloating(src_shape) &&
-      ShapeUtil::ElementIsFloating(intermediate_shape);
-  bool is_conversion_integral =
-      ShapeUtil::ElementIsIntegral(src_shape) &&
-      ShapeUtil::ElementIsIntegral(intermediate_shape);
-
-  return is_conversion_floating || is_conversion_integral;
+  return src_type == convert->shape().element_type() &&
+         primitive_util::CastPreservesValues(src_type, intermediate_type);
 }
 
 PrecisionConfig SwapOperandsInDotPrecisionConfig(PrecisionConfig config) {
@@ -2136,6 +2117,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   // Virtually pull the transpose into the dot. Now the dot is equivalent to
   // a new dot with "permuted" lhs contracting dims.
   std::vector<int64_t> permutation;
+  permutation.reserve(lhs_contracting_dims.size());
   for (auto dim : lhs_contracting_dims) {
     permutation.push_back(transpose_dims[dim] - lhs_contracting_dims[0]);
   }
@@ -3095,6 +3077,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   // Merge two consecutive broadcasts into a single one.
   if (operand->opcode() == HloOpcode::kBroadcast) {
     std::vector<int64_t> new_dimensions;
+    new_dimensions.reserve(operand->dimensions().size());
     for (auto dim : operand->dimensions()) {
       new_dimensions.push_back(dims[dim]);
     }
@@ -3226,8 +3209,7 @@ Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
   //    convert(convert(A, $TYPE1), $TYPE2)) is simplified to Tuple(convert(A,
   //    $TYPE1) , floor(A), A) -> a case where the first convert has a
   //    fan-out
-  if (convert->operand(0)->opcode() == HloOpcode::kConvert &&
-      IsConvertPairNoOp(convert)) {
+  if (IsConvertPairNoOp(convert)) {
     return ReplaceInstruction(convert,
                               convert->mutable_operand(0)->mutable_operand(0));
   }
@@ -4739,6 +4721,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
        }))) {
     auto transpose_dimensions = arg->dimensions();
     std::vector<int64_t> new_reduce_dimensions;
+    new_reduce_dimensions.reserve(dimensions.size());
     for (auto dim : dimensions) {
       new_reduce_dimensions.push_back(transpose_dimensions[dim]);
     }
@@ -5537,8 +5520,11 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
             std::vector<int64_t> start_indices;
             std::vector<int64_t> end_indices;
             std::vector<int64_t> strides;
-            for (int64_t dim = 0; dim < reshape_operand->shape().rank();
-                 dim++) {
+            const auto rank = reshape_operand->shape().rank();
+            start_indices.reserve(rank);
+            end_indices.reserve(rank);
+            strides.reserve(rank);
+            for (int64_t dim = 0; dim < rank; dim++) {
               if (dim == split_dim) {
                 start_indices.push_back(i * chunk_size);
                 end_indices.push_back(i * chunk_size + chunk_size);

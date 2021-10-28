@@ -45,6 +45,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
@@ -148,9 +149,10 @@ namespace {
 // Hopefully this will all go away at some point in favor of a better
 // integration.
 void LoadMLIRDialects(mlir::MLIRContext& context) {
-  context.loadDialect<mlir::linalg::LinalgDialect, mlir::scf::SCFDialect,
-                      mlir::vector::VectorDialect, mlir::StandardOpsDialect,
-                      mlir::AffineDialect>();
+  context
+      .loadDialect<mlir::arith::ArithmeticDialect, mlir::linalg::LinalgDialect,
+                   mlir::scf::SCFDialect, mlir::vector::VectorDialect,
+                   mlir::StandardOpsDialect, mlir::AffineDialect>();
 }
 
 }  // namespace
@@ -472,8 +474,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout(), target_machine_features);
 
-  pipeline.AddPass<CpuInstructionFusion>();
-
   return pipeline.Run(module).status();
 }
 
@@ -481,12 +481,15 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     HloModule* module, bool is_aot_compile,
     LLVMTargetMachineFeatures* target_machine_features) {
   HloPassPipeline pipeline("HLO passes after layout assignment");
-  // After layout assignment, use a layout-sensitive verifier.
 
+  // After layout assignment, use a layout-sensitive verifier.
   pipeline.AddPass<HloPassPipeline>("after layout assignment")
       .AddInvariantCheckerDebug<HloVerifier>(
           /*layout_sensitive=*/true,
           /*allow_mixed_precision=*/false);
+
+  // Add a fusion pass now that layout assignment is done.
+  pipeline.AddPass<CpuInstructionFusion>();
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.

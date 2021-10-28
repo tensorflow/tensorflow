@@ -1026,8 +1026,8 @@ def func_graph_from_py_func(name,
     A FuncGraph.
 
   Raises:
-    TypeError: If any of `python_func`'s return values is neither `None` nor a
-      `Tensor`.
+    TypeError: If any of `python_func`'s return values is neither `None`, a
+      `Tensor` or a `tf.experimental.ExtensionType`.
     ValueError: If both `signature` and `override_flat_arg_shapes` are
       passed in.
   """
@@ -1108,10 +1108,11 @@ def func_graph_from_py_func(name,
           x = ops.convert_to_tensor_or_composite(x)
         except (ValueError, TypeError):
           raise TypeError(
-              "To be compatible with tf.eager.defun, Python functions "
-              "must return zero or more Tensors; in compilation of %s, found "
-              "return value of type %s, which is not a Tensor." %
-              (str(python_func), type(x)))
+              "To be compatible with tf.function, Python functions "
+              "must return zero or more Tensors or ExtensionTypes or None "
+              f"values; in compilation of {str(python_func)}, found return "
+              f"value of type {type(x).__name__}, which is not a Tensor or "
+              "ExtensionType.")
       if add_control_dependencies:
         x = deps_ctx.mark_as_return(x)
       return x

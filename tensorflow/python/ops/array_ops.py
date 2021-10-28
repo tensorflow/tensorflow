@@ -648,9 +648,13 @@ def shape(input, name=None, out_type=dtypes.int32):
   return shape_internal(input, name, optimize=True, out_type=out_type)
 
 
-def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
+def shape_internal(input, name=None, optimize=True, out_type=None):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
+
+  If `out_type` is not specified and the shape is fully known, then we look at
+  the dimension values to determine whether to return an int32 or int64 tensor.
+  If the shape is not fully known, we default to int32.
 
   Args:
     input: A `Tensor` or `SparseTensor`.
@@ -666,13 +670,22 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   with ops.name_scope(name, "Shape", [input]) as name:
     if isinstance(
         input, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
+      if not out_type:
+        out_type = dtypes.int32
       return gen_math_ops.cast(input.dense_shape, out_type)
     else:
       if not context.executing_eagerly():
         input = ops.convert_to_tensor(input)
         input_shape = input.get_shape()
         if optimize and input_shape.is_fully_defined():
+          # For fully defined shapes, if the out_type is not specified, we pick
+          # int32 / int64 based on the actual values.
+          if not out_type:
+            return constant_op._tensor_shape_tensor_conversion_function(  # pylint: disable=protected-access
+                input_shape)
           return constant(input_shape.as_list(), out_type, name=name)
+      if not out_type:
+        out_type = dtypes.int32
       return gen_array_ops.shape(input, name=name, out_type=out_type)
 
 
@@ -6799,6 +6812,8 @@ def stop_gradient(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`. Has the same dtype as `input`.
   """
+  if isinstance(input, composite_tensor.CompositeTensor):
+    return nest.map_structure(stop_gradient, input, expand_composites=True)
   # The StopGradient op has a gradient function registered which returns None
   # (meaning statically known to be zero). For correctness, that's all we
   # need. However, tf.GradientTape often makes decisions about what to keep in

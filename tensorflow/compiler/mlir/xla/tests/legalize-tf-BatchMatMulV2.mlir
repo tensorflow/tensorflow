@@ -1,4 +1,4 @@
-// RUN: tf-opt -xla-legalize-tf=allow-partial-conversion %s | FileCheck %s
+// RUN: xla-opt -xla-legalize-tf=allow-partial-conversion %s | FileCheck %s
 
 //===----------------------------------------------------------------------===//
 // tf.BatchMatMulV2 op legalizations.
@@ -9,7 +9,7 @@ func @batchmatmulv2_basic(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) ->
 // CHECK-SAME:        ([[LHS:%.*]]: tensor<1x4x2xf32>, [[RHS:%.*]]: tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
 // CHECK:           [[LHSSHAPE:%.*]] = shape.shape_of [[LHS]] : tensor<1x4x2xf32>
 // CHECK:           [[RHSSHAPE:%.*]] = shape.shape_of [[RHS]] : tensor<3x2x4xf32>
-// CHECK:           [[CM2:%.*]] = constant -2 : index
+// CHECK:           [[CM2:%.*]] = arith.constant -2 : index
 // CHECK:           [[LHSHEAD:%.*]], [[LHSTAIL:%.*]] = "shape.split_at"([[LHSSHAPE]], [[CM2]])
 // CHECK:           [[RHSHEAD:%.*]], [[RHSTAIL:%.*]] = "shape.split_at"([[RHSSHAPE]], [[CM2]])
 // CHECK:           [[BCASTHEAD:%.*]] = shape.broadcast [[LHSHEAD]], [[RHSHEAD]]

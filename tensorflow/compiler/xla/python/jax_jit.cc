@@ -1089,14 +1089,13 @@ PyObject* JaxCompiledFunction_tp_call(PyObject* self, PyObject* args,
 
 PyObject* JaxCompiledFunction_tp_repr(PyObject* self) {
   try {
-    PyObject* wrapped =
-        PyObject_GetAttr(self, PyUnicode_FromString("__wrapped__"));
-    PyObject* repr =
-        PyObject_GetAttr(wrapped, PyUnicode_FromString("__repr__"));
-    return PyObject_CallObject(repr, nullptr);
-  } catch (py::error_already_set& e) {
+    const std::string& repr = absl::StrFormat(
+        "<CompiledFunction of %s>",
+        static_cast<std::string>(
+            py::repr(py::getattr(self, "__wrapped__"))));
+    return PyUnicode_FromString(repr.c_str());
+  } catch (...) {
     // Ignore all errors when accessing a repr.
-    e.restore();
     return PyUnicode_FromString("<CompiledFunction>");
   }
 }

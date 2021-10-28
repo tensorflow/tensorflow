@@ -16,7 +16,7 @@ func @view(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<100xi8>)
   // CHECK-NOT: async.execute
   // CHECK-NOT: memref.view
 
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   %view = memref.view %output[%c0][] : memref<100xi8> to memref<5x5xf32>
 
   // CHECK: tfrt_gpu.blas.gemm

@@ -63,9 +63,8 @@ func @optimize_1dx1d_bcast(
   %2 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<1xindex>
                              -> tensor<1xindex>
 
-  // CHECK:      %[[C0:.*]] = constant 0 : index
-  // CHECK:      %[[SHAPE:.*]] = shape.shape_of %[[ARG0]]
-  // CHECK:      %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+  // CHECK:      %[[C0:.*]] = arith.constant 0 : index
+  // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
   // CHECK:      %[[OUT:.*]] = linalg.init_tensor [%[[D0]]]
   // CHECK:      %[[RET:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP]], #[[MAP]]]
@@ -97,9 +96,8 @@ func @optimize_1dx2d_bcast_const_shape(
   %2 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<2xindex>
                              -> tensor<2xindex>
 
-  // CHECK:      %[[C0:.*]] = constant 0 : index
-  // CHECK:      %[[SHAPE:.*]] = shape.shape_of %[[ARG1]]
-  // CHECK:      %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+  // CHECK:      %[[C0:.*]] = arith.constant 0 : index
+  // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG1]], %[[C0]]
   // CHECK:      %[[OUT:.*]] = linalg.init_tensor [%[[D0]], 512]
   // CHECK:      %[[RET:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
@@ -137,9 +135,8 @@ func @optimize_1dx1dx1d_bcast(
   %4 = shape.broadcast %3, %2 : tensor<1xindex>, tensor<1xindex>
                              -> tensor<1xindex>
 
-  // CHECK:      %[[C0:.*]] = constant 0 : index
-  // CHECK:      %[[SHAPE:.*]] = shape.shape_of %[[ARG0]]
-  // CHECK:      %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+  // CHECK:      %[[C0:.*]] = arith.constant 0 : index
+  // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
   // CHECK:      %[[OUT:.*]] = linalg.init_tensor [%[[D0]]]
   // CHECK:      %[[RET:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP]], #[[MAP]]]
@@ -172,9 +169,8 @@ func @optimize_2dx1d_bcast(
   %2 = shape.broadcast %0, %1 : tensor<2xindex>, tensor<1xindex>
                              -> tensor<2xindex>
 
-  // CHECK-DAG:  %[[C1:.*]] = constant 1 : index
-  // CHECK:      %[[SHAPE:.*]] = shape.shape_of %[[ARG0]]
-  // CHECK:      %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+  // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+  // CHECK:      %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 
   // CHECK:      %[[OUT0:.*]] = linalg.init_tensor [10, %[[D1]]]
   // CHECK:      %[[RET0:.*]] = linalg.generic
@@ -186,7 +182,7 @@ func @optimize_2dx1d_bcast(
          {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
        : (tensor<10x?xf32>, tensor<2xindex>) -> tensor<10x?xf32>
 
-  // CHECK-DAG:  %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+  // CHECK-DAG:  %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
   // CHECK:      %[[OUT1:.*]] = linalg.init_tensor [10, %[[D0]]]
   // CHECK:      %[[RET1:.*]] = linalg.generic
   // CHECK-SAME: indexing_maps = [#[[MAP1]], #[[MAP0]]]
@@ -221,15 +217,13 @@ func @optimize_3dx3d_bcast(
   %2 = shape.broadcast %0, %1 : tensor<3xindex>, tensor<3xindex>
                              -> tensor<3xindex>
 
-  // CHECK-DAG:  %[[C0:.*]] = constant 0 : index
-  // CHECK-DAG:  %[[C1:.*]] = constant 1 : index
-  // CHECK-DAG:  %[[C2:.*]] = constant 2 : index
+  // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+  // CHECK-DAG:  %[[C2:.*]] = arith.constant 2 : index
 
-  // CHECK:      %[[SHAPE0:.*]] = shape.shape_of %[[ARG0]]
-  // CHECK:      %[[SHAPE1:.*]] = shape.shape_of %[[ARG1]]
-  // CHECK:      %[[D0:.*]] = tensor.extract %[[SHAPE0]][%[[C0]]]
-  // CHECK:      %[[D1:.*]] = tensor.extract %[[SHAPE1]][%[[C1]]]
-  // CHECK:      %[[D2:.*]] = tensor.extract %[[SHAPE0]][%[[C2]]]
+  // CHECK:      %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+  // CHECK:      %[[D1:.*]] = tensor.dim %[[ARG1]], %[[C1]]
+  // CHECK:      %[[D2:.*]] = tensor.dim %[[ARG0]], %[[C2]]
   // CHECK:      %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]] : tensor<3xindex>
   // CHECK:      %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
   // CHECK:      %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]

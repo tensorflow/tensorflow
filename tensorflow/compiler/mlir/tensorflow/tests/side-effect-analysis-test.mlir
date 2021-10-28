@@ -1310,13 +1310,13 @@ func @value_based_side_effect_non_resource_to_known(
     %island = tf_executor.island {
         // expected-remark@above {{ID: 4}}
         // expected-remark@above {{Successors: {5}}}
-        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string]} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 0}}
         // expected-remark@above {{Successors: {2}}}
         "tf._InternalTestNonResourceValueSideEffects_"(%arg0) : (tensor<!tf_type.string>) -> ()
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Successors: {3}}}
-        %1 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string]} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        %1 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 2}}
         // expected-remark@above {{Predecessors: {0}}}
         // expected-remark@above {{Successors: {3}}}
@@ -1387,7 +1387,7 @@ func @generator_dataset_with_unknown_side_effect_ops(
         "tf._UnknownSideEffectingOp_"() : () -> ()
         // expected-remark@above {{ID: 0}}
         // expected-remark@above {{Successors: {1}}}
-        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string]} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Predecessors: {0}}}
         // expected-remark@above {{Successors: {2}}}
@@ -1604,10 +1604,10 @@ func @same_op_based_write_effect(
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Successors: {4}}}
-        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string]} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 0}}
         // expected-remark@above {{Successors: {1}}}
-        %1 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string]} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        %1 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Predecessors: {0}}}
         // expected-remark@above {{Successors: {2}}}
@@ -1639,7 +1639,7 @@ func @different_op_based_side_effects(
         "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0){table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
         // expected-remark@above {{ID: 0}}
         // expected-remark@above {{Successors: {3}}}
-        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string]} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        %0 = "tf.GeneratorDataset"(%arg0, %arg0, %arg0) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Successors: {3}}}
         "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0){table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
@@ -1790,6 +1790,36 @@ func @tpu_compile_execute_effect(
         "tf.TPUExecute"(%arg0, %arg0) : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Predecessors: {5}}}
+}
+
+// -----
+
+// Tests that `_TPUDeviceOrdinalPlaceholder` is side-effect-free.
+func @device_ordinal_placeholder_side_effect_free(
+  // expected-remark@above {{ID: 7}}
+  ) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Successors: {6}}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        "tf._TPUDeviceOrdinalPlaceholder"() : () -> tensor<i64>
+        // expected-remark@above {{ID: 0}}
+        "tf._UnknownSideEffectingOp_"() : () -> ()
+        // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Successors: {2}}}
         tf_executor.yield
         // expected-remark@above {{ID: 2}}

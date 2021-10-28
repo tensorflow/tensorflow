@@ -14,17 +14,41 @@
 # ==============================================================================
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
-from typing import Optional, Sequence, Dict
+from typing import Dict, Optional, Sequence, Type, Tuple
 import weakref
 
 import numpy as np
 
 from tensorflow.python import pywrap_tfe
+from tensorflow.python.eager import core
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.types import trace
+from tensorflow.python.util import _pywrap_utils
+
+
+class SignatureContext(trace.TracingContext):
+  """Container for variables and flags shared across signature tracing."""
+
+  def __init__(self, include_tensor_ranks_only=False):
+    self._include_tensor_ranks_only = include_tensor_ranks_only
+    self._global_to_local_id = {}
+
+  # TODO(b/202772221): Consider dropping after alias pattern matching is
+  # supported.
+  def get_local_id(self, local_id):
+
+    if local_id not in self._global_to_local_id:
+      self._global_to_local_id[local_id] = len(self._global_to_local_id)
+
+    return self._global_to_local_id[local_id]
+
+  # TODO(b/202430155): Remove this flag after TraceType shape relaxation.
+  @property
+  def include_tensor_ranks_only(self):
+    return self._include_tensor_ranks_only
 
 
 class GenericType(trace.TraceType):
@@ -42,10 +66,16 @@ class GenericType(trace.TraceType):
     return None
 
   def __eq__(self, other) -> bool:
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
     return isinstance(other, GenericType) and self._object == other._object
 
   def __hash__(self) -> int:
     return self._object_hash
+
+  def __repr__(self):
+    return f"{self.__class__.__name__}(obj={self._object!r})"
 
   # TODO(b/195985838): Cleanup once Tensor protocol is implemented.
   def _make_hash(self, elem):
@@ -111,21 +141,31 @@ class GenericType(trace.TraceType):
         or isinstance(value, composite_tensor.CompositeTensor))
 
 
-class CollectionType(trace.TraceType):
-  """Represents a collection of TraceType objects.
+_pywrap_utils.RegisterType("GenericType", GenericType)
+
+
+class OrderedCollectionType(trace.TraceType):
+  """Represents an ordered collection of TraceType objects.
 
   Attributes:
-    components: The group of TraceTypes objects that this class represents.
+    components: The sequence of TraceType objects that this class represents.
   """
 
   def __init__(self, *components: trace.TraceType):
     self.components = components
 
-  def is_subtype_of(self, other: trace.TraceType) -> bool:
+  def _has_same_structure(self, other):
     if not isinstance(other, type(self)):
       return False
 
     if len(self.components) != len(other.components):
+      return False
+
+    return True
+
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    """See base class."""
+    if not self._has_same_structure(other):
       return False
 
     if not all([
@@ -137,63 +177,100 @@ class CollectionType(trace.TraceType):
     return True
 
   def most_specific_common_supertype(self, others: Sequence[trace.TraceType]):
-    if not all([
-        isinstance(other, type(self)) and
-        len(self.components) == len(other.components) for other in others
-    ]):
+    """See base class."""
+    if not all(self._has_same_structure(other) for other in others):
       return None
 
     new_components = []
     for i, component in enumerate(self.components):
       common = component.most_specific_common_supertype(
-          *[other.components[i] for other in others])
+          [other.components[i] for other in others])
       if common is None:
         return None
       else:
         new_components.append(common)
 
-    return new_components
+    return type(self)(*new_components)
 
   def __eq__(self, other) -> bool:
-    if not isinstance(other, type(self)):
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    if not self._has_same_structure(other):
       return False
 
-    if len(self.components) != len(other.components):
-      return False
-
-    if not all([
-        component == other.components[i]
-        for i, component in enumerate(self.components)
-    ]):
-      return False
-
-    return True
+    return self.components == other.components
 
   def __hash__(self) -> int:
-    return hash((type(self), self.components))
+    return hash(self.components)
+
+  def __repr__(self):
+    return "{}(components={})".format(
+        type(self).__name__, repr(self.components))
 
 
-class TupleType(CollectionType):
-  """Represents a tuple of TraceType objects."""
+class ListType(OrderedCollectionType):
   pass
 
 
-class ListType(CollectionType):
-  """Represents a list of TraceType objects."""
+class TupleType(OrderedCollectionType):
   pass
 
 
-# TODO(b/201533914): Update to Mapping to be on par with current code.
-class DictType(CollectionType):
-  """Represents a dictionary of TraceType objects."""
+class AttrsType(OrderedCollectionType):
+  """Represents a class annotated by attr.s.
+
+  Each attr.s class has a fixed, ordered set of attributes. Therefore, we only
+  need to consider the class type and the underlying attributes. Extra
+  metadata including attribute names can be ignored.
+  """
+
+  def __init__(self, classtype: Type[object],
+               attributes: Tuple[trace.TraceType]):
+    super().__init__(GenericType(classtype) + attributes)
+
+
+_pywrap_utils.RegisterType("ListType", ListType)
+_pywrap_utils.RegisterType("TupleType", TupleType)
+_pywrap_utils.RegisterType("AttrsType", TupleType)
+
+
+class DictType(trace.TraceType):
+  """Represents a dictionary of TraceType objects.
+
+  Attributes:
+    mapping: A mapping from TraceType objects to TraceType objects.
+  """
 
   def __init__(self, mapping: Dict[trace.TraceType, trace.TraceType]):
-    sorted_keys = sorted(mapping.keys(), key=hash)
-    components = []
-    for k in sorted_keys:
-      components.append(TupleType(k, mapping[k]))
+    self.mapping = mapping
 
-    super().__init__(*components)
+  # TODO(b/202429845): Figure out how to subtype DictType.
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    """See base class."""
+    return self == other
+
+  def most_specific_common_supertype(self, others: Sequence[trace.TraceType]):
+    """See base class."""
+    return None
+
+  def __eq__(self, other) -> bool:
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    if not isinstance(other, DictType):
+      return False
+
+    return self.mapping == other.mapping
+
+  def __hash__(self) -> int:
+    return hash(frozenset(self.mapping.keys()))
+
+  def __repr__(self):
+    return "{}(mapping={})".format(type(self).__name__, repr(self.mapping))
+
+
+_pywrap_utils.RegisterType("DictType", DictType)
 
 
 def get_arg_spec(inputs, include_tensor_ranks_only,
@@ -212,9 +289,12 @@ def get_arg_spec(inputs, include_tensor_ranks_only,
   """
 
   # TODO(b/201533914): Drop GenericType once TFE_Py_EncodeArg returns TraceType.
-  signature_context = trace.SignatureContext()
-  return GenericType(
-      pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
-                                  include_tensor_ranks_only,
-                                  encode_variables_by_resource_id,
-                                  use_full_trace_type))
+  signature_context = SignatureContext(include_tensor_ranks_only)
+  try:
+    return GenericType(
+        pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
+                                    include_tensor_ranks_only,
+                                    encode_variables_by_resource_id,
+                                    use_full_trace_type))
+  except core._NotOkStatusException as e:  # pylint: disable=protected-access
+    raise core._status_to_exception(e) from None  # pylint: disable=protected-access

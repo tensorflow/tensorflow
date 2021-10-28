@@ -363,7 +363,6 @@ cc_library(
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
-        "@tf_runtime//:tracing",
         "@tf_runtime//:tensor_alwayslink",
     ] + select({
         "//tensorflow:android": [

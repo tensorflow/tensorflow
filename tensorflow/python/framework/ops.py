@@ -288,8 +288,11 @@ def disable_tensor_equality():
 class TensorType(trace.TraceType):
   """Represents Tensor and TensorSpec for function tracing purposes."""
 
-  def __init__(self, shape, dtype, name):
-    self._components = (tuple(shape.as_list()), dtype, name)
+  def __init__(self, signature_context, shape, dtype, name):
+    if signature_context.include_tensor_ranks_only:
+      self._components = (shape.rank, dtype, name)
+    else:
+      self._components = (tuple(shape.as_list()), dtype, name)
 
   def is_subtype_of(self, other):
     # TODO(b/202429845): Implement for subtyping.
@@ -1054,8 +1057,8 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     return object_identity.Reference(self)
 
   # TODO(b/202447704): Rename to __tf_tracing_type__ at protocol export.
-  def _tf_tracing_type(self, _):
-    return TensorType(self.shape, self.dtype, None)
+  def _tf_tracing_type(self, signature_context):
+    return TensorType(signature_context, self.shape, self.dtype, None)
 
 
 # TODO(agarwal): consider getting rid of this.
@@ -3184,7 +3187,7 @@ class Graph(object):
   def _resource_creator_scope(self, resource_type, creator):
     """Scope which defines a resource creation function used by some resource.
 
-    The resource should be a subclass of CachableResource with a class method
+    The resource should be a subclass of CapturableResource with a class method
     `cls._resource_type`, the output of which is what the `resource_type`
     argument should be. By default, `cls._resource_type` returns the class name,
     `cls.__name__`. Given a scope, creators being added with the same

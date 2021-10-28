@@ -542,10 +542,13 @@ cuda_py_test(
         ":function_trace_type",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -987,9 +990,9 @@ tf_py_test(
     # --config=cuda implicitly links in XLA.
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_gpu",
         "no_oss",  # No way to force no XLA linkage in OSS build from here.
         "no_pip",
-        "nogpu",
     ],
     deps = [
         ":def_function",
@@ -1021,6 +1024,7 @@ tf_xla_py_test(
         ":def_function",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:collective_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",

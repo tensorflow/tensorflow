@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/mlir_hlo_builder.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
@@ -268,7 +269,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
     TypeID::get<TF::XlaKeyValueSortOp>(),
     TypeID::get<TF::XlaPadOp>(),
-    TypeID::get<TF::XlaSortOp>(),
     TypeID::get<TF::XlaSvdOp>(),
   };
   // clang-format on
@@ -731,25 +731,15 @@ class Tf2XlaRewritePattern : public RewritePattern {
   bool legalize_test_only_ops_;
 };
 
-class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
+class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
  public:
   LegalizeTF() = default;
-
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<MhloDialect>();
-  }
-
   explicit LegalizeTF(llvm::StringRef device_type, bool prefer_tf2xla) {
     device_type_ = device_type.str();
     prefer_tf2xla_ = prefer_tf2xla;
   }
 
   LegalizeTF(const LegalizeTF&) {}
-
-  StringRef getArgument() const final { return "xla-legalize-tf-with-tf2xla"; }
-  StringRef getDescription() const final {
-    return "Legalize from TensorFlow to the HLO dialect using tf2xla kernels";
-  }
 
   void runOnFunction() override {
     OwningRewritePatternList patterns(&getContext());
@@ -761,26 +751,7 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   }
 
  private:
-  // TODO(hinsu): Support finer grained device type assignment instead of a
-  // global device type for all TensorFlow ops.
-  Option<std::string> device_type_{
-      *this, "device-type",
-      llvm::cl::desc("XLA device type for execution of TensorFlow ops.")};
-  Option<bool> prefer_tf2xla_{
-      *this,
-      "prefer-tf2xla",
-      llvm::cl::desc("Enable legalization when it is not in the list of "
-                     "MLIR-legalized ops."),
-  };
-  Option<bool> legalize_test_only_ops_{
-      *this,
-      "legalize-test-only-ops",
-      llvm::cl::desc("Enable tf2xla legalizations for some ops that are "
-                     "enabled only for testing."),
-  };
 };
-
-static PassRegistration<LegalizeTF> pass;
 
 }  // end namespace
 

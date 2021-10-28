@@ -622,7 +622,7 @@ Status DatasetBase::ComputeNumSources() {
 }
 
 Status DatasetBase::ComputeCardinality() {
-  cardinality_ = this->Cardinality();
+  cardinality_ = this->CardinalityInternal();
   return Status::OK();
 }
 
@@ -988,16 +988,19 @@ string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
 bool DatasetOpKernel::IsDatasetOp(const OpDef& op_def) {
   if (op_def.output_arg_size() != 1) return false;
   if (op_def.output_arg(0).type() != DT_VARIANT) return false;
-  auto& op_name = op_def.name();
+  absl::string_view op_name = op_def.name();
+  if (op_name == "DatasetFromGraph") return true;
   if (absl::EndsWith(op_name, "Dataset")) return true;
   // Check if the suffix matches "DatasetV[0-9]+".
   size_t index = op_name.length() - 1;
   while (index >= 0 && isdigit(op_name[index])) {
     index--;
   }
-  const int64 kPrefixLength = 8;  // length of the `DatasetV` prefix
+  constexpr absl::string_view kDatasetPrefix = "DatasetV";
+  constexpr absl::string_view::size_type kPrefixLength = kDatasetPrefix.size();
   if (index < kPrefixLength - 1 || index == op_name.length() - 1) return false;
-  return op_name.substr(index - kPrefixLength + 1, kPrefixLength) == "DatasetV";
+  return op_name.substr(index - kPrefixLength + 1, kPrefixLength) ==
+         kDatasetPrefix;
 }
 
 void UnaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,

@@ -1165,7 +1165,7 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
 }
 
 INSTANTIATE_TEST_SUITE_P(Test, OptimizeZeroRamBudgetTest,
-                         ::testing::Values(0, 1));
+                         ::testing::Values(0, 1, 2, 3));
 
 TEST(RecordTimeTest, RecordTimeTest) {
   std::shared_ptr<Node> source = model::MakeSourceNode({});

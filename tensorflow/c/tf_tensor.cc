@@ -261,7 +261,9 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype,
   static char empty;
   int64_t nelems = 1;
   std::vector<int64_t> dims;
-  for (int i = 0; i < shape.dims(); ++i) {
+  auto shape_dims = shape.dims();
+  dims.reserve(shape_dims);
+  for (int i = 0; i < shape_dims; ++i) {
     dims.push_back(shape.dim_size(i));
     nelems *= shape.dim_size(i);
   }

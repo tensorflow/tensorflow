@@ -10290,6 +10290,10 @@ func DecodeProtoV2Sanitize(value bool) DecodeProtoV2Attr {
 
 // The op extracts fields from a serialized protocol buffers message into tensors.
 //
+// Note: This API is designed for orthogonality rather than human-friendliness. It
+// can be used to parse input protos by hand, but it is intended for use in
+// generated code.
+//
 // The `decode_proto` op extracts fields from a serialized protocol buffers
 // message into tensors.  The fields in `field_names` are decoded and converted
 // to the corresponding `output_types` if possible.
@@ -10320,6 +10324,14 @@ func DecodeProtoV2Sanitize(value bool) DecodeProtoV2Attr {
 // way). Unsigned int32 values can be represented exactly by specifying type
 // `DT_INT64`, or using twos-complement if the caller specifies `DT_INT32` in
 // the `output_types` attribute.
+//
+// - `map` fields are not directly decoded. They are treated as `repeated` fields,
+// of the appropriate entry type. The proto-compiler defines entry types for each
+// map field. The type-name is the field name, converted to "CamelCase" with
+// "Entry" appended. The `tf.train.Features.FeatureEntry` message is an example of
+// one of these implicit `Entry` types.
+//
+// - `enum` fields should be read as int32.
 //
 // Both binary and text proto serializations are supported, and can be
 // chosen using the `format` attribute.
@@ -32473,6 +32485,17 @@ func DataFormatDimMap(scope *Scope, x tf.Output, optional ...DataFormatDimMapAtt
 	return op.Output(0)
 }
 
+// AssignVariableOpAttr is an optional argument to AssignVariableOp.
+type AssignVariableOpAttr func(optionalAttr)
+
+// AssignVariableOpValidateShape sets the optional validate_shape attribute to value.
+// If not specified, defaults to false
+func AssignVariableOpValidateShape(value bool) AssignVariableOpAttr {
+	return func(m optionalAttr) {
+		m["validate_shape"] = value
+	}
+}
+
 // Assigns a new value to a variable.
 //
 // Any ReadVariableOp with a control dependency on this op is guaranteed to return
@@ -32483,15 +32506,20 @@ func DataFormatDimMap(scope *Scope, x tf.Output, optional ...DataFormatDimMapAtt
 //	value: the value to set the new tensor to use.
 //
 // Returns the created operation.
-func AssignVariableOp(scope *Scope, resource tf.Output, value tf.Output) (o *tf.Operation) {
+func AssignVariableOp(scope *Scope, resource tf.Output, value tf.Output, optional ...AssignVariableOpAttr) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "AssignVariableOp",
 		Input: []tf.Input{
 			resource, value,
 		},
+		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
 }
