@@ -689,8 +689,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Create owning handles for arguments and add pointer to them to 'args'.
   tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
   args.reserve(function->num_arguments());
-  tfrt::AsyncValueRef<tfrt::Chain> chain =
-      tfrt::GetReadyChain(exec_ctx->host());
+  tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
   args.push_back(static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
                      .GetAsyncValue());

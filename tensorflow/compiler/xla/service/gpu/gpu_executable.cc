@@ -583,7 +583,7 @@ static Status ExecuteBef(const std::string& module_name,
   // Create owning handles for arguments and add pointer to them to 'args'.
   tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
   args.reserve(function->num_arguments());
-  tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain(exec_ctx.host());
+  tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
   TF_ASSIGN_OR_RETURN(auto borrowed_stream, CreateGpuStream(main_stream));
   args.push_back(
