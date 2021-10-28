@@ -167,9 +167,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 #if BEF_EXECUTABLE
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
-#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #endif  // BEF_EXECUTABLE
@@ -758,24 +756,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
                                            std::string entry_function_name,
                                            HloModule* hlo_module) {
-  if (!mlir_module) {
-    return tensorflow::errors::FailedPrecondition(
-        "No mlir module to lower to BEF.");
-  }
-
-  // LHLO -> TFRT Dialect (gpu kernels)
-  mlir::PassManager pm(mlir_module.getContext(),
-                       mlir::PassManager::Nesting::Implicit);
-  pm.addPass(tensorflow::createConvertLmhloToGpuBinaryPass());
-  pm.addPass(tensorflow::createConvertLmhloToGpuPass());
-  pm.addPass(mlir::createGpuAsyncRegionPass());
-  tfrt::gpu::populateGpuToTfrtGpuPasses(pm);
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createSymbolDCEPass());
-  if (pm.run(mlir_module).failed()) {
-    return InternalError(
-        "Failed to lower LHLO to TFRT Dialect with gpu kernels.");
-  }
+  // LMHLO -> TFRT Dialect
+  TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToTfrtGpuWithBinary(mlir_module));
 
   if (DumpingEnabledForHloModule(*hlo_module)) {
     std::string tfrt_mlir;
