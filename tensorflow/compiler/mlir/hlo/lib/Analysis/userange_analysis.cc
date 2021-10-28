@@ -593,7 +593,8 @@ size_t UserangeAnalysis::unwrapId(size_t id) const { return id / 2; }
 
 void UserangeAnalysis::dump(raw_ostream &os) {
   os << "// ---- UserangeAnalysis -----\n";
-  SmallVector<Value> values;
+  llvm::SmallVector<Value> values;
+  values.reserve(useIntervalMap.size());
   for (auto const &item : useIntervalMap) {
     values.push_back(item.first);
   }

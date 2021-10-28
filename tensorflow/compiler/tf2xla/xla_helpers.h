@@ -30,6 +30,24 @@ limitations under the License.
 
 namespace tensorflow {
 
+// TPU Layout preferences. Currently, there are two primary layout choices for
+// any XLA parameters (activations or weights): (1) CompactChunkPadded and
+// (2) Linear. CompactChunkPadded is the native TPU layout while Linear is
+// native host (CPU) layout.
+// This enum allows the caller of XLA to progogate layout preference to the XLA
+// compiler.
+//   kNoPreference: the XLA compiler has the freedom to assign any layout.
+//   kPreferCompactChunkPaddedLayout: use native TPU layout.
+//   kPreferLinearLayout: use native CPU layout.
+// As the layout of any parameter will change from a native host layout to a
+// native. TPU layout either on host or on device, XLA compiler and TPU runtime
+// must be in coordination to transform the parameters in a consistent way.
+enum class TpuLayoutPreference {
+  kNoPreference = 0,
+  kPreferCompactChunkPaddedLayout = 1,
+  kPreferLinearLayout = 2
+};
+
 // Helper methods for building XLA computations.
 class XlaHelpers {
  public:
@@ -78,8 +96,8 @@ class XlaHelpers {
   static xla::XlaOp ConvertElementType(const xla::XlaOp& operand,
                                        const DataType new_element_type);
 
-  typedef std::function<StatusOr<xla::Shape>(const TensorShape&, DataType,
-                                             bool)>
+  typedef std::function<StatusOr<xla::Shape>(const TensorShape&, DataType, bool,
+                                             TpuLayoutPreference)>
       ShapeRepresentationFn;
 };
 

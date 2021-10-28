@@ -1843,10 +1843,12 @@ cc_library(
 cc_library(
     name = "CAPI",
     srcs = [
+        "lib/CAPI/Attributes.cpp",
         "lib/CAPI/Dialects.cpp",
         "lib/CAPI/Types.cpp",
     ],
     hdrs = [
+        "include/mlir-hlo-c/Attributes.h",
         "include/mlir-hlo-c/Dialects.h",
         "include/mlir-hlo-c/Types.h",
     ],

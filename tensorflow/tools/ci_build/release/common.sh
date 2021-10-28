@@ -156,6 +156,15 @@ function install_ubuntu_16_python_pip_deps {
   # LINT.ThenChange(:mac_pip_installations)
 }
 
+function install_ubuntu_pip_venv_deps {
+  # Install requirements in the python environment
+  which python
+  which pip
+  pip install --upgrade pip wheel
+  pip install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
+  pip list
+}
+
 function install_macos_pip_deps {
 
   PIP_CMD="python -m pip"

@@ -39174,6 +39174,17 @@ func FFT3D(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// SlidingWindowDatasetAttr is an optional argument to SlidingWindowDataset.
+type SlidingWindowDatasetAttr func(optionalAttr)
+
+// SlidingWindowDatasetDropRemainder sets the optional drop_remainder attribute to value.
+// If not specified, defaults to true
+func SlidingWindowDatasetDropRemainder(value bool) SlidingWindowDatasetAttr {
+	return func(m optionalAttr) {
+		m["drop_remainder"] = value
+	}
+}
+
 // Creates a dataset that passes a sliding window over `input_dataset`.
 //
 // Arguments:
@@ -39186,11 +39197,14 @@ func FFT3D(scope *Scope, input tf.Output) (output tf.Output) {
 // It must be positive.
 //
 //
-func SlidingWindowDataset(scope *Scope, input_dataset tf.Output, window_size tf.Output, window_shift tf.Output, window_stride tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func SlidingWindowDataset(scope *Scope, input_dataset tf.Output, window_size tf.Output, window_shift tf.Output, window_stride tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...SlidingWindowDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "SlidingWindowDataset",
 		Input: []tf.Input{

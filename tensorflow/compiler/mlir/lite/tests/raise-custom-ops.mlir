@@ -1,5 +1,5 @@
-// RUN: tf-opt -tfl-raise-custom-ops -canonicalize %s -o - | FileCheck %s
-// RUN: tf-opt -tfl-raise-custom-ops -canonicalize -tfl-test-raise-tf-targets="tf.FakeQuantWithMinMaxVarsPerChannel" %s -o - | FileCheck --check-prefix=WRAPPED %s
+// RUN: tf-opt -tfl-raise-custom-ops -canonicalize %s --split-input-file | FileCheck %s
+// RUN: tf-opt -tfl-raise-custom-ops -canonicalize -tfl-test-raise-tf-targets="tf.FakeQuantWithMinMaxVarsPerChannel" %s --split-input-file | FileCheck --check-prefix=WRAPPED %s
 
 // CHECK-LABEL: custom_op
 func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
@@ -25,6 +25,8 @@ func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-NEXT: }) {fused_activation_function = "RELU", int_attr = 2 : i32} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
 // CHECK-NEXT: return %[[CUSTOM_1]] : tensor<4xf32>
 }
+
+// -----
 
 // CHECK-LABEL: tf_executor_wrapper
 // WRAPPED-LABEL: tf_executor_wrapper

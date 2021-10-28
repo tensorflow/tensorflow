@@ -46,6 +46,7 @@ cc_library(
         "tf_cpurt_codegen_matmul.cc",
         "tf_cpurt_codegen_reduction.cc",
         "tf_cpurt_copy_removal.cc",
+        "tf_cpurt_detensorize_linalg.cc",
         "tf_cpurt_fission.cc",
         "tf_cpurt_fusion.cc",
         "tf_cpurt_matmul_specialization.cc",

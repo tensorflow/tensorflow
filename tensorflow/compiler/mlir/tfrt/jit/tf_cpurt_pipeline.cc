@@ -110,6 +110,7 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
 
   // Perform tiling-padding-vectorization if vectorization is enabled.
   if (options.vectorize) {
+    pm.addNestedPass<mlir::FuncOp>(CreateDetensorizeLinalgPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
     pm.addNestedPass<mlir::FuncOp>(CreatePeelTiledLoopsPass());

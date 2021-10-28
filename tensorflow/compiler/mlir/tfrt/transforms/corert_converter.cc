@@ -218,11 +218,14 @@ mlir::Value CoreRTConverter::GetRemoteChainManager(
 mlir::Value CoreRTConverter::GetLocalSideEffectChain(
     mlir::Operation *op, mlir::ConversionPatternRewriter *rewriter) {
   auto func_op = op->getParentOfType<mlir::FuncOp>();
-  auto predecessors = side_effect_analysis_.DirectControlPredecessors(op);
 
-  // If there is no side-effect predecessor, then the input side-effect chain
-  // is used.
-  if (predecessors.empty()) return func_op.getArgument(0);
+  llvm::SmallVector<mlir::Operation *, 4> predecessors;
+  if (llvm::isa<mlir::ReturnOp>(op)) {
+    auto sinks = side_effect_analysis_.ControlSinks();
+    predecessors.assign(sinks.begin(), sinks.end());
+  } else {
+    predecessors = side_effect_analysis_.DirectControlPredecessors(op);
+  }
 
   llvm::SmallVector<mlir::Value, 2> chains;
   for (auto *pred : predecessors) {
@@ -234,6 +237,8 @@ mlir::Value CoreRTConverter::GetLocalSideEffectChain(
       chains.push_back(chain);
   }
 
+  // If there is no side-effect predecessor, then the input side-effect chain
+  // is used.
   if (chains.empty()) return func_op.getArgument(0);
 
   if (chains.size() == 1) return chains[0];

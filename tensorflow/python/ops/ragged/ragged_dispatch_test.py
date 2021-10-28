@@ -148,9 +148,41 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           {'op': math_ops.nextafter,
            'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
            'x2': 0},
+          {'op': math_ops.to_bfloat16,
+           'x': ragged_factory_ops.constant_value(
+               [[2.0, 3.0], [3.0]], dtype=dtypes.float32),
+           'expected_dtype': dtypes.bfloat16},
+          {'op': math_ops.to_complex128,
+           'x': ragged_factory_ops.constant_value(
+               [[2.0, 3.0], [3.0]], dtype=dtypes.float32),
+           'expected_dtype': dtypes.complex128},
+          {'op': math_ops.to_complex64,
+           'x': ragged_factory_ops.constant_value(
+               [[2.0, 3.0], [3.0]], dtype=dtypes.float32),
+           'expected_dtype': dtypes.complex64},
+          {'op': math_ops.to_double,
+           'x': ragged_factory_ops.constant_value(
+               [[2.0, 3.0], [3.0]], dtype=dtypes.float32),
+           'expected_dtype': dtypes.double},
+          {'op': math_ops.to_float,
+           'x': ragged_factory_ops.constant_value(
+               [[2.0, 3.0], [3.0]], dtype=dtypes.int32),
+           'expected_dtype': dtypes.float32},
+          {'op': math_ops.to_int32,
+           'x': ragged_factory_ops.constant_value(
+               [[2, 3], [3]], dtype=dtypes.int64),
+           'expected_dtype': dtypes.int32},
+          {'op': math_ops.to_int64,
+           'x': ragged_factory_ops.constant_value(
+               [[2, 3], [3]], dtype=dtypes.int32),
+           'expected_dtype': dtypes.int64},
       ]
       )  # pyformat: disable
-  def testUnaryElementwiseOp(self, x, op=math_ops.abs, **extra_args):
+  def testUnaryElementwiseOp(self,
+                             x,
+                             op=math_ops.abs,
+                             expected_dtype=None,
+                             **extra_args):
     x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x)
     result = op(x, **extra_args)
 
@@ -167,6 +199,9 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     else:
       result_flat_values = array_ops.reshape(result, [-1])
     self.assertAllEqual(expected_flat_values, result_flat_values)
+
+    if expected_dtype is not None:
+      self.assertEqual(result.dtype, expected_dtype)
 
   @parameterized.parameters(
       [
@@ -363,6 +398,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         string_ops.string_to_hash_bucket_strong,
         string_ops.string_to_number,
         string_ops.regex_full_match,
+        string_ops.regex_replace,
         string_ops.substr,
         string_ops.substr_v2,
         string_ops.substr_deprecated,
@@ -373,7 +409,13 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         math_ops.nextafter,
         math_ops.tensor_equals,
         math_ops.tensor_not_equals,
-        string_ops.regex_replace,
+        math_ops.to_bfloat16,
+        math_ops.to_complex128,
+        math_ops.to_complex64,
+        math_ops.to_double,
+        math_ops.to_float,
+        math_ops.to_int32,
+        math_ops.to_int64,
     ]
     untested_ops = (
         set(dispatch.unary_elementwise_apis() +
@@ -384,7 +426,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             test_ops.BINARY_INT_OPS + other_tested_ops))
     untested_ops = sorted(f'{x.__module__}.{x.__name__}' for x in untested_ops)
     self.assertEmpty(
-        list(untested_ops), 'One or more ops elementwise are not tested; please'
+        untested_ops, 'One or more ops elementwise are not tested; please'
         ' add them to ragged_tensor_test_ops.py or ragged_dispatch_test.py')
 
   def testElementwiseOpUnknownRankError(self):

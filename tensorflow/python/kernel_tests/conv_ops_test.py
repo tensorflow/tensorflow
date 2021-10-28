@@ -482,6 +482,21 @@ class Conv2DTest(test.TestCase):
         conv1,
         self.evaluate(conv2).reshape(conv1.shape))
 
+  @test_util.disable_xla("Conv with groups works on XLA")
+  def testConvGradientWithGroupsFailure(self):
+    with ops.device("cpu:0"):
+      samples = array_ops.zeros((1, 256, 256, 3), dtype=dtypes.float32)
+
+      with backprop.GradientTape() as tape:
+        filters = variables.Variable(
+            initial_value=array_ops.zeros((3, 3, 1, 18)), dtype=dtypes.float32)
+        out = nn_ops.conv2d(samples, filters, 1, "SAME")
+
+      with self.assertRaises(errors_impl.InvalidArgumentError):
+        grads = tape.gradient(out, filters)
+        self.evaluate(filters.initializer)
+        self.evaluate(grads)
+
   @test_util.run_in_graph_and_eager_modes
   def testConvolutionWith2SpatialDimensionsAndExpandedBatch(self):
     tensor_in_sizes_batch = [10, 2, 3, 3]

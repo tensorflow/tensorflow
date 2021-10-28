@@ -14,7 +14,7 @@
 # ==============================================================================
 """Contains LossScale classes."""
 from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -144,9 +144,10 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
     ]
 
   def _scale_grad(self, grad, loss_scale_reciprocal):
-    if isinstance(grad, ops.IndexedSlices):
+    if isinstance(grad, indexed_slices.IndexedSlices):
       grad_vals = grad.values * loss_scale_reciprocal
-      return ops.IndexedSlices(grad_vals, grad.indices, grad.dense_shape)
+      return indexed_slices.IndexedSlices(grad_vals, grad.indices,
+                                          grad.dense_shape)
     return grad * loss_scale_reciprocal
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):

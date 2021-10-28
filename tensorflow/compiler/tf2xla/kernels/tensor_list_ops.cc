@@ -63,6 +63,7 @@ StatusOr<std::vector<std::vector<xla::XlaOp>>> GetTensorListDynamicDims(
   std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
   // Set dynamic dimension size to 0 for initialization value.
   std::vector<xla::XlaOp> dynamic_dims;
+  dynamic_dims.reserve(1 + element_shape.dimensions_size());
   if (leading_dim_is_dynamic) {
     dynamic_dims.push_back(ctx->Input(1));
   } else {
@@ -80,7 +81,7 @@ StatusOr<std::vector<std::vector<xla::XlaOp>>> GetTensorListDynamicDims(
           xla::ConstantR0<int32>(ctx->builder(), dynamic_sizes[dim]));
     }
   }
-  list_dynamic_dims.push_back(dynamic_dims);
+  list_dynamic_dims.push_back(std::move(dynamic_dims));
   return list_dynamic_dims;
 }
 

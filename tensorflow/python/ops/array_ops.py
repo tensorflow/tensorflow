@@ -25,6 +25,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -1973,7 +1974,7 @@ def sparse_mask(a, mask_indices, name=None):
     indices = a.indices
     out_indices, to_gather = gen_array_ops.list_diff(indices, mask_indices)
     out_values = gather(a.values, to_gather, name=name)
-    return ops.IndexedSlices(out_values, out_indices, a.dense_shape)
+    return indexed_slices.IndexedSlices(out_values, out_indices, a.dense_shape)
 
 
 @tf_export("unique")

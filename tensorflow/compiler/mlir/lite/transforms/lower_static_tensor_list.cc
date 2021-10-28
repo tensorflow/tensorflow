@@ -979,6 +979,18 @@ struct ConvertIdentity : public OpConversionPattern<TF::IdentityOp> {
   }
 };
 
+struct ConvertReturn : public OpConversionPattern<ReturnOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      ReturnOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    rewriter.updateRootInPlace(op,
+                               [&] { op->setOperands(adaptor.getOperands()); });
+    return success();
+  }
+};
+
 // Returns an unranked tensor type with an element of the same type as `value`
 // if `type` is a tensor of variant. Otherwise, returns `type` unmodified.
 Type VariantToUnrankedTensorType(Type type, Value value) {
@@ -1439,7 +1451,7 @@ void LowerStaticTensorListPass::runOnOperation() {
   // TODO(hinsu): Use TFLite constant op for constants.
   target.addLegalOp<arith::ConstantOp>();
   target.addLegalOp<FuncOp>();
-  target.addLegalOp<ReturnOp>();
+  target.addDynamicallyLegalOp<ReturnOp>(is_legal);
   target.addLegalOp<TFL::CustomOp>();
   // Register fused LSTM/RNN ops as legal.
   target.addLegalOp<TFL::LSTMOp>();
@@ -1453,7 +1465,7 @@ void LowerStaticTensorListPass::runOnOperation() {
                   ConvertTensorListLength, ConvertTensorListPushBack,
                   ConvertTensorListSetItem, ConvertTensorListStack,
                   ConvertTensorListResize, ConvertWhile, ConvertWhileRegion,
-                  ConvertIf>(context);
+                  ConvertIf, ConvertReturn>(context);
   patterns.insert<ConvertEmptyTensorList, ConvertTensorListConcatV2,
                   ConvertTensorListReserve>(
       context, allow_tensorlist_pass_through, default_to_single_batch);
