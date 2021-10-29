@@ -204,11 +204,6 @@ class TensorShapeBase : public TensorShapeRep {
   /// \brief Add a dimension to the end ("inner-most").
   /// REQUIRES: `size >= 0`
   void AddDim(int64 size);
-  Status AddDimWithStatus(int64 size);
-
-  /// Same as `AddDim` but returns a `Status`.
-  /// Use if unsure is `size >= 0`, to prevent `CHECK`-crashes.
-  Status AddDimWithStatus(int64 size);
 
   /// Same as `AddDim` but returns a `Status`.
   /// Use if unsure is `size >= 0`, to prevent `CHECK`-crashes.
