@@ -188,6 +188,7 @@ class TensorShapeBase : public TensorShapeRep {
   /// \brief Add a dimension to the end ("inner-most").
   /// REQUIRES: `size >= 0`
   void AddDim(int64 size);
+  Status AddDimWithStatus(int64 size);
 
   /// Appends all the dimensions from `shape`.
   void AppendShape(const TensorShapeBase& shape);

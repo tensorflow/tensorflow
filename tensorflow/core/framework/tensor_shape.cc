@@ -355,6 +355,38 @@ void TensorShapeBase<Shape>::AddDim(int64 size) {
 }
 
 template <class Shape>
+Status TensorShapeBase<Shape>::AddDimWithStatus(int64_t size) {
+  if (!kIsPartial) {
+    if (TF_PREDICT_FALSE(size < 0)) {
+      return errors::Internal("Expected a non-negative size, got ", size);
+    }
+  }
+
+  if (unknown_rank()) {
+    return Status::OK();
+  }
+
+  if (TF_PREDICT_FALSE(ndims_byte() >= MaxDimensions())) {
+    return errors::Internal("Too many dimensions in tensor");
+  }
+
+  int64_t new_num_elements;
+  if (kIsPartial && (num_elements() < 0 || size < 0)) {
+    new_num_elements = -1;
+  } else {
+    new_num_elements = MultiplyWithoutOverflow(num_elements(), size);
+    if (TF_PREDICT_FALSE(new_num_elements < 0)) {
+      return errors::Internal("Encountered overflow when multiplying ",
+                              num_elements(), " with ", size,
+                              ", result: ", new_num_elements);
+    }
+  }
+
+  UnsafeAddDim(size, new_num_elements);
+  return Status::OK();
+}
+
+template <class Shape>
 void TensorShapeBase<Shape>::UnsafeAddDim(int64 size, int64 new_num_elements) {
   const int nd = ndims_byte();
   if (tag() == REP16 && nd < 6 && size < kMaxRep16) {
