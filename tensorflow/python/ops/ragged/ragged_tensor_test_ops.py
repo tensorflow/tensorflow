@@ -17,6 +17,8 @@
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import string_ops
@@ -71,6 +73,15 @@ UNARY_FLOAT_OPS = [
     math_ops.square,
     math_ops.tan,
     math_ops.tanh,
+    nn_ops.elu,
+    nn_ops.gelu,
+    nn_ops.leaky_relu,
+    nn_ops.log_softmax,
+    nn_ops.relu,
+    nn_ops.relu6,
+    nn_ops.selu,
+    nn_ops.softsign,
+    nn_impl.swish,
     array_ops.ones_like,
     array_ops.ones_like_v2,
     array_ops.zeros_like,
@@ -130,6 +141,10 @@ BINARY_FLOAT_OPS = [
     math_ops.squared_difference,
     math_ops.subtract,
     math_ops.truediv,
+    math_ops.xdivy,
+    math_ops.xlog1py,
+    math_ops.xlogy,
+    math_ops.zeta,
 ]
 BINARY_BOOL_OPS = [
     math_ops.logical_and,

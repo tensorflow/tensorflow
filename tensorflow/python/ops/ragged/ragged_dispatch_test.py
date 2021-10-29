@@ -30,6 +30,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import image_ops_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
@@ -287,21 +288,21 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               [[[1, 2], [3], [4]], [[], [5, 7, 8]]]),
            'y': ragged_factory_ops.constant_value(
                [[[3, 8], [2], [5]], [[], [1, 9, 8]]]),
-           'use_kwargs': ('x', 'y')},
+           'use_kwargs': {'x': 'x', 'y': 'y'}},
           {'x': ragged_factory_ops.constant_value(
               [[[1, 2]], [[3, 4], [5, 6], [7, 8]]],
               ragged_rank=1),
            'y': ragged_factory_ops.constant_value(
                [[[9, 3]], [[5, 2], [3, 4], [7, 6]]],
                ragged_rank=1),
-           'use_kwargs': ('x', 'y')},
+           'use_kwargs': {'x': 'x', 'y': 'y'}},
           {'x': ragged_factory_ops.constant_value(
               [[[1, 2]], [[3, 4], [5, 6], [7, 8]]],
               ragged_rank=1),
            'y': ragged_factory_ops.constant_value(
                [[[9, 3]], [[5, 2], [3, 4], [7, 6]]],
                ragged_rank=1),
-           'use_kwargs': ('x',)},
+           'use_kwargs': {'y': 'y'}},
       ] +
       #=========================================================================
       # Test each binary op.
@@ -317,22 +318,43 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       [{'x': ragged_factory_ops.constant_value([[True, True], [False]]),
         'y': ragged_factory_ops.constant_value([[False, True], [False]]),
         'op': op}
-       for op in test_ops.BINARY_BOOL_OPS]
-      )  # pyformat: disable
+       for op in test_ops.BINARY_BOOL_OPS] +
+      #=========================================================================
+      # Test each binary op.
+      #=========================================================================
+      [
+          {'x': 3,
+           'y': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'op': math_ops.scalar_mul},
+          {'x': 3,
+           'y': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'op': math_ops.scalar_mul_v2},
+          {'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'y': ragged_factory_ops.constant_value([[5.0, 1.0], [12.0]]),
+           'op': nn_impl.sigmoid_cross_entropy_with_logits_v2,
+           'use_kwargs': {'x': 'labels', 'y': 'logits'}},
+      ])  # pyformat: disable
   def testBinaryElementwiseOp(self, x, y, op=math_ops.add, **extra_args):
-    use_kwargs = extra_args.pop('use_kwargs', ())
-    if 'x' in use_kwargs and 'y' in use_kwargs:
-      result = op(x=x, y=y, **extra_args)
-    elif 'y' in use_kwargs:
-      result = op(x, y=y, **extra_args)
-    else:
-      result = op(x, y, **extra_args)
+    use_kwargs = extra_args.pop('use_kwargs', {})
+
+    def compute(x, y):
+      if 'x' in use_kwargs and 'y' in use_kwargs:
+        extra_args[use_kwargs['x']] = x
+        extra_args[use_kwargs['y']] = y
+        return op(**extra_args)
+      elif 'y' in use_kwargs:
+        extra_args[use_kwargs['y']] = y
+        return op(x, **extra_args)
+      else:
+        assert 'x' not in use_kwargs, use_kwargs
+        return op(x, y, **extra_args)
+
+    result = compute(x, y)
 
     # Run the wrapped op on the dense values, for comparison.
     dense_x = x.flat_values if ragged_tensor.is_ragged(x) else x
     dense_y = y.flat_values if ragged_tensor.is_ragged(y) else y
-    expected_flat_values = array_ops.reshape(
-        op(dense_x, dense_y, **extra_args), [-1])
+    expected_flat_values = array_ops.reshape(compute(dense_x, dense_y), [-1])
 
     # Check that the result has the expected shape.
     self.assertSameShape(y, result)
@@ -435,10 +457,13 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         math_ops.to_float,
         math_ops.to_int32,
         math_ops.to_int64,
+        math_ops.scalar_mul,
+        math_ops.scalar_mul_v2,
         image_ops_impl.adjust_brightness,
         image_ops_impl.stateless_random_brightness,
         image_ops_impl.random_brightness,
         image_ops_impl.convert_image_dtype,
+        nn_impl.sigmoid_cross_entropy_with_logits_v2,
     ]
     untested_ops = (
         set(dispatch.unary_elementwise_apis() +
