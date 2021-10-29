@@ -83,7 +83,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     return name
 
   def _run(self, func, num_iters):
-    self.run_report(run_benchmark, func, num_iters)
+    self.run_report(run_benchmark, func, num_iters, report_mean_us=True)
 
   def _benchmark_matmul(self, mat, device):
     if device == GPU and not context.num_gpus():
