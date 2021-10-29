@@ -232,7 +232,7 @@ static llvm::Error CustomCall(
                                     &status);
 
   if (auto message = CustomCallStatusGetMessage(&status))
-    return tfrt::MakeStringError("Custom call failed: ", *message);
+    return tfrt::MakeStringError("Custom call failed: ", message->data());
 
   return llvm::Error::success();
 }
