@@ -2986,7 +2986,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/nn_fused_batchnorm_deterministic_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_tsan",
+    ],
     deps = [
         ":client_testlib",
         ":config",
