@@ -22,11 +22,13 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import image_ops_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import string_ops
@@ -176,6 +178,21 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
            'x': ragged_factory_ops.constant_value(
                [[2, 3], [3]], dtype=dtypes.int32),
            'expected_dtype': dtypes.int64},
+          {'op': image_ops_impl.convert_image_dtype,
+           'x': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
+           'dtype': dtypes.float32,
+           'expected_dtype': dtypes.float32},
+          {'op': image_ops_impl.adjust_brightness,
+           'x': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
+           'delta': 0.2},
+          {'op': image_ops_impl.stateless_random_brightness,
+           'x': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
+           'max_delta': 0.2,
+           'seed': (1, 2)},
+          {'op': image_ops_impl.random_brightness,
+           'x': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
+           'max_delta': 0.2,
+           'seed': 12},
       ]
       )  # pyformat: disable
   def testUnaryElementwiseOp(self,
@@ -184,10 +201,12 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                              expected_dtype=None,
                              **extra_args):
     x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x)
+    random_seed.set_random_seed(1234)
     result = op(x, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
     dense_x = x.flat_values if ragged_tensor.is_ragged(x) else x
+    random_seed.set_random_seed(1234)
     expected_flat_values = array_ops.reshape(op(dense_x, **extra_args), [-1])
 
     # Check that the result has the expected shape.
@@ -416,6 +435,10 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         math_ops.to_float,
         math_ops.to_int32,
         math_ops.to_int64,
+        image_ops_impl.adjust_brightness,
+        image_ops_impl.stateless_random_brightness,
+        image_ops_impl.random_brightness,
+        image_ops_impl.convert_image_dtype,
     ]
     untested_ops = (
         set(dispatch.unary_elementwise_apis() +

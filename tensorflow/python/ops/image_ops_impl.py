@@ -1939,6 +1939,7 @@ def per_image_standardization(image):
 
 
 @tf_export('image.random_brightness')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def random_brightness(image, max_delta, seed=None):
   """Adjust the brightness of images by a random factor.
@@ -1981,6 +1982,7 @@ def random_brightness(image, max_delta, seed=None):
 
 
 @tf_export('image.stateless_random_brightness', v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def stateless_random_brightness(image, max_delta, seed):
   """Adjust the brightness of images by a random factor deterministically.
@@ -2120,6 +2122,7 @@ def stateless_random_contrast(image, lower, upper, seed):
 
 
 @tf_export('image.adjust_brightness')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def adjust_brightness(image, delta):
   """Adjust the brightness of RGB or Grayscale images.
@@ -2294,6 +2297,7 @@ def adjust_gamma(image, gamma=1, gain=1):
 
 
 @tf_export('image.convert_image_dtype')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def convert_image_dtype(image, dtype, saturate=False, name=None):
   """Convert `image` to `dtype`, scaling its values if needed.
@@ -2685,6 +2689,10 @@ def adjust_hue(image, delta, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
+
+  Raises:
+    InvalidArgumentError: image must have at least 3 dimensions.
+    InvalidArgumentError: The size of the last dimension must be 3.
 
   Usage Example:
 
