@@ -212,6 +212,7 @@ enum StatType {
   kSourceInfo,
   kModelName,
   kModelVersion,
+  kBytesTransferred,
   // Performance counter related.
   kRawValue,
   kScaledValue,
