@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 class TensorShapeTestHelper {
@@ -203,6 +204,28 @@ TEST(TensorShapeTest, ostream) {
   std::stringstream ss;
   ss << s;
   EXPECT_EQ(ss.str(), "[10,5,4]");
+}
+
+TEST(TensorShapeTest, AddDimWithStatus) {
+  TensorShape s({10, 5, 20});
+  Status status = s.AddDimWithStatus(400);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(400000, s.num_elements());
+  ASSERT_EQ(4, s.dims());
+
+  status = s.AddDimWithStatus(-1);
+  EXPECT_EQ(tensorflow::error::INTERNAL, status.code());
+}
+
+TEST(TensorShapeTest, Factory) {
+  TensorShape s;
+  Status status = TensorShape::BuildTensorShapeBase({10, 5, 20}, &s);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(1000, s.num_elements());
+  ASSERT_EQ(3, s.dims());
+
+  status = TensorShape::BuildTensorShapeBase({-10, 5, 20}, &s);
+  EXPECT_EQ(tensorflow::error::INTERNAL, status.code());
 }
 
 // -----------------------------------------------------------------------
