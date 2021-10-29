@@ -112,6 +112,8 @@ UNARY_STRING_OPS = [
     string_ops.decode_base64,
     string_ops.encode_base64,
     string_ops.string_strip,
+    string_ops.string_lower,
+    string_ops.string_upper,
     string_ops.string_length,
     string_ops.string_length_v2,
     parsing_ops.decode_compressed,

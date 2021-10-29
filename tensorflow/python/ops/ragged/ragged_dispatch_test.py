@@ -194,6 +194,11 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
            'x': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
            'max_delta': 0.2,
            'seed': 12},
+          {'op': string_ops.unicode_transcode,
+           'x': ragged_factory_ops.constant_value(
+               [['tensor', 'flower'], ['2.0']]),
+           'input_encoding': 'UTF-8',
+           'output_encoding': 'UTF-16-BE'},
       ]
       )  # pyformat: disable
   def testUnaryElementwiseOp(self,
@@ -443,6 +448,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         string_ops.substr,
         string_ops.substr_v2,
         string_ops.substr_deprecated,
+        string_ops.unicode_transcode,
         clip_ops.clip_by_value,
         array_ops.check_numerics,
         math_ops.cast,
