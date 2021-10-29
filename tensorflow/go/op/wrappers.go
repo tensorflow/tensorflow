@@ -45788,9 +45788,9 @@ func TensorArrayConcatV2(scope *Scope, handle tf.Output, flow_in tf.Output, dtyp
 	return op.Output(0), op.Output(1)
 }
 
-// Writes contents to the file at input filename. Creates file and recursively
+// Writes `contents` to the file at input `filename`.
 //
-// creates directory if not existing.
+// Creates the file and recursively creates directory if it does not exist.
 //
 // Arguments:
 //	filename: scalar. The name of the file to which we write the contents.
