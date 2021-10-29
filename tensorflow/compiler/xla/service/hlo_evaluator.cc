@@ -286,15 +286,6 @@ StatusOr<Literal> HloEvaluator::Evaluate(
 }
 
 StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
-  // If the instruction is a kCopyDone, simply find the argument that it is
-  // copied from.
-  while (instruction->opcode() == HloOpcode::kCopyDone) {
-    if (instruction->operand(0)->opcode() != HloOpcode::kCopyStart) {
-      return tensorflow::errors::FailedPrecondition(
-          "kCopyDone has an argument different than a kCopyStart.");
-    }
-    instruction = instruction->mutable_operand(0)->mutable_operand(0);
-  }
   if (instruction->opcode() == HloOpcode::kParameter) {
     return tensorflow::errors::FailedPrecondition(
         "Cannot evaluate a parameter.");
