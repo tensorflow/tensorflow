@@ -365,42 +365,35 @@ TfLiteStatus Eval_dynamic(TfLiteContext* context, TfLiteNode* node) {
   // This Subgraph          Cond Subgraph         Body Subgraph
   // +-----------+   (1)   +------------+         +------------+
   // |   WHILE   |-------->|  SUBGRAPH  |         |  SUBGRAPH  |
-  // |   INPUT   |  (3-1)  |   INPUT    |         |   INPUT    |
-  // |           |------------------------------->|            |
+  // |   INPUT   |         |   INPUT    |         |   INPUT    |
   // |           |         |     ---------------->|            |
   // |           |         |   /        | <----   |            |
   // +-----------+         +--/---------+      \  +------------+
-  //                        /    |              \       |
-  //                (3-2) /      | (2)       (5) \      | (4)
-  //                    /        v                \     v
+  //      |                 /    |              \       |
+  //      | (2)       (4) /      | (3)       (6) \      | (5)
+  //      v             /        v                \     v
   // +-----------+    /    +------------+         +------------+
   // |   WHILE   |--/      |  SUBGRAPH  |         |  SUBGRAPH  |
-  // |   OUTPUT  |    (6)  |   OUTPUT   |         |   OUTPUT   |
+  // |   OUTPUT  |    (7)  |   OUTPUT   |         |   OUTPUT   |
   // |           |<-------------------------------|            |
   // +-----------+         +------------+         +------------+
   //
   // (1) Copy the inputs of WHILE op to the inputs of condition subgraph.
-  // (2) Invoke condition subgraph.
+  // (2) Copy the inputs of WHILE op to the outputs of WHILE op
+  // (3) Invoke condition subgraph.
   //     Exit the loop if the result is false.
-  // (3) If body is never invoked, run the step 3-1, else run the step 3-2.
-  // (3-1) Copy the inputs of WHILE op to the inputs of body subgraph.
-  // (3-2) Copy the outputs of WHILE op to the inputs of body subgraph.
-  // (4) Invoke body subgraph.
-  // (5) Copy the outputs of body subgraph to the inputs condition subgraph.
-  // (6) Copy the outputs of body subgraph to the outputs of WHILE op.
-  //     Jump back to step 2!
+  // (4) Copy the outputs of WHILE op to the inputs of body subgraph.
+  // (5) Invoke body subgraph.
+  // (6) Copy the outputs of body subgraph to the inputs condition subgraph.
+  // (7) Copy the outputs of body subgraph to the outputs of WHILE op.
+  //     Jump back to step 3!
   //
   // If the body subgraph has dynamic sized outputs, it's required to resize the
-  // tensor before copying in step 1, 3, 5 and 6.
+  // tensor before copying in step 1, 2, 4, 6 and 7.
   //
   // Note the flow is carefully designed to handle the dynamic sized output
   // case. The loop invariant is: The newest value is in the inputs of condition
-  // subgraph. This is always true before step 2.
-  //
-  // This is the best we can do without sharing tensor buffer across subgraph
-  // boundary. Currently we copy the input / output between the subgraphs. This
-  // isn't optimized yet and a lot of redundant copies are made.
-  // TODO(b/120234921): Optimize and avoid copying tensors between subgraphs.
+  // subgraph. This is always true before step 3.
 
   // Step 1. node->inputs -> cond->inputs (fast)
   TF_LITE_ENSURE_OK(context, DeepCopyTensorsShapeTypeData(
@@ -408,69 +401,50 @@ TfLiteStatus Eval_dynamic(TfLiteContext* context, TfLiteNode* node) {
                                  TfLiteIntArrayView(node->inputs),
                                  cond_subgraph, cond_subgraph->inputs()));
 
-  bool body_invoked = false;
+  // Step 2. node->inputs -> node->outputs
+  TF_LITE_ENSURE_OK(
+      context, DeepCopyTensorsShapeTypeData(context, node, this_subgraph,
+                                            TfLiteIntArrayView(node->inputs),
+                                            this_subgraph,
+                                            TfLiteIntArrayView(node->outputs)));
+
   while (true) {
-    // Step 2. Eval cond subgraph
+    // Step 3. Eval cond subgraph
     if (!Eval_cond_subgraph(context, cond_subgraph,
                             op_data->cond_has_dynamic_output_tensors)) {
       break;
     }
 
-    if (body_invoked) {
-      // Step 3-2. node->output -> body->inputs
-      if (op_data->body_use_shallow_copy) {
-        TF_LITE_ENSURE_OK(context, ShallowCopyTensorsShapeTypeData(
-                                       context, node, this_subgraph,
-                                       TfLiteIntArrayView(node->outputs),
-                                       body_subgraph, body_subgraph->inputs()));
-      } else {
-        TF_LITE_ENSURE_OK(context, DeepCopyTensorsShapeTypeData(
-                                       context, node, this_subgraph,
-                                       TfLiteIntArrayView(node->outputs),
-                                       body_subgraph, body_subgraph->inputs()));
-      }
+    // Step 4. node->outputs -> body->inputs
+    if (op_data->body_use_shallow_copy) {
+      TF_LITE_ENSURE_OK(context, ShallowCopyTensorsShapeTypeData(
+                                     context, node, this_subgraph,
+                                     TfLiteIntArrayView(node->outputs),
+                                     body_subgraph, body_subgraph->inputs()));
     } else {
-      // Step 3-1. node->inputs -> body->inputs
-      if (op_data->body_use_shallow_copy) {
-        TF_LITE_ENSURE_OK(context, ShallowCopyTensorsShapeTypeData(
-                                       context, node, this_subgraph,
-                                       TfLiteIntArrayView(node->inputs),
-                                       body_subgraph, body_subgraph->inputs()));
-      } else {
-        TF_LITE_ENSURE_OK(context, DeepCopyTensorsShapeTypeData(
-                                       context, node, this_subgraph,
-                                       TfLiteIntArrayView(node->inputs),
-                                       body_subgraph, body_subgraph->inputs()));
-      }
+      TF_LITE_ENSURE_OK(context, DeepCopyTensorsShapeTypeData(
+                                     context, node, this_subgraph,
+                                     TfLiteIntArrayView(node->outputs),
+                                     body_subgraph, body_subgraph->inputs()));
     }
 
-    // Step 4. Invoke body subgraph
+    // Step 5. Invoke body subgraph
     TF_LITE_ENSURE_OK(context, body_subgraph->Invoke());
-    body_invoked = true;
     for (int tensor_index : body_subgraph->outputs()) {
       body_subgraph->EnsureTensorDataIsReadable(tensor_index);
     }
 
-    // Step 5. body->outputs -> cond->inputs (fast)
+    // Step 6. body->outputs -> cond->inputs (fast)
     TF_LITE_ENSURE_OK(
         context, DeepCopyTensorsShapeTypeData(
                      context, node, body_subgraph, body_subgraph->outputs(),
                      cond_subgraph, cond_subgraph->inputs()));
 
-    // Step 6. body->outputs -> node->outputs
+    // Step 7. body->outputs -> node->outputs
     TF_LITE_ENSURE_OK(
         context, DeepCopyTensorsShapeTypeData(
                      context, node, body_subgraph, body_subgraph->outputs(),
                      this_subgraph, TfLiteIntArrayView(node->outputs)));
-  }
-
-  if (!body_invoked) {
-    // Copy node->inputs if body is never invoked.
-    TF_LITE_ENSURE_OK(
-        context,
-        DeepCopyTensorsShapeTypeData(
-            context, node, this_subgraph, TfLiteIntArrayView(node->inputs),
-            this_subgraph, TfLiteIntArrayView(node->outputs)));
   }
 
   if (op_data->body_use_shallow_copy) {
