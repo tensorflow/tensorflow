@@ -50,8 +50,10 @@ def reset_eager(fn):
   return wrapper
 
 
+@test_util.with_eager_op_as_function
 class ConfigTest(test.TestCase, parameterized.TestCase):
 
+  @test_util.disable_eager_op_as_function('b/204320409')
   @test_util.run_gpu_only
   @reset_eager
   def testDevicePolicy(self):

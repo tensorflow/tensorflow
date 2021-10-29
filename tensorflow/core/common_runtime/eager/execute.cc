@@ -121,6 +121,8 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
                                  int i, Device* handle_device,
                                  Device* expected_input_device,
                                  TensorHandle** result) {
+  VLOG(6) << "Expected input device: " << expected_input_device->name()
+          << "; handle_device: " << handle_device->name();
   // Should only be called when these don't match
   DCHECK(expected_input_device != handle_device);
   *result = nullptr;
@@ -135,6 +137,8 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
         // of graph mode.
         break;
       }
+      VLOG(6) << "DevicePlacementPolicy: DEVICE_PLACEMENT_SILENT_FOR_INT32 but "
+                 "input type is not INT32.";
       TF_FALLTHROUGH_INTENDED;
     case DEVICE_PLACEMENT_EXPLICIT:
       // tf.identity is allowed to copy, as indicated in the error message
@@ -234,6 +238,8 @@ Status ValidateInputTypeAndPlacement(
       Device* handle_device = handle->DeviceOrHostCPU(*ctx);
       const bool maybe_copy =
           !is_function || handle->Type() != TensorHandle::REMOTE;
+      VLOG(6) << "!is_function: " << !is_function;
+      VLOG(6) << "handle->Type(): " << handle->Type();
       // If the input is already on the right device, then nothing to do.
       if (expected_device != handle_device && maybe_copy) {
         TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(ctx, op, kernel->device(),
@@ -1370,6 +1376,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           Device* handle_device = handle->DeviceOrHostCPU(ctx);
           // If the input is already on the right device, then nothing to do.
           if (remote_cpu_device != handle_device) {
+            VLOG(6) << "remote_cpu_device != handle_device";
             TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(
                 &ctx, op, op_device, handle, i, handle_device,
                 remote_cpu_device, &handle));

@@ -462,6 +462,7 @@ void EagerContext::ClearCachesAndDefaultExecutor() {
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
     ContextDevicePlacementPolicy policy) {
   mutex_lock ml(policy_map_mu_);
+  VLOG(6) << "Setting device placement policy to: " << policy;
   device_placement_policy_[std::this_thread::get_id()] = policy;
 }
 
@@ -470,8 +471,10 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() const {
   auto policy_map_it =
       device_placement_policy_.find(std::this_thread::get_id());
   if (policy_map_it != device_placement_policy_.end()) {
+    VLOG(6) << "ContextDevicePlacementPolicy: " << policy_map_it->second;
     return policy_map_it->second;
   }
+  VLOG(6) << "ContextDevicePlacementPolicy not found; returning default.";
   return default_device_placement_policy_;
 }
 
