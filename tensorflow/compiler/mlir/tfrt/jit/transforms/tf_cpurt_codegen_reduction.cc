@@ -63,7 +63,7 @@ struct TileAndFusePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
     if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
 
     auto tiled_op = tileLinalgOp(rewriter, linalg_op, options);
-    if (!tiled_op) return failure();
+    if (failed(tiled_op)) return failure();
 
     auto tiled_loop_op = mlir::dyn_cast<TiledLoopOp>(tiled_op->loops.front());
     if (!tiled_loop_op) return failure();

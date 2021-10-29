@@ -31,6 +31,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -439,7 +440,7 @@ class FuncGraph(ops.Graph):
     filtered_control_inputs = []
     for c in control_inputs:
       # Check for _UnreadVariable
-      if (isinstance(c, ops.IndexedSlices) or
+      if (isinstance(c, indexed_slices.IndexedSlices) or
           (hasattr(c, "_handle") and hasattr(c, "op"))):
         c = c.op
       graph_element = ops._as_graph_element(c)  # pylint: disable=protected-access

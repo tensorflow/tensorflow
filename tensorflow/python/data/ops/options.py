@@ -354,13 +354,8 @@ class OptimizationOptions(options_lib.OptionsBase):
   parallel_batch = options_lib.create_option(
       name="parallel_batch",
       ty=bool,
-      docstring="Whether to parallelize copying of batch elements. This "
-      "optimization is highly experimental and can cause performance "
-      "degradation (e.g. when the parallelization overhead exceeds the "
-      "benefits of performing the data copies in parallel). You should only "
-      "enable this optimization if a) your input pipeline is bottlenecked on "
-      "batching and b) you have validated that this optimization improves "
-      "performance. If None, defaults to False.")
+      docstring="Whether to parallelize copying of batch elements. If None, "
+      "defaults to True.")
 
   shuffle_and_repeat_fusion = options_lib.create_option(
       name="shuffle_and_repeat_fusion",

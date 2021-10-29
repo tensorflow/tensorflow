@@ -137,7 +137,7 @@ class RangeDatasetOpConversion
         dataset_type_(CreateDatasetType(&builder_)) {}
 
   LogicalResult matchAndRewrite(
-      TF::RangeDatasetOp op, ArrayRef<Value> operands,
+      TF::RangeDatasetOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     if (op.output_types().size() != 1) {
       // Range dataset should only have one output type.
@@ -145,7 +145,8 @@ class RangeDatasetOpConversion
     }
     if (auto output_type = op.output_types().begin()->cast<TypeAttr>()) {
       rewriter.replaceOpWithNewOp<tfrt::data::RangeDatasetOp>(
-          op, dataset_type_, op.start(), op.stop(), op.step(), output_type);
+          op, dataset_type_, adaptor.start(), adaptor.stop(), adaptor.step(),
+          output_type);
       return success();
     }
     return failure();
@@ -165,7 +166,7 @@ class BatchDatasetV2OpConversion
         dataset_type_(CreateDatasetType(&builder_)) {}
 
   LogicalResult matchAndRewrite(
-      TF::BatchDatasetV2Op op, ArrayRef<Value> operands,
+      TF::BatchDatasetV2Op op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // Since TFRT's BatchDataset doesn't have a drop_remainder=True option,
     // we only convert this op if its drop_remainder input is statically known
@@ -189,7 +190,7 @@ class BatchDatasetV2OpConversion
 
     if (output_shape.getRank() >= 2) {  // Input is a tensor
       rewriter.replaceOpWithNewOp<tfrt::data::BatchDatasetTensorOp>(
-          op, dataset_type_, op.input_dataset(), op.batch_size(),
+          op, dataset_type_, adaptor.input_dataset(), adaptor.batch_size(),
           /*same_input_metadata=*/rewriter.getBoolAttr(false));
       return success();
     }
@@ -198,13 +199,13 @@ class BatchDatasetV2OpConversion
 
     if (output_type.isInteger(32)) {
       rewriter.replaceOpWithNewOp<tfrt::data::BatchDatasetI32Op>(
-          op, dataset_type_, op.input_dataset(), op.batch_size(),
+          op, dataset_type_, adaptor.input_dataset(), adaptor.batch_size(),
           /*same_input_metadata=*/rewriter.getBoolAttr(false));
       return success();
     }
     if (output_type.isInteger(64)) {
       rewriter.replaceOpWithNewOp<tfrt::data::BatchDatasetI64Op>(
-          op, dataset_type_, op.input_dataset(), op.batch_size(),
+          op, dataset_type_, adaptor.input_dataset(), adaptor.batch_size(),
           /*same_input_metadata=*/rewriter.getBoolAttr(false));
       return success();
     }

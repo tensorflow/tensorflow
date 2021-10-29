@@ -481,12 +481,13 @@ struct GetOptimizationsTestCase {
 
 // Tests the default.
 GetOptimizationsTestCase GetOptimizationTestCase1() {
-  return {/*options=*/Options(),
-          /*expected_enabled=*/{},
-          /*expected_disabled=*/{},
-          /*expected_default=*/
-          {"noop_elimination", "map_and_batch_fusion",
-           "shuffle_and_repeat_fusion", "map_parallelization"}};
+  return {
+      /*options=*/Options(),
+      /*expected_enabled=*/{},
+      /*expected_disabled=*/{},
+      /*expected_default=*/
+      {"noop_elimination", "map_and_batch_fusion", "shuffle_and_repeat_fusion",
+       "map_parallelization", "parallel_batch"}};
 }
 
 // Tests disabling application of default optimizations.
@@ -571,42 +572,6 @@ TEST(DeterministicOpsTest, GetOptimizations) {
               ::testing::UnorderedElementsAreArray({"make_deterministic"}));
   EXPECT_EQ(actual_disabled.size(), 0);
 }
-
-struct SelectOptimizationsTestCase {
-  absl::flat_hash_set<string> experiments;
-  absl::flat_hash_set<tstring> optimizations_enabled;
-  absl::flat_hash_set<tstring> optimizations_disabled;
-  absl::flat_hash_set<tstring> optimizations_default;
-  std::vector<string> expected;
-};
-
-class SelectOptimizationsTest
-    : public ::testing::TestWithParam<SelectOptimizationsTestCase> {};
-
-TEST_P(SelectOptimizationsTest, DatasetUtils) {
-  const SelectOptimizationsTestCase test_case = GetParam();
-  auto optimizations = SelectOptimizations(
-      test_case.experiments, test_case.optimizations_enabled,
-      test_case.optimizations_disabled, test_case.optimizations_default);
-  EXPECT_THAT(std::vector<string>(optimizations.begin(), optimizations.end()),
-              ::testing::UnorderedElementsAreArray(test_case.expected));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    Test, SelectOptimizationsTest,
-    ::testing::Values(
-        SelectOptimizationsTestCase{
-            /*experiments=*/{}, /*optimizations_enabled=*/{},
-            /*optimizations_disabled=*/{}, /*optimizations_default=*/{},
-            /*expected=*/{}},
-        SelectOptimizationsTestCase{
-            /*experiments=*/{"foo"}, /*optimizations_enabled=*/{"bar"},
-            /*optimizations_disabled=*/{}, /*optimizations_default=*/{"baz"},
-            /*expected=*/{"foo", "bar", "baz"}},
-        SelectOptimizationsTestCase{
-            /*experiments=*/{"foo"}, /*optimizations_enabled=*/{"bar"},
-            /*optimizations_disabled=*/{"foo"},
-            /*optimizations_default=*/{"baz"}, /*expected=*/{"bar", "baz"}}));
 
 REGISTER_DATASET_EXPERIMENT("test_only_experiment", 42);
 

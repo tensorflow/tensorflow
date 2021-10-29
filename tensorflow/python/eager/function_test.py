@@ -669,7 +669,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # TODO(b/201533914): Remove this flag.
     if function.USE_FULL_TRACE_TYPE:
       expected_error = errors.InvalidArgumentError
-      expected_message = r'Could not determine tracing type of generic object'
+      expected_message = r'could not be represented through the generic tracing'
     else:
       expected_error = ValueError
       expected_message = r'got.*set'

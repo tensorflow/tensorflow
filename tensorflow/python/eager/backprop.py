@@ -31,6 +31,7 @@ from tensorflow.python.eager import imperative_grad
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -590,15 +591,14 @@ def make_vjp(f, params=None, persistent=True):
 
 
 def flatten_nested_indexed_slices(grad):
-  assert isinstance(grad, ops.IndexedSlices)
+  assert isinstance(grad, indexed_slices.IndexedSlices)
   if isinstance(grad.values, ops.Tensor):
     return grad
   else:
-    assert isinstance(grad.values, ops.IndexedSlices)
+    assert isinstance(grad.values, indexed_slices.IndexedSlices)
     g = flatten_nested_indexed_slices(grad.values)
-    return ops.IndexedSlices(g.values, array_ops.gather(grad.indices,
-                                                        g.indices),
-                             g.dense_shape)
+    return indexed_slices.IndexedSlices(
+        g.values, array_ops.gather(grad.indices, g.indices), g.dense_shape)
 
 
 def aggregate_indexed_slices_gradients(grads):
@@ -620,7 +620,7 @@ def aggregate_indexed_slices_gradients(grads):
 
   grads = [flatten_nested_indexed_slices(x) for x in grads]
   # Form IndexedSlices out of the concatenated values and indices.
-  concat_grad = ops.IndexedSlices(
+  concat_grad = indexed_slices.IndexedSlices(
       array_ops.concat([x.values for x in grads], axis=0),
       array_ops.concat([x.indices for x in grads], axis=0),
       grads[0].dense_shape)
@@ -645,8 +645,9 @@ def _aggregate_grads(gradients):
   if all(isinstance(g, ops.Tensor) for g in gradients):
     return gen_math_ops.add_n(gradients)
   else:
-    assert all(isinstance(g, (ops.Tensor, ops.IndexedSlices))
-               for g in gradients)
+    assert all(
+        isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices))
+        for g in gradients)
     return aggregate_indexed_slices_gradients(gradients)
 
 
@@ -654,7 +655,7 @@ def _num_elements(grad):
   """The number of elements in the `grad` tensor."""
   if isinstance(grad, ops.Tensor):
     shape_tuple = grad._shape_tuple()  # pylint: disable=protected-access
-  elif isinstance(grad, ops.IndexedSlices):
+  elif isinstance(grad, indexed_slices.IndexedSlices):
     shape_tuple = grad.values._shape_tuple()  # pylint: disable=protected-access
   else:
     raise ValueError("`grad` not a Tensor or IndexedSlices.")

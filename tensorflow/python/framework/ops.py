@@ -290,9 +290,13 @@ class TensorType(trace.TraceType):
 
   def __init__(self, signature_context, shape, dtype, name):
     if signature_context.include_tensor_ranks_only:
-      self._components = (shape.rank, dtype, name)
+      shape_component = shape.rank
+    elif shape.rank is not None:
+      shape_component = tuple(shape.as_list())
     else:
-      self._components = (tuple(shape.as_list()), dtype, name)
+      shape_component = None
+
+    self._components = (shape_component, dtype, name)
 
   def is_subtype_of(self, other):
     # TODO(b/202429845): Implement for subtyping.

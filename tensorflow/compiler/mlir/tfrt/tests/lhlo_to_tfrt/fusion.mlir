@@ -54,8 +54,7 @@ memref.global "private" constant @ones : memref<8xf32> = dense<
 // CHECK-SAME:     .param .u64 _fusion_param_0,
 // CHECK-SAME:     .param .u64 _fusion_param_1
 // CHECK-SAME:   )
-// CHECK-SAME: ",
-// CHECK-SAME: constants = {ones = dense<[{{.*}}]> : tensor<32xi8>}} {
+// CHECK-SAME: ", constants = [@ones]} {
 // CHECK: gpu.func @[[kernel:.*]](
 // CHECK-SAME:   %arg0: memref<8x128xf32>, %arg1: memref<8xf32>
 // CHECK-SAME: ) kernel {

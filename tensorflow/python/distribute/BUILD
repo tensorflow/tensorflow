@@ -76,6 +76,7 @@ pytype_strict_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/types",
     ],

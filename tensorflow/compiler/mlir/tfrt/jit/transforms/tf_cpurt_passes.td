@@ -185,3 +185,9 @@ def VectorizeTiledOps : FunctionPass<"tf-cpurt-vectorize-tiled-ops"> {
   let constructor = "tensorflow::CreateVectorizeTiledOpsPass()";
   let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
+
+def DetensorizeLinalg : FunctionPass<"tf-cpurt-detensorize-linalg"> {
+  let summary = "Replace 0d tensor inputs to LinalgOp with extracted elements.";
+  let constructor = "tensorflow::CreateDetensorizeLinalgPass()";
+  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+}

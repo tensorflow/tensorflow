@@ -45,9 +45,11 @@ struct CodegenStrategyForMatMulPass
         .promote(mlir::linalg::MatmulOp::getOperationName(),
                  full_alloca_promotion)
         .vectorize(mlir::linalg::MatmulOp::getOperationName());
-    // TODO: propagate pass failure properly.
-    if (failed(matmul_strategy.transform(getFunction())))
-      return signalPassFailure();
+    // Created a nested OpPassManager, populate the strategy and run.
+    mlir::FuncOp f = getFunction();
+    mlir::OpPassManager dynamicPM("builtin.func");
+    matmul_strategy.configurePassPipeline(dynamicPM, f.getContext());
+    if (failed(runPipeline(dynamicPM, f))) return signalPassFailure();
 
     // Tile and vectorize linalg.vecmat operations. Interchange loop order to
     // linearly read from the matrix memref.
@@ -60,8 +62,10 @@ struct CodegenStrategyForMatMulPass
         .promote(mlir::linalg::VecmatOp::getOperationName(),
                  full_alloca_promotion)
         .vectorize(mlir::linalg::VecmatOp::getOperationName());
-    if (failed(vecmat_strategy.transform(getFunction())))
-      return signalPassFailure();
+    // Created a nested OpPassManager, populate the strategy and run.
+    mlir::OpPassManager dynamicPM2("builtin.func");
+    vecmat_strategy.configurePassPipeline(dynamicPM2, f.getContext());
+    if (failed(runPipeline(dynamicPM2, f))) return signalPassFailure();
 
     // Vector contraction options.
     mlir::vector::VectorTransformsOptions vector_transforms_ops;
@@ -70,16 +74,20 @@ struct CodegenStrategyForMatMulPass
 
     // Vector transfer options.
     mlir::VectorTransferToSCFOptions vector_transfer_opts;
-    vector_transfer_opts.setUnroll(true);
+    vector_transfer_opts.enableFullUnroll();
 
     mlir::linalg::CodegenStrategy vector_lowering_strategy;
-    vector_lowering_strategy.setEnableVectorTransferPartialRewrite(true)
-        .setEnableVectorContractLowering(true)
-        .setEnableVectorToSCFConversion(true)
-        .setVectorTransformsOptions(vector_transforms_ops)
-        .setVectorTransferToSCFOptions(vector_transfer_opts);
-    if (failed(vector_lowering_strategy.transform(getFunction())))
-      return signalPassFailure();
+    vector_lowering_strategy.vectorLowering(
+        mlir::linalg::LinalgVectorLoweringOptions()
+            .enableTransferPartialRewrite()
+            .enableContractionLowering()
+            .enableTransferToSCFConversion()
+            .setVectorTransformsOptions(vector_transforms_ops)
+            .setVectorTransferToSCFOptions(vector_transfer_opts));
+    // Created a nested OpPassManager, populate the strategy and run.
+    mlir::OpPassManager dynamicPM3("builtin.func");
+    vector_lowering_strategy.configurePassPipeline(dynamicPM3, f.getContext());
+    if (failed(runPipeline(dynamicPM3, f))) return signalPassFailure();
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const override {

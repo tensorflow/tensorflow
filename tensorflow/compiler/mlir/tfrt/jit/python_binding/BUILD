@@ -38,6 +38,7 @@ pybind_extension(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_cpurt_pipeline",
+        "//tensorflow/compiler/mlir/tfrt/python_tests:python_test_attrs_registration",
         "//tensorflow/core/platform:dynamic_annotations",
         "//third_party/eigen3",
         "//third_party/python_runtime:headers",  # build_cleaner: keep

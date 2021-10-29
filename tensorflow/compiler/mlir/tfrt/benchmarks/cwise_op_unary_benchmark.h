@@ -55,13 +55,14 @@ template <typename T, int rank>
 MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
     llvm::StringRef mlir_input, llvm::StringRef function_name,
     std::array<MemrefDesc, 1>& operands, size_t num_threads,
-    bool lower_from_tensorflow) {
+    bool lower_from_tensorflow, bool vectorize) {
   static_assert(rank >= 1 && rank <= 4, "We do only support ranks 1 to 4");
   std::unique_ptr<HostContext> host =
       num_threads > 0 ? CreateMultiThreadedHostContext(num_threads)
                       : CreateSingleThreadedHostContext();
 
   TfCpuRtPipelineOptions tf_cpurt_opts;
+  tf_cpurt_opts.vectorize = vectorize;
   JitExecutable& jit_executable = CreateJitExecutable(
       *host, mlir_input, function_name, lower_from_tensorflow, tf_cpurt_opts);
 
@@ -96,7 +97,8 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
 template <typename T, int rank>
 void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
                             llvm::StringRef function_name, T scale, T offset,
-                            size_t num_threads, bool lower_from_tensorflow) {
+                            size_t num_threads, bool lower_from_tensorflow,
+                            bool vectorize) {
   std::array<ssize_t, rank> input_dims;
   for (int d = 0; d < rank; ++d)
     input_dims[d] = 10;  // The value here does not matter.
@@ -107,7 +109,8 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
   std::array<MemrefDesc, 1> operands = {TensorToMemrefDesc(input)};
 
   MlirBenchmark<T, rank> b = PrepareUnaryMlirBenchmark<T, rank>(
-      mlir_input, function_name, operands, num_threads, lower_from_tensorflow);
+      mlir_input, function_name, operands, num_threads, lower_from_tensorflow,
+      vectorize);
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
@@ -125,7 +128,8 @@ template <typename T, int rank>
 void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
                            llvm::StringRef mlir_input,
                            llvm::StringRef function_name, T scale, T offset,
-                           size_t num_threads, bool lower_from_tensorflow) {
+                           size_t num_threads, bool lower_from_tensorflow,
+                           bool vectorize) {
   std::array<ssize_t, rank> input_dims;
   for (int d = 0; d < rank; ++d) input_dims[d] = state.range(d);
   // Generate random input data.
@@ -134,7 +138,8 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
   std::array<MemrefDesc, 1> operands = {TensorToMemrefDesc(input)};
 
   MlirBenchmark<T, rank> b = PrepareUnaryMlirBenchmark<T, rank>(
-      mlir_input, function_name, operands, num_threads, lower_from_tensorflow);
+      mlir_input, function_name, operands, num_threads, lower_from_tensorflow,
+      vectorize);
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
@@ -142,6 +147,7 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
+    call_frame.args[0] = nullptr;  // reset kernel context argument
     b.executable->Execute(call_frame, b.exec_ctx);
     if (auto err =
             b.executable->ReturnResults(b.converter, b.exec_ctx, &call_frame))
@@ -202,32 +208,47 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
 // For MLIR benchmarks, we also generate a unit test to detect regressions.
 // -------------------------------------------------------------------------- //
 
-#define BM_TFMlir(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET,          \
-                  NUM_THREADS)                                              \
-  TEST(Test_mlir_##NAME##_##TYPE##_##NUM_THREADS, RunOnce) {                \
-    TestUnaryMlirBenchmark<TYPE, RANK>(MLIR_INPUT, FN, SCALE, OFFSET,       \
-                                       NUM_THREADS,                         \
-                                       /*lower_from_tensorflow=*/true);     \
-  }                                                                         \
-  static void BM_mlir_##NAME##_##TYPE##_##NUM_THREADS(                      \
-      ::testing::benchmark::State& state) {                                 \
-    RunUnaryMlirBenchmark<TYPE, RANK>(state, MLIR_INPUT, FN, SCALE, OFFSET, \
-                                      NUM_THREADS,                          \
-                                      /*lower_from_tensorflow=*/true);      \
-  }                                                                         \
+#define BM_TFMlir(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET, \
+                  NUM_THREADS)                                     \
+  TEST(Test_mlir_##NAME##_##TYPE##_##NUM_THREADS, RunOnce) {       \
+    TestUnaryMlirBenchmark<TYPE, RANK>(                            \
+        MLIR_INPUT, FN, SCALE, OFFSET, NUM_THREADS,                \
+        /*lower_from_tensorflow=*/true, /*vectorize=*/false);      \
+  }                                                                \
+  static void BM_mlir_##NAME##_##TYPE##_##NUM_THREADS(             \
+      ::testing::benchmark::State& state) {                        \
+    RunUnaryMlirBenchmark<TYPE, RANK>(                             \
+        state, MLIR_INPUT, FN, SCALE, OFFSET, NUM_THREADS,         \
+        /*lower_from_tensorflow=*/true, /*vectorize=*/false);      \
+  }                                                                \
   BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
+
+#define BM_TFMlirVectorized(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET, \
+                            NUM_THREADS)                                     \
+  TEST(Test_mlir_v_##NAME##_##TYPE##_##NUM_THREADS, RunOnce) {               \
+    TestUnaryMlirBenchmark<TYPE, RANK>(                                      \
+        MLIR_INPUT, FN, SCALE, OFFSET, NUM_THREADS,                          \
+        /*lower_from_tensorflow=*/true, /*vectorize=*/true);                 \
+  }                                                                          \
+  static void BM_mlir_v_##NAME##_##TYPE##_##NUM_THREADS(                     \
+      ::testing::benchmark::State& state) {                                  \
+    RunUnaryMlirBenchmark<TYPE, RANK>(                                       \
+        state, MLIR_INPUT, FN, SCALE, OFFSET, NUM_THREADS,                   \
+        /*lower_from_tensorflow=*/true, /*vectorize=*/true);                 \
+  }                                                                          \
+  BENCHMARK(BM_mlir_v_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
 #define BM_Mlir(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET, NUM_THREADS) \
   TEST(Test_mlir_##NAME##_##TYPE##_##NUM_THREADS, RunOnce) {                  \
-    TestUnaryMlirBenchmark<TYPE, RANK>(MLIR_INPUT, FN, SCALE, OFFSET,         \
-                                       NUM_THREADS,                           \
-                                       /*lower_from_tensorflow=*/false);      \
+    TestUnaryMlirBenchmark<TYPE, RANK>(                                       \
+        MLIR_INPUT, FN, SCALE, OFFSET, NUM_THREADS,                           \
+        /*lower_from_tensorflow=*/false, /*vectorize=*/false);                \
   }                                                                           \
   static void BM_mlir_##NAME##_##TYPE##_##NUM_THREADS(                        \
       ::testing::benchmark::State& state) {                                   \
-    RunUnaryMlirBenchmark<TYPE, RANK>(state, MLIR_INPUT, FN, SCALE, OFFSET,   \
-                                      NUM_THREADS,                            \
-                                      /*lower_from_tensorflow=*/false);       \
+    RunUnaryMlirBenchmark<TYPE, RANK>(                                        \
+        state, MLIR_INPUT, FN, SCALE, OFFSET, NUM_THREADS,                    \
+        /*lower_from_tensorflow=*/false, /*vectorize=*/false);                \
   }                                                                           \
   BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 

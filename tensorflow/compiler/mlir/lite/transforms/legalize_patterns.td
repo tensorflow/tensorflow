@@ -70,8 +70,11 @@ def CreateNoneValue : NativeCodeCall<
 // Nullary ops patterns.
 //===----------------------------------------------------------------------===//
 
-def LegalizeTFConstToTFLConst: Pat<(TF_ConstOp ElementsAttr:$value),
-                                   (TFL_ConstOp $value)>;
+def createConstOp
+  : NativeCodeCall<"$_builder.create<ConstOp>($_loc, $0.getType(), $1)">;
+
+def LegalizeTFConstToTFLConst: Pat<(TF_ConstOp:$res ElementsAttr:$value),
+                                   (createConstOp $res, $value)>;
 
 // Convert to std constant for statically shaped, non-opaque constants.
 def ConvertTfConstToStdConst : Pat<

@@ -66,6 +66,9 @@ std::unique_ptr<mlir::FunctionPass> CreateFusionPass();
 std::unique_ptr<mlir::FunctionPass> CreateSymbolicShapeOptimizationPass(
     bool constraints_only = false);
 
+// Pass to replace 0-d tensor inputs to LinalgOp with extracted elements.
+std::unique_ptr<mlir::FunctionPass> CreateDetensorizeLinalgPass();
+
 // Creates `tf_device.cluster` operations according to the TF CPURT clustering
 // policy.
 std::unique_ptr<mlir::FunctionPass> CreateTfCpurtClusteringPass();

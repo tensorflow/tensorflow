@@ -11,7 +11,6 @@ func @non_aliasing_reads_writes(
   %arg2: tensor<32xf32>) -> (tensor<32xf32>) {
   %graph = tf_executor.graph {
   // expected-remark@above {{ID: 11}}
-  // expected-remark@above {{Successors: {12}}}
     // CHECK: tf_executor.island
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 9}}
@@ -53,7 +52,7 @@ func @non_aliasing_reads_writes(
   }
   return %graph : tensor<32xf32>
   // expected-remark@above {{ID: 12}}
-  // expected-remark@above {{Predecessors: {11}}}
+  // expected-remark@above {{Sinks: {11}}}
 }
 
 // -----
@@ -66,7 +65,6 @@ func @aliasing_reads_writes(%arg0: tensor<32xf32>) -> () {
 // expected-remark@above {{ID: 14}}
   tf_executor.graph {
   // expected-remark@above {{ID: 12}}
-  // expected-remark@above {{Successors: {13}}}
     // CHECK: tf_executor.island
     %island = tf_executor.island {
     // expected-remark@above {{ID: 10}}
@@ -110,7 +108,7 @@ func @aliasing_reads_writes(%arg0: tensor<32xf32>) -> () {
   }
   return
   // expected-remark@above {{ID: 13}}
-  // expected-remark@above {{Predecessors: {12}}}
+  // expected-remark@above {{Sinks: {12}}}
 }
 
 // -----
@@ -123,7 +121,6 @@ func @unknown_side_effecting_op(%arg0: tensor<32xf32>) -> () {
 // expected-remark@above {{ID: 14}}
   tf_executor.graph {
   // expected-remark@above {{ID: 12}}
-  // expected-remark@above {{Successors: {13}}}
     // CHECK: tf_executor.island
     %island = tf_executor.island {
     // expected-remark@above {{ID: 10}}
@@ -168,7 +165,7 @@ func @unknown_side_effecting_op(%arg0: tensor<32xf32>) -> () {
   }
   return
   // expected-remark@above {{ID: 13}}
-  // expected-remark@above {{Predecessors: {12}}}
+  // expected-remark@above {{Sinks: {12}}}
 }
 
 // -----
@@ -181,7 +178,6 @@ func @read_only_unknown_resource(%arg0: tensor<32xf32>) -> () {
 // expected-remark@above {{ID: 10}}
   tf_executor.graph {
   // expected-remark@above {{ID: 8}}
-  // expected-remark@above {{Successors: {9}}}
     // CHECK: tf_executor.island
     %island = tf_executor.island {
     // expected-remark@above {{ID: 6}}
@@ -213,7 +209,7 @@ func @read_only_unknown_resource(%arg0: tensor<32xf32>) -> () {
   }
   return
   // expected-remark@above {{ID: 9}}
-  // expected-remark@above {{Predecessors: {8}}}
+  // expected-remark@above {{Sinks: {8}}}
 }
 
 // -----
@@ -229,7 +225,6 @@ func @with_replicate(
   %arg3: tensor<*x!tf_type.resource<tensor<32xf32>>>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 10}}
-  // expected-remark@above {{Successors: {11}}}
     %island = tf_executor.island {
     // expected-remark@above {{ID: 8}}
     // expected-remark@above {{Successors: {9}}}
@@ -269,7 +264,7 @@ func @with_replicate(
   }
   return
   // expected-remark@above {{ID: 11}}
-  // expected-remark@above {{Predecessors: {10}}}
+  // expected-remark@above {{Sinks: {10}}}
 }
 
 // -----
@@ -283,7 +278,6 @@ func @stateless_if_op(
   %arg1: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Successors: {7}}}
     // CHECK: tf_executor.island
     %island = tf_executor.island {
     // expected-remark@above {{ID: 4}}
@@ -311,7 +305,7 @@ func @stateless_if_op(
   }
   return
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Predecessors: {6}}}
+  // expected-remark@above {{Sinks: {6}}}
 }
 
 // CHECK-LABEL: func @if_then
@@ -319,7 +313,6 @@ func @if_then(%arg0: tensor<i1>) -> tensor<i1> {
   // expected-remark@above {{ID: 5}}
   %graph = tf_executor.graph {
   // expected-remark@above {{ID: 3}}
-  // expected-remark@above {{Successors: {4}}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 1}}
     // expected-remark@above {{Successors: {2}}}
@@ -332,7 +325,7 @@ func @if_then(%arg0: tensor<i1>) -> tensor<i1> {
   }
   return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
-  // expected-remark@above {{Predecessors: {3}}}
+  // expected-remark@above {{Sinks: {3}}}
 }
 
 // CHECK-LABEL: func @if_else
@@ -340,7 +333,6 @@ func @if_else(%arg0: tensor<i1>) -> tensor<i1> {
   // expected-remark@above {{ID: 5}}
   %graph = tf_executor.graph {
   // expected-remark@above {{ID: 3}}
-  // expected-remark@above {{Successors: {4}}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 1}}
     // expected-remark@above {{Successors: {2}}}
@@ -353,7 +345,7 @@ func @if_else(%arg0: tensor<i1>) -> tensor<i1> {
   }
   return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
-  // expected-remark@above {{Predecessors: {3}}}
+  // expected-remark@above {{Sinks: {3}}}
 }
 
 // -----
@@ -368,7 +360,6 @@ func @stateless_ifregion_op(
   %arg1: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 16}}
-  // expected-remark@above {{Successors: {17}}}
     // CHECK: tf_executor.island
     %island = tf_executor.island {
     // expected-remark@above {{ID: 14}}
@@ -430,7 +421,7 @@ func @stateless_ifregion_op(
   }
   return
   // expected-remark@above {{ID: 17}}
-  // expected-remark@above {{Predecessors: {16}}}
+  // expected-remark@above {{Sinks: {16}}}
 }
 
 // -----
@@ -444,7 +435,6 @@ func @stateless_if_op(
   %arg1: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Successors: {7}}}
     // CHECK: tf_executor.island
     %island = tf_executor.island {
     // expected-remark@above {{ID: 4}}
@@ -472,7 +462,7 @@ func @stateless_if_op(
   }
   return
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Predecessors: {6}}}
+  // expected-remark@above {{Sinks: {6}}}
 }
 
 // CHECK-LABEL: func @while_body
@@ -480,7 +470,6 @@ func @while_body(%arg0: tensor<i1>) -> tensor<i1> {
   // expected-remark@above {{ID: 5}}
   %graph = tf_executor.graph {
   // expected-remark@above {{ID: 3}}
-  // expected-remark@above {{Successors: {4}}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 1}}
     // expected-remark@above {{Successors: {2}}}
@@ -493,7 +482,7 @@ func @while_body(%arg0: tensor<i1>) -> tensor<i1> {
   }
   return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
-  // expected-remark@above {{Predecessors: {3}}}
+  // expected-remark@above {{Sinks: {3}}}
 }
 
 // CHECK-LABEL: func @while_cond
@@ -501,7 +490,6 @@ func @while_cond(%arg0: tensor<i1>) -> tensor<i1> {
   // expected-remark@above {{ID: 5}}
   %graph = tf_executor.graph {
   // expected-remark@above {{ID: 3}}
-  // expected-remark@above {{Successors: {4}}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 1}}
     // expected-remark@above {{Successors: {2}}}
@@ -514,7 +502,7 @@ func @while_cond(%arg0: tensor<i1>) -> tensor<i1> {
   }
   return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
-  // expected-remark@above {{Predecessors: {3}}}
+  // expected-remark@above {{Sinks: {3}}}
 }
 
 // -----
@@ -529,7 +517,6 @@ func @stateless_whileregion_op(
   %arg1: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 16}}
-  // expected-remark@above {{Successors: {17}}}
     // CHECK: tf_executor.island
     %island = tf_executor.island {
     // expected-remark@above {{ID: 14}}
@@ -590,7 +577,7 @@ func @stateless_whileregion_op(
   }
   return
   // expected-remark@above {{ID: 17}}
-  // expected-remark@above {{Predecessors: {16}}}
+  // expected-remark@above {{Sinks: {16}}}
 }
 
 // -----
@@ -619,7 +606,6 @@ func @output_of_if_op(
   %arg2: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 10}}
-  // expected-remark@above {{Successors: {11}}}
     // CHECK: tf_executor.island
     %island = tf_executor.island {
     // expected-remark@above {{ID: 8}}
@@ -671,7 +657,7 @@ func @output_of_if_op(
   }
   return
   // expected-remark@above {{ID: 11}}
-  // expected-remark@above {{Predecessors: {10}}}
+  // expected-remark@above {{Sinks: {10}}}
 }
 
 // CHECK-LABEL: func @if_then
@@ -684,7 +670,6 @@ func @if_then(
    tensor<*x!tf_type.resource<tensor<32xf32>>>) {
   %graph:3 = tf_executor.graph {
   // expected-remark@above {{ID: 5}}
-  // expected-remark@above {{Successors: {6}}}
     %island:4 = tf_executor.island {
     // expected-remark@above {{ID: 3}}
     // expected-remark@above {{Successors: {4}}}
@@ -711,7 +696,7 @@ func @if_then(
   }
   return %graph#0, %graph#1, %graph#2 :
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Predecessors: {5}}}
+  // expected-remark@above {{Sinks: {5}}}
     tensor<*x!tf_type.resource<tensor<32xf32>>>,
     tensor<*x!tf_type.resource<tensor<32xf32>>>,
     tensor<*x!tf_type.resource<tensor<32xf32>>>
@@ -727,7 +712,6 @@ func @if_else(
    tensor<*x!tf_type.resource<tensor<32xf32>>>) {
   %graph:3 = tf_executor.graph {
   // expected-remark@above {{ID: 5}}
-  // expected-remark@above {{Successors: {6}}}
     %island:4 = tf_executor.island {
     // expected-remark@above {{ID: 3}}
     // expected-remark@above {{Successors: {4}}}
@@ -752,7 +736,7 @@ func @if_else(
   }
   return %graph#0, %graph#1, %graph#2 :
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Predecessors: {5}}}
+  // expected-remark@above {{Sinks: {5}}}
     tensor<*x!tf_type.resource<tensor<32xf32>>>,
     tensor<*x!tf_type.resource<tensor<32xf32>>>,
     tensor<*x!tf_type.resource<tensor<32xf32>>>
@@ -771,7 +755,6 @@ func @output_of_ifregion_op(
   %arg2: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 24}}
-  // expected-remark@above {{Successors: {25}}}
     // CHECK: tf_executor.island
     %island = tf_executor.island {
     // expected-remark@above {{ID: 22}}
@@ -885,7 +868,7 @@ func @output_of_ifregion_op(
   }
   return
   // expected-remark@above {{ID: 25}}
-  // expected-remark@above {{Predecessors: {24}}}
+  // expected-remark@above {{Sinks: {24}}}
 }
 
 // -----
@@ -913,7 +896,6 @@ func @output_of_while_op(
   %arg2: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 10}}
-  // expected-remark@above {{Successors: {11}}}
     // CHECK: tf_executor.island
     %island = tf_executor.island {
     // expected-remark@above {{ID: 8}}
@@ -966,7 +948,7 @@ func @output_of_while_op(
   }
   return
   // expected-remark@above {{ID: 11}}
-  // expected-remark@above {{Predecessors: {10}}}
+  // expected-remark@above {{Sinks: {10}}}
 }
 
 // CHECK-LABEL: func @while_body
@@ -981,7 +963,6 @@ func @while_body(
    tensor<*x!tf_type.resource<tensor<32xf32>>>) {
   %graph:4 = tf_executor.graph {
   // expected-remark@above {{ID: 5}}
-  // expected-remark@above {{Successors: {6}}}
     %island:5 = tf_executor.island {
     // expected-remark@above {{ID: 3}}
     // expected-remark@above {{Successors: {4}}}
@@ -1008,7 +989,7 @@ func @while_body(
   }
   return %graph#0, %graph#1, %graph#2, %graph#3 :
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Predecessors: {5}}}
+  // expected-remark@above {{Sinks: {5}}}
     tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
     tensor<*x!tf_type.resource<tensor<32xf32>>>,
     tensor<*x!tf_type.resource<tensor<32xf32>>>
@@ -1023,7 +1004,6 @@ func @while_cond(
   %arg2: tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<i1> {
   %graph = tf_executor.graph {
   // expected-remark@above {{ID: 5}}
-  // expected-remark@above {{Successors: {6}}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 3}}
     // expected-remark@above {{Successors: {4}}}
@@ -1040,7 +1020,7 @@ func @while_cond(
   }
   return %graph : tensor<i1>
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Predecessors: {5}}}
+  // expected-remark@above {{Sinks: {5}}}
 }
 
 // -----
@@ -1056,7 +1036,6 @@ func @output_of_whileregion_op(
   %arg2: tensor<i1>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 24}}
-  // expected-remark@above {{Successors: {25}}}
     // CHECK: tf_executor.island
     %island = tf_executor.island {
     // expected-remark@above {{ID: 22}}
@@ -1170,7 +1149,7 @@ func @output_of_whileregion_op(
   }
   return
   // expected-remark@above {{ID: 25}}
-  // expected-remark@above {{Predecessors: {24}}}
+  // expected-remark@above {{Sinks: {24}}}
 }
 
 // -----
@@ -1184,7 +1163,6 @@ func @tf_registry_ops(
   %arg0: tensor<!tf_type.string>, %arg1: tensor<!tf_type.string>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Successors: {7}}}
     %island = tf_executor.island {
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Successors: {5}}}
@@ -1210,7 +1188,7 @@ func @tf_registry_ops(
   }
   return
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Predecessors: {6}}}
+  // expected-remark@above {{Sinks: {6}}}
 }
 
 // -----
@@ -1226,7 +1204,6 @@ func @arguments_with_unique_ids(
   %arg2: tensor<*x!tf_type.resource<tensor<32xf32>>> {tf._resource_arg_unique_id = 33 : i64}) {
   tf_executor.graph {
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Successors: {8}}}
     %island = tf_executor.island {
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Successors: {6}}}
@@ -1257,7 +1234,7 @@ func @arguments_with_unique_ids(
   }
   return
   // expected-remark@above {{ID: 8}}
-  // expected-remark@above {{Predecessors: {7}}}
+  // expected-remark@above {{Sinks: {7}}}
 }
 
 // -----
@@ -1269,7 +1246,6 @@ func @value_based_side_effect_non_resource_to_unknown(
   %arg0: tensor<!tf_type.string>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 6}}
-    // expected-remark@above {{Successors: {7}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 4}}
         // expected-remark@above {{Successors: {5}}}
@@ -1294,7 +1270,7 @@ func @value_based_side_effect_non_resource_to_unknown(
   }
   return
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Predecessors: {6}}}
+  // expected-remark@above {{Sinks: {6}}}
 }
 
 // -----
@@ -1306,7 +1282,6 @@ func @value_based_side_effect_non_resource_to_known(
   %arg0: tensor<!tf_type.string>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 6}}
-    // expected-remark@above {{Successors: {7}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 4}}
         // expected-remark@above {{Successors: {5}}}
@@ -1330,7 +1305,7 @@ func @value_based_side_effect_non_resource_to_known(
   }
   return
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Predecessors: {6}}}
+  // expected-remark@above {{Sinks: {6}}}
 }
 
 // -----
@@ -1342,7 +1317,6 @@ func @dataset_op_sequence(
   %arg0: tensor<!tf_type.variant>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 7}}
-    // expected-remark@above {{Successors: {8}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 5}}
         // expected-remark@above {{Successors: {6}}}
@@ -1369,7 +1343,7 @@ func @dataset_op_sequence(
   }
   return
   // expected-remark@above {{ID: 8}}
-  // expected-remark@above {{Predecessors: {7}}}
+  // expected-remark@above {{Sinks: {7}}}
 }
 
 // -----
@@ -1380,7 +1354,6 @@ func @generator_dataset_with_unknown_side_effect_ops(
   %arg0: tensor<!tf_type.string>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 6}}
-    // expected-remark@above {{Successors: {7}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 4}}
         // expected-remark@above {{Successors: {5}}}
@@ -1405,7 +1378,7 @@ func @generator_dataset_with_unknown_side_effect_ops(
   }
   return
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Predecessors: {6}}}
+  // expected-remark@above {{Sinks: {6}}}
 }
 
 // -----
@@ -1420,7 +1393,6 @@ func @resources_allocated_with_same_nonempty_shared_name(
   %value: tensor<i64>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Successors: {8}}}
     %island = tf_executor.island {
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Successors: {6}}}
@@ -1445,7 +1417,7 @@ func @resources_allocated_with_same_nonempty_shared_name(
   }
   return
   // expected-remark@above {{ID: 8}}
-  // expected-remark@above {{Predecessors: {7}}}
+  // expected-remark@above {{Sinks: {7}}}
 }
 
 // -----
@@ -1460,7 +1432,6 @@ func @side_effecting_ops_with_different_resources(
   %arg2: tensor<f32>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 5}}
-  // expected-remark@above {{Successors: {6}}}
     %island = tf_executor.island {
     // expected-remark@above {{ID: 3}}
     // expected-remark@above {{Successors: {4}}}
@@ -1480,7 +1451,7 @@ func @side_effecting_ops_with_different_resources(
   }
   return
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Predecessors: {5}}}
+  // expected-remark@above {{Sinks: {5}}}
 }
 
 // -----
@@ -1495,7 +1466,6 @@ func @side_effecting_ops_with_different_resources_and_allocations(
   %arg1: tensor<f32>) {
   tf_executor.graph {
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Successors: {8}}}
     %island = tf_executor.island {
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Successors: {6}}}
@@ -1519,7 +1489,7 @@ func @side_effecting_ops_with_different_resources_and_allocations(
   }
   return
   // expected-remark@above {{ID: 8}}
-  // expected-remark@above {{Predecessors: {7}}}
+  // expected-remark@above {{Sinks: {7}}}
 }
 
 // -----
@@ -1531,7 +1501,6 @@ func @embedding_effect_ops(
   %arg0: tensor<!tf_type.string>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 5}}
-    // expected-remark@above {{Successors: {6}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Successors: {4}}}
@@ -1551,7 +1520,7 @@ func @embedding_effect_ops(
   }
   return
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Predecessors: {5}}}
+  // expected-remark@above {{Sinks: {5}}}
 }
 
 // -----
@@ -1563,7 +1532,6 @@ func @mixed_embedding_and_unknown_effects(
   %arg0: tensor<!tf_type.string>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 6}}
-    // expected-remark@above {{Successors: {7}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 4}}
         // expected-remark@above {{Successors: {5}}}
@@ -1588,7 +1556,7 @@ func @mixed_embedding_and_unknown_effects(
   }
   return
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Predecessors: {6}}}
+  // expected-remark@above {{Sinks: {6}}}
 }
 
 // -----
@@ -1600,7 +1568,6 @@ func @same_op_based_write_effect(
   %arg0: tensor<!tf_type.string>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 5}}
-    // expected-remark@above {{Successors: {6}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Successors: {4}}}
@@ -1621,7 +1588,7 @@ func @same_op_based_write_effect(
   }
   return
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Predecessors: {5}}}
+  // expected-remark@above {{Sinks: {5}}}
 }
 
 // -----
@@ -1632,7 +1599,6 @@ func @different_op_based_side_effects(
   %arg0: tensor<!tf_type.string>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 6}}
-    // expected-remark@above {{Successors: {7}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 4}}
         // expected-remark@above {{Successors: {5}}}
@@ -1655,7 +1621,7 @@ func @different_op_based_side_effects(
   }
   return
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Predecessors: {6}}}
+  // expected-remark@above {{Sinks: {6}}}
 }
 
 // -----
@@ -1670,7 +1636,6 @@ func @mixed_op_based_value_based_side_effects(
   %arg2: tensor<f32>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 6}}
-    // expected-remark@above {{Successors: {7}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 4}}
         // expected-remark@above {{Successors: {5}}}
@@ -1694,7 +1659,7 @@ func @mixed_op_based_value_based_side_effects(
   }
   return
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Predecessors: {6}}}
+  // expected-remark@above {{Sinks: {6}}}
 }
 
 // -----
@@ -1707,7 +1672,6 @@ func @send_recv_effect(
   %arg1: tensor<i64>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 6}}
-    // expected-remark@above {{Successors: {7}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 4}}
         // expected-remark@above {{Successors: {5}}}
@@ -1730,7 +1694,7 @@ func @send_recv_effect(
   }
   return
   // expected-remark@above {{ID: 7}}
-  // expected-remark@above {{Predecessors: {6}}}
+  // expected-remark@above {{Sinks: {6}}}
 }
 
 // -----
@@ -1746,7 +1710,6 @@ func @tpu_compile_execute_effect(
   %arg1: tensor<!tf_type.string>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 5}}
-    // expected-remark@above {{Successors: {6}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Successors: {4}}}
@@ -1767,7 +1730,7 @@ func @tpu_compile_execute_effect(
   }
   return
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Predecessors: {5}}}
+  // expected-remark@above {{Sinks: {5}}}
 }
 
 // -----
@@ -1780,7 +1743,6 @@ func @tpu_compile_execute_effect(
   %arg1: tensor<!tf_type.string>) {
   tf_executor.graph {
     // expected-remark@above {{ID: 5}}
-    // expected-remark@above {{Successors: {6}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Successors: {4}}}
@@ -1801,7 +1763,7 @@ func @tpu_compile_execute_effect(
   }
   return
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Predecessors: {5}}}
+  // expected-remark@above {{Sinks: {5}}}
 }
 
 // -----
@@ -1812,7 +1774,6 @@ func @device_ordinal_placeholder_side_effect_free(
   ) {
   tf_executor.graph {
     // expected-remark@above {{ID: 5}}
-    // expected-remark@above {{Successors: {6}}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Successors: {4}}}
@@ -1831,5 +1792,5 @@ func @device_ordinal_placeholder_side_effect_free(
   }
   return
   // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Predecessors: {5}}}
+  // expected-remark@above {{Sinks: {5}}}
 }

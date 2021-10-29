@@ -48,6 +48,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -728,7 +729,7 @@ class _DelayedRewriteGradientFunctions(object):
     cleaned_doutputs = []
     for doutput, placeholder in zip(doutputs, self._func_graph.outputs):
       if backprop_util.IsTrainable(placeholder):
-        if isinstance(doutput, ops.IndexedSlices):
+        if isinstance(doutput, indexed_slices.IndexedSlices):
           # Gradient passed to a backward ConcreteFunction must be tf.Tensor,
           # so we convert tf.IndexedSlices to tf.Tensor.
           cleaned_doutputs.append(ops.convert_to_tensor(doutput))
@@ -1219,7 +1220,7 @@ class _TapeGradientFunctions(object):
         # is only really effective when doing tf.gather(variable) as the
         # adjoint functions for most operations are unlikely to preserve the
         # sparsity in IndexedSlices.
-        if isinstance(arg, ops.IndexedSlices):
+        if isinstance(arg, indexed_slices.IndexedSlices):
           arg = ops.convert_to_tensor(arg)
         if output_index in skip_positions:
           continue
@@ -2395,7 +2396,7 @@ class ConcreteFunction(core.ConcreteFunction):
 
 _pywrap_utils.RegisterType("Tensor", ops.Tensor)
 _pywrap_utils.RegisterType("EagerTensor", ops.EagerTensor)
-_pywrap_utils.RegisterType("IndexedSlices", ops.IndexedSlices)
+_pywrap_utils.RegisterType("IndexedSlices", indexed_slices.IndexedSlices)
 
 
 def _deterministic_dict_values(dictionary):

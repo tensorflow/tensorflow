@@ -54,11 +54,6 @@ using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeAndType;
 using tensorflow::shape_inference::ShapeHandle;
 
-const std::string GetDimsDebugString(const TfLiteIntArray* dims) {
-  return absl::StrCat("[", absl::StrJoin(tflite::TfLiteIntArrayView(dims), ","),
-                      "]");
-}
-
 namespace tflite {
 namespace flex {
 
@@ -583,7 +578,8 @@ TfLiteStatus DelegateKernel::ValidateOutputTensorShapeConsistency(
       // tfl_tensor->dims only has valid information if the given model is
       // converted by the MLIR converter. Also when ResizeInputTensor() is
       // called the dims information becomes invalid.
-      const std::string tfl_shape_string = GetDimsDebugString(tfl_tensor->dims);
+      const std::string tfl_shape_string =
+          GetShapeDebugString(tfl_tensor->dims);
       const std::string calculated_shape_string = c.DebugString(c.output(i));
       // Getting a shape string via c.DebugString() is the easiest way to get
       // the shape information of the given ShapeHandle for now.

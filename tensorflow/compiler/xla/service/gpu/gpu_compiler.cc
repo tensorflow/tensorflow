@@ -290,6 +290,10 @@ Status GpuCompiler::OptimizeHloModule(
 
       spmd_simplify.AddPass<SortSimplifier>();
       spmd_simplify.AddPass<TupleSimplifier>();
+      spmd_simplify.AddPass<ScatterExpander>(
+          ScatterExpander::kEliminateSimpleScatters);
+      spmd_simplify.AddPass<GatherExpander>(
+          GatherExpander::kEliminateSimpleGathers);
       spmd_simplify.AddPass<WhileLoopConstantSinking>();
       spmd_simplify.AddPass<WhileLoopSimplifier>();
 
@@ -624,12 +628,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<ReductionLayoutNormalizer>();
   pipeline.AddPass<ReductionDimensionGrouper>();
   pipeline.AddPass<HloPassFix<ReductionSplitter>>();
-
-  if (RequireDeterminism(hlo_module->config()) ||
-      hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
-    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
-        stream_exec->GetDeviceDescription().cuda_compute_capability());
-  }
+  pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.

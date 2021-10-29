@@ -70,12 +70,26 @@ message SavedObject {
     CapturedTensor captured_tensor = 12;
   }
 
+  // Stores the functions used to save and restore this object. At most one of
+  // `saveable_objects` or `registered_saver` is defined for each SavedObject.
+  // See the comment below for the difference between SaveableObject and
+  // registered savers.
   map<string, SaveableObject> saveable_objects = 11;
 
   // The fields below are filled when the user serializes a registered Trackable
-  // class. Registered classes may save additional metadata and supersede the
-  // default loading process where nodes are recreated from the proto.
+  // class or an object with a registered saver function.
   //
+  // Registered classes may save additional metadata and supersede the
+  // default loading process where nodes are recreated from the proto.
+  // If the registered class cannot be found, then the object will load as one
+  // one of the default trackable objects: Autotrackable (a class similar to
+  // tf.Module), tf.function, or tf.Variable.
+  //
+  // Unlike SaveableObjects, which store the functions for saving and restoring
+  // from tensors, registered savers allow Trackables to write checkpoint shards
+  // directly (e.g. for performance or coordination reasons).
+  // *All registered savers must be available when loading the SavedModel.*
+
   // The name of the registered class of the form "{package}.{class_name}".
   // This field is used to search for the registered class at loading time.
   string registered_name = 13;
@@ -83,6 +97,10 @@ message SavedObject {
   // the registered classes's _deserialize_from_proto method when this object is
   // loaded from the SavedModel.
   google.protobuf.Any serialized_user_proto = 14;
+
+  // String name of the registered saver. At most one of `saveable_objects` or
+  // `registered_saver` is defined for each SavedObject.
+  string registered_saver = 16;
 }
 
 // A SavedUserObject is an object (in the object-oriented language of the
@@ -226,6 +244,7 @@ message SavedResource {
 
 message SaveableObject {
   // Node ids of concrete functions for saving and loading from a checkpoint.
+  // These functions save and restore directly from tensors.
   int32 save_function = 2;
   int32 restore_function = 3;
 }

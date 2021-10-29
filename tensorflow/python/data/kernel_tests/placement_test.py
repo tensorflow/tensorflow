@@ -28,6 +28,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -175,6 +176,29 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertIn("gpu:0", data.device.lower())
     self.assertIn("gpu:0", optional_data.get_value().device.lower())
     self.assertIn("gpu:0", optional_data.has_value().device.lower())
+
+  # There are HostMemory constraints on AnonymousIteratorV2 and
+  # DeleteIterator kernels on TPU but not on GPU. This is intentional because
+  # when running AnonymousIteratorV2 in a function
+  #
+  # - If the op is placed on GPU, the variant _Retval is placed on GPU.
+  # - However, if the op is placed on TPU, the variant _Retval is placed on
+  #   CPU.
+  #
+  # So if were to add HostMemory constraints to the GPU kernels it would lead
+  # to variant device copy errors.
+  #
+  # TODO(b/204231062): Unify behavior across GPU and TPU.
+  @combinations.generate(test_base.eager_only_combinations())
+  @test_util.run_gpu_only
+  def testCreateIteratorInFuncOnGpu(self):
+
+    @def_function.function
+    def create_iter():
+      return gen_dataset_ops.anonymous_iterator_v2(
+          output_types=[dtypes.float32], output_shapes=[[]])
+
+    create_iter()
 
   @combinations.generate(test_base.graph_only_combinations())
   @test_util.run_gpu_only()

@@ -302,13 +302,17 @@ class _CheckpointRestoreCoordinator(object):
     if self.new_restore_ops_callback:
       self.new_restore_ops_callback(new_ops)  # pylint: disable=not-callable
 
-  def restore_saveables(self, tensor_saveables, python_saveables):
+  def restore_saveables(self,
+                        tensor_saveables,
+                        python_saveables,
+                        registered_savers=None):
     """Run or build restore operations for SaveableObjects.
 
     Args:
       tensor_saveables: `SaveableObject`s which correspond to Tensors.
       python_saveables: `PythonStateSaveable`s which correspond to Python
         values.
+      registered_savers: a dict mapping saver names-> object name -> Trackable.
 
     Returns:
       When graph building, a list of restore operations, either cached or newly
@@ -322,7 +326,7 @@ class _CheckpointRestoreCoordinator(object):
           [self.reader.get_tensor(name) for name in spec_names])
 
     # If we have new SaveableObjects, extract and cache restore ops.
-    if tensor_saveables:
+    if tensor_saveables or registered_savers:
       validated_saveables = saveable_object_util.validate_and_slice_inputs(
           tensor_saveables)
       validated_names = set(saveable.name for saveable in validated_saveables)
@@ -331,7 +335,8 @@ class _CheckpointRestoreCoordinator(object):
             "Saveable keys changed when validating. Got back "
             f"{tensor_saveables.keys()}, was expecting {validated_names}")
       new_restore_ops = functional_saver.MultiDeviceSaver(
-          validated_saveables).restore(self.save_path_tensor, self.options)
+          validated_saveables,
+          registered_savers).restore(self.save_path_tensor, self.options)
       if not context.executing_eagerly():
         for name, restore_op in sorted(new_restore_ops.items()):
           restore_ops.append(restore_op)
@@ -1142,8 +1147,8 @@ class TrackableSaver(object):
 
   def _gather_saveables(self, object_graph_tensor=None):
     """Wraps _serialize_object_graph to include the object graph proto."""
-    (named_saveable_objects, graph_proto,
-     feed_additions) = self._graph_view.serialize_object_graph()
+    named_saveable_objects, graph_proto, feed_additions, registered_savers = (
+        self._graph_view.serialize_object_graph_with_registered_savers())
     if object_graph_tensor is None:
       with ops.device("/cpu:0"):
         object_graph_tensor = constant_op.constant(
@@ -1155,7 +1160,8 @@ class TrackableSaver(object):
     named_saveable_objects.append(
         base.NoRestoreSaveable(
             tensor=object_graph_tensor, name=base.OBJECT_GRAPH_PROTO_KEY))
-    return named_saveable_objects, graph_proto, feed_additions
+    return (named_saveable_objects, graph_proto, feed_additions,
+            registered_savers)
 
   def _save_cached_when_graph_building(self,
                                        file_prefix,
@@ -1175,8 +1181,8 @@ class TrackableSaver(object):
       current object graph and any Python state to be saved in the
       checkpoint. When executing eagerly only the first argument is meaningful.
     """
-    (named_saveable_objects, graph_proto,
-     feed_additions) = self._gather_saveables(
+    (named_saveable_objects, graph_proto, feed_additions,
+     registered_savers) = self._gather_saveables(
          object_graph_tensor=object_graph_tensor)
     if (self._last_save_object_graph != graph_proto
         # When executing eagerly, we need to re-create SaveableObjects each time
@@ -1184,7 +1190,8 @@ class TrackableSaver(object):
         # constructors. That means the Saver needs to be copied with a new
         # var_list.
         or context.executing_eagerly() or ops.inside_function()):
-      saver = functional_saver.MultiDeviceSaver(named_saveable_objects)
+      saver = functional_saver.MultiDeviceSaver(named_saveable_objects,
+                                                registered_savers)
       save_op = saver.save(file_prefix, options=options)
       with ops.device("/cpu:0"):
         with ops.control_dependencies([save_op]):
@@ -1420,9 +1427,10 @@ def frozen_saver(root_trackable):
     A saver which saves object-based checkpoints for the object graph frozen at
     the time `frozen_saver` was called.
   """
-  named_saveable_objects = graph_view_lib.ObjectGraphView(
-      root_trackable).frozen_saveable_objects()
-  return functional_saver.MultiDeviceSaver(named_saveable_objects)
+  named_saveable_objects, registered_savers = graph_view_lib.ObjectGraphView(
+      root_trackable).frozen_saveables_and_savers()
+  return functional_saver.MultiDeviceSaver(named_saveable_objects,
+                                           registered_savers)
 
 
 def saver_with_op_caching(obj, attached_dependencies=None):
@@ -1436,12 +1444,12 @@ def saver_with_op_caching(obj, attached_dependencies=None):
           attached_dependencies=attached_dependencies))
 
 
-def _assert_trackable(obj):
+def _assert_trackable(obj, name):
   if not isinstance(
       obj, (base.Trackable, def_function.Function)):
     raise ValueError(
-        "`Checkpoint` was expecting a trackable object (an object "
-        f"derived from `Trackable`), got {obj}. If you believe this "
+        f"`Checkpoint` was expecting {name} to be a trackable object (an "
+        f"object derived from `Trackable`), got {obj}. If you believe this "
         "object should be trackable (i.e. it is part of the "
         "TensorFlow Python API and manages state), please open an issue.")
 
@@ -1970,7 +1978,7 @@ class Checkpoint(tracking.AutoTrackable):
     self._save_assign_op = None
 
     if root:
-      _assert_trackable(root)
+      _assert_trackable(root, "root")
       saver_root = root
       attached_dependencies = []
 
@@ -1989,7 +1997,7 @@ class Checkpoint(tracking.AutoTrackable):
       # Call getattr instead of directly using v because setattr converts
       # v to a Trackable data structure when v is a list/dict/tuple.
       converted_v = getattr(self, k)
-      _assert_trackable(converted_v)
+      _assert_trackable(converted_v, k)
 
       if root:
         # Make sure that root doesn't already have dependencies with these names

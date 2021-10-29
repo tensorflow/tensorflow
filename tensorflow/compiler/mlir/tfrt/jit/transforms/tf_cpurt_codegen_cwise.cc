@@ -55,7 +55,7 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
     if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
 
     auto tiled_linalg_op = tileLinalgOp(rewriter, linalg_op, options);
-    if (!tiled_linalg_op) return failure();
+    if (failed(tiled_linalg_op)) return failure();
 
     TiledLoopOp tiled_loop =
         mlir::dyn_cast<TiledLoopOp>(*tiled_linalg_op.getValue().loops.front());

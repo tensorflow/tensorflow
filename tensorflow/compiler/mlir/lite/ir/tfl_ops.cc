@@ -2730,6 +2730,16 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   return value();
 }
 
+bool ConstOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+  // Allow the type inferred to not match exactly the inferred type as the
+  // inferred type is from the element attribute's type while the op may have
+  // gotten constructed from TF const op or be in a partial state of shape
+  // refinement, so allow it to only be compatible. The op will be refined
+  // during shape inference and casts inserted as needed to satisfy type
+  // constraints of consumers.
+  return succeeded(verifyCompatibleShapes(l, r));
+}
+
 namespace {
 struct FoldPseudoConstOp : public OpRewritePattern<ConstOp> {
   using OpRewritePattern<ConstOp>::OpRewritePattern;
