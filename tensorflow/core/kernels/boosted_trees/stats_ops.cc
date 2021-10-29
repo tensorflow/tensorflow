@@ -278,7 +278,6 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     const int32 num_buckets = stats_summary_t->dim_size(2) - 1;
     const int32 logits_dim = logits_dim_;
     const int32 hessian_dim = stats_summary_t->dim_size(3) - logits_dim;
-    const int32_t hessian_dim = stats_summary_t->dim_size(3) - logits_dim;
     OP_REQUIRES(context, hessian_dim > 0,
                 errors::InvalidArgument("hessian dim should be < 0, got ",
                                         hessian_dim));
