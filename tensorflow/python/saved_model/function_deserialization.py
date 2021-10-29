@@ -307,6 +307,7 @@ def recreate_function(saved_function, concrete_functions):
 
 
 def load_function_def_library(library,
+                              saved_object_graph=None,
                               load_shared_name_suffix=None,
                               wrapper_function=None):
   """Load a set of functions as concrete functions without captured inputs.
@@ -319,6 +320,8 @@ def load_function_def_library(library,
 
   Args:
     library: FunctionDefLibrary proto message.
+    saved_object_graph: SavedObjectGraph proto message. If not passed in,
+      concrete function structured signatures and outputs will not be set.
     load_shared_name_suffix: If specified, used to uniquify shared
       names. Otherwise, a unique name is generated.
     wrapper_function: An object that will be wrapped on newly created functions.
@@ -373,13 +376,37 @@ def load_function_def_library(library,
     copy = _fix_fdef(fdef, functions, load_shared_name_suffix,
                      new_gradient_op_types)
 
+    # Setup function signatures and outputs
+    #
+    # When concrete functions are created normally (i.e. when they're originally
+    # created and not loaded via saved model), the inputs and outputs are
+    # calculated based on the values passed in by the user and returned from the
+    # original function, respectively. We don't have access to those anymore at
+    # restore time, so we must instead pass them to the FuncGraph explicitly.
+    structured_input_signature = None
+    structured_outputs = None
+    if (saved_object_graph is not None
+        and fdef.signature.name in saved_object_graph.concrete_functions):
+      # TODO(b/204324043): Offload the deserialization of the protos to the
+      # first class objects by passing the actual protos. This is blocked on
+      # importing `nested_structure_coder` in function.py causing a circular
+      # dependency.
+      proto = saved_object_graph.concrete_functions[fdef.signature.name]
+      structured_input_signature = nested_structure_coder.decode_proto(
+          proto.canonicalized_input_signature)
+      structured_outputs = nested_structure_coder.decode_proto(
+          proto.output_signature)
+
     # There is no need to copy all functions into the function def graph. It
     # leads to a O(n^2) increase of memory when importing functions and the
     # extra function definitions are a no-op since they already imported as a
     # function before and passed in explicitly (due to the topologic sort
     # import).
     with graph.as_default():
-      func_graph = function_def_lib.function_def_to_graph(copy)
+      func_graph = function_def_lib.function_def_to_graph(
+          copy,
+          structured_input_signature=structured_input_signature,
+          structured_outputs=structured_outputs)
     # Restores gradients for function-call ops (not the same as ops that use
     # custom gradients)
     _restore_gradient_functions(func_graph, renamed_functions, loaded_gradients)

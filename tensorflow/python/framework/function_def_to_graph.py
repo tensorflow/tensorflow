@@ -31,7 +31,10 @@ from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import resource_variable_ops
 
 
-def function_def_to_graph(fdef, input_shapes=None):
+def function_def_to_graph(fdef,
+                          structured_input_signature=None,
+                          structured_outputs=None,
+                          input_shapes=None):
   """Converts a FunctionDef to a FuncGraph (sub-class Graph).
 
   The returned FuncGraph's `name`, `inputs` and `outputs` fields will be set.
@@ -42,6 +45,12 @@ def function_def_to_graph(fdef, input_shapes=None):
 
   Args:
     fdef: FunctionDef.
+    structured_input_signature: Optional. The structured input signature to
+      use for initializing the FuncGraph. See the docstring for FuncGraph for
+      more information.
+    structured_outputs: Optional. The structured outputs to use for
+      initializing the FuncGraph. See the docstring for FuncGraph for more
+      information.
     input_shapes: Optional. A list of TensorShape objects of the shapes of
       function inputs. Defaults to the function's "_input_shapes" attribute. If
       specified, its length must match length of `fdef.signature.input_arg`. If
@@ -51,7 +60,9 @@ def function_def_to_graph(fdef, input_shapes=None):
   Returns:
     A FuncGraph.
   """
-  func_graph = FuncGraph(fdef.signature.name)
+  func_graph = FuncGraph(fdef.signature.name,
+                         structured_input_signature=structured_input_signature,
+                         structured_outputs=structured_outputs)
   if input_shapes is None:
     input_shapes_attr = fdef.attr.get("_input_shapes", None)
     if input_shapes_attr is not None:
