@@ -34,7 +34,7 @@ class GetI64ScalarElementsAttr<int value> :
 class GetF32Scalar<int value> :
   NativeCodeCall<"GetF32Scalar(&$_builder, " # value # ")">;
 
-def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
+def TrueBoolAttr : AttrConstraint<CPred<"$_self.cast<::mlir::BoolAttr>().getValue()">>;
 
 def CreateTFShapeOp : NativeCodeCall<
     "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $2)">;
