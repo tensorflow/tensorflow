@@ -33,10 +33,14 @@ REGISTER_OP("AllToAll")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       ShapeHandle group_assignment = c->input(1);
-      if (!c->RankKnown(input)) {
-        c->set_output(0, c->UnknownShape());
-        return Status::OK();
+
+      int64 rank;
+      if (c->RankKnown(input)) {
+        rank = c->Rank(input);
+      } else {
+        return errors::InvalidArgument("input's rank is unknown.");
       }
+
       int concat_dimension;
       int split_dimension;
       int split_count;
