@@ -58,6 +58,7 @@ package_group(
 # This target checks that we are not accidentally adding TFRT dependencies.
 # It captures the current state of dependencies and might need to get updated
 # from time to time.
+# Note: private targets may depend on TFRT if they are tagged 'manual'.
 check_deps(
     name = "tfrt_deps_check",
     disallowed_deps = select({
@@ -92,7 +93,6 @@ check_deps(
         # enabled.
         ":gpu_compiler",
         ":gpu_executable",
-        ":xlir_kernels",
         ":nccl_utils",
     ],
 )
@@ -645,6 +645,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "xlir_ops.td",
+    visibility = ["//visibility:private"],
     deps = [
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:SideEffectTdFiles",
@@ -671,10 +672,7 @@ cc_library(
 
 cc_library(
     name = "xlir_kernels",
-    srcs = select({
-        ":is_bef_thunk_enabled": ["xlir_kernels.cc"],
-        "//conditions:default": [],
-    }),
+    srcs = ["xlir_kernels.cc"],
     local_defines = if_cuda_is_configured([
         "GOOGLE_CUDA=1",
     ]) + if_nccl([
@@ -683,24 +681,23 @@ cc_library(
         ":is_bef_thunk_enabled": ["BEF_THUNKS=1"],
         "//conditions:default": [],
     }),
+    tags = ["manual"],
+    visibility = ["//visibility:private"],
     deps = [
-        ":custom_call_thunk",
+        ":xlir_opdefs",
         "@llvm-project//llvm:Support",
+        "//tensorflow/compiler/xla/service:custom_call_status_internal",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
+        "@tf_runtime//backends/gpu:gpu_kernels_detail",
+        "@tf_runtime//backends/gpu:gpu_wrapper",
+        "@tf_runtime//backends/gpu:gpu_types",
     ] + if_nccl([
         ":virtual_nccl",
         ":virtual_nccl_utils",
         ":virtual_rccl",
-    ]) + select({
-        ":is_bef_thunk_enabled": [
-            ":xlir_opdefs",
-            "@tf_runtime//:hostcontext",
-            "@tf_runtime//:support",
-            "@tf_runtime//backends/gpu:gpu_kernels_detail",
-            "@tf_runtime//backends/gpu:gpu_wrapper",
-            "@tf_runtime//backends/gpu:gpu_types",
-        ],
-        "//conditions:default": [],
-    }),
+    ]),
     alwayslink = True,  # Contains TFRT kernel registration
 )
 
