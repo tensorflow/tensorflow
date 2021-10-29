@@ -222,6 +222,7 @@ filegroup(
         "@zlib//:zlib.h",
         "@clog//:LICENSE",
         "@cpuinfo//:LICENSE",
+        "@upb//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
