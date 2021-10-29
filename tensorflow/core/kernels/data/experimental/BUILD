@@ -14,12 +14,13 @@ package(
     licenses = ["notice"],
 )
 
-# TODO(b/185903858): This should not be needed with the definition of "portable_all_op_kernels" below.
-exports_files([
-    "lookup_ops.cc",
-    "threadpool_dataset_op.cc",
-    "threadpool_dataset_op.h",
-])
+filegroup(
+    name = "portable_all_op_kernels_headers",
+    srcs = [
+        "threadpool_dataset_op.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+)
 
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
@@ -28,7 +29,7 @@ filegroup(
         "lookup_ops.cc",
         "take_while_dataset_op.cc",
         "threadpool_dataset_op.cc",
-        "threadpool_dataset_op.h",
+        ":portable_all_op_kernels_headers",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
