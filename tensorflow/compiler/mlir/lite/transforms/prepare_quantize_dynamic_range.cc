@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// NOLINTNEXTLINE
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -24,13 +23,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> dynamic_quantize_disable_per_channel(
-    "tfl-dynamic-quantize-disable-per-channel", llvm::cl::value_desc("bool"),
-    llvm::cl::desc("Whether disable per-channel quantized weights."),
-    llvm::cl::init(false));
+static llvm::cl::opt<bool> enable_dynamic_range_per_channel_quantization(
+    "tfl-enable-dynamic-range-per-channel-quantization",
+    llvm::cl::value_desc("bool"),
+    llvm::cl::desc("Whether enable per-channel quantized weights."),
+    llvm::cl::init(true));
 
 //===----------------------------------------------------------------------===//
-// The prepare-dynamic-quantize Pass.
+// The prepare-dynamic-range-quantize Pass.
 //
 namespace mlir {
 namespace TFL {
@@ -39,11 +39,11 @@ namespace {
 
 using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 
-// Applies prepare dynamic quantization on the model in TFL dialect.
+// Applies prepare dynamic range quantization on the model in TFL dialect.
 // This pass runs before the quantization pass and apply preprocess if
 // applicable.
-class PrepareDynamicQuantizePass
-    : public PassWrapper<PrepareDynamicQuantizePass, FunctionPass> {
+class PrepareDynamicRangeQuantizePass
+    : public PassWrapper<PrepareDynamicRangeQuantizePass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<TensorFlowLiteDialect, ::mlir::quant::QuantizationDialect>();
@@ -52,20 +52,23 @@ class PrepareDynamicQuantizePass
  public:
   // Constructor used by the PassRegistration and enforce int8 quantization.
   // This is only used by test.
-  explicit PrepareDynamicQuantizePass() {
+  explicit PrepareDynamicRangeQuantizePass() {
     quant_specs_.inference_type = tensorflow::DT_QINT8;
     quant_specs_.weight_quantization = true;
-    quant_specs_.enable_mlir_dynamic_quantizer = true;
-    quant_specs_.disable_per_channel = dynamic_quantize_disable_per_channel;
+    quant_specs_.enable_mlir_dynamic_range_quantizer = true;
+    quant_specs_.disable_per_channel =
+        !enable_dynamic_range_per_channel_quantization;
   }
 
   // Constructor used by manually creating the pass.
-  explicit PrepareDynamicQuantizePass(const QuantizationSpecs& quant_specs)
+  explicit PrepareDynamicRangeQuantizePass(const QuantizationSpecs& quant_specs)
       : quant_specs_(quant_specs) {}
 
-  StringRef getArgument() const final { return "tfl-prepare-dynamic-quantize"; }
+  StringRef getArgument() const final {
+    return "tfl-prepare-quantize-dynamic-range";
+  }
   StringRef getDescription() const final {
-    return "Prepare TFL dialect for dynamic quantization";
+    return "Prepare TFL dialect for dynamic range quantization";
   }
 
   void runOnFunction() override;
@@ -76,13 +79,13 @@ class PrepareDynamicQuantizePass
 
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
 
-// If the weight is applicable to dynamic quantization, insert Quantize and
-// Dequantize ops with either per-axis or per-tensor scale.
-class PreprocessDynamicQuantizableOp
+// If the weight is applicable to dynamic range quantization, insert Quantize
+// and Dequantize ops with either per-axis or per-tensor scale.
+class PreprocessDynamicRangeQuantizableOp
     : public OpRewritePattern<arith::ConstantOp> {
  public:
-  explicit PreprocessDynamicQuantizableOp(MLIRContext* context,
-                                          const QuantizationSpecs& quant_specs)
+  explicit PreprocessDynamicRangeQuantizableOp(
+      MLIRContext* context, const QuantizationSpecs& quant_specs)
       : OpRewritePattern<arith::ConstantOp>(context),
         quant_specs_(quant_specs) {}
 
@@ -101,8 +104,8 @@ class PreprocessDynamicQuantizableOp
   }
 
  private:
-  // Mark users that are applicable for dynamic quantization if it
-  // uses float tensors which are not biases and is a DynamicQuantizableOp.
+  // Mark users that are applicable for dynamic range quantization if it
+  // uses float tensors which are not biases and is a DynamicRangeQuantizableOp.
   bool getQuantizableOps(arith::ConstantOp op,
                          QuantizationUnits& quantizable_ops) const {
     // Non-float tensors do not need quantization.
@@ -122,7 +125,7 @@ class PreprocessDynamicQuantizableOp
       auto biases = spec->biases_params;
 
       if (biases.find(operand_num) == biases.end() &&
-          user->hasTrait<OpTrait::quant::DynamicQuantizableOp>()) {
+          user->hasTrait<OpTrait::quant::DynamicRangeQuantizableOp>()) {
         quantizable_ops.insert({user, operand_num});
       }
     }
@@ -201,14 +204,14 @@ class PreprocessDynamicQuantizableOp
   QuantizationSpecs quant_specs_;
 };
 
-void PrepareDynamicQuantizePass::runOnFunction() {
+void PrepareDynamicRangeQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = func.getContext();
 
   ConvertTFLQuantOpsToMlirQuantOps(func);
 
   OwningRewritePatternList patterns(&getContext());
-  patterns.insert<PreprocessDynamicQuantizableOp>(ctx, quant_specs_);
+  patterns.insert<PreprocessDynamicRangeQuantizableOp>(ctx, quant_specs_);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
@@ -216,14 +219,14 @@ void PrepareDynamicQuantizePass::runOnFunction() {
 
 }  // namespace
 
-// Creates an instance of the TensorFlow Lite dialect PrepareDynamicQuantize
-// pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicQuantizePass(
+// Creates an instance of the TensorFlow Lite dialect
+// PrepareDynamicRangeQuantize pass.
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicRangeQuantizePass(
     const QuantizationSpecs& quant_specs) {
-  return std::make_unique<PrepareDynamicQuantizePass>(quant_specs);
+  return std::make_unique<PrepareDynamicRangeQuantizePass>(quant_specs);
 }
 
-static PassRegistration<PrepareDynamicQuantizePass> pass;
+static PassRegistration<PrepareDynamicRangeQuantizePass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

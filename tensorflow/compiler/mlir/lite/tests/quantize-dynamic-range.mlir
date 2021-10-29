@@ -1,5 +1,5 @@
-// RUN: tf-opt %s -tfl-prepare-dynamic-quantize -tfl-quantize --tfl-enable-dynamic-range-quantization | FileCheck %s
-// RUN: tf-opt %s -tfl-prepare-dynamic-quantize -tfl-quantize --tfl-dynamic-quantize-disable-per-channel --tfl-enable-dynamic-range-quantization | FileCheck --check-prefix=PerTensor %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize --tfl-enable-dynamic-range-quantization | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize --tfl-enable-dynamic-range-quantization --tfl-enable-dynamic-range-per-channel-quantization=false | FileCheck --check-prefix=PerTensor %s
 
 // CHECK-LABEL: QuantizeConv2D
 // PerTensor-LABEL: QuantizeConv2D
