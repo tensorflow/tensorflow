@@ -270,6 +270,7 @@ def main():
     def_fp.write("\t ??1SavedModelBundleInterface@tensorflow@@UEAA@XZ\n")
     def_fp.write("\t ?LoadSavedModel@tensorflow@@YA?AVStatus@1@AEBUSessionOptions@1@AEBVRunOptions@1@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV?$unordered_set@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@6@QEAUSavedModelBundle@1@@Z\n")
     def_fp.write("\t ?MaybeSavedModelDirectory@tensorflow@@YA_NAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z\n")
+    # TODO: no longer available with protobuf 3.19.0, figure out what're the correct symbol value here.
     # def_fp.write("\t ?_TensorShapeProto_default_instance_@tensorflow@@3VTensorShapeProtoDefaultTypeInternal@1@A\n")
     # def_fp.write("\t ?_GraphDef_default_instance_@tensorflow@@3VGraphDefDefaultTypeInternal@1@A\n")
 
