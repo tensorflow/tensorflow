@@ -389,7 +389,7 @@ class SplitOpTest(test.TestCase):
     x = constant_op.constant([1, 2, 3], dtypes.float32)
     # A size of -1 signifies to determine size based on sum of other splits.
     with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
-                                "Split size at index 1 must be >= 0. Got: -2"):
+                                "Split size at index 1 must be >= .*. Got: -2"):
       splits = [-1, -2]
       self.evaluate(array_ops.split(x, splits, axis=0))
 
