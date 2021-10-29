@@ -1769,6 +1769,10 @@ class CheckpointV1(tracking.AutoTrackable):
     If the checkpoint has not been consumed completely, then the list of restore
     ops will grow as more objects are added to the dependency graph.
 
+    To check that all variables in the Python object have restored values from
+    checkpoint, use `assert_existing_objects_matched()`. This assertion is
+    useful when called after the variables in your graph have been created.
+
     Name-based `tf.compat.v1.train.Saver` checkpoints can be loaded using this
     method. Names are used to match variables. No restore ops are created/run
     until `run_restore_ops()` or `initialize_or_restore()` are called on the
@@ -1803,12 +1807,12 @@ class CheckpointV1(tracking.AutoTrackable):
           pass if values in the checkpoint have no corresponding Python
           objects. For example a `tf.keras.Layer` object which has not yet been
           built, and so has not created any variables, will pass this assertion
-          but fail `assert_consumed`. Useful when loading part of a larger
+          but will fail `assert_consumed`. Useful when loading part of a larger
           checkpoint into a new Python program, e.g. a training checkpoint with
           a `tf.compat.v1.train.Optimizer` was saved but only the state required
-          for
-          inference is being loaded. This method returns the status object, and
-          so may be chained with `initialize_or_restore` or `run_restore_ops`.
+          for inference is being loaded. This method returns the status object,
+          and so may be chained with `initialize_or_restore` or
+          `run_restore_ops`.
 
       * `assert_nontrivial_match()`: Asserts that something aside from the root
           object was matched. This is a very weak assertion, but is useful for
