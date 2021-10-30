@@ -6049,7 +6049,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             crop_size=[1, 1])
         self.evaluate(op)
 
-  def testImageCropAndResizeWithInvalidInput(self):
+  def DISABLED_testImageCropAndResizeWithInvalidInput(self):
     with self.session():
       with self.assertRaises((errors.InternalError, ValueError)):
         op = image_ops_impl.crop_and_resize_v2(
