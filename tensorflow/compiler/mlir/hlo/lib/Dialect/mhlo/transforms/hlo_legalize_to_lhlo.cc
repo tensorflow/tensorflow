@@ -104,7 +104,7 @@ LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
 
   auto convert_result = [&](Type result_ty, size_t index) {
     RankedTensorType resultType =
-      result_ty.dyn_cast<RankedTensorType>();
+        result_ty.dyn_cast<RankedTensorType>();
 
     if (!resultType) return failure();
 
