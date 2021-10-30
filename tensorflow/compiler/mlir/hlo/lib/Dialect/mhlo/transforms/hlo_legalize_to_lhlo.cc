@@ -206,14 +206,14 @@ public:
     HloOpTy hloOp, ArrayRef<Value> operands,
     ConversionPatternRewriter& rewriter) const final {
     Operation* op = hloOp.getOperation();
-    SmallVector<Operation*, 4> allUsers;
+    SmallVector<Operation*> allUsers;
     for (auto* user : op->getUsers()) {
       allUsers.push_back(user);
       if (!isa<mhlo::GetTupleElementOp>(user)) {
         return failure();
       }
     }
-    SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
+    SmallVector<Value> buffer_args(operands.begin(), operands.end());
     if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
     rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(op->getLoc(), llvm::None,
       buffer_args, op->getAttrs());
