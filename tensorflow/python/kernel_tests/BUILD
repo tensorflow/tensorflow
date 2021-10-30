@@ -2359,7 +2359,7 @@ cuda_py_test(
     name = "pad_op_test",
     size = "small",
     srcs = ["pad_op_test.py"],
-    tags = ["no_mac"],  # test is times out on mac b/186262388
+    tags = ["no_oss"],  # test is times out on mac b/186262388
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
