@@ -2388,6 +2388,7 @@ cuda_py_test(
     name = "stack_op_test",
     size = "small",
     srcs = ["stack_op_test.py"],
+    tags = ["no_oss"],
     tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
