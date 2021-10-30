@@ -48,7 +48,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.5.1"
+VERSION = "2.5.2"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
