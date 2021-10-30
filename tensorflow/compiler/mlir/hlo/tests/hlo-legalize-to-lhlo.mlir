@@ -606,4 +606,28 @@ func @zero_inputs() -> tensor<100x100xf32> {
   return %0 : tensor<100x100xf32>
 }
 
+// -----
+
+// CHECK-LABEL: func @batch_norm_training
+func @batch_norm_training(%arg0 : tensor<1x2x3xf32>) -> tensor<1x2x3xf32> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<2xf32>
+  %1 = mhlo.constant dense<1.000000e+00> : tensor<2xf32>
+  // CHECK: "lmhlo.batch_norm_training"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}})
+  %2 = "mhlo.batch_norm_training"(%arg0, %1, %0) {epsilon = 9.99999974E-6 : f32, feature_index = 1 : i64} : (tensor<1x2x3xf32>, tensor<2xf32>, tensor<2xf32>) -> tuple<tensor<1x2x3xf32>, tensor<2xf32>, tensor<2xf32>>
+  %3 = "mhlo.get_tuple_element"(%2) {index = 0 : i32} : (tuple<tensor<1x2x3xf32>, tensor<2xf32>, tensor<2xf32>>) -> tensor<1x2x3xf32>
+  return %3 : tensor<1x2x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @batch_norm_grad
+func @batch_norm_grad(%arg0 : tensor<8x8x8x8xf32>, %arg1 : tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<8xf32>
+  %1 = mhlo.constant dense<1.000000e+00> : tensor<8xf32>
+  // CHECK: "lmhlo.batch_norm_grad"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}})
+  %2 = "mhlo.batch_norm_grad"(%arg0, %1, %0, %1, %arg1) {epsilon = 9.99999974E-6 : f32, feature_index = 3 : i64} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8x8x8x8xf32>) -> tuple<tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>>
+  %3 = "mhlo.get_tuple_element"(%2) {index = 0 : i32} : (tuple<tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>>) -> tensor<8x8x8x8xf32>
+  return %3 : tensor<8x8x8x8xf32>
+}
+
 
