@@ -2248,7 +2248,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
       # TODO(b/200850176): test fails with XLA.
       return
     with self.session():
-      with self.assertRaises(errors_impl.InternalError):
+      with self.assertRaises(errors.InternalError):
         v = image_ops.pad_to_bounding_box(
             image=np.ones((1, 1, 1)),
             target_height=5191549470,
