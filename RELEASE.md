@@ -1,3 +1,7 @@
+# Release 2.4.4
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.4.3
 
 This release introduces several vulnerability fixes:
