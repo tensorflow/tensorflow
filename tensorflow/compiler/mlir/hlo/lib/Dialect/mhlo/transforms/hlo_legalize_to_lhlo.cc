@@ -220,8 +220,7 @@ public:
     for (auto* user : allUsers) {
       auto getElementOp = cast<mhlo::GetTupleElementOp>(user);
       unsigned index = op->getNumOperands() + getElementOp.index();
-      getElementOp.getResult().replaceAllUsesWith(buffer_args[index]);
-      rewriter.eraseOp(user);
+      rewriter.replaceOp(getElementOp, {buffer_args[index]});
     }
 
     rewriter.eraseOp(op);
