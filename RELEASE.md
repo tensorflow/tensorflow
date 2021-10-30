@@ -1,3 +1,47 @@
+# Release 2.4.4
+
+This release introduces several vulnerability fixes:
+
+*   Fixes a code injection issue in `saved_model_cli` ([CVE-2021-41228](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41228))
+*   Fixes a vulnerability due to use of uninitialized value in Tensorflow ([CVE-2021-41225](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41225))
+*   Fixes a heap OOB in `FusedBatchNorm` kernels ([CVE-2021-41223](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41223))
+*   Fixes an arbitrary memory read in `ImmutableConst` ([CVE-2021-41227](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41227))
+*   Fixes a heap OOB in `SparseBinCount` ([CVE-2021-41226](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41226))
+*   Fixes a heap OOB in `SparseFillEmptyRows` ([CVE-2021-41224](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41224))
+*   Fixes a segfault due to negative splits in `SplitV` ([CVE-2021-41222](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41222))
+*   Fixes segfaults and vulnerabilities caused by accesses to invalid memory during shape inference in `Cudnn*` ops ([CVE-2021-41221](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41221))
+*   Fixes a null pointer exception when `Exit` node is not preceded by `Enter` op ([CVE-2021-41217](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41217))
+*   Fixes an integer division by 0 in `tf.raw_ops.AllToAll` ([CVE-2021-41218](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41218))
+*   Fixes an undefined behavior via `nullptr` reference binding in sparse matrix multiplication ([CVE-2021-41219](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41219))
+*   Fixes a heap buffer overflow in `Transpose` ([CVE-2021-41216](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41216))
+*   Prevents deadlocks arising from mutually recursive `tf.function` objects ([CVE-2021-41213](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41213))
+*   Fixes a null pointer exception in `DeserializeSparse` ([CVE-2021-41215](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41215))
+*   Fixes an undefined behavior arising from reference binding to `nullptr` in `tf.ragged.cross` ([CVE-2021-41214](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41214))
+*   Fixes a heap OOB read in `tf.ragged.cross` ([CVE-2021-41212](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41212))
+*   Fixes a heap OOB read in all `tf.raw_ops.QuantizeAndDequantizeV*` ops ([CVE-2021-41205](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41205))
+*   Fixes an FPE in `ParallelConcat` ([CVE-2021-41207](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41207))
+*   Fixes FPE issues in convolutions with zero size filters ([CVE-2021-41209](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41209))
+*   Fixes a heap OOB read in `tf.raw_ops.SparseCountSparseOutput` ([CVE-2021-41210](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41210))
+*   Fixes vulnerabilities caused by incomplete validation in boosted trees code ([CVE-2021-41208](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41208))
+*   Fixes vulnerabilities caused by incomplete validation of shapes in multiple TF ops ([CVE-2021-41206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41206))
+*   Fixes a segfault produced while copying constant resource tensor ([CVE-2021-41204](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41204))
+*   Fixes a vulnerability caused by unitialized access in `EinsumHelper::ParseEquation` ([CVE-2021-41201](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41201))
+*   Fixes several vulnerabilities and segfaults caused by missing validation during checkpoint loading ([CVE-2021-41203](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41203))
+*   Fixes an overflow producing a crash in `tf.range` ([CVE-2021-41202](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41202))
+*   Fixes an overflow producing a crash in `tf.image.resize` when size is large ([CVE-2021-41199](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41199))
+*   Fixes an overflow producing a crash in `tf.tile` when tiling tensor is large ([CVE-2021-41198](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41198))
+*   Fixes a vulnerability produced due to incomplete validation in `tf.summary.create_file_writer` ([CVE-2021-41200](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41200))
+*   Fixes multiple crashes due to overflow and `CHECK`-fail in ops with large tensor shapes ([CVE-2021-41197](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41197))
+*   Fixes a crash in `max_pool3d` when size argument is 0 or negative ([CVE-2021-41196](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41196))
+*   Fixes a crash in `tf.math.segment_*` operations ([CVE-2021-41195](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41195))
+*   Updates `curl` to `7.78.0` to handle
+    [CVE-2021-22922](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22922),
+    [CVE-2021-22923](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22923),
+    [CVE-2021-22924](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22924),
+    [CVE-2021-22925](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22925),
+    and
+    [CVE-2021-22926](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-22926).
+
 # Release 2.4.3
 
 This release introduces several vulnerability fixes:
