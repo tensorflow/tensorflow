@@ -1,3 +1,7 @@
+# Release 2.5.2
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.5.1
 
 This release introduces several vulnerability fixes:
