@@ -461,7 +461,7 @@ class Conv3DTest(test.TestCase):
         padding="VALID",
         expected=[1.5625, 1.875])
 
-  def testZeroSizedFilterThrowsIllegalArgument(self):
+  def DISABLED_testZeroSizedFilterThrowsIllegalArgument(self):
     tensor_in_sizes = [1, 1, 1, 1, 1]
     x1 = self._CreateNumpyTensor(tensor_in_sizes)
     filter_in = np.ones((1, 1, 0, 1, 1), dtype=np.float32)
