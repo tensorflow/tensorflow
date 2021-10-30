@@ -2522,7 +2522,7 @@ class Conv2DTest(test.TestCase):
           strides=[1, 1, 1, 1],
           padding=[0, 0, 0, 0])
 
-  def testOpEdgeCases(self):
+  def DISABLED_testOpEdgeCases(self):
     # Illegal strides.
     with self.assertRaisesRegex((ValueError, errors_impl.UnimplementedError),
                                 "strides in the batch and depth"):
