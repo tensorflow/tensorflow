@@ -79,9 +79,7 @@ class StackOpTest(test.TestCase):
           c = array_ops.parallel_stack(xs)
           self.assertAllEqual(c, data)
 
-<<<<<<< HEAD:tensorflow/python/kernel_tests/stack_op_test.py
   @test_util.run_deprecated_v1
-=======
   def testParallelConcatShapeZero(self):
     if not tf2.enabled():
       self.skipTest("only fails in TF2")
@@ -95,7 +93,6 @@ class StackOpTest(test.TestCase):
                                 r"0th dimension of value .* is less than"):
       f()
 
->>>>>>> e67caccea81 (Adding more validation checks to _ParallelConcatUpdate to avoid NPE.):tensorflow/python/kernel_tests/array_ops/stack_op_test.py
   def testSimpleParallelGPU(self):
     np.random.seed(7)
     with self.session(use_gpu=True):
