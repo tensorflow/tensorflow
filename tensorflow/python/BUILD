@@ -517,6 +517,7 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/array_ops:__pkg__",
         "//tensorflow/python/kernel_tests/v1_compat_tests:__pkg__",
         "//tensorflow/python/training:__pkg__",
     ],
@@ -651,6 +652,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
+        "//tensorflow/python/kernel_tests/array_ops:__pkg__",
         "//tensorflow/python/training:__pkg__",
         "//tensorflow/python/training/tracking:__pkg__",
     ],
