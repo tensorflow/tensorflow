@@ -275,6 +275,8 @@ int main(int argc, char **argv) {
   pass_config.unfold_batch_matmul = unfold_batchmatmul;
   pass_config.unfold_large_splat_constant = unfold_large_splat_constant;
   pass_config.guarantee_all_funcs_one_use = guarantee_all_funcs_one_use;
+  pass_config.runtime_verification = true;
+  pass_config.outline_tf_while = true;
 
   if (enable_hlo_to_tf_conversion) {
     pass_config.enable_hlo_to_tf_conversion = true;
@@ -283,13 +285,6 @@ int main(int argc, char **argv) {
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm,
                                          /*session=*/llvm::None);
-  // TODO(b/150901738): Move those into tf_tfl_translate.cc.
-  // Convert back to outlined while format for export back to flatbuffer.
-  if (pass_config.legalize_tf_while) {
-    pm.addPass(mlir::TFL::CreateWhileOutlinePass());
-  }
-  pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
-
   toco::TocoFlags toco_flags;
   toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
   toco_flags.set_enable_select_tf_ops(emit_select_tf_ops);

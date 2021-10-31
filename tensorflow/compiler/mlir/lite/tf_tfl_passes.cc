@@ -318,6 +318,13 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
   if (pass_config.unfold_large_splat_constant) {
     pass_manager->addPass(mlir::TFL::CreateUnfoldLargeSplatConstantPass());
   }
+  if (pass_config.outline_tf_while) {
+    pass_manager->addPass(mlir::TFL::CreateWhileOutlinePass());
+  }
+  if (pass_config.runtime_verification) {
+    pass_manager->addNestedPass<mlir::FuncOp>(
+        mlir::TFL::CreateRuntimeVerifyPass());
+  }
 }
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,

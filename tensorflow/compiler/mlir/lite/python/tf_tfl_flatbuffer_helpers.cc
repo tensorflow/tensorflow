@@ -336,17 +336,13 @@ Status ConvertMLIRToTFLiteFlatBuffer(
       std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
           module->getContext()));
 
-  tensorflow::AddTFToTFLConversionPasses(model_flags, toco_flags, pass_config,
-                                         &pm, session);
-  // Convert back to outlined while format for export back to flatbuffer.
-  if (pass_config.legalize_tf_while) {
-    pm.addPass(mlir::TFL::CreateWhileOutlinePass());
-  }
-  pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
-
+  mlir::TFL::PassConfig pass_config_copy = pass_config;
+  pass_config_copy.outline_tf_while = true;
+  tensorflow::AddTFToTFLConversionPasses(model_flags, toco_flags,
+                                         pass_config_copy, &pm, session);
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, toco_flags,
-      pass_config.quant_specs, saved_model_tags, result, &pm);
+      pass_config_copy.quant_specs, saved_model_tags, result, &pm);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.
