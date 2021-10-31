@@ -338,8 +338,9 @@ Status ConvertMLIRToTFLiteFlatBuffer(
 
   mlir::TFL::PassConfig pass_config_copy = pass_config;
   pass_config_copy.outline_tf_while = true;
-  tensorflow::AddTFToTFLConversionPasses(model_flags, toco_flags,
-                                         pass_config_copy, &pm, session);
+  tensorflow::AddTFToTFLConversionPasses(model_flags.saved_model_dir(),
+                                         toco_flags, pass_config_copy, &pm,
+                                         session);
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, toco_flags,
       pass_config_copy.quant_specs, saved_model_tags, result, &pm);

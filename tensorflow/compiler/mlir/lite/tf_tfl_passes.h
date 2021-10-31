@@ -29,8 +29,9 @@ namespace tensorflow {
 // Add the TF to TFLite passes, specified in the pass_config, into a
 // pass_manager. The session object will be provided when the TF MLIR is
 // imported from saved model version one and utilized for capturing resource
-// variables.
-void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
+// variables. If the `saved_model_dir` directory path is provided, then the
+// `tf_saved_model.asset` ops will be freezed.
+void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
                                 const toco::TocoFlags& toco_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager,

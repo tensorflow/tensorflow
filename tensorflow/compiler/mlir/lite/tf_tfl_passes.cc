@@ -99,7 +99,7 @@ void AddConvertHloToTfPass(std::string entry_function_name,
   pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
 }
 
-void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
+void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
                                 const toco::TocoFlags& toco_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager,
@@ -227,11 +227,11 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
         /*allow_mutable_tensors=*/pass_config.enable_tflite_variables));
   }
 
-  if (!model_flags.saved_model_dir().empty()) {
+  if (!saved_model_dir.empty()) {
     // This pass 'freezes' tf saved model asset ops and inlines as string values
     // in a format of the tf constant op.
-    pass_manager->addPass(mlir::tf_saved_model::CreateFreezeAssetsPass(
-        model_flags.saved_model_dir()));
+    pass_manager->addPass(
+        mlir::tf_saved_model::CreateFreezeAssetsPass(saved_model_dir.str()));
   }
 
   // The below passes only make sense if Builtin TFLite ops are enabled
@@ -269,8 +269,7 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
 
     // This pass removes the asset file dependencies in hash table use cases.
     pass_manager->addNestedPass<mlir::FuncOp>(
-        mlir::TF::CreateInitTextFileToImportPass(
-            model_flags.saved_model_dir()));
+        mlir::TF::CreateInitTextFileToImportPass(saved_model_dir.str()));
 
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
@@ -330,10 +329,9 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager,
                                 llvm::Optional<tensorflow::Session*> session) {
-  const toco::ModelFlags model_flags;
   const toco::TocoFlags toco_flags;
-  AddTFToTFLConversionPasses(model_flags, toco_flags, pass_config, pass_manager,
-                             session);
+  AddTFToTFLConversionPasses(/*saved_model_dir=*/"", toco_flags, pass_config,
+                             pass_manager, session);
 }
 
 }  // namespace tensorflow
