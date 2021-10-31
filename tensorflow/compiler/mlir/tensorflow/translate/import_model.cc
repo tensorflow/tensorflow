@@ -4091,6 +4091,11 @@ Status SavedModelSignatureDefImporter::LiftVariables(
   pm.addNestedPass<mlir::FuncOp>(
       mlir::TF::
           CreateConvertReadonlyReferenceVariablesToResourceVariablesPass());
+  if (mlir::failed(pm.run(module)))
+    return diag_handler.Combine(
+        errors::Internal("Failed to prepare to lift variables."));
+
+  pm.clear();
   if (lift_varhandle_ops_to_args) {
     pm.addNestedPass<mlir::FuncOp>(
         mlir::tf_saved_model::CreateMarkInitializedVariablesPass(
@@ -4103,10 +4108,15 @@ Status SavedModelSignatureDefImporter::LiftVariables(
         mlir::tf_saved_model::CreateInitializeVariablesInSessionInitializerPass(
             bundle.GetSession()));
   }
+  if (mlir::failed(pm.run(module)))
+    return diag_handler.Combine(errors::Internal("Failed to lift variables."));
+
+  pm.clear();
   pm.addNestedPass<mlir::FuncOp>(
       mlir::tf_saved_model::CreateDedupBoundInputBindingPass());
   if (mlir::failed(pm.run(module)))
-    return diag_handler.Combine(errors::Internal("Failed to lift variables."));
+    return diag_handler.Combine(
+        errors::Internal("Failed to dedup bound inputs."));
 
   return Status::OK();
 }
