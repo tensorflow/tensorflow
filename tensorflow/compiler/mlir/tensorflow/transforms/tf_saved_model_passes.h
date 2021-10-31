@@ -54,10 +54,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesPass(
 // Creates a pass that removes duplicate 'tf_saved_model.bound_input' bindings.
 std::unique_ptr<OperationPass<FuncOp>> CreateDedupBoundInputBindingPass();
 
-// Creates a pass that marks variables whether they are initialized or not.
-std::unique_ptr<OperationPass<FuncOp>> CreateMarkInitializedVariablesPass(
-    ::tensorflow::Session* session);
-
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 
