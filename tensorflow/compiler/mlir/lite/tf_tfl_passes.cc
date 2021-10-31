@@ -100,11 +100,13 @@ void AddConvertHloToTfPass(std::string entry_function_name,
   pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
 }
 
-void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
-                                const toco::TocoFlags& toco_flags,
-                                const mlir::TFL::PassConfig& pass_config,
-                                mlir::OpPassManager* pass_manager,
-                                llvm::Optional<tensorflow::Session*> session) {
+// This is the early part of the conversion in isolation. This enables a caller
+// to inject more information in the middle of the conversion before resuming
+// it.
+void AddPreVariableFreezingTFToTFLConversionPasses(
+    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
+    const mlir::TFL::PassConfig& pass_config,
+    mlir::OpPassManager* pass_manager) {
   if (pass_config.enable_hlo_to_tf_conversion) {
     // TODO(b/194747383): We need to valid that indeed the "main" func is
     // presented.
@@ -154,13 +156,15 @@ void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
   // during which resources dont get frozen in the python layer.
   pass_manager->addNestedPass<mlir::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
+}
 
-  // Try freezing again read only vars post resource decomposition.
-  if (session.hasValue()) {
-    pass_manager->addPass(
-        mlir::tf_saved_model::CreateFreezeVariablesPass(session.getValue()));
-  }
-
+// This is the later part of the conversion in isolation. This enables a caller
+// to resume the conversion after injecting more information in the middle of
+// it.
+void AddPostVariableFreezingTFToTFLConversionPasses(
+    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
+    const mlir::TFL::PassConfig& pass_config,
+    mlir::OpPassManager* pass_manager) {
   // Note:
   // We need to fuse composite ops before LowerStaticTensorList pass.
   // The tensorflow list is not supported right now by that pass.
@@ -327,12 +331,20 @@ void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
   }
 }
 
+void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
+                                const toco::TocoFlags& toco_flags,
+                                const mlir::TFL::PassConfig& pass_config,
+                                mlir::OpPassManager* pass_manager) {
+  AddPreVariableFreezingTFToTFLConversionPasses(saved_model_dir, toco_flags,
+                                                pass_config, pass_manager);
+  AddPostVariableFreezingTFToTFLConversionPasses(saved_model_dir, toco_flags,
+                                                 pass_config, pass_manager);
+}
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
-                                mlir::OpPassManager* pass_manager,
-                                llvm::Optional<tensorflow::Session*> session) {
+                                mlir::OpPassManager* pass_manager) {
   const toco::TocoFlags toco_flags;
   AddTFToTFLConversionPasses(/*saved_model_dir=*/"", toco_flags, pass_config,
-                             pass_manager, session);
+                             pass_manager);
 }
 
 }  // namespace tensorflow
