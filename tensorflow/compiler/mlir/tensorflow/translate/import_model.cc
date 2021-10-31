@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/initialize_variables_in_session_init.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -4095,21 +4096,23 @@ Status SavedModelSignatureDefImporter::LiftVariables(
     return diag_handler.Combine(
         errors::Internal("Failed to prepare to lift variables."));
 
-  pm.clear();
   if (lift_varhandle_ops_to_args) {
+    pm.clear();
     pm.addNestedPass<mlir::FuncOp>(
         mlir::tf_saved_model::CreateMarkInitializedVariablesPass(
             bundle.GetSession()));
     pm.addPass(mlir::TF::CreatePromoteVarHandlesToArgsPass());
     pm.addPass(
         mlir::tf_saved_model::CreateLiftVariablesPass(bundle.GetSession()));
+    if (mlir::failed(pm.run(module)))
+      return diag_handler.Combine(
+          errors::Internal("Failed to lift variables."));
   } else {
-    pm.addPass(
-        mlir::tf_saved_model::CreateInitializeVariablesInSessionInitializerPass(
-            bundle.GetSession()));
+    if (failed(mlir::tf_saved_model::InitializeVariablesInSessionInitializer(
+            module, bundle.GetSession())))
+      return diag_handler.Combine(
+          errors::Internal("Failed to initialize variables in session init."));
   }
-  if (mlir::failed(pm.run(module)))
-    return diag_handler.Combine(errors::Internal("Failed to lift variables."));
 
   pm.clear();
   pm.addNestedPass<mlir::FuncOp>(

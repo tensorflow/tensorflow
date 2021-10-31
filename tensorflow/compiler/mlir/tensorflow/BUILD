@@ -958,12 +958,34 @@ cc_library(
 )
 
 cc_library(
+    name = "initialize_variables_in_session_init",
+    srcs = [
+        "transforms/initialize_variables_in_session_init.cc",
+    ],
+    hdrs = [
+        "transforms/initialize_variables_in_session_init.h",
+    ],
+    deps = [
+        ":convert_tensor",
+        ":session_utils",
+        ":tensorflow",
+        ":tensorflow_ops",
+        ":tensorflow_passes",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework_internal",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
     name = "tf_saved_model_passes",
     srcs = [
         "transforms/deduplicate_bound_input_bindings.cc",
         "transforms/freeze_global_tensors.cc",
         "transforms/freeze_saved_model_assets.cc",
-        "transforms/initialize_variables_in_session_init.cc",
         "transforms/lift_variables_pass.cc",
         "transforms/mark_initialized_variables_pass.cc",
         "transforms/optimize_global_tensors.cc",
@@ -977,7 +999,6 @@ cc_library(
         ":lift_variables_lib",
         ":mark_initialized_variables_lib",
         ":resource_value_typed_analyzer",
-        ":session_utils",
         ":tensorflow",
         ":tensorflow_ops",
         ":tensorflow_passes",
@@ -1330,6 +1351,7 @@ cc_library(
     deps = [
         ":error_util",
         ":fake_session",
+        ":initialize_variables_in_session_init",
         ":lift_variables_lib",
         ":lower_tf_lib",
         ":mark_initialized_variables_lib",
@@ -1422,6 +1444,7 @@ cc_library(
         ":error_util",
         ":export_tf_dialect_op",
         ":export_utils",
+        ":initialize_variables_in_session_init",
         ":mangling_util",
         ":mlir_import_options",
         ":mlir_roundtrip_flags",

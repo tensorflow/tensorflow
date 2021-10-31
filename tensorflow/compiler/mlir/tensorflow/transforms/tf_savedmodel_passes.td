@@ -70,12 +70,6 @@ def RemoveVariablesInSessionInitializerPass : Pass<"tf-saved-model-remove-vars-i
   let constructor = "mlir::tf_saved_model::CreateRemoveVariablesInSessionInitializerPass()";
 }
 
-def InitializeVariablesInSessionInitializerPass : Pass<"tf-saved-model-initialize-variables-in-session-init", "ModuleOp"> {
-  let summary = "Initialize variables in session initializer function.";
-
-  let constructor = "mlir::tf_saved_model::CreateInitializeVariablesInSessionInitializerTestPass()";
-}
-
 def FreezeAssetsPass : Pass<"tf-saved-model-freeze-assets", "ModuleOp"> {
   let summary = "Freeze tf_saved_model.asset's in func bodies.";
   let constructor = "mlir::tf_saved_model::CreateFreezeAssetsPass()";

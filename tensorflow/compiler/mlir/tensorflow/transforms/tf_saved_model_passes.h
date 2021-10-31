@@ -58,15 +58,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDedupBoundInputBindingPass();
 std::unique_ptr<OperationPass<FuncOp>> CreateMarkInitializedVariablesPass(
     ::tensorflow::Session* session);
 
-// Creates a pass that initializes all variables in Session Init function
-// for all variables in 'session'.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateInitializeVariablesInSessionInitializerPass(tensorflow::Session* session);
-
-// Create a test pass for the above with a "fake" session, for lit testing.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateInitializeVariablesInSessionInitializerTestPass();
-
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 
