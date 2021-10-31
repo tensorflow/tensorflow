@@ -214,7 +214,6 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
           replacement_char=ord(" "),
           replace_control_characters=False)
       values = self.evaluate(outputs)
-      print("values=", values)
       self.assertAllEqual(values, expected)
 
   def test_transcode_utf32_to_utf8(self):
