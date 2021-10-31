@@ -45,12 +45,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeAssetsPass(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateRemoveVariablesInSessionInitializerPass();
 
-// Creates as pass that creates GlobalTensorOp for each variable from function
-// arguments and converts the function arguments to the corresponding saved
-// model arguments.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesPass(
-    ::tensorflow::Session* session);
-
 // Creates a pass that removes duplicate 'tf_saved_model.bound_input' bindings.
 std::unique_ptr<OperationPass<FuncOp>> CreateDedupBoundInputBindingPass();
 
