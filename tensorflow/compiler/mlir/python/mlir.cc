@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "tensorflow//compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_status.h"
@@ -77,6 +76,7 @@ static bool RegisterPasses() {
   mlir::mhlo::registerLegalizeTFPass();
   mlir::mhlo::registerLegalizeTFControlFlowPass();
   mlir::mhlo::registerLegalizeTfTypesPassPass();
+  mlir::tf_saved_model::registerTensorFlowSavedModelPasses();
   return true;
 }
 
