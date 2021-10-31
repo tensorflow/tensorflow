@@ -42,7 +42,7 @@ namespace full_type {
 // Helper for a type inference function which has the same type as the i'th
 // input.
 // The n arg allows multiple outputs, e.g. (T -> Product[T, T]).
-// TODO(mdan): Dropping the defaults for readability if 0, 1 are used more.
+// TODO(mdan): Drop defaults for readability if more non-(0, 1) cases appear.
 ForwardTypeInferenceFn ReplicateInput(int i = 0, int n = 1);
 
 // Helper for a type inference function which has the same type as a variadic
