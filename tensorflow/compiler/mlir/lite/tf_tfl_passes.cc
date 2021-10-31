@@ -132,13 +132,6 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
 
-  // TODO(b/149099381): Remove after handling WhileRegion in favor of later
-  // instance.
-  if (session.hasValue()) {
-    pass_manager->addPass(
-        mlir::tf_saved_model::CreateFreezeVariablesPass(session.getValue()));
-  }
-
   // Keep this pass after the shape inference pass, which couldn't do shape
   // inference for non-tf ops.
   if (!pass_config.quant_specs.serialized_quant_stats.empty()) {
