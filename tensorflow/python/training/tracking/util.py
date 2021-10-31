@@ -1440,7 +1440,7 @@ def saver_with_op_caching(obj, attached_dependencies=None):
     saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
   return TrackableSaver(
       graph_view_lib.ObjectGraphView(
-          weakref.ref(obj), saveables_cache=saveables_cache,
+          obj, saveables_cache=saveables_cache,
           attached_dependencies=attached_dependencies))
 
 
@@ -2007,7 +2007,8 @@ class Checkpoint(tracking.AutoTrackable):
         # Make sure that root doesn't already have dependencies with these names
         child = root._lookup_dependency(k)
         if child is None:
-          attached_dependencies.append(base.TrackableReference(k, converted_v))
+          attached_dependencies.append(
+              base.WeakTrackableReference(k, converted_v))
         elif child != converted_v:
           raise ValueError(
               f"Cannot create a Checkpoint with keyword argument {k} if "
@@ -2033,6 +2034,10 @@ class Checkpoint(tracking.AutoTrackable):
                 trainable=False))
         if self._attached_dependencies is not None:
           self._attached_dependencies.append(
+              # Store a stronge reference to the `save_counter`, so that if the
+              # `Checkpoint` object is deleted, the `save_counter` does not get
+              # deleted immediately. (The LoadStatus object needs to indirectly
+              # reference the counter through the ObjectGraphView).
               base.TrackableReference("save_counter", self._save_counter))
           # When loading a checkpoint, the save counter is created after
           # the checkpoint has been loaded, so it must be handled in a deferred

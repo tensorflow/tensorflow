@@ -879,6 +879,42 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     new_model.deferred_variable = variables_lib.Variable(1.)
     self.assertEqual(self.evaluate(new_model.deferred_variable), 5)
 
+  def test_deferred_dependency_avoids_reference_cycles(self):
+    # Tests that there are no reference cycles when running garbage collection.
+    # Python uses reference counts as the primary garbage collector, which will
+    # not delete and finalize (__del__) objects in a cycle. The deletion is
+    # eventually triggered by gc, which only runs when the garbage has reached
+    # a certain threshold.
+
+    delete_counter = 0
+
+    class TrackableWithDel(tracking.AutoTrackable):
+
+      def __del__(self):
+        nonlocal delete_counter
+        delete_counter += 1
+
+    x = tracking.AutoTrackable()
+    x.v = variables_lib.Variable(100.)
+    x.has_del = TrackableWithDel()
+
+    checkpoint = trackable_utils.Checkpoint(x)
+    checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    save_path = checkpoint.save(checkpoint_prefix)
+
+    self.assertEqual(delete_counter, 0)
+    del checkpoint
+    del x
+    self.assertEqual(delete_counter, 1)
+
+    no_v = tracking.AutoTrackable()
+    no_v.has_del = TrackableWithDel()
+    checkpoint = trackable_utils.Checkpoint(no_v)
+    checkpoint.restore(save_path).expect_partial()
+    del checkpoint
+    del no_v
+    self.assertEqual(delete_counter, 2)
+
 
 class TemplateTests(parameterized.TestCase, test.TestCase):
 
