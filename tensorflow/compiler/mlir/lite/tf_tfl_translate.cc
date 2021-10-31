@@ -232,9 +232,6 @@ int main(int argc, char **argv) {
   // message. So we can just return here.
   if (!module.ok()) return kTrFailure;
 
-  mlir::PassManager pm(&context, mlir::OpPassManager::Nesting::Implicit);
-  mlir::applyPassManagerCLOptions(pm);
-
   // Set the quantization specifications from the command line flags.
   mlir::TFL::QuantizationSpecs quant_specs;
   if (mlir::TFL::ParseInputNodeQuantSpecs(input_arrays, min_values, max_values,
@@ -282,9 +279,6 @@ int main(int argc, char **argv) {
     pass_config.enable_hlo_to_tf_conversion = true;
   }
 
-  // TODO(b/153507667): Pass the session object when importing logic is removed.
-  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm,
-                                         /*session=*/llvm::None);
   toco::TocoFlags toco_flags;
   toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
   toco_flags.set_enable_select_tf_ops(emit_select_tf_ops);
@@ -300,9 +294,10 @@ int main(int argc, char **argv) {
   });
 
   std::string result;
+  // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
-      module.ValueOrDie().get(), output_mlir, toco_flags, quant_specs, tags,
-      &result, &pm);
+      module.ValueOrDie().get(), output_mlir, toco_flags, pass_config, tags,
+      /*saved_model_dir=*/"", /*session=*/llvm::None, &result);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

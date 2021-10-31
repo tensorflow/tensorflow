@@ -1134,6 +1134,7 @@ cc_library(
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_quantize",
+        ":tf_tfl_passes",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",

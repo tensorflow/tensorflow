@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -143,15 +144,12 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir,
-    const toco::TocoFlags& toco_flags,
-    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    std::string* result, mlir::PassManager* pass_manager) {
+    llvm::StringRef saved_model_dir,
+    llvm::Optional<tensorflow::Session*> session, std::string* result) {
   // Explicitly disable dumping Op details on failures.
   module.getContext()->printOpOnDiagnostic(false);
-  pass_manager->addInstrumentation(
-      std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
-          pass_manager->getContext()));
 
   // Register a warning handler only log to std out.
   mlir::ScopedDiagnosticHandler s(
@@ -172,7 +170,15 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     return statusHandler.ConsumeStatus();
   }
 
-  if (failed(pass_manager->run(module))) {
+  mlir::PassManager pass_manager(module.getContext());
+  mlir::applyPassManagerCLOptions(pass_manager);
+  pass_manager.addInstrumentation(
+      std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
+          pass_manager.getContext()));
+  tensorflow::AddTFToTFLConversionPasses(saved_model_dir, toco_flags,
+                                         pass_config, &pass_manager, session);
+
+  if (failed(pass_manager.run(module))) {
     auto status = statusHandler.ConsumeStatus();
     mlir::TFL::ErrorCollector* collector =
         mlir::TFL::ErrorCollector::GetErrorCollector();
@@ -197,6 +203,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
+  const mlir::TFL::QuantizationSpecs& quant_specs = pass_config.quant_specs;
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   if (!quant_specs.RunWeightQuantization()) {
     tflite::FlatbufferExportOptions options;

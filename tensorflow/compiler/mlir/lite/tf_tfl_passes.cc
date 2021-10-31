@@ -89,7 +89,8 @@ void AddConvertHloToTfPass(std::string entry_function_name,
   pass_manager->addPass(
       mlir::mhlo::CreateExpandHloTuplesPass(entry_function_name));
   // Flatten tuples for control flows.
-  pass_manager->addPass(mlir::mhlo::createFlattenTuplePass());
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::mhlo::createFlattenTuplePass());
 
   // TF dialect passes
   pass_manager->addNestedPass<mlir::FuncOp>(
@@ -135,7 +136,7 @@ void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
   // Keep this pass after the shape inference pass, which couldn't do shape
   // inference for non-tf ops.
   if (!pass_config.quant_specs.serialized_quant_stats.empty()) {
-    pass_manager->addPass(
+    pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::quant::CreateImportQuantStatsPassForTFControlDialect(
             pass_config.quant_specs.serialized_quant_stats));
   }
