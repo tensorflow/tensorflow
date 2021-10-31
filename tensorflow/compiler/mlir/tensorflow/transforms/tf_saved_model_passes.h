@@ -67,10 +67,6 @@ CreateInitializeVariablesInSessionInitializerPass(tensorflow::Session* session);
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateInitializeVariablesInSessionInitializerTestPass();
 
-// Creates a pass that freezes readonly variables in the graph.
-std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeVariablesPass(
-    tensorflow::Session* session);
-
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 

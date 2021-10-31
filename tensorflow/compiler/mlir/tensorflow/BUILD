@@ -935,6 +935,29 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_saved_model_freeze_variables",
+    srcs = [
+        "transforms/tf_saved_model_freeze_variables.cc",
+    ],
+    hdrs = [
+        "transforms/tf_saved_model_freeze_variables.h",
+    ],
+    deps = [
+        ":convert_tensor",
+        ":resource_value_typed_analyzer",
+        ":session_utils",
+        ":tensorflow",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:protos_all_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
     name = "tf_saved_model_passes",
     srcs = [
         "transforms/deduplicate_bound_input_bindings.cc",
@@ -945,7 +968,6 @@ cc_library(
         "transforms/mark_initialized_variables_pass.cc",
         "transforms/optimize_global_tensors.cc",
         "transforms/remove_vars_in_session_initializer.cc",
-        "transforms/tf_saved_model_freeze_variables.cc",
     ],
     hdrs = [
         "transforms/tf_saved_model_passes.h",
@@ -964,7 +986,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -1315,6 +1336,7 @@ cc_library(
         ":tensorflow",
         ":tensorflow_analysis",
         ":tensorflow_passes",
+        ":tf_saved_model_freeze_variables",
         ":tf_saved_model_passes",
         ":tf_test_passes_inc_gen",
         ":visitor_util",

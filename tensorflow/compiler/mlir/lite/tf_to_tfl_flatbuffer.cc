@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -179,14 +180,33 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
 
   tensorflow::AddPreVariableFreezingTFToTFLConversionPasses(
       saved_model_dir, toco_flags, pass_config, &pass_manager);
+  if (failed(pass_manager.run(module))) {
+    return statusHandler.ConsumeStatus();
+  }
+
   // Freeze variables if a session is provided.
   if (session.hasValue()) {
-    pass_manager.addPass(
-        mlir::tf_saved_model::CreateFreezeVariablesPass(session.getValue()));
+    mlir::TFL::ErrorCollectorInstrumentation collector(module.getContext());
+    if (failed(mlir::tf_saved_model::FreezeVariables(module,
+                                                     session.getValue()))) {
+      auto status = statusHandler.ConsumeStatus();
+      mlir::TFL::ErrorCollector* collector =
+          mlir::TFL::ErrorCollector::GetErrorCollector();
+      if (!collector->CollectedErrors().empty()) {
+        // LINT.IfChange
+        return errors::InvalidArgument(
+            "Variable constant folding is failed. Please consider using "
+            "enabling `experimental_enable_resource_variables` flag in the "
+            "TFLite converter object. For example, "
+            "converter.experimental_enable_resource_variables = True");
+        // LINT.ThenChange(//tensorflow/lite/python/lite_v2_test.py)
+      }
+      return status;
+    }
   }
+  pass_manager.clear();
   tensorflow::AddPostVariableFreezingTFToTFLConversionPasses(
       saved_model_dir, toco_flags, pass_config, &pass_manager);
-
   if (failed(pass_manager.run(module))) {
     auto status = statusHandler.ConsumeStatus();
     mlir::TFL::ErrorCollector* collector =
