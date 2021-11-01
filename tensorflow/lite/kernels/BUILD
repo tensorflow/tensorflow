@@ -2348,11 +2348,23 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "floor_mod_test_common",
+    testonly = 1,
+    hdrs = [
+        "floor_mod_test_common.h",
+    ],
+    deps = [
+        ":test_util",
+    ],
+)
+
 cc_test(
     name = "floor_mod_test",
     size = "small",
     srcs = ["floor_mod_test.cc"],
     deps = [
+        ":floor_mod_test_common",
         ":test_main",
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
