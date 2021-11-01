@@ -2340,3 +2340,18 @@ py_library(
         "//tensorflow/python/util:tf_export",
     ],
 )
+
+cuda_py_test(
+    name = "template_mirrored_strategy_test",
+    size = "small",
+    srcs = ["template_mirrored_strategy_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:template",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+    ],
+)

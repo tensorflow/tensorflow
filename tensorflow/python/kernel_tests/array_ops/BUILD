@@ -603,6 +603,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "split_op_test",
+    size = "medium",
+    srcs = ["split_op_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
     name = "stack_op_test",
     size = "medium",
     srcs = ["stack_op_test.py"],
