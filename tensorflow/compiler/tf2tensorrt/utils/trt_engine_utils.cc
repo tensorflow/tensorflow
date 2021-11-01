@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
@@ -83,31 +82,6 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
   return Status::OK();
 }
 
-Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
-                          const nvinfer1::ICudaEngine* cuda_engine,
-                          int* binding_index) {
-  // If the engine has been built for K profiles, the first getNbBindings() / K
-  // bindings are used by profile number 0, the following getNbBindings() / K
-  // bindings are used by profile number 1 etc.
-  //
-  // GetBindingIndex(tensor_name) returns the binding index for the progile 0.
-  // We can also consider it as a "binding_index_within_profile".
-  *binding_index = cuda_engine->getBindingIndex(tensor_name);
-  if (*binding_index == -1) {
-    const string msg = StrCat("Input node ", tensor_name, " not found");
-    LOG(ERROR) << msg;
-    return errors::NotFound(msg);
-  }
-  int n_profiles = cuda_engine->getNbOptimizationProfiles();
-  // If we have more then one optimization profile, then we need to shift the
-  // binding index according to the following formula:
-  // binding_index_within_engine = binding_index_within_profile +
-  //                               profile_index * bindings_per_profile
-  const int bindings_per_profile = cuda_engine->getNbBindings() / n_profiles;
-  *binding_index = *binding_index + profile_index * bindings_per_profile;
-  return Status::OK();
-}
-
 Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
                           nvinfer1::IExecutionContext* execution_context,
                           const int trt_profile_idx,
@@ -121,8 +95,17 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
     const string input_name =
         ctx ? StrCat(IONamePrefixes::kInputPHName, i) : input_vec->at(i).name;
     int binding_index;
-    TF_RETURN_IF_ERROR(GetTrtBindingIndex(input_name.c_str(), trt_profile_idx,
-                                          cuda_engine, &binding_index));
+    Status status = GetTrtBindingIndex(input_name.c_str(), trt_profile_idx,
+                                       cuda_engine, &binding_index);
+    if (IS_TRT_VERSION_GE(8, 0, 0, 0)) {
+      TF_RETURN_IF_ERROR(status);
+    } else if (!status.ok()) {
+      // Before TRT 8, an input tensor can be pruned if it is not used by the
+      // network (e.g. only its shape is used, but the shape is already defined
+      // by the optimization profile by setting min=max). nvbugs/3153064
+      VLOG(2) << "Skipping pruned input " << input_name;
+      continue;
+    }
     const Tensor& input_tensor = ctx ? ctx->input(i) : input_vec->at(i).tensor;
     const TensorShape& input_shape = input_tensor.shape();
 
