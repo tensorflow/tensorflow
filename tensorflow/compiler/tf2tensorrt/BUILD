@@ -645,6 +645,7 @@ tf_cuda_cc_test(
     size = "medium",
     srcs = [
         "convert/convert_nodes_test.cc",
+        "convert/op_converter_test.cc",
     ],
     tags = [
         "no_cuda_on_cpu_tap",
