@@ -351,8 +351,7 @@ LogicalResult ConvertTFRoundOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_round_op = cast<TF::RoundOp>(op);
 
-  TensorType input_type =
-      tf_round_op.x().getType().dyn_cast<TensorType>();
+  TensorType input_type = tf_round_op.x().getType().dyn_cast<TensorType>();
   if (!input_type) {
     return op->emitOpError("Round: input not tensor type");
   }
@@ -441,8 +440,7 @@ LogicalResult ConvertTFRealDivOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_div_op = cast<TF::RealDivOp>(op);
 
-  TensorType y_type =
-      tf_div_op.y().getType().dyn_cast<TensorType>();
+  TensorType y_type = tf_div_op.y().getType().dyn_cast<TensorType>();
   TensorType output_type =
       tf_div_op.getResult().getType().dyn_cast<TensorType>();
   // Not a tensor output
@@ -471,8 +469,7 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_argmax_op = cast<TF::ArgMaxOp>(op);
 
-  TensorType input_type =
-      tf_argmax_op.input().getType().dyn_cast<TensorType>();
+  TensorType input_type = tf_argmax_op.input().getType().dyn_cast<TensorType>();
   TensorType output_type =
       tf_argmax_op.getResult().getType().dyn_cast<TensorType>();
   // Not a tensor output
@@ -2009,8 +2006,7 @@ LogicalResult ConvertTFLeakyReluOp::matchAndRewrite(
       getTosaConstTensorSingleF32(rewriter, op, alpha), 0);
 
   auto a2_ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
-      rewriter, op->getLoc(),
-      UnrankedTensorType::get(rewriter.getI1Type()),
+      rewriter, op->getLoc(), UnrankedTensorType::get(rewriter.getI1Type()),
       tf_leakyrelu_op.features(), const_zero);
 
   auto a3_select = CreateOpAndInfer<tosa::SelectOp>(

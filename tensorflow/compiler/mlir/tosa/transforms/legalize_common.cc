@@ -1702,8 +1702,7 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   // op4 = mul(op1, op3)
   // op5 = log(op4)
 
-  TensorType output_type =
-      result_value.getType().dyn_cast<TensorType>();
+  TensorType output_type = result_value.getType().dyn_cast<TensorType>();
   // Not a tensor output
   if (!output_type) {
     op->emitOpError("LogSoftmax: output type not tensor.");
@@ -1735,9 +1734,9 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   int32_t input_rank = input_type.getShape().size();
   // Keep dims so we don't need to reshape later
   auto op2_reducesum_op1 = CreateOpAndInfer<tosa::ReduceSumOp>(
-      rewriter, op->getLoc(), UnrankedTensorType::get(output_type.getElementType()),
-      op1_exp_in.getResult(),
-      rewriter.getI64IntegerAttr(input_rank - 1));
+      rewriter, op->getLoc(),
+      UnrankedTensorType::get(output_type.getElementType()),
+      op1_exp_in.getResult(), rewriter.getI64IntegerAttr(input_rank - 1));
   TensorType rsum_type = op2_reducesum_op1.getType().cast<TensorType>();
   auto op3_reciprocal_op2 = CreateOpAndInfer<tosa::ReciprocalOp>(
       rewriter, op->getLoc(), op2_reducesum_op1.getType(),
