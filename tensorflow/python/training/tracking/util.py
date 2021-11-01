@@ -169,27 +169,33 @@ class _CheckpointRestoreCoordinatorDeleter(object):
       log_fn = print
     else:
       log_fn = logging.warning
-    printed_warning = False
+    unused_nodes_in_checkpoint = []
+    unrestored_attributes_in_object = []
     pretty_printer = ObjectGraphProtoPrettyPrinter(self.object_graph_proto)
-    for node_id in range(len(self.object_graph_proto.nodes)):
+    for node_id, node in enumerate(self.object_graph_proto.nodes):
+      if not node.attributes:
+        continue
       if node_id not in self.matched_proto_ids:
-        log_fn("Unresolved object in checkpoint: "
-               f"{pretty_printer.node_names[node_id]}")
-        printed_warning = True
+        unused_nodes_in_checkpoint.append(pretty_printer.node_names[node_id])
     for node_id, attribute_name in self.unused_attributes.items():
-      log_fn(f"Unused attribute in object {pretty_printer.node_names[node_id]}:"
-             f" {attribute_name}")
-      printed_warning = True
-    if printed_warning:
-      log_fn(
-          "A checkpoint was restored (e.g. tf.train.Checkpoint.restore or "
-          "tf.keras.Model.load_weights) but not all checkpointed values were "
-          "used. See above for specific issues. Use expect_partial() on the "
-          "load status object, e.g. "
-          "tf.train.Checkpoint.restore(...).expect_partial(), to silence these "
-          "warnings, or use assert_consumed() to make the check explicit. See "
-          "https://www.tensorflow.org/guide/checkpoint#loading_mechanics"
-          " for details.")
+      unrestored_attributes_in_object.append((
+          pretty_printer.node_names[node_id], attribute_name))
+    if unused_nodes_in_checkpoint or unrestored_attributes_in_object:
+      # pylint:disable=line-too-long
+      log_fn("Detecting that an object or model or tf.train.Checkpoint is being"
+             " deleted with unrestored values. See the following logs for the "
+             "specific values in question. To silence these warnings, use "
+             "`status.expect_partial()` or `status.assert_consumed()`. See "
+             "https://www.tensorflow.org/api_docs/python/tf/train/Checkpoint#restore"
+             "for details about the status object returned by the restore "
+             "function.")
+      # pylint:enable=line-too-long
+      for node_path in unused_nodes_in_checkpoint:
+        log_fn("Value in checkpoint could not be found in the restored object: "
+               f"{node_path}")
+      for node_path, attr in unrestored_attributes_in_object:
+        log_fn("An attribute in the restored object could not be found in the "
+               f"checkpoint. Object: {node_path}, attribute: {attr}")
 
 
 class _CheckpointRestoreCoordinator(object):
