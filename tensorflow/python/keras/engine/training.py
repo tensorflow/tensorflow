@@ -911,7 +911,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             if the model has named inputs.
           - A `tf.data` dataset. Should return a tuple
             of either `(inputs, targets)` or
-            `(inputs, targets, sample_weights)`.
+            `(inputs, targets, sample_weights)`. Note: datasets returning
+            dictionaries are not supported.
           - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
             or `(inputs, targets, sample_weights)`.
           - A `tf.keras.utils.experimental.DatasetCreator`, which wraps a
@@ -1375,7 +1376,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             if the model has named inputs.
           - A `tf.data` dataset. Should return a tuple
             of either `(inputs, targets)` or
-            `(inputs, targets, sample_weights)`.
+            `(inputs, targets, sample_weights)`. Note: datasets returning
+            dictionaries are not supported.
           - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
             or `(inputs, targets, sample_weights)`.
           A more detailed description of unpacking behavior for iterator types
