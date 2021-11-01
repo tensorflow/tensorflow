@@ -240,9 +240,10 @@ Service::ResolveAndValidateArguments(
   for (size_t i = 0; i < arguments.size(); ++i) {
     auto buffer_status = allocation_tracker_.Resolve(*arguments[i]);
     if (!buffer_status.ok()) {
-      return Status(buffer_status.status().code(),
-                    StrCat(buffer_status.status().error_message(), ", ",
-                           "failed to resolve allocation for parameter ", i));
+      return tensorflow::errors::CreateWithUpdatedMessage(
+          buffer_status.status(),
+          StrCat(buffer_status.status().error_message(), ", ",
+                 "failed to resolve allocation for parameter ", i));
     }
     auto replicated_buffers = buffer_status.ValueOrDie();
     CHECK_EQ(options_.number_of_replicas(), replicated_buffers.size());
@@ -360,7 +361,9 @@ Service::ExecuteParallelAndRegisterResult(
     TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*backend, device_handles[i]));
     CHECK_EQ(replicas.size(), arguments[i].size());
     std::vector<ScopedShapedBuffer> result_buffers;
-    for (int64_t replica = 0; replica < replicas.size(); ++replica) {
+    const int64_t n = replicas.size();
+    result_buffers.reserve(n);
+    for (int64_t replica = 0; replica < n; ++replica) {
       TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
                           backend->BorrowStream(replicas[replica]));
       streams.push_back(std::move(stream));
@@ -476,6 +479,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 
   // Set up run options.
   std::vector<ServiceExecutableRunOptions> run_options;
+  run_options.reserve(streams.size());
   for (const StreamPool::Ptr& stream : streams) {
     ExecutableRunOptions options;
     options.set_stream(stream.get());
@@ -940,6 +944,7 @@ Status Service::TransferToServer(const TransferToServerRequest* arg,
 
   // Allocate memory in each replica and transfer the data to all replicas.
   std::vector<ScopedShapedBuffer> replicated_buffers;
+  replicated_buffers.reserve(replicas.size());
   for (se::StreamExecutor* executor : replicas) {
     TF_ASSIGN_OR_RETURN(
         ScopedShapedBuffer shaped_buffer,

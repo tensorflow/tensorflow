@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/service/spmd/convolution_handler.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
@@ -385,13 +386,69 @@ absl::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     int64_t rhs_batch_partitions, int64_t lhs_contracting_partitions,
     int64_t lhs_non_contracting_partitions, int64_t lhs_batch_partitions,
     int64_t rhs_shape_size, int64_t lhs_shape_size, int64_t output_shape_size,
-    int64_t einsum_threshold_mib,
+    const SpmdPartitionerOptions& options,
     const absl::optional<HloSharding>& output_sharding_transposed_to_match_lhs,
     const absl::optional<HloSharding>& output_sharding_transposed_to_match_rhs,
-    const HloSharding& lhs_sharding, const HloSharding& rhs_sharding) {
+    const HloSharding& lhs_sharding, const HloSharding& rhs_sharding,
+    int64_t max_iterations = INT64_MAX,
+    const HloInstruction* original_hlo = nullptr) {
+  if (num_partitions >= max_iterations) {
+    return absl::nullopt;
+  }
+  const HloInstruction* lhs = nullptr;
+  const HloInstruction* rhs = nullptr;
+  if (original_hlo) {
+    lhs = original_hlo->operand(0);
+    rhs = original_hlo->operand(1);
+  }
+  // Determine if any of the users users have the same shardings that can allow
+  // reuse of the resharding for the operand with original_hlo.
+  auto check_users_sharding = [original_hlo](
+                                  const HloInstruction* to_loop_over) {
+    if (to_loop_over->users().size() <= 1) {
+      return true;
+    }
+    constexpr int kAggressiveness = 3;
+    absl::optional<HloSharding> original_ideal_sharding =
+        ShardingPropagation::GetShardingFromUser(*to_loop_over, *original_hlo,
+                                                 kAggressiveness,
+                                                 /*is_spmd=*/true);
+    // Default to perform collective matmul if GetShardingFromUser() couldn't
+    // determine the sharding.
+    if (!original_ideal_sharding) {
+      return true;
+    }
+    for (const HloInstruction* user : to_loop_over->users()) {
+      if (user == original_hlo) {
+        continue;
+      }
+      absl::optional<HloSharding> from_user =
+          ShardingPropagation::GetShardingFromUser(*to_loop_over, *user,
+                                                   kAggressiveness,
+                                                   /*is_spmd=*/true);
+      // Could't determine sharding. Skip to next one and pretend it wouldn't
+      // share the resharding.
+      if (!from_user) {
+        continue;
+      }
+      // This user doesn't require resharding, so even if has different sharding
+      // than original_hlo its ok to do collective matmul.
+      if (*from_user == to_loop_over->sharding()) {
+        continue;
+      }
+      // Same sharding needed, so we would share the resharding. Do not do
+      // collective matmul.
+      if (*original_ideal_sharding == *from_user) {
+        return false;
+      }
+    }
+    return true;
+  };
   if (output_lhs_non_contracting_partitions == num_partitions &&
       output_sharding_transposed_to_match_lhs == lhs_sharding &&
-      rhs_shape_size >= einsum_threshold_mib * 1024 * 1024) {
+      rhs_shape_size >=
+          options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
+      (!rhs || check_users_sharding(rhs))) {
     if (rhs_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::RHS,
@@ -416,7 +473,9 @@ absl::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
   }
   if (output_rhs_non_contracting_partitions == num_partitions &&
       output_sharding_transposed_to_match_rhs == rhs_sharding &&
-      lhs_shape_size >= einsum_threshold_mib * 1024 * 1024) {
+      lhs_shape_size >=
+          options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
+      (!lhs || check_users_sharding(lhs))) {
     if (lhs_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::LHS,
@@ -443,7 +502,8 @@ absl::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
       lhs_contracting_partitions == num_partitions &&
       (output_lhs_non_contracting_partitions == num_partitions ||
        output_rhs_non_contracting_partitions == num_partitions) &&
-      output_shape_size >= einsum_threshold_mib * 1024 * 1024) {
+      output_shape_size >=
+          options.threshold_for_windowed_einsum_mib * 1024 * 1024) {
     if (output_lhs_non_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::RHS,
@@ -665,15 +725,11 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     // uneven partitioning.
     if (windowed_at_contracting_dims) {
       auto& to_mask = windowed_op_is_lhs ? lhs : rhs;
-      to_mask =
-          to_mask.PadWithValue(b->AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::Zero(output_base_shape.element_type()))));
+      to_mask = to_mask.PadWithZero();
     }
     if (operands_sharded_at_contracting_dims) {
-      auto zero = b->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::Zero(output_base_shape.element_type())));
-      lhs = lhs.PadWithValue(zero);
-      rhs = rhs.PadWithValue(zero);
+      lhs = lhs.PadWithZero();
+      rhs = rhs.PadWithZero();
     }
 
     // Get slice sharding, sharding dim, and lhs/rhs concat dim.
@@ -874,8 +930,10 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         auto gen_slice = [&](HloInstruction* data_partition_id,
                              bool ccw) -> HloInstruction* {
           std::vector<int64_t> new_dims;
-          for (int64_t i = 0; i < slice_operand->shape().dimensions_size();
-               ++i) {
+          const int64_t dimensions_size =
+              slice_operand->shape().dimensions_size();
+          new_dims.reserve(dimensions_size + 1);
+          for (int64_t i = 0; i < dimensions_size; ++i) {
             if (i == slice_sharding_dim) {
               new_dims.push_back(1);
             }
@@ -943,7 +1001,9 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         // Reshape. The reshaped slice will not be used to produce the final
         // result, but used as a hint for the shape inference.
         std::vector<int64_t> reshaped_slice_dims;
-        for (int64_t i = 0; i < slice->shape().dimensions_size(); ++i) {
+        const int64_t dim_size = slice->shape().dimensions_size();
+        reshaped_slice_dims.reserve(dim_size);
+        for (int64_t i = 0; i < dim_size; ++i) {
           auto dim_size = slice->shape().dimensions(i);
           if (i == (slice_sharding_dim + 1)) {
             reshaped_slice_dims.push_back(dim_size * 2);
@@ -1561,6 +1621,9 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     }
     return result;
   };
+  // Hard limit on iteration count based on empirical data (above this amount
+  // there's pretty significant overhead).
+  constexpr int64_t kMaxIterations = 32;
   absl::optional<WindowedEinsumConfig> e_config =
       GetWindowedEinsumConfiguration(
           num_partitions, output_lhs_non_contracting_partitions,
@@ -1569,10 +1632,10 @@ StatusOr<HloInstruction*> PartitionBaseCase(
           lhs_contracting_partitions, lhs_non_contracting_partitions,
           lhs_batch_partitions, ShapeSizeInBytes(rhs.base_shape()),
           ShapeSizeInBytes(lhs.base_shape()),
-          ShapeSizeInBytes(output_base_shape),
-          options.threshold_for_windowed_einsum_mib,
+          ShapeSizeInBytes(output_base_shape), options,
           output_sharding_transposed_to_match_lhs,
-          output_sharding_transposed_to_match_rhs, lhs_sharding, rhs_sharding);
+          output_sharding_transposed_to_match_rhs, lhs_sharding, rhs_sharding,
+          kMaxIterations, original_hlo);
   if (e_config) {
     return emit_windowed_dot_general(*e_config);
   }
@@ -1590,19 +1653,15 @@ StatusOr<HloInstruction*> PartitionBaseCase(
   // LHS and RHS have the same partitioned contracting dimensions.
   if (lhs_contracting_partitions == rhs_contracting_partitions &&
       lhs_contracting_partitions == num_partitions) {
-    auto zero = b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::Zero(output_base_shape.element_type())));
     // Pad both sides with zero, since NaN at one side cannot be masked by zero
     // on the other side.
     if (ShapeSizeInBytes(lhs.base_shape()) <
         ShapeSizeInBytes(rhs.base_shape())) {
-      lhs =
-          lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithValue(zero);
-      rhs = rhs.PadWithValue(zero);
+      lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithZero();
+      rhs = rhs.PadWithZero();
     } else {
-      lhs = lhs.PadWithValue(zero);
-      rhs =
-          rhs.Reshard(*lhs_sharding_transposed_to_match_rhs).PadWithValue(zero);
+      lhs = lhs.PadWithZero();
+      rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs).PadWithZero();
     }
     TF_ASSIGN_OR_RETURN(
         auto dot, create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
@@ -1702,16 +1761,12 @@ StatusOr<HloInstruction*> PartitionBaseCase(
   // the contracting dimensions.
   if (output_sharding.IsReplicated() && (should_partition_contracting_dim(0) ||
                                          should_partition_contracting_dim(1))) {
-    auto zero = b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::Zero(output_base_shape.element_type())));
     if (should_partition_contracting_dim(0)) {
-      lhs =
-          lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithValue(zero);
-      rhs = rhs.PadWithValue(zero);
+      lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs).PadWithZero();
+      rhs = rhs.PadWithZero();
     } else {
-      lhs = lhs.PadWithValue(zero);
-      rhs =
-          rhs.Reshard(*lhs_sharding_transposed_to_match_rhs).PadWithValue(zero);
+      lhs = lhs.PadWithZero();
+      rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs).PadWithZero();
     }
     TF_ASSIGN_OR_RETURN(
         auto dot, create_sharded_dot(lhs.hlo(), rhs.hlo(), b, conv_window));
@@ -2022,6 +2077,7 @@ GetNonContractingPartitionGroupedShardingForOtherOperand(
     absl::Span<const DotConvDimsMapping::DimsMapping> other_contracting_dims) {
   int64_t group_count = 1;
   std::vector<int64_t> output_dims;
+  output_dims.reserve(matching_partitioned_dims.size());
   for (const auto& dim : matching_partitioned_dims) {
     output_dims.push_back(dim.output);
     group_count *= output_sharding.tile_assignment().dim(dim.output);
@@ -2106,6 +2162,7 @@ StatusOr<HloInstruction*> PartitionDotGroupOnNonContracting(
   });
 
   std::vector<int64_t> output_dims;
+  output_dims.reserve(partitioned_non_contracting_dims.size());
   for (const auto& dim : partitioned_non_contracting_dims) {
     output_dims.push_back(dim.output);
   }
@@ -2335,8 +2392,7 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
     }
     lhs_skipped_dims.push_back(i);
   }
-  lhs = lhs.PadWithValue(
-      CreateZero(ShapeUtil::MakeShape(lhs.base_shape().element_type(), {}), b),
+  lhs = lhs.PadWithZero(
       /*left_padded_dims=*/{}, lhs_skipped_dims);
   std::vector<int64_t> rhs_skipped_dims;
   for (int64_t i = 0; i < rhs.base_shape().rank(); ++i) {
@@ -2345,8 +2401,7 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
     }
     rhs_skipped_dims.push_back(i);
   }
-  rhs = rhs.PadWithValue(
-      CreateZero(ShapeUtil::MakeShape(rhs.base_shape().element_type(), {}), b),
+  rhs = rhs.PadWithZero(
       /*left_padded_dims=*/{}, rhs_skipped_dims);
   top_level_sharding_to_reset.emplace_back(lhs.hlo(), lhs_sharding);
   lhs.hlo()->set_sharding(lhs_grouped.sharding);
@@ -2609,8 +2664,7 @@ EstimateWindowedEinsumIterationsForNonContractingPartitioning(
                 matching_non_contracting_partitions,
             ShapeSizeInBytes(
                 GetPerGroupBaseShape(output_grouped, output_base_shape)),
-            options.threshold_for_windowed_einsum_mib,
-            output_sharding_transposed_to_match_matching,
+            options, output_sharding_transposed_to_match_matching,
             output_sharding_transposed_to_match_other,
             matching_grouped.sharding, other_grouped->sharding);
     return e_config ? new_num_partitions
@@ -2763,8 +2817,7 @@ bool PrioritizeContractingDimensionsPartitioning(
           lhs_non_contracting_partitions, lhs_batch_partitions,
           ShapeSizeInBytes(GetPerGroupBaseShape(rhs_grouped, rhs.base_shape())),
           ShapeSizeInBytes(GetPerGroupBaseShape(lhs_grouped, lhs.base_shape())),
-          ShapeSizeInBytes(inner_output_base_shape),
-          options.threshold_for_windowed_einsum_mib,
+          ShapeSizeInBytes(inner_output_base_shape), options,
           output_sharding_transposed_to_match_lhs,
           output_sharding_transposed_to_match_rhs, lhs_grouped.sharding,
           rhs_grouped.sharding);

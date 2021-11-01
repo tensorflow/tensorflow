@@ -126,11 +126,32 @@ cc_library(
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:types_proto_cc",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+# Smaller version of flatbuffer_translate which only converts flatbuffer to MLIR.
+cc_library(
+    name = "flatbuffer_to_mlir",
+    srcs = [
+        "flatbuffer_to_mlir.cc",
+    ],
+    hdrs = [
+        "flatbuffer_to_mlir.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:flatbuffer_import",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Translation",
     ],
 )

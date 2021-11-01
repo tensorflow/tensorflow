@@ -60,10 +60,11 @@ class FilterDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{FilterDatasetOp::kPredicate, pred_func_},
-                    {FilterDatasetOp::kTarguments, type_arguments_},
-                    {FilterDatasetOp::kOutputShapes, output_shapes_},
-                    {FilterDatasetOp::kOutputTypes, output_dtypes_}};
+    *attr_vector = {{"predicate", pred_func_},
+                    {"Targuments", type_arguments_},
+                    {"output_shapes", output_shapes_},
+                    {"output_types", output_dtypes_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 

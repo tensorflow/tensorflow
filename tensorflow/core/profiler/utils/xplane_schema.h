@@ -57,6 +57,10 @@ TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
 
+// GPU device vendors.
+TF_CONST_INIT extern const absl::string_view kDeviceVendorNvidia;
+TF_CONST_INIT extern const absl::string_view kDeviceVendorAMD;
+
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
   kFirstHostEventType = 0,
@@ -118,6 +122,7 @@ enum HostEventType {
   kMergeInputTensors,
   kScheduleWithoutSplit,
   kScheduleWithSplit,
+  kScheduleWithEagerSplit,
   kASBSQueueSchedule,
   // TFRT related.
   kTfrtModelRun,
@@ -140,9 +145,11 @@ enum StatType {
   kChipOrdinal,
   kNodeOrdinal,
   kModelId,
+  kQueueId,
   kQueueAddr,
   kRequestId,
   kRunId,
+  kReplicaId,
   kGraphType,
   kStepNum,
   kIterNum,
@@ -182,7 +189,6 @@ enum StatType {
   kMemFreeDetails,
   kMemsetDetails,
   kMemoryResidencyDetails,
-  kKernelAnnotation,
   kNVTXRange,
   kKernelDetails,
   kStream,
@@ -193,7 +199,9 @@ enum StatType {
   kLevel0,
   kTfOp,
   kHloOp,
+  kHloCategory,
   kHloModule,
+  kProgramId,
   kEquation,
   kIsEager,
   kTfFunctionCall,
@@ -204,13 +212,12 @@ enum StatType {
   kSourceInfo,
   kModelName,
   kModelVersion,
+  kBytesTransferred,
   // Performance counter related.
   kRawValue,
   kScaledValue,
   kThreadId,
   // XLA metadata map related.
-  kSelfDurationPs,
-  kMinDurationPs,
   kHloProto,
   // Device capability related.
   kDevCapClockRateKHz,
@@ -219,6 +226,7 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
+  kDevVendor,
   // Batching related.
   kBatchSizeAfterPadding,
   kPaddingAmount,

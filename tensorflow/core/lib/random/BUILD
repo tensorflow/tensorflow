@@ -1,8 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -41,6 +41,7 @@ cc_library(
     deps = [
         ":exact_uniform_int",
         ":philox_random",
+        ":random_distributions_utils",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:logging",
@@ -52,9 +53,23 @@ cc_library(
 )
 
 cc_library(
+    name = "random_distributions_utils",
+    hdrs = ["random_distributions_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+    deps = [":philox_random"],
+)
+
+cc_library(
     name = "philox_random",
     hdrs = ["philox_random.h"],
-    deps = ["//tensorflow/core/platform:types"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/lite:__subpackages__",
+    ],
 )
 
 cc_library(
@@ -109,6 +124,7 @@ filegroup(
         "philox_random.h",
         "random.h",
         "random_distributions.h",
+        "random_distributions_utils.h",
         "simple_philox.cc",
         "simple_philox.h",
         "weighted_picker.cc",
@@ -122,6 +138,7 @@ filegroup(
         "distribution_sampler.h",
         "philox_random.h",
         "random_distributions.h",
+        "random_distributions_utils.h",
         "simple_philox.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -132,6 +149,7 @@ filegroup(
     srcs = [
         "random.h",
         "random_distributions.h",
+        "random_distributions_utils.h",
         "weighted_picker.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -154,6 +172,7 @@ filegroup(
         "philox_random_test_utils.h",
         "random.h",
         "random_distributions.h",
+        "random_distributions_utils.h",
         "simple_philox.h",
         "weighted_picker.h",
     ],

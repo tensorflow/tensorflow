@@ -15,10 +15,6 @@
 # ==============================================================================
 """Visitor restricting traversal to only the public tensorflow API."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
 import six

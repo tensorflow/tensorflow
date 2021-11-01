@@ -75,6 +75,11 @@ def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "Module
   let constructor = "transforms::CreateComputeOpAndFuncBufferizePass()";
 }
 
+def TiledLoopBufferizePass : FunctionPass<"tiled-loop-bufferize"> {
+  let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
+  let constructor = "transforms::CreateTiledLoopBufferizePass()";
+}
+
 def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let summary = "Pass to transform late operations on values to buffer based "
                 "ones.";

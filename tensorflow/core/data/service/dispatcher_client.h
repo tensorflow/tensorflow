@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 
@@ -45,13 +46,9 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // Sends a heartbeat to the dispatcher. If the worker wasn't already
   // registered with the dispatcher, this will register the worker. The
   // dispatcher will report which new tasks the worker should run, and which
-  // tasks it should delete. This is stored into `new_tasks` and
-  // `tasks_to_delete`.
-  Status WorkerHeartbeat(const std::string& worker_address,
-                         const std::string& transfer_address,
-                         const std::vector<int64_t>& current_tasks,
-                         std::vector<TaskDef>& new_tasks,
-                         std::vector<int64_t>& tasks_to_delete);
+  // tasks it should delete.
+  StatusOr<WorkerHeartbeatResponse> WorkerHeartbeat(
+      const WorkerHeartbeatRequest& request);
 
   // Updates the dispatcher with information about the worker's state.
   Status WorkerUpdate(const std::string& worker_address,
@@ -80,7 +77,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                         const ProcessingModeDef& processing_mode,
                         const absl::optional<JobKey>& job_key,
                         absl::optional<int64_t> num_consumers,
-                        int64_t& job_client_id, TargetWorkers target_workers);
+                        TargetWorkers target_workers, int64_t& job_client_id);
 
   // Releases a job client id, indicating that the id will no longer be used to
   // read from the job.

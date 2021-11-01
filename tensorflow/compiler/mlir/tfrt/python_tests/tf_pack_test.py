@@ -16,13 +16,13 @@
 
 import numpy as np
 
-import unittest
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.python.platform import test
 
 cpurt = tf_cpurt.TfCpurtExecutor()
 
 
-class TfPackTest(googletest.TestCase):
+class TfPackTest(test.TestCase):
 
   def pack_and_check(self, src, shape, dtype):
     compiled = cpurt.compile(src, 'test')
@@ -81,4 +81,4 @@ class TfPackTest(googletest.TestCase):
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

@@ -302,7 +302,7 @@ TEST(SliceToDynamicSliceRewriteTest, IndicesNotVector) {
                    .WithAssignedDevice(kDeviceName)
                    .WithXlaCluster("cluster_0");
 
-  auto ToInt64 = [](int v) { return static_cast<int64>(v); };
+  auto ToInt64 = [](int v) { return static_cast<int64_t>(v); };
 
   Output input = ops::Placeholder(root.WithOpName("input"), DT_FLOAT);
   Output begin = ops::Placeholder(root.WithOpName("begin"), DT_INT64);

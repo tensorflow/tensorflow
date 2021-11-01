@@ -154,16 +154,15 @@ struct ContextTypeForRuntime<Runtime::kTf> {
 
 // Macros for defining an op. These are taken from op.h because they need to be
 // slightly modified here.
-#define REGISTER_OP_SHIM_IMPL(ctr, name, op_kernel_cls)           \
-  static ::tensorflow::InitOnStartupMarker const register_op##ctr \
-      TF_ATTRIBUTE_UNUSED =                                       \
-          TF_INIT_ON_STARTUP_IF(SHOULD_REGISTER_OP(name))         \
+#define REGISTER_OP_SHIM_IMPL(ctr, op_kernel_cls)                            \
+  static ::tensorflow::InitOnStartupMarker const register_op##ctr            \
+      TF_ATTRIBUTE_UNUSED =                                                  \
+          TF_INIT_ON_STARTUP_IF(SHOULD_REGISTER_OP(op_kernel_cls::OpName())) \
           << ::tflite::shim::CreateOpDefBuilderWrapper<op_kernel_cls>()
 
-#define REGISTER_TF_OP_SHIM(name, op_kernel_cls) \
-  TF_ATTRIBUTE_ANNOTATE("tf:op")                 \
-  TF_NEW_ID_FOR_INIT(REGISTER_OP_SHIM_IMPL, name, op_kernel_cls)
-
+#define REGISTER_TF_OP_SHIM(op_kernel_cls) \
+  TF_ATTRIBUTE_ANNOTATE("tf:op")           \
+  TF_NEW_ID_FOR_INIT(REGISTER_OP_SHIM_IMPL, op_kernel_cls)
 
 }  // namespace shim
 }  // namespace tflite

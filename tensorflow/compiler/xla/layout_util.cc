@@ -426,7 +426,7 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
 /* static */ bool LayoutUtil::AreDimensionsConsecutive(
     const Layout& layout, absl::Span<const int64_t> dims) {
   CHECK(IsDense(layout));
-  std::vector<int64_t> positions_in_layout;
+  absl::InlinedVector<int64_t, 8> positions_in_layout;
   for (int64_t dim : dims) {
     positions_in_layout.push_back(
         PositionInContainer(layout.minor_to_major(), dim));

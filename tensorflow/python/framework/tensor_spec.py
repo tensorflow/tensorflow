@@ -14,10 +14,6 @@
 # ==============================================================================
 """A TensorSpec class."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import common_shapes
@@ -95,7 +91,8 @@ class DenseSpec(type_spec.TypeSpec):
 
   def most_specific_compatible_type(self, other):
     if (type(self) is not type(other)) or (self._dtype != other.dtype):
-      raise ValueError("Types are not compatible: %r vs %r" % (self, other))
+      raise ValueError(f"Types are not compatible: {self!r} with type of "
+                       f"{type(self)} vs {other!r} with type of {type(other)}.")
     shape = self._shape.most_specific_compatible_shape(other.shape)
     name = self._name if self._name == other.name else None
     return type(self)(shape, self._dtype, name)
@@ -171,7 +168,8 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
     elif isinstance(tensor, ops.Tensor):
       return TensorSpec(tensor.shape, tensor.dtype, name or tensor.op.name)
     else:
-      raise ValueError("`tensor` should be a tf.Tensor")
+      raise ValueError(
+          f"`tensor` should be a tf.Tensor, but got type {type(tensor)}.")
 
   @property
   def value_type(self):
@@ -182,11 +180,11 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
     try:
       value = ops.convert_to_tensor(value, self._dtype)
     except (TypeError, ValueError):
-      raise ValueError("Value %r is not convertible to a tensor with dtype %s "
-                       "and shape %s." % (value, self._dtype, self._shape))
+      raise ValueError(f"Value {value} is not convertible to a tensor with "
+                       f"dtype {self._dtype} and shape {self._shape}.")
     if not value.shape.is_compatible_with(self._shape):
-      raise ValueError("Value %r is not convertible to a tensor with dtype %s "
-                       "and shape %s." % (value, self._dtype, self._shape))
+      raise ValueError(f"Value {value} is not convertible to a tensor with "
+                       f"dtype {self._dtype} and shape {self._shape}.")
     return value
 
   def _from_components(self, components):
@@ -217,6 +215,20 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
     if self._shape.ndims == 0:
       raise ValueError("Unbatching a tensor is only supported for rank >= 1")
     return TensorSpec(self._shape[1:], self._dtype)
+
+  @property
+  def _flat_tensor_specs(self):
+    return [self]
+
+  def _to_tensor_list(self, value):
+    return [self._to_components(value)]
+
+  def _to_batched_tensor_list(self, value):
+    return self._to_tensor_list(value)
+
+  # TODO(b/202447704): Rename to __tf_tracing_type__ at protocol export.
+  def _tf_tracing_type(self, signature_context):
+    return ops.TensorType(signature_context, self.shape, self.dtype, self.name)
 
 
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?
@@ -262,25 +274,26 @@ class BoundedTensorSpec(TensorSpec):
     """
     super(BoundedTensorSpec, self).__init__(shape, dtype, name)
 
-    if minimum is None or maximum is None:
-      raise ValueError("minimum and maximum must be provided; but saw "
-                       "'%s' and '%s'" % (minimum, maximum))
+    if minimum is None:
+      raise ValueError("`minimum` can not be None.")
+    if maximum is None:
+      raise ValueError("`maximum` can not be None.")
 
     try:
       minimum_shape = np.shape(minimum)
       common_shapes.broadcast_shape(
           tensor_shape.TensorShape(minimum_shape), self.shape)
     except ValueError as exception:
-      raise ValueError("minimum is not compatible with shape. "
-                       "Message: {!r}.".format(exception))
+      raise ValueError(f"`minimum` {minimum} is not compatible with shape "
+                       f"{self.shape}. Original error: {exception!r}.")
 
     try:
       maximum_shape = np.shape(maximum)
       common_shapes.broadcast_shape(
           tensor_shape.TensorShape(maximum_shape), self.shape)
     except ValueError as exception:
-      raise ValueError("maximum is not compatible with shape. "
-                       "Message: {!r}.".format(exception))
+      raise ValueError(f"`maximum` {maximum} is not compatible with shape "
+                       f"{self.shape}. Original error: {exception!r}.")
 
     self._minimum = np.array(minimum, dtype=self.dtype.as_numpy_dtype)
     self._minimum.setflags(write=False)

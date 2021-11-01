@@ -99,8 +99,8 @@ func @kloop_fusion_with_dealloc(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>) 
   // CHECK: memref.dealloc %[[TMP5]] : memref<?x?xf32>
   // CHECK: memref.dealloc %[[TMP13]] : memref<?x?xf32>
   // CHECK: return %[[TMP9]], %[[TMP16]] : memref<?x?xf32>, memref<?x?xf32>
-  %c0 = constant 0 : index
-  %c1 = constant 1 : index
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
   %0 = shape.shape_of %arg0 : memref<?x?xf32> -> tensor<2xindex>
   %1 = tensor.extract %0[%c0] : tensor<2xindex>
   %2 = tensor.extract %0[%c1] : tensor<2xindex>
@@ -243,8 +243,8 @@ func @reduce_should_not_have_consumer_in_the_fusion(%arg0: memref<?x?xf32>, %arg
   // CHECK: "lmhlo.add"(%[[TMP9]], %[[TMP9]], %[[TMP12]]) : (memref<?xf32>, memref<?xf32>, memref<?xf32>) -> ()
   // CHECK: memref.dealloc %[[TMP9]] : memref<?xf32>
   // CHECK: return %[[TMP7]], %[[TMP12]] : memref<?x?xf32>, memref<?xf32>
-  %c1 = constant 1 : index
-  %c0 = constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c0 = arith.constant 0 : index
   %0 = shape.shape_of %arg0 : memref<?x?xf32> -> tensor<2xindex>
   %1 = tensor.extract %0[%c0] : tensor<2xindex>
   %2 = tensor.extract %0[%c1] : tensor<2xindex>

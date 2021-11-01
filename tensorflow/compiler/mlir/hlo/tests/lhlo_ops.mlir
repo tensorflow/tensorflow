@@ -189,15 +189,17 @@ func @convert_memref(%in: memref<10xf32>, %out: memref<9xi32>) -> () {
 // CHECK-SAME: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
 func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
   "lmhlo.convolution"(%arg0, %arg1, %arg2) {batch_group_count = 1 : i64,
-    dimension_numbers = {input_batch_dimension = 0 : i64,
-                         input_feature_dimension = 3 : i64,
-                         input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
-                         kernel_input_feature_dimension = 2 : i64,
-                         kernel_output_feature_dimension = 3 : i64,
-                         kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
-                         output_batch_dimension = 0 : i64,
-                         output_feature_dimension = 3 : i64,
-                         output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>},
+    dimension_numbers = #mhlo.conv<raw
+      input_batch_dimension = 0,
+      input_feature_dimension = 3,
+      input_spatial_dimensions = [1, 2],
+      kernel_input_feature_dimension = 2,
+      kernel_output_feature_dimension = 3,
+      kernel_spatial_dimensions = [0, 1],
+      output_batch_dimension = 0,
+      output_feature_dimension = 3,
+      output_spatial_dimensions = [1, 2],
+    >,
     feature_group_count = 1 : i64,
     padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
     rhs_dilation = dense<[1, 2]> : tensor<2xi64>,
@@ -307,7 +309,7 @@ func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2:
 // -----
 
 func @convolution(%arg0: memref<2x2x3x4xf32>, %arg1: memref<3x5x5x3xf32>, %arg2: memref<3x5x5x4xf32>) {
-  // expected-error@+3{{Expected array with2 elements, got 3 elements instead}}
+  // expected-error@+3{{Expected array with 2 elements, got 3 elements instead}}
   lmhlo.convolution(%arg0, %arg1, %arg2)
      dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
      window = {stride = [2, 1], pad = [[0, 1, 2], [0, 1]], rhs_dilate = [1, 2]}
@@ -1122,12 +1124,12 @@ func @scatter_memrefs(%input: memref<200x100x300xf32>, %indices: memref<10x2xi32
     %add = mhlo.add %lhs, %rhs : tensor<f32>
     "mhlo.return"(%add) : (tensor<f32>) -> ()
   }) {
-    scatter_dimension_numbers = {
-      update_window_dims = dense<[1]> : tensor<1xi64>,
-      inserted_window_dims = dense<[0, 1]> : tensor<2xi64>,
-      scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>,
-      index_vector_dim = 1 : i64
-    },
+    scatter_dimension_numbers = #mhlo.scatter<
+      inserted_window_dims = [0, 1],
+      index_vector_dim = 1,
+      update_window_dims = [1],
+      scatter_dims_to_operand_dims = [0, 1],
+    >,
     indices_are_sorted = true,
     unique_indices = true
   } : (memref<200x100x300xf32>, memref<10x2xi32>, memref<10x300xf32>, memref<200x100x300xf32>) -> ()

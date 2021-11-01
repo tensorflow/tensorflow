@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -41,7 +38,7 @@ class SparseMaskTest(test.TestCase):
       indices_tensor = ops.convert_to_tensor(indices)
       mask_indices_tensor = ops.convert_to_tensor(mask_indices)
 
-      t = ops.IndexedSlices(values_tensor, indices_tensor)
+      t = indexed_slices.IndexedSlices(values_tensor, indices_tensor)
       masked_t = array_ops.sparse_mask(t, mask_indices_tensor)
 
       tf_out_values, tf_out_indices = sess.run(

@@ -42,9 +42,17 @@ struct ConvAutotuneGroup {
   static string name() { return "Conv"; }
 };
 
-typedef AutotuneSingleton<ConvAutotuneGroup, ConvParameters,
-                          se::dnn::AlgorithmConfig>
-    AutotuneConv;
+using ConvAutotuneMap = AutotuneSingleton<ConvAutotuneGroup, ConvParameters,
+                                          AutotuneEntry<se::dnn::ConvOp>>;
+
+// A dummy type to group fused convolution autotune results together.
+struct ConvFusedAutotuneGroup {
+  static string name() { return "FusedConv"; }
+};
+
+using FusedConvAutotuneMap =
+    AutotuneSingleton<ConvAutotuneGroup, ConvParameters,
+                      AutotuneEntry<se::dnn::FusedConvOp>>;
 
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

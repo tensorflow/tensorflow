@@ -14,10 +14,6 @@
 # ========================================================================
 """Functional tests for deterministic SparseTensorDenseMatMul."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 
 import numpy as np
@@ -132,5 +128,5 @@ class SparseTensorDenseMatmulOpDeterministicTest(test.TestCase):
 
 if __name__ == "__main__":
   # TODO(reedwm): Merge this file with sparse_tensor_dense_matmul_test.py
-  config.enable_deterministic_ops(True)
+  config.enable_op_determinism()
   test.main()

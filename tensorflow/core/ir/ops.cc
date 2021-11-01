@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/ir/ops.h"
 
 #include <cstdint>
+#include <memory>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -110,7 +111,7 @@ struct TFGraphOpAsmInterface : public OpAsmDialectInterface {
 // Dialect construction: there is one instance per context and it registers its
 // operations, types, and interfaces here.
 void TFGraphDialect::initialize() {
-  getContext()->getOrLoadDialect<TFTypeDialect>();
+  getContext()->getOrLoadDialect<tf_type::TFTypeDialect>();
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/core/ir/ops.cc.inc"
@@ -134,103 +135,104 @@ void TFGraphDialect::initialize() {
 //   tfg.OpName(%input1, %input2, %input3) [%control_dep1, %control_dep2]
 //           name("<node_name>") device("<device>") { attribute-dict } :
 //           (input types) -> (result_types)
-LogicalResult TFGraphDialect::printOperation(Operation *op,
-                                             OpAsmPrinter &printer) const {
-  raw_ostream &os = printer.getStream();
-  ControlType control_ty = ControlType::get(getContext());
+llvm::unique_function<void(Operation *, OpAsmPrinter &)>
+TFGraphDialect::getOperationPrinter(Operation *op) const {
+  return [this](Operation *op, OpAsmPrinter &printer) {
+    raw_ostream &os = printer.getStream();
+    ControlType control_ty = this->control_ty_;
 
-  // Check that all control dependencies are after the regular values,
-  // otherwise print the generic form. We don't expect this to happen but we're
-  // defensive in the printer since this may happen in "hard-to-debug" issues.
-  {
-    bool has_control_dep = false;
-    for (Value operand : op->getOperands()) {
-      if (operand.getType() == control_ty) {
-        has_control_dep = true;
-        continue;
+    // Check that all control dependencies are after the regular values,
+    // otherwise print the generic form. We don't expect this to happen but
+    // we're defensive in the printer since this may happen in "hard-to-debug"
+    // issues.
+    {
+      bool has_control_dep = false;
+      for (Value operand : op->getOperands()) {
+        if (operand.getType() == control_ty) {
+          has_control_dep = true;
+          continue;
+        }
+        if (has_control_dep) {
+          printer.printGenericOp(op);
+          return;
+        }
       }
-      if (has_control_dep) {
-        printer.printGenericOp(op);
-        return success();
+      has_control_dep = false;
+      for (Value result : op->getResults()) {
+        if (result.getType() == control_ty) {
+          has_control_dep = true;
+          continue;
+        }
+        if (has_control_dep) {
+          printer.printGenericOp(op);
+          return;
+        }
       }
     }
-    has_control_dep = false;
-    for (Value result : op->getResults()) {
-      if (result.getType() == control_ty) {
-        has_control_dep = true;
-        continue;
-      }
-      if (has_control_dep) {
-        printer.printGenericOp(op);
-        return success();
-      }
-    }
-  }
 
-  os << op->getName().getStringRef();
-
-  // Print the inputs (other than the control dependencies), if any.
-  if (llvm::any_of(op->getOperandTypes(),
-                   [&](Type ty) { return ty != control_ty; })) {
-    os << "(";
-    llvm::interleaveComma(
-        llvm::make_filter_range(
-            op->getOperands(),
-            [&](Value operand) { return operand.getType() != control_ty; }),
-        os, [&](Value operand) { printer.printOperand(operand); });
-    os << ")";
-  }
-  // Print the control dependencies (if any).
-  if (llvm::any_of(op->getOperands(), [&](Value operand) {
-        return operand.getType() == control_ty;
-      })) {
-    os << " [";
-    llvm::interleaveComma(
-        llvm::make_filter_range(
-            op->getOperands(),
-            [&](Value operand) { return operand.getType() == control_ty; }),
-        os, [&](Value operand) { printer.printOperand(operand); });
-    os << "]";
-  }
-
-  // Handles the optional "device" and "name" attribute.
-  ArrayRef<llvm::StringRef> keywords{"_mlir_device", "_mlir_assigned_device",
-                                     "_mlir_name"};
-  for (StringRef keyword : keywords) {
-    if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword))
-      if (!value_attr.getValue().empty())
-        os << " " << keyword.drop_front(/*len(_mlir_)*/ 6) << "(\""
-           << value_attr.getValue() << "\")";
-  }
-
-  // Print attributes (other than name and device).
-  printer.printOptionalAttrDict(op->getAttrs(), keywords);
-
-  // Print the type, but omit control dependencies.
-  // If there is a single control return, just print the list of input types,
-  // otherwise print the complete type in a "function-style" way: (operands) ->
-  // (results).
-  auto is_not_control_dep = [&](Type t) { return t != control_ty; };
-  if (isa<ReturnOp>(op) ||
-      (op->getNumResults() == 1 && op->getResult(0).getType() == control_ty)) {
-    if (llvm::any_of(op->getOperandTypes(), is_not_control_dep)) {
-      os << " : ";
+    // Print the inputs (other than the control dependencies), if any.
+    if (llvm::any_of(op->getOperandTypes(),
+                     [&](Type ty) { return ty != control_ty; })) {
+      os << "(";
       llvm::interleaveComma(
-          make_filter_range(op->getOperandTypes(), is_not_control_dep), os);
-    }
-  } else {
-    if (op->getNumResults() > 1 ||
-        llvm::any_of(op->getOperandTypes(), is_not_control_dep)) {
-      os << " : (";
-      llvm::interleaveComma(
-          make_filter_range(op->getOperandTypes(), is_not_control_dep), os);
-      os << ") -> (";
-      llvm::interleaveComma(
-          make_filter_range(op->getResultTypes(), is_not_control_dep), os);
+          llvm::make_filter_range(
+              op->getOperands(),
+              [&](Value operand) { return operand.getType() != control_ty; }),
+          os, [&](Value operand) { printer.printOperand(operand); });
       os << ")";
     }
-  }
-  return success();
+    // Print the control dependencies (if any).
+    if (llvm::any_of(op->getOperands(), [&](Value operand) {
+          return operand.getType() == control_ty;
+        })) {
+      os << " [";
+      llvm::interleaveComma(
+          llvm::make_filter_range(
+              op->getOperands(),
+              [&](Value operand) { return operand.getType() == control_ty; }),
+          os, [&](Value operand) { printer.printOperand(operand); });
+      os << "]";
+    }
+
+    // Handles the optional "device" and "name" attribute.
+    ArrayRef<llvm::StringRef> keywords{"_mlir_device", "_mlir_assigned_device",
+                                       "_mlir_name"};
+    for (StringRef keyword : keywords) {
+      if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword))
+        if (!value_attr.getValue().empty())
+          os << " " << keyword.drop_front(/*len(_mlir_)*/ 6) << "(\""
+             << value_attr.getValue() << "\")";
+    }
+
+    // Print attributes (other than name and device).
+    printer.printOptionalAttrDict(op->getAttrs(), keywords);
+
+    // Print the type, but omit control dependencies.
+    // If there is a single control return, just print the list of input types,
+    // otherwise print the complete type in a "function-style" way: (operands)
+    // -> (results).
+    auto is_not_control_dep = [&](Type t) { return t != control_ty; };
+    if (isa<ReturnOp>(op) || (op->getNumResults() == 1 &&
+                              op->getResult(0).getType() == control_ty)) {
+      if (llvm::any_of(op->getOperandTypes(), is_not_control_dep)) {
+        os << " : ";
+        llvm::interleaveComma(
+            make_filter_range(op->getOperandTypes(), is_not_control_dep), os);
+      }
+    } else {
+      if (op->getNumResults() > 1 ||
+          llvm::any_of(op->getOperandTypes(), is_not_control_dep)) {
+        os << " : (";
+        llvm::interleaveComma(
+            make_filter_range(op->getOperandTypes(), is_not_control_dep), os);
+        os << ") -> (";
+        llvm::interleaveComma(
+            make_filter_range(op->getResultTypes(), is_not_control_dep), os);
+        os << ")";
+      }
+    }
+    return;
+  };
 }
 
 // Parse an operation that belongs to this dialect, if unregistered.
@@ -347,7 +349,7 @@ static bool verifyGenericTFGOperation(Operation &op) {
 //===----------------------------------------------------------------------===//
 
 static void printGraphOp(OpAsmPrinter &p, GraphOp op) {
-  p << "tfg.graph " << op.version();
+  p << " " << op.version();
   p.printOptionalAttrDictWithKeyword(op->getAttrs(), {"version"});
   p.printRegion(op.getBodyRegion());
 }
@@ -531,7 +533,7 @@ static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
   // for the control dependency.
   if (parser.parseLParen()) return failure();
   Type control_ty = ControlType::get(builder.getContext());
-  SmallVector<std::string> control_operand_names;
+  SmallVector<std::unique_ptr<std::string>> control_operand_names;
 
   // Helper to parse a single argument and its attributes.
   auto parse_argument = [&]() -> ParseResult {
@@ -553,8 +555,9 @@ static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
     //   TFGraphOpAsmInterface::getAsmBlockArgumentNames()
     // at the top of this file.
     OpAsmParser::OperandType control_operand = entry_args.back();
-    control_operand_names.emplace_back((control_operand.name + ".ctl").str());
-    control_operand.name = control_operand_names.back();
+    control_operand_names.emplace_back(
+        std::make_unique<std::string>((control_operand.name + ".ctl").str()));
+    control_operand.name = *control_operand_names.back();
     entry_args.push_back(control_operand);
     arg_types.push_back(control_ty);
     arg_attrs.push_back(DictionaryAttr::get(context));
@@ -621,7 +624,7 @@ static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
 
 static void printGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
   // Print the operation and the function name.
-  p << "tfg.func ";
+  p << " ";
   if (op.generic()) p << "generic ";
   auto funcName =
       op->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
@@ -678,6 +681,21 @@ static void printGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
   }
   // Print body.
   p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
+}
+
+GraphFuncOp GraphFuncOp::getCalledFunction(Operation *op,
+                                           SymbolTable &symbol_table) {
+  // Check if a node does indirect function call via PartitionedCallOp.
+  // TODO(aminim): consider replacing with isa<...> when possible.
+  if (op->getName().getStringRef() == "tfg.PartitionCall" ||
+      op->getName().getStringRef() == "tfg.StatefulPartitionedCall") {
+    auto func_attr = op->getAttrOfType<FuncAttr>("f");
+    if (!func_attr) return {};
+    GraphFuncOp callee = symbol_table.lookup<GraphFuncOp>(
+        func_attr.getName().getLeafReference());
+    if (callee) return callee;
+  }
+  return symbol_table.lookup<GraphFuncOp>(op->getName().stripDialect());
 }
 
 }  // namespace tfg

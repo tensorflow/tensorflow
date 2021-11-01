@@ -427,6 +427,8 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   bool using_increasing_prefetch_time_iterator_ = true;
   int64_t increasing_prefetch_time_iterator_;
   int64_t decreasing_prefetch_time_iterator_;
+
+  std::vector<float> while_execution_counts_;
 };
 
 // MemorySpaceAssignment assigns memory spaces (default or alternate) to each
@@ -900,13 +902,6 @@ class MemorySpaceAssignment {
   // the HLO graph with the determined memory spaces.
   Status ExportAndColorBuffers();
 
-  // Insert an instruction to the schedule, and make sure its dependencies
-  // (operands) are already in the schedule. If not, insert these operands
-  // before the instruction.
-  void EnsureInstructionAndOperandsInserted(
-      HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
-      absl::flat_hash_set<HloInstruction*>* inserted_instructions) const;
-
   // Schedules asynchronous copies and ensures that the CopyStarts and their
   // corresponding CopyDones follow the same order.
   void ScheduleAsynchronousCopies();
@@ -1046,6 +1041,10 @@ struct Options {
   // Enable cross-program prefetch freeing optimization where the
   // cross-program-prefetched buffer can be reused.
   bool enable_cross_program_prefetch_freeing = true;
+
+  // An optional memory space assignment autotuning config, which is used
+  // to sort allocated buffers.
+  absl::optional<std::vector<uint64_t>> autotuning_config = absl::nullopt;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -1513,6 +1512,10 @@ class AlternateMemoryBestFitHeap
       required_assignments_;
   // Number of bytes reserved in alternate memory space.
   int64_t reserved_in_bytes_ = 0;
+  // A rough measure of the memory pressure of the model, in bytes. Note that
+  // this is pressure for memory capacity (and not accessed bytes), and for
+  // alternate memory (not default memory).
+  int64_t memory_pressure_ = 0;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;

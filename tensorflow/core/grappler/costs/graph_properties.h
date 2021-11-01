@@ -122,12 +122,7 @@ class GraphProperties {
   Status InferFromCostGraph(const CostGraphDef& cost_graph);
 
   // Stores `item_.graph` with the inferred output shapes to `output_graph_def`.
-  Status AnnotateOutputShapes(GraphDef* output_graph_def,
-                              bool allow_symbolic_shapes) const;
-
-  Status AnnotateOutputShapes(GraphDef* output_graph_def) const {
-    return AnnotateOutputShapes(output_graph_def, false);
-  }
+  Status AnnotateOutputShapes(GraphDef* output_graph_def) const;
 
   // Return the properties of node inputs/outputs, including data types and
   // shapes. Note that the dimensions in the shapes can be negative. We use the
@@ -155,6 +150,12 @@ class GraphProperties {
   bool CheckShapeIncompatible(const string& node_name) const {
     return incompatible_shape_nodes_.find(node_name) !=
            incompatible_shape_nodes_.end();
+  }
+
+  // Clear all infered properties.
+  void Clear() {
+    input_properties_.clear();
+    output_properties_.clear();
   }
 
  private:

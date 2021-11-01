@@ -1,6 +1,6 @@
 [//tensorflow/python/util:cpp_python_util] # util tfe
-tensorflow::swig::IsSequence
-tensorflow::swig::IsSequenceOrComposite
+tensorflow::swig::IsNested
+tensorflow::swig::IsNestedOrComposite
 tensorflow::swig::IsCompositeTensor
 tensorflow::swig::IsTypeSpec
 tensorflow::swig::IsNamedtuple
@@ -118,6 +118,7 @@ toco::MlirQuantizeModel
 toco::MlirSparsifyModel
 toco::RegisterCustomOpdefs
 toco::RetrieveCollectedErrors
+toco::FlatBufferFileToMlir
 
 [//tensorflow/tools/graph_transforms:transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph

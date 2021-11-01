@@ -26,10 +26,6 @@ The main responsibilities of this file are:
     test with a fresh local directory in $TEST_TMPDIR.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 import importlib
 import os
@@ -86,8 +82,10 @@ def calculate_parent_python_path(test_filepath):
   # We find the last occurrence of bazel_repo_root, and drop everything before.
   split_path = test_filepath.rsplit(FLAGS.bazel_repo_root, 1)
   if len(split_path) < 2:
-    raise ValueError('Filepath "%s" does not contain repo root "%s"' %
-                     (test_filepath, FLAGS.bazel_repo_root))
+    raise ValueError(
+        f'Filepath "{test_filepath}" does not contain repo root "{FLAGS.bazel_repo_root}"'
+    )
+
   path = FLAGS.bazel_repo_root + split_path[1]
 
   # We drop the last portion of the path, which is the name of the test wrapper.
@@ -174,8 +172,8 @@ def run_user_main(wrapped_test_module):
       break
   else:
     raise NotImplementedError(
-        'Could not find `if __name__ == "main":` block in %s.' %
-        wrapped_test_module.__name__)
+        f'Could not find `if __name__ == "main":` block in {wrapped_test_module.__name__}.'
+        )
 
   # expr is defined because we would have raised an error otherwise.
   new_ast = ast.Module(body=expr.body, type_ignores=[])  # pylint:disable=undefined-loop-variable

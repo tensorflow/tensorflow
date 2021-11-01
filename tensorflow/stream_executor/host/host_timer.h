@@ -29,10 +29,10 @@ class HostTimer : public internal::TimerInterface {
   ~HostTimer() override {}
 
   // Begins the timer at the present point in the stream.
-  bool Start(Stream *stream);
+  bool Start(Stream* stream);
 
   // Stops the timer at the present point in the stream.
-  bool Stop(Stream *stream);
+  bool Stop(Stream* stream);
 
   // Returns the most recent value recorded for a start/stopcycle, in
   // microseconds.

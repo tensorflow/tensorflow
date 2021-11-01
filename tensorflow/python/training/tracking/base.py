@@ -13,10 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import collections
 
@@ -30,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import registration
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
@@ -275,12 +272,10 @@ class CheckpointPosition(object):
       checkpoint.object_by_proto_id[self._proto_id] = trackable
       for deferred_slot_restoration in (
           checkpoint.deferred_slot_restorations.pop(self._proto_id, ())):
-        trackable._create_or_restore_slot_variable(  # pylint: disable=protected-access
-            slot_variable_position=CheckpointPosition(
-                checkpoint=checkpoint,
-                proto_id=deferred_slot_restoration.slot_variable_id),
-            variable=deferred_slot_restoration.original_variable,
-            slot_name=deferred_slot_restoration.slot_name)
+        self._queue_slot_variable_for_restoration(
+            trackable, deferred_slot_restoration.original_variable,
+            deferred_slot_restoration.slot_variable_id,
+            deferred_slot_restoration.slot_name)
       for slot_restoration in checkpoint.slot_restorations.pop(
           self._proto_id, ()):
         optimizer_object = checkpoint.object_by_proto_id.get(
@@ -300,12 +295,9 @@ class CheckpointPosition(object):
         # it would not have the optimizer's `_create_or_restore_slot_variable`
         # method.
         elif hasattr(optimizer_object, "_create_or_restore_slot_variable"):
-          optimizer_object._create_or_restore_slot_variable(  # pylint: disable=protected-access
-              slot_variable_position=CheckpointPosition(
-                  checkpoint=checkpoint,
-                  proto_id=slot_restoration.slot_variable_id),
-              variable=trackable,
-              slot_name=slot_restoration.slot_name)
+          self._queue_slot_variable_for_restoration(
+              optimizer_object, trackable, slot_restoration.slot_variable_id,
+              slot_restoration.slot_name)
       return True  # New assignment
     else:
       # The object was already mapped for this checkpoint load, which means
@@ -313,13 +305,13 @@ class CheckpointPosition(object):
       # consistent (if the dependency DAG is not a tree then there are
       # multiple paths to the same object).
       if current_assignment is not trackable:
-        logging.warning((
+        logging.warning(
             "Inconsistent references when loading the checkpoint into this "
-            "object graph. Either the Trackable object references in the "
-            "Python program have changed in an incompatible way, or the "
-            "checkpoint was generated in an incompatible program.\n\nTwo "
-            "checkpoint references resolved to different objects (%s and %s)."),
-                        current_assignment, trackable)
+            "object graph. For example, in the saved checkpoint object, "
+            "`model.layer.weight` and `model.layer_copy.weight` reference the "
+            "same variable, while in the current object these are two different"
+            " variables. The referenced variables are:"
+            f"({current_assignment} and {trackable}).")
       return False  # Not a new assignment
 
   def is_simple_variable(self):
@@ -450,6 +442,9 @@ class CheckpointPosition(object):
       A list of operations when graph building, or an empty list when executing
       eagerly.
     """
+    if self._has_registered_saver():
+      raise ValueError("Unable to run individual checkpoint restore for objects"
+                       " with registered savers.")
     (restore_ops, tensor_saveables,
      python_saveables) = self.gather_ops_or_named_saveables()
     restore_ops.extend(
@@ -485,6 +480,54 @@ class CheckpointPosition(object):
       if serialized_tensor.name == VARIABLE_VALUE_KEY:
         return self._checkpoint.shape_map[serialized_tensor.checkpoint_key]
     return None
+
+  def _has_registered_saver(self):
+    return bool(self.object_proto.registered_saver.name)
+
+  def get_registered_saver_name(self):
+    if self._has_registered_saver():
+      saver_name = self.object_proto.registered_saver.name
+      registration.validate_restore_function(self.trackable, saver_name)
+      return saver_name
+    return None
+
+  def _queue_slot_variable_for_restoration(self, optimizer_object, variable,
+                                           slot_variable_id, slot_name):
+    """Adds a slot variable onto the restoration queue.
+
+    See comment on slot_restoration_tensor_saveables in
+    _CheckpointRestoreCoordinator.__init__ for more information.
+
+    Args:
+      optimizer_object: Optimizer that owns the slot variable.
+      variable: Variable associated with the slot variable.
+      slot_variable_id: ID of the slot variable.
+      slot_name: Name of the slot variable.
+    """
+    slot_variable_position = CheckpointPosition(
+        checkpoint=self.checkpoint, proto_id=slot_variable_id)
+    # pylint: disable=protected-access
+    slot_variable = optimizer_object._create_or_restore_slot_variable(
+        slot_variable_position=slot_variable_position,
+        variable=variable,
+        slot_name=slot_name)
+    # pylint: enable=protected-access
+    if slot_variable is None:
+      # The optimizer returns None if the restore should not be done (yet).
+      return
+    slot_variable_position.checkpoint.object_by_proto_id[
+        slot_variable_id] = slot_variable
+    # pylint: disable=protected-access
+    slot_variable._maybe_initialize_trackable()
+    slot_variable._self_update_uid = self.checkpoint.restore_uid
+    # pylint: enable=protected-access
+    # Since this is a slot variable, there will be no new python_saveables, so
+    # ignore that return value.
+    new_restore_ops, new_tensor_saveables, _ = (
+        slot_variable_position.gather_ops_or_named_saveables())
+    self.checkpoint.new_restore_ops(new_restore_ops)
+    self.checkpoint.slot_restoration_tensor_saveables.update(
+        new_tensor_saveables)
 
 
 _DeferredSlotVariableRestoration = collections.namedtuple(
@@ -896,8 +939,9 @@ class Trackable(object):
     """
     self._maybe_initialize_trackable()
     if not isinstance(trackable, Trackable):
-      raise TypeError(("Trackable._track_trackable() passed type %s, not a "
-                       "Trackable.") % (type(trackable),))
+      raise TypeError(
+          "Trackable._track_trackable() can only be used to track objects of "
+          f"type Trackable. Got type {type(trackable)}.")
     if not getattr(self, "_manual_tracking", True):
       return trackable
     new_reference = TrackableReference(name=name, ref=trackable)
@@ -905,9 +949,9 @@ class Trackable(object):
     if (current_object is not None and current_object is not trackable):
       if not overwrite:
         raise ValueError(
-            ("Called Trackable._track_trackable() with name='%s', "
-             "but a Trackable with this name is already declared as a "
-             "dependency. Names must be unique (or overwrite=True).") % (name,))
+            f"Called Trackable._track_trackable() with name='{name}', "
+            "but a Trackable with this name is already declared as a "
+            "dependency. Names must be unique (or overwrite=True).")
       # This is a weird thing to do, but we're not going to stop people from
       # using __setattr__.
       for index, (old_name, _) in enumerate(
@@ -969,23 +1013,55 @@ class Trackable(object):
     restore_ops = []
     tensor_saveables = {}
     python_saveables = []
+    registered_savers = collections.defaultdict(dict)
     while visit_queue:
       current_position = visit_queue.popleft()
-      new_restore_ops, new_tensor_saveables, new_python_saveables = (
-          current_position.trackable  # pylint: disable=protected-access
-          ._single_restoration_from_checkpoint_position(
-              checkpoint_position=current_position,
-              visit_queue=visit_queue))
-      restore_ops.extend(new_restore_ops)
-      tensor_saveables.update(new_tensor_saveables)
-      python_saveables.extend(new_python_saveables)
+      trackable = current_position.trackable
+
+      # Restore using the ops defined in a Saveable or registered function.
+      registered_saver = current_position.get_registered_saver_name()
+      if registered_saver:
+        object_name = (
+            current_position.object_proto.registered_saver.object_name)
+        registered_savers[registered_saver][object_name] = trackable
+        trackable._self_update_uid = current_position.checkpoint.restore_uid  # pylint: disable=protected-access
+      else:
+        new_restore_ops, new_tensor_saveables, new_python_saveables = (
+            trackable._single_restoration_from_checkpoint_position(  # pylint: disable=protected-access
+                current_position))
+        restore_ops.extend(new_restore_ops)
+        tensor_saveables.update(new_tensor_saveables)
+        python_saveables.extend(new_python_saveables)
+
+      _queue_children_for_restoration(current_position, visit_queue)
+
+    # Restore slot variables first.
+    #
+    # Order matters because tensor_saveables from above may contain "saveables"
+    # with side effects that expect the restored slot variable values.
+    #
+    # It is faster to restore slot variables separately because the file reader
+    # (BundleReader) assumes that variables are stored on disk in alphabetical
+    # order. However, slot variables are stored in their own groups after other
+    # variables, and while each group is alphabetically sorted, merging them
+    # into 1 read would cause lots of back and forth seeking, e.g.
+    #   variable/1 @ offset 0,
+    #   variable/1/slot/1 @ offset 100,
+    #   variable/1/slot/2 @ offset 200,
+    #   variable/2 @ offset 1,
+    #   variable/2/slot/1 @ offset 101, ...
     restore_ops.extend(
         current_position.checkpoint.restore_saveables(
-            tensor_saveables, python_saveables))
+            current_position.checkpoint.slot_restoration_tensor_saveables, []))
+    current_position.checkpoint.slot_restoration_tensor_saveables.clear()
+
+    restore_ops.extend(
+        current_position.checkpoint.restore_saveables(tensor_saveables,
+                                                      python_saveables,
+                                                      registered_savers))
     return restore_ops
 
-  def _single_restoration_from_checkpoint_position(self, checkpoint_position,
-                                                   visit_queue):
+  def _single_restoration_from_checkpoint_position(self, checkpoint_position):
     """Restore this object, and either queue its dependencies or defer them."""
     self._maybe_initialize_trackable()
     checkpoint = checkpoint_position.checkpoint
@@ -1000,22 +1076,6 @@ class Trackable(object):
       restore_ops = ()
       tensor_saveables = {}
       python_saveables = ()
-    for child in checkpoint_position.object_proto.children:
-      child_position = CheckpointPosition(
-          checkpoint=checkpoint, proto_id=child.node_id)
-      local_object = self._lookup_dependency(child.local_name)
-      if local_object is None:
-        # We don't yet have a dependency registered with this name. Save it
-        # in case we do.
-        self._deferred_dependencies.setdefault(child.local_name,
-                                               []).append(child_position)
-      else:
-        if child_position.bind_object(trackable=local_object):
-          # This object's correspondence is new, so dependencies need to be
-          # visited. Delay doing it so that we get a breadth-first dependency
-          # resolution order (shallowest paths first). The caller is responsible
-          # for emptying visit_queue.
-          visit_queue.append(child_position)
     return restore_ops, tensor_saveables, python_saveables
 
   def _gather_saveables_for_checkpoint(self):
@@ -1205,6 +1265,8 @@ class Trackable(object):
       **kwargs: Keyword arguments passed to the object when loading. As of now,
         the only supported kwarg is:
         * proto: A `google.protobuf.Any` proto read from the SavedModel.
+        * dependencies: A dictionary mapping names to dependencies (see
+          `_deserialization_dependencies`).
 
     Returns:
       A new object.
@@ -1238,3 +1300,55 @@ class Trackable(object):
       value: The child `Trackable` object.
     """
     self._track_trackable(value, name, overwrite=True)
+
+  def _deserialization_dependencies(self):
+    """Returns a dictionary containing `Trackables` that this object depends on.
+
+    Dependencies define the order to serialize and deserialize objects in the
+    SavedModel. For example:
+
+    class A(Trackable):
+      b = B()
+      def _deserialization_dependencies(self):
+        return {'b': self.b}
+
+    class B(Trackable):
+      pass
+
+    We say that object `a=A()` depends on `a.b`.
+
+    Dependencies are guaranteed to be serialized and deserialized before the
+    object depending on them. The following methods use dependencies:
+      - `_deserialize_from_proto` [loading]
+
+    SavedModel loads with the bottom-up approach, by first creating all objects
+    (in the order defined by the dependencies), then connecting the children.
+
+    Returns:
+      A dictionary mapping names to `Trackable` dependencies. All trackables
+      returned must also be in the `_checkpoint_dependencies` dict.
+    """
+    return {}
+
+
+def _queue_children_for_restoration(checkpoint_position, visit_queue):
+  """Queues the restoration of trackable's children or defers them."""
+  # pylint: disable=protected-access
+  trackable = checkpoint_position.trackable
+  checkpoint = checkpoint_position.checkpoint
+  for child in checkpoint_position.object_proto.children:
+    child_position = CheckpointPosition(
+        checkpoint=checkpoint, proto_id=child.node_id)
+    local_object = trackable._lookup_dependency(child.local_name)
+    if local_object is None:
+      # We don't yet have a dependency registered with this name. Save it
+      # in case we do.
+      trackable._deferred_dependencies.setdefault(child.local_name,
+                                                  []).append(child_position)
+    else:
+      if child_position.bind_object(trackable=local_object):
+        # This object's correspondence is new, so dependencies need to be
+        # visited. Delay doing it so that we get a breadth-first dependency
+        # resolution order (shallowest paths first). The caller is responsible
+        # for emptying visit_queue.
+        visit_queue.append(child_position)

@@ -64,8 +64,10 @@ class HloDataflowAnalysisTest : public HloTestBase,
                                     const ShapeIndex& index = {}) {
     CHECK(analysis_ != nullptr);
     std::vector<HloValue> values;
-    for (const HloValue* value :
-         analysis_->GetValueSet(instruction, index).values()) {
+    const auto& analysis_values =
+        analysis_->GetValueSet(instruction, index).values();
+    values.reserve(analysis_values.size());
+    for (const HloValue* value : analysis_values) {
       values.push_back(*value);
     }
     return values;
@@ -2067,7 +2069,7 @@ TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDone) {
     }
     ENTRY entry {
       p0 = f32[2] parameter(0)
-      start = (f32[2], f32[2]) all-reduce-start(p0), to_apply=add
+      start = f32[2] all-reduce-start(p0), to_apply=add
       ROOT done = f32[2] all-reduce-done(start)
     }
   )";
@@ -2082,14 +2084,12 @@ TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDone) {
   HloInstruction* param0 = start->mutable_operand(0);
 
   EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{}));
-  EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{1}));
-  EXPECT_FALSE(analysis->ValueIsDefinedAt(start, /*index=*/{0}));
   EXPECT_FALSE(analysis->ValueIsDefinedAt(done));
 
   EXPECT_THAT(analysis->GetValueDefinedAt(param0).uses(),
-              UnorderedElementsAre(HloUse{start, 0, {}}, HloUse{done, 0, {0}}));
-  EXPECT_THAT(analysis->GetValueDefinedAt(start, {1}).uses(),
-              UnorderedElementsAre(HloUse{done, 0, {1}}));
+              UnorderedElementsAre(HloUse{start, 0, {}}));
+  EXPECT_THAT(analysis->GetValueDefinedAt(start).uses(),
+              UnorderedElementsAre(HloUse{done, 0, {}}));
 }
 
 TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDoneTwoOperands) {
@@ -2103,7 +2103,7 @@ TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDoneTwoOperands) {
     ENTRY entry {
       p0 = f32[2] parameter(0)
       p1 = f32[2] parameter(1)
-      start = ((f32[2], f32[2]), (f32[2], f32[2])) all-reduce-start(p0, p1), to_apply=add
+      start = (f32[2], f32[2]) all-reduce-start(p0, p1), to_apply=add
       ROOT done = (f32[2], f32[2]) all-reduce-done(start)
     }
   )";
@@ -2119,20 +2119,16 @@ TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDoneTwoOperands) {
   HloInstruction* param1 = start->mutable_operand(1);
 
   EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{}));
+  EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{0}));
   EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{1}));
-  EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{1, 0}));
-  EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{1, 1}));
-  EXPECT_FALSE(analysis->ValueIsDefinedAt(start, /*index=*/{0}));
   EXPECT_FALSE(analysis->ValueIsDefinedAt(done));
 
-  EXPECT_THAT(
-      analysis->GetValueDefinedAt(param0).uses(),
-      UnorderedElementsAre(HloUse{start, 0, {}}, HloUse{done, 0, {0, 0}}));
-  EXPECT_THAT(
-      analysis->GetValueDefinedAt(param1).uses(),
-      UnorderedElementsAre(HloUse{start, 1, {}}, HloUse{done, 0, {0, 1}}));
-  EXPECT_THAT(analysis->GetValueDefinedAt(start, {1}).uses(),
-              UnorderedElementsAre(HloUse{done, 0, {1}}));
+  EXPECT_THAT(analysis->GetValueDefinedAt(param0).uses(),
+              UnorderedElementsAre(HloUse{start, 0, {}}));
+  EXPECT_THAT(analysis->GetValueDefinedAt(param1).uses(),
+              UnorderedElementsAre(HloUse{start, 1, {}}));
+  EXPECT_THAT(analysis->GetValueDefinedAt(start, {}).uses(),
+              UnorderedElementsAre(HloUse{done, 0, {}}));
 }
 
 INSTANTIATE_TEST_SUITE_P(HloDataflowAnalysisInstantiation,

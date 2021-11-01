@@ -25,6 +25,8 @@ package tensorflow;
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/stream_executor/dnn.proto";
 
+// LINT.IfChange
+
 // This is the underlying data structure of class ConvParameters, which are used
 // as the keys in cuDNN autotuning maps for retrieving corresponding cuDNN
 // algorithms. This is used as a serialization format for saving/loading
@@ -44,7 +46,8 @@ message ConvParametersProto {
     // TODO(b/177365158) Remove this field once these two operations are merged.
     bool is_contrib = 1;
     stream_executor.dnn.ActivationMode activation_mode = 2;
-    bool has_side_input = 3;
+    double conv_scale = 3;
+    double side_input_scale = 4;
   }
   int64 batch = 1;
   int64 in_depths = 2;
@@ -63,4 +66,14 @@ message ConvParametersProto {
   // 2080.
   string device_identifier = 12;
   Fusion fusion = 13;
+  // The version number of ConvParameters class. Offline autotune results
+  // whose version number is different from the runtime's version number
+  // (defined in ConvParameters::kVersion) will be rejected and ignored by
+  // LoadSerializedAutotuneMaps. This ensures that we will not load out-of-date
+  // autotune results.
+  int32 version = 14;
 }
+
+//  LINT.ThenChange(
+//  "conv_parameters.h:conv_parameters_version"
+//  )

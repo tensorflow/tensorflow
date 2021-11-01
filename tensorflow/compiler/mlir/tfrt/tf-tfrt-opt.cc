@@ -43,6 +43,7 @@ int main(int argc, char **argv) {
   mlir::registerAllDialects(registry);
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::shape::ShapeDialect>();
+  registry.insert<mlir::mhlo::MhloDialect>();
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
   registry.insert<tfrt::fallback::FallbackDialect>();
   registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();

@@ -7,6 +7,10 @@ load(
     "tf_fuzz_target",
     "tf_py_fuzz_target",
 )
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
     licenses = ["notice"],
@@ -142,10 +146,65 @@ tf_fuzz_target(
     ],
 )
 
+tf_fuzz_target(
+    name = "checkpoint_reader_fuzz",
+    srcs = ["checkpoint_reader_fuzz.cc"],
+    corpus = glob(["checkpoint_reader_testdata/*"]),
+    deps = [
+        ":checkpoint_reader_fuzz_input_proto_cc",
+        "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:status",
+        "@com_google_libprotobuf_mutator//:libprotobuf_mutator",
+    ],
+)
+
+tf_proto_library(
+    name = "checkpoint_reader_fuzz_input_proto",
+    srcs = ["checkpoint_reader_fuzz_input.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        "//tensorflow/core/util:saved_tensor_slice_proto",
+    ],
+)
+
 py_library(
     name = "python_fuzzing",
     srcs = ["python_fuzzing.py"],
     srcs_version = "PY3",
+)
+
+tf_py_fuzz_target(
+    name = "abs_fuzz",
+    srcs = ["abs_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "acos_fuzz",
+    srcs = ["acos_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "acosh_fuzz",
+    srcs = ["acosh_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "add_fuzz",
+    srcs = ["add_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [":python_fuzzing"],
 )
 
 tf_py_fuzz_target(

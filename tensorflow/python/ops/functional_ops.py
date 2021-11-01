@@ -14,10 +14,6 @@
 # =============================================================================
 """Functional operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import auto_control_deps_utils as acd
@@ -546,7 +542,7 @@ def scan(fn,
     raise TypeError(
         f"{fn.__name__} is not callable. Please provide a callable function.")
 
-  input_is_sequence = nest.is_sequence(elems)
+  input_is_sequence = nest.is_nested(elems)
   input_flatten = lambda x: nest.flatten(x) if input_is_sequence else [x]
 
   def input_pack(x):
@@ -557,7 +553,7 @@ def scan(fn,
     output_flatten = input_flatten
     output_pack = input_pack
   else:
-    output_is_sequence = nest.is_sequence(initializer)
+    output_is_sequence = nest.is_nested(initializer)
     output_flatten = lambda x: nest.flatten(x) if output_is_sequence else [x]
 
     def output_pack(x):

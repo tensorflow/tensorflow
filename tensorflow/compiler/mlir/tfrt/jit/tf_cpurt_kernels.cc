@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"
 #include "mlir/ExecutionEngine/AsyncRuntime.h"
+#include "mlir/Transforms/Bufferize.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
@@ -97,7 +98,8 @@ using ::tensorflow::tfd::KernelFallbackCompatRequestState;
 using ::tensorflow::tfrt_stub::FallbackTensor;
 
 // -------------------------------------------------------------------------- //
-// JIT compiled kernels use Eigen CPU device as async runtime worker threads.
+// JIT compiled kernels use Eigen ThreadPool managed by the kernel fallback as
+// an async runtime worker threads.
 // -------------------------------------------------------------------------- //
 
 static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
@@ -107,6 +109,10 @@ static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
   auto* fallback = req_ctx->GetDataIfExists<KernelFallbackCompatRequestState>();
   if (!fallback) return MakeStringError("fallback request state was not found");
 
+  // Return user provided intra op thread pool if it is available.
+  if (fallback->intra_op_threadpool()) return fallback->intra_op_threadpool();
+
+  // Otherwise find the default CPU device in the device manager.
   Device* host_cpu = fallback->device_manager().HostCPU();
   assert(host_cpu && "fallback state must have a valid host cpu device");
 
@@ -280,8 +286,11 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
         });
       }
 
+      absl::string_view serialized_operation(
+          kernel.serialized_operation().data(),
+          kernel.serialized_operation().size());
       trace_me.AppendMetadata([&] {
-        return TraceMeEncode({{"src", kernel.serialized_operation()}});
+        return TraceMeEncode({{"src", serialized_operation}});
       });
 
       compile();
@@ -294,11 +303,14 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     TraceMe trace_me([&] {
       absl::string_view name(kernel.root_symbol().data(),
                              kernel.root_symbol().size());
+      absl::string_view serialized_operation(
+          kernel.serialized_operation().data(),
+          kernel.serialized_operation().size());
       return TraceMeEncode("tf_cpurt.CompileDefault",
                            {{"id", request_id},
                             {"kernel_id", kernel.id()},
                             {"executable", name},
-                            {"src", kernel.serialized_operation()}});
+                            {"src", serialized_operation}});
     });
 
     CompilationOptions opts;
@@ -306,14 +318,15 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     opts.alignment = EIGEN_MAX_ALIGN_BYTES;  // Eigen included by tensor.h
     opts.num_worker_threads = workers->NumThreads();
     opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
-    opts.register_pass_pipeline = CreateTfCpuRtPipeline;
+    opts.register_pass_pipeline = CreateDefaultTfCpuRtPipeline;
+    opts.type_converter = mlir::BufferizeTypeConverter();
 
     auto entrypoint = kernel.nested_symbols()[0];
     auto module = kernel.serialized_operation();
 
     // Instantiate new JitExecutable from the MLIR source.
     Expected<JitExecutable> jit_executable =
-        JitExecutable::Instantiate(module, entrypoint, opts, runner);
+        JitExecutable::Instantiate(module, entrypoint, std::move(opts), runner);
 
     // Set the entry async value state to error or concrete.
     if (auto err = jit_executable.takeError())
@@ -390,19 +403,26 @@ static void ConvertTensorOperandsToMemrefDesc(
 }
 
 struct DebugListener : public JitExecutable::Listener {
-  void notifyModuleSpecialized(ArrayRef<mlir::Type> inputs) const override {
+  void notifyModuleSpecialized(
+      ArrayRef<mlir::Type> operands,
+      ArrayRef<mlir::DictionaryAttr> attrs) const override {
     std::string message;
-    llvm::raw_string_ostream(message)
-        << "Specialized module: " << inputs << "\n";
+    llvm::raw_string_ostream os(message);
+    os << "Specialized operands:\n";
+    for (auto tuple : llvm::enumerate(llvm::zip(operands, attrs))) {
+      mlir::Type type = std::get<0>(tuple.value());
+      mlir::Attribute attr = std::get<1>(tuple.value());
+      os << "%arg" << tuple.index() << ": " << type << " " << attr << "\n";
+    }
     printf("%s", message.c_str());
     fflush(stdout);
   }
 
   void notifyValueSpecialized(unsigned index, mlir::Type type,
-                              mlir::Attribute attr) const override {
+                              mlir::Attribute value) const override {
     std::string message;
-    llvm::raw_string_ostream(message) << "Arg[" << index << "] "
-                                      << "value specialized: " << attr << "\n";
+    llvm::raw_string_ostream(message) << "%arg" << index << " "
+                                      << "value specialized: " << value << "\n";
     printf("%s", message.c_str());
     fflush(stdout);
   }
@@ -426,7 +446,7 @@ static void ExecuteImpl(Executable& executable,
   for (auto& t : operands)
     ctx->tensor_operands.insert({t.tensor().data(), &t.tensor()});
 
-  // Tensorflow -> CPURT only supportes returning Memrefs as Tensors.
+  // Tensorflow -> CPURT only supports returning Memrefs as Tensors.
   TensorflowReturnValueConverter converter(results, std::move(ctx));
   converter.AddConversion(ReturnAsyncStridedMemref<ConvertTensor>);
   converter.AddConversion(ReturnStridedMemref<ConvertTensor>);
@@ -440,6 +460,8 @@ static void ExecuteImpl(Executable& executable,
   // Override async runtime worker threads with fallback Eigen thread pool.
   Executable::ExecuteOpts opts;
   opts.async_runtime_worker_threads = *worker_threads;
+  // Pass kernel context pointer to be emitted in the compiled function.
+  opts.kernel_context = &converter.context();
 
   // Error propagation happens in the result converter.
   if (auto err = executable.Execute(memrefs, converter, exec_ctx, opts)) return;
@@ -466,15 +488,17 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   // Get an executable that might be specialized to the operands.
   DebugListener debug_listener;
 
-  AsyncValuePtr<Executable> executable = jit_executable.GetExecutable(
+  Expected<AsyncValuePtr<Executable>> executable = jit_executable.GetExecutable(
       memrefs, exec_ctx, debug ? &debug_listener : nullptr);
+  if (auto err = executable.takeError())
+    return EmitErrors(results, std::move(err), exec_ctx);
 
   // If executable is available execute it inline.
-  if (executable.IsAvailable()) {
-    if (executable.IsError()) {
-      EmitErrors(results, executable.GetError(), exec_ctx);
+  if (executable->IsAvailable()) {
+    if (executable->IsError()) {
+      EmitErrors(results, executable->GetError(), exec_ctx);
     } else {
-      ExecuteImpl(executable.get(), memrefs, operands, results, exec_ctx);
+      ExecuteImpl(executable->get(), memrefs, operands, results, exec_ctx);
     }
     return;
   }
@@ -489,16 +513,17 @@ static void ExecuteImpl(JitExecutable& jit_executable,
     results.AllocateIndirectResultAt(i);
 
   // Call executable when it's ready with the original operands.
-  executable.AndThen([exec_ctx, executable, memrefs = std::move(memrefs),
-                      r = RCArray<AsyncValue>(results.values()),
-                      o = RCArray<AsyncValue>(operands.values())] {
+  executable->AndThen([exec_ctx, executable = *executable,
+                       memrefs = std::move(memrefs),
+                       r = RCArray<AsyncValue>(results.values()),
+                       o = RCArray<AsyncValue>(operands.values())] {
     // Allocate storage for the executable results.
     llvm::SmallVector<RCReference<AsyncValue>> results_storage;
     results_storage.resize(r.size());
 
     // Reconstruct arguments and results from captured async values.
     RepeatedArguments<FallbackTensor> operands(o.values());
-    RemainingResults results(exec_ctx.host(), results_storage);
+    RemainingResults results(results_storage);
 
     if (executable.IsError()) {
       EmitErrors(results, executable.GetError(), exec_ctx);
@@ -555,7 +580,7 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
 
     // Reconstruct arguments and results from captured async values.
     RepeatedArguments<FallbackTensor> operands(o.values());
-    RemainingResults results(exec_ctx.host(), results_storage);
+    RemainingResults results(results_storage);
 
     if (jit_executable.IsError()) {
       EmitErrors(results, jit_executable.GetError(), exec_ctx);

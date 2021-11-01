@@ -78,9 +78,9 @@ Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
   if (ctx->function_library()->device()->device_type() == DEVICE_CPU) {
     DatasetBase* finalized_dataset = nullptr;
     TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
+    core::ScopedUnref unref(finalized_dataset);
     TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
         &iter_ctx, /*parent=*/nullptr, "ReduceIterator", &iterator));
-    finalized_dataset->Unref();
   } else {
     TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, /*parent=*/nullptr,
                                              "ReduceIterator", &iterator));

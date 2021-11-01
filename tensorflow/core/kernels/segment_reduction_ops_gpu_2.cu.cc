@@ -22,17 +22,17 @@ namespace tensorflow {
 namespace functor {
 
 #define DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, Index)                         \
-  template struct UnsortedSegmentFunctor<                                      \
-      GPUDevice, T, Index, functor::Lowest<T>, functor::AtomicMaxOpGpu<T>>;    \
-  template struct UnsortedSegmentFunctor<                                      \
-      GPUDevice, T, Index, functor::Highest<T>, functor::AtomicMinOpGpu<T>>;   \
+  template struct UnsortedSegmentFunctor<GPUDevice, T, Index,                  \
+                                         functor::Lowest<T>, functor::Max>;    \
+  template struct UnsortedSegmentFunctor<GPUDevice, T, Index,                  \
+                                         functor::Highest<T>, functor::Min>;   \
   template struct UnsortedSegmentFunctor<GPUDevice, T, Index, functor::One<T>, \
-                                         functor::AtomicProdOpGpu<T>>;
+                                         functor::Prod>;
 
 // Sum is the only op that supports all input types currently.
-#define DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, Index) \
-  template struct UnsortedSegmentFunctor<             \
-      GPUDevice, T, Index, functor::Zero<T>, functor::AtomicSumOpGpu<T>>;
+#define DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, Index)         \
+  template struct UnsortedSegmentFunctor<GPUDevice, T, Index, \
+                                         functor::Zero<T>, functor::Sum>;
 
 #define DEFINE_REAL_GPU_SPECS(T)                  \
   DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, int32); \

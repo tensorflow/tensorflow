@@ -24,6 +24,33 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
+def _check_table_initializer_element_spec(element_spec):
+  """Raises an error if the given table initializer element spec is invalid."""
+  base_error = ("Datasets used to initialize lookup tables must "
+                "produce elements in the form (key, value), where "
+                "the keys and values are scalar tensors. ")
+  specific_error = None
+  if len(element_spec) != 2:
+    raise ValueError(base_error + "However, the given dataset produces "
+                     f"{len(element_spec)} components instead of two "
+                     "(key, value) components. Full dataset element spec: "
+                     f"{element_spec}.")
+  if not isinstance(element_spec[0], tensor_spec.TensorSpec):
+    raise ValueError(base_error + "However, the given dataset produces "
+                     f"non-Tensor keys of type {type(element_spec[0])}.")
+  if not isinstance(element_spec[1], tensor_spec.TensorSpec):
+    raise ValueError(base_error + "However, the given dataset produces "
+                     f"non-Tensor values of type {type(element_spec[1])}.")
+  if element_spec[0].shape.rank not in (None, 0):
+    raise ValueError(
+        base_error + "However, the given dataset produces "
+        f"non-scalar key Tensors of rank {element_spec[0].shape.rank}.")
+  if element_spec[1].shape.rank not in (None, 0):
+    raise ValueError(
+        base_error + "However, the given dataset produces "
+        f"non-scalar value Tensors of rank {element_spec[1].shape.rank}.")
+
+
 @tf_export("data.experimental.DatasetInitializer")
 class DatasetInitializer(lookup_ops.TableInitializerBase):
   """Creates a table initializer from a `tf.data.Dataset`.
@@ -58,18 +85,7 @@ class DatasetInitializer(lookup_ops.TableInitializerBase):
     # each tensor is a scalar.
     self.dataset = dataset
     elem_spec = self.dataset.element_spec
-    if len(elem_spec) != 2:
-      raise ValueError("element spec size should be 2")
-    if not isinstance(elem_spec[0], tensor_spec.TensorSpec):
-      raise ValueError("elem_spec[0] should be of type TensorSpec, got: %s" %
-                       type(elem_spec[1]))
-    if not isinstance(elem_spec[1], tensor_spec.TensorSpec):
-      raise ValueError("elem_spec[1] should be of type TensorSpec, got: %s" %
-                       type(elem_spec[1]))
-    if elem_spec[0].shape.rank not in (None, 0):
-      raise ValueError("key tensor should be a scalar")
-    if elem_spec[1].shape.rank not in (None, 0):
-      raise ValueError("value tensor should be a scalar")
+    _check_table_initializer_element_spec(elem_spec)
 
     key_type = elem_spec[0].dtype
     value_type = elem_spec[1].dtype
@@ -137,22 +153,22 @@ def table_from_dataset(dataset=None,
       * The `key_dtype` is not integer or string
   """
   elem_spec = dataset.element_spec
-  if len(elem_spec) != 2:
-    raise ValueError("The given dataset must contain pairs.")
+  _check_table_initializer_element_spec(elem_spec)
   if default_value is None:
     default_value = -1
     if not (elem_spec[1].dtype.is_integer or elem_spec[1].dtype.is_floating):
-      raise ValueError("The dtype of the values requires manually setting a "
-                       "compatible default_value.")
+      raise ValueError("`default_value` must be specified when creating a "
+                       "table from a dataset that produces values of type "
+                       f"{elem_spec[1].dtype}.")
   if num_oov_buckets < 0:
-    raise ValueError(
-        "num_oov_buckets must be greater or equal than 0, got %d." %
-        num_oov_buckets)
+    raise ValueError("`num_oov_buckets` must be greater than or equal to 0, "
+                     f"got {num_oov_buckets}.")
   if (not isinstance(vocab_size, ops.Tensor) and vocab_size is not None and
       vocab_size < 1):
-    raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
+    raise ValueError("`vocab_size` must be greater than 0, got {vocab_size}.")
   if (not key_dtype.is_integer) and (dtypes.string != key_dtype.base_dtype):
-    raise TypeError("Only integer and string keys are supported.")
+    raise TypeError("`key_dtype` must be either an integer or string type, "
+                    f"but got {key_dtype}")
   if vocab_size is not None:
     if isinstance(vocab_size, ops.Tensor):
       vocab_size = math_ops.cast(vocab_size, dtypes.int64)

@@ -491,6 +491,10 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
   }
   int num_elements = GetNumElements(t.dims);
   switch (t.type) {
+    case kTfLiteComplex64: {
+      return CreateInputTensorData<std::complex<float>>(
+          num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
+    }
     case kTfLiteFloat32: {
       return CreateInputTensorData<float>(
           num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
@@ -584,7 +588,7 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
   // Note the corresponding relation between 'interpreter_inputs' and 'inputs_'
   // (i.e. the specified input layer info) has been checked in
   // BenchmarkTfLiteModel::Init() before calling this function. So, we simply
-  // use the corresponding input layer info to initializethe input data value
+  // use the corresponding input layer info to initialize the input data value
   // properly.
   auto interpreter_inputs = interpreter_->inputs();
   for (int i = 0; i < interpreter_inputs.size(); ++i) {

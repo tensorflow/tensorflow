@@ -36,8 +36,15 @@ class FallbackDialect : public Dialect {
   void printType(Type type, DialectAsmPrinter &os) const override;
 };
 
-// The tensor descriptor type represents a tensorflow::Tensor.
+// The MLIR type represents a tensorflow::Tensor.
 class TFTensorType : public Type::TypeBase<TFTensorType, Type, TypeStorage> {
+ public:
+  using Base::Base;
+};
+
+// The MLIR type represents a tensorflow::Allocator.
+class TFAllocatorType
+    : public Type::TypeBase<TFAllocatorType, Type, TypeStorage> {
  public:
   using Base::Base;
 };

@@ -14,11 +14,6 @@
 # ==============================================================================
 """Module with basic entity definitions for testing."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import with_statement  # An extra future import for testing.
-
 
 def simple_function(x):
   """Docstring."""

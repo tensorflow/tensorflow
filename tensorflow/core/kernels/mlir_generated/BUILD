@@ -83,7 +83,10 @@ cc_library(
 cc_library(
     name = "base_gpu_op",
     hdrs = ["base_gpu_op.h"],
-    deps = [":base_op"],
+    deps = [
+        ":base_op",
+        "//tensorflow/core:framework",
+    ],
 )
 
 cc_library(
@@ -129,6 +132,7 @@ tf_kernel_library(
         "gpu_op_rint.cc",
         "gpu_op_round.cc",
         "gpu_op_rsqrt.cc",
+        "gpu_op_sigmoid.cc",
         "gpu_op_sign.cc",
         "gpu_op_sin.cc",
         "gpu_op_sinh.cc",
@@ -177,6 +181,7 @@ tf_kernel_library(
         ":gpu_rint_kernels",
         ":gpu_round_kernels",
         ":gpu_rsqrt_kernels",
+        ":gpu_sigmoid_kernels",
         ":gpu_sign_kernels",
         ":gpu_sin_kernels",
         ":gpu_sinh_kernels",
@@ -392,11 +397,11 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "gpu_nextafter_op",
-    srcs = if_mlir_generated_experimental_kernels_enabled([
+    srcs = if_mlir_generated_gpu_kernels_enabled([
         "gpu_op_next_after.cc",
     ]),
     tags = ["manual"],
-    deps = if_mlir_generated_experimental_kernels_enabled([
+    deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_next_after_kernels",
     ]),
@@ -414,6 +419,9 @@ tf_kernel_library(
         "gpu_op_elu.cc",
         "gpu_op_relu.cc",
         "gpu_op_selu.cc",
+    ]),
+    copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
@@ -583,6 +591,7 @@ tf_cuda_cc_test(
             "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
         ],
     ),
+    shard_count = 20,
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
     ],
@@ -620,6 +629,15 @@ tf_cc_test(
 
 gpu_kernel_library(
     name = "gpu_relu_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "i64",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
     op = "relu",
     tile_size = "256",
     types = [
@@ -651,9 +669,24 @@ gpu_kernel_library(
     ],
 )
 
+gpu_kernel_library(
+    name = "gpu_sigmoid_kernels",
+    op = "sigmoid",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
 # TODO(b/25387198): Add an int32 kernel.
 gpu_kernel_library(
     name = "gpu_abs_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+    ],
     op = "abs",
     tile_size = "256",
     types = [
@@ -885,6 +918,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_sign_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+    ],
     op = "sign",
     tile_size = "256",
     types = [
@@ -951,7 +988,12 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_sub_kernels",
-    jit_types = ["i16"],
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+    ],
     op = "sub",
     tile_size = "1024",
     types = [
@@ -997,6 +1039,11 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_div_kernels",
+    jit_types = [
+        "i8",
+        "ui32",
+        "ui64",
+    ],
     op = "div",
     tile_size = "1024",
     types = [
@@ -1181,6 +1228,12 @@ gpu_kernel_library(
 [
     gpu_kernel_library(
         name = "gpu_" + op + "_kernels",
+        jit_types = [
+            "i8",
+            "ui16",
+            "ui32",
+            "ui64",
+        ],
         op = op,
         tile_size = "1024",
         types = [
@@ -1219,13 +1272,18 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_floor_div_kernels",
+    jit_types = [
+        "i8",
+        "ui32",
+        "ui64",
+    ],
     op = "floor_div",
     tile_size = "1024",
-    # TODO(b/196539835): Enable for integer types also once unsigned integers
-    # and unranked tensors are supported.
     types = [
         "f16",
         "f32",
+        "i16",
+        "i64",
         "f64",
     ],
     unroll_factors = "4",
@@ -1343,6 +1401,10 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_pow_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+    ],
     op = "pow",
     tile_size = "1024",
     types = [

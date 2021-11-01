@@ -261,7 +261,7 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
 
   func.walk([&](ReturnOp ret) {
     int i = 0;
-    for (Value returned : ret.operands()) {
+    for (Value returned : ret.getOperands()) {
       llvm::SmallVector<Value, 4> quantized;
       for (auto user : returned.getUsers()) {
         if (auto q = Quantized(user)) {

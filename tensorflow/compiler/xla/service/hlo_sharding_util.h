@@ -156,7 +156,8 @@ HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
 // sharding.
 absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
     const HloSharding& data_operand_sharding, const HloInstruction& hlo,
-    const Shape& output_shape, const Shape& operand_shape);
+    absl::Span<const int64_t> slice_sizes, const Shape& output_shape,
+    const Shape& operand_shape);
 
 // Returns a data operand sharding of gather by passing through the output's
 // sharding.
@@ -198,6 +199,12 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
 // but the given ones to keep in the original sharding.
 HloSharding PartiallyReplicateTiledShardingOnAllDimsExcept(
     const HloSharding& sharding, absl::Span<const int64_t> dims_to_keep);
+
+// Returns a sharding that replicates all data dimensions, but keep manual
+// subgroups. If data_rank is provided >= 0, the result sharding's data rank
+// will be set to it.
+HloSharding ReplicateAllDataDims(const HloSharding& sharding,
+                                 int64_t data_rank = -1);
 
 // Returns a sharding the removes given tile dimensions.
 //

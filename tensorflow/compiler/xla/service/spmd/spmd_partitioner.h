@@ -162,8 +162,9 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
 // Logger to report memory usage during SPMD partitioning.
 class SpmdLogger {
  public:
-  explicit SpmdLogger(int64_t report_instruction_count)
-      : report_instruction_count_(report_instruction_count) {}
+  SpmdLogger(int64_t report_instruction_count, bool disabled)
+      : report_instruction_count_(report_instruction_count),
+        disabled_(disabled) {}
   static std::string ReportBeforePartition(const HloModule& module,
                                            int64_t report_instruction_count);
   static std::string ReportAfterPartition(const HloModule& module,
@@ -186,6 +187,12 @@ class SpmdLogger {
   std::vector<std::pair<int64_t, std::string>> entries_;
 
   int64_t report_instruction_count_;
+
+  // Note that we allow creating a *disabled* logger when logging is not
+  // enabled, in which case it is supposed to avoid doing any potentially
+  // expensive work. The logger is still created in this case and passed to the
+  // users to help avoid changing current call sites.
+  const bool disabled_;
 };
 
 class SpmdPartitioningVisitor;
@@ -339,6 +346,9 @@ class PartitionedHlo {
       HloInstruction* pad_value,
       absl::Span<const int64_t> left_padded_dims = {},
       absl::Span<const int64_t> skipped_dims = {}) const;
+
+  PartitionedHlo PadWithZero(absl::Span<const int64_t> left_padded_dims = {},
+                             absl::Span<const int64_t> skipped_dims = {}) const;
 
   // Returns the SPMD instruction.
   HloInstruction* hlo() const { return hlo_; }
@@ -572,6 +582,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   std::vector<HloSharding> visiting_hlo_operand_shardings_;
   absl::optional<HloSharding> visiting_hlo_sharding_;
   absl::optional<int64_t> visiting_num_partitions_;
+  absl::optional<SPMDCollectiveOpsCreator> visiting_collective_ops_creator_;
+  absl::optional<HloInstruction*> visiting_partition_id_;
   std::vector<PartitionedHlo::PartitioningState> visiting_state_;
   std::vector<std::vector<int64_t>> device_groups_;
 };

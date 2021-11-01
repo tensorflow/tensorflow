@@ -152,7 +152,9 @@ bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding) {
 Shape MakePartitionedShape(const Shape& shape, const HloSharding& sharding) {
   if (sharding.IsTuple()) {
     std::vector<Shape> subshapes;
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const int64_t shape_n = ShapeUtil::TupleElementCount(shape);
+    subshapes.reserve(shape_n);
+    for (int64_t i = 0; i < shape_n; ++i) {
       subshapes.push_back(
           MakePartitionedShape(ShapeUtil::GetTupleElementShape(shape, i),
                                sharding.GetSubSharding(shape, {i})));
@@ -172,7 +174,9 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
                                           int64_t partition_id) {
   if (sharding.IsTuple()) {
     std::vector<Shape> subshapes;
-    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const int64_t shape_n = ShapeUtil::TupleElementCount(shape);
+    subshapes.reserve(shape_n);
+    for (int64_t i = 0; i < shape_n; ++i) {
       subshapes.push_back(MakeNonPaddedShapeForGivenPartition(
           ShapeUtil::GetTupleElementShape(shape, i),
           sharding.GetSubSharding(shape, {i}), partition_id));
@@ -1427,9 +1431,9 @@ bool CanReshardWithCollectivePermute(const HloSharding& source,
          source.tile_assignment() != target.tile_assignment();
 }
 
-GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
-                                const GroupedSharding& reference,
-                                bool ignore_group_order) {
+absl::optional<GroupedSharding> AlignGroupsWithInternal(
+    GroupedSharding grouped_sharding, const GroupedSharding& reference,
+    bool requires_compatibility, bool ignore_group_order) {
   // Returns src -> dst index mapping.
   auto get_permutation = [](absl::Span<const int64_t> src,
                             absl::Span<const int64_t> dst) {
@@ -1471,12 +1475,21 @@ GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
   for (int64_t g = 0; g < grouped_sharding.device_groups.size(); ++g) {
     int64_t ref_g = unique_ref_dev_group(grouped_sharding.device_groups[g]);
     if (ref_g < 0 || (!ignore_group_order && g != ref_g)) {
+      if (requires_compatibility) {
+        return absl::nullopt;
+      }
       matching_groups = false;
       break;
     }
     if (g == 0) {
       original_src_to_ref_permutation = get_permutation(
           grouped_sharding.device_groups[g], reference.device_groups[ref_g]);
+    } else if (requires_compatibility) {
+      if (original_src_to_ref_permutation !=
+          get_permutation(grouped_sharding.device_groups[g],
+                          reference.device_groups[ref_g])) {
+        return absl::nullopt;
+      }
     }
   }
   if (matching_groups && !grouped_sharding.sharding.IsTileMaximal()) {
@@ -1491,6 +1504,21 @@ GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
   }
   grouped_sharding.device_groups = std::move(reference.device_groups);
   return grouped_sharding;
+}
+
+GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
+                                const GroupedSharding& reference,
+                                bool ignore_group_order) {
+  return *AlignGroupsWithInternal(std::move(grouped_sharding), reference,
+                                  /*requires_compatibility=*/false,
+                                  ignore_group_order);
+}
+
+absl::optional<GroupedSharding> AlignGroupsWithIfCompatible(
+    GroupedSharding grouped_sharding, const GroupedSharding& reference) {
+  return AlignGroupsWithInternal(std::move(grouped_sharding), reference,
+                                 /*requires_compatibility=*/true,
+                                 /*ignore_group_order=*/false);
 }
 
 HloSharding AlignShardingOnDims(const HloSharding& sharding,

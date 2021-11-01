@@ -35,12 +35,12 @@ class RequestCost {
       const std::vector<std::pair<absl::string_view, absl::Duration>>& costs);
 
   // Gets all types of costs for processing an rpc request.
-  // It's not thread-safe. It's expected to be called at the end of processing
-  // an rpc request, when all the costs have been collected.
-  absl::flat_hash_map<std::string, absl::Duration> GetCosts();
+  // It's thread-safe. It's expected to be called at the end of processing an
+  // rpc request, when all the costs have been collected.
+  absl::flat_hash_map<std::string, absl::Duration> GetCosts() const;
 
  private:
-  absl::Mutex mutex_;
+  mutable absl::Mutex mutex_;
   // Map from cost type to cost.
   absl::flat_hash_map<std::string, absl::Duration> cost_map_
       ABSL_GUARDED_BY(mutex_);

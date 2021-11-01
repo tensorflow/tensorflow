@@ -52,8 +52,8 @@ TEST(OverflowTest, Nonnegative) {
     interesting.push_back(bit - 1);
   }
 
-  for (const int64_t mid : {static_cast<int64>(1) << 32,
-                            static_cast<int64>(std::pow(2, 63.0 / 2))}) {
+  for (const int64_t mid : {static_cast<int64_t>(1) << 32,
+                            static_cast<int64_t>(std::pow(2, 63.0 / 2))}) {
     for (int i = -5; i < 5; i++) {
       interesting.push_back(mid + i);
     }

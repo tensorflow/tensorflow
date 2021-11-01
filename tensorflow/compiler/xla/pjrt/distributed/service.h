@@ -157,6 +157,8 @@ class DistributedRuntimeService {
       delete;
   DistributedRuntimeService& operator=(DistributedRuntimeService&&) = delete;
 
+  void Shutdown();
+
   ::grpc::Server* server() const { return server_.get(); }
 
  private:

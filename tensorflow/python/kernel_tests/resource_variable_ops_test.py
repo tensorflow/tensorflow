@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.resource_variable_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import gc
 import os
@@ -28,6 +24,7 @@ import numpy as np
 
 from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import tensor_pb2
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -35,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import memory_checker
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -91,6 +89,14 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
   def testGPUInt64(self):
     with context.eager_mode(), context.device("gpu:0"):
       v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int64)
+      self.assertAllEqual(1, v.numpy())
+
+  @test_util.run_gpu_only
+  def testGPUBfloat16(self):
+    with context.eager_mode(), ops.device("gpu:0"):
+      v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.bfloat16)
+      self.assertEqual("/job:localhost/replica:0/task:0/device:GPU:0",
+                       v.device)
       self.assertAllEqual(1, v.numpy())
 
   def testEagerNameNotIdentity(self):
@@ -579,7 +585,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_add(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([2.5], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 4.0], self.evaluate(v))
 
@@ -592,7 +598,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_sub(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([1.5], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 1.0], self.evaluate(v))
 
@@ -605,7 +611,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_max(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([5.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 5.0], self.evaluate(v))
 
@@ -615,7 +621,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_max(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 3.5], self.evaluate(v))
 
@@ -628,7 +634,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_min(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([5.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 4.0], self.evaluate(v))
 
@@ -638,7 +644,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_min(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 2.0], self.evaluate(v))
 
@@ -651,7 +657,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_mul(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([3.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 12.0], self.evaluate(v))
 
@@ -664,7 +670,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_div(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 3.0], self.evaluate(v))
 
@@ -677,7 +683,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_update(
-            ops.IndexedSlices(
+            indexed_slices.IndexedSlices(
                 indices=[1], values=constant_op.constant([3.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 3.0], self.evaluate(v))
 
@@ -812,6 +818,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       self.assertIsInstance(assign_without_read, ops.Operation)
     self.evaluate(assign_without_read)
     self.assertEqual(4.0, self.evaluate(v.value()))
+
+  def testAssignRuntimeShapeCheck(self):
+    with forward_compat.forward_compatibility_horizon(2021, 11, 20):
+      v = resource_variable_ops.ResourceVariable([1.0, 1.0], name="var0")
+
+      @def_function.function
+      def f(shape):
+        t = array_ops.zeros(shape)
+        v.assign(t)
+
+      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+        f(constant_op.constant([3]))
 
   @test_util.run_in_graph_and_eager_modes
   def testLoad(self):
@@ -1045,12 +1063,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
 
     var = resource_variable_ops.ResourceVariable([1., 2.])
     self.evaluate(variables.global_variables_initializer())
-    slices = ops.IndexedSlices(indices=[1], values=[2])
+    slices = indexed_slices.IndexedSlices(indices=[1], values=[2])
     def assert_eq(tensor, vals):
       self.assertAllEqual(self.evaluate(tensor), vals)
     assert_eq(var.scatter_add(slices).scatter_add(slices), [1., 6.])
     assert_eq(var.scatter_sub(slices).scatter_sub(slices), [1., 2.])
-    slices2 = ops.IndexedSlices(indices=[0], values=[3])
+    slices2 = indexed_slices.IndexedSlices(indices=[0], values=[3])
     assert_eq(var.scatter_max(slices2).scatter_add(slices), [3., 4.])
     assert_eq(var.scatter_add(slices).scatter_min(slices), [3., 2.])
     assert_eq(var.scatter_mul(slices).scatter_mul(slices), [3., 8.])
@@ -1063,8 +1081,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
 
     batch_var = resource_variable_ops.ResourceVariable(array_ops.ones((2, 2)))
     self.evaluate(variables.global_variables_initializer())
-    batch_slices1 = ops.IndexedSlices(indices=[[1], [0]], values=[[2], [2]])
-    batch_slices2 = ops.IndexedSlices(indices=[[1], [1]], values=[[3], [3]])
+    batch_slices1 = indexed_slices.IndexedSlices(
+        indices=[[1], [0]], values=[[2], [2]])
+    batch_slices2 = indexed_slices.IndexedSlices(
+        indices=[[1], [1]], values=[[3], [3]])
     assert_eq(
         batch_var.batch_scatter_update(batch_slices1)
         .batch_scatter_update(batch_slices2),
@@ -1285,7 +1305,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
               element_dtype=dtypes.float32, element_shape=[])
       ])
       v.scatter_update(
-          ops.IndexedSlices(
+          indexed_slices.IndexedSlices(
               list_ops.tensor_list_from_tensor([1., 2.], element_shape=[]), 0))
       self.assertAllEqual(
           list_ops.tensor_list_get_item(v[0], 0, element_dtype=dtypes.float32),
@@ -1344,6 +1364,22 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # eager execution (where the error is realized during kernel execution).
     with self.assertRaisesRegex(Exception, r"shape.*2.*3"):
       state_ops.scatter_update(v, [0, 1], [0, 1, 2])
+
+  def testScatterAddDeterministic(self):
+    with context.eager_mode(), test_util.deterministic_ops():
+      # Normally a nondeterministic codepath occurs when the variable has at
+      # least 1024 elements. Test that op determinism ensures the op is
+      # deterministc.
+      v = resource_variable_ops.ResourceVariable(array_ops.zeros([1024]))
+      delta = ops.IndexedSlices(
+          values=np.random.normal(size=(1_000_000,)),
+          indices=array_ops.zeros((1_000_000,), dtype=np.int32),
+          dense_shape=(1024,))
+      v.scatter_add(delta)
+      for _ in range(5):
+        v2 = resource_variable_ops.ResourceVariable(array_ops.zeros([1024]))
+        v2.scatter_add(delta)
+        self.assertAllEqual(v, v2)
 
   @test_util.run_in_graph_and_eager_modes
   def testAssignIncompatibleShape(self):
@@ -1599,6 +1635,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       checker.record_snapshot()
     checker.report()
     checker.assert_no_leak_if_all_possibly_except_one()
+
+  @test_util.run_v2_only
+  def testIterateVariable(self):
+    v = variables.Variable([1., 2.])
+    self.assertAllClose([1., 2.], list(iter(v)))
+
 
 if __name__ == "__main__":
   test.main()

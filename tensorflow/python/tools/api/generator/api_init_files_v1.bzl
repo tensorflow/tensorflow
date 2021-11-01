@@ -41,6 +41,7 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "lite/__init__.py",
     "lite/constants/__init__.py",
     "lite/experimental/__init__.py",
+    "lite/experimental/authoring/__init__.py",
     "lite/experimental/microfrontend/__init__.py",
     "lite/experimental/microfrontend/python/__init__.py",
     "lite/experimental/microfrontend/python/ops/__init__.py",

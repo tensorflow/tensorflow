@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests that TF2_BEHAVIOR=1 enables cfv2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 os.environ["TF2_BEHAVIOR"] = "1"
 

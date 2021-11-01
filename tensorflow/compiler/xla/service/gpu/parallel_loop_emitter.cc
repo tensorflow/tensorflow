@@ -62,16 +62,31 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
                                                    llvm::Type* index_type,
                                                    llvm::Value* base_index) {
   // Emit the following code in LLVM IR:
-  //   linear_index = blockIdx.x * blockDim.x + threadIdx.x;
-  //   if (linear_index < num_elements) {
+  //   linear_index = blockIdx.x * blockDim.x * blockDim.y [+ threadIdx.y *
+  //   blockDim.x] + threadIdx.x; if (linear_index < num_elements) {
   //     array_index = LinearIndexToMultidimensionalIndex(shape_, linear_index);
   //     ...
   //   }
+  // The part between [] are added only if blockDim.y > 1.
+  // blockIdx.y and gridDim.y are always 1.
 
   // Per the PTX documentation:
   //   "It is guaranteed that [...] 0  <=  %ctaid.x <  %nctaid.x"
   //
   // %nctaid.x is currently specified as 2147483647.
+  if (launch_dimensions_.thread_counts_per_block().y > 1) {
+    // When blockDim.y > 1, then we are in the small row case. Each
+    // blockDim.x do exatly to one row and blockDim.y map to some
+    // consecutive row. This prevents too small block size that isn't
+    // efficient.
+    CHECK(launch_config_.row_vectorized);
+    CHECK_EQ(shape_.dimensions().back(),
+             launch_dimensions_.thread_counts_per_block().x *
+                 launch_config_.unroll_factor);
+  }
+  CHECK_EQ(launch_dimensions_.thread_counts_per_block().z, 1);
+  CHECK_EQ(launch_dimensions_.block_counts().y, 1);
+  CHECK_EQ(launch_dimensions_.block_counts().z, 1);
   VLOG(3) << "EmitIndexAndSetExitBasicBlock unroll_factor "
           << launch_config_.unroll_factor;
   CHECK_NE(index_type, nullptr);
@@ -84,22 +99,37 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
 
   // Per the PTX documentation:
   //   "It is guaranteed that [...] 0  <=  %tid.x <  %ntid.x"
-  //
-  // %ntid.x is currently specified as 1024.
-  llvm::Value* thread_id =
+  llvm::Value* thread_id_x =
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, launch_dimensions_.thread_counts_per_block().x,
-                            static_cast<llvm::Instruction*>(thread_id));
-  thread_id = b_->CreateZExtOrTrunc(thread_id, index_type, "thread_id");
+                            static_cast<llvm::Instruction*>(thread_id_x));
+  thread_id_x = b_->CreateZExtOrTrunc(thread_id_x, index_type, "thread_id_x");
 
-  llvm::Value* linear_index_base = b_->CreateAdd(
-      b_->CreateMul(
-          block_id,
-          llvm::ConstantInt::get(
-              index_type, launch_dimensions_.thread_counts_per_block().x),
-          "",
-          /*HasNUW=*/true, /*HasNSW=*/true),
-      thread_id, "linear_index", /*HasNUW=*/true, /*HasNSW=*/true);
+  llvm::Value* linear_index_base = b_->CreateMul(
+      block_id,
+      llvm::ConstantInt::get(index_type, launch_dimensions_.total_nb_threads()),
+      "",
+      /*HasNUW=*/true, /*HasNSW=*/true);
+  if (launch_dimensions_.thread_counts_per_block().y > 1) {
+    llvm::Value* thread_id_y =
+        EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdy, {}, {}, b_);
+    llvm_ir::AddRangeMetadata(0, launch_dimensions_.thread_counts_per_block().y,
+                              static_cast<llvm::Instruction*>(thread_id_y));
+    thread_id_y = b_->CreateZExtOrTrunc(thread_id_y, index_type, "thread_id_y");
+    linear_index_base = b_->CreateAdd(
+        linear_index_base,
+        b_->CreateMul(
+            thread_id_y,
+            llvm::ConstantInt::get(
+                index_type, launch_dimensions_.thread_counts_per_block().x),
+            "",
+            /*HasNUW=*/true, /*HasNSW=*/true),
+        "",
+        /*HasNUW=*/true, /*HasNSW=*/true);
+  }
+  linear_index_base =
+      b_->CreateAdd(linear_index_base, thread_id_x, "linear_index",
+                    /*HasNUW=*/true, /*HasNSW=*/true);
 
   // Add an @llvm.assume(linear_index < threads_per_block * num_blocks).
   //
@@ -113,9 +143,9 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
       llvm::Intrinsic::assume,
       {b_->CreateICmpULT(
           linear_index_base,
-          llvm::ConstantInt::get(
-              index_type, launch_dimensions_.thread_counts_per_block().x *
-                              launch_dimensions_.block_counts().x),
+          llvm::ConstantInt::get(index_type,
+                                 launch_dimensions_.total_nb_threads() *
+                                     launch_dimensions_.block_counts().x),
           "linear_index_in_range")},
       {}, b_);
 
@@ -143,7 +173,7 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
     // Simpler index for row computation.
     // This will allow LLVM to vectorize.
     row_index = b_->CreateMul(
-        thread_id,
+        thread_id_x,
         llvm::ConstantInt::get(index_type, launch_config_.unroll_factor),
         "row_index", /*HasNUW=*/true, /*HasNSW=*/true);
     std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);

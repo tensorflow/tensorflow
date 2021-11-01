@@ -122,6 +122,23 @@ class ExecutableBuildOptions {
     return *this;
   }
 
+  bool allow_spmd_sharding_propagation_to_output() const {
+    return allow_spmd_sharding_propagation_to_output_;
+  }
+  // Allows sharding propagation to propagate to the outputs. This changes the
+  // output shape of the computation (which is undesirable), but it can be used
+  // to allow to run partial compilation to determine what would be the output
+  // sharding of a computation if XLA would be allowed to propagate the sharding
+  // which can be used by higher level framework as a way to query intermediate
+  // sharding of operations when multiple computation would be chained and
+  // merged together.
+  ExecutableBuildOptions& set_allow_spmd_sharding_propagation_to_output(
+      bool allow_spmd_sharding_propagation_to_output) {
+    allow_spmd_sharding_propagation_to_output_ =
+        allow_spmd_sharding_propagation_to_output;
+    return *this;
+  }
+
   // Thread pool for parallel compilation.
   tensorflow::thread::ThreadPool* compile_thread_pool() const {
     return compile_thread_pool_;
@@ -146,6 +163,7 @@ class ExecutableBuildOptions {
   absl::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
   bool run_backend_only_ = false;
+  bool allow_spmd_sharding_propagation_to_output_ = false;
   tensorflow::thread::ThreadPool* compile_thread_pool_ = nullptr;
 };
 

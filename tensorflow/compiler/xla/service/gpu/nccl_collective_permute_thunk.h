@@ -56,6 +56,10 @@ struct NcclCollectivePermuteConfig : public NcclCollectiveConfig {
 // Thunk that performs a NCCL-based collective permute.
 class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
  public:
+  static NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
+      mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
+      int64_t partition_count);
+
   NcclCollectivePermuteThunk(ThunkInfo thunk_info,
                              mlir::lmhlo::CollectivePermuteOp op,
                              int64_t replica_count, int64_t partition_count,
@@ -81,10 +85,6 @@ class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
   const NcclCollectiveConfig& config() const override { return config_; }
 
  private:
-  static NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
-      mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
-      int64_t partition_count);
-
   const NcclCollectivePermuteConfig config_;
   const Buffer buffer_;
 };

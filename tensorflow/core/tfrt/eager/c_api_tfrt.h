@@ -136,6 +136,10 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
     return context_.GetEagerContext()->local_device_mgr()->ListDevices();
   }
 
+  std::vector<tensorflow::Device*> ListAllTfDevices() override {
+    return context_.GetEagerContext()->ListAllTfDevices();
+  }
+
   tensorflow::Status AddDevices(
       std::vector<std::unique_ptr<tensorflow::Device>> devices) override;
 
@@ -144,6 +148,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   void EndStep() override;
 
   tensorflow::Status AsyncWait() override {
+    TF_RETURN_IF_ERROR(GetEagerContext()->AsyncWait());
     GetHostContext()->Quiesce();
     return tensorflow::Status::OK();
   }
@@ -183,6 +188,12 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
     // TODO(tfrt-devs): Move this flag to a common place that can be shared
     // by current TF and TFRT.
     GetEagerContext()->SetLogDevicePlacement(enable);
+  }
+
+  void SetRunEagerOpAsFunction(bool enable) override {
+    // TODO(tfrt-devs): Move this flag to a common place that can be shared
+    // by current TF and TFRT.
+    GetEagerContext()->SetRunEagerOpAsFunction(enable);
   }
 
   tensorflow::EagerExecutor& Executor() override {
@@ -554,6 +565,9 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
   absl::optional<tensorflow::ManagedStackTrace> GetStackTrace() override {
     return stack_trace_;
   }
+
+  // Currently not supported.
+  void SetStepId(int64_t step_id) override {}
 
   // For LLVM style RTTI.
   static bool classof(const AbstractOperation* ptr) {

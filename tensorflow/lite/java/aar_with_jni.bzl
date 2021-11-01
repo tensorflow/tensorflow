@@ -7,7 +7,7 @@ def aar_with_jni(
         android_library,
         headers = None,
         flatten_headers = False):
-    """Generates an Android AAR given an Android library target.
+    """Generates an Android AAR with repo root license given an Android library target.
 
     Args:
       name: Name of the generated .aar file.
@@ -96,5 +96,38 @@ zip $$origdir/$(location :{1}.aar) LICENSE
         # can't be built. We need to prevent the build system from trying to
         # use the target in that case.
         tags = ["manual"],
+        cmd = cmd,
+    )
+
+def aar_without_jni(
+        name,
+        android_library):
+    """Generates an Android AAR with repo root license given a pure Java Android library target.
+
+    Args:
+      name: Name of the generated .aar file.
+      android_library: The `android_library` target to package. Note that the
+          AAR will contain *only that library's .jar` sources. It does not
+          package the transitive closure of all Java source dependencies.
+    """
+
+    srcs = [
+        android_library + ".aar",
+        "//:LICENSE",
+    ]
+
+    cmd = """
+cp $(location {0}.aar) $(location :{1}.aar)
+chmod +w $(location :{1}.aar)
+origdir=$$PWD
+cd $$(mktemp -d)
+cp $$origdir/$(location //:LICENSE) ./
+zip $$origdir/$(location :{1}.aar) LICENSE
+""".format(android_library, name)
+
+    native.genrule(
+        name = name,
+        srcs = srcs,
+        outs = [name + ".aar"],
         cmd = cmd,
     )

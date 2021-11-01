@@ -842,6 +842,7 @@ std::vector<
     typename GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval>
 GlobalDecreasingSizeBestFitHeap<BufferType>::GetSortedBufferIntervals() const {
   std::vector<BufferInterval> sorted_buffer_intervals;
+  sorted_buffer_intervals.reserve(buffer_intervals_.size());
   for (auto& entry : buffer_intervals_) {
     sorted_buffer_intervals.push_back(entry.second);
   }

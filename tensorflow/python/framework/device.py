@@ -14,11 +14,6 @@
 # ==============================================================================
 
 """Class to represent a device."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import threading
 
 from tensorflow.python import tf2
 from tensorflow.python.framework import device_spec
@@ -60,7 +55,6 @@ def canonical_name(device):
 
 # Performance caches
 _cached_mergers = {}
-_cache_lock = threading.RLock()
 _string_merge_cache = {}
 
 
@@ -94,14 +88,13 @@ def merge_device(spec):
   if isinstance(spec, MergeDevice):
     return spec
 
-  with _cache_lock:
-    merger = _cached_mergers.get(spec)
-    if merger:
-      return merger
-
-    merger = MergeDevice(spec)
-    _cached_mergers[spec] = merger
+  merger = _cached_mergers.get(spec)
+  if merger:
     return merger
+  merger = MergeDevice(spec)
+  # No locking needed, since updates are stateless.
+  _cached_mergers[spec] = merger
+  return merger
 
 
 class MergeDevice(object):

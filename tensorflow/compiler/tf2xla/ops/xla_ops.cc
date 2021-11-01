@@ -607,11 +607,11 @@ REGISTER_OP("XlaReduce")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       if (c->RankKnown(c->input(0))) {
         int rank = c->Rank(c->input(0));
-        std::vector<int64> dimensions_to_reduce;
+        std::vector<int64_t> dimensions_to_reduce;
         TF_RETURN_IF_ERROR(
             c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
-        std::set<int64> dims_set(dimensions_to_reduce.begin(),
-                                 dimensions_to_reduce.end());
+        std::set<int64_t> dims_set(dimensions_to_reduce.begin(),
+                                   dimensions_to_reduce.end());
         auto dim_in_range = [rank](int64_t dim) {
           return dim >= 0 && dim < rank;
         };
@@ -657,11 +657,11 @@ REGISTER_OP("XlaVariadicReduce")
       }
       if (c->RankKnown(c->input(0))) {
         int rank = c->Rank(c->input(0));
-        std::vector<int64> dimensions_to_reduce;
+        std::vector<int64_t> dimensions_to_reduce;
         TF_RETURN_IF_ERROR(
             c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
-        std::set<int64> dims_set(dimensions_to_reduce.begin(),
-                                 dimensions_to_reduce.end());
+        std::set<int64_t> dims_set(dimensions_to_reduce.begin(),
+                                   dimensions_to_reduce.end());
         auto dim_in_range = [rank](int64_t dim) {
           return dim >= 0 && dim < rank;
         };
@@ -737,11 +737,11 @@ REGISTER_OP("XlaVariadicReduceV2")
       if (c->RankKnown(input_shape)) {
         int rank = c->Rank(input_shape);
 
-        std::vector<int64> dimensions_to_reduce;
+        std::vector<int64_t> dimensions_to_reduce;
         TF_RETURN_IF_ERROR(
             c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
-        std::set<int64> dims_set(dimensions_to_reduce.begin(),
-                                 dimensions_to_reduce.end());
+        std::set<int64_t> dims_set(dimensions_to_reduce.begin(),
+                                   dimensions_to_reduce.end());
 
         auto dim_in_range = [rank](int64_t dim) {
           return dim >= 0 && dim < rank;
@@ -1035,6 +1035,7 @@ REGISTER_OP("XlaSpmdFullToShardShape")
     .Attr("T: type")
     .Attr("manual_sharding: string")
     .Attr("dim: int = -1")
+    .Attr("unspecified_dims: list(int) = []")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       auto input_handle = c->input(0);
       if (!c->RankKnown(input_handle)) {
@@ -1081,6 +1082,7 @@ REGISTER_OP("XlaSpmdShardToFullShape")
     .Attr("manual_sharding: string")
     .Attr("full_shape: shape")
     .Attr("dim: int = -1")
+    .Attr("unspecified_dims: list(int) = []")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       TensorShape shape_attr;
       TF_RETURN_IF_ERROR(c->GetAttr("full_shape", &shape_attr));
@@ -1102,9 +1104,12 @@ REGISTER_OP("XlaSharding")
     .Output("output: T")
     .Attr("T: type")
     .Attr("sharding: string = ''")
+    .Attr("unspecified_dims: list(int) = []")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
-An op which shards the input based on the given sharding attribute.
+An op which shards the input based on the given sharding attribute. It can
+selectively annotate a subset of tensor dimensions by skipping unspecified_dims,
+and the sharding annotation should be replicated in those dims.
 )doc");
 
 REGISTER_OP("XlaReplicaId")
@@ -1158,6 +1163,40 @@ update_computation: Computation to be used for combining the existing values in
   the input array and the updates during scatter.
 dimension_numbers: A serialized xla::ScatterDimensionNumbers proto.
 indices_are_sorted: Boolean indicating if the indices are sorted.
+)doc");
+
+REGISTER_OP("XlaAllReduce")
+    .Input("input: T")
+    .Input("group_assignment: int32")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, int32, uint32}")
+    .Attr("reduce_op: {'Min', 'Max', 'Mul', 'Add', 'Mean'}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Wraps the XLA AllReduce operator
+  documented at https://www.tensorflow.org/xla/operation_semantics#allreduce.
+
+input: Array or a non-empty tuple of arrays to reduce across replicas.
+group_assignment: Groups between which the reductions are performed.
+reduce_op: Reduction computation.
+)doc");
+
+REGISTER_OP("XlaReduceScatter")
+    .Input("input: T")
+    .Input("group_assignment: int32")
+    .Input("scatter_dimension: int32")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, int32, uint32}")
+    .Attr("reduce_op: {'Min', 'Max', 'Mul', 'Add', 'Mean'}")
+    .SetShapeFn(shape_inference::ReduceScatterShape)
+    .Doc(R"doc(
+Wraps the XLA ReduceScatter operator
+  documented at https://www.tensorflow.org/xla/operation_semantics#reducescatter.
+
+input: Array or a non-empty tuple of arrays to reduce across replicas.
+group_assignment: Groups between which the reductions are performed.
+scatter_dimension: Dimension to scatter.
+reduce_op: Reduction computation.
 )doc");
 
 }  // namespace

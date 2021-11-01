@@ -114,6 +114,7 @@ py_library(
         "//tensorflow/python:sdca_ops",
         "//tensorflow/python/training/experimental:loss_scale_optimizer",
         "//tensorflow/python/training/experimental:mixed_precision",
+        "//tensorflow/python/training/tracking:base_delegate",
         "//tensorflow/python/util:tf_export",
     ],
 )

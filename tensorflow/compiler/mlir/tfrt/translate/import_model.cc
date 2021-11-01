@@ -30,12 +30,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ConvertFunctionToBef(mlir::StringRef function_name,
-                            const tensorflow::FunctionBody* fbody,
-                            const FunctionLibraryDefinition& flib_def,
-                            tfrt::ArrayRef<tfrt::string_view> devices,
-                            tensorflow::TfrtFunctionCompileOptions options,
-                            tfrt::BefBuffer* bef_buffer) {
+Status ConvertFunctionToBef(
+    mlir::StringRef function_name, const tensorflow::FunctionBody* fbody,
+    const FunctionLibraryDefinition& flib_def,
+    tfrt::ArrayRef<tfrt::string_view> devices,
+    const tensorflow::TfrtFunctionCompileOptions& options,
+    tfrt::BefBuffer* bef_buffer) {
   mlir::MLIRContext context;
   // FunctionDef -> TF Dialect
   auto expected_module =
@@ -69,8 +69,12 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
       tensorflow::DumpMlirOpToFile("tpu_bct_conversion_before", module);
     }
 
+    TfrtTpuCompileOptions tpu_compile_options;
+    tpu_compile_options.move_resource_gather_to_host =
+        options.tpu_move_resource_gather_to_host;
+
     auto backward_compat_result =
-        tensorflow::RunTPUBackwardCompatConversion(module);
+        tensorflow::RunTPUBackwardCompatConversion(module, tpu_compile_options);
     if (mlir::failed(backward_compat_result)) {
       return diag_handler.Combine(
           tensorflow::errors::Internal("Failed to handle legacy TPU Ops"));
@@ -106,6 +110,9 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   pass_options.enable_native_ops = options.enable_native_ops;
   pass_options.target_tpurt =
       (options.tpu_target == TfrtTpuInfraTarget::kTpurt);
+  pass_options.tpu_fuse_ops = options.tpu_fuse_ops;
+  pass_options.use_tpu_host_allocator_for_inputs =
+      options.use_tpu_host_allocator_for_inputs;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
   pass_options.func_use_fallback_tensor = true;
   pass_options.auto_fusion_oplist = options.auto_fusion_oplist;

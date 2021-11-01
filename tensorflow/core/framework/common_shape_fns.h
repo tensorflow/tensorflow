@@ -165,6 +165,9 @@ Status FusedBatchNormExShape(shape_inference::InferenceContext* c);
 // Shape function for FusedBatchNormGrad and FusedBatchNormGradV2 operations.
 Status FusedBatchNormGradShape(shape_inference::InferenceContext* c);
 
+// Shape function for _FusedBatchNormGradEx operations.
+Status FusedBatchNormGradExShape(shape_inference::InferenceContext* c);
+
 // Shape function for MatrixDiagPartV2 and MatrixDiagPartV3 operations.
 Status MatrixDiagPartV2Shape(shape_inference::InferenceContext* c);
 
@@ -281,6 +284,9 @@ Status QuantizedAvgPoolShape(InferenceContext* c);
 
 // Shape function for QuantizeV2 op
 Status QuantizeV2Shape(InferenceContext* c);
+
+// Shape function for ReduceScatter ops
+Status ReduceScatterShape(shape_inference::InferenceContext* c);
 
 }  // namespace shape_inference
 

@@ -131,6 +131,7 @@ class CUDABlas : public blas::BlasSupport {
                                    const T &beta, DeviceMemory<T> *y, int incy,
                                    blas::ProfileResult *output_profile_result);
 
+#if CUDA_VERSION >= 11000
   // Helper function for implementing DoBlasLtMatmul.
   bool DoBlasLtMatmulInternal(Stream *stream, bool err_on_failure,
                               const blas::IBlasLtMatmulPlan *plan,
@@ -148,6 +149,7 @@ class CUDABlas : public blas::BlasSupport {
                                     size_t max_workspace_size,
                                     int max_algorithm_count,
                                     bool for_remainder_batch = false);
+#endif
 
   // Guards the cuBLAS handle for this device.
   absl::Mutex mu_;

@@ -317,7 +317,5 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicLayoutPass() {
   return std::make_unique<TPUDynamicLayoutPass>();
 }
 
-static PassRegistration<TPUDynamicLayoutPass> pass;
-
 }  // namespace TFTPU
 }  // namespace mlir

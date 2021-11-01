@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
-using namespace tflite;
+using tflite::StatefulNnApiDelegate;
 
 extern "C" {
 
@@ -26,18 +26,19 @@ Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jint preference, jstring accelerator_name,
     jstring cache_dir, jstring model_token, jint max_delegated_partitions,
     jboolean override_disallow_cpu, jboolean disallow_cpu_value,
-    jboolean allow_fp16) {
+    jboolean allow_fp16, jlong nnapi_support_library_handle) {
   StatefulNnApiDelegate::Options options = StatefulNnApiDelegate::Options();
   options.execution_preference =
       (StatefulNnApiDelegate::Options::ExecutionPreference)preference;
   if (accelerator_name) {
-    options.accelerator_name = env->GetStringUTFChars(accelerator_name, NULL);
+    options.accelerator_name =
+        env->GetStringUTFChars(accelerator_name, nullptr);
   }
   if (cache_dir) {
-    options.cache_dir = env->GetStringUTFChars(cache_dir, NULL);
+    options.cache_dir = env->GetStringUTFChars(cache_dir, nullptr);
   }
   if (model_token) {
-    options.model_token = env->GetStringUTFChars(model_token, NULL);
+    options.model_token = env->GetStringUTFChars(model_token, nullptr);
   }
 
   if (max_delegated_partitions >= 0) {
@@ -52,7 +53,12 @@ Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
     options.allow_fp16 = allow_fp16;
   }
 
-  auto delegate = new StatefulNnApiDelegate(options);
+  auto delegate =
+      nnapi_support_library_handle
+          ? new StatefulNnApiDelegate(reinterpret_cast<NnApiSLDriverImplFL5*>(
+                                          nnapi_support_library_handle),
+                                      options)
+          : new StatefulNnApiDelegate(options);
 
   if (options.accelerator_name) {
     env->ReleaseStringUTFChars(accelerator_name, options.accelerator_name);

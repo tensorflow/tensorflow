@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for TFE_TensorHandleToNumpy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 from tensorflow.python.eager import pywrap_tensor_test_util as util
 from tensorflow.python.eager import test

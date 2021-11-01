@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
+#include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -50,7 +51,7 @@ class MemrefTensorBuffer : public TensorBuffer {
   }
 
   size_t size() const override { return size_; }
-  bool OwnsMemory() const override { return true; }
+  bool OwnsMemory() const override { return owner_; }
   TensorBuffer* root_buffer() override { return this; }
 
  private:
@@ -60,7 +61,11 @@ class MemrefTensorBuffer : public TensorBuffer {
 };
 
 // Keep track of compiled kernel operands to detect input to output forwarding.
-struct TensorflowConversionContext {
+//
+// Reuse conversion context as a kernel context for convenience, can be a
+// separate allocation if needed.
+struct TensorflowConversionContext
+    : public tfrt::cpu::jit::Executable::KernelContext {
   explicit TensorflowConversionContext(size_t num_operands) {
     tensor_operands.reserve(num_operands);
   }
@@ -70,6 +75,12 @@ struct TensorflowConversionContext {
   TensorflowConversionContext(TensorflowConversionContext&&) = default;
 
   llvm::SmallDenseMap<const void*, const Tensor*> tensor_operands;
+
+  void* forward(size_t size, size_t alignment,
+                llvm::ArrayRef<unsigned> candidates) override {
+    // TODO(ecg): Do the real buffer forwarding here.
+    return nullptr;
+  }
 };
 
 namespace internal {
@@ -77,7 +88,7 @@ namespace internal {
 // pass to `free` (memref.global). The LLVM lowering of `memref.global` sets the
 // allocated pointer to the magic value 0xDEADBEEF.
 template <typename T, int rank>
-static bool IsStaticStorageDuration(StridedMemRefType<T, rank>* memref) {
+inline bool IsStaticStorageDuration(StridedMemRefType<T, rank>* memref) {
   return reinterpret_cast<std::intptr_t>(memref->basePtr) == 0xDEADBEEF;
 }
 }  // namespace internal
@@ -124,8 +135,20 @@ struct ConvertTensor {
     auto* buffer = new MemrefTensorBuffer(
         memref->basePtr, memref->data, size,
         /*owner=*/!internal::IsStaticStorageDuration(memref));
+
+    // Construct a tensor from the memory buffer.
     auto ptr = core::RefCountPtr<MemrefTensorBuffer>(buffer);
-    return tensorflow::Tensor(dtype, std::move(shape), std::move(ptr));
+    tensorflow::Tensor tensor(dtype, std::move(shape), std::move(ptr));
+
+    // Incorrect alignment will lead to a segfault in the downstream Tensorflow
+    // kernels, check it before returning to the runtime.
+    if (internal::IsStaticStorageDuration(memref)) {
+      DCHECK(tensor.IsAligned()) << "global memref is not aligned";
+    } else {
+      DCHECK(tensor.IsAligned()) << "allocated memref is not aligned";
+    }
+
+    return tensor;
   }
 };
 

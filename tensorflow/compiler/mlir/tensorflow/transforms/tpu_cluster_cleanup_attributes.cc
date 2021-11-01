@@ -28,6 +28,7 @@ namespace {
 
 constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 constexpr char kDeviceAttr[] = "device";
+constexpr char kClassAttr[] = "_class";
 
 class TPUCleanupClusterAttributesPass
     : public TF::TPUCleanupClusterAttributesPassBase<
@@ -38,6 +39,10 @@ class TPUCleanupClusterAttributesPass
       cluster.walk([](Operation *op) {
         if (isa<tf_device::ClusterOp>(op)) return;
         op->removeAttr(kTPUReplicateAttr);
+        // This attribute is used for op colocation. Since all ops are located
+        // on a single device cluster, this private attribute is no longer
+        // needed.
+        op->removeAttr(kClassAttr);
         if (auto attr = op->getAttrOfType<StringAttr>(kDeviceAttr)) {
           // Preserve device attribute if the op is placed on a replicated core
           // device. Device attribute is used to infer the appropriate sharding

@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Utils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -49,22 +50,12 @@ namespace {
 // inlining does). In fact, tf-shape-inference attempts to do specialization
 // of callees which is difficult if callees have multiple uses.
 class GuaranteeAllFuncsOneUse
-    : public PassWrapper<GuaranteeAllFuncsOneUse, OperationPass<ModuleOp>> {
+    : public GuaranteeAllFuncsOneUsePassBase<GuaranteeAllFuncsOneUse> {
  public:
   void runOnOperation() override {
     if (failed(Run())) {
       signalPassFailure();
     }
-  }
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tf-guarantee-all-funcs-one-use";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Guarantee all FuncOp's have only a single use.";
   }
 
   LogicalResult Run() {
@@ -105,8 +96,8 @@ class GuaranteeAllFuncsOneUse
           FuncOp new_func = func.clone();
           symbol_table.insert(new_func);
           new_func.setPrivate();
-          if (failed(SymbolTable::replaceAllSymbolUses(func, new_func.getName(),
-                                                       user))) {
+          if (failed(SymbolTable::replaceAllSymbolUses(
+                  func, new_func.sym_nameAttr(), user))) {
             return func.emitError() << "could not replace symbol use";
           }
         }
@@ -122,8 +113,6 @@ class GuaranteeAllFuncsOneUse
 std::unique_ptr<OperationPass<ModuleOp>> CreateGuaranteeAllFuncsOneUsePass() {
   return std::make_unique<GuaranteeAllFuncsOneUse>();
 }
-
-static PassRegistration<GuaranteeAllFuncsOneUse> pass;
 
 }  // namespace TF
 

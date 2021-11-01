@@ -121,6 +121,8 @@ ExecutionOptions CreateExecutionOptions(
   execution_options.set_use_spmd_partitioning(
       build_options.use_spmd_partitioning());
   execution_options.set_deduplicate_hlo(build_options.deduplicate_hlo());
+  execution_options.set_allow_spmd_sharding_propagation_to_output(
+      build_options.allow_spmd_sharding_propagation_to_output());
   if (build_options.has_device_assignment()) {
     TF_CHECK_OK(build_options.device_assignment().Serialize(
         execution_options.mutable_device_assignment()));

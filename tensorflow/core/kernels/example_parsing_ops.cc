@@ -1218,7 +1218,7 @@ class DecodeJSONExampleOp : public OpKernel {
           resolver_.get(), "type.googleapis.com/tensorflow.Example", &in, &out);
       OP_REQUIRES(ctx, status.ok(),
                   errors::InvalidArgument("Error while parsing JSON: ",
-                                          string(status.error_message())));
+                                          string(status.message())));
     }
   }
 

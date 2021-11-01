@@ -271,7 +271,7 @@ Status GraphMgr::InitItem(
     };
 
     optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph,
-                       /*shape_map=*/nullptr);
+                       GraphOptimizer::Options());
 
     // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
     if (!debug_options.debug_tensor_watch_opts().empty()) {

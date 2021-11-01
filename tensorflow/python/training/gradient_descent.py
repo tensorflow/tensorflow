@@ -14,10 +14,7 @@
 # ==============================================================================
 
 """GradientDescent for TensorFlow."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -67,10 +64,13 @@ class GradientDescentOptimizer(optimizer.Optimizer):
 
   def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
     return resource_variable_ops.resource_scatter_add(
-        handle.handle, indices, -grad * self._learning_rate)
+        handle.handle,
+        indices,
+        -grad * math_ops.cast(self._learning_rate_tensor,
+                              grad.dtype.base_dtype))
 
   def _apply_sparse_duplicate_indices(self, grad, var):
-    delta = ops.IndexedSlices(
+    delta = indexed_slices.IndexedSlices(
         grad.values *
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
         grad.indices, grad.dense_shape)

@@ -134,11 +134,8 @@ class CpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  StatusOr<
-      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-  RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
-                                   se::StreamExecutor* executor, bool optimize,
-                                   const CompileOptions& options) override;
+  StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+      const HloModule* module) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -170,6 +167,8 @@ class CpuCompiler : public LLVMCompiler {
   Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
       LLVMTargetMachineFeatures* target_machine_features);
+
+  mutable std::unique_ptr<HloProto> hlo_proto_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
 };

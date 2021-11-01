@@ -18,10 +18,6 @@ See the executable wrapper, print_selective_registration_header.py, for more
 information.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import os
 import sys

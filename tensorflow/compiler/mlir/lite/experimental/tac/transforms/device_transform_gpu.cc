@@ -44,6 +44,12 @@ namespace {
 
 struct DeviceTransformGPUPass
     : public mlir::PassWrapper<DeviceTransformGPUPass, FunctionPass> {
+  llvm::StringRef getArgument() const final {
+    return "tfl-device-transform-gpu";
+  }
+  llvm::StringRef getDescription() const final {
+    return "Suitable transformation for gpu only.";
+  }
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
   }
@@ -69,8 +75,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDeviceTransformGPUPass() {
   return std::make_unique<DeviceTransformGPUPass>();
 }
 
-static PassRegistration<DeviceTransformGPUPass> pass(
-    "tfl-device-transform-gpu", "Suitable transformation for gpu only.");
+static PassRegistration<DeviceTransformGPUPass> pass;
 
 }  // namespace tac
 }  // namespace TFL

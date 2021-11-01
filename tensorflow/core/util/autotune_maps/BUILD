@@ -129,6 +129,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/stream_executor:dnn_proto_cc",
+        "//tensorflow/stream_executor:lazy_op_runner",
         "//tensorflow/stream_executor:stream_header",
     ],
 )
@@ -144,6 +145,7 @@ tf_cuda_only_cc_test(
         ":conv_parameters_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
         "//tensorflow/stream_executor/gpu:gpu_driver_header",
     ],
 )

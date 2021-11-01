@@ -15,10 +15,6 @@
 """Tests for pfor and for_loop."""
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import sys
 import time
@@ -133,7 +129,7 @@ class PForTest(PForTestCase):
           lambda i: 1, dtypes.int32, 8, parallel_iterations=0)
 
   def test_parallel_iterations_one(self):
-    with self.assertRaisesRegex(ValueError, "Use for_loop instead"):
+    with self.assertRaisesRegex(ValueError, "Use `for_loop` instead"):
       pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
 
   def test_vectorized_map(self):
@@ -330,7 +326,7 @@ class ReductionTest(PForTestCase):
       return pfor_config.reduce_sum(x_i)
 
     with self.assertRaisesRegex(ValueError,
-                                "parallel_iterations currently unsupported"):
+                                "`parallel_iterations` currently unsupported"):
       pfor_control_flow_ops.pfor(loop_fn, 8, parallel_iterations=2)
 
   def test_var_loop_len(self):
@@ -595,8 +591,6 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_loop_variant_roll_shift(self):
-    self.skipTest("TODO(b/191880259): re-enable once XLA compile times are "
-                  "addressed.")
     x = random_ops.random_uniform([3, 5, 6, 7])
 
     def loop_fn(i):
@@ -606,8 +600,6 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_loop_variant_roll_scalar_shift(self):
-    self.skipTest("TODO(b/191880259): re-enable once XLA compile times are "
-                  "addressed.")
     x = random_ops.random_uniform([5, 5, 6])
 
     def loop_fn(i):
@@ -1467,6 +1459,94 @@ class TensorListTest(PForTestCase):
           math_ops.add_n([l1, l2]), dtypes.int32)
 
     self._test_loop_fn(loop_fn, 2)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class TensorTest(PForTestCase):
+
+  def test_loop_variant_scatter_update_no_shape(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Flaky in some GPU configurations due to TensorScatterNdUpdate "
+          "nondeterminism.")
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32)
+    ])
+    def shapeless_func(tensor, indices, updates):
+      return array_ops.tensor_scatter_nd_update(tensor, indices, updates)
+
+    def loop_fn(i):
+      tensor = [0, 0, 0, 0, 0, 0, 0, 0]
+      indices = [[i], [i + 1], [i + 3], [i + 2]]
+      updates = [i, i - 10, i + 11, 12]
+      return shapeless_func(tensor, indices, updates)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  def test_loop_variant_scatter_update_singles(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Flaky in some GPU configurations due to TensorScatterNdUpdate "
+          "nondeterminism.")
+
+    def loop_fn(i):
+      tensor = [0, 0, 0, 0, 0, 0, 0, 0]
+      indices = [[i], [i+1], [i+3], [i+2]]
+      updates = [i, i-10, i+11, 12]
+      return array_ops.tensor_scatter_nd_update(tensor, indices, updates)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  def test_loop_variant_scatter_update_slices(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Flaky in some GPU configurations due to TensorScatterNdUpdate "
+          "nondeterminism.")
+
+    def loop_fn(i):
+      tensor = array_ops.zeros([10, 3], dtype=dtypes.int32)
+      indices = [[i+2], [4]]
+      updates = [[1, i*2, 3], [i+4, i-5, 6]]
+      return array_ops.tensor_scatter_nd_update(tensor, indices, updates)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  def test_loop_variant_scatter_update_multi_dim_index(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Flaky in some GPU configurations due to TensorScatterNdUpdate "
+          "nondeterminism.")
+
+    def loop_fn(i):
+      tensor = array_ops.zeros([10, 3], dtype=dtypes.int32)
+      indices = [[i+2, 1], [4, 2]]
+      updates = [i, 5]
+      return array_ops.tensor_scatter_nd_update(tensor, indices, updates)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  def test_loop_variant_scatter_update_folded_indices(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Flaky in some GPU configurations due to TensorScatterNdUpdate "
+          "nondeterminism.")
+
+    def loop_fn(i):
+      tensor = array_ops.zeros([5, 5])
+      indices = [
+          [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]],
+          [[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]],
+      ]
+      updates = [
+          [1, i, 1, 1, 1],
+          [1, 1, i+2, 1, i-5],
+      ]
+      return array_ops.tensor_scatter_nd_update(tensor, indices, updates)
+
+    self._test_loop_fn(loop_fn, 5)
 
 
 class OptionalTest(PForTestCase):
@@ -2721,9 +2801,7 @@ class VariableTest(PForTestCase):
 
     # Note that this error is only raised under v2 behavior.
     with self.assertRaisesRegex(
-        ValueError,
-        "tf.function-decorated function tried to create variables on non-first"
-    ):
+        ValueError, "singleton tf.Variable.*on the first call"):
       pfor_control_flow_ops.vectorized_map(f, x)
 
   @test_util.run_all_in_graph_and_eager_modes

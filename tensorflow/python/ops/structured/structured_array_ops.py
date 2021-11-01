@@ -15,10 +15,6 @@
 # ==============================================================================
 """StructuredTensor array ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from typing import Sequence
 
 from tensorflow.python.framework import constant_op
@@ -209,8 +205,10 @@ def size(input, name=None, out_type=dtypes.int32):
       else:
         return math_ops.cast(1, out_type)  # scalar.
     # 2D and up.
-    last_row_partition = input._row_partitions[-1]
-    return last_row_partition.nvals(out_type)
+    nvals = input._row_partitions[-1].nvals()
+    if nvals is None or out_type is None:
+      return nvals
+    return math_ops.cast(nvals, dtype=out_type)
 
 
 # pylint: disable=protected-access

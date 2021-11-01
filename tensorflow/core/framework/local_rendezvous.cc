@@ -333,4 +333,11 @@ void LocalRendezvous::StartAbort(const Status& status) {
   }
 }
 
+Status LocalRendezvous::status() {
+  mu_.lock();
+  Status s = status_;
+  mu_.unlock();
+  return s;
+}
+
 }  // namespace tensorflow

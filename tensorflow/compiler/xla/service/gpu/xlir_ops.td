@@ -47,6 +47,18 @@ class XLIR_Op<string mnemonic, list<OpTrait> traits = []> :
   let assemblyFormat = "operands attr-dict";
 }
 
+def XLIR_ModuleLoadOp : XLIR_Op<"module.load"> {
+  let description = [{
+    xlir.module.load loads GPU device module from a binary blob provided by the
+    execution context.
+
+    Example:
+      %module = tfrt_gpu.module.load %ctx
+  }];
+  let arguments = (ins GPU_ContextType:$ctx);
+  let results = (outs GPU_ModuleType);
+}
+
 def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
   let description = [{
     xlir.ccl.create returns a ccl.handle, which can be populated with individual
@@ -55,6 +67,46 @@ def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
   }];
   let arguments = (ins GPU_ContextType);
   let results = (outs GPU_CclHandleType);
+}
+
+def XLIR_CclCollectivePermuteOp : XLIR_Op<"ccl.collective_permute"> {
+  let description = [{
+    xlir.ccl.collective_permute inserts into the ccl.handle operations to send
+    data at the input buffer and receive data into the output buffer depending
+    on the source and target peers supplied in the ExecutionContext
+    (XcclContext).
+  }];
+  let arguments = (ins GPU_CclHandleType:$handle, GPU_BufferType:$input,
+                   GPU_BufferType:$output, GPU_CclDataTypeAttr:$data_type,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $handle`,` $input`,` $output`,` custom<Enum>($data_type)`,` $chain attr-dict
+  }];
+}
+
+def XLIR_CustomCallOp : XLIR_Op<"custom_call"> {
+  let description = [{
+    xlir.custom_call invokes the host function 'symbol' from the
+    CustomCallTargetRegistry. The target must have the following signature:
+
+    void target(void* stream, void* const pointers[],
+                const char* opaque, size_t opaque_size,
+                XlaCustomCallStatus* status);
+
+    The 'indices' maps the 'pointers' array to 'buffers', or nullptr for
+    negative values.
+
+    'opaque' is an arbitrary array of bytes passed as extra arguments.
+  }];
+  let arguments = (ins GPU_StreamType:$stream,
+                   Variadic<GPU_BufferType>:$buffers,
+                   TFRT_ChainType:$chain, StrAttr:$symbol,
+                   I32ArrayAttr:$indices, StrAttr:$opaque);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream`,` $buffers`,` $chain attr-dict
+  }];
 }
 
 #endif  // XLIR_OPS

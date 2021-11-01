@@ -17,10 +17,6 @@
 The analyzer performs post hoc analysis of dumped intermediate tensors and
 graph structure information from debugged Session.run() calls.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import copy
 import re

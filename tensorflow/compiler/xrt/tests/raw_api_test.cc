@@ -1290,6 +1290,10 @@ TEST(RawApiTest, DynamicR1TupleTest) {
 }
 
 TEST(RawApiTest, AcceptDynamicR1TupleTest) {
+  if (*xla_test_device_ptr == "XLA_CPU" || *xla_test_device_ptr == "XLA_GPU") {
+    // XLA_CPU and XLA_GPU has shape check set to kCompileTime.
+    return;
+  }
   xrt::XLAAllocation p0;
   *p0.mutable_value() = FloatVector({1.0f, 2.0f, 0.5f});
   xrt::XLAAllocation p1;
@@ -1352,6 +1356,10 @@ TEST(RawApiTest, AcceptDynamicR1TupleTest) {
 }
 
 TEST(RawApiTest, AcceptDynamicR1Test) {
+  if (*xla_test_device_ptr == "XLA_CPU" || *xla_test_device_ptr == "XLA_GPU") {
+    // XLA_CPU and XLA_GPU has shape check set to kCompileTime.
+    return;
+  }
   xrt::XLAAllocation p0;
   *p0.mutable_value() = FloatVector({1.0f, 2.0f, 0.5f});
   xrt::XLAAllocation p1;

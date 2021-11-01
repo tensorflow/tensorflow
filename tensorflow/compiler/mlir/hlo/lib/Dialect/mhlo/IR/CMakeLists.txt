@@ -37,11 +37,11 @@ add_mlir_dialect_library(ChloDialect
   MLIRMhloUtils
 )
 
-add_mlir_library(MhloInferFusibilityOpInterface
-  infer_fusibility_op_interface.cc
+add_mlir_library(MhloInferShapeEqualityOpInterface
+  infer_shape_equality_op_interface.cc
 
   DEPENDS
-  MLIRinfer_fusibility_op_interfaceIncGen
+  MLIRinfer_shape_equality_op_interfaceIncGen
 )
 
 add_mlir_library(LmhloStructuredInterface
@@ -68,12 +68,12 @@ add_mlir_dialect_library(MhloDialect
   MLIRhlo_opsIncGen
   MLIRMhloCanonicalizeIncGen
   MLIRMhloRewriterIncGen
-  MLIRinfer_fusibility_op_interfaceIncGen
+  MLIRinfer_shape_equality_op_interfaceIncGen
 )
 target_link_libraries(MhloDialect
   PUBLIC
   MLIRIR
-  MhloInferFusibilityOpInterface
+  MhloInferShapeEqualityOpInterface
   MLIRMhloUtils
   HloOpsCommon
 )

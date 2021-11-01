@@ -14,10 +14,6 @@
 # ==============================================================================
 """Helper functions to add documentation to type aliases."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # Not useful for builtin `help()`. But these get passed to the
 # doc generator so that the description is still displayed on the site.
 _EXTRA_DOCS: {int: str} = {}

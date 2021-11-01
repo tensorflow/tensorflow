@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -549,8 +549,8 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
 #endif
     if (use_matrix_vector_multiply) {
       // Call matrix-vector multiply if b is a vector.
-      TTypes<int64>::ConstVec a_dense_shape_comp(a_dense_shape.data() + row_dim,
-                                                 2);
+      TTypes<int64_t>::ConstVec a_dense_shape_comp(
+          a_dense_shape.data() + row_dim, 2);
       Tensor b_conj_t;
       const T* b_base_ptr = b_t.template flat<T>().data();
       bool conjugate_a = this->conjugate_a_;
@@ -658,7 +658,7 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
     }
 
     // Dense shape of a batch component of A.
-    TTypes<int64>::ConstVec a_input_dense_shape_comp(
+    TTypes<int64_t>::ConstVec a_input_dense_shape_comp(
         a_input_dense_shape.data() + row_dim, 2);
 
     auto b = b_t_input.flat<T>();
@@ -857,7 +857,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       Tensor buffer;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+          DT_INT8, TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
       DCHECK(buffer.flat<int8>().data() != nullptr);
 
       TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,
@@ -895,7 +895,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       Tensor buffer;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+          DT_INT8, TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
       DCHECK(buffer.flat<int8>().data() != nullptr);
 
       TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,

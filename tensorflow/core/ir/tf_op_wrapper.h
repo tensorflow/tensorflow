@@ -21,7 +21,6 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/ir/ops.h"
 
 namespace mlir {
 namespace tfg {
@@ -31,6 +30,10 @@ namespace tfg {
 class TFOp {
  public:
   explicit TFOp(Operation &op);
+  explicit TFOp(Operation *op) : TFOp(*op) {}
+  static bool classof(Operation *op) {
+    return isa<TFGraphDialect>(op->getDialect());
+  }
 
   // Returns a pointer to the TensorFlow Graph Dialect. It nevers returns
   // nullptr.
@@ -57,15 +60,24 @@ class TFOp {
   // Returns the node name for this operation.
   StringAttr nameAttr();
   StringRef name();
+  // Set a new node name for this operation.
+  void setName(const Twine &name);
+  void setName(StringAttr name);
 
   // Returns the requested device, which is also the "device" field in a
   // GraphDef.
   StringAttr requestedDeviceAttr();
   StringRef requestedDevice();
+  // Set a new requested device for this operation.
+  void setRequestedDevice(const Twine &requested_device);
+  void setRequestedDevice(StringAttr requested_device);
 
   // Returns the assigned device, this field is set by placer in general.
   StringAttr assignedDeviceAttr();
   StringRef assignedDevice();
+  // Set a new assigned device for this operation.
+  void setAssignedDevice(const Twine &assigned_device);
+  void setAssignedDevice(StringAttr assigned_device);
 
   // Returns the device, preferring the assigned device if set, and the
   // requested device otherwise.
@@ -87,10 +99,6 @@ class TFOp {
  private:
   Operation &op_;
 };
-
-// Return the function called by this operation if this operation is a call and
-// the function exists in the symbol_table, otherwise return null.
-GraphFuncOp getCalledFunction(Operation *op, SymbolTable &symbol_table);
 
 }  // namespace tfg
 }  // namespace mlir

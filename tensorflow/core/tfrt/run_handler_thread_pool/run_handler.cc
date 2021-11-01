@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_util.h"
+#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tfrt {
@@ -569,16 +570,6 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
                    &task_from_blocking_queue, &tws);
     }
     if (t.f) {
-      tensorflow::profiler::TraceMeConsumer activity(
-          // From TraceMeProducer in SavedModelImpl::Run
-          [tws, task_from_blocking_queue, thread_id] {
-            return tensorflow::profiler::TraceMeEncode(
-                task_from_blocking_queue ? "inter" : "intra",
-                {{"id", tws->GetTracemeId()}, {"thread_id", thread_id}});
-          },
-          // GetTracemeId returns the request ID for inference.
-          tensorflow::profiler::ContextType::kTfrtExecutor, tws->GetTracemeId(),
-          tensorflow::profiler::TraceMeLevel::kInfo);
       VLOG(2) << "Running " << (task_from_blocking_queue ? "inter" : "intra")
               << " work from " << tws->GetTracemeId();
       tws->IncrementInflightTaskCount(task_from_blocking_queue);
@@ -695,7 +686,8 @@ class RunHandler::Impl {
     }
 
     void Schedule(std::function<void()> fn) override {
-      run_handler_->ScheduleIntraOpClosure(tfrt::TaskFunction(std::move(fn)));
+      run_handler_->ScheduleIntraOpClosure(tensorflow::tfrt_stub::WrapWork(
+          run_handler_->tws()->GetTracemeId(), "intra", std::move(fn)));
     }
 
     int NumThreads() const override;

@@ -65,6 +65,10 @@ void CreateResourceVariableIfNotAvailable(ResourceMap* resources,
 // WARNING: Experimental interface, subject to change.
 ResourceVariable* GetResourceVariable(ResourceMap* resources, int resource_id);
 
+// Returns true if 'tensor' points to a builtin resource.
+// WARNING: Experimental interface, subject to change.
+bool IsBuiltinResource(const TfLiteTensor* tensor);
+
 }  // namespace resource
 }  // namespace tflite
 

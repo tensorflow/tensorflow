@@ -10,11 +10,9 @@ pybind_extension(
     srcs = [
         "analyzer_wrapper.cc",
     ],
-    link_in_framework = True,
     module_name = "_pywrap_analyzer_wrapper",
     deps = [
         ":model_analyzer",
-        "//tensorflow/compiler/mlir/lite:flatbuffer_to_mlir",
         "@pybind11",
     ],
 )

@@ -11,21 +11,21 @@ joints (keypoints).
 If you are new to TensorFlow Lite and are working with Android or iOS, explore
 the following example applications that can help you get started.
 
-<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/posenet/android">
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/pose_estimation/android">
 Android example</a>
-<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/posenet/ios">
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/pose_estimation/ios">
 iOS example</a>
 
 If you are familiar with the
 [TensorFlow Lite APIs](https://www.tensorflow.org/api_docs/python/tf/lite),
-download the starter PoseNet model and supporting files.
+download the starter MoveNet pose estimation model and supporting files.
 
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/posenet_mobilenet_v1_100_257x257_multi_kpt_stripped.tflite">
-Download starter model</a>
+<a class="button button-primary" href="https://tfhub.dev/s?q=movenet"> Download
+starter model</a>
 
 If you want to try pose estimation on a web browser, check out the
-<a href="https://github.com/tensorflow/tfjs-models/tree/master/posenet">
-TensorFlow JS GitHub repository</a>.
+<a href="https://storage.googleapis.com/tfjs-models/demos/pose-detection/index.html?model=movenet">
+TensorFlow JS Demo</a>.
 
 ## Model description
 
@@ -37,12 +37,21 @@ elbow shows up in an image. It is important to be aware of the fact that pose
 estimation merely estimates where key body joints are and does not recognize who
 is in an image or video.
 
-The PoseNet model takes a processed camera image as the input and outputs
-information about keypoints. The keypoints detected are indexed by a part ID,
-with a confidence score between 0.0 and 1.0. The confidence score indicates the
-probability that a keypoint exists in that position.
+The pose estimation models takes a processed camera image as the input and
+outputs information about keypoints. The keypoints detected are indexed by a
+part ID, with a confidence score between 0.0 and 1.0. The confidence score
+indicates the probability that a keypoint exists in that position.
 
-The various body joints detected by the PoseNet model are tabulated below:
+We provides reference implementation of two TensorFlow Lite pose estimation
+models:
+
+*   MoveNet: the state-of-the-art pose estimation model available in two
+    flavors: Lighting and Thunder. See a comparison between these two in the
+    section below.
+*   PoseNet: the previous generation pose estimation model released in 2017.
+
+The various body joints detected by the pose estimation model are tabulated
+below:
 
 <table style="width: 30%;">
   <thead>
@@ -125,80 +134,106 @@ The various body joints detected by the PoseNet model are tabulated below:
 
 An example output is shown below:
 
-<img alt="Animation showing pose estimation" src="https://www.tensorflow.org/images/lite/models/pose_estimation.gif"/>
+<img alt="Animation showing pose estimation" src="https://storage.googleapis.com/download.tensorflow.org/example_images/movenet_demo.gif"/>
 
 ## Performance benchmarks
 
-Performance varies based on your device and output stride (heatmaps and offset
-vectors). The PoseNet model is image size invariant, which means it can predict
-pose positions in the same scale as the original image regardless of whether the
-image is downscaled. This means that you configure the model to have a higher
-accuracy at the expense of performance.
+MoveNet is available in two flavors:
 
-The output stride determines how much the output is scaled down relative to the
-input image size. It affects the size of the layers and the model outputs.
+*   MoveNet.Lightning is smaller, faster but less accurate than the Thunder
+    version. It can run in realtime on modern smartphones.
+*   MoveNet.Thunder is the more accurate version but also larger and slower than
+    Lightning. It is useful for the use cases that require higher accuracy.
 
-The higher the output stride, the smaller the resolution of layers in the
-network and the outputs, and correspondingly their accuracy. In this
-implementation, the output stride can have values of 8, 16, or 32. In other
-words, an output stride of 32 will result in the fastest performance but lowest
-accuracy, while 8 will result in the highest accuracy but slowest performance.
-The recommended starting value is 16.
-
-The following image shows how the output stride determines how much the output
-is scaled down relative to the input image size. A higher output stride is
-faster but results in lower accuracy.
-
-<img alt="Output stride and heatmap resolution" src="../images/output_stride.png" >
+MoveNet outperforms PoseNet on a variety of datasets, especially in images with
+fitness action images. Therefore, we recommend using MoveNet over PoseNet.
 
 Performance benchmark numbers are generated with the tool
-[described here](https://www.tensorflow.org/lite/performance/benchmarks).
+[described here](../../performance/measurement). Accuracy (mAP) numbers are
+measured on a subset of the [COCO dataset](https://cocodataset.org/#home) in
+which we filter and crop each image to contain only one person .
 
 <table>
-  <thead>
-    <tr>
-      <th>Model Name</th>
-      <th>Model size </th>
-      <th>Device </th>
-      <th>GPU</th>
-      <th>CPU</th>
-    </tr>
-  </thead>
+<thead>
   <tr>
-    <td rowspan = 3>
-      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/posenet_mobilenet_v1_100_257x257_multi_kpt_stripped.tflite">Posenet</a>
+    <th rowspan="2">Model</th>
+    <th rowspan="2">Size (MB)</th>
+    <th rowspan="2">mAP</th>
+    <th colspan="3">Latency (ms)</th>
+  </tr>
+  <tr>
+    <td>Pixel 5 - CPU 4 threads</td>
+    <td>Pixel 5 - GPU</td>
+    <td>Raspberry Pi 4 - CPU 4 threads</td>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>
+      <a href="https://tfhub.dev/google/lite-model/movenet/singlepose/thunder/tflite/float16/4">MoveNet.Thunder (FP16 quantized)</a>
     </td>
-    <td rowspan = 3>
-      12.7 Mb
+    <td>12.6MB</td>
+    <td>72.0</td>
+    <td>155ms</td>
+    <td>45ms</td>
+    <td>594ms</td>
+  </tr>
+  <tr>
+    <td>
+      <a href="https://tfhub.dev/google/lite-model/movenet/singlepose/thunder/tflite/int8/4">MoveNet.Thunder (INT8 quantized)</a>
     </td>
-    <td>Pixel 3 (Android 10) </td>
-    <td>12ms</td>
-    <td>31ms*</td>
+    <td>7.1MB</td>
+    <td>68.9</td>
+    <td>100ms</td>
+    <td>52ms</td>
+    <td>251ms</td>
   </tr>
-   <tr>
-     <td>Pixel 4 (Android 10) </td>
-    <td>12ms</td>
-    <td>19ms*</td>
+  <tr>
+    <td>
+      <a href="https://tfhub.dev/google/lite-model/movenet/singlepose/lightning/tflite/float16/4">MoveNet.Lightning (FP16 quantized)</a>
+    </td>
+    <td>4.8MB</td>
+    <td>63.0</td>
+    <td>60ms</td>
+    <td>25ms</td>
+    <td>186ms</td>
   </tr>
-   <tr>
-     <td>iPhone XS (iOS 12.4.1) </td>
-     <td>4.8ms</td>
-    <td>22ms** </td>
+  <tr>
+    <td>
+      <a href="https://tfhub.dev/google/lite-model/movenet/singlepose/lightning/tflite/int8/4">MoveNet.Lightning (INT8 quantized)</a>
+    </td>
+    <td>2.9MB</td>
+    <td>57.4</td>
+    <td>52ms</td>
+    <td>28ms</td>
+    <td>95ms</td>
   </tr>
+  <tr>
+    <td>
+      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/posenet_mobilenet_v1_100_257x257_multi_kpt_stripped.tflite">PoseNet(MobileNetV1 backbone, FP32)</a>
+    </td>
+    <td>13.3MB</td>
+    <td>45.6</td>
+    <td>80ms</td>
+    <td>40ms</td>
+    <td>338ms</td>
+  </tr>
+</tbody>
 </table>
-
-\* 4 threads used.
-
-\*\* 2 threads used on iPhone for the best performance result.
 
 ## Further reading and resources
 
 *   Check out this
-    [blog post](https://medium.com/tensorflow/track-human-poses-in-real-time-on-android-with-tensorflow-lite-e66d0f3e6f9e)
-    to learn more about pose estimation using TensorFlow Lite.
+    [blog post](https://blog.tensorflow.org/2021/08/pose-estimation-and-classification-on-edge-devices-with-MoveNet-and-TensorFlow-Lite.html)
+    to learn more about pose estimation using MoveNet and TensorFlow Lite.
 *   Check out this
-    [blog post](https://medium.com/tensorflow/real-time-human-pose-estimation-in-the-browser-with-tensorflow-js-7dd0bc881cd5)
-    to learn more about pose estimation using TensorFlow JS.
+    [blog post](https://blog.tensorflow.org/2021/05/next-generation-pose-detection-with-movenet-and-tensorflowjs.html)
+    to learn more about pose estimation on the web.
+*   Check out this [tutorial](https://www.tensorflow.org/hub/tutorials/movenet)
+    to learn about running MoveNet on Python using a model from TensorFlow Hub.
+*   Coral/EdgeTPU can make pose estimation run much faster on IoT devices. See
+    [EdgeTPU-optimized models](https://coral.ai/models/pose-estimation/) for
+    more details.
 *   Read the PoseNet paper [here](https://arxiv.org/abs/1803.08225)
 
 Also, check out these use cases of pose estimation.

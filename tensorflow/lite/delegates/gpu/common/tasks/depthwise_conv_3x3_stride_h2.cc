@@ -24,7 +24,8 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace {
-std::string GetKernelDepthWiseConv3x3StrideH2(const OperationDef& definition,
+std::string GetKernelDepthWiseConv3x3StrideH2(const GpuInfo& gpu_info,
+                                              const OperationDef& definition,
                                               bool weights_are_buffer,
                                               bool local_mem_uploads) {
   const auto src_tensor_type = definition.src_tensors[0].storage_type;
@@ -55,7 +56,7 @@ std::string GetKernelDepthWiseConv3x3StrideH2(const OperationDef& definition,
     c += "    f[local_id] = args.weights.Read(S * 10 + local_id);\n";
     c += "  }\n";
     c += "  LOCAL_MEM_BARRIER;\n";
-  } else if (weights_are_buffer) {
+  } else if (weights_are_buffer && gpu_info.SupportsPointersInKernels()) {
     c += "  __global FLT4* f = args.weights.GetPtr() + S * 10;\n";
   }
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() "
@@ -101,26 +102,33 @@ std::string GetKernelDepthWiseConv3x3StrideH2(const OperationDef& definition,
     c += "  y2 = clamp(y2, 0, args.src_tensor.Height() - 1);\n";
     c += "  y3 = clamp(y3, 0, args.src_tensor.Height() - 1);\n";
     c += "  y4 = clamp(y4, 0, args.src_tensor.Height() - 1);\n";
-    if (src_tensor_type == TensorStorageType::BUFFER) {
+    if (src_tensor_type == TensorStorageType::BUFFER &&
+        gpu_info.SupportsPointersInKernels()) {
       c += "  __global FLT4* src_loc = "
            "args.src_tensor.GetPtrWithSliceOffset(S);\n";
     }
   }
   if (local_mem_uploads || weights_are_buffer) {
-    W[0] = "f[0]";
-    W[1] = "f[1]";
-    W[2] = "f[2]";
-    W[3] = "f[3]";
-    W[4] = "f[4]";
-    W[5] = "f[5]";
-    W[6] = "f[6]";
-    W[7] = "f[7]";
-    W[8] = "f[8]";
-    bias = "f[9]";
+    const bool use_direct_buffer =
+        !local_mem_uploads && !gpu_info.SupportsPointersInKernels();
+    const std::string fetch_start =
+        use_direct_buffer ? "args.weights.Read(S * 10 + " : "f[";
+    const std::string fetch_end = use_direct_buffer ? ")" : "]";
+    W[0] = fetch_start + "0" + fetch_end;
+    W[1] = fetch_start + "1" + fetch_end;
+    W[2] = fetch_start + "2" + fetch_end;
+    W[3] = fetch_start + "3" + fetch_end;
+    W[4] = fetch_start + "4" + fetch_end;
+    W[5] = fetch_start + "5" + fetch_end;
+    W[6] = fetch_start + "6" + fetch_end;
+    W[7] = fetch_start + "7" + fetch_end;
+    W[8] = fetch_start + "8" + fetch_end;
+    bias = fetch_start + "9" + fetch_end;
   }
   auto read_3x_line = [&](int y) {
     const std::string yc = "y" + std::to_string(y);
-    if (src_tensor_type == TensorStorageType::BUFFER) {
+    if (src_tensor_type == TensorStorageType::BUFFER &&
+        gpu_info.SupportsPointersInKernels()) {
       const std::string y_in = "y" + std::to_string(y) + "_in";
       c += "    s0 = src_loc[args.src_tensor.GetWHOffset(x0, " + yc +
            ")] * INIT_FLT(x0_in && " + y_in + ");\n";
@@ -128,7 +136,8 @@ std::string GetKernelDepthWiseConv3x3StrideH2(const OperationDef& definition,
            ")] * INIT_FLT(x1_in && " + y_in + ");\n";
       c += "    s2 = src_loc[args.src_tensor.GetWHOffset(x2, " + yc +
            ")] * INIT_FLT(x2_in && " + y_in + ");\n";
-    } else if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
+    } else if (src_tensor_type == TensorStorageType::IMAGE_BUFFER ||
+               src_tensor_type == TensorStorageType::BUFFER) {
       const std::string y_in = "y" + std::to_string(y) + "_in";
       c += "    s0 = args.src_tensor.Read(x0, " + yc +
            ", S) * INIT_FLT(x0_in && " + y_in + ");\n";
@@ -215,8 +224,8 @@ DepthWiseConv3x3StrideH2 CreateDepthWiseConv3x3StrideH2(
   DepthWiseConv3x3StrideH2 desc(definition);
   desc.local_mem_uploads_ = weights_are_buffer && gpu_info.IsPowerVR();
   desc.work_group_size_ = int3(8, 4, 1);
-  desc.code_ = GetKernelDepthWiseConv3x3StrideH2(definition, weights_are_buffer,
-                                                 desc.local_mem_uploads_);
+  desc.code_ = GetKernelDepthWiseConv3x3StrideH2(
+      gpu_info, definition, weights_are_buffer, desc.local_mem_uploads_);
   auto src_desc = definition.src_tensors[0];
   src_desc.SetAddressMode(AddressMode::kZero);
   desc.AddSrcTensor("src_tensor", src_desc);

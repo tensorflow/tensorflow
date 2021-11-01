@@ -17,6 +17,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
+include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.td"
 
 /// TODO(b/130756570): Support OpBase constraints in PatternRewrites.
 def SingleResultAndOperandHaveSameElementType : Constraint<
@@ -50,6 +51,24 @@ def AddV2OfNegLeft : Pat<(TF_AddV2Op (TF_NegOp $arg0), $arg1),
 
 def AddV2OfNegRight : Pat<(TF_AddV2Op $arg0, (TF_NegOp $arg1)),
                           (TF_SubOp $arg0, $arg1)>;
+
+//===----------------------------------------------------------------------===//
+// Gather op patterns.
+//===----------------------------------------------------------------------===//
+
+class GetI32Attr<int x>: NativeCodeCall<
+  "$_builder.getI32IntegerAttr(" # x # ")">;
+
+class GetI64Attr<int x>: NativeCodeCall<
+  "$_builder.getI64IntegerAttr(" # x # ")">;
+
+// The deprecated validate_indices attribute is NOT verified during
+// canonicalization because it is neither supported in the old bridge
+// nor in the reference TF implementation.
+def GatherToV2 :
+  Pat<(TF_GatherOp $params, $indices, $ignored_validate_indices),
+      (TF_GatherV2Op $params, $indices,
+        (TF_ConstOp (GetI32Attr<0>)), (GetI64Attr<0>))>;
 
 //===----------------------------------------------------------------------===//
 // BatchMatMul op patterns.
@@ -97,7 +116,7 @@ def BatchToSpaceToBatchToSpaceND :
 //===----------------------------------------------------------------------===//
 
 def BiasAddV1ToBiasAdd : Pat<(TF_BiasAddV1Op $arg0, $arg1),
-  (TF_BiasAddOp $arg0, $arg1, ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">)>;
+  (TF_BiasAddOp $arg0, $arg1, ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">)>;
 
 //===----------------------------------------------------------------------===//
 // Bitcast op patterns.
@@ -172,9 +191,6 @@ def LogicalNotOfLessEqual : Pat<(TF_LogicalNotOp (TF_LessEqualOp $arg0, $arg1)),
 // MatrixSetDiag op patterns.
 //===----------------------------------------------------------------------===//
 
-class GetI32Attr<int x>: NativeCodeCall<
-  "$_builder.getI32IntegerAttr(" # x # ")">;
-
 class GetStrAttr<string x>: NativeCodeCall<
   "$_builder.getStringAttr(\"" # x # "\")">;
 
@@ -187,6 +203,18 @@ def MatrixSetDiagToV3 : Pat<(TF_MatrixSetDiagOp $input, $diag),
 def MatrixSetDiagV2ToV3 : Pat<(TF_MatrixSetDiagV2Op $input, $diag, $k),
                               (TF_MatrixSetDiagV3Op $input, $diag, $k,
                                 (GetStrAttr<"LEFT_LEFT">))>;
+
+//===----------------------------------------------------------------------===//
+// MatrixDiag Op.
+//===----------------------------------------------------------------------===//
+
+def MatrixDiagToV3 : Pat<(TF_MatrixDiagOp $diag),
+                         (TF_MatrixDiagV3Op $diag,
+                           (TF_ConstOp (GetI32Attr<0>)),
+                           (TF_ConstOp (GetI32Attr<-1>)),
+                           (TF_ConstOp (GetI32Attr<-1>)),
+                           (TF_ConstOp (GetScalarOfType<0> $diag)),
+                           (GetStrAttr<"RIGHT_LEFT">))>;
 
 //===----------------------------------------------------------------------===//
 // QuantizeAndDequantizeV2 op patterns.

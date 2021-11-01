@@ -55,13 +55,12 @@ class PrefetchDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
-    attr_vector->emplace_back(PrefetchDatasetOp::kOutputTypes, output_dtypes_);
-    attr_vector->emplace_back(PrefetchDatasetOp::kOutputShapes, output_shapes_);
-    attr_vector->emplace_back(PrefetchDatasetOp::kSlackPeriod, slack_period_);
-    attr_vector->emplace_back(PrefetchDatasetOp::kLegacyAutotune,
-                              legacy_autotune_);
-    attr_vector->emplace_back(PrefetchDatasetOp::kBufferSizeMin,
-                              buffer_size_min_);
+    attr_vector->emplace_back("output_types", output_dtypes_);
+    attr_vector->emplace_back("output_shapes", output_shapes_);
+    attr_vector->emplace_back("slack_period", slack_period_);
+    attr_vector->emplace_back("legacy_autotune", legacy_autotune_);
+    attr_vector->emplace_back("buffer_size_min", buffer_size_min_);
+    attr_vector->emplace_back("metadata", "");
     return Status::OK();
   }
 

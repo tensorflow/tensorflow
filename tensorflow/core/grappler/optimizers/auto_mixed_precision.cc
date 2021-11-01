@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/devices.h"
@@ -970,6 +971,11 @@ int GetCudnnVersion(const Cluster& cluster) {
 
 class AutoMixedPrecisionImpl {
  public:
+  // CastType indicates the type of inserted Cast op
+  //   FP16: cast to float16
+  //   FP32: cast to float32
+  //   AUTO: cast to a data type that matches the required data type at fanouts
+  enum class CastType { FP16, FP32, AUTO };
   AutoMixedPrecisionImpl(Cluster* cluster,
                          const std::unordered_set<string>& nodes_to_preserve,
                          GraphDef* graph, string id,
@@ -982,9 +988,12 @@ class AutoMixedPrecisionImpl {
         graph_view_(graph),
         cuda_version_(GetCudaVersion(*cluster)),
         cudnn_version_(GetCudnnVersion(*cluster)),
+        num_nonvar_casts_to_f16_(0),
         mode_(mode),
-        target_dtype_(mode_ == AutoMixedPrecisionMode::CUDA ? DT_HALF
-                                                            : DT_BFLOAT16) {}
+        target_dtype_((mode_ == AutoMixedPrecisionMode::CUDA ||
+                       mode_ == AutoMixedPrecisionMode::CPU)
+                          ? DT_HALF
+                          : DT_BFLOAT16) {}
 
   Status Optimize();
 
@@ -998,6 +1007,11 @@ class AutoMixedPrecisionImpl {
                                                              cudnn_version_);
       case AutoMixedPrecisionMode::MKL:
         return std::make_unique<AutoMixedPrecisionListsMkl>();
+      case AutoMixedPrecisionMode::CPU:
+        // Note: this is not a typo here. AutoMixedPrecisionListsCuda is used
+        // intentionally to make CPU and GPU have the same fp16 ops.
+        return std::make_unique<AutoMixedPrecisionListsCuda>(cuda_version_,
+                                                             cudnn_version_);
     }
   }
   Status PrintDebugLogs(bool preop, size_t timestamp);
@@ -1019,7 +1033,7 @@ class AutoMixedPrecisionImpl {
       absl::flat_hash_set<int>* deny_set) const;
   void FindTensorListImplicitFloat32Edges(
       const absl::flat_hash_set<const NodeDef*>& tensor_list_nodes,
-      std::vector<NodeTypeIdEdge>* implicit_data_edges) const;
+      std::vector<NodeTypeIdEdge>* implicit_fp32_edges) const;
   void AddAllowlistOps(absl::flat_hash_set<int>* allow_set) const;
   void RemoveAllowsetWithFp32(absl::flat_hash_set<int>* allow_set) const;
   void PropagateDenyFwdThroughClearAndInfer(
@@ -1037,8 +1051,17 @@ class AutoMixedPrecisionImpl {
       absl::flat_hash_set<int>* allow_set) const;
   void MakeCastsAllowIfAllOutputsAllow(
       absl::flat_hash_set<int>* allow_set) const;
-  NodeDef BuildCastNode(const MutableGraphView::OutputPort& src, bool to_f16,
+  NodeDef BuildCastNode(const MutableGraphView::OutputPort& src,
+                        const MutableGraphView::InputPort& dst, bool to_f16,
                         const string& device) const;
+  StatusOr<NodeDef*> InsertCastNodeAtFanout(
+      const absl::flat_hash_set<int>& allow_set, const bool src_is_allow,
+      const CastType& cast_type, NodeDef* node,
+      MutableGraphView::OutputPort& src);
+  StatusOr<DataType> GetCastToType(const NodeDef* node) const;
+  void CollectOutputPorts(
+      const TypeAttrId& type_attr, NodeDef* node,
+      std::vector<MutableGraphView::OutputPort>& output_ports) const;
   Status ChangeTypeAttrsAndAddCasts(const absl::flat_hash_set<int>& allow_set);
 
   VirtualPlacer virtual_placer_;
@@ -1049,6 +1072,7 @@ class AutoMixedPrecisionImpl {
   MutableGraphView graph_view_;
   int cuda_version_;
   int cudnn_version_;
+  int num_nonvar_casts_to_f16_;
   NodeTypeAttrMap node_type_map_;
   GraphTypeTopologyView graph_type_view_;
   bool force_all_fp16_;
@@ -1062,15 +1086,17 @@ class AutoMixedPrecisionImpl {
 };
 
 NodeDef AutoMixedPrecisionImpl::BuildCastNode(
-    const MutableGraphView::OutputPort& src, bool to_f16,
+    const MutableGraphView::OutputPort& src,
+    const MutableGraphView::InputPort& dst, bool to_f16,
     const string& device) const {
   DataType src_type = to_f16 ? DT_FLOAT : target_dtype_;
   DataType dst_type = to_f16 ? target_dtype_ : DT_FLOAT;
   const char* cast_string = !to_f16                    ? kCastToFp32
                             : target_dtype_ == DT_HALF ? kCastToFp16
                                                        : kCastToBf16;
-  string name = strings::StrCat(src.node->name(), "-", src.port_id, "-",
-                                cast_string, "-", kSuffix);
+  string name =
+      strings::StrCat(src.node->name(), "-", src.port_id, "-", dst.node->name(),
+                      "-", dst.port_id, "-", cast_string, "-", kSuffix);
   NodeDef node;
   node.set_name(name);
   node.set_op("Cast");
@@ -1193,7 +1219,7 @@ bool IsFloat32(const NodeTypeId& node_type) {
 }
 
 bool IsTensorListOp(const string& op) {
-  return op.find("TensorList") != string::npos;
+  return absl::StrContains(op, "TensorList");
 }
 
 bool IsTensorListReaderOp(const string& op) {
@@ -1315,6 +1341,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
             (ShouldIgnorePerformance() || IsOnSuitableGPUArch(node));
         break;
       case AutoMixedPrecisionMode::MKL:
+      case AutoMixedPrecisionMode::CPU:
         should_process = !MustPreserve(node) && IsOnDevice(node, DEVICE_CPU);
         break;
     }
@@ -1916,14 +1943,110 @@ void AutoMixedPrecisionImpl::MakeCastsAllowIfAllOutputsAllow(
   }
 }
 
+// Insert a Cast op at the output of a node.
+// CastType indicates the type of inserted Cast op
+//   FP16: cast to float16
+//   FP32: cast to float32
+//   AUTO: cast to a data type that matches the fanout data type
+StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
+    const absl::flat_hash_set<int>& allow_set, const bool src_is_allow,
+    const CastType& cast_type, NodeDef* node,
+    MutableGraphView::OutputPort& src) {
+  NodeDef* added_cast_node = nullptr;
+  // Note: This is copied so that edges can be modified inside the loop.
+  auto fanout = graph_view_.GetFanout(src);
+  for (const MutableGraphView::InputPort& dst : fanout) {
+    TypeAttrId dst_type_attr =
+        node_type_map_.GetInputTypeAttr(*dst.node, dst.port_id);
+    const absl::optional<int> maybe_dst_type_idx =
+        graph_type_view_.GetNodeIndex(dst.node->name(), dst_type_attr);
+    if (!maybe_dst_type_idx.has_value()) {
+      return errors::Internal("Type attribute ", dst_type_attr.DebugString(),
+                              " of ", dst.node->op(), " node ",
+                              dst.node->name(), " not found in graph view");
+    }
+    int dst_type_idx = maybe_dst_type_idx.value();
+    bool dst_is_allow = allow_set.count(dst_type_idx);
+    bool to_f16 = false;
+    bool should_cast = false;
+    switch (cast_type) {
+      case CastType::AUTO:
+        if (src_is_allow != dst_is_allow) {
+          to_f16 = dst_is_allow;
+          should_cast = true;
+        }
+        break;
+      case CastType::FP16:
+        to_f16 = true;
+        should_cast = true;
+        break;
+      case CastType::FP32:
+        to_f16 = false;
+        should_cast = true;
+        break;
+      default:
+        return errors::Internal("Invalid Cast Type: ",
+                                static_cast<int>(cast_type));
+    }
+
+    if (!should_cast) continue;
+    if (added_cast_node == nullptr) {
+      VLOG(1) << "Inserting cast to "
+              << (to_f16 ? DataTypeString(target_dtype_) : "DT_FLOAT") << " at "
+              << src.node->op() << " " << src.node->name() << ":"
+              << src.port_id;
+      added_cast_node = graph_view_.AddNode(
+          BuildCastNode(src, dst, to_f16, src.node->device()));
+      if (to_f16 && !IsConstant(*node) && !IsVariable(*node) &&
+          !NodeImplicitlyReadsNonResourceVariable(*node)) {
+        ++num_nonvar_casts_to_f16_;
+      }
+    }
+    TF_RETURN_IF_ERROR(graph_view_.UpdateRegularFaninByPort(
+        dst.node->name(), dst.port_id, {added_cast_node->name(), 0}));
+  }
+  return added_cast_node;
+}
+
+// Get the destination data type of a cast op. Return error if the node is not
+// a Cast op.
+StatusOr<DataType> AutoMixedPrecisionImpl::GetCastToType(
+    const NodeDef* node) const {
+  CHECK_EQ(node->op(), "Cast")  // Crash OK
+      << "Node " << node->name() << " is not a Cast op";
+  return node->attr().at("DstT").type();
+}
+
+// Collect the output ports of a node based on a type attribute and append them
+// to a vector.
+//   Input: type_attr
+//   Input: node
+//   Output: output_ports
+void AutoMixedPrecisionImpl::CollectOutputPorts(
+    const TypeAttrId& type_attr, NodeDef* node,
+    std::vector<MutableGraphView::OutputPort>& output_ports) const {
+  for (int port_id : node_type_map_.GetOutputPorts(*node, type_attr)) {
+    output_ports.emplace_back(node, port_id);
+  }
+}
+
 // Changes all allow-painted type attributes to DT_HALF or DT_BFLOAT16, and
 // inserts Cast nodes at node outputs for all edges that connect
 // allow-painted <-> non-allow-painted type attributes.
 Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
     const absl::flat_hash_set<int>& allow_set) {
   int num_nodes_changed = 0;
-  int num_nonvar_casts_to_f16 = 0;
   int num_nodes_preop = graph_->node_size();
+
+  bool emulate_f16 = false;
+  if (mode_ == AutoMixedPrecisionMode::CPU) {
+    TF_CHECK_OK(
+        ReadBoolFromEnvVar("TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_EMULATE_FP16",
+                           /*default_val=*/true, &emulate_f16));
+  }
+
+  VLOG(1) << "Setting emulate_f16 = " << emulate_f16;
+
   for (int node_idx = 0; node_idx < num_nodes_preop; ++node_idx) {
     NodeDef* node = graph_->mutable_node(node_idx);
     for (const TypeAttrId& type_attr : node_type_map_.GetTypeAttrs(*node)) {
@@ -1937,60 +2060,71 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
       int node_type_idx = maybe_node_type_idx.value();
       if (!IsFloat32(*graph_type_view_.GetNode(node_type_idx))) continue;
       bool src_is_allow = allow_set.count(node_type_idx);
+
+      // Include output ports of fp32 nodes, real fp16 nodes,
+      // and the fp16 Cast nodes at the fanout of emulated fp16 ops.
+      std::vector<MutableGraphView::OutputPort> output_ports;
+
       if (src_is_allow) {
-        VLOG(1) << "Changing type " << type_attr.DebugString() << " of "
-                << node->op() << " node " << node->name() << " to "
-                << DataTypeString(target_dtype_);
-        if (!SetDataType(node, type_attr, target_dtype_)) {
-          return errors::Internal("Failed to set type attribute");
-        }
-        ++num_nodes_changed;
-      }
-      for (int output_port : node_type_map_.GetOutputPorts(*node, type_attr)) {
-        MutableGraphView::OutputPort src(node, output_port);
-        NodeDef* added_cast_node = nullptr;
-        // Note: This is copied so that edges can be modified inside the loop.
-        auto fanout = graph_view_.GetFanout(src);
-        for (const MutableGraphView::InputPort& dst : fanout) {
-          TypeAttrId dst_type_attr =
-              node_type_map_.GetInputTypeAttr(*dst.node, dst.port_id);
-          const absl::optional<int> maybe_dst_type_idx =
-              graph_type_view_.GetNodeIndex(dst.node->name(), dst_type_attr);
-          if (!maybe_dst_type_idx.has_value()) {
-            return errors::Internal("Type attribute ",
-                                    dst_type_attr.DebugString(), " of ",
-                                    dst.node->op(), " node ", dst.node->name(),
-                                    " not found in graph view");
-          }
-          int dst_type_idx = maybe_dst_type_idx.value();
-          bool dst_is_allow = allow_set.count(dst_type_idx);
-          if (src_is_allow != dst_is_allow) {
-            if (!added_cast_node) {
-              bool to_f16 = dst_is_allow;
-              VLOG(1) << "Inserting cast to "
-                      << (to_f16 ? DataTypeString(target_dtype_) : "DT_FLOAT")
-                      << " at " << src.node->op() << " " << src.node->name()
-                      << ":" << src.port_id;
-              added_cast_node = graph_view_.AddNode(
-                  BuildCastNode(src, to_f16, src.node->device()));
-              if (to_f16 && !IsConstant(*node) && !IsVariable(*node) &&
-                  !NodeImplicitlyReadsNonResourceVariable(*node)) {
-                ++num_nonvar_casts_to_f16;
-              }
+        if (emulate_f16) {
+          // For emulated fp16 op, we do not change the op type but instead
+          // insert fp32 Cast at the fanin and fp16 Cast at the fanout
+          for (int port_id : node_type_map_.GetInputPorts(*node, type_attr)) {
+            MutableGraphView::InputPort dst(node, port_id);
+            MutableGraphView::OutputPort src = graph_view_.GetRegularFanin(dst);
+            TF_ASSIGN_OR_RETURN(DataType cast_to_type, GetCastToType(src.node));
+            if (cast_to_type == DT_HALF) {
+              // This check is to guarantee that when a fp16 Cast op is followed
+              // by multiple emulated fp16 ops in the fanout, only a common f32
+              // cast is needed.
+              TF_RETURN_IF_ERROR(
+                  InsertCastNodeAtFanout(allow_set, /*src_is_allow=*/true,
+                                         CastType::FP32, node, src)
+                      .status());
             }
-            TF_RETURN_IF_ERROR(graph_view_.UpdateRegularFaninByPort(
-                dst.node->name(), dst.port_id, {added_cast_node->name(), 0}));
           }
+          // Cast to fp16 at outputs
+          for (int port_id : node_type_map_.GetOutputPorts(*node, type_attr)) {
+            MutableGraphView::OutputPort src(node, port_id);
+            TF_ASSIGN_OR_RETURN(
+                NodeDef * added_cast_node,
+                InsertCastNodeAtFanout(allow_set, src_is_allow, CastType::FP16,
+                                       node, src));
+            if (added_cast_node != nullptr) {
+              output_ports.emplace_back(added_cast_node, /*port_id=*/0);
+            }
+          }
+        } else {
+          VLOG(1) << "Changing type " << type_attr.DebugString() << " of "
+                  << node->op() << " node " << node->name() << " to "
+                  << DataTypeString(target_dtype_);
+          if (!SetDataType(node, type_attr, target_dtype_)) {
+            return errors::Internal("Failed to set type attribute");
+          }
+          ++num_nodes_changed;
+          CollectOutputPorts(type_attr, node, output_ports);
         }
+      } else {
+        CollectOutputPorts(type_attr, node, output_ports);
+      }
+
+      // Insert cast nodes at the outputs based on the required data type at
+      // fanouts.
+      for (auto output_port : output_ports) {
+        TF_RETURN_IF_ERROR(InsertCastNodeAtFanout(allow_set, src_is_allow,
+                                                  CastType::AUTO, node,
+                                                  output_port)
+                               .status());
       }
     }
   }
+
   // Use Python type names (e.g. float16) instead of C++ type names (e.g. half)
   // since many Python users will see this message.
   const char* type_str = target_dtype_ == DT_HALF ? "float16" : "bfloat16";
   LOG(INFO) << "Converted " << num_nodes_changed << "/" << num_nodes_preop
             << " nodes to " << type_str << " precision using "
-            << num_nonvar_casts_to_f16 << " cast(s) to " << type_str
+            << num_nonvar_casts_to_f16_ << " cast(s) to " << type_str
             << " (excluding Const and Variable casts)";
   return Status::OK();
 }

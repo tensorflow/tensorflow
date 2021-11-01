@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -329,24 +328,11 @@ Status ConvertMLIRToTFLiteFlatBuffer(
         absl::StrCat(toco_flags.dump_graphviz_dir(), "/toco_AT_IMPORT.dot")));
   }
 
-  mlir::PassManager pm(module->getContext(),
-                       mlir::OpPassManager::Nesting::Implicit);
-  ::tensorflow::SetCrashReproducer(pm);
-  pm.addInstrumentation(
-      std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
-          module->getContext()));
-
-  tensorflow::AddTFToTFLConversionPasses(model_flags, toco_flags, pass_config,
-                                         &pm, session);
-  // Convert back to outlined while format for export back to flatbuffer.
-  if (pass_config.legalize_tf_while) {
-    pm.addPass(mlir::TFL::CreateWhileOutlinePass());
-  }
-  pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
-
+  mlir::TFL::PassConfig pass_config_copy = pass_config;
+  pass_config_copy.outline_tf_while = true;
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
-      module.get(), /*export_to_mlir=*/false, toco_flags,
-      pass_config.quant_specs, saved_model_tags, result, &pm);
+      module.get(), /*export_to_mlir=*/false, toco_flags, pass_config_copy,
+      saved_model_tags, model_flags.saved_model_dir(), session, result);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.

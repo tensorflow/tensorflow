@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -202,7 +203,9 @@ Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
         metadata, arg_shapes, graph->get(), flr, &shape_info));
     std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
     ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
-    optimizer.Optimize(flr, flr->env(), flr->device(), graph, &shape_map);
+    GraphOptimizer::Options optimizer_opts;
+    optimizer_opts.shape_map = &shape_map;
+    optimizer.Optimize(flr, flr->env(), flr->device(), graph, optimizer_opts);
   }
 
   TF_RETURN_IF_ERROR(RewriteTensorListWithConstElement(graph->get(), fld));
@@ -466,7 +469,8 @@ Status GetShardingInfo(
     TF_ASSIGN_OR_RETURN(
         auto xla_arg_shape,
         shape_representation_fn(arg_shapes[i], proto_arg.dtype(),
-                                /*use_fast_memory=*/false));
+                                /*use_fast_memory=*/false,
+                                TpuLayoutPreference::kNoPreference));
     TF_RETURN_IF_ERROR(
         RewriteLayoutWithShardedShape(arg_sharding, /*use_fast_memory=*/false,
                                       shape_representation_fn, &xla_arg_shape));

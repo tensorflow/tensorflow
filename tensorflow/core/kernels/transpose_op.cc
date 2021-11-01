@@ -76,20 +76,20 @@ REGISTER_KERNEL_BUILDER(
     InvertPermutationOp<int32>);
 REGISTER_KERNEL_BUILDER(
     Name("InvertPermutation").Device(DEVICE_CPU).TypeConstraint<int64_t>("T"),
-    InvertPermutationOp<int64>);
+    InvertPermutationOp<int64_t>);
 
 REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("x")
                             .HostMemory("y"),
                         InvertPermutationOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int64_t>("T")
                             .HostMemory("x")
                             .HostMemory("y"),
-                        InvertPermutationOp<int64>);
+                        InvertPermutationOp<int64_t>);
 
 namespace {
 template <typename Tperm>

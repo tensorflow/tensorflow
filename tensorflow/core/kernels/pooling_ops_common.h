@@ -83,11 +83,6 @@ struct PoolParameters {
   TensorFormat data_format;
 };
 
-// Checks if the sizes of the paddings are less than the size of window.
-// This is required for MaxPool because it pads with -inf, so the pooling
-// window cannot fully cover the padded area.
-Status CheckPaddingSize(PoolParameters& params);
-
 // An implementation of MaxPooling (forward).
 // TODO (yongtang): Remove MaxPoolingOp and use MaxPoolingV2Op,
 //     QuantizedMaxPoolingOp depends on MaxPoolingOp so keep intact for now
@@ -194,6 +189,9 @@ class MaxPoolingOp : public OpKernel {
   void SpatialMaxPool(OpKernelContext* context, Tensor* output,
                       const Tensor& tensor_in, const PoolParameters& params,
                       const Padding& padding) {
+    if (output->NumElements() == 0) {
+      return;
+    }
     // On GPU, use Eigen's Spatial Max Pooling.  On CPU, use an
     // EigenMatrix version that is currently faster than Eigen's
     // Spatial MaxPooling implementation.
@@ -448,6 +446,9 @@ class MaxPoolingV2Op : public OpKernel {
   void SpatialMaxPool(OpKernelContext* context, Tensor* output,
                       const Tensor& tensor_in, const PoolParameters& params,
                       const Padding& padding) {
+    if (output->NumElements() == 0) {
+      return;
+    }
     // On GPU, use Eigen's Spatial Max Pooling.  On CPU, use an
     // EigenMatrix version that is currently faster than Eigen's
     // Spatial MaxPooling implementation.
@@ -566,6 +567,9 @@ template <typename Device, typename T>
 void SpatialAvgPool(OpKernelContext* context, Tensor* output,
                     const Tensor& input, const PoolParameters& params,
                     const Padding& padding) {
+  if (output->NumElements() == 0) {
+    return;
+  }
   typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
       ConstEigenMatrixMap;
   typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>

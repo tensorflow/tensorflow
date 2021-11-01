@@ -44,8 +44,9 @@ class UniqueDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attributes) const override {
-    *attributes = {{UniqueDatasetOp::kOutputTypes, output_dtypes_},
-                   {UniqueDatasetOp::kOutputShapes, output_shapes_}};
+    *attributes = {{"output_types", output_dtypes_},
+                   {"output_shapes", output_shapes_},
+                   {"metadata", ""}};
     return Status::OK();
   }
 

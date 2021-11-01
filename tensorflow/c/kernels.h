@@ -259,6 +259,17 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrString(
     TF_OpKernelConstruction* ctx, const char* attr_name, char* val,
     size_t max_length, TF_Status* status);
 
+// Interprets the named kernel construction attribute as tensor and places it
+// into *val. Allocates a new TF_Tensor which the caller is expected to take
+// ownership of (and can deallocate using TF_DeleteTensor). *status is set to
+// TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// tensor, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTensor(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Tensor** val,
+    TF_Status* status);
+
 // Interprets the named kernel construction attribute as a TF_DataType array and
 // places it into *vals. *status is set to TF_OK.
 // `vals` must point to an array of length at least `max_values` (ideally set
@@ -321,6 +332,18 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
     TF_OpKernelConstruction* ctx, const char* attr_name, char** vals,
     size_t* lengths, int max_values, void* storage, size_t storage_size,
     TF_Status* status);
+
+// Interprets the named kernel construction attribute as tensor array and places
+// it into *vals. *status is set to TF_OK.
+// `vals` must point to an array of length at least `max_values`
+// (ideally set to list_size from TF_OpKernelConstruction_GetAttrSize(ctx,
+// attr_name, list_size, total_size)).
+//
+// The caller takes ownership of all the non-null TF_Tensor* entries in `vals`
+// (which can be deleted using TF_DeleteTensor(vals[i])).
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTensorList(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_Tensor** vals,
+    int max_values, TF_Status* status);
 
 // Return true if the kernel construction has the attr_name
 TF_CAPI_EXPORT extern bool TF_OpKernelConstruction_HasAttr(

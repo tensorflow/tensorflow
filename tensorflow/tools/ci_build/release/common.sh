@@ -156,6 +156,15 @@ function install_ubuntu_16_python_pip_deps {
   # LINT.ThenChange(:mac_pip_installations)
 }
 
+function install_ubuntu_pip_venv_deps {
+  # Install requirements in the python environment
+  which python
+  which pip
+  pip install --upgrade pip wheel
+  pip install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
+  pip list
+}
+
 function install_macos_pip_deps {
 
   PIP_CMD="python -m pip"
@@ -325,10 +334,10 @@ function test_xml_summary_exit {
 
 # CPU size
 MAC_CPU_MAX_WHL_SIZE=200M
-LINUX_CPU_MAX_WHL_SIZE=170M
+LINUX_CPU_MAX_WHL_SIZE=175M
 WIN_CPU_MAX_WHL_SIZE=170M
 # GPU size
-LINUX_GPU_MAX_WHL_SIZE=450M
+LINUX_GPU_MAX_WHL_SIZE=470M
 WIN_GPU_MAX_WHL_SIZE=345M
 
 function test_tf_whl_size() {

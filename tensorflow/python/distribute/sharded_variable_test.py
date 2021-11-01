@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for ShardedVariable."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl.testing import parameterized
@@ -28,6 +24,7 @@ from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -149,7 +146,7 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
 
   def test_scatter_add_uneven_partition(self):
     v = variables_lib.Variable(array_ops.zeros((32, 1)))
-    sparse_delta = ops.IndexedSlices(
+    sparse_delta = indexed_slices.IndexedSlices(
         values=constant_op.constant([[0.], [1.], [2.], [3.], [4.], [5.]]),
         indices=constant_op.constant([0, 10, 11, 12, 30, 31]))
 
@@ -176,7 +173,7 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
   def test_scatter_ops_even_partition(self, op):
     v = variables_lib.Variable(array_ops.zeros((30, 1)))
     # Make sure values does not contain 0 due to testing `scatter_div`!
-    sparse_delta = ops.IndexedSlices(
+    sparse_delta = indexed_slices.IndexedSlices(
         values=constant_op.constant([[1.], [2.], [3.], [4.], [5.]]),
         indices=constant_op.constant([0, 10, 12, 21, 22]))
 
@@ -199,7 +196,7 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
 
   def test_batch_scatter_update(self):
     v = variables_lib.Variable(array_ops.zeros((32, 1)))
-    sparse_delta = ops.IndexedSlices(
+    sparse_delta = indexed_slices.IndexedSlices(
         values=constant_op.constant([[0.], [1.], [2.], [3.], [4.], [5.]]),
         indices=constant_op.constant([10, 11, 12, 13, 14, 15]))
 

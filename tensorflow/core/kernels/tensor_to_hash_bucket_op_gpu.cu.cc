@@ -74,7 +74,7 @@ __global__ void ComputeHashes(const T* __restrict__ vals, int vals_size,
                                s + threadIdx.x * kSharedMemBufferSizePerThread);
     uint64_t a_hash = ::util_gpu::Fingerprint64(
         s + threadIdx.x * kSharedMemBufferSizePerThread, size);
-    int64 a_bucket = static_cast<int64>(a_hash % num_buckets);
+    int64 a_bucket = static_cast<int64_t>(a_hash % num_buckets);
     hashes[tid] = a_bucket;
   }
 }

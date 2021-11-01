@@ -91,6 +91,13 @@ class AlternativeSubgraphPass
     : public mlir::PassWrapper<AlternativeSubgraphPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
+  llvm::StringRef getArgument() const final {
+    return "tfl-get-alternative-subgraph";
+  }
+  llvm::StringRef getDescription() const final {
+    return "Get alternative subgraph representation (if appliable) for all the "
+           "given devices, will by default include the cpu implementation.";
+  }
   AlternativeSubgraphPass() = default;
   AlternativeSubgraphPass(const AlternativeSubgraphPass&) {}
   explicit AlternativeSubgraphPass(llvm::ArrayRef<std::string> device_specs) {
@@ -289,10 +296,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateAlternativeSubgraphPass(
   return std::make_unique<AlternativeSubgraphPass>(device_specs);
 }
 
-static PassRegistration<AlternativeSubgraphPass> pass(
-    "tfl-get-alternative-subgraph",
-    "Get alternative subgraph representation (if appliable) for all the given "
-    "devices, will by default include the cpu implementation.");
+static PassRegistration<AlternativeSubgraphPass> pass;
 
 }  // namespace tac
 }  // namespace TFL

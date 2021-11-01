@@ -93,9 +93,8 @@ struct MatrixDescriptor {
 static absl::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
     PrimitiveType type) {
   switch (type) {
-    case F16:
+    case F16:  // Use F32 computation for higher precision.
     case BF16:
-      return se::blas::ComputationType::kF32;
     case F32:
       return se::blas::ComputationType::kF32;
     case F64:

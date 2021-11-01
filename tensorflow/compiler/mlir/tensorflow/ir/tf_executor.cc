@@ -203,15 +203,17 @@ LogicalResult Verify(GraphOp graph) {
     if (i >= num_results)
       return fetch.emitOpError()
              << "operand #" << i << " does not have a graph results to bind";
-    if (graph.getResult(i).getType() != operand.getType())
+    if (graph.getResult(i).getType() != operand.getType()) {
       return fetch.emitOpError()
-             << "operand #" << i << " type mismatch graph results";
+             << "operand #" << i << " type mismatch graph results ("
+             << graph.getResult(i).getType() << " != " << operand.getType()
+             << ")";
+    }
   }
   return success();
 }
 
 void Print(GraphOp graph, OpAsmPrinter &p) {
-  p << graph.getOperationName();
   p.printRegion(graph.getOperation()->getRegion(0));
   p.printOptionalAttrDict(graph->getAttrs());
 }
@@ -310,7 +312,6 @@ LogicalResult Verify(IslandOp island) {
 }
 
 void Print(IslandOp op, OpAsmPrinter &p) {
-  p << op.getOperationName();
   if (op.getNumOperands()) {
     // These are always control operand, no explicit type needed.
     p << '(';
@@ -436,7 +437,7 @@ ParseResult ParseSwitchOp(OpAsmParser &parser, OperationState &result) {
 }
 
 void Print(SwitchOp switch_op, OpAsmPrinter &p) {
-  p << switch_op.getOperationName() << ' ';
+  p << ' ';
   p.printOperands(switch_op.getOperands());
   Type data_operand_ty = switch_op.data().getType();
   // If the types aren't perfectly matching, print the functional type syntax
@@ -513,7 +514,7 @@ LogicalResult Verify(SwitchNOp switchn) {
 }
 
 void Print(SwitchNOp switchn, OpAsmPrinter &p) {
-  p << switchn.getOperationName() << ' ';
+  p << ' ';
   auto operands = switchn.getOperands();
   // Print the 2 data operands.
   p.printOperands(operands.begin(), std::next(operands.begin(), 2));
@@ -644,7 +645,7 @@ void Print(MergeOp merge, OpAsmPrinter &p) {
     }
   }
 
-  p << merge.getOperationName() << ' ';
+  p << ' ';
   p.printOperands(merge.getOperands());
 
   // Print the type signature of the operation.
@@ -704,7 +705,7 @@ namespace {
 constexpr int kDefaultParallelIterations = 10;
 
 void Print(EnterOp enter, OpAsmPrinter &p) {
-  p << enter.getOperationName() << ' ';
+  p << ' ';
   p.printOperands(enter.getOperands());
 
   p << " frame \"";
@@ -840,7 +841,7 @@ NextIterationSourceOp NextIterationSinkOp::GetSource() {
 namespace {
 
 void Print(ExitOp exit, OpAsmPrinter &p) {
-  p << exit.getOperationName() << ' ';
+  p << ' ';
   p.printOperands(exit.getOperands());
   p << " : " << exit.getType(0);
   p.printOptionalAttrDict(exit->getAttrs());
@@ -876,7 +877,7 @@ ParseResult ParseExitOp(OpAsmParser &parser, OperationState &result) {
 namespace {
 
 void Print(LoopCondOp loop_cond, OpAsmPrinter &p) {
-  p << loop_cond.getOperationName() << ' ';
+  p << ' ';
   p.printOperands(loop_cond.getOperands());
 
   // If the types aren't matching (broadcast), print the functional type syntax.

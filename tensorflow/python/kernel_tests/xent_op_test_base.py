@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for SoftmaxCrossEntropyWithLogits op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -258,7 +254,7 @@ class XentOpTestBase(test.TestCase):
       err = gradient_checker.compute_gradient_error(logits, [12], gradients,
                                                     [12])
 
-      if not config.deterministic_ops_enabled():
+      if not config.is_op_determinism_enabled():
         # Check how second derivative is calculated.
         # (it is equivalent to a `BatchMatMul` op being in the graph because of
         # the implementation in SoftmaxCrossEntropyWithLogitsGrad)

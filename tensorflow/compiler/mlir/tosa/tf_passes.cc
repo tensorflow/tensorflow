@@ -49,6 +49,7 @@ void createTFtoTOSALegalizationPipeline(
   //----------------------------------------------------------------------------
   // Post conversion cleanup.
   //----------------------------------------------------------------------------
+  pm.addPass(mlir::tosa::createTosaInferShapesPass());
   pm.addPass(mlir::tosa::createTosaMakeBroadcastablePass());
   // Inline the call/return basic blocks within TOSA control flow ops.
   pm.addPass(mlir::createInlinerPass());
@@ -56,10 +57,11 @@ void createTFtoTOSALegalizationPipeline(
   pm.addPass(mlir::createSymbolDCEPass());
 }
 
-static mlir::PassPipelineRegistration<TOSATFLegalizationPipelineOptions>
-    tf_tosa_pipeline("tf-to-tosa-pipeline",
-                     "TensorFlow to TOSA legalization pipeline",
-                     createTFtoTOSALegalizationPipeline);
+void registerTFtoTOSALegalizationPipeline() {
+  mlir::PassPipelineRegistration<TOSATFLegalizationPipelineOptions>(
+      "tf-to-tosa-pipeline", "TensorFlow to TOSA legalization pipeline",
+      createTFtoTOSALegalizationPipeline);
+}
 
 }  // namespace tosa
 }  // namespace mlir

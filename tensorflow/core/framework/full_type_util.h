@@ -30,23 +30,23 @@ namespace tensorflow {
 
 namespace full_type {
 
-// Helpers that allow shorthand expression for the more common kinds of type
-// constructors.
 // TODO(mdan): Specific helpers won't get too far. Use a parser instead.
 
+// Helpers that allow shorthand expression for the more common kinds of type
+// constructors.
+// Note: The arity below refers to the number of arguments of parametric types,
+// not to the number of return values from a particular op.
+
+// Helper for a type constructor of <t>[] (with no parameters).
+OpTypeConstructor Nullary(FullTypeId t);
+
 // Helper for a type constructor of <t>[FT_VAR[<param_name>]].
-// Note: Unary refers to a parametric type of a single argument, not to the
-// number of an op's return values.
 OpTypeConstructor Unary(FullTypeId t, const string& var_name);
 
-// Helper for a type constructor of <t>[FT_UNKNOWN].
-// Note: Unary refers to a parametric type of a single argument, not to the
-// number of an op's return values.
+// Helper for a type constructor of <t>[FT_ANY].
 OpTypeConstructor UnaryGeneric(FullTypeId t);
 
 // Helper for a type constructor of <t>[FT_TENSOR[<dtype>]].
-// Note: Unary refers to a parametric type of a single argument, not to the
-// number of an op's return values.
 OpTypeConstructor UnaryTensorContainer(FullTypeId t, FullTypeId dtype);
 
 // Type specialization and inference logic. This function narrows the type

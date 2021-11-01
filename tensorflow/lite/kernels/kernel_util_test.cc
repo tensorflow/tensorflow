@@ -126,7 +126,7 @@ TEST_F(KernelUtilTest, BroadcastShapeIncompatibleDim) {
                                                   &tensor2_, &output));
   EXPECT_EQ(output, nullptr);
   EXPECT_EQ(context_.error,
-            "Given shapes, [1, 2] and [1, 3], are not broadcastable.");
+            "Given shapes, [1,2] and [1,3], are not broadcastable.");
 }
 
 TEST_F(KernelUtilTest, BroadcastShapeIncompatibleDimWithZero) {
@@ -137,7 +137,7 @@ TEST_F(KernelUtilTest, BroadcastShapeIncompatibleDimWithZero) {
                                                   &tensor2_, &output));
   EXPECT_EQ(output, nullptr);
   EXPECT_EQ(context_.error,
-            "Given shapes, [1, 0] and [1, 3], are not broadcastable.");
+            "Given shapes, [1,0] and [1,3], are not broadcastable.");
 }
 
 TEST_F(KernelUtilTest, BroadcastShapeOnes) {
@@ -216,7 +216,7 @@ TEST_F(KernelUtilTest, BroadcastShapeIncompatibleDimOnThreeTensors) {
                                        &tensor3_, &output));
   EXPECT_EQ(output, nullptr);
   EXPECT_EQ(context_.error,
-            "Given shapes, [1, 2], [1, 3] and [1, 4], are not broadcastable.");
+            "Given shapes, [1,2], [1,3] and [1,4], are not broadcastable.");
 }
 
 TEST_F(KernelUtilTest, BroadcastShapeIncompatibleDimWithZeroOnThreeTensors) {
@@ -229,7 +229,7 @@ TEST_F(KernelUtilTest, BroadcastShapeIncompatibleDimWithZeroOnThreeTensors) {
                                        &tensor3_, &output));
   EXPECT_EQ(output, nullptr);
   EXPECT_EQ(context_.error,
-            "Given shapes, [1, 1], [1, 3] and [1, 0], are not broadcastable.");
+            "Given shapes, [1,1], [1,3] and [1,0], are not broadcastable.");
 }
 
 TEST_F(KernelUtilTest, BroadcastShapeOnesOnThreeTensors) {
@@ -329,6 +329,26 @@ TEST_F(KernelUtilTest, BroadcastShapeWithZeroOnThreeTensors) {
                                        &tensor3_, &output));
   EXPECT_THAT(GetShape(output), ElementsAre(1, 2, 0, 4));
   TfLiteIntArrayFree(output);
+}
+
+TEST_F(KernelUtilTest, GetShapeDebugString) {
+  TfLiteIntArray* dims1 = TfLiteIntArrayCreate(1);
+  dims1->data[0] = 1;
+  EXPECT_EQ("[1]", GetShapeDebugString(dims1));
+  TfLiteIntArrayFree(dims1);
+
+  TfLiteIntArray* dims2 = TfLiteIntArrayCreate(2);
+  dims2->data[0] = 2;
+  dims2->data[1] = 3;
+  EXPECT_EQ("[2,3]", GetShapeDebugString(dims2));
+  TfLiteIntArrayFree(dims2);
+
+  TfLiteIntArray* dims3 = TfLiteIntArrayCreate(3);
+  dims3->data[0] = 4;
+  dims3->data[1] = 5;
+  dims3->data[2] = 6;
+  EXPECT_EQ("[4,5,6]", GetShapeDebugString(dims3));
+  TfLiteIntArrayFree(dims3);
 }
 
 TEST_F(KernelUtilTest, CheckAndPopulate) {

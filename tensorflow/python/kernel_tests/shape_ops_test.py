@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for various tensorflow.ops.tf."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -722,6 +718,17 @@ class TileTest(test.TestCase, parameterized.TestCase):
       tiled = array_ops.tile(
           inp, array_ops.placeholder(
               dtypes.int32, shape=[3]))
+
+  def testLargeTensor(self):
+    # Test case for GItHub issue 46911.
+    if test_util.is_xla_enabled():
+      # The following test fails with XLA enabled.
+      return
+    with self.assertRaises(errors_impl.InternalError):
+      with self.cached_session():
+        tiled = array_ops.tile(
+            np.ones((1, 1, 1)), [100000000, 100000000, 100000000])
+        self.evaluate(tiled)
 
 
 if __name__ == "__main__":

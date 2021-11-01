@@ -23,6 +23,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#include "tensorflow/core/util/determinism.h"
 #endif
 
 #if GOOGLE_CUDA
@@ -756,6 +757,12 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       TensorShape shape({5});
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, shape, &output_tensor));
+      OP_REQUIRES_ASYNC(context, !tensorflow::OpDeterminismRequired(),
+                        errors::Unimplemented(
+                            "Determinism is not yet supported for "
+                            "DebugNumericSummaryV2 when tensor_debug_mode is "
+                            "CONCISE_HEALTH."),
+                        done);
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
@@ -787,6 +794,12 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
                         errors::Internal("No GPU stream available."), done);
+      OP_REQUIRES_ASYNC(context, !tensorflow::OpDeterminismRequired(),
+                        errors::Unimplemented(
+                            "Determinism is not yet supported for "
+                            "DebugNumericSummaryV2 when tensor_debug_mode is "
+                            "FULL_HEALTH."),
+                        done);
 
       se::DeviceMemoryBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),

@@ -107,6 +107,7 @@ cc_library(
         "//tensorflow/core/runtime_fallback/conversion:conversion_alwayslink",
         "//tensorflow/core/tfrt/utils",
         "@tf_runtime//:basic_kernels_alwayslink",
+        "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:dtype",

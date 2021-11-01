@@ -83,12 +83,14 @@ cc_library(
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -137,7 +139,6 @@ cc_library(
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 gentbl_cc_library(
@@ -164,6 +165,7 @@ cc_library(
         "tfl_passes.cc",
         "transforms/convert_tfl_uint8.cc",
         "transforms/legalize_tfl.cc",
+        "transforms/strip_quant_types.cc",
         "transforms/tfl_legalize_patterns.inc",
     ],
     hdrs = [
@@ -187,5 +189,32 @@ cc_library(
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
+)
+
+cc_library(
+    name = "tf_tfl_passes",
+    srcs = [
+        "tf_tfl_passes.cc",
+        "transforms/legalize_tf_tfl.cc",
+    ],
+    hdrs = [
+        "tf_tfl_passes.h",
+        "transforms/passes.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    visibility = [":friends"],
+    deps = [
+        ":legalize_common",
+        ":passes_header",
+        ":tf_passes",
+        ":tfl_passes",
+        "//tensorflow/compiler/mlir/lite:lift_tflite_flex_ops",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//mlir:AffineTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
 )

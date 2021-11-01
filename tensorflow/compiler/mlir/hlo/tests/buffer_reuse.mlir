@@ -303,7 +303,7 @@ func @nonTransitive(%arg0: i1, %arg1: memref<2xf32>) {
 // Expected behavior: %1 can replace %2 and %5.
 // CHECK-LABEL: func @nestedRegionControlFlow
 func @nestedRegionControlFlow(%arg0 : index, %arg1 : index) -> memref<2xf32> {
-  %0 = cmpi "eq", %arg0, %arg1 : index
+  %0 = arith.cmpi "eq", %arg0, %arg1 : index
   %1 = memref.alloc() : memref<2xf32>
   %2 = memref.alloc() : memref<2xf32>
   %3 = scf.if %0 -> (memref<2xf32>) {
@@ -337,7 +337,7 @@ func @nestedRegionControlFlow(%arg0 : index, %arg1 : index) -> memref<2xf32> {
 // CHECK-LABEL: func @nestedRegionControlFlowNoReuse
 func @nestedRegionControlFlowNoReuse(%arg0 : index,
                                      %arg1 : index) -> memref<2xf32> {
-  %0 = cmpi "eq", %arg0, %arg1 : index
+  %0 = arith.cmpi "eq", %arg0, %arg1 : index
   %1 = memref.alloc() : memref<2xf32>
   %2 = memref.alloc() : memref<2xf32>
   %3 = scf.if %0 -> (memref<2xf32>) {
@@ -380,7 +380,7 @@ func @noReuseInNestedRegionLoop(
   %1 = memref.alloc() : memref<2xf32>
   %2 = scf.for %i = %lb to %ub step %step
     iter_args(%iterBuf = %buf) -> memref<2xf32> {
-    %3 = cmpi "eq", %lb, %ub : index
+    %3 = arith.cmpi "eq", %lb, %ub : index
     %4 = scf.if %3 -> (memref<2xf32>) {
       scf.yield %arg0 : memref<2xf32>
     } else {

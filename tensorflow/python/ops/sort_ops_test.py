@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for the sort wrapper."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -175,6 +171,15 @@ class SortTest(test.TestCase):
       with self.cached_session():
         self.assertAllEqual(
             np.argsort(arr, axis=axis), sort_ops.argsort(arr, axis=axis))
+
+  def testArgsortTensorShape(self):
+    with ops.Graph().as_default():
+      placeholder = array_ops.placeholder(dtypes.float32, shape=[1, None, 5])
+      for axis in range(3):
+        with self.cached_session():
+          self.assertAllEqual(
+              placeholder.shape.as_list(),
+              sort_ops.argsort(placeholder, axis=axis).shape.as_list())
 
 
 if __name__ == '__main__':

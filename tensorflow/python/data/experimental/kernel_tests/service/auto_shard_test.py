@@ -160,8 +160,7 @@ class AutoShardTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(dataset, list(range(20)))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testRangeDataset_ReadFromAllWorkers(self):
-    """Makes sure shards from all workers form the complete dataset."""
+  def testRangeDataset_ReadFromAnyWorker(self):
     cluster = _make_service_cluster(num_workers=5, local_shard_index=1)
     dataset = dataset_ops.Dataset.range(20)
     dataset = self.make_distributed_dataset(
@@ -171,7 +170,8 @@ class AutoShardTest(data_service_test_base.TestBase,
         target_workers="ANY")
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        "Static sharding requires reading from local workers"):
+        "Static sharding policy <FILE_OR_DATA> requires reading from local "
+        "workers"):
       self.getDatasetOutput(dataset)
 
   @combinations.generate(
@@ -283,8 +283,7 @@ class AutoShardTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(dataset, expected)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testTFRecordDataset_ReadFromAllWorkers(self):
-    """Makes sure shards from all workers form the complete dataset."""
+  def testTFRecordDataset_ReadFromAnyWorker(self):
     cluster = _make_service_cluster(num_workers=5, local_shard_index=3)
     dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
     dataset = dataset.flat_map(readers.TFRecordDataset)
@@ -295,7 +294,8 @@ class AutoShardTest(data_service_test_base.TestBase,
         target_workers="ANY")
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        "Static sharding requires reading from local workers"):
+        "Static sharding policy <FILE_OR_DATA> requires reading from local "
+        "workers"):
       self.getDatasetOutput(dataset)
 
   @combinations.generate(
@@ -506,7 +506,7 @@ class AutoShardTest(data_service_test_base.TestBase,
         dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE_OR_DATA)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        "Local reads or static sharding require local tf.data workers"):
+        "Static sharding policy <FILE_OR_DATA> requires local tf.data workers"):
       self.getDatasetOutput(dataset)
 
   @combinations.generate(

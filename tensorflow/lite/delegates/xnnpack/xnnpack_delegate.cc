@@ -34,12 +34,19 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
 namespace tflite {
 namespace xnnpack {
 namespace {
+
+template <typename T>
+void SafeCopyCustomData(const TfLiteNode& node, T* target) {
+  const size_t safe_size =
+      std::min(static_cast<size_t>(node.custom_initial_data_size), sizeof(T));
+  std::memcpy(target, node.custom_initial_data, safe_size);
+}
 
 // Forward declaration.
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate);
@@ -845,6 +852,22 @@ class Subgraph {
       return kTfLiteError;
     }
 
+    if (params->stride_width > params->filter_width) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context,
+          "unsupported width stride %d exceeding filter width %d in node #%d",
+          params->stride_width, params->filter_width, node_index);
+      return kTfLiteError;
+    }
+
+    if (params->stride_height > params->filter_height) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context,
+          "unsupported height stride %d exceeding filter height %d in node #%d",
+          params->stride_height, params->filter_height, node_index);
+      return kTfLiteError;
+    }
+
     if (params->filter_width == 1 && params->filter_height == 1 &&
         std::max(params->stride_width, params->stride_height) > 1) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
@@ -1503,8 +1526,7 @@ class Subgraph {
         if (strcmp(registration->custom_name, "Convolution2DTransposeBias") ==
             0) {
           TfLiteTransposeConvParams deconv_params = {kTfLitePaddingUnknown};
-          std::memcpy(&deconv_params, node->custom_initial_data,
-                      node->custom_initial_data_size);
+          SafeCopyCustomData(*node, &deconv_params);
 
           return VisitMediaPipeDeconvolutionNode(
               subgraph, context, node_index, node, context->tensors,
@@ -1512,16 +1534,14 @@ class Subgraph {
         } else if (strcmp(registration->custom_name,
                           "MaxPoolingWithArgmax2D") == 0) {
           TfLitePoolParams pool_params = {kTfLitePaddingUnknown};
-          std::memcpy(&pool_params, node->custom_initial_data,
-                      node->custom_initial_data_size);
+          SafeCopyCustomData(*node, &pool_params);
 
           return VisitMediaPipeMaxPoolingNode(subgraph, context, node_index,
                                               node, context->tensors,
                                               &pool_params, xnnpack_tensors);
         } else if (strcmp(registration->custom_name, "MaxUnpooling2D") == 0) {
           TfLitePoolParams pool_params = {kTfLitePaddingUnknown};
-          std::memcpy(&pool_params, node->custom_initial_data,
-                      node->custom_initial_data_size);
+          SafeCopyCustomData(*node, &pool_params);
 
           return VisitMediaPipeUnpoolingNode(subgraph, context, node_index,
                                              node, context->tensors,
@@ -2038,13 +2058,13 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt8Type(
         logging_context, input_tensor, node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input_tensor, node->inputs->data[0], node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt8Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
@@ -2335,13 +2355,13 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, input_tensor, node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input_tensor, node->inputs->data[0], node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
@@ -3391,19 +3411,19 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 2, 1, node_index));
 
     const TfLiteTensor& input1_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, input1_tensor, node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input1_tensor, node->inputs->data[0], node_index));
 
     const TfLiteTensor& input2_tensor = tensors[node->inputs->data[1]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, input2_tensor, node->inputs->data[1], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input2_tensor, node->inputs->data[1], node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, output_tensor, node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
@@ -3495,16 +3515,12 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       const TfLiteTensor& output_tensor =
           context->tensors[node->outputs->data[0]];
 
-      bool is_supported_int8_tensor = false;
-      if (options_.enable_int8_weights_unpacking) {
-        is_supported_int8_tensor = (input_tensor.type == kTfLiteInt8);
-        if (is_supported_int8_tensor) {
-          const auto* quant_params =
-              static_cast<const TfLiteAffineQuantization*>(
-                  input_tensor.quantization.params);
-          if (quant_params == nullptr || quant_params->scale->size != 1) {
-            is_supported_int8_tensor = false;
-          }
+      bool is_supported_int8_tensor = input_tensor.type == kTfLiteInt8;
+      if (is_supported_int8_tensor) {
+        const auto* quant_params = static_cast<const TfLiteAffineQuantization*>(
+            input_tensor.quantization.params);
+        if (quant_params == nullptr || quant_params->scale->size != 1) {
+          is_supported_int8_tensor = false;
         }
       }
       if (input_tensor.sparsity == nullptr &&
@@ -3543,12 +3559,10 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       const TfLiteTensor& output_tensor =
           context->tensors[node->outputs->data[0]];
 
-      bool is_supported_int8_tensor = options_.enable_int8_weights_unpacking
-                                          ? (input_tensor.type == kTfLiteInt8)
-                                          : false;
       if (input_tensor.allocation_type == kTfLiteMmapRo &&
           input_tensor.sparsity != nullptr &&
-          (input_tensor.type == kTfLiteFloat16 || is_supported_int8_tensor ||
+          (input_tensor.type == kTfLiteFloat16 ||
+           input_tensor.type == kTfLiteInt8 ||
            input_tensor.type == kTfLiteFloat32) &&
           output_tensor.type == input_tensor.type) {
         static_unpack_nodes_.insert(node_index);
@@ -3696,10 +3710,6 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
                               tensor_elements);
             break;
           case kTfLiteInt8: {
-            // This should only happen if we allow INT8 input_tensor unpacking
-            // when doing the preparation.
-            TFLITE_DCHECK(options_.enable_int8_weights_unpacking);
-
             TfLiteAffineQuantization* quant_params =
                 static_cast<TfLiteAffineQuantization*>(
                     input_tensor.quantization.params);
@@ -3736,7 +3746,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
           case kTfLiteFloat32: {
             const size_t dense_size = context->tensors[t].bytes / sizeof(float);
             float* unpacked_fp32_data = reinterpret_cast<float*>(unpacked_data);
-            tflite::optimize::sparsity::FormatConverter<float> converter(
+            tflite::internal::sparsity::FormatConverter<float> converter(
                 vector_shape, *input_tensor.sparsity);
             converter.SparseToDense(
                 static_cast<const float*>(input_tensor.data.data), dense_size,
@@ -3748,7 +3758,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
                 context->tensors[t].bytes / sizeof(Eigen::half);
             Eigen::half* unpacked_fp16_data =
                 reinterpret_cast<Eigen::half*>(unpacked_data);
-            tflite::optimize::sparsity::FormatConverter<Eigen::half> converter(
+            tflite::internal::sparsity::FormatConverter<Eigen::half> converter(
                 vector_shape, *input_tensor.sparsity);
             converter.SparseToDense(
                 static_cast<const Eigen::half*>(input_tensor.data.data),
@@ -3756,15 +3766,11 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
             break;
           }
           case kTfLiteInt8: {
-            // This should only happen if we allow INT8 input_tensor unpacking
-            // when doing the preparation.
-            TFLITE_DCHECK(options_.enable_int8_weights_unpacking);
-
             const size_t dense_size =
                 context->tensors[t].bytes / sizeof(int8_t);
             int8_t* unpacked_int8_data =
                 reinterpret_cast<int8_t*>(unpacked_data);
-            tflite::optimize::sparsity::FormatConverter<int8_t> converter(
+            tflite::internal::sparsity::FormatConverter<int8_t> converter(
                 vector_shape, *input_tensor.sparsity);
             converter.SparseToDense(
                 static_cast<const int8_t*>(input_tensor.data.data), dense_size,
@@ -3878,10 +3884,6 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 
 TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   TfLiteXNNPackDelegateOptions options = {0};
-#if defined(ENABLE_TFLITE_XNNPACK_DEQUANTIZED_INT8_WEIGHTS) || \
-    defined(XNNPACK_DELEGATE_TEST_MODE)
-  options.enable_int8_weights_unpacking = true;
-#endif
   return options;
 }
 

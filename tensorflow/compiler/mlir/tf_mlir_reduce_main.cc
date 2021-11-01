@@ -57,7 +57,9 @@ int main(int argc, char *argv[]) {
   mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
   mlir::mhlo::registerXlaPasses();
-  mlir::mhlo::registerLegalizeTfPasses();
+  mlir::mhlo::registerLegalizeTFPass();
+  mlir::mhlo::registerLegalizeTFControlFlowPass();
+  mlir::mhlo::registerLegalizeTfTypesPassPass();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

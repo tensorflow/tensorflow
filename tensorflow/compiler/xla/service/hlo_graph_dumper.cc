@@ -374,7 +374,7 @@ class HloDotDumper {
   // the graph.
   //
   // In general when you want to draw an edge from A to B, you should actually
-  // draw an edge from GetNodeForEdge(A) to GetNodeForEdge(B).
+  // draw an edge from GetNodeForEdge(A).
   const HloInstruction* GetNodeForEdge(const HloInstruction* instr);
 
   // If instr has just one computation and it's trivial (e.g. "return param0 +
@@ -736,20 +736,21 @@ static const HloConstantInstruction* TryGetFusionParameterConstant(
 bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
   // If a node:
   //
-  //  - is a parameter of a fusion node which is bound to a constant,
-  //
-  // or
-  //
-  //  - is a tuple-shaped parameter, and
-  //  - is not a parameter to a fusion node, and
-  //  - has at least kMinUsersToOmit users shown, and
-  //  - all of the shown users are get-tuple-elements,
+  //  - is a get-tuple-element that isn't the root of the computation, or
+  //  - is a parameter of a fusion node which is bound to a constant, or
+  //  - all of:
+  //    - is a tuple-shaped parameter, and
+  //    - is not a parameter to a fusion node, and
+  //    - has at least kMinUsersToOmit users shown, and
+  //    - all of the shown users are get-tuple-elements,
   //
   // then we omit it from the graph, merging it with its users.
   //
   // This helps us handle the common case where a while loop body has one big
   // tuple-shaped parameter.
-  if (TryGetFusionParameterConstant(instr) != nullptr) {
+  if ((instr->opcode() == HloOpcode::kGetTupleElement &&
+       instr != instr->parent()->root_instruction()) ||
+      TryGetFusionParameterConstant(instr) != nullptr) {
     return true;
   }
   const int kMinUsersToOmit = 3;
@@ -885,6 +886,10 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
         } else {
           operand_str = StrFormat("Parameter %d", operand->parameter_number());
         }
+      } else if (operand->opcode() == HloOpcode::kGetTupleElement) {
+        operand_str =
+            StrFormat("tuple-element %d of %s", operand->tuple_index(),
+                      operand->operand(0)->name());
       } else {
         operand_str = operand->name();
       }
@@ -898,6 +903,20 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
       }
     }
   }
+
+  // Special case: fused parameter is fed from a get-tuple-element.  If
+  // so, name the tuple index.
+  if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
+    const HloInstruction* param_input =
+        instr->parent()->FusionInstruction()->operand(
+            instr->parameter_number());
+    if (param_input->opcode() == HloOpcode::kGetTupleElement) {
+      lines.push_back(StrFormat("tuple-element %d of %s",
+                                param_input->tuple_index(),
+                                param_input->operand(0)->name()));
+    }
+  }
+
   return StrJoin(lines, "<br/>");
 }
 
@@ -1229,11 +1248,11 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     edge_ids_.insert({{from, to}, next_edge_id_++});
 
     string edge_label;
-    if (instr->operand_count() > 1 && !control_edge) {
+    if (control_edge) {
+      edge_label = "style=\"dotted\" color=\"gray\" label=\"ctrl\"";
+    } else if (instr->operand_count() > 1) {
       edge_label =
           StrFormat(R"( headlabel="%d", labeldistance=2)", operand_num);
-    } else if (control_edge) {
-      edge_label = "style=\"dotted\" color=\"gray\" label=\"ctrl\"";
     }
 
     // We print "small" arrays using a hollow arrowhead and "large" arrays using
@@ -1295,6 +1314,10 @@ string HloDotDumper::GetInstructionTrivialComputationStr(
 
 const HloInstruction* HloDotDumper::GetNodeForEdge(
     const HloInstruction* instr) {
+  // Skip over get-tuple-element nodes.
+  if (instr->opcode() == HloOpcode::kGetTupleElement) {
+    instr = instr->operand(0);
+  }
   while (instr->opcode() == HloOpcode::kFusion &&
          ShouldShowFusionSubcomputation(instr)) {
     instr = instr->fused_expression_root();

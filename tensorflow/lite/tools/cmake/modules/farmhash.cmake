@@ -23,7 +23,7 @@ OverridableFetchContent_Declare(
   farmhash
   GIT_REPOSITORY https://github.com/google/farmhash
   # Sync with tensorflow/third_party/farmhash/workspace.bzl
-  GIT_TAG 816a4ae622e964763ca0862d9dbd19324a1eaf45
+  GIT_TAG 0d859a811870d10f53a594927d0d0b97573ad06d
   # It's not currently possible to shallow clone with a GIT TAG
   # as cmake attempts to git checkout the commit hash after the clone
   # which doesn't work as it's a shallow clone hence a different commit hash.

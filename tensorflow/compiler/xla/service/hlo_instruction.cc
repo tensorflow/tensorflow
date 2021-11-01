@@ -666,8 +666,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         // vector of pointers essentially) so create a vector of shapes to pass
         // in.
         std::vector<Shape> operand_shapes;
-        for (const ShapeProto& shape_proto :
-             proto.operand_shapes_with_layout()) {
+        const auto& operand_shapes_with_layout =
+            proto.operand_shapes_with_layout();
+        operand_shapes.reserve(operand_shapes_with_layout.size());
+        for (const ShapeProto& shape_proto : operand_shapes_with_layout) {
           operand_shapes.emplace_back(shape_proto);
         }
         instruction =
@@ -784,7 +786,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       auto gather_dimension_numbers = absl::make_unique<GatherDimensionNumbers>(
           proto.gather_dimension_numbers());
       std::vector<int64_t> gather_slice_sizes;
-      for (int64_t bound : proto.gather_slice_sizes()) {
+      const auto& slice_sizes = proto.gather_slice_sizes();
+      gather_slice_sizes.reserve(slice_sizes.size());
+      for (int64_t bound : slice_sizes) {
         gather_slice_sizes.push_back(bound);
       }
       instruction = CreateGather(shape, operands(0), operands(1),
@@ -962,6 +966,12 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
                                       HloInstruction* operand, int64_t index) {
   return absl::make_unique<HloGetTupleElementInstruction>(shape, operand,
                                                           index);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateGetTupleElement(HloInstruction* operand, int64_t index) {
+  return absl::make_unique<HloGetTupleElementInstruction>(
+      operand->shape().tuple_shapes(index), operand, index);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRng(
@@ -1484,6 +1494,30 @@ HloInstruction::CreateBitcastConvert(const Shape& shape,
       shape, all_args, dimensions_to_reduce, reduce_computation);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
+    const Shape& shape, HloInstruction* tuple_of_instructions,
+    absl::Span<HloInstruction* const> init_values,
+    absl::Span<const int64_t> dimensions_to_reduce,
+    HloComputation* reduce_computation) {
+  if (!tuple_of_instructions->shape().IsTuple()) {
+    CHECK_EQ(init_values.size(), 1)
+        << "The first input has to be a tuple, or the number of init values "
+           "has to be one.";
+    return CreateReduce(shape, tuple_of_instructions, init_values[0],
+                        dimensions_to_reduce, reduce_computation);
+  }
+  absl::InlinedVector<HloInstruction*, 4> inputs;
+  for (int idx = 0; idx < tuple_of_instructions->shape().tuple_shapes_size();
+       idx++) {
+    std::unique_ptr<HloInstruction> gte =
+        HloInstruction::CreateGetTupleElement(tuple_of_instructions, idx);
+    inputs.push_back(
+        tuple_of_instructions->parent()->AddInstruction(std::move(gte)));
+  }
+  return CreateReduce(shape, inputs, init_values, dimensions_to_reduce,
+                      reduce_computation);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduceWindow(
     const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
     const Window& window, HloComputation* reduce_computation) {
@@ -1794,6 +1828,7 @@ bool HloInstruction::HasSideEffect() const {
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
     absl::Span<HloInstruction* const> elements) {
   std::vector<Shape> element_shapes;
+  element_shapes.reserve(elements.size());
   for (auto element : elements) {
     element_shapes.push_back(element->shape());
   }
@@ -2875,6 +2910,11 @@ bool HloInstruction::IsElementwiseImpl(
     const absl::optional<int64_t>& operand_idx) const {
   if (opcode_ == HloOpcode::kDynamicUpdateSlice) {
     return operand_idx.has_value() && operand_idx.value() == 0;
+  }
+  if (opcode_ == HloOpcode::kBitcastConvert &&
+      primitive_util::BitWidth(shape_.element_type()) !=
+          primitive_util::BitWidth(operands_[0]->shape().element_type())) {
+    return false;
   }
   return IsOpElementwise(opcode_);
 }

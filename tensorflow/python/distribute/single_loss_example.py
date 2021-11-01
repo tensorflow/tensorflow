@@ -14,10 +14,6 @@
 # ==============================================================================
 """A simple network to use in tests and examples."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import step_fn
 from tensorflow.python.distribute import strategy_test_lib

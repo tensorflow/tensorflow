@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/local_session_selection.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -160,7 +163,9 @@ class DirectSessionFactory : public SessionFactory {
   DirectSessionFactory() {}
 
   bool AcceptsOptions(const SessionOptions& options) override {
-    return options.target.empty();
+    return options.target.empty() &&
+           !options.config.experimental().use_tfrt() &&
+           GetDefaultLocalSessionImpl() == LocalSessionImpl::kDirectSession;
   }
 
   Status NewSession(const SessionOptions& options,
@@ -285,8 +290,12 @@ static RunHandlerPool* GetOrCreateRunHandlerPool(
     }
   }
 
-  static RunHandlerPool* pool =
-      new RunHandlerPool(num_inter_threads, num_intra_threads);
+  static RunHandlerPool* pool = [&]() {
+    LOG(INFO) << "Creating run-handler pool with "
+                 "[num_inter_threads, num_intra_threads] as ["
+              << num_inter_threads << "," << num_intra_threads << "]";
+    return new RunHandlerPool(num_inter_threads, num_intra_threads);
+  }();
   return pool;
 }
 
@@ -431,24 +440,26 @@ Status DirectSession::ExtendLocked(GraphDef graph) {
   if (!(flib_def_ && execution_state_)) {
     // If this is the first call, we can initialize the execution state
     // with `graph` and do not need to call `Extend()`.
-    // NOTE(mrry): The function library created here will be used for
-    // all subsequent extensions of the graph.
-    flib_def_.reset(
-        new FunctionLibraryDefinition(OpRegistry::Global(), graph.library()));
     GraphExecutionStateOptions options;
     options.device_set = &device_set_;
     options.session_options = &options_;
     options.session_handle = session_handle_;
     TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(
         std::move(graph), options, &execution_state_));
+    // NOTE(mrry): The function library created here will be used for
+    // all subsequent extensions of the graph. Also, note how using the copy
+    // constructor of FunctionLibraryDefinition avoids duplicating the memory
+    // that is occupied by its shared_ptr members.
+    flib_def_.reset(
+        new FunctionLibraryDefinition(execution_state_->flib_def()));
     graph_created_ = true;
   } else {
-    TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
     std::unique_ptr<GraphExecutionState> state;
     // TODO(mrry): Rewrite GraphExecutionState::Extend() to take `graph` by
     // value and move `graph` in here.
     TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &state));
     execution_state_.swap(state);
+    TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
   }
   return Status::OK();
 }
@@ -592,6 +603,10 @@ Status DirectSession::RunInternal(
   const int64_t call_timeout = run_options.timeout_in_ms() > 0
                                    ? run_options.timeout_in_ms()
                                    : operation_timeout_in_ms_;
+  absl::optional<absl::Time> deadline;
+  if (call_timeout > 0) {
+    deadline = absl::Now() + absl::Milliseconds(call_timeout);
+  }
 
   std::unique_ptr<RunHandler> handler;
   if (ShouldUseRunHandlerPool(run_options) &&
@@ -647,6 +662,7 @@ Status DirectSession::RunInternal(
   args.user_intra_op_threadpool = threadpool_options.intra_op_threadpool;
   args.run_all_kernels_inline = pool == nullptr;
   args.start_time_usecs = start_time_usecs;
+  args.deadline = deadline;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 
@@ -1393,7 +1409,7 @@ Status DirectSession::CreateExecutors(
     };
 
     optimizer.Optimize(lib, options_.env, device, &partition_graph,
-                       /*shape_map=*/nullptr);
+                       GraphOptimizer::Options());
 
     // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
     const DebugOptions& debug_options =

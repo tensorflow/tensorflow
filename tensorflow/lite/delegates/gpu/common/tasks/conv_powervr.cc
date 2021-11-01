@@ -1222,7 +1222,9 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
           gpu_info, definition.precision, task_size);
     }
     if (!x_kernel_is_1 || !y_kernel_is_1) {
-      block_size = std::min(block_size, 4);
+      if (gpu_info.mali_info.IsMidgard() || gpu_info.mali_info.IsBifrost()) {
+        block_size = std::min(block_size, 4);
+      }
     }
     if (block_size == 8) {
       if (dst_depth == 1 || dst_depth == 3) {

@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """MetaGraph and related functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 from distutils import version as distutils_version  # pylint: disable=g-bad-import-order
 import os.path

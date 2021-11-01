@@ -52,7 +52,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 
   xla::StatusOr<mlir::Operation*> EmitOp(const xla::HloInstruction* instr);
 
-  static xla::StatusOr<mhlo::ScatterDimensionNumbers>
+  static xla::StatusOr<mhlo::ScatterDimensionNumbersAttr>
   GetScatterDimensionNumbers(const xla::HloInstruction* instr,
                              mlir::MLIRContext* context);
 
@@ -277,10 +277,13 @@ tensorflow::Status HloToLhloModule(const xla::BufferAssignment& assignment,
 
 tensorflow::Status OptimizeAndConvertHloToLmhlo(
     std::unique_ptr<xla::HloModule> hlo_module, ModuleOp module,
-    StringRef platform_name);
-
+    StringRef platform_name, bool optimize_xla_hlo);
 OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
-                                               MLIRContext* context);
+                                               MLIRContext* context,
+                                               bool optimize_xla_hlo);
+
+// This register the MLIR pass with the command line.
+void RegisterMhloToLhloWithXlaPass();
 
 }  // namespace mlir
 

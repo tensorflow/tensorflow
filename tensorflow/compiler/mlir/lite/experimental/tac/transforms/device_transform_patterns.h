@@ -92,6 +92,22 @@ struct PadConcat : public OpRewritePattern<TFL::ConcatenationOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+// Convert reduce mean 4d to avg pool.
+struct ReduceMeanToAvgPool : public OpRewritePattern<TFL::MeanOp> {
+  using OpRewritePattern<TFL::MeanOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::MeanOp mean_op,
+                                PatternRewriter& rewriter) const override;
+};
+
+// Insert Requant ops for reduce_mean.
+struct InsertRequantForReduceMean : public OpRewritePattern<TFL::MeanOp> {
+  using OpRewritePattern<TFL::MeanOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::MeanOp mean_op,
+                                PatternRewriter& rewriter) const override;
+};
+
 }  // namespace tac
 }  // namespace TFL
 }  // namespace mlir

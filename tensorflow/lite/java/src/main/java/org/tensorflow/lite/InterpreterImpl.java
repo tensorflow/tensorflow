@@ -130,7 +130,7 @@ class InterpreterImpl implements InterpreterApi {
 
   @Override
   public void runForMultipleInputsOutputs(
-      @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {
+      Object @NonNull [] inputs, @NonNull Map<Integer, Object> outputs) {
     checkNotClosed();
     wrapper.run(inputs, outputs);
   }

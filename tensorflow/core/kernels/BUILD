@@ -78,7 +78,7 @@ load(
 #   # for CPU tests
 #   $ bazel test --config opt //third_party/tensorflow/core/kernels:my_op_test
 #   # for GPU benchmarks
-#   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmarks=..
+#   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmark_filter=..
 #
 package(
     default_visibility = ["//visibility:public"],
@@ -257,7 +257,6 @@ tf_cuda_cc_test(
         "guitar",
         "multi_gpu",
         "no_oss",
-        "notap",
     ],
     deps = [
         "//tensorflow/core:all_kernels",
@@ -545,7 +544,15 @@ cc_library(
 # dependency to tensorflow/core:lib, which gpu_utils certainly depends on.
 cc_library(
     name = "gpu_util_hdrs",
-    hdrs = ["gpu_utils.h"],
+    hdrs = [
+        "gpu_utils.h",
+        # See the exports_files declaration for a description of why this
+        # silliness is here.
+        #
+        # TODO(b/202546057) get rid of this once fused_conv is moved out of
+        # contrib.
+        "//tensorflow/stream_executor:lazy_op_runner.h",
+    ],
 )
 
 tf_cuda_library(
@@ -560,13 +567,17 @@ tf_cuda_library(
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util/proto:proto_utils",
+        "//tensorflow/stream_executor:lazy_op_runner",
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/core/util/autotune_maps:conv_parameters",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
+        "//tensorflow/stream_executor:tf_allocator_adapter",
     ]),
 )
 
@@ -669,6 +680,7 @@ cc_library(
 cc_library(
     name = "batch_kernels",
     srcs = ["batch_kernels.cc"],
+    hdrs = ["batch_kernels.h"],
     deps = [
         ":ops_util_hdrs",
         "//tensorflow/core:core_cpu_internal",
@@ -677,10 +689,12 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
         "//tensorflow/core/kernels/batching_util:batch_resource_base",
+        "//tensorflow/core/kernels/batching_util:bounded_executor",
         "//tensorflow/core/kernels/batching_util:concat_split_util",
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
         "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
 )
@@ -965,6 +979,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/framework:bounds_check",
+    "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
     "//third_party/eigen3",
 ]
 
@@ -981,6 +996,8 @@ tf_kernel_library(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -1337,8 +1354,10 @@ tf_kernel_library(
         "where_op_gpu_impl_7.cu.cc",
         "where_op_gpu_impl_8.cu.cc",
     ],
-    deps = if_cuda_or_rocm([
+    deps = if_cuda([
                "//tensorflow/core/util:cuda_solvers",
+           ]) + if_rocm([
+               "//tensorflow/core/util:rocm_solvers",
            ]) + [":gpu_prim_hdrs"] +
            ARRAY_DEPS,
 )
@@ -1604,6 +1623,47 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "batch_kernel_test_util",
+    testonly = 1,
+    srcs = ["batch_kernel_test_util.cc"],
+    hdrs = ["batch_kernel_test_util.h"],
+    deps = [
+        ":batch_kernels",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_kernels_test",
+    size = "small",
+    srcs = ["batch_kernels_test.cc"],
+    deps = [
+        ":batch_kernel_test_util",
+        ":batch_kernels",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "batch_kernels_env_test",
+    size = "small",
+    srcs = ["batch_kernels_env_test.cc"],
+    deps = [
+        ":batch_kernel_test_util",
+        ":batch_kernels",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -2215,6 +2275,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//third_party/eigen3",
     ],
 )
@@ -2370,6 +2431,31 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "while_op_test",
+    srcs = ["while_op_test.cc"],
+    deps = [
+        ":control_flow_ops",
+        "//tensorflow/c/experimental/stream_executor",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_test_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:direct_session_internal",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:constant_op",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:functional_ops",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:ops_testutil",
     ],
 )
 
@@ -2819,6 +2905,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util:determinism_for_kernels",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2850,6 +2937,7 @@ tf_kernel_library(
         ":tensor_list",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor",
         "//third_party/eigen3",
     ],
 )
@@ -3195,6 +3283,7 @@ LOGGING_DEPS = [
     "//tensorflow/c/kernels:histogram_summary_op",
     "//tensorflow/c/kernels:merge_summary_op",
     "//tensorflow/c/kernels:summary_op",
+    "//tensorflow/core/util:determinism_for_kernels",
 ]
 
 tf_kernel_library(
@@ -3251,6 +3340,8 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/util:determinism_test_util",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -3303,6 +3394,19 @@ tf_cc_test(
     srcs = ["resource_ops_test.cc"],
     deps = [
         ":dense_update_functor",
+        ":ops_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "lookup_ops_test",
+    size = "small",
+    srcs = ["lookup_ops_test.cc"],
+    deps = [
+        ":lookup_table_op",
         ":ops_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -3465,15 +3569,11 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "nextafter_op",
-    copts = if_mlir_generated_experimental_kernels_enabled([
-        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
-    ]) + if_mlir_generated_gpu_kernels_enabled(
+    copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
     # *.cu.cc sources are compiled with gpu_copts instead of copts.
-    gpu_copts = if_mlir_generated_experimental_kernels_enabled([
-        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
-    ]) + if_mlir_generated_gpu_kernels_enabled(
+    gpu_copts = if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
     prefix = "nextafter_op",
@@ -3515,7 +3615,10 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
+    ]) + if_cuda([
         "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
     ]),
 )
 
@@ -3973,6 +4076,7 @@ tf_kernel_library(
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
     ] + if_cuda([
@@ -4063,6 +4167,7 @@ tf_kernel_library(
     deps = NN_DEPS + [
         ":redux_functor",
         "//tensorflow/core/profiler/lib:scoped_annotation",
+        "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([
@@ -4353,6 +4458,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -4727,7 +4833,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_concat_op",
     prefix = "sparse_concat_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + if_cuda_or_rocm([
+        ":gpu_device_array",
+        ":gpu_prim_helpers",
+    ]),
 )
 
 tf_kernel_library(
@@ -5034,7 +5143,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scatter_op",
     prefix = "scatter_op",
-    deps = STATE_DEPS,
+    deps = STATE_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
 )
 
 tf_kernel_library(
@@ -6104,6 +6213,7 @@ filegroup(
         "lookup_table_op.h",
         "lookup_util.h",
         "list_kernels.h",
+        "l2loss_op.h",
         "map_kernels.h",
         "maxpooling_op.h",
         "mfcc.h",
@@ -6141,6 +6251,7 @@ filegroup(
         "sparse_xent_op.h",
         "sparse_fill_empty_rows_op.h",
         "sparse_reorder_op.h",
+        "sparse_slice_op.h",
         "sparse_tensor_dense_matmul_op.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",
@@ -6158,29 +6269,8 @@ filegroup(
         "where_op.h",
         "xent_op.h",
     ] + [
-        "//tensorflow/core/data:captured_function.h",
-        "//tensorflow/core/data:dataset_utils.h",
-        "//tensorflow/core/data:name_utils.h",
-        "//tensorflow/core/data:rewrite_utils.h",
-        "//tensorflow/core/data:split_utils.h",
-        "//tensorflow/core/data:root_dataset.h",
-        "//tensorflow/core/data:serialization_utils.h",
-        "//tensorflow/core/data:stats_utils.h",
-        "//tensorflow/core/data:unbounded_thread_pool.h",
         "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles_hdrs",
-        "//tensorflow/core/kernels/data:batch_dataset_op.h",
-        "//tensorflow/core/kernels/data:iterator_ops.h",
-        "//tensorflow/core/kernels/data:finalize_dataset_op.h",
-        "//tensorflow/core/kernels/data:flat_map_dataset_op.h",
-        "//tensorflow/core/kernels/data:map_dataset_op.h",
-        "//tensorflow/core/kernels/data:take_dataset_op.h",
-        "//tensorflow/core/kernels/data:model_dataset_op.h",
-        "//tensorflow/core/kernels/data:optimize_dataset_op.h",
-        "//tensorflow/core/kernels/data:optional_ops.h",
-        "//tensorflow/core/kernels/data:reduce_dataset_op.h",
-        "//tensorflow/core/kernels/data:repeat_dataset_op.h",
-        "//tensorflow/core/kernels/data:tensor_slice_dataset_op.h",
-        "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op.h",
+        "//tensorflow/core/kernels/data:portable_all_op_kernels_headers",
         "//tensorflow/core/kernels/image:adjust_contrast_op.h",
         "//tensorflow/core/kernels/image:adjust_hue_op.h",
         "//tensorflow/core/kernels/image:adjust_saturation_op.h",
@@ -6196,6 +6286,7 @@ filegroup(
         "//tensorflow/core/kernels/linalg:matrix_diag_op.h",
         "//tensorflow/core/kernels/linalg:matrix_set_diag_op.h",
         "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_impl.h",
+        "//tensorflow/core/kernels/linalg:qr_op_impl.h",
         "//tensorflow/core/util:image_resizer_state.h",
     ],
 )
@@ -6358,6 +6449,7 @@ filegroup(
         "dilation_ops.cc",
         "dynamic_stitch_op.cc",
         "fft_ops.cc",
+        "functional_ops.cc",
         "in_topk_op.cc",
         "in_topk_op.h",
         "initializable_lookup_table.cc",
@@ -6368,6 +6460,7 @@ filegroup(
         "lookup_table_op.cc",
         "lookup_util.cc",
         "lrn_op.cc",
+        "l2loss_op.cc",
         "map_kernels.cc",
         "maxpooling_op.cc",
         "mfcc.cc",
@@ -6508,30 +6601,7 @@ filegroup(
         "xent_op.cc",
     ] + [
         "//tensorflow/core/kernels/boosted_trees:quantile_ops.cc",
-        "//tensorflow/core/data:captured_function.cc",
-        "//tensorflow/core/data:dataset_utils.cc",
-        "//tensorflow/core/data:name_utils.cc",
-        "//tensorflow/core/data:rewrite_utils.cc",
-        "//tensorflow/core/data:root_dataset.cc",
-        "//tensorflow/core/data:serialization_utils.cc",
-        "//tensorflow/core/data:split_utils.cc",
-        "//tensorflow/core/data:stats_utils.cc",
-        "//tensorflow/core/data:unbounded_thread_pool.cc",
-        "//tensorflow/core/kernels/data:batch_dataset_op.cc",
-        "//tensorflow/core/kernels/data:iterator_ops.cc",
-        "//tensorflow/core/kernels/data:finalize_dataset_op.cc",
-        "//tensorflow/core/kernels/data:flat_map_dataset_op.cc",
-        "//tensorflow/core/kernels/data:map_dataset_op.cc",
-        "//tensorflow/core/kernels/data:model_dataset_op.cc",
-        "//tensorflow/core/kernels/data:take_dataset_op.cc",
-        "//tensorflow/core/kernels/data:optimize_dataset_op.cc",
-        "//tensorflow/core/kernels/data:optional_ops.cc",
-        "//tensorflow/core/kernels/data:reduce_dataset_op.cc",
-        "//tensorflow/core/kernels/data:repeat_dataset_op.cc",
-        "//tensorflow/core/kernels/data:tensor_slice_dataset_op.cc",
-        # TODO(b/185903858): This should not be needed since this is part of tensorflow/core/kernels/data/experimental:portable_all_op_kernels.
-        "//tensorflow/core/kernels/data/experimental:lookup_ops.cc",
-        "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op.cc",
+        "//tensorflow/core/kernels/data:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:adjust_contrast_op.cc",
         "//tensorflow/core/kernels/image:adjust_hue_op.cc",
         "//tensorflow/core/kernels/image:adjust_saturation_op.cc",
@@ -6556,6 +6626,10 @@ filegroup(
         "//tensorflow/core/kernels/linalg:matrix_set_diag_op.cc",
         "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_complex.cc",
         "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_real.cc",
+        "//tensorflow/core/kernels/linalg:qr_op_complex128.cc",
+        "//tensorflow/core/kernels/linalg:qr_op_complex64.cc",
+        "//tensorflow/core/kernels/linalg:qr_op_double.cc",
+        "//tensorflow/core/kernels/linalg:qr_op_float.cc",
     ],
 )
 
@@ -6717,6 +6791,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/platform:strong_hash",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
         "//third_party/icu/data:conversion_data",
@@ -7696,5 +7771,14 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "filesystem_ops",
+    srcs = ["filesystem_ops.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )

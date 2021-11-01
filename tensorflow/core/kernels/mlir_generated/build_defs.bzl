@@ -71,6 +71,7 @@ def _gen_mlir_op_impl(ctx):
                 ctx.outputs.out.path,
             )
         ),
+        use_default_shell_env = True,
     )
 
 _gen_mlir_op_rule = rule(
@@ -163,7 +164,9 @@ def _gen_kernel_bin_impl(ctx):
             "--cpu_codegen=%s" % ctx.attr.cpu_codegen,
             "--jit=%s" % ctx.attr.jit,
         ],
+        use_default_shell_env = True,
         mnemonic = "compile",
+        progress_message = "Generating kernel '%{label}'",
     )
     compilation_outputs = cc_common.create_compilation_outputs(
         # We always produce PIC object files, so use the same object files for both.
@@ -196,13 +199,13 @@ _gen_kernel_bin_rule = rule(
         # cc_binary seems not to bring its dependencies with it, so do that explicitly here.
         "_tfso": attr.label(
             default = Label("//tensorflow:libtensorflow_framework.so.2"),
-            cfg = "host",
+            cfg = "exec",
             allow_single_file = True,
         ),
         "_tool": attr.label(
             executable = True,
             default = Label("//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel"),
-            cfg = "host",
+            cfg = "exec",
         ),
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
     },

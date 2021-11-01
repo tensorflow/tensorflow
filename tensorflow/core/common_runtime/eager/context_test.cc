@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 #include "absl/types/span.h"
+#include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -301,6 +302,80 @@ TEST_F(EagerContextTest, FunctionErrorRecovery) {
   TF_ASSERT_OK(context()->SyncExecutors());
   retvals[0]->Unref();
   retvals[0] = nullptr;
+}
+
+TEST_F(EagerContextTest, LocalRendezvousCreation) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  std::function<Rendezvous*(const int64_t)> rendezvous_creator =
+      context()->RendezvousCreator();
+
+  // Create a new rendezvous instance.
+  // Initially its ref-count is 2:
+  // one added upopn rendezvous creation, the other one added by EagerContext.
+  Rendezvous* rendezvous_1 = rendezvous_creator(1);
+  EXPECT_EQ(rendezvous_1->RefCount(), 2);
+
+  // Create another rendezvous instance with the same step-id.
+  // This would add one more ref-count to the existing rendezvous insteance
+  // insted of creating a new instance.
+  Rendezvous* rendezvous_2 = rendezvous_creator(1);
+  EXPECT_EQ(rendezvous_2->RefCount(), 3);
+
+  // Caller releases rendezvous-1.
+  rendezvous_1->Unref();
+  EXPECT_EQ(rendezvous_1->RefCount(), 2);
+
+  // Caller releases rendezvous-2.
+  rendezvous_2->Unref();
+  EXPECT_EQ(rendezvous_2->RefCount(), 1);
+}
+
+void TestGlobalRendezvous(EagerContext* context, bool reuse_global_rendezvous) {
+  context->SetReuseRendezvousForFunctions(reuse_global_rendezvous);
+  EXPECT_EQ(context->GetReuseRendezvousForFunctions(), reuse_global_rendezvous);
+
+  auto rendezvous_creator = context->RendezvousCreator();
+  Rendezvous* rendezvous_1 = rendezvous_creator(-1);
+  EXPECT_EQ(rendezvous_1->RefCount(), 2);
+  Rendezvous* rendezvous_2 = rendezvous_creator(-1);
+  EXPECT_EQ(rendezvous_2->RefCount(), 3);
+
+  // Global rendezvous's ref-count should be back to 1 after resetting.
+  context->ResetGlobalRendezvousForFunction();
+
+  Rendezvous* rendezvous_3 = rendezvous_creator(-1);
+  EXPECT_EQ(rendezvous_3->RefCount(), 2);
+
+  // Callers release rendezvous.
+  rendezvous_1->Unref();
+  rendezvous_2->Unref();
+  rendezvous_3->Unref();
+}
+
+TEST_F(EagerContextTest, GlobalRendezvousCreation) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+
+  TestGlobalRendezvous(context(), false);
+}
+
+TEST_F(EagerContextTest, ReuseGlobalRendezvous) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  EXPECT_FALSE(context()->GetReuseRendezvousForFunctions());
+
+  TestGlobalRendezvous(context(), true);
+}
+
+TEST_F(EagerContextTest, StepId) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+
+  EXPECT_EQ(context()->GetDistributedManager(), nullptr);
+  context()->SetDistributedManager(
+      std::make_unique<tensorflow::EagerContextDistributedManager>(context()));
+  auto* ctx_dist_mgr = context()->GetDistributedManager();
+
+  EXPECT_EQ(ctx_dist_mgr->step_id(), 0);
+  EXPECT_EQ(ctx_dist_mgr->GetNextStepId(), 1);
+  EXPECT_EQ(ctx_dist_mgr->step_id(), 1);
 }
 
 }  // namespace

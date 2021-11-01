@@ -27,8 +27,11 @@ namespace grappler {
 class Remapper : public GraphOptimizer {
  public:
   explicit Remapper(RewriterConfig::Toggle opt_level,
+                    RewriterConfig::CpuLayout cpu_layout_conversion =
+                        RewriterConfig::NO_CONVERSION_ON_CPU,
                     bool xla_auto_clustering_on = false)
       : opt_level_(opt_level),
+        cpu_layout_conversion_(cpu_layout_conversion),
         xla_auto_clustering_on_(xla_auto_clustering_on) {}
 
   ~Remapper() override {}
@@ -42,6 +45,7 @@ class Remapper : public GraphOptimizer {
 
  private:
   RewriterConfig::Toggle opt_level_;
+  RewriterConfig::CpuLayout cpu_layout_conversion_;
   bool xla_auto_clustering_on_;
 };
 

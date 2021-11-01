@@ -71,8 +71,8 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     ResetParamResolver(config);
     prl_->CompleteDefaultRanking(&group);
     std::vector<string> actual_device_order;
-    for (const DeviceAttributes& device : group.devices) {
-      actual_device_order.push_back(device.name());
+    for (const CollGroupMember& member : group.members) {
+      actual_device_order.push_back(member.device.name());
     }
     EXPECT_EQ(actual_device_order, expected_device_order);
   }
@@ -97,9 +97,9 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
   group.group_size = kNumGpus;
   std::unordered_set<int> clique1 = {0, 1, 6, 7};
   for (int gpu_idx = 0; gpu_idx < kNumGpus; ++gpu_idx) {
-    group.task_names.push_back("/job:localhost/replica:0/task:0");
-    DeviceAttributes device;
-    device.set_name(strings::StrCat(
+    CollGroupMember member;
+    member.task = "/job:localhost/replica:0/task:0";
+    member.device.set_name(strings::StrCat(
         "/job:localhost/replica:0/task:0/device:GPU:", gpu_idx));
     // Build localities so that 0,1,6,7 and 2,3,4,5 form 2 strongly connected
     // components.  Across components, connect 3 and 7.
@@ -109,19 +109,19 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
       bool link_in_clique1 = clique1.find(link_idx) != clique1.end();
       if ((gpu_in_clique1 && link_in_clique1) ||
           (!gpu_in_clique1 && !link_in_clique1)) {
-        LocalLinks* links = device.mutable_locality()->mutable_links();
+        LocalLinks* links = member.device.mutable_locality()->mutable_links();
         InterconnectLink* ilink = links->add_link();
         ilink->set_device_id(link_idx);
         ilink->set_strength(2);
       } else if ((gpu_idx == 3 && link_idx == 7) ||
                  (gpu_idx == 7 && link_idx == 3)) {
-        LocalLinks* links = device.mutable_locality()->mutable_links();
+        LocalLinks* links = member.device.mutable_locality()->mutable_links();
         InterconnectLink* ilink = links->add_link();
         ilink->set_device_id(link_idx);
         ilink->set_strength(1);
       }
     }
-    group.devices.push_back(device);
+    group.members.push_back(member);
   }
   RunCompleteDefaultRanking(group, {1, 3, 5, 7, 6, 4, 2, 0},
                             {
@@ -193,12 +193,12 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
   }
   for (int i = 0; i < NUM_DEVS; ++i) {
     TF_ASSERT_OK(statuses[i]);
-    ASSERT_EQ(cps[i]->group.devices.size(), 3);
+    ASSERT_EQ(cps[i]->group.members.size(), 3);
     for (int j = 0; j < NUM_DEVS; ++j) {
       EXPECT_EQ(
           strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", j),
-          cps[i]->group.devices[j].name());
-      EXPECT_TRUE(cps[i]->task.is_local[j]);
+          cps[i]->group.members[j].device.name());
+      EXPECT_TRUE(cps[i]->group.members[j].is_local);
     }
     EXPECT_EQ(cps[i]->instance.impl_details.subdiv_source_rank.size(), 0);
     EXPECT_FALSE(cps[i]->is_source);
@@ -248,12 +248,12 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
   }
   for (int i = 0; i < NUM_DEVS; ++i) {
     TF_ASSERT_OK(statuses[i]);
-    ASSERT_EQ(cps[i]->group.devices.size(), 3);
+    ASSERT_EQ(cps[i]->group.members.size(), 3);
     for (int j = 0; j < NUM_DEVS; ++j) {
       EXPECT_EQ(
           strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", j),
-          cps[i]->group.devices[j].name());
-      EXPECT_TRUE(cps[i]->task.is_local[j]);
+          cps[i]->group.members[j].device.name());
+      EXPECT_TRUE(cps[i]->group.members[j].is_local);
     }
     EXPECT_EQ(cps[i]->is_source, (i == 1));
     EXPECT_EQ(cps[i]->default_rank, i);

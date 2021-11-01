@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/sharding_op_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -25,7 +26,13 @@ namespace {
 
 class ShardingOp : public XlaOpKernel {
  public:
-  explicit ShardingOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit ShardingOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    std::vector<int32_t> unspecified_dims;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("unspecified_dims", &unspecified_dims));
+    for (int32_t i32 : unspecified_dims) {
+      unspecified_dims_.push_back(i32);
+    }
+  }
 
   ~ShardingOp() override = default;
 
@@ -42,12 +49,16 @@ class ShardingOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, shape_or.status());
 
     ctx->SetOutput(
-        0, xla::CustomCall(ctx->builder(), /*call_target_name=*/"Sharding",
-                           {input}, shape_or.ValueOrDie()));
+        0, xla::CustomCall(
+               ctx->builder(), /*call_target_name=*/"Sharding", {input},
+               shape_or.ValueOrDie(),
+               /*opaque=*/
+               xla::sharding_op_util::EncodeAttributes(unspecified_dims_)));
   }
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(ShardingOp);
+  std::vector<int64_t> unspecified_dims_;
 };
 
 REGISTER_XLA_OP(Name("XlaSharding"), ShardingOp);

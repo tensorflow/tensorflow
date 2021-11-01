@@ -29,7 +29,7 @@ The following models are guaranteed to be compatible with the `AudioClassifier`
 API.
 
 *   Models created by
-    [TensorFlow Lite Model Maker for Audio Classfication](https://www.tensorflow.org/lite/api_docs/python/tflite_model_maker/audio_classifier).
+    [TensorFlow Lite Model Maker for Audio Classification](https://www.tensorflow.org/lite/api_docs/python/tflite_model_maker/audio_classifier).
 
 *   The
     [pretrained audio event classification models on TensorFlow Hub](https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1).

@@ -294,7 +294,8 @@ class MapDatasetParams : public DatasetParams {
 // in testing.
 class TensorSliceDatasetParams : public DatasetParams {
  public:
-  TensorSliceDatasetParams(std::vector<Tensor> components, string node_name);
+  TensorSliceDatasetParams(std::vector<Tensor> components, string node_name,
+                           bool is_files = false);
 
   std::vector<Tensor> GetInputTensors() const override;
 
@@ -316,6 +317,7 @@ class TensorSliceDatasetParams : public DatasetParams {
 
  public:
   std::vector<Tensor> components_;
+  bool is_files_;
 };
 
 // `TakeDatasetParams` is a common dataset parameter type that are used in

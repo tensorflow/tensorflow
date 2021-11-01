@@ -24,23 +24,33 @@ namespace tensorflow {
 namespace functor {
 
 // Functor used by BiasOp to do the computations.
-template <typename Device, typename T, int Dims>
+template <typename Device, typename T>
 struct Bias {
-  // Add "bias" to "input", broadcasting it on all dimensions but the last one.
-  void operator()(const Device& d, typename TTypes<T, Dims>::ConstTensor input,
+  // Add "bias" to "input", repeating "bias".
+  void operator()(const Device& d, typename TTypes<T>::ConstFlat input,
                   typename TTypes<T>::ConstVec bias,
-                  typename TTypes<T, Dims>::Tensor output) {
-    const Eigen::Index bias_size = bias.dimension(0);
-    const Eigen::Index rest_size = input.size() / bias_size;
-    Eigen::DSizes<Eigen::Index, 1> one_d(input.size());
+                  typename TTypes<T>::Flat output) {
+    const Eigen::Index rest_size = input.size() / bias.dimension(0);
     Eigen::DSizes<Eigen::Index, 1> bcast(rest_size);
     MaybeWith32BitIndexing<Device>(
-        [&](auto input32, auto bias32, auto output32, const auto& one_d32,
-            const auto& bcast32) {
-          output32.reshape(one_d32).device(d) =
-              input32.reshape(one_d32) + bias32.broadcast(bcast32);
+        [&](auto input32, auto bias32, auto output32, const auto& bcast32) {
+          output32.device(d) = input32 + bias32.broadcast(bcast32);
         },
-        input, bias, output, one_d, bcast);
+        input, bias, output, bcast);
+  }
+
+  // NCHW layout, repeating on the first dimension, broadcasting on the last
+  // dimension.
+  void operator()(const Device& d, typename TTypes<T>::ConstMatrix input,
+                  typename TTypes<T>::ConstMatrix bias1,  // shape [C, 1].
+                  typename TTypes<T>::Matrix output) {
+    const Eigen::Index rest_size = input.dimension(0) / bias1.dimension(0);
+    Eigen::DSizes<Eigen::Index, 2> bcast(rest_size, input.dimension(1));
+    MaybeWith32BitIndexing<Device>(
+        [&](auto input32, auto bias32, auto output32, const auto& bcast32) {
+          output32.device(d) = input32 + bias32.broadcast(bcast32);
+        },
+        input, bias1, output, bcast);
   }
 };
 

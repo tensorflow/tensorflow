@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/pooling.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -188,7 +189,7 @@ class MaxPoolOp : public PoolingOp {
     // For VECT_C max-pool ops, transpose to plain NCHW, do the max-pool, and
     // transpose back.  This isn't necessarily the most efficient algorithm, but
     // it's ok for starters.
-    absl::optional<int64> vect_width;
+    absl::optional<int64_t> vect_width;
     if (data_format_ == FORMAT_NCHW_VECT_C) {
       vect_width = input_shape->dimensions().back();
       input = xla::Collapse(xla::Transpose(input, {0, 1, 4, 2, 3}), {1, 2});
@@ -460,7 +461,9 @@ class AvgPoolGradOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape gradients_shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &gradients_shape));
+    OP_REQUIRES_OK(
+        ctx, ctx->ConstantInputAsShape(0, &gradients_shape,
+                                       xla::ValueInferenceMode::kUpperBound));
 
     const TensorShape out_backprop_shape = ctx->InputShape(1);
 

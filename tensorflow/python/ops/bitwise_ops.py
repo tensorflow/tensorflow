@@ -15,10 +15,6 @@
 
 """Operations for manipulating the binary representations of integers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import

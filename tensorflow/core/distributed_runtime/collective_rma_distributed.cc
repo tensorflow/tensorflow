@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
@@ -151,10 +152,11 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     }
     AllocatorAttributes cpu_attr;
     cpu_attr.set_gpu_compatible(true);
-    ScopedMemoryDebugAnnotation op_annotation(
+    profiler::ScopedMemoryDebugAnnotation op_annotation(
         "CollectiveRemoteAccessDistributed::RecvFromPeer"
         "::recv_buf_callback",
-        step_id_, "dynamic", to_tensor->dtype(), &to_tensor->shape());
+        step_id_, "dynamic", to_tensor->dtype(),
+        [to_tensor]() { return to_tensor->shape().DebugString(); });
 
     state->cpu_tensor =
         std::make_unique<Tensor>(cpu_dev->GetAllocator(cpu_attr),

@@ -82,6 +82,10 @@ int64_t GetTransferredElementCount(CallOp from_graph, CallOp to_graph) {
 }
 
 struct GetOpCostPass : mlir::PassWrapper<GetOpCostPass, FunctionPass> {
+  llvm::StringRef getArgument() const final { return "tfl-get-op-cost"; }
+  llvm::StringRef getDescription() const final {
+    return "Get cost for every op";
+  }
   void runOnFunction() override;
 };
 
@@ -178,8 +182,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateGetOpCostPass() {
   return std::make_unique<GetOpCostPass>();
 }
 
-static PassRegistration<GetOpCostPass> pass("tfl-get-op-cost",
-                                            "Get cost for every op");
+static PassRegistration<GetOpCostPass> pass;
 
 }  // namespace tac
 }  // namespace TFL

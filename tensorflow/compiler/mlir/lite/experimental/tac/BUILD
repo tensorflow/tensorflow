@@ -29,13 +29,14 @@ cc_library(
         "execution_metadata_exporter.h",
     ],
     deps = [
+        ":common",
         ":runtime_metadata_fbs",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite/experimental/tac:common",
         "//tensorflow/compiler/mlir/lite/experimental/tac/hardwares:target_hardware",
         "//tensorflow/compiler/mlir/tensorflow",
         "@flatbuffers",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
     ],
@@ -56,6 +57,7 @@ tf_cc_test(
         "@flatbuffers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:StandardOps",
@@ -94,6 +96,7 @@ gentbl_cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//mlir:ArithmeticOpsTdFiles",
         "@llvm-project//mlir:StdOpsTdFiles",
     ],
 )
@@ -112,11 +115,13 @@ cc_library(
     deps = [
         ":common",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:verification_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
     ],
@@ -146,6 +151,26 @@ cc_library(
 )
 
 cc_library(
+    name = "device_transform_nnapi",
+    srcs = [
+        "transforms/device_transform_nnapi.cc",
+    ],
+    deps = [
+        ":common",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/experimental/tac/hardwares:nnapi_hardware",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "device_transform",
     srcs = [
         "transforms/device_transform.cc",
@@ -156,6 +181,7 @@ cc_library(
     deps = [
         ":common",
         ":device_transform_gpu",
+        ":device_transform_nnapi",
         ":device_transform_patterns",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/experimental/tac/hardwares:target_hardware",
@@ -232,6 +258,7 @@ cc_library(
 
 cc_library(
     name = "tac-opt_lib",
+    testonly = True,
     deps = [
         ":target_aware_conversion",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",
@@ -244,6 +271,7 @@ cc_library(
 # Binary with no hardwares linked.
 tf_cc_binary(
     name = "tac-opt",
+    testonly = True,
     deps = [
         ":tac-opt_lib",
     ],
@@ -252,6 +280,7 @@ tf_cc_binary(
 # Binary with all backends linked.
 tf_cc_binary(
     name = "tac-opt-all-backends",
+    testonly = True,
     deps = [
         ":tac-opt_lib",
         "//tensorflow/compiler/mlir/lite/experimental/tac/hardwares:all-target-hardwares",

@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Pass/Pass.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_clustering.h"

@@ -353,7 +353,7 @@ TEST(FlexModel, FailureWithoutFlexDelegate) {
 
   // As the flex ops weren't resolved implicitly by the flex delegate, runtime
   // allocation and execution will fail.
-  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteError);
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteUnresolvedOps);
 }
 
 // This tests on a flatbuffer that defines a shape of 2 to be a memory mapped

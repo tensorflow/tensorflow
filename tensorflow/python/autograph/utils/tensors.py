@@ -19,10 +19,6 @@ not be not fully robust, although they work in the vast majority of cases. So
 we define them here in order for their behavior to be consistently verified.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util

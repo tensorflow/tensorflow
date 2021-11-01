@@ -13,9 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """This is a Python API fuzzer for tf.constant."""
-import sys
-import atheris_no_libfuzzer as atheris
-import tensorflow as tf
+import atheris
+with atheris.instrument_imports():
+  import sys
+  import tensorflow as tf
 
 
 def TestOneInput(data):

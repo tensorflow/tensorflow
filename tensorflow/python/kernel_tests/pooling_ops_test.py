@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional tests for pooling operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os
 
@@ -622,6 +618,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
+  @test_util.xla_allow_fallback("XLA doesn't support explicit padding")
   @test_util.run_deprecated_v1
   def testMaxPoolNegativeInputExpPaddingAdv(self, **kwargs):
     expected_output = [-1, -1, -3, -5, -7, -7, -9, -11, -19, -19, -21, -23, -31,
@@ -1035,7 +1032,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   def testMaxPoolingGradThrowDeterminismError(self):
     if test.is_gpu_available(cuda_only=True):
       try:
-        config_exec.enable_deterministic_ops(True)
+        config_exec.enable_op_determinism()
         orig_input = [
             1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
             0.0, 1.0, 0.0, 1.0
@@ -1060,10 +1057,10 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                 include_batch_in_index=False)
             self.evaluate(out_op)
       finally:
-        config_exec.enable_deterministic_ops(False)
+        config_exec.disable_op_determinism()
     else:
       try:
-        config_exec.enable_deterministic_ops(True)
+        config_exec.enable_op_determinism()
         orig_input = [
             1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
             0.0, 1.0, 0.0, 1.0
@@ -1085,7 +1082,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
               include_batch_in_index=False)
           self.evaluate(out_op)
       finally:
-        config_exec.enable_deterministic_ops(False)
+        config_exec.disable_op_determinism()
 
   def testMaxPoolingGradGradWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on CUDA.
@@ -2314,7 +2311,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testEdgeCasesRaiseErrors(self):
     with self.assertRaisesRegexp(
-        ValueError, "Data formats NCHW_VECT_C is not yet supported with "
+        ValueError, "NCHW_VECT_C.*is not supported with "
         "explicit padding|XLA does not support pooling ops with explicit "
         "padding"):
       nn_ops.max_pool(
@@ -2324,7 +2321,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
           padding=[[0, 0], [0, 1], [0, 1], [0, 0]],
           data_format="NCHW_VECT_C")
     with self.assertRaisesRegexp(
-        ValueError, "Explicit padding is not yet supported with an input "
+        ValueError, "Explicit padding is not supported with an input "
                     "tensor of rank 5"):
       nn_ops.max_pool_v2(
           array_ops.placeholder(dtypes.float32, shape=[1, 3, 3, 1, 1]),
@@ -2393,6 +2390,82 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
             padding="EXPLICIT",
             explicit_paddings=[1, 1, 1, 1, 1, 1, 0, 0],
             data_format="NHWC"))
+
+  def testMaxPoolGradEagerShapeErrors(self):
+    with context.eager_mode():
+      orig_in = array_ops.ones((1, 1, 1, 1))
+
+      # Test invalid orig_out shape
+      orig_out = array_ops.ones((1, 1, 1, 2))
+      grad = array_ops.ones((1, 1, 1, 1))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected orig_output shape to be \[1,1,1,1\], but got \[1,1,1,2\]"):
+        gen_nn_ops.max_pool_grad(
+            orig_in, orig_out, grad, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
+            padding="VALID")
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected orig_output shape to be \[1,1,1,1\], but got \[1,1,1,2\]"):
+        gen_nn_ops.max_pool_grad_grad(
+            orig_in, orig_out, grad, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
+            padding="VALID")
+
+      # Test invalid grad shape
+      orig_out = array_ops.ones((1, 1, 1, 1))
+      grad = array_ops.ones((1, 1, 1, 2))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected grad shape to be \[1,1,1,1\], but got \[1,1,1,2\]"):
+        gen_nn_ops.max_pool_grad(
+            orig_in, orig_out, grad, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
+            padding="VALID")
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected grad shape to be \[1,1,1,1\], but got \[1,1,1,2\]"):
+        gen_nn_ops.max_pool_grad_grad(
+            orig_in, orig_out, grad, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
+            padding="VALID")
+
+  def testMaxPoolGradWithArgmaxEagerShapeErrors(self):
+    with context.eager_mode():
+      inp = array_ops.ones((1, 1, 1, 1))
+
+      # Test invalid grad shape
+      grad = array_ops.ones((1, 1, 1, 2))
+      argmax = array_ops.zeros((1, 1, 1, 1), dtype=dtypes.int64)
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected grad shape to be \[1,1,1,1\], but got \[1,1,1,2\]"):
+        gen_nn_ops.max_pool_grad_with_argmax(
+            inp, grad, argmax, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
+            padding="VALID")
+      # max_pool_grad_grad_with_argmax is only implemented for GPUs
+      if test.is_gpu_available():
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            r"Expected grad shape to be \[1,1,1,1\], but got \[1,1,1,2\]"):
+          gen_nn_ops.max_pool_grad_grad_with_argmax(
+              inp, grad, argmax, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
+              padding="VALID")
+
+      # Test invalid argmax shape
+      grad = array_ops.ones((1, 1, 1, 1))
+      argmax = array_ops.ones((1, 1, 1, 2), dtype=dtypes.int64)
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          r"Expected argmax shape to be \[1,1,1,1\], but got \[1,1,1,2\]"):
+        gen_nn_ops.max_pool_grad_with_argmax(
+            inp, grad, argmax, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
+            padding="VALID")
+      # max_pool_grad_grad_with_argmax is only implemented for GPUs
+      if test.is_gpu_available():
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            r"Expected argmax shape to be \[1,1,1,1\], but got \[1,1,1,2\]"):
+          gen_nn_ops.max_pool_grad_grad_with_argmax(
+              inp, grad, argmax, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
+              padding="VALID")
 
 
 def GetMaxPoolFwdTest(input_size, filter_size, strides, padding):

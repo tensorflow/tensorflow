@@ -1,9 +1,9 @@
-// RUN: tf-opt -tfl-raise-custom-ops -canonicalize %s -o - | FileCheck %s
-// RUN: tf-opt -tfl-raise-custom-ops -canonicalize -tfl-test-raise-tf-targets="tf.FakeQuantWithMinMaxVarsPerChannel" %s -o - | FileCheck --check-prefix=WRAPPED %s
+// RUN: tf-opt -tfl-raise-custom-ops -canonicalize %s --split-input-file | FileCheck %s
+// RUN: tf-opt -tfl-raise-custom-ops -canonicalize -tfl-test-raise-tf-targets="tf.FakeQuantWithMinMaxVarsPerChannel" %s --split-input-file | FileCheck --check-prefix=WRAPPED %s
 
 // CHECK-LABEL: custom_op
 func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
-  %0 = "std.constant" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32>
+  %0 = "arith.constant" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32>
   %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   // will be preserved since it has uses.
   %2 = "tf.MyCustomOp"(%1, %0) {fused_activation_function = "RELU", int_attr = 2 : i32}  : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
@@ -11,7 +11,7 @@ func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   "tf.MyCustomOp"(%1, %0) {fused_activation_function = "RELU", int_attr = 2 : i32}  : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   return %2 : tensor<4xf32>
 
-// CHECK-NEXT: %[[CST:.*]] = constant dense<1.000000e+00> : tensor<4xf32>
+// CHECK-NEXT: %[[CST:.*]] = arith.constant dense<1.000000e+00> : tensor<4xf32>
 // CHECK-NEXT: %[[MUL:.*]] = tfl.mul %arg0, %[[CST]] {fused_activation_function = "NONE"} : tensor<4xf32>
 // CHECK-NEXT: %[[CUSTOM_1:.*]] = "tfl.custom_tf"(%[[MUL]], %[[CST]]) ( {
 // CHECK-NEXT: ^bb0(%arg1: tensor<4xf32>, %arg2: tensor<4xf32>): // no predecessors
@@ -25,6 +25,8 @@ func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-NEXT: }) {fused_activation_function = "RELU", int_attr = 2 : i32} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
 // CHECK-NEXT: return %[[CUSTOM_1]] : tensor<4xf32>
 }
+
+// -----
 
 // CHECK-LABEL: tf_executor_wrapper
 // WRAPPED-LABEL: tf_executor_wrapper

@@ -144,7 +144,7 @@ mlir::LogicalResult DeduplicateFunctionsInovkedByBatchFunction::Run() {
             "different");
       }
       if (failed(SymbolTable::replaceAllSymbolUses(
-              func_op_to_remove, func_op_to_keep.getName(), module))) {
+              func_op_to_remove, func_op_to_keep.sym_nameAttr(), module))) {
         return func_op_to_remove.emitError("unable to replace the symbol use");
       }
       symbol_table.erase(func_op_to_remove);

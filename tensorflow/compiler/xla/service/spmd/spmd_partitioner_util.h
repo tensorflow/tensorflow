@@ -307,6 +307,11 @@ HloSharding AlignShardingOnDims(const HloSharding& sharding,
                                 const HloSharding& reference,
                                 absl::Span<const int64_t> reference_dims);
 
+// AlignShardingOnDims only if it doesn't change the sharding when ungrouped.
+absl::optional<hlo_sharding_util::GroupedSharding> AlignGroupsWithIfCompatible(
+    hlo_sharding_util::GroupedSharding grouped_sharding,
+    const hlo_sharding_util::GroupedSharding& reference);
+
 // Returns the per-group base shape, i.e., before applying the in-group
 // sharding.
 Shape GetPerGroupBaseShape(

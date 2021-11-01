@@ -54,7 +54,9 @@ class Dataset : public DatasetBase {
     return "SparseTensorSliceDatasetOp::Dataset";
   }
 
-  int64_t Cardinality() const override { return sparse_tensor_.shape()[0]; }
+  int64_t CardinalityInternal() const override {
+    return sparse_tensor_.shape()[0];
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return Status::OK();

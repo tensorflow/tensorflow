@@ -55,7 +55,8 @@ class TextLineDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {};
+    attr_vector->clear();
+    attr_vector->emplace_back("metadata", "");
     return Status::OK();
   }
 

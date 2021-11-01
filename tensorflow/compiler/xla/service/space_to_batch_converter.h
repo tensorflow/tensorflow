@@ -36,6 +36,15 @@ struct SpaceToBatchController {
   int64_t number_of_splits = 8;
 };
 
+// Represents the different dimension mappings. Can be extended as needed.
+enum class SpaceToBatchDimMap : uint8 {
+  kBatch = 0,
+  kFeature = 1,
+  kSpace0 = 2,
+};
+
+constexpr int64_t kNumMappedDims = 3;
+
 // A pass which rewrites convolutions such that space dimension is turned into
 // batch.
 class SpaceToBatchConverter : public HloModulePass {

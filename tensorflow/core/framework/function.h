@@ -148,6 +148,8 @@ class FunctionDefHelper {
       CHECK(!ret.empty());
       return ret[0];
     }
+    std::vector<string> original_node_names;
+    std::vector<string> original_func_names;
 
     NodeDef ToNodeDef() const;
   };

@@ -9,8 +9,8 @@ module attributes {gpu.container_module} {
   // CHECK-LABEL: func @abs
   func @abs(%ctx: !tf_framework.op_kernel_context, %arg0: memref<*xf32>, %size: index)
       attributes {tf_entry} {
-    %c0 = constant 0 : index
-    %c1 = constant 1 : index
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
     %13 = memref.alloca() : memref<1xindex>
     memref.store %size, %13[%c0] : memref<1xindex>
     %14 = memref.reshape %arg0(%13) : (memref<*xf32>, memref<1xindex>) -> memref<?xf32>
@@ -78,8 +78,8 @@ module attributes {gpu.container_module} {
   // CHECK-LABEL: func @add_same_shape
   func @add_same_shape(%arg0: !tf_framework.op_kernel_context, %arg1: memref<*xf32>, %arg2: memref<*xf32>, %size: index)
       attributes {tf_entry} {
-    %c0 = constant 0 : index
-    %c1 = constant 1 : index
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
     %82 = memref.reinterpret_cast %arg1 to offset: [0], sizes: [%size], strides: [%c1]: memref<*xf32> to memref<?xf32>
     %83 = memref.reinterpret_cast %arg2 to offset: [0], sizes: [%size], strides: [%c1]: memref<*xf32> to memref<?xf32>
     %84 = tf_framework.alloc(%arg0, %size) : memref<?xf32>
@@ -165,7 +165,7 @@ module attributes {gpu.container_module} {
   // CHECK-LABEL: func @add_same_shape
   func @add_same_shape(%arg0: !tf_framework.op_kernel_context, %arg1: memref<*xf32>, %arg2: memref<*xf32>, %size0: index, %size1: index, %stride0: index, %stride1: index)
       attributes {tf_entry} {
-    %c1 = constant 1 : index
+    %c1 = arith.constant 1 : index
     %216 = memref.reinterpret_cast %arg1 to offset: [0], sizes: [%size1, %size0], strides: [%size0, %c1]: memref<*xf32> to memref<?x?xf32>
     %241 = memref.reinterpret_cast %arg2 to offset: [0], sizes: [%size1, %size0], strides: [%size0, %c1]: memref<*xf32> to memref<?x?xf32>
     %304 = memref.reinterpret_cast %216 to offset: [0], sizes: [%size1, %size0], strides: [%stride1, %stride0]: memref<?x?xf32> to memref<?x?xf32, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>
@@ -273,8 +273,8 @@ module attributes {gpu.container_module} {
   // CHECK-LABEL: func @add_one_scalar
   func @add_one_scalar(%arg0: !tf_framework.op_kernel_context, %arg1: memref<*xf32>, %arg2: memref<*xf32>, %size: index)
       attributes {tf_entry} {
-    %c0 = constant 0 : index
-    %c1 = constant 1 : index
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
     %13 = memref.cast %arg1 : memref<*xf32> to memref<f32>
     %26 = memref.reinterpret_cast %arg2 to offset: [0], sizes: [%size], strides: [%c1]: memref<*xf32> to memref<?xf32>
     %27 = memref.reinterpret_cast %13 to offset: [0], sizes: [%size], strides: [%c0]: memref<f32> to memref<?xf32, #map0>

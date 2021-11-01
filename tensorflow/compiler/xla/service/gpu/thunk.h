@@ -110,7 +110,6 @@ class Thunk {
     se::Stream* async_comms_stream;
     RunId run_id;
     const DeviceAssignment* device_assn;                          // never null
-    std::vector<std::function<void()>>* deferred_host_callbacks;  // never null
     const std::vector<GlobalDeviceId>* gpu_global_device_ids;     // may be null
     const NcclUniqueIdCallback* nccl_unique_id_callback;          // may be null
 
@@ -128,18 +127,6 @@ class Thunk {
 
  protected:
   absl::optional<int64_t> profile_index() const { return profile_index_; }
-
-  // Safely copies the given buffer to the GPU, deleting it on the host only
-  // after the copy has completed.
-  template <typename T>
-  void SafeH2DMemcpy(
-      se::DeviceMemory<T> dest, std::unique_ptr<T[]> buf, int64_t count,
-      se::Stream* stream,
-      std::vector<std::function<void()>>* deferred_host_callbacks) {
-    stream->ThenMemcpy(&dest, buf.get(), count * sizeof(T));
-    auto* buf_raw = buf.release();
-    deferred_host_callbacks->push_back([buf_raw] { delete[] buf_raw; });
-  }
 
  private:
   Kind kind_;

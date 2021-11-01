@@ -21,8 +21,11 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
+#include "mlir/Transforms/Bufferize.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
+#include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs_registration.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
@@ -66,15 +69,26 @@ TfCpurtExecutor::TfCpurtExecutor()
           },
           CreateMallocAllocator(), CreateMultiThreadedWorkQueue(4, 4)) {}
 
-TfCpurtExecutor::Handle TfCpurtExecutor::Compile(
-    const std::string& mlir_module, const std::string& entrypoint,
-    Specialization specialization) {
+TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
+                                                 const std::string& entrypoint,
+                                                 Specialization specialization,
+                                                 bool vectorize) {
   CompilationOptions opts;
   // Create an async task for each worker thread.
   opts.num_worker_threads = 4;
-  opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
-  opts.register_pass_pipeline = CreateTfCpuRtPipeline;
+  opts.register_dialects = [](mlir::DialectRegistry& registry) {
+    mlir::RegisterAllTensorFlowDialects(registry);
+    // Needed to verify function argument attributes which are used to
+    // annotate dynamic shaped types with static type information.
+    mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
+  };
+  opts.register_pass_pipeline = [=](mlir::OpPassManager& pm) {
+    tensorflow::TfCpuRtPipelineOptions opts;
+    opts.vectorize = vectorize;
+    tensorflow::CreateTfCpuRtPipeline(pm, opts);
+  };
   opts.specialization = specialization;
+  opts.type_converter = mlir::BufferizeTypeConverter();
 
   // Instantiate new JitExecutable from the MLIR source.
   llvm::Expected<JitExecutable> jit_executable =
@@ -213,6 +227,15 @@ using PyBindingReturnValueConverter =
     ReturnValueConverter<PyBindingConversionContext>;
 }  // namespace
 
+template <typename T>
+static bool IsAligned(const T* ptr) {
+#if EIGEN_MAX_ALIGN_BYTES == 0
+  return true;
+#else
+  return reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0;
+#endif
+}
+
 // Converts StridedMemrefType to the Python array. This struct satisfies
 // ReturnStridedMemref's concept (see cpurt.h).
 //
@@ -227,6 +250,7 @@ struct MemrefToPyArray {
   template <typename T, int rank>
   static py::array Convert(const ConversionContext&, void* memref_ptr) {
     auto* memref = static_cast<StridedMemRefType<T, rank>*>(memref_ptr);
+    assert(IsAligned(memref->data) && "returned memref must be aligned");
 
     auto memref_sizes = Sizes(memref);
     auto memref_strides = Strides(memref);
@@ -266,28 +290,31 @@ std::vector<py::array> TfCpurtExecutor::Execute(
     ConvertPyArrayMemrefDesc(arguments[i], &memrefs[i]);
 
   // Get an executable that might be specialized to the operands.
-  AsyncValuePtr<Executable> executable =
+  llvm::Expected<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(memrefs, exec_ctx);
+  if (auto err = executable.takeError())
+    throw std::runtime_error(
+        StrCat("Failed to get Executable: ", std::move(err)));
 
   // Wait for the compilation completion.
-  host_context_.Await({executable.CopyRef()});
+  host_context_.Await({executable->CopyRef()});
 
-  if (executable.IsError())
+  if (executable->IsError())
     throw std::runtime_error(
-        StrCat("Failed to get Executable: ", executable.GetError()));
+        StrCat("Failed to get Executable: ", executable->GetError()));
 
   // Prepare storage for returned values.
-  size_t num_results = executable->signature().num_results();
+  size_t num_results = (*executable)->signature().num_results();
   std::vector<RCReference<AsyncValue>> result_storage;
   result_storage.reserve(num_results);
   for (int i = 0; i < num_results; ++i) result_storage.emplace_back();
 
-  RemainingResults results(&host_context_, result_storage);
+  RemainingResults results(result_storage);
 
   // Convert returned memrefs to Tensors.
   PyBindingReturnValueConverter converter(results);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
-  if (auto err = executable->Execute(memrefs, converter, exec_ctx))
+  if (auto err = (*executable)->Execute(memrefs, converter, exec_ctx))
     throw std::runtime_error(StrCat("Unsupported argument: ", err));
 
   // Pull Python arrays out of async values.
@@ -296,10 +323,24 @@ std::vector<py::array> TfCpurtExecutor::Execute(
   for (auto& result : result_storage) {
     if (result->IsError())
       throw std::runtime_error(StrCat("result error: ", result->GetError()));
-    ret_values.emplace_back(result->get<py::array>());
+    py::array& result_array = result->get<py::array>();
+    TF_ANNOTATE_MEMORY_IS_INITIALIZED(result_array.data(),
+                                      result_array.nbytes());
+    ret_values.emplace_back(result_array);
   }
 
   return ret_values;
+}
+
+bool TfCpurtExecutor::BuiltWith(const std::string& cpu_feature) {
+  if (cpu_feature == "AVX2") {
+#ifdef __AVX2__
+    return true;
+#else
+    return false;
+#endif
+  }
+  return false;
 }
 
 }  // namespace tensorflow
@@ -315,6 +356,9 @@ PYBIND11_MODULE(_tf_cpurt_executor, m) {
       .def("compile", &tensorflow::TfCpurtExecutor::Compile,
            py::arg("mlir_module"), py::arg("entrypoint"),
            py::arg("specialization") =
-               tensorflow::TfCpurtExecutor::Specialization::kEnabled)
-      .def("execute", &tensorflow::TfCpurtExecutor::Execute);
+               tensorflow::TfCpurtExecutor::Specialization::kEnabled,
+           py::arg("vectorize") = false)
+      .def("execute", &tensorflow::TfCpurtExecutor::Execute)
+      .def("built_with", &tensorflow::TfCpurtExecutor::BuiltWith,
+           py::arg("cpu_feature"));
 }

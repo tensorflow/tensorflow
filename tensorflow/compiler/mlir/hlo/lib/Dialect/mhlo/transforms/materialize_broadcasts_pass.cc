@@ -16,6 +16,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
@@ -37,7 +38,8 @@ struct TestMaterializeBroadcastsPass
     // Consider the mhlo dialect legal for tests.
     conversionTarget.addLegalDialect<MhloDialect>();
     // The conversion uses helpers from the Standard dialect.
-    conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
+    conversionTarget
+        .addLegalDialect<arith::ArithmeticDialect, mlir::StandardOpsDialect>();
 
     SetupMaterializeBroadcastsLegality(&getContext(), &conversionTarget);
     PopulateMaterializeBroadcastsPatterns(&getContext(), &conversionPatterns);

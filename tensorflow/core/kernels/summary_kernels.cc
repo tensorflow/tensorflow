@@ -38,12 +38,20 @@ class CreateSummaryFileWriterOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("logdir", &tmp));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
+                errors::InvalidArgument("logdir must be a scalar"));
     const string logdir = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("max_queue", &tmp));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
+                errors::InvalidArgument("max_queue must be a scalar"));
     const int32_t max_queue = tmp->scalar<int32>()();
     OP_REQUIRES_OK(ctx, ctx->input("flush_millis", &tmp));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
+                errors::InvalidArgument("flush_millis must be a scalar"));
     const int32_t flush_millis = tmp->scalar<int32>()();
     OP_REQUIRES_OK(ctx, ctx->input("filename_suffix", &tmp));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
+                errors::InvalidArgument("filename_suffix must be a scalar"));
     const string filename_suffix = tmp->scalar<tstring>()();
 
     core::RefCountPtr<SummaryWriterInterface> s;

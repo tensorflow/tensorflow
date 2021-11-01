@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for utilities for traversing the dataset construction graph."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import data_service_ops

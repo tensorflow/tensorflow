@@ -175,7 +175,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
-    node_def->set_name(name.str());
+    node_def->set_name(std::string(ParseTensorName(name.str()).node()));
   else
     node_def->set_name(
         std::string(op_to_name_.GetUniqueName(func.getName().str())));
@@ -235,7 +235,7 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     FuncOp function, Value operand, unsigned index, llvm::StringRef name) {
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
-    node_def->set_name(name.str());
+    node_def->set_name(std::string(ParseTensorName(name.str()).node()));
   else
     node_def->set_name(
         std::string(op_to_name_.GetUniqueName(function.getName().str())));
@@ -566,7 +566,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       if (IsLegacyCallInstruction(&inner_op)) {
         TF_RETURN_IF_ERROR(convert_called_function(
             inner_op.getAttrOfType<mlir::SymbolRefAttr>("f")
-                .getLeafReference()));
+                .getLeafReference()
+                .getValue()));
       }
 
       TF_RETURN_IF_ERROR(exporter.AddInstructionNode(&inner_op));
@@ -659,18 +660,6 @@ Status Exporter::ConvertLibFunction(
       (*func_def.mutable_resource_arg_unique_id())[i] =
           resource_arg_unique_id_attr.getInt();
     }
-
-    llvm::ArrayRef<mlir::NamedAttribute> func_arg_i_attrs =
-        function.getArgAttrs(i);
-    if (func_arg_i_attrs.empty()) continue;
-    absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
-        kDeviceAttr, kResourceArgUniqueIdAttr};
-    FunctionDef::ArgAttrs func_def_arg_i_attrs;
-    TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
-                                         /*remove_ref_type=*/false,
-                                         func_def_arg_i_attrs.mutable_attr()));
-    if (func_def_arg_i_attrs.attr().empty()) continue;
-    (*func_def.mutable_arg_attr())[i] = std::move(func_def_arg_i_attrs);
   }
 
   (*flib->add_function()) = std::move(func_def);
