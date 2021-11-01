@@ -671,6 +671,12 @@ class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
 
     // Calculates symbolic broadcast shape that is only used in types.
     SmallVector<int64_t, 4> symbolic_broadcast_shape;
+    // Matches fail when lhs or rhs is unranked tensor.
+    // TODO(b/176202543): Support unranked tensor.
+    if (!lhs.getType().cast<ShapedType>().hasRank() ||
+        !rhs.getType().cast<ShapedType>().hasRank()) {
+      return failure();
+    }
     if (!OpTrait::util::getBroadcastedShape(
             lhs.getType().cast<ShapedType>().getShape(),
             rhs.getType().cast<ShapedType>().getShape(),
@@ -783,6 +789,14 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
     auto lhs = op->getOperand(1);
     auto rhs = op->getOperand(2);
     auto out = op->getResult(0);
+
+    // Matches fail when lhs|rhs|cond is unranked tensor.
+    // TODO(b/176202543): Support unranked tensor.
+    if (!lhs.getType().cast<ShapedType>().hasRank() ||
+        !rhs.getType().cast<ShapedType>().hasRank() ||
+        !cond.getType().cast<ShapedType>().hasRank()) {
+      return failure();
+    }
 
     // Calculates symbolic broadcast shape that is only used in types.
     SmallVector<int64_t, 4> symbolic_broadcast_lhs_rhs_shape;
