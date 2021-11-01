@@ -465,6 +465,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       });
 
   py::class_<XlaOp> xla_op_class(m, "XlaOp");
+  xla_op_class.def("set_precision_config", &XlaOp::SetPrecisionConfig)
+      .def("clear_precision_config", &XlaOp::ClearPrecisionConfig);
 
   py::class_<XlaBuilder>(m, "XlaBuilder")
       .def(py::init([](const std::string& name) -> std::unique_ptr<XlaBuilder> {

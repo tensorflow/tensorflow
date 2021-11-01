@@ -131,6 +131,12 @@ HloInstructionProto* XlaBuilderFriend::GetInstruction(XlaOp op) {
 
 }  // namespace internal
 
+void XlaOp::SetPrecisionConfig(PrecisionConfig precision) {
+  builder_->SetPrecisionConfig(*this, precision);
+}
+
+void XlaOp::ClearPrecisionConfig() { builder_->ClearPrecisionConfig(*this); }
+
 XlaOp operator-(XlaOp x) { return Neg(x); }
 XlaOp operator+(XlaOp x, XlaOp y) { return Add(x, y); }
 XlaOp operator-(XlaOp x, XlaOp y) { return Sub(x, y); }

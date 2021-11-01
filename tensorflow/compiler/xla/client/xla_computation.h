@@ -29,7 +29,7 @@ namespace xla {
 class XlaComputation {
  public:
   XlaComputation() : unique_id_(-1) {}
-  XlaComputation(HloModuleProto proto)
+  explicit XlaComputation(HloModuleProto proto)
       : unique_id_(proto.id()), proto_(std::move(proto)) {}
 
   ~XlaComputation() {}
@@ -58,7 +58,7 @@ class XlaComputation {
   bool IsNull() const { return unique_id_ == -1; }
 
  private:
-  XlaComputation(const int64_t unique_id) : unique_id_(unique_id) {}
+  explicit XlaComputation(const int64_t unique_id) : unique_id_(unique_id) {}
   friend class XlaBuilder;
 
   int64_t unique_id_;
