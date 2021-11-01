@@ -14,19 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/translate/convert_xla_gpu.h"
 
-#include "mlir/Dialect/GPU/Passes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Transforms/Passes.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
-#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
@@ -51,23 +45,13 @@ StatusOr<tfrt::gpu::Program> ConvertXlaGpuToGpuProgram(
 
   std::string entry_name = hlo_module->entry_computation()->name();
 
-  // XLA HLO -> LHLO
+  // XLA HLO -> LMHLO
   TF_RETURN_IF_ERROR(mlir::OptimizeAndConvertHloToLmhlo(
       std::move(hlo_module), *module, platform_name,
       /*optimize_xla_hlo=*/true));
 
-  // LHLO -> TFRT Dialect (gpu kernels)
-  mlir::PassManager pm(&context, mlir::PassManager::Nesting::Implicit);
-  pm.addPass(tensorflow::createConvertLmhloToGpuBinaryPass());
-  pm.addPass(tensorflow::createConvertLmhloToGpuPass());
-  pm.addPass(mlir::createGpuAsyncRegionPass());
-  tfrt::gpu::populateGpuToTfrtGpuPasses(pm);
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createSymbolDCEPass());
-  if (pm.run(*module).failed()) {
-    return errors::Internal(
-        "Failed to lower LHLO to TFRT Dialect with gpu kernels.");
-  }
+  // LMHLO -> TFRT Dialect (gpu kernels)
+  TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToTfrtGpuWithBinary(*module));
 
   // TFRT Dialect -> BEF
   std::string bef;

@@ -292,6 +292,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("print_postinvoke_state",
                           BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("release_dynamic_tensors",
+                          BenchmarkParam::Create<bool>(false));
 
   tools::ProvidedDelegateList delegate_providers(&default_params);
   delegate_providers.AddAllDelegateParams();
@@ -359,7 +361,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "print_postinvoke_state", &params_,
           "print out the interpreter internals just before benchmark completes "
           "(i.e. after all repeated Invoke calls complete). The internals will "
-          "include allocated memory size of each tensor etc.")};
+          "include allocated memory size of each tensor etc."),
+      CreateFlag<bool>("release_dynamic_tensors", &params_,
+                       "Ensure dynamic tensor's memory is released when they "
+                       "are not used.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -395,6 +400,8 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Print pre-invoke interpreter state", verbose);
   LOG_BENCHMARK_PARAM(bool, "print_postinvoke_state",
                       "Print post-invoke interpreter state", verbose);
+  LOG_BENCHMARK_PARAM(bool, "release_dynamic_tensors",
+                      "Release dynamic tensor memory", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -687,6 +694,10 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       new InterpreterStatePrinter(interpreter_.get())));
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
+
+  if (params_.Get<bool>("release_dynamic_tensors")) {
+    interpreter_->EnsureDynamicTensorsAreReleased();
+  }
 
   owned_delegates_.clear();
 

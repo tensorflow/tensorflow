@@ -425,9 +425,11 @@ class QuantizationMode(object):
   def contains_training_quant_op(self):
     """Checks if the graph contains any training-time quantization ops."""
     training_quant_ops = frozenset({
-        "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxVarsPerChannel",
-        "FakeQuantWithMinMaxArgs", "FakeQuantWithMinMaxArgsPerChannel",
-        "QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3"
+        "FakeQuantWithMinMaxVars",
+        "FakeQuantWithMinMaxVarsPerChannel",
+        "FakeQuantWithMinMaxArgs",
+        "QuantizeAndDequantizeV2",
+        "QuantizeAndDequantizeV3",
     })
 
     if self._graph_def:

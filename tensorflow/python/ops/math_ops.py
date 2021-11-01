@@ -591,6 +591,7 @@ def _neg(x, name=None):
 
 
 @tf_export(v1=["math.scalar_mul", "scalar_mul"])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def scalar_mul(scalar, x, name=None):
   """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
@@ -616,8 +617,9 @@ def scalar_mul(scalar, x, name=None):
   Raises:
     ValueError: if scalar is not a 0-D `scalar`.
   """
+  base_dtype = dtypes.as_dtype(x.dtype).base_dtype
   scalar = ops.convert_to_tensor(
-      scalar, dtype=x.dtype.base_dtype, name="scalar")
+      scalar, dtype=base_dtype, name="scalar")
   shape = scalar.get_shape()
   if shape.ndims == 0:
     if isinstance(x, indexed_slices.IndexedSlices):
@@ -657,6 +659,7 @@ def softplus(features, name=None):
 
 
 @tf_export("math.scalar_mul", "scalar_mul", v1=[])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @_set_doc(scalar_mul.__doc__)
 def scalar_mul_v2(scalar, x, name=None):
@@ -5226,6 +5229,7 @@ def reciprocal_no_nan(x, name=None):
 
 
 @tf_export("math.xlog1py")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def xlog1py(x, y, name=None):
   r"""Compute x * log1p(y).
@@ -5556,6 +5560,7 @@ def floor(x, name=None):
 
 
 # Register elementwise ops that don't have Python wrappers.
+# Binary elementwise ops.
 dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_and)
 dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_or)
 dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_xor)
@@ -5577,6 +5582,11 @@ dispatch.register_binary_elementwise_api(gen_math_ops.real_div)
 dispatch.register_binary_elementwise_api(gen_math_ops.squared_difference)
 dispatch.register_binary_elementwise_api(gen_math_ops.truncate_div)
 dispatch.register_binary_elementwise_api(gen_math_ops.truncate_mod)
+dispatch.register_binary_elementwise_api(gen_math_ops.xdivy)
+dispatch.register_binary_elementwise_api(gen_math_ops.xlogy)
+dispatch.register_binary_elementwise_api(gen_math_ops.zeta)
+
+# Unary elementwise ops.
 dispatch.register_unary_elementwise_api(gen_math_ops.acosh)
 dispatch.register_unary_elementwise_api(gen_math_ops.asin)
 dispatch.register_unary_elementwise_api(gen_math_ops.asinh)

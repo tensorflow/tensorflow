@@ -245,8 +245,8 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         iters=iterations,
         wall_time=t,
         metrics=[{
-            'name': 'tensor_cache_key_generation_time',
-            'value': t
+            'name': 'tensor_cache_key_generation_avg_ms',
+            'value': t/iterations * 1000
         }])
 
   def benchmarkTensorSpec(self):
@@ -267,8 +267,8 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         iters=iterations,
         wall_time=t,
         metrics=[{
-            'name': 'tensor_spec_cache_key_generation_time',
-            'value': t
+            'name': 'tensor_spec_cache_key_generation_avg_ms',
+            'value': t/iterations * 1000
         }])
 
   def benchmarkVariable(self):
@@ -282,15 +282,15 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
       function_trace_type.get_arg_spec(var_list, False, False,
                                        function.USE_FULL_TRACE_TYPE)
 
-    iterations = 1000000
+    iterations = 10000
     t = timeit.timeit(lambda: encode_variables(var_list), number=iterations)
     self.report_benchmark(
         name='variable_cache_key_generation',
         iters=iterations,
         wall_time=t,
         metrics=[{
-            'name': 'variable_cache_key_generation_time',
-            'value': t
+            'name': 'variable_cache_key_generation_avg_ms',
+            'value': t/iterations * 1000
         }])
 
   def benchmarkKerasModel(self):
@@ -310,8 +310,8 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         iters=iterations,
         wall_time=t,
         metrics=[{
-            'name': 'keras_model_cache_key_generation_time',
-            'value': t
+            'name': 'keras_model_cache_key_generation_avg_ms',
+            'value': t/iterations * 1000
         }])
 
   def benchmarkCacheKeyLookup(self):
@@ -340,12 +340,11 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         iters=iterations,
         wall_time=t,
         metrics=[{
-            'name': 'cache_key_lookup_time',
-            'value': t
+            'name': 'cache_key_lookup_avg_ms',
+            'value': t/iterations * 1000
         }])
 
   def benchmarkNestedStruct(self):
-
     struct = {(1, 2, 3): {(1, 2): {12: 2}}, (3, 2, 3): (2, {2: 3})}
 
     def encode_struct(struct):
@@ -355,35 +354,39 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
     iterations = 100000
     t = timeit.timeit(lambda: encode_struct(struct), number=iterations)
     self.report_benchmark(
-        name='nested_truct_cache_key_generation',
+        name='nested_struct_cache_key_generation',
         iters=iterations,
         wall_time=t,
         metrics=[{
-            'name': 'nested_struct_cache_key_generation_time',
+            'name': 'nested_struct_cache_key_generation_avg_ms',
+            'value': t/iterations * 1000
+        }])
+
+  def benchmarkFunctionInvocation(self):
+    struct = (variables.Variable(1.0), array_ops.zeros([5, 13]), {
+        'tensor': array_ops.zeros([5, 20]),
+        'variable': variables.Variable(1.0)
+    })
+
+    @function.defun
+    def defined(t):
+      return t
+
+    defined(struct)  # Get it traced and cached.
+
+    iterations = 10000
+    t = timeit.timeit(lambda: defined(struct), number=iterations)
+    self.report_benchmark(
+        name='function_invocation',
+        iters=iterations,
+        wall_time=t,
+        metrics=[{
+            'name': 'function_invocation_time',
             'value': t
         }])
 
 
 class TraceTypeEncodingTest(test.TestCase):
-
-  def testKeyCollisionTypeFailsGracefully(self):
-    class CustomSameTrace:
-
-      def __tf_tracing_type__(self, _):
-        return function_trace_type.GenericType(1)
-
-      def __eq__(self, o):
-        return self is o
-
-      def __hash__(self):
-        return 0
-
-    dictionary = {CustomSameTrace(): 1, CustomSameTrace(): 2}
-
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        r'Multiple keys produce the same TraceType for the mapping collection'):
-      function_trace_type.get_arg_spec(dictionary, False, True, True)
 
   def testCustomUnhashableTypeFailsGracefully(self):
 
@@ -444,6 +447,76 @@ class TraceTypeEncodingTest(test.TestCase):
     self.assertEqual(
         collection_b.most_specific_common_supertype([collection_a]),
         collection(Supertypable(3), Supertypable(3), Supertypable(3)))
+
+  def testDictTypeSubtype(self):
+
+    class MockSubtypeOf2(function_trace_type.GenericType):
+
+      def is_subtype_of(self, other):
+        return other._object == 2
+
+    dict_type = function_trace_type.DictType
+    dict_a = dict_type({
+        'a': MockSubtypeOf2(1),
+        'b': MockSubtypeOf2(2),
+        'c': MockSubtypeOf2(3)
+    })
+    dict_b = dict_type({
+        'a': MockSubtypeOf2(2),
+        'b': MockSubtypeOf2(2),
+        'c': MockSubtypeOf2(2)
+    })
+    dict_c = dict_type({
+        'a': MockSubtypeOf2(2),
+        'b': MockSubtypeOf2(2),
+        'c': MockSubtypeOf2(2),
+        'd': MockSubtypeOf2(2)
+    })
+
+    self.assertTrue(dict_a.is_subtype_of(dict_b))
+    self.assertFalse(dict_b.is_subtype_of(dict_a))
+
+    self.assertFalse(dict_a.is_subtype_of(dict_c))
+    self.assertFalse(dict_c.is_subtype_of(dict_a))
+
+    self.assertTrue(dict_c.is_subtype_of(dict_b))
+    self.assertFalse(dict_b.is_subtype_of(dict_c))
+
+  def testDictTypeSupertype(self):
+
+    class MockSupertypes2With3(function_trace_type.GenericType):
+
+      def most_specific_common_supertype(self, others):
+        if not others:
+          return self
+
+        if self._object == 2 and isinstance(others[0]._object, int):
+          return MockSupertypes2With3(3)
+        else:
+          return None
+
+    dict_type = function_trace_type.DictType
+    dict_a = dict_type({
+        1: MockSupertypes2With3(1),
+        2: MockSupertypes2With3(2),
+        3: MockSupertypes2With3(3),
+        4: MockSupertypes2With3(4)
+    })
+    dict_b = dict_type({
+        1: MockSupertypes2With3(2),
+        2: MockSupertypes2With3(2),
+        3: MockSupertypes2With3(2),
+        5: MockSupertypes2With3(5)
+    })
+
+    self.assertIsNone(dict_a.most_specific_common_supertype([dict_b]))
+    self.assertEqual(
+        dict_b.most_specific_common_supertype([dict_a]),
+        dict_type({
+            1: MockSupertypes2With3(3),
+            2: MockSupertypes2With3(3),
+            3: MockSupertypes2With3(3),
+        }))
 
   def testListTupleInequality(self):
     generic = function_trace_type.GenericType

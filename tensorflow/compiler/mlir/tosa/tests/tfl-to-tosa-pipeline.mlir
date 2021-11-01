@@ -953,6 +953,23 @@ func @test_split(%arg0: tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7
 
 // -----
 
+// CHECK-LABEL: test_split_dynamic
+func @test_split_dynamic(%arg0: tensor<13x?x3xf32>) -> (tensor<13x?x3xf32>, tensor<13x?x3xf32>, tensor<13x?x3xf32>) {
+  %cst_0 = arith.constant dense<1> : tensor<i32>
+  // CHECK-DAG: %[[VAR0:.+]] = "tosa.reshape"(%arg0) {new_shape = [13, 3, -1, 3]}
+  // CHECK-DAG: %[[VAR1:.+]] = "tosa.slice"(%[[VAR0]]) {size = [13, 1, -1, 3], start = [0, 0, 0, 0]}
+  // CHECK-DAG: %[[VAR2:.+]] = "tosa.slice"(%[[VAR0]]) {size = [13, 1, -1, 3], start = [0, 1, 0, 0]}
+  // CHECK-DAG: %[[VAR3:.+]] = "tosa.slice"(%[[VAR0]]) {size = [13, 1, -1, 3], start = [0, 2, 0, 0]}
+  // CHECK-DAG: %[[VAR4:.+]] = "tosa.reshape"(%[[VAR1]]) {new_shape = [13, -1, 3]}
+  // CHECK-DAG: %[[VAR5:.+]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [13, -1, 3]}
+  // CHECK-DAG: %[[VAR6:.+]] = "tosa.reshape"(%[[VAR3]]) {new_shape = [13, -1, 3]}
+  // CHECK: return %[[VAR4]], %[[VAR5]], %[[VAR6]]
+  %0:3 = "tfl.split"(%cst_0, %arg0)  {num_splits = 3 : i32}  : (tensor<i32>, tensor<13x?x3xf32>) -> (tensor<13x?x3xf32>, tensor<13x?x3xf32>, tensor<13x?x3xf32>)
+  return %0#0, %0#1, %0#2 : tensor<13x?x3xf32>, tensor<13x?x3xf32>, tensor<13x?x3xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_split_neg
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 0, 0]}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 7, 0]}

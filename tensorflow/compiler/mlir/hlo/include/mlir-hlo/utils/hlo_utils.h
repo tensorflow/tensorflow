@@ -105,7 +105,7 @@ std::string LmhloToMhloOpName(llvm::StringRef op_name,
                               mlir::MLIRContext* context);
 
 // Return true if Attr has values [0, 1, ...].
-bool IsSequenceStartingWith0(DenseIntElementsAttr attr);
+bool IsSequenceStartingWith0(Attribute attr);
 
 // Returns the argument index for the giving FuncOp and its operand value.
 int64_t getArgumentIndex(mlir::FuncOp op, Value value);

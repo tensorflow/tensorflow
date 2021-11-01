@@ -14,7 +14,7 @@
 # ==============================================================================
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
-from typing import Dict, Optional, Sequence, Type, Tuple
+from typing import Dict, Hashable, Optional, Sequence, Tuple, Type
 import weakref
 
 import numpy as np
@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import core
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import resource_variable_ops
@@ -63,6 +64,11 @@ class GenericType(trace.TraceType):
 
   def most_specific_common_supertype(
       self, others: Sequence[trace.TraceType]) -> Optional[trace.TraceType]:
+    if not others:
+      raise errors.InvalidArgumentError(
+          "Argument `others` to function `most_specific_common_supertype` must be a non-empty Sequence."
+      )
+
     return None
 
   def __eq__(self, other) -> bool:
@@ -178,6 +184,11 @@ class OrderedCollectionType(trace.TraceType):
 
   def most_specific_common_supertype(self, others: Sequence[trace.TraceType]):
     """See base class."""
+    if not others:
+      raise errors.InvalidArgumentError(
+          "Argument `others` to function `most_specific_common_supertype` must be a non-empty Sequence."
+      )
+
     if not all(self._has_same_structure(other) for other in others):
       return None
 
@@ -242,17 +253,41 @@ class DictType(trace.TraceType):
     mapping: A mapping from TraceType objects to TraceType objects.
   """
 
-  def __init__(self, mapping: Dict[trace.TraceType, trace.TraceType]):
+  def __init__(self, mapping: Dict[Hashable, trace.TraceType]):
     self.mapping = mapping
 
-  # TODO(b/202429845): Figure out how to subtype DictType.
   def is_subtype_of(self, other: trace.TraceType) -> bool:
     """See base class."""
-    return self == other
+
+    if not isinstance(other, DictType):
+      return False
+
+    return all(key in self.mapping and
+               self.mapping[key].is_subtype_of(other.mapping[key])
+               for key in other.mapping)
 
   def most_specific_common_supertype(self, others: Sequence[trace.TraceType]):
     """See base class."""
-    return None
+
+    if not others:
+      raise errors.InvalidArgumentError(
+          "Argument `others` to function `most_specific_common_supertype` must be a non-empty Sequence."
+      )
+
+    if not all(isinstance(other, DictType) for other in others):
+      return None
+
+    new_mapping = {}
+    for key in self.mapping.keys():
+      if all(key in other.mapping for other in others):
+        common = self.mapping[key].most_specific_common_supertype(
+            [other.mapping[key] for other in others])
+        if common is None:
+          return None
+        else:
+          new_mapping[key] = common
+
+    return DictType(new_mapping)
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):

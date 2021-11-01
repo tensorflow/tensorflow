@@ -115,7 +115,7 @@ def _example_indexed_slices_without_dense_shape():
 
 def _spec_for_value(value):
   """Returns the (nested) TypeSpec for a value."""
-  if nest.is_sequence(value):
+  if nest.is_nested(value):
     return nest.map_structure(_spec_for_value, value)
   elif isinstance(value, (ops.Tensor, composite_tensor.CompositeTensor)):
     return type_spec.type_spec_from_value(value)

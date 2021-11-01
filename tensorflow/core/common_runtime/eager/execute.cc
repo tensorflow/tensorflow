@@ -121,6 +121,8 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
                                  int i, Device* handle_device,
                                  Device* expected_input_device,
                                  TensorHandle** result) {
+  VLOG(6) << "Expected input device: " << expected_input_device->name()
+          << "; handle_device: " << handle_device->name();
   // Should only be called when these don't match
   DCHECK(expected_input_device != handle_device);
   *result = nullptr;
@@ -135,6 +137,8 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
         // of graph mode.
         break;
       }
+      VLOG(6) << "DevicePlacementPolicy: DEVICE_PLACEMENT_SILENT_FOR_INT32 but "
+                 "input type is not INT32.";
       TF_FALLTHROUGH_INTENDED;
     case DEVICE_PLACEMENT_EXPLICIT:
       // tf.identity is allowed to copy, as indicated in the error message
@@ -234,6 +238,8 @@ Status ValidateInputTypeAndPlacement(
       Device* handle_device = handle->DeviceOrHostCPU(*ctx);
       const bool maybe_copy =
           !is_function || handle->Type() != TensorHandle::REMOTE;
+      VLOG(6) << "!is_function: " << !is_function;
+      VLOG(6) << "handle->Type(): " << handle->Type();
       // If the input is already on the right device, then nothing to do.
       if (expected_device != handle_device && maybe_copy) {
         TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(ctx, op, kernel->device(),
@@ -819,6 +825,15 @@ Status GetOrCreateKernelAndDevice(
   EagerContext& ctx = op->EagerContext();
   Device* device = absl::get<Device*>(op->Device());
 
+  // Save the original value of reuse_rendezvous_for_functions from the context.
+  bool reuse_rendezvous_for_functions_original_value =
+      ctx.GetReuseRendezvousForFunctions();
+  // When running in eager_op_as_function mode Send/Recv ops need to be
+  // placed on the same rendezvous to match the behaviour of eager mode.
+  bool reuse_rendezvous_for_functions =
+      (ctx.RunEagerOpAsFunction() && !op->is_function()) ||
+      reuse_rendezvous_for_functions_original_value;
+
   Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
   /// Include soft placement policy in cache key since the placement strategy
   // can change and thus affect which kernel is picked.
@@ -831,8 +846,7 @@ Status GetOrCreateKernelAndDevice(
 
   // The launch-time rendezvous reuse setting is bundled with the kernel, so we
   // need to include it in the cache key.
-  cache_key =
-      FingerprintCat128(cache_key, ctx.GetReuseRendezvousForFunctions());
+  cache_key = FingerprintCat128(cache_key, reuse_rendezvous_for_functions);
 
   std::vector<Device*> input_dev_ptrs;
   absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
@@ -1012,12 +1026,20 @@ Status GetOrCreateKernelAndDevice(
 #if !defined(IS_MOBILE_PLATFORM)
       get_op_id = [&ctx]() { return ctx.RemoteMgr()->NextOpId(); };
 #endif  // IS_MOBILE_PLATFORM
+
+      ctx.reuse_rendezvous_for_functions_mu()->lock();
+      ctx.SetReuseRendezvousForFunctions(reuse_rendezvous_for_functions);
+      auto rendezvous_creator = ctx.RendezvousCreator();
+      ctx.SetReuseRendezvousForFunctions(
+          reuse_rendezvous_for_functions_original_value);
+      ctx.reuse_rendezvous_for_functions_mu()->unlock();
       kernel.reset(new KernelAndDeviceFunc(
           flr, ctx.pflr(), std::move(input_dev_ptrs),
           std::move(composite_devices),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),
-          function_outputs_on_op_device, ctx.RendezvousCreator(), get_op_id));
+          function_outputs_on_op_device, std::move(rendezvous_creator),
+          get_op_id));
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << ". Full node_def=" << ndef.DebugString();
@@ -1370,6 +1392,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           Device* handle_device = handle->DeviceOrHostCPU(ctx);
           // If the input is already on the right device, then nothing to do.
           if (remote_cpu_device != handle_device) {
+            VLOG(6) << "remote_cpu_device != handle_device";
             TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(
                 &ctx, op, op_device, handle, i, handle_device,
                 remote_cpu_device, &handle));
@@ -1573,6 +1596,13 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
       profiler::TraceMeLevel::kInfo);
 
   if (!op->Executor().Async()) {
+    VLOG(6) << "op: " << op->Name() << " is not Async.";
+    if (!op->EagerContext()
+             .GetGlobalRendezvousForFunctionLocalRendezvousStatus()
+             .ok()) {
+      VLOG(6) << "global_rendezvous_for_functions_ is in bad state. Resetting.";
+      op->EagerContext().ResetGlobalRendezvousForFunction();
+    }
     // In sync mode, always clear error to maintain the same behavior as before.
     // TODO(b/141004939): Remove this.
     op->Executor().ClearError();

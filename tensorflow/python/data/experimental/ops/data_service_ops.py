@@ -714,8 +714,7 @@ def _register_dataset(service, dataset, compression):
 
   encoded_spec = ""
   if context.executing_eagerly():
-    coder = nested_structure_coder.StructureCoder()
-    encoded_spec = coder.encode_structure(
+    encoded_spec = nested_structure_coder.encode_structure(
         dataset.element_spec).SerializeToString()
 
   if compression == COMPRESSION_AUTO:
@@ -896,8 +895,7 @@ def _from_dataset_id(processing_mode,
 
     struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
     struct_pb.ParseFromString(encoded_spec)
-    coder = nested_structure_coder.StructureCoder()
-    element_spec = coder.decode_proto(struct_pb)
+    element_spec = nested_structure_coder.decode_proto(struct_pb)
 
   # If we compress, the data service side dataset will produce scalar variants.
   compression = _decide_compression(compression, data_transfer_protocol)

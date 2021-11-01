@@ -656,7 +656,7 @@ def _make_indexed_slices_indices_types_match(op_type, branch_graphs):
     if isinstance(branch_outs[0], indexed_slices.IndexedSlices):
       # indices is the second component of the composite tensor.
       indexed_slice_indices.append(current_index + 1)
-    if nest.is_sequence_or_composite(branch_outs[0]):
+    if nest.is_nested_or_composite(branch_outs[0]):
       current_index += len(nest.flatten(branch_outs[0], expand_composites=True))
     elif branch_outs[0] is not None:
       # `FuncGraph.outputs` does not contain Nones so no need to update the

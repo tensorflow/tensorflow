@@ -23,35 +23,56 @@ namespace tensorflow {
 
 namespace full_type {
 
-ForwardTypeInferenceFn ReplicateInputs(int n) {
-  return [n](const std::vector<std::reference_wrapper<const FullTypeDef>>&
-                 input_types) {
-    FullTypeDef ret_type = input_types[0].get();
-    if (ret_type.type_id() != TFT_UNSET) {
-      for (int i = 1; i < n; i++) {
-        *(ret_type.add_args()) = ret_type.args(0);
+ForwardTypeInferenceFn ReplicateInput(int i, int n) {
+  return [i, n](const std::vector<std::reference_wrapper<const FullTypeDef>>&
+                    input_types) {
+    const FullTypeDef& in_type = input_types.at(i).get();
+    FullTypeDef ret_type;
+    if (in_type.type_id() != TFT_UNSET) {
+      ret_type.set_type_id(TFT_PRODUCT);
+      for (int k = 0; k < n; k++) {
+        *(ret_type.add_args()) = in_type;
       }
     }
     return ret_type;
   };
 }
 
+// TODO(mdan): Rename to MergeIdenticalInputs.
 ForwardTypeInferenceFn ReplicateIdenticalInputs() {
   return [](const std::vector<std::reference_wrapper<const FullTypeDef>>&
                 input_types) -> StatusOr<FullTypeDef> {
-    FullTypeDef ret_type = input_types[0].get();
-    if (ret_type.type_id() != TFT_UNSET) {
-      for (int i = 1; i < input_types.size(); i++) {
-        if (ret_type.args(0).type_id() !=
-               input_types[i].get().args(0).type_id()) {
-          return Status(
-              error::INVALID_ARGUMENT,
-              absl::StrCat("expected identical input types, but input ", i,
-                           " differed from 0:\n",
-                           input_types[i].get().DebugString(), "\nvs.\n",
-                           input_types[i].get().DebugString()));
-        }
+    DCHECK(!input_types.empty());
+
+    FullTypeDef ret_type;
+    int first_known = -1;
+    FullTypeDef const* first_known_t = nullptr;
+    for (int i = 0; i < input_types.size(); i++) {
+      const auto& t = input_types[i].get();
+
+      if (t.type_id() == TFT_UNSET) {
+        continue;
       }
+
+      if (first_known < 0) {
+        first_known = i;
+        first_known_t = &t;
+        *(ret_type.add_args()) = t;
+        continue;
+      }
+
+      // TODO(mdan): Make a deep comparison.
+      if (first_known_t->type_id() != t.type_id()) {
+        return Status(
+            error::INVALID_ARGUMENT,
+            absl::StrCat("expected identical input types, but input ", i,
+                         " differed from ", first_known, ":\n", t.DebugString(),
+                         "\nvs.\n", first_known_t->DebugString()));
+      }
+    }
+
+    if (first_known >= 0) {
+      ret_type.set_type_id(TFT_PRODUCT);
     }
     return ret_type;
   };

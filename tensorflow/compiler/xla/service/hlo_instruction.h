@@ -2286,6 +2286,10 @@ class HloInstruction {
   // been marked as dead.
   bool marked_as_dead_;
 
+  // Information used to communicate to the implementation about the algorithm
+  // used to produce results. See the documentation on precision_config().
+  PrecisionConfig precision_config_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };
 

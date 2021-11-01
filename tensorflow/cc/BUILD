@@ -633,6 +633,7 @@ tf_gen_op_wrappers_cc(
     api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
     deps_internal = [
         ":array_ops_internal",
+        ":dataset_ops_internal",
         ":math_ops_internal",
     ],
     op_lib_names = [
@@ -664,6 +665,7 @@ tf_gen_op_wrappers_cc(
         "ops/math_ops.h",
         "ops/dataset_ops.h",
         "ops/experimental_dataset_ops.h",
+        "ops/resource_variable_ops.h",
         "ops/standard_ops.h",
     ],
     other_hdrs_internal = [
@@ -678,6 +680,7 @@ tf_gen_op_wrappers_cc(
         ":const_op",
         ":dataset_ops",
         ":math_ops",
+        ":resource_variable_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
     ],

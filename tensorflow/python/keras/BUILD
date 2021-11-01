@@ -39,8 +39,6 @@ py_library(
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/mixed_precision:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
-        "//tensorflow/python/keras/premade",
-        "//tensorflow/python/keras/preprocessing",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils",
         "//tensorflow/python/keras/wrappers",

@@ -99,7 +99,7 @@ def check_default_value(shape, default_value, dtype, key):
   if callable(getattr(default_value, 'tolist', None)):  # Handles numpy arrays
     default_value = default_value.tolist()
 
-  if nest.is_sequence(default_value):
+  if nest.is_nested(default_value):
     if not _is_shape_and_default_value_compatible(default_value, shape):
       raise ValueError(
           'The shape of default_value must be equal to given shape. '
@@ -128,7 +128,7 @@ def _create_tuple(shape, value):
 
 
 def _as_tuple(value):
-  if not nest.is_sequence(value):
+  if not nest.is_nested(value):
     return value
   return tuple([_as_tuple(v) for v in value])
 
@@ -138,7 +138,7 @@ def _is_shape_and_default_value_compatible(default_value, shape):
   # Invalid condition:
   #  * if default_value is not a scalar and shape is empty
   #  * or if default_value is an iterable and shape is not empty
-  if nest.is_sequence(default_value) != bool(shape):
+  if nest.is_nested(default_value) != bool(shape):
     return False
   if not shape:
     return True

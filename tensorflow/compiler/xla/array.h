@@ -525,7 +525,6 @@ class Array {
           }
         }
       }
-
       int value_index = calculate_index(index);
       if (value_index < num_elements()) {
         pieces.push_back(absl::StrCat(values_[value_index]));
@@ -563,6 +562,8 @@ class Array {
   // Returns the linear index from the list of per-dimension indexes. Function
   // is templated so can be used with an std::array from operator() to avoid
   // memory allocation.
+  // The returned value may be larger than or equal to the number of elements if
+  // the indexes exceed the array's corresponding dimension size.
   template <typename U>
   int64_t calculate_index(const U& indexes) const {
     CHECK_EQ(sizes_.size(), indexes.size());
@@ -571,7 +572,6 @@ class Array {
       index *= sizes_[i];
       index += indexes[i];
     }
-    DCHECK_LT(index, this->num_elements());
     return index;
   }
 

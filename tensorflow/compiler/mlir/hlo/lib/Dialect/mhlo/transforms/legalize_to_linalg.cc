@@ -1307,7 +1307,7 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
 
     // Generate a generic op to gather the elements of the concatenate. This is
     // awkward standalone but allows fusion with other generic ops.
-    unsigned nloops = result_type.getRank();
+    int64_t nloops = result_type.getRank();
     rewriter.replaceOpWithNewOp<linalg::GenericOp>(
         op,
         /*resultTensorTypes=*/result_type,
@@ -1321,7 +1321,7 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
 
           SmallVector<Value, 4> extract_indices;
           extract_indices.reserve(nloops);
-          for (int i = 0; i < nloops; i++) {
+          for (int64_t i = 0; i < nloops; i++) {
             extract_indices.push_back(b.create<linalg::IndexOp>(loc, i));
           }
 

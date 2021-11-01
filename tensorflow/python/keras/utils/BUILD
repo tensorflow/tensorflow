@@ -56,16 +56,6 @@ py_library(
 )
 
 py_library(
-    name = "kpl_test_utils",
-    srcs = ["kpl_test_utils.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras/layers/preprocessing:string_lookup",
-    ],
-)
-
-py_library(
     name = "data_utils",
     srcs = ["data_utils.py"],
     srcs_version = "PY3",

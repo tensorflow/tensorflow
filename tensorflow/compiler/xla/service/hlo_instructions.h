@@ -1346,16 +1346,6 @@ class HloConvolutionInstruction : public HloInstruction {
     batch_group_count_ = num_batch_groups;
   }
 
-  // Returns the information used to tell the implementation information about
-  // what sort of precision is requested. The meaning of the field is backend
-  // specific. At the moment, it is only supported for kConvolution and kDot.
-  // Transformations on one kDot or kConvolution to another will preserve this
-  // information. Transformations to other HLOs will not preserve this
-  // information but it is presumed that the alternate lowering is strictly
-  // superior.
-  const PrecisionConfig& precision_config() const { return precision_config_; }
-  PrecisionConfig* mutable_precision_config() { return &precision_config_; }
-
   string ToCategory() const override;
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
@@ -1380,9 +1370,6 @@ class HloConvolutionInstruction : public HloInstruction {
   Window window_;
   // Describes the dimension numbers used for a convolution.
   ConvolutionDimensionNumbers convolution_dimension_numbers_;
-  // Information used to communicate to the implementation about the algorithm
-  // used to produce results. See the documentation on precision_config().
-  PrecisionConfig precision_config_;
 };
 
 class HloReduceWindowInstruction : public HloInstruction {
@@ -1586,9 +1573,6 @@ class HloCustomCallInstruction : public HloInstruction {
   // Returns whether there is literal associated with this instruction.
   bool HasLiteral() const { return literal_.has_value(); }
 
-  const PrecisionConfig& precision_config() const { return precision_config_; }
-  PrecisionConfig* mutable_precision_config() { return &precision_config_; }
-
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1648,9 +1632,6 @@ class HloCustomCallInstruction : public HloInstruction {
   int64_t batch_group_count_;
   // Whether the result and operand layouts are constrained.
   bool layout_constrained_;
-  // Information used to communicate to the implementation about the algorithm
-  // used to produce results for convolution instructions.
-  PrecisionConfig precision_config_;
   // Describes the padding type for convolution instructions.
   PaddingType padding_type_;
   // For layout-constrained custom calls, this vector holds the shape with
@@ -1911,16 +1892,6 @@ class HloDotInstruction : public HloInstruction {
     return dot_dimension_numbers_;
   }
 
-  // Returns the information used to tell the implementation information about
-  // what sort of precision is requested. The meaning of the field is backend
-  // specific. At the moment, it is only supported for kConvolution and kDot.
-  // Transformations on one kDot or kConvolution to another will preserve this
-  // information. Transformations to other HLOs will not preserve this
-  // information but it is presumed that the alternate lowering is strictly
-  // superior.
-  const PrecisionConfig& precision_config() const { return precision_config_; }
-  PrecisionConfig* mutable_precision_config() { return &precision_config_; }
-
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1940,10 +1911,6 @@ class HloDotInstruction : public HloInstruction {
 
   // Describes the dimension numbers used for a dot.
   DotDimensionNumbers dot_dimension_numbers_;
-
-  // Information used to communicate to the implementation about the algorithm
-  // used to produce results. See the documentation on precision_config().
-  PrecisionConfig precision_config_;
 };
 
 class HloDomainInstruction : public HloInstruction {

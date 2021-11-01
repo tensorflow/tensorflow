@@ -8343,6 +8343,78 @@ inline void Conv3DTranspose(
             params.float_activation_max);
 }
 
+// Worker for summing up within a single interval. Interval is identified by
+// index from [start, end).
+template <typename T>
+struct AddNWorkerTask : cpu_backend_threadpool::Task {
+  AddNWorkerTask(const T* const* input_data, T* scratch_buffer, int start,
+                 int end, int num_elems, int split)
+      : input_data(input_data),
+        scratch_buffer(scratch_buffer),
+        start(start),
+        end(end),
+        num_elems(num_elems),
+        split(split) {}
+  void Run() override {
+    RuntimeShape shape(1);
+    shape.SetDim(0, num_elems);
+    ArithmeticParams params;
+    T output_activation_min = std::numeric_limits<T>::lowest(),
+      output_activation_max = std::numeric_limits<T>::max();
+    SetActivationParams(output_activation_min, output_activation_max, &params);
+    T* start_p = scratch_buffer + split * num_elems;
+    memcpy(start_p, input_data[start], sizeof(T) * num_elems);
+    for (int i = start + 1; i < end; i++) {
+      Add(params, shape, start_p, shape, input_data[i], shape, start_p);
+    }
+  }
+
+  const T* const* input_data;
+  T* scratch_buffer;
+  int start;
+  int end;
+  int num_elems;
+  int split;
+};
+
+// T is expected to be either float or int.
+template <typename T>
+inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
+                 const T* const* input_data, T* output_data, T* scratch_buffer,
+                 CpuBackendContext* cpu_backend_context) {
+  // All inputs and output should have the same shape, this is checked during
+  // Prepare stage.
+  const size_t num_elems = input_shape.FlatSize();
+  const int thread_count =
+      std::min(std::max(1, static_cast<int>(num_inputs) / 2),
+               cpu_backend_context->max_num_threads());
+  memset(scratch_buffer, 0, sizeof(T) * num_elems * thread_count);
+
+  std::vector<AddNWorkerTask<T>> tasks;
+  tasks.reserve(thread_count);
+  int start = 0;
+  for (int i = 0; i < thread_count; ++i) {
+    int end = start + (num_inputs - start) / (thread_count - i);
+    tasks.emplace_back(AddNWorkerTask<T>(input_data, scratch_buffer, start, end,
+                                         num_elems, i));
+    start = end;
+  }
+  // Run all tasks on the thread pool.
+  cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
+                                  cpu_backend_context);
+  RuntimeShape shape(1);
+  shape.SetDim(0, num_elems);
+  ArithmeticParams params;
+  T output_activation_min = std::numeric_limits<T>::lowest(),
+    output_activation_max = std::numeric_limits<T>::max();
+  SetActivationParams(output_activation_min, output_activation_max, &params);
+  memcpy(output_data, scratch_buffer, sizeof(T) * num_elems);
+  for (int i = 1; i < tasks.size(); i++) {
+    Add(params, shape, output_data, shape, scratch_buffer + i * num_elems,
+        shape, output_data);
+  }
+}
+
 }  // namespace optimized_ops
 }  // namespace tflite
 
