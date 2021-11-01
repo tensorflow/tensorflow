@@ -24,7 +24,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import test_util
-from tensorflow.python.kernel_tests import sparse_xent_op_test_base
+from tensorflow.python.kernel_tests.sparse_ops import sparse_xent_op_test_base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
