@@ -1,0 +1,491 @@
+diff --git a/src/cpu/aarch64/acl_convolution_utils.cpp b/src/cpu/aarch64/acl_convolution_utils.cpp
+index d27c58d7e..ca91de49e 100644
+--- a/src/cpu/aarch64/acl_convolution_utils.cpp
++++ b/src/cpu/aarch64/acl_convolution_utils.cpp
+@@ -214,6 +214,33 @@ status_t acl_init_conf(acl_conv_conf_t &acp, memory_desc_t &src_md,
+             && post_ops.entry_[1].is_eltwise(true);
+     acp.act_info = acl_common_utils::get_acl_act(attr);
+ 
++    if (acp.sum_with_eltwise) {
++        // clang-format off
++        // Validate activation layer manually to check for return status
++        auto acl_al_st = arm_compute::NEActivationLayer::validate(
++            &acp.dst_info,
++            &acp.dst_info,
++            acp.act_info);
++        // clang-format on
++        if (acl_al_st.error_code() != arm_compute::ErrorCode::OK) {
++            MAYBE_REPORT_ACL_ERROR(acl_al_st.error_description().c_str());
++            return status::unimplemented;
++        }
++
++        // clang-format off
++        // Validate arithmetic addition manually to check for return status
++        auto acl_aa_st = arm_compute::NEArithmeticAddition::validate(
++            &acp.dst_info,
++            &acp.dst_info,
++            &acp.dst_info,
++            arm_compute::ConvertPolicy::SATURATE);
++        // clang-format on
++        if (acl_aa_st.error_code() != arm_compute::ErrorCode::OK) {
++            MAYBE_REPORT_ACL_ERROR(acl_aa_st.error_description().c_str());
++            return status::unimplemented;
++        }
++    }
++
+     return status::success;
+ }
+ 
+@@ -239,6 +266,7 @@ status_t init_conf_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+         acp.fast_math);
+     // clang-format on
+     if (acl_st.error_code() != arm_compute::ErrorCode::OK) {
++        MAYBE_REPORT_ACL_ERROR(acl_st.error_description().c_str());
+         return status::unimplemented;
+     }
+ 
+@@ -273,6 +301,7 @@ status_t init_conf_indirect_gemm(acl_conv_conf_t &acp, memory_desc_t &src_md,
+                                 1));
+     // clang-format on
+     if (acl_st.error_code() != arm_compute::ErrorCode::OK) {
++        MAYBE_REPORT_ACL_ERROR(acl_st.error_description().c_str());
+         return status::unimplemented;
+     }
+ 
+@@ -317,6 +346,7 @@ status_t init_conf_wino(acl_conv_conf_t &acp, memory_desc_t &src_md,
+         true); // enable_fast_math flag in ACL Winograd
+     // clang-format on
+     if (acl_st.error_code() != arm_compute::ErrorCode::OK) {
++        MAYBE_REPORT_ACL_ERROR(acl_st.error_description().c_str());
+         return status::unimplemented;
+     }
+ 
+diff --git a/src/cpu/aarch64/acl_inner_product_utils.cpp b/src/cpu/aarch64/acl_inner_product_utils.cpp
+index 8a8d1cc93..a7b324f09 100644
+--- a/src/cpu/aarch64/acl_inner_product_utils.cpp
++++ b/src/cpu/aarch64/acl_inner_product_utils.cpp
+@@ -134,19 +134,41 @@ status_t init_conf_ip(acl_ip_conf_t &aip, memory_desc_t &src_md,
+     const auto &post_ops = attr.post_ops_;
+     aip.with_sum = (post_ops.len() == 1) && post_ops.entry_[0].is_sum();
+ 
++    // Fast math mode
++    auto math_mode = get_fpmath_mode();
++    bool is_fastmath_enabled = one_of(math_mode, fpmath_mode::bf16, fpmath_mode::any);
++    aip.fc_info.enable_fast_math = is_fastmath_enabled;
++
+     // clang-format off
+-    // Validate convolution manually to check for return status
++    // Validate fully connected layer manually to check for return status
+     auto acl_st = arm_compute::NEFullyConnectedLayer::validate(
+         &aip.src_info,
+         &aip.wei_info,
+         aip.with_bias ? &aip.bia_info : nullptr,
+         &aip.dst_info,
+-	aip.fc_info);
++        aip.fc_info);
+     // clang-format on
+     if (acl_st.error_code() != arm_compute::ErrorCode::OK) {
++        MAYBE_REPORT_ACL_ERROR(acl_st.error_description().c_str());
+         return status::unimplemented;
+     }
+ 
++    if (aip.with_sum) {
++        // clang-format off
++        // Validate arithmetic addition manually to check for return status
++        auto acl_aa_st = arm_compute::NEArithmeticAddition::validate(
++            &aip.dst_info,
++            &aip.dst_info,
++            &aip.dst_info,
++            arm_compute::ConvertPolicy::SATURATE);
++
++        // clang-format on
++        if (acl_aa_st.error_code() != arm_compute::ErrorCode::OK) {
++            MAYBE_REPORT_ACL_ERROR(acl_aa_st.error_description().c_str());
++            return status::unimplemented;
++        }
++    }
++
+     return status::success;
+ }
+ 
+diff --git a/src/cpu/aarch64/acl_softmax.cpp b/src/cpu/aarch64/acl_softmax.cpp
+new file mode 100644
+index 000000000..81935282f
+--- /dev/null
++++ b/src/cpu/aarch64/acl_softmax.cpp
+@@ -0,0 +1,56 @@
++/*******************************************************************************
++* Copyright 2021 Arm Ltd. and affiliates
++*
++* Licensed under the Apache License, Version 2.0 (the "License");
++* you may not use this file except in compliance with the License.
++* You may obtain a copy of the License at
++*
++*     http://www.apache.org/licenses/LICENSE-2.0
++*
++* Unless required by applicable law or agreed to in writing, software
++* distributed under the License is distributed on an "AS IS" BASIS,
++* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++* See the License for the specific language governing permissions and
++* limitations under the License.
++*******************************************************************************/
++
++#include "cpu/aarch64/acl_softmax.hpp"
++
++namespace dnnl {
++namespace impl {
++namespace cpu {
++namespace aarch64 {
++
++template <impl::data_type_t data_type>
++status_t acl_softmax_fwd_t<data_type>::execute_forward(
++        const exec_ctx_t &ctx) const {
++
++    // Lock here is needed because resource_mapper does not support
++    // concurrent multithreaded access.
++    std::lock_guard<std::mutex> _lock {this->mtx};
++
++    auto src = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC);
++    auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
++
++    // Retrieve primitive resource and configured Compute Library objects
++    auto *acl_resource
++            = ctx.get_resource_mapper()->get<acl_softmax_resource_t>(this);
++    acl_softmax_obj_t &acl_obj = acl_resource->get_acl_obj();
++
++    acl_obj.src_tensor.allocator()->import_memory(const_cast<data_t *>(src));
++    acl_obj.dst_tensor.allocator()->import_memory(dst);
++
++    acl_obj.softmax.run();
++
++    acl_obj.src_tensor.allocator()->free();
++    acl_obj.dst_tensor.allocator()->free();
++
++    return status::success;
++}
++
++template struct acl_softmax_fwd_t<data_type::f32>;
++
++} // namespace aarch64
++} // namespace cpu
++} // namespace impl
++} // namespace dnnl
+diff --git a/src/cpu/aarch64/acl_softmax.hpp b/src/cpu/aarch64/acl_softmax.hpp
+new file mode 100644
+index 000000000..36cc73c00
+--- /dev/null
++++ b/src/cpu/aarch64/acl_softmax.hpp
+@@ -0,0 +1,216 @@
++/*******************************************************************************
++* Copyright 2021 Arm Ltd. and affiliates
++*
++* Licensed under the Apache License, Version 2.0 (the "License");
++* you may not use this file except in compliance with the License.
++* You may obtain a copy of the License at
++*
++*     http://www.apache.org/licenses/LICENSE-2.0
++*
++* Unless required by applicable law or agreed to in writing, software
++* distributed under the License is distributed on an "AS IS" BASIS,
++* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++* See the License for the specific language governing permissions and
++* limitations under the License.
++*******************************************************************************/
++
++#ifndef CPU_AARCH64_ACL_SOFTMAX_HPP
++#define CPU_AARCH64_ACL_SOFTMAX_HPP
++
++#include "cpu/cpu_softmax_pd.hpp"
++
++#include "cpu/aarch64/acl_utils.hpp"
++
++namespace dnnl {
++namespace impl {
++namespace cpu {
++namespace aarch64 {
++
++struct acl_softmax_obj_t {
++    arm_compute::NESoftmaxLayer softmax;
++    arm_compute::Tensor src_tensor;
++    arm_compute::Tensor dst_tensor;
++};
++
++struct acl_softmax_conf_t {
++    arm_compute::TensorInfo src_info;
++    arm_compute::TensorInfo dst_info;
++    float beta;
++    int32_t axis;
++};
++
++struct acl_softmax_resource_t : public resource_t {
++    acl_softmax_resource_t()
++        : acl_obj_(utils::make_unique<acl_softmax_obj_t>()) {}
++
++    status_t configure(const acl_softmax_conf_t &asp) {
++        if (!acl_obj_) return status::out_of_memory;
++
++        // Init Compute Library tensors based on info from descriptor
++        acl_obj_->src_tensor.allocator()->init(asp.src_info);
++        acl_obj_->dst_tensor.allocator()->init(asp.dst_info);
++        // clang-format off
++        acl_obj_->softmax.configure(
++            &acl_obj_->src_tensor,
++            &acl_obj_->dst_tensor,
++            asp.beta,
++            asp.axis);
++        // clang-format on
++        return status::success;
++    }
++
++    acl_softmax_obj_t &get_acl_obj() const { return *acl_obj_; }
++
++    DNNL_DISALLOW_COPY_AND_ASSIGN(acl_softmax_resource_t);
++
++private:
++    std::unique_ptr<acl_softmax_obj_t> acl_obj_;
++}; // acl_softmax_resource_t
++
++template <impl::data_type_t data_type>
++struct acl_softmax_fwd_t : public primitive_t {
++    struct pd_t : public cpu_softmax_fwd_pd_t {
++        using cpu_softmax_fwd_pd_t::cpu_softmax_fwd_pd_t;
++
++        DECLARE_COMMON_PD_T("acl", acl_softmax_fwd_t);
++
++        status_t init(engine_t *engine) {
++
++            // Forward only
++            if (desc()->prop_kind != dnnl_forward_inference)
++                return status::unimplemented;
++
++            if (src_md()->data_type != data_type) return status::unimplemented;
++
++            if (!attr()->has_default_values()) return status::unimplemented;
++
++            // Get memory desc to find sizes and dims
++            const memory_desc_wrapper src_d(src_md());
++
++            // ACL only supports plain tensors, can be permuted but not blocked
++            if (!src_d.is_plain()) return status::unimplemented;
++
++            // Guards against a 0-sized dimension
++            if (src_d.has_zero_dim()) return status::unimplemented;
++
++            // Not yet implemented using ACL
++            if (is_logsoftmax()) return status::unimplemented;
++
++            // No scaling
++            asp_.beta = 1;
++
++            // The strides give us the in memory inner size
++            dim_t inner_size_ = src_d.blocking_desc().strides[axis()];
++
++            dim_t axis_size_ = axis_size();
++
++            // The outer size is any left-over dimensions not inner or on the axis
++            dim_t outer_size_ = src_d.nelems() / (inner_size_ * axis_size_);
++
++            // In this context, NHWC tells ACL that the logical and physical
++            // dimensions are the same
++            arm_compute::DataLayout acl_layout = arm_compute::DataLayout::NHWC;
++            const arm_compute::DataType acl_data_t
++                    = acl_common_utils::get_acl_data_t(data_type);
++
++            const int threads = dnnl_get_max_threads();
++            dim_t total_size = outer_size_ * axis_size_ * inner_size_;
++            if (inner_size_ == 1) {
++                // A rough empirical heuristic created by fitting a polynomial
++                // of the tensor sizes and thread count to the run time of the
++                // ref and ACL softmax. It is greater than zero when ref is
++                // faster, and less than zero when ACL is faster. We can
++                // interpret the constant term as the constant overhead
++                // associated with calling the external library and the negative
++                // coefficient on total_size as ACL being faster at processing
++                // each element
++                if (threads == 1 || outer_size_ == 1) {
++                    if (2 + 0.03 * outer_size_ - 0.005 * total_size > 0)
++                        return status::unimplemented;
++                } else {
++                    if (20 + 0.02 * outer_size_ - 0.006 * total_size / threads
++                                    + 3 * threads
++                            > 0)
++                        return status::unimplemented;
++                }
++
++                // If the inner size is 1, we can get rid of the dimension.
++                // This stops ACL doing a unnecessary permute
++                arm_compute::TensorShape acl_tensor_shape
++                        = arm_compute::TensorShape(axis_size_, outer_size_);
++                asp_.axis = 0;
++
++                asp_.src_info = arm_compute::TensorInfo(
++                        acl_tensor_shape, 1, acl_data_t, acl_layout);
++                asp_.dst_info = arm_compute::TensorInfo(
++                        acl_tensor_shape, 1, acl_data_t, acl_layout);
++            } else {
++                // A rough empirical heuristic, see comment above
++                if (2 - 0.005 * total_size / threads + 3 * threads > 0)
++                    return status::unimplemented;
++
++                // Irrespective of the input dimensions, we construct a tensor
++                // with dimensions such that softmax can be applied over the
++                // middle axis (1), with the correct stride and vector length.
++                arm_compute::TensorShape acl_tensor_shape
++                        = arm_compute::TensorShape(
++                                inner_size_, axis_size_, outer_size_);
++                asp_.axis = 1;
++
++                asp_.src_info = arm_compute::TensorInfo(
++                        acl_tensor_shape, 1, acl_data_t, acl_layout);
++                asp_.dst_info = arm_compute::TensorInfo(
++                        acl_tensor_shape, 1, acl_data_t, acl_layout);
++            }
++
++            // Validate manually to check for return status
++            auto acl_st = arm_compute::NESoftmaxLayer::validate(
++                    &asp_.src_info, &asp_.dst_info, asp_.beta, asp_.axis);
++            if (acl_st.error_code() != arm_compute::ErrorCode::OK) {
++                MAYBE_REPORT_ACL_ERROR(acl_st.error_description().c_str());
++                return status::unimplemented;
++            }
++
++            acl_common_utils::acl_thread_bind();
++
++            return status::success;
++        }
++
++        acl_softmax_conf_t asp_;
++    }; // pd_t
++
++    acl_softmax_fwd_t(const pd_t *apd) : primitive_t(apd) {}
++
++    status_t create_resource(
++            engine_t *engine, resource_mapper_t &mapper) const override {
++        if (mapper.has_resource(this)) return status::success;
++
++        auto r = utils::make_unique<acl_softmax_resource_t>();
++        if (!r) return status::out_of_memory;
++
++        // Configure the resource based on information from primitive descriptor
++        auto st = r->configure(pd()->asp_);
++        if (st == status::success) { mapper.add(this, std::move(r)); }
++
++        return st;
++    }
++
++    typedef typename prec_traits<data_type>::type data_t;
++
++    status_t execute(const exec_ctx_t &ctx) const override {
++        return execute_forward(ctx);
++    }
++
++private:
++    // To guard the const execute_forward, the mutex must be 'mutable'
++    mutable std::mutex mtx;
++    status_t execute_forward(const exec_ctx_t &ctx) const;
++    const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
++}; // acl_softmax_fwd_t
++
++} // namespace aarch64
++} // namespace cpu
++} // namespace impl
++} // namespace dnnl
++
++#endif
+diff --git a/src/cpu/aarch64/acl_utils.hpp b/src/cpu/aarch64/acl_utils.hpp
+index 9bd0036cd..8dfc234f5 100644
+--- a/src/cpu/aarch64/acl_utils.hpp
++++ b/src/cpu/aarch64/acl_utils.hpp
+@@ -46,6 +46,11 @@ arm_compute::ActivationLayerInfo get_acl_act(const eltwise_desc_t &ed);
+ bool acl_act_ok(alg_kind_t eltwise_activation);
+ void acl_thread_bind();
+ 
++#define MAYBE_REPORT_ACL_ERROR(msg) \
++    do { \
++        if (get_verbose()) printf("dnnl_verbose,cpu,error,acl,%s\n", (msg)); \
++    } while (0)
++
+ } // namespace acl_common_utils
+ 
+ } // namespace aarch64
+diff --git a/src/cpu/aarch64/matmul/acl_matmul_utils.cpp b/src/cpu/aarch64/matmul/acl_matmul_utils.cpp
+index bf35ef83c..1ada63012 100644
+--- a/src/cpu/aarch64/matmul/acl_matmul_utils.cpp
++++ b/src/cpu/aarch64/matmul/acl_matmul_utils.cpp
+@@ -82,6 +82,11 @@ status_t init_conf_matmul(acl_matmul_conf_t &amp, memory_desc_t &src_md,
+             = arm_compute::TensorInfo(arm_compute::TensorShape(N, M, 1, batch),
+                     1, arm_compute::DataType::F32);
+ 
++    // Fast-math mode
++    auto math_mode = get_fpmath_mode();
++    bool is_fastmath_enabled = one_of(math_mode, fpmath_mode::bf16, fpmath_mode::any);
++    amp.gemm_info.set_fast_math(is_fastmath_enabled);
++
+     // Fused ReLU activation
+     amp.gemm_info.set_activation_info(get_acl_act(attr));
+     // Set alpha (output scaling)
+@@ -91,7 +96,7 @@ status_t init_conf_matmul(acl_matmul_conf_t &amp, memory_desc_t &src_md,
+         auto acl_transA_st = arm_compute::NETranspose::validate(
+                 &amp.src_acc_info, &amp.src_info);
+         if (acl_transA_st.error_code() != arm_compute::ErrorCode::OK) {
+-            printf("%s\n", acl_transA_st.error_description().c_str());
++            MAYBE_REPORT_ACL_ERROR(acl_transA_st.error_description().c_str());
+             return status::unimplemented;
+         }
+     }
+@@ -99,7 +104,7 @@ status_t init_conf_matmul(acl_matmul_conf_t &amp, memory_desc_t &src_md,
+         auto acl_transB_st = arm_compute::NETranspose::validate(
+                 &amp.wei_acc_info, &amp.wei_info);
+         if (acl_transB_st.error_code() != arm_compute::ErrorCode::OK) {
+-            printf("%s\n", acl_transB_st.error_description().c_str());
++            MAYBE_REPORT_ACL_ERROR(acl_transB_st.error_description().c_str());
+             return status::unimplemented;
+         }
+     }
+@@ -107,7 +112,7 @@ status_t init_conf_matmul(acl_matmul_conf_t &amp, memory_desc_t &src_md,
+     auto acl_st = arm_compute::NEGEMM::validate(&amp.src_info, &amp.wei_info,
+             nullptr, &amp.dst_info, amp.alpha, 0.0f, amp.gemm_info);
+     if (acl_st.error_code() != arm_compute::ErrorCode::OK) {
+-        printf("%s\n", acl_st.error_description().c_str());
++        MAYBE_REPORT_ACL_ERROR(acl_st.error_description().c_str());
+         return status::unimplemented;
+     }
+ 
+diff --git a/src/cpu/cpu_softmax_list.cpp b/src/cpu/cpu_softmax_list.cpp
+index 584b3fd75..6b9046e4c 100644
+--- a/src/cpu/cpu_softmax_list.cpp
++++ b/src/cpu/cpu_softmax_list.cpp
+@@ -1,6 +1,7 @@
+ /*******************************************************************************
+ * Copyright 2019-2021 Intel Corporation
+ * Copyright 2021 FUJITSU LIMITED
++* Copyright 2021 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -24,6 +25,9 @@
+ using namespace dnnl::impl::cpu::x64;
+ #elif DNNL_AARCH64
+ #include "cpu/aarch64/jit_uni_softmax.hpp"
++#if DNNL_AARCH64_USE_ACL
++#include "cpu/aarch64/acl_softmax.hpp"
++#endif
+ using namespace dnnl::impl::cpu::aarch64;
+ #endif
+ 
+@@ -42,10 +46,11 @@ const impl_list_item_t impl_list[] = {
+         REG_SOFTMAX_P_FWD(CPU_INSTANCE_X64(jit_uni_softmax_fwd_t<sse41>))
+         CPU_INSTANCE_AARCH64(jit_uni_softmax_fwd_t<sve_512>)
+         CPU_INSTANCE_AARCH64(jit_uni_softmax_bwd_t<sve_512>)
+-        REG_SOFTMAX_P_FWD(CPU_INSTANCE(ref_softmax_fwd_t<f32>))
+-        REG_SOFTMAX_P_BWD(CPU_INSTANCE(ref_softmax_bwd_t<f32>))
+-        REG_SOFTMAX_P_FWD(CPU_INSTANCE(ref_softmax_fwd_t<bf16>))
+-        REG_SOFTMAX_P_BWD(CPU_INSTANCE(ref_softmax_bwd_t<bf16>))
++        CPU_INSTANCE_AARCH64_ACL(acl_softmax_fwd_t<f32>)
++        CPU_INSTANCE(ref_softmax_fwd_t<f32>)
++        CPU_INSTANCE(ref_softmax_bwd_t<f32>)
++        CPU_INSTANCE(ref_softmax_fwd_t<bf16>)
++        CPU_INSTANCE(ref_softmax_bwd_t<bf16>)
+         /* eol */
+         nullptr,
+ };

@@ -183,7 +183,7 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        patch_file = "//third_party/mkl_dnn:onednn-acl-bf16.patch",
+        patch_file = "//third_party/mkl_dnn:mkldnn_acl.patch",
         sha256 = "a7f2a4d80d5406d156dfc1d7b27d10b0af5ed061cf0b6197d3d12cddc6790fcb",
         strip_prefix = "oneDNN-2.4",
         urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.4.tar.gz"),
