@@ -1256,7 +1256,7 @@ void MasterSession::UpdateLastAccessTime() {
 }
 
 Status MasterSession::Create(GraphDef&& graph_def,
-                             const WorkerCacheFactoryOptions& options) {
+                             const ClusterDef& cluster_def) {
   if (session_opts_.config.use_per_session_threads() ||
       session_opts_.config.session_inter_op_thread_pool_size() > 0) {
     return errors::InvalidArgument(
@@ -1278,11 +1278,10 @@ Status MasterSession::Create(GraphDef&& graph_def,
         std::move(graph_def), execution_options, &execution_state_));
   }
   should_delete_worker_sessions_ = true;
-  return CreateWorkerSessions(options);
+  return CreateWorkerSessions(cluster_def);
 }
 
-Status MasterSession::CreateWorkerSessions(
-    const WorkerCacheFactoryOptions& options) {
+Status MasterSession::CreateWorkerSessions(const ClusterDef& cluster_def) {
   const std::vector<string> worker_names = filtered_worker_list_;
   WorkerCacheInterface* worker_cache = get_worker_cache();
 
@@ -1356,10 +1355,9 @@ Status MasterSession::CreateWorkerSessions(
       return status;
     }
 
-    if (options.cluster_def) {
-      *workers[i].request.mutable_server_def()->mutable_cluster() =
-          *options.cluster_def;
-      workers[i].request.mutable_server_def()->set_protocol(*options.protocol);
+    if (!cluster_def.job().empty()) {
+      *workers[i].request.mutable_server_def()->mutable_cluster() = cluster_def;
+      workers[i].request.mutable_server_def()->set_protocol("grpc");
       workers[i].request.mutable_server_def()->set_job_name(name.job);
       workers[i].request.mutable_server_def()->set_task_index(name.task);
       // Session state is always isolated when ClusterSpec propagation
