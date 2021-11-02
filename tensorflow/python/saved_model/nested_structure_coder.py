@@ -50,7 +50,6 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.util import compat
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
@@ -58,61 +57,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 class NotEncodableError(Exception):
   """Error raised when a coder cannot encode an object."""
-
-
-@tf_export("__internal__.saved_model.StructureCoder", v1=[])
-class StructureCoder(object):
-  """Encoder and decoder for nested structures into protos."""
-
-  @classmethod
-  def register_codec(cls, x):
-    register_codec(x)
-
-  def _map_structure(self, pyobj, coders):
-    _map_structure(pyobj, coders)
-
-  @deprecation.deprecated(None,
-                          "Use the encode_structure function (not method).")
-  def encode_structure(self, nested_structure):
-    """Encodes nested structures composed of encodable types into a proto.
-
-    Args:
-      nested_structure: Structure to encode.
-
-    Returns:
-      Encoded proto.
-
-    Raises:
-      NotEncodableError: For values for which there are no encoders.
-    """
-    return encode_structure(nested_structure)
-
-  @deprecation.deprecated(None, "Use the can_encode function (not method).")
-  def can_encode(self, nested_structure):
-    """Determines whether a nested structure can be encoded into a proto.
-
-    Args:
-      nested_structure: Structure to encode.
-
-    Returns:
-      True if the nested structured can be encoded.
-    """
-    return can_encode(nested_structure)
-
-  @deprecation.deprecated(None, "Use the decode_proto function (not method).")
-  def decode_proto(self, proto):
-    """Decodes proto representing a nested structure.
-
-    Args:
-      proto: Proto to decode.
-
-    Returns:
-      Decoded structure.
-
-    Raises:
-      NotEncodableError: For values for which there are no encoders.
-    """
-    return decode_proto(proto)
 
 
 def register_codec(x):
