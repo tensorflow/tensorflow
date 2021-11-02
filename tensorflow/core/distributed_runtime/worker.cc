@@ -20,12 +20,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/device_profiler_session.h"
+#include "tensorflow/core/protobuf/distributed_runtime_payloads.pb.h"
 
 namespace tensorflow {
 
@@ -466,13 +468,16 @@ Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
 
   // Does the device have the right incarnation number we expect?
   if ((*src_dev)->attributes().incarnation() != parsed.src_incarnation) {
-    return errors::Aborted(
-        "RecvTensor expects a different device incarnation: ",
-        parsed.src_incarnation, " vs. ", (*src_dev)->attributes().incarnation(),
-        ". Your worker job (\"",
-        env_->session_mgr->LegacySession()->worker_name(),
-        "\") was probably restarted. Check your "
-        "worker job for the reason why it was restarted.");
+    return errors::AbortedWithPayloads(
+        strings::StrCat("RecvTensor expects a different device incarnation: ",
+                        parsed.src_incarnation, " vs. ",
+                        (*src_dev)->attributes().incarnation(),
+                        ". Your worker job (\"",
+                        env_->session_mgr->LegacySession()->worker_name(),
+                        "\") was probably restarted. Check your "
+                        "worker job for the reason why it was restarted."),
+        {{kWorkerPossiblyRestarted,
+          distributed_runtime::WorkerPossiblyRestarted().SerializeAsString()}});
   }
 
   return Status::OK();

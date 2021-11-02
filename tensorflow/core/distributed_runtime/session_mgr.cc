@@ -19,11 +19,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
+#include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/remote_device.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/distributed_runtime_payloads.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -268,10 +270,14 @@ Status SessionMgr::WorkerSessionForSessionLocked(
   } else {
     auto it = sessions_.find(session_handle);
     if (it == sessions_.end()) {
-      return errors::Aborted("Session handle is not found: ", session_handle,
-                             ". Possibly this worker (\"",
-                             legacy_session_->worker_name(),
-                             "\") just restarted.");
+      return errors::AbortedWithPayloads(
+          strings::StrCat("Session handle is not found: ", session_handle,
+                          ". Possibly this worker (\"",
+                          legacy_session_->worker_name(),
+                          "\") just restarted."),
+          {{kWorkerPossiblyRestarted,
+            distributed_runtime::WorkerPossiblyRestarted()
+                .SerializeAsString()}});
     } else {
       *out_session = it->second;
     }

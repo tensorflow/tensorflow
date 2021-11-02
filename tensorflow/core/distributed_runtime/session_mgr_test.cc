@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 
+#include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -252,6 +253,7 @@ TEST_F(SessionMgrTest, UnknownSessionHandle) {
   EXPECT_TRUE(errors::IsAborted(s));
   EXPECT_TRUE(
       absl::StrContains(s.error_message(), "Session handle is not found"));
+  EXPECT_TRUE(s.GetPayload(kWorkerPossiblyRestarted).has_value());
 }
 
 TEST_F(SessionMgrTest, WorkerNameFromServerDef) {
