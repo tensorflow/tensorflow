@@ -15,9 +15,6 @@
 """A class used to partition a sequence into contiguous subsequences ("rows").
 """
 
-# TODO(martinz): Remove preferred_dtype
-# TODO(edloper):  Make into a ExtensionType (if possible)
-
 import numpy as np
 
 from tensorflow.python.framework import composite_tensor
@@ -114,7 +111,6 @@ class RowPartition(composite_tensor.CompositeTensor):
                value_rowids=None,
                nrows=None,
                uniform_row_length=None,
-               nvals=None,
                internal=False):
     """Creates a `RowPartition` from the specified encoding tensor(s).
 
@@ -126,10 +122,6 @@ class RowPartition(composite_tensor.CompositeTensor):
       * `RowPartition.from_row_splits`
       * `RowPartition.from_row_starts`
       * `RowPartition.from_row_limits`
-      * `RowPartition.from_uniform_row_length`
-
-    If row_splits is has a constant value, then all other arguments should
-    have a constant value.
 
     Args:
       row_splits: A 1-D integer tensor with shape `[nrows+1]`.
@@ -137,7 +129,6 @@ class RowPartition(composite_tensor.CompositeTensor):
       value_rowids: A 1-D integer tensor with shape `[nvals]`.
       nrows: A 1-D integer scalar tensor.
       uniform_row_length: A scalar tensor.
-      nvals: A scalar tensor.
       internal: Private key value, required to ensure that this private
         constructor is *only* called from the factory methods.
 
@@ -184,7 +175,6 @@ class RowPartition(composite_tensor.CompositeTensor):
       elif uniform_row_length.dtype not in (dtypes.int32, dtypes.int64):
         raise TypeError("uniform_row_length must be int32 or int64.")
     self._uniform_row_length = uniform_row_length
-    self._nvals = nvals
 
   #=============================================================================
   # Factory Methods
@@ -477,8 +467,6 @@ class RowPartition(composite_tensor.CompositeTensor):
       row_starts = cls._convert_row_partition(
           row_starts, "row_starts", dtype_hint=dtype_hint, dtype=dtype)
       row_starts.shape.assert_has_rank(1)
-      # TODO(martinz): nvals and row_starts could be inconsistent at call time,
-      # even though they eventually end up the same type.
       nvals = math_ops.cast(nvals, row_starts.dtype)
       if validate:
         msg = "Arguments to from_row_starts do not form a valid RaggedTensor"
@@ -491,8 +479,7 @@ class RowPartition(composite_tensor.CompositeTensor):
         row_starts = control_flow_ops.with_dependencies(checks, row_starts)
 
       row_splits = array_ops.concat([row_starts, [nvals]], axis=0)
-      return cls(row_splits=row_splits, nvals=nvals,
-                 internal=_row_partition_factory_key)
+      return cls(row_splits=row_splits, internal=_row_partition_factory_key)
 
   @classmethod
   def from_row_limits(cls,
@@ -544,10 +531,12 @@ class RowPartition(composite_tensor.CompositeTensor):
       row_splits = array_ops.concat([zero, row_limits], axis=0)
       return cls(row_splits=row_splits, internal=_row_partition_factory_key)
 
+  # TODO(edloper): Make nvals optional: user must specify at least one of
+  # {nvals, nrows}, but they can pick which one to specify.
   @classmethod
   def from_uniform_row_length(cls,
                               uniform_row_length,
-                              nvals=None,
+                              nvals,
                               nrows=None,
                               validate=True,
                               preferred_dtype=None,
@@ -563,15 +552,11 @@ class RowPartition(composite_tensor.CompositeTensor):
              for _ in range(nrows)]
     ```
 
-    Note that either or both of nvals and nrows must be specified.
-
     Args:
       uniform_row_length: A scalar integer tensor.  Must be nonnegative. The
         size of the outer axis of `values` must be evenly divisible by
         `uniform_row_length`.
       nvals: a non-negative scalar integer tensor for the number of values.
-        Must be specified if nrows is not specified. If not specified,
-        defaults to uniform_row_length*nrows
       nrows: The number of rows in the constructed RowPartition.  If not
         specified, then it defaults to `nvals/uniform_row_length` (or `0` if
         `uniform_row_length==0`).  `nrows` only needs to be specified if
@@ -594,21 +579,18 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     dtype_hint = _get_dtype_hint(
         preferred_dtype=preferred_dtype, dtype_hint=dtype_hint)
-
     if not isinstance(validate, bool):
       raise TypeError("validate must have type bool")
-    if nrows is None and nvals is None:
-      raise ValueError("Either (or both) of nvals and nrows must be specified")
     with ops.name_scope(None, "RowPartitionFromUniformRowLength",
                         [uniform_row_length, nrows]):
-      [uniform_row_length, nvals, nrows
-      ] = _convert_all_to_tensors([(uniform_row_length, "uniform_row_length"),
-                                   (nvals, "nvals"), (nrows, "nrows")],
-                                  dtype=dtype,
-                                  dtype_hint=dtype_hint)
-
+      uniform_row_length = cls._convert_row_partition(
+          uniform_row_length,
+          "uniform_row_length",
+          dtype_hint=dtype_hint,
+          dtype=dtype)
       uniform_row_length.shape.assert_has_rank(0)
 
+      nvals = math_ops.cast(nvals, uniform_row_length.dtype)
       # Find nrows.
       const_row_length = tensor_util.constant_value(uniform_row_length)
       if nrows is None:
@@ -619,33 +601,23 @@ class RowPartition(composite_tensor.CompositeTensor):
               constant_op.constant(1, uniform_row_length.dtype))
           nrows = nvals // rowlen_or_1
         elif const_row_length == 0:
-          nrows = constant_op.constant(0, dtype=uniform_row_length.dtype)
+          nrows = 0
         else:
           nrows = nvals // const_row_length
-      const_nrows = None if nrows is None else tensor_util.constant_value(nrows)
-      const_nvals = None if nvals is None else tensor_util.constant_value(nvals)
-      const_uniform_row_length = tensor_util.constant_value(uniform_row_length)
-
-      checks = []
-
-      if const_nvals is None and const_nrows is not None and const_uniform_row_length is not None:
-        const_nvals = const_nrows * const_uniform_row_length
-        if nvals is not None and validate:
-          checks.append(check_ops.assert_equal(nvals, const_nvals))
-        nvals = constant_op.constant(const_nvals, uniform_row_length.dtype)
-
-      if nvals is None:
-        nvals = nrows * uniform_row_length
+      nrows = math_ops.cast(
+          nrows, name="nrows", dtype=uniform_row_length.dtype)
+      const_nrows = tensor_util.constant_value(nrows)
+      const_nvals = tensor_util.constant_value(nvals)
 
       # Find row_splits.
       if const_nrows is not None and const_row_length is not None:
         row_splits = [v * const_row_length for v in range(const_nrows + 1)]
         row_splits = constant_op.constant(row_splits, uniform_row_length.dtype)
       else:
-        row_splits = math_ops.range(
-            nrows + 1, dtype=uniform_row_length.dtype) * uniform_row_length
+        row_splits = math_ops.range(nrows + 1) * uniform_row_length
 
       if validate:
+        checks = []
 
         if (const_nrows is None or const_row_length is None or
             const_nvals is None):
@@ -684,7 +656,6 @@ class RowPartition(composite_tensor.CompositeTensor):
           row_splits=row_splits,
           uniform_row_length=uniform_row_length,
           nrows=nrows,
-          nvals=nvals,
           internal=_row_partition_factory_key)
 
   @classmethod
@@ -794,8 +765,6 @@ class RowPartition(composite_tensor.CompositeTensor):
     Returns:
       scalar integer Tensor
     """
-    if self._nvals is not None:
-      return self._nvals
     return self._row_splits[-1]
 
   def nrows(self):
@@ -902,10 +871,6 @@ class RowPartition(composite_tensor.CompositeTensor):
       The number of values in this partition as an `int` (if statically known);
       or `None` (otherwise).
     """
-    if self._nvals is not None:
-      nvals = tensor_util.constant_value(self._nvals)
-      if nvals is not None:
-        return nvals
     if self._value_rowids is not None:
       nvals = tensor_shape.dimension_at_index(self._value_rowids.shape, 0)
       if nvals.value is not None:
@@ -1058,14 +1023,6 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._nrows is not None
 
-  def has_precomputed_nvals(self):
-    """Returns true if `nvals` has already been computed.
-
-    If true, then `self.nvals()` will return its value without calling
-    any TensorFlow ops.
-    """
-    return self._nvals is not None
-
   def with_precomputed_row_splits(self):
     """Returns a copy of `self` with `row_splits` precomputed."""
     return RowPartition(
@@ -1074,7 +1031,6 @@ class RowPartition(composite_tensor.CompositeTensor):
         value_rowids=self._value_rowids,
         nrows=self._nrows,
         uniform_row_length=self._uniform_row_length,
-        nvals=self._nvals,
         internal=_row_partition_factory_key)
 
   def with_precomputed_row_lengths(self):
@@ -1084,7 +1040,6 @@ class RowPartition(composite_tensor.CompositeTensor):
         row_lengths=self.row_lengths(),
         value_rowids=self._value_rowids,
         nrows=self._nrows,
-        nvals=self._nvals,
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
@@ -1095,7 +1050,6 @@ class RowPartition(composite_tensor.CompositeTensor):
         row_lengths=self._row_lengths,
         value_rowids=self.value_rowids(),
         nrows=self._nrows,
-        nvals=self._nvals,
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
@@ -1106,18 +1060,6 @@ class RowPartition(composite_tensor.CompositeTensor):
         row_lengths=self._row_lengths,
         value_rowids=self._value_rowids,
         nrows=self.nrows(),
-        nvals=self._nvals,
-        uniform_row_length=self._uniform_row_length,
-        internal=_row_partition_factory_key)
-
-  def with_precomputed_nvals(self):
-    """Returns a copy of `self` with `row_splits` precomputed."""
-    return RowPartition(
-        row_splits=self.row_splits(),
-        row_lengths=self._row_lengths,
-        value_rowids=self._value_rowids,
-        nrows=self._nrows,
-        nvals=self.nvals(),
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
@@ -1140,7 +1082,6 @@ class RowPartition(composite_tensor.CompositeTensor):
          self._row_lengths is other._row_lengths and
          self._value_rowids is other._value_rowids and
          self._nrows is other._nrows and
-         self._nvals is other._nvals and
          self._uniform_row_length is other._uniform_row_length)):
       return self
 
@@ -1148,7 +1089,6 @@ class RowPartition(composite_tensor.CompositeTensor):
     # We merge less-expensive encodings first (to avoid expensive validation).
     nrows, nrows_validated = _merge_tensors(self._nrows, other._nrows, "nrows",
                                             validate)
-    nvals, _ = _merge_tensors(self._nvals, other._nvals, "nvals", validate)
     uniform_row_length, uniform_row_length_validated = _merge_tensors(
         self._uniform_row_length, other._uniform_row_length,
         "uniform_row_length", validate)
@@ -1190,7 +1130,6 @@ class RowPartition(composite_tensor.CompositeTensor):
         value_rowids=value_rowids,
         nrows=nrows,
         uniform_row_length=uniform_row_length,
-        nvals=nvals,
         internal=_row_partition_factory_key)
 
   #=============================================================================
@@ -1406,51 +1345,6 @@ def _merge_tensors(t1, t2, name, validate):
       return t1, False
 
 _row_partition_factory_key = object()  # unique private object
-
-
-def _get_dtype_or_none(value):
-  if isinstance(value, ops.Tensor):
-    return value.dtype
-  return None
-
-
-def _get_target_dtype(values, dtype=None, dtype_hint=None):
-  """Gets the target dtype of a family of values."""
-  if dtype is not None:
-    return dtype
-
-  for value in values:
-    if isinstance(value, ops.Tensor):
-      return value.dtype
-
-  for value in values:
-    if isinstance(value, np.ndarray):
-      return dtypes.as_dtype(value.dtype)
-
-  if dtype_hint is not None:
-    return dtype_hint
-
-  return dtypes.int64
-
-
-def _convert_all_to_tensors(values, dtype=None, dtype_hint=None):
-  """Convert a list of objects to tensors of the same dtype."""
-  target_dtype = _get_target_dtype([x for (x, _) in values], dtype, dtype_hint)
-
-  # If dtype is None, we use convert behavior.
-  # If dtype is not None, we use cast behavior.
-  convert_behavior = dtype is None
-
-  if convert_behavior:
-    return [
-        None if x is None else ops.convert_to_tensor(
-            x, dtype=target_dtype, name=name) for (x, name) in values
-    ]
-  else:
-    return [
-        None if x is None else math_ops.cast(x, dtype=target_dtype, name=name)
-        for (x, name) in values
-    ]
 
 
 def _get_dtype_hint(preferred_dtype=None, dtype_hint=None):
