@@ -278,16 +278,22 @@ else_branch: A function that takes 'inputs' and returns a list of
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
-    // Get the then branch function.
-    FuncOp then_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
-         *this, then_branchAttr());
+    // Get the then branch function. Prefer passing in SymbolTableCollection
+    // to reuse cached lookups.
+    FuncOp then_function(::mlir::SymbolTableCollection* table = nullptr) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, then_branchAttr());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+        *this, then_branchAttr());
     }
 
-    // Get the else branch function.
-    FuncOp else_function() {
-     return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
-         *this, else_branchAttr());
+    // Get the else branch function. Prefer passing in SymbolTableCollection
+    // to reuse cached lookups.
+    FuncOp else_function(::mlir::SymbolTableCollection* table = nullptr) {
+      if (table)
+        return table->lookupNearestSymbolFrom<FuncOp>(*this, else_branchAttr());
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+        *this, else_branchAttr());
     }
   }];
 }
