@@ -52,7 +52,7 @@ std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(
     llvm::ArrayRef<std::string> architectures = {},
     llvm::ArrayRef<int64_t> tile_sizes = {},
     llvm::ArrayRef<int64_t> unroll_factors = {}, int64_t max_supported_rank = 5,
-    bool enable_ftz = false, bool cpu_codegen = false);
+    bool enable_ftz = false, bool index_64bit = false, bool cpu_codegen = false);
 
 // Pass for applying LLVM legalization patterns.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(

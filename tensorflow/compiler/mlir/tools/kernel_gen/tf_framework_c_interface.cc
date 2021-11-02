@@ -145,7 +145,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     const std::string code, llvm::SmallVectorImpl<std::string>& architectures,
     llvm::SmallVectorImpl<int64_t>& tile_sizes,
     llvm::SmallVectorImpl<int64_t>& unroll_factors, int64_t max_supported_rank,
-    bool enable_ftz, bool cpu_codegen) {
+    bool enable_ftz, bool index_64bit, bool cpu_codegen) {
   std::string cache_dir;
   if (const char* dir = getenv(kTFJitCacheDirEnvVar.data())) {
     cache_dir = dir;
@@ -178,7 +178,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
             context, code, architectures, tile_sizes, unroll_factors,
             max_supported_rank, /*embed_memref_prints=*/false,
             /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,
-            cpu_codegen,
+            index_64bit, cpu_codegen,
             /*jit_compile=*/false);
     if (!status_or_module.ok()) return nullptr;
     module = std::move(status_or_module.ValueOrDie());
@@ -232,7 +232,8 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
     void* op_kernel_ctx, char* code, int64_t num_architectures,
     char** architectures_ptr, int64_t num_tile_sizes, int64_t* tile_sizes_ptr,
     int64_t num_unroll_factors, int64_t* unroll_factors_ptr,
-    int64_t max_supported_rank, bool enable_ftz, bool cpu_codegen) {
+    int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
+    bool cpu_codegen) {
   // Get the resource manager.
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
   tensorflow::ResourceMgr* rm = ctx->resource_manager();
@@ -265,7 +266,7 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
   // Lookup or compile the execution module.
   ExecutionEngine* engine = jit_cache->LookupOrCompile(code, [&]() {
     return Compile(code, architectures, tile_sizes, unroll_factors,
-                   max_supported_rank, enable_ftz, cpu_codegen);
+                   max_supported_rank, enable_ftz, index_64bit, cpu_codegen);
   });
   if (engine == nullptr) {
     ReportError(op_kernel_ctx, ErrorCode::UNKNOWN, "JIT compilation failed.");

@@ -54,6 +54,8 @@ def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
              /*default=*/"", "Max rank that this kernel supports">,
       Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
              "Enable the denormal flush to zero mode when generating code">,
+      Option<"index_64bit_", "index_64bit", "bool", /*default=*/"",
+             "Enable the 64 bit indexing for GPU kernels">,
       Option<"cpu_codegen_", "cpu-codegen", "bool", /*default=*/"",
              "CPU codegen (false implies GPU)">,
   ];

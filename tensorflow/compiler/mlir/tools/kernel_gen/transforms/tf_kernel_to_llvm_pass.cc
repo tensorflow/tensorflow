@@ -254,6 +254,11 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
 
     // Populate type conversions.
     MLIRContext *ctx = m.getContext();
+    mlir::LowerToLLVMOptions llvm_opts(
+        m.getContext(),
+        DataLayout(cast<DataLayoutOpInterface>(m.getOperation())));
+    llvm_opts.overrideIndexBitwidth(64);
+    LLVMTypeConverter type_converter(ctx,llvm_opts);
     LLVMTypeConverter type_converter(ctx);
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
       return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));

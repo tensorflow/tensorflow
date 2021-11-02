@@ -197,7 +197,7 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
                               llvm::ArrayRef<int64_t> tile_sizes,
                               llvm::ArrayRef<int64_t> unroll_factors,
                               int64_t max_supported_rank, bool enable_ftz,
-                              bool cpu_codegen) {
+                              bool index_64bit, bool cpu_codegen) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
@@ -311,12 +311,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
     pm.addNestedPass<mlir::FuncOp>(
         std::make_unique<TileLoops>(tile_sizes, unroll_factors));
   }
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
-  if (failed(pm.run(module))) {
-    return tensorflow::errors::Internal("Lowering TF to loops failed.");
-  }
-  return Status::OK();
+  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());bool index_64bit,
 }
 
 Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
@@ -501,14 +496,15 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
-    bool print_llvmir, bool enable_ftz, bool cpu_codegen, bool jit_compile) {
+    bool print_llvmir, bool enable_ftz, bool index_64bit, bool cpu_codegen, 
+    bool jit_compile) {
   TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
                       SetupContextAndParseModule(context, tf_code));
 
   if (jit_compile) {
     TF_RETURN_IF_ERROR(LowerTFToJITInvocation(
         module.get(), architectures, tile_sizes, unroll_factors,
-        max_supported_rank, enable_ftz, cpu_codegen));
+        max_supported_rank, enable_ftz, index_64bit, cpu_codegen));
   } else {
     TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
                                       max_supported_rank, cpu_codegen));
