@@ -86,7 +86,8 @@ class TfLiteSubgraphExecute : public OpKernel {
     ResizeInputTensor(ctx, subgraph_selected);
 
     if (tfl_tensors_need_allocation_) {
-      subgraph_selected.AllocateTensors();
+      OP_REQUIRES(ctx, subgraph_selected.AllocateTensors() == kTfLiteOk,
+                  errors::Internal("Failed to call allocate tensors"));
       tfl_tensors_need_allocation_ = false;
     }
 
