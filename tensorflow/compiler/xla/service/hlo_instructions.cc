@@ -2286,8 +2286,8 @@ HloConvolutionInstruction::HloConvolutionInstruction(
       feature_group_count_(feature_group_count),
       batch_group_count_(batch_group_count),
       window_(window),
-      convolution_dimension_numbers_(dimension_numbers) {
-  *(mutable_precision_config()) = precision_config;
+      convolution_dimension_numbers_(dimension_numbers),
+      precision_config_(precision_config) {
   if (window_util::HasBaseDilation(window)) {
     SetAndSanitizeName(StrCat(name(), "-base-dilated"));
   }
@@ -2316,6 +2316,7 @@ HloInstructionProto HloConvolutionInstruction::ToProto() const {
       convolution_dimension_numbers_;
   proto.set_feature_group_count(feature_group_count_);
   proto.set_batch_group_count(batch_group_count_);
+  *proto.mutable_precision_config() = precision_config_;
   return proto;
 }
 
@@ -2335,7 +2336,7 @@ std::vector<string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
     extra.push_back(StrCat("batch_group_count=", batch_group_count_));
   }
 
-  string precision_config_string = PrecisionConfigToString(precision_config());
+  string precision_config_string = PrecisionConfigToString(precision_config_);
   if (!precision_config_string.empty()) {
     extra.push_back(precision_config_string);
   }
@@ -2370,7 +2371,7 @@ HloConvolutionInstruction::CloneWithNewOperandsImpl(
   return absl::make_unique<HloConvolutionInstruction>(
       shape, new_operands[0], new_operands[1], feature_group_count_,
       batch_group_count_, window(), convolution_dimension_numbers_,
-      precision_config());
+      precision_config_);
 }
 
 HloReduceWindowInstruction::HloReduceWindowInstruction(
@@ -2578,7 +2579,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
   proto.set_custom_call_target(custom_call_target_);
   proto.set_feature_group_count(feature_group_count_);
   proto.set_batch_group_count(batch_group_count_);
-  *proto.mutable_precision_config() = precision_config();
+  *proto.mutable_precision_config() = precision_config_;
   proto.set_padding_type(padding_type_);
   if (layout_constrained()) {
     proto.set_constrain_layout(true);
@@ -2622,7 +2623,7 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
   if (batch_group_count_ != 1) {
     extra.push_back(StrCat("batch_group_count=", batch_group_count_));
   }
-  string precision_config_string = PrecisionConfigToString(precision_config());
+  string precision_config_string = PrecisionConfigToString(precision_config_);
   if (!precision_config_string.empty()) {
     extra.push_back(precision_config_string);
   }
@@ -3124,8 +3125,8 @@ HloDotInstruction::HloDotInstruction(
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config)
     : HloInstruction(HloOpcode::kDot, shape),
-      dot_dimension_numbers_(dimension_numbers) {
-  *(mutable_precision_config()) = precision_config;
+      dot_dimension_numbers_(dimension_numbers),
+      precision_config_(precision_config) {
   AppendOperand(lhs);
   AppendOperand(rhs);
 }
@@ -3133,6 +3134,7 @@ HloDotInstruction::HloDotInstruction(
 HloInstructionProto HloDotInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   *proto.mutable_dot_dimension_numbers() = dot_dimension_numbers_;
+  *proto.mutable_precision_config() = precision_config_;
   return proto;
 }
 
@@ -3140,7 +3142,7 @@ std::vector<string> HloDotInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   std::vector<string> extra = {DotDimensionNumbersToString()};
 
-  string precision_config_string = PrecisionConfigToString(precision_config());
+  string precision_config_string = PrecisionConfigToString(precision_config_);
   if (!precision_config_string.empty()) {
     extra.push_back(precision_config_string);
   }
@@ -3164,7 +3166,7 @@ std::unique_ptr<HloInstruction> HloDotInstruction::CloneWithNewOperandsImpl(
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloDotInstruction>(
       shape, new_operands[0], new_operands[1], dot_dimension_numbers_,
-      precision_config());
+      precision_config_);
 }
 
 string HloDotInstruction::DotDimensionNumbersToString() const {

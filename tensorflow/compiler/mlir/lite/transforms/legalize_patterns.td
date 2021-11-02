@@ -46,6 +46,10 @@ def ConvertToQuantTypeFromAttrs : NativeCodeCall<
 def convertIntAttrTo32Bit : NativeCodeCall<
     "$_builder.getI32IntegerAttr($0.cast<IntegerAttr>().getInt())">;
 
+// Converts an integer attribute $0 to 64-bit with builder.
+def convertIntAttrTo64Bit : NativeCodeCall<
+    "$_builder.getI64IntegerAttr($0.cast<IntegerAttr>().getInt())">;
+
 // Extracts the single integer element from $_self.
 def ExtractSingleElementAsInteger : NativeCodeCall<
     "ExtractSingleElementAsInteger($_self.cast<ElementsAttr>())">;

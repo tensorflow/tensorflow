@@ -454,7 +454,6 @@ class TFLiteConverterBase(object):
     self.experimental_new_converter = True
     self.experimental_new_quantizer = True
     self.experimental_enable_resource_variables = False
-    self._experimental_new_quantizer = None
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
     self._experimental_disable_per_channel = False
@@ -628,10 +627,6 @@ class TFLiteConverterBase(object):
 
   def _sparsify_model(self):
     return Optimize.EXPERIMENTAL_SPARSITY in self.optimizations
-
-  def _validate_experimental_new_quantizer_flag(self):
-    if self._experimental_new_quantizer is not None:
-      raise ValueError("Please use 'experimental_new_quantizer' instead.")
 
   def _increase_conversion_attempt_metric(self):
     self._tflite_metrics.increase_counter_converter_attempt()
@@ -848,7 +843,6 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
                                         self.representative_dataset, graph_def,
                                         self._experimental_disable_per_channel)
     self._validate_inference_input_output_types(self._quant_mode)
-    self._validate_experimental_new_quantizer_flag()
 
     if not self._is_unknown_shapes_allowed():
       # Checks dimensions in input tensor.
@@ -1874,7 +1868,6 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
                    "by setting experimental_new_converter=False")
 
     self._validate_quantized_input_stats(converter_kwargs, quant_mode)
-    self._validate_experimental_new_quantizer_flag()
     # Converts model.
     if self._has_valid_tensors():
       result = _toco_convert_impl(

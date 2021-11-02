@@ -583,25 +583,21 @@ def register_acd_resource_resolver(f):
 
   Example:
   @register_acd_resource_resolver
-  def ResolveIdentity(op, resource_reads, resource_writes):
+  def identity_resolver(op, resource_reads, resource_writes):
     # op: The `Operation` being processed by ACD currently.
     # resource_reads: An `ObjectIdentitySet` of read-only resources.
     # resource_writes: An `ObjectIdentitySet` of read-write resources.
-    if not resource_reads or resource_writes:
-      return False
     def update(resource_inputs):
-      to_add = []
       to_remove = []
-      for t in resource_inputs:
-        if t.op.type == "Identity":
-          to_remove.append(t)
-          to_add.append(t.op.inputs[0])
-      if not to_add and not to_remove:
-        return False
+      to_add = []
+      for resource in resource_inputs:
+        if resource.op.type == "Identity":
+          to_remove.append(resource)
+          to_add.extend(resource.op.inputs)
       for t in to_remove:
         resource_inputs.discard(t)
       resource_inputs.update(to_add)
-      return True
+      return to_add or to_remove
     return update(resource_reads) or update(resource_writes)
 
   Args:
@@ -613,6 +609,25 @@ def register_acd_resource_resolver(f):
   """
   _acd_resource_resolvers_registry.register(f)
   return f
+
+
+@register_acd_resource_resolver
+def _identity_resolver(op, resource_reads, resource_writes):
+  """Replaces Identity output with its input in resource_inputs."""
+  del op
+  def update(resource_inputs):
+    to_remove = []
+    to_add = []
+    for resource in resource_inputs:
+      if resource.op.type == "Identity":
+        to_remove.append(resource)
+        to_add.extend(resource.op.inputs)
+    for t in to_remove:
+      resource_inputs.discard(t)
+    resource_inputs.update(to_add)
+    return to_add or to_remove
+
+  return update(resource_reads) or update(resource_writes)
 
 
 def _get_resource_inputs(op):

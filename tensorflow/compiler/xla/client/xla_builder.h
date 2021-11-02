@@ -101,10 +101,6 @@ class XlaOp {
     return handle_ == rhs.handle_ && builder_ == rhs.builder_;
   }
 
-  // Set and clear the operand precision of the corresponding HloProto.
-  void SetPrecisionConfig(PrecisionConfig precision);
-  void ClearPrecisionConfig();
-
   friend std::ostream& operator<<(std::ostream& out, XlaOp op) {
     out << op.handle();
     return out;
@@ -160,7 +156,7 @@ XlaOp operator>>(XlaOp x, XlaOp y);
 class XlaBuilder {
  public:
   // computation_name: name to use for the built computation.
-  explicit XlaBuilder(const string& computation_name);
+  XlaBuilder(const string& computation_name);
 
   XlaBuilder(const XlaBuilder&) = delete;
   XlaBuilder& operator=(const XlaBuilder&) = delete;
@@ -415,17 +411,6 @@ class XlaBuilder {
 
   // Converts the op to string for the ease of debugging.
   std::string OpToString(XlaOp op) const;
-
-  // Set precision config on an XlaOp
-  void SetPrecisionConfig(XlaOp op, PrecisionConfig precision) {
-    *(instructions_[handle_to_index_[op.handle()]].mutable_precision_config()) =
-        precision;
-  }
-
-  // Clear precision config on an XlaOp
-  void ClearPrecisionConfig(XlaOp op) {
-    instructions_[handle_to_index_[op.handle()]].clear_precision_config();
-  }
 
  private:
   void ToStringHelper(std::string* out, int ident, int64_t op_handle) const;

@@ -92,14 +92,13 @@ struct SetZeroFunctor<GPUDevice, T> {
 };
 
 #define DEFINE_SETZERO_GPU(T) template struct SetZeroFunctor<GPUDevice, T>;
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+
+// The SetZeroFunctor is called from several other ops, so even though on GPU we
+// are using a MLIR generated ZerosLike kernel, we still need to define this
+// functor for the other ops.
 TF_CALL_bool(DEFINE_SETZERO_GPU);
 TF_CALL_int64(DEFINE_SETZERO_GPU);
 TF_CALL_FLOAT_TYPES(DEFINE_SETZERO_GPU);
-#else
-TF_CALL_bfloat16(DEFINE_SETZERO_GPU);
-#endif
 TF_CALL_int32(DEFINE_SETZERO_GPU);
 TF_CALL_COMPLEX_TYPES(DEFINE_SETZERO_GPU);
 #undef DEFINE_SETZERO_GPU

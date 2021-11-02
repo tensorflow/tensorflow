@@ -5157,6 +5157,24 @@ enum NonSpatialDim : int64_t {
   KOFeature = -4,  // Kernel output feature dimensions.
 };
 
+struct DenseMapInfoNonSpatialDim {
+  static inline NonSpatialDim getEmptyKey() {
+    return NonSpatialDim(DenseMapInfo<int64_t>::getEmptyKey());
+  }
+
+  static inline NonSpatialDim getTombstoneKey() {
+    return NonSpatialDim(DenseMapInfo<int64_t>::getTombstoneKey());
+  }
+
+  static unsigned getHashValue(const NonSpatialDim& Key) {
+    return DenseMapInfo<int64_t>::getHashValue(Key);
+  }
+
+  static bool isEqual(const NonSpatialDim& LHS, const NonSpatialDim& RHS) {
+    return LHS == RHS;
+  }
+};
+
 char NonSpatialDimToString(NonSpatialDim dim) {
   switch (dim) {
     case IOBatch:
@@ -5278,7 +5296,8 @@ ParseResult parseConvolutionDimensions(AsmParser& parser,
   // IntegerAttrs (indexed by the NonSpatialDim enum).
   using parse_dim_result_t =
       std::pair<llvm::SmallVector<int64_t>,
-                std::unordered_map<NonSpatialDim, int64_t, std::hash<int64_t>>>;
+                llvm::SmallDenseMap<NonSpatialDim, int64_t, 4,
+                                    DenseMapInfoNonSpatialDim>>;
 
   // Note that the allowed_non_spatial_dims is a set (as opposed to unordered
   // set) because its used to print a list of allowed non spatial dims in the
@@ -5286,26 +5305,44 @@ ParseResult parseConvolutionDimensions(AsmParser& parser,
   auto parse_dims =
       [&](std::set<NonSpatialDim, std::greater<>> allowed_non_spatial_dims,
           parse_dim_result_t& parsed_dims) -> ParseResult {
+    auto& spatial_dims = std::get<0>(parsed_dims);
+    auto& non_spatial_dims = std::get<1>(parsed_dims);
+    spatial_dims.clear();
+    non_spatial_dims.clear();
+
     // Parse the starting [
     if (parser.parseLSquare()) {
       return failure();
     }
-    llvm::SmallVector<int64_t> spatial_dims;
-    std::unordered_map<NonSpatialDim, int64_t, std::hash<int64_t>>
-        non_spatial_dims;
+
+    llvm::SmallDenseMap<int64_t, int64_t> spatial_dims_map;
+    constexpr int64_t kInvalidDimension = -1;
+    // Keep track of the maximum spatial dimension parsed as we expect to see
+    // all the dimensions from 0 to maximum dimension parsed.
+    int64_t max_parsed_spatial_dim = kInvalidDimension;
 
     int64_t index = 0;
     do {
       int64_t spatial_dim;
+      auto dim_location = parser.getCurrentLocation();
       OptionalParseResult parseResult =
           parser.parseOptionalInteger(spatial_dim);
       if (parseResult.hasValue()) {
         if (parseResult.getValue().failed()) {
           return failure();
         }
-        // We were successful in parsing an integer. Add its index to the
-        // spatial dims.
-        spatial_dims.push_back(index);
+        // We were successful in parsing an integer. Check if it is a valid
+        // dimension (non-negative and no duplicate) and add its index to the
+        // spatial dims map.
+        if (spatial_dim < 0)
+          return parser.emitError(dim_location)
+                 << "Unexpected dimension " << spatial_dim;
+        if (!spatial_dims_map
+                 .insert(std::pair<int64_t, int64_t>(spatial_dim, index))
+                 .second)
+          return parser.emitError(dim_location)
+                 << "Duplicate entries for spatial dimension " << spatial_dim;
+        max_parsed_spatial_dim = std::max(spatial_dim, max_parsed_spatial_dim);
       } else {
         // We did not parse an integer. We expect a keyword token.
         StringRef keyword;
@@ -5313,8 +5350,7 @@ ParseResult parseConvolutionDimensions(AsmParser& parser,
           return failure();
         }
         if (keyword.size() != 1 || allowed_non_spatial_dims.empty()) {
-          return parser.emitError(parser.getCurrentLocation(),
-                                  "Unexpected keyword ")
+          return parser.emitError(dim_location, "Unexpected keyword ")
                  << keyword;
         }
         // Check if the keyword matches one of the allowed non-spatial dims.
@@ -5331,8 +5367,8 @@ ParseResult parseConvolutionDimensions(AsmParser& parser,
         }
 
         if (!is_allowed) {
-          mlir::InFlightDiagnostic diag = parser.emitError(
-              parser.getCurrentLocation(), "Unexpected dimension ");
+          mlir::InFlightDiagnostic diag =
+              parser.emitError(dim_location, "Unexpected dimension ");
           diag << keyword << ", expecting ";
           llvm::interleaveComma(
               allowed_non_spatial_dims, diag,
@@ -5359,7 +5395,43 @@ ParseResult parseConvolutionDimensions(AsmParser& parser,
       return failure();
     }
 
-    parsed_dims = std::make_pair(spatial_dims, non_spatial_dims);
+    // Number of expected spatial dimensions is one more than the maximum parsed
+    // spatial dimension. For example, if we parse [0, 3, 2, b, i, 1], then the
+    // maximum parsed spatial dimension is 3 and the number of expected spatial
+    // dimensions is 4.
+    int64_t num_spatial_dimensions = max_parsed_spatial_dim + 1;
+    spatial_dims.resize(num_spatial_dimensions);
+    // Store spatial dimensions in a vector which maps spatial dim (vector
+    // index) -> index in the tensor dimensions. For example, for parsed
+    // dimension numbers [0, 3, 2, b, i, 1] the spatial dimension vector would
+    // be [0, 5, 2, 1].
+    //
+    // Get all the unspecified spatial dimensions to throw a more descriptive
+    // error later.
+    llvm::SmallVector<int64_t> unspecified_spatial_dims;
+    constexpr int kPrintUnspecifiedDimsMax = 10;
+    for (int dim = 0; dim < num_spatial_dimensions; ++dim) {
+      auto it = spatial_dims_map.find(dim);
+      if (it == spatial_dims_map.end()) {
+        // Have an upper bound on the number of unspecified dimensions to print
+        // in the error message.
+        if (unspecified_spatial_dims.size() < kPrintUnspecifiedDimsMax)
+          unspecified_spatial_dims.push_back(dim);
+        continue;
+      }
+      spatial_dims[dim] = it->second;
+    }
+
+    // Verify that we got all spatial dimensions between 0 and maximum parsed
+    // spatial dimension.
+    if (!unspecified_spatial_dims.empty()) {
+      mlir::InFlightDiagnostic diag = parser.emitError(
+          parser.getCurrentLocation(), "Expected spatial dimensions ");
+      llvm::interleaveComma(unspecified_spatial_dims, diag);
+      diag << " not specified";
+      return diag;
+    }
+
     return success();
   };
 

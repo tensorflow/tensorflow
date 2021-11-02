@@ -68,6 +68,29 @@ func @unknown_resource_op(%arg0: tensor<32xf32>) -> () {
 }
 
 // -----
+// Test aliasing through TPUReplicatedInput
+!tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>
+// CHECK-LABEL: func @aliasing_tpu_replicated_input
+func @aliasing_tpu_replicated_input(%arg0: tensor<32xf32>) -> () {
+  tf_executor.graph {
+    // CHECK: tf_executor.island
+    %island = tf_executor.island {
+      // expected-remark@below {{Result #0, ID 0 : 0, 2}}
+      %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
+      // expected-remark@below {{Result #0, ID 1 : 1, 2}}
+      %vh1 = "tf.VarHandleOp"() {container = "c", shared_name = "v1"} : () -> !tf_res
+      // expected-remark@below {{Result #0, ID 2 : 0, 1, 2}}
+      %replicated = "tf.TPUReplicatedInput"(%vh0, %vh1) : (!tf_res, !tf_res) -> (!tf_res)
+      "tf.AssignVariableOp"(%vh0, %arg0) : (!tf_res, tensor<32xf32>) -> ()
+      %read1 = "tf.ReadVariableOp"(%replicated) : (!tf_res) -> tensor<32xf32>
+      tf_executor.yield
+    }
+    tf_executor.fetch %island : !tf_executor.control
+  }
+  return
+}
+
+// -----
 // Test aliasing through IfOp
 
 !tf_res = type tensor<*x!tf_type.resource<tensor<32xf32>>>

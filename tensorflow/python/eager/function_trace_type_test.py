@@ -19,6 +19,7 @@ import timeit
 from absl.testing import parameterized
 
 from tensorflow.python import keras
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import function
@@ -381,8 +382,8 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         iters=iterations,
         wall_time=t,
         metrics=[{
-            'name': 'function_invocation_time',
-            'value': t
+            'name': 'function_invocation_time_avg_ms',
+            'value': t/iterations * 1000
         }])
 
 
@@ -545,4 +546,5 @@ class TraceTypeEncodingTest(test.TestCase):
 
 
 if __name__ == '__main__':
+  v2_compat.enable_v2_behavior()
   test.main()

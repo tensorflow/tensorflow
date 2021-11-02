@@ -507,6 +507,10 @@ class CheckpointPosition(object):
     return self._checkpoint.object_graph_proto.nodes[self._proto_id]
 
   @property
+  def proto_id(self):
+    return self._proto_id
+
+  @property
   def restore_uid(self):
     return self._checkpoint.restore_uid
 
@@ -558,8 +562,9 @@ class CheckpointPosition(object):
     if slot_variable is None:
       # The optimizer returns None if the restore should not be done (yet).
       return
-    slot_variable_position.checkpoint.object_by_proto_id[
-        slot_variable_id] = slot_variable
+    self.checkpoint.all_python_objects.add(slot_variable)
+    self.checkpoint.matched_proto_ids.add(slot_variable_position.proto_id)
+    self.checkpoint.object_by_proto_id[slot_variable_id] = slot_variable
     # pylint: disable=protected-access
     slot_variable._maybe_initialize_trackable()
     slot_variable._self_update_uid = self.checkpoint.restore_uid

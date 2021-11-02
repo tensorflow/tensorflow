@@ -21247,6 +21247,7 @@ op {
     name: "is_tpu_embedding_initialized"
     type: DT_BOOL
   }
+  is_stateful: true
 }
 op {
   name: "IsVariableInitialized"
