@@ -438,6 +438,16 @@ TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt32) {
             -21475);
   EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::max(), 0.00001),
             21475);
+#if !TFLITE_SINGLE_ROUNDING
+  // Single-rounding doesn't support negative multipliers, only test negative
+  // multipliers in double-rounding mode.
+  EXPECT_EQ(quant_and_multiply(10000, -0.00097656), -10);
+  EXPECT_EQ(quant_and_multiply(-10000, -0.00097656), 10);
+  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::min(), -0.00001),
+            21475);
+  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::max(), -0.00001),
+            -21475);
+#endif
 
   // Test with maximum possible x and quantized_multiplier
   const int32_t x = std::numeric_limits<int32_t>::max();
