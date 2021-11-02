@@ -25,7 +25,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
-#include "mkldnn.hpp"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -62,8 +62,8 @@ class MklMatMulOp : public OpKernel {
     int d2 = b.dim_size(dim_pair[0].second);
     OP_REQUIRES(ctx, d1 == d2,
                 errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
-                                        a.shape().DebugString(),
-                                        ", In[1]: ", b.shape().DebugString()));
+                                        a.shape().DebugString(), ", In[1]: ",
+                                        b.shape().DebugString()));
     int a_dim_remaining = 1 - dim_pair[0].first;
     int b_dim_remaining = 1 - dim_pair[0].second;
     TensorShape out_shape(

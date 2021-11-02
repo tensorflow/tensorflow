@@ -20,15 +20,14 @@ limitations under the License.
 
 #include <numeric>
 
-#include "mkldnn.hpp"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-using mkldnn::stream;
-using mkldnn::sum;
+using dnnl::stream;
+using dnnl::sum;
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -237,14 +236,14 @@ class MklAddNOp : public OpKernel {
 
       // Create Sum op, and submit net for execution.
       std::vector<primitive> net;
-      mkldnn::sum sum_op(sum_pd);
+      dnnl::sum sum_op(sum_pd);
       std::unordered_map<int, memory> net_args = {
-          {MKLDNN_ARG_DST, dst.GetOpMem()}};
+          {DNNL_ARG_DST, dst.GetOpMem()}};
       for (int i = 0; i < num_inputs; ++i) {
-        net_args.insert({MKLDNN_ARG_MULTIPLE_SRC + i, inputs[i]});
+        net_args.insert({DNNL_ARG_MULTIPLE_SRC + i, inputs[i]});
       }
       sum_op.execute(*fwd_cpu_stream, net_args);
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);

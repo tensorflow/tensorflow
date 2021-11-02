@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
-// This file uses MKL-DNN InnerProduct for acceleration of TF Matrix-Matrix
+// This file uses oneDNN InnerProduct for acceleration of TF Matrix-Matrix
 // Multiplication (MatMul) with bias (BiasAdd) operations.
 #ifdef INTEL_MKL
 
@@ -134,7 +134,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
 
     // Allocate output tensor.
     Tensor* dst_tensor = nullptr;
-    std::shared_ptr<mkldnn::inner_product_forward::primitive_desc> matmul_pd =
+    std::shared_ptr<dnnl::inner_product_forward::primitive_desc> matmul_pd =
         matmul_prim->GetPrimitiveDesc();
 
     // The output shape of MatMul is same both for MKL and TF version.
@@ -183,7 +183,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
           // changing memory layout, hence using same memory descriptor.
           add_md = dst_md =
               memory::desc({add_tensor.NumElements()}, MklDnnType<T>(),
-                           mkldnn::memory::format_tag::x);
+                           dnnl::memory::format_tag::x);
         }
 
         auto fuse_add_src_ = memory(add_md, this->cpu_engine_, add_buf);
@@ -261,7 +261,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       // Execute fused matmul op.
       matmul_prim->Execute(src_data, weight_data, bias_data, dst_data,
                            cpu_stream);
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);

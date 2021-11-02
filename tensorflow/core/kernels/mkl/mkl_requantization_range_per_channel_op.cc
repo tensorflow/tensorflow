@@ -18,10 +18,8 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <math.h>
-
 #include <limits>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -31,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_threadpool.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -79,7 +78,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     Eigen::array<int, 2> shuffling({1, 0});
     auto input_matrix = input.flat_inner_dims<qint32>();
 
-    // TODO: verify performance of not transposing and finding the min max
+    // TODO(intel-tf): verify performance of not transposing and finding min max
     // directly from input_matrix vs the one presented below of transposing and
     // using the transposed matrix as the transposing operation in itself might
     // be more costly.
@@ -97,7 +96,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
 #pragma omp parallel for reduction(max : out_min_max)
 #endif
 #endif  // ENABLE_ONEDNN_OPENMP
-    // TODO: Add eigen parallel_for
+    // TODO(intel-tf): Add eigen parallel_for
     for (int64_t i = 0; i < depth; ++i) {
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> min =
           transposed_input.chip<0>(i).minimum();

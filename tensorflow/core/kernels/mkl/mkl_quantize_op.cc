@@ -17,20 +17,19 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "mkldnn.hpp"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-using mkldnn::primitive_attr;
-using mkldnn::prop_kind;
-using mkldnn::reorder;
-using mkldnn::stream;
+using dnnl::primitive_attr;
+using dnnl::prop_kind;
+using dnnl::reorder;
+using dnnl::stream;
 
 namespace {
 enum {
@@ -104,17 +103,17 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
   // Primitive reuse context for reorder
   struct ReorderContext {
     // MKL-DNN memory
-    std::shared_ptr<mkldnn::memory> src_mem;
-    std::shared_ptr<mkldnn::memory> dst_mem;
+    std::shared_ptr<dnnl::memory> src_mem;
+    std::shared_ptr<dnnl::memory> dst_mem;
 
     // Reorder primitive descriptor and primitive
     std::shared_ptr<reorder::primitive_desc> reorder_pd;
     std::shared_ptr<primitive> reorder_prim;
 
     // Stream and primitive vector
-    std::shared_ptr<mkldnn::stream> reorder_stream;
+    std::shared_ptr<dnnl::stream> reorder_stream;
 
-    std::unordered_map<int, mkldnn::memory> prim_args;
+    std::unordered_map<int, dnnl::memory> prim_args;
 
     ReorderContext()
         : src_mem(nullptr),
@@ -133,7 +132,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 
     // Check if there is any fusion as post-ops
     auto const& post_op_params = fwdParams.post_op_params;
-    mkldnn::primitive_attr post_ops_attr;
+    dnnl::primitive_attr post_ops_attr;
 
     DCHECK(post_op_params.name == "scale");
     DCHECK_EQ(post_op_params.param.size(), 1);
@@ -147,8 +146,8 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 
     // Create reorder primitive
     context_.reorder_prim.reset(new reorder(*context_.reorder_pd));
-    context_.prim_args.insert({MKLDNN_ARG_FROM, *context_.src_mem});
-    context_.prim_args.insert({MKLDNN_ARG_TO, *context_.dst_mem});
+    context_.prim_args.insert({DNNL_ARG_FROM, *context_.src_mem});
+    context_.prim_args.insert({DNNL_ARG_TO, *context_.dst_mem});
   }
 };
 
@@ -216,9 +215,8 @@ class MklQuantizeV2Op : public OpKernel {
   explicit MklQuantizeV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
-    OP_REQUIRES(ctx,
-                (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
-                 mode_string == "SCALED"),
+    OP_REQUIRES(ctx, (mode_string == "MIN_COMBINED" ||
+                      mode_string == "MIN_FIRST" || mode_string == "SCALED"),
                 errors::InvalidArgument("Mode string must be 'MIN_COMBINED',"
                                         " 'MIN_FIRST', or 'SCALED', is '" +
                                         mode_string + "'"));
@@ -232,9 +230,8 @@ class MklQuantizeV2Op : public OpKernel {
 
     string round_mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("round_mode", &round_mode_string));
-    OP_REQUIRES(ctx,
-                (round_mode_string == "HALF_AWAY_FROM_ZERO" ||
-                 round_mode_string == "HALF_TO_EVEN"),
+    OP_REQUIRES(ctx, (round_mode_string == "HALF_AWAY_FROM_ZERO" ||
+                      round_mode_string == "HALF_TO_EVEN"),
                 errors::InvalidArgument("Round mode string must be "
                                         "'HALF_AWAY_FROM_ZERO' or "
                                         "'HALF_TO_EVEN', is '" +
