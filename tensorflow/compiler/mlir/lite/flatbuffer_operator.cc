@@ -126,6 +126,12 @@ static int ConvertI32AttrForOptionWriter(
   return i;
 }
 
+// I64Attr already returns a int64_t as required by flatbuffer builders.
+static int64_t ConvertI64AttrForOptionWriter(
+    int64_t i, flatbuffers::FlatBufferBuilder* builder) {
+  return i;
+}
+
 static int ConvertPositiveI32AttrForOptionWriter(
     int i, flatbuffers::FlatBufferBuilder* builder) {
   return ConvertI32AttrForOptionWriter(i, builder);
