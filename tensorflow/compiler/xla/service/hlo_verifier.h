@@ -26,7 +26,6 @@ namespace xla {
 
 // Visitor which verifies that the output shape is correctly set. Verifies
 // against the inferred shape for the instruction.
-// TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
   ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision,
