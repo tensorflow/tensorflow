@@ -139,7 +139,7 @@ std::vector<char> TransposeConvTester::CreateTfLiteModel() const {
       CreateTensorDirect(builder, &output_shape_tensor_shape, TensorType_INT32,
                          /*buffer=*/buffer_index_output_shape));
 
-  // It is guaranteed that the last two tensors will be float32 kernel and bias.
+  // The last one (two) tensor(s) will be the float32 kernel (and bias if used).
   if (FP16Weights()) {
     const int kOpCodeIndexDequantize = operator_codes.size();
     operator_codes.emplace_back(
@@ -149,39 +149,41 @@ std::vector<char> TransposeConvTester::CreateTfLiteModel() const {
 
     std::vector<uint16_t> filter_data(OutputChannels() * KernelHeight() *
                                       KernelWidth() * InputChannels());
-    std::vector<uint16_t> bias_data(OutputChannels());
 
     std::generate(filter_data.begin(), filter_data.end(), f16rng);
-    std::generate(bias_data.begin(), bias_data.end(), f16rng);
 
     const int buffer_index_filter = buffers.size();
     buffers.emplace_back(CreateBuffer(
         builder, builder.CreateVector(
                      reinterpret_cast<const uint8_t*>(filter_data.data()),
                      sizeof(uint16_t) * filter_data.size())));
-    const int buffer_index_bias = buffers.size();
-    buffers.emplace_back(CreateBuffer(
-        builder,
-        builder.CreateVector(reinterpret_cast<const uint8_t*>(bias_data.data()),
-                             sizeof(uint16_t) * bias_data.size())));
 
     const int tensor_index_float16_filter = tensors.size();
     tensors.emplace_back(CreateTensorDirect(builder, &filter_shape,
                                             TensorType_FLOAT16,
                                             /*buffer=*/buffer_index_filter));
 
-    const int tensor_index_float16_bias = tensors.size();
-    tensors.emplace_back(CreateTensorDirect(builder, &bias_shape,
-                                            TensorType_FLOAT16,
-                                            /*buffer=*/buffer_index_bias));
+    const int kInvalidIndex = -1;
+    int tensor_index_float16_bias = kInvalidIndex;
+    if (UseBias()) {
+      std::vector<uint16_t> bias_data(OutputChannels());
+      std::generate(bias_data.begin(), bias_data.end(), f16rng);
+
+      const int buffer_index_bias = buffers.size();
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(bias_data.data()),
+                       sizeof(uint16_t) * bias_data.size())));
+
+      tensor_index_float16_bias = tensors.size();
+      tensors.emplace_back(CreateTensorDirect(builder, &bias_shape,
+                                              TensorType_FLOAT16,
+                                              /*buffer=*/buffer_index_bias));
+    }
 
     const int tensor_index_filter = tensors.size();
     tensors.emplace_back(CreateTensorDirect(
         builder, &filter_shape, TensorType_FLOAT32, /*buffer=*/kNoBuffer));
-
-    const int tensor_index_bias = tensors.size();
-    tensors.emplace_back(CreateTensorDirect(
-        builder, &bias_shape, TensorType_FLOAT32, /*buffer=*/kNoBuffer));
 
     const std::vector<int32_t> dequantize_filter_inputs = {
         tensor_index_float16_filter};
@@ -190,19 +192,22 @@ std::vector<char> TransposeConvTester::CreateTfLiteModel() const {
         builder, /*opcode_index=*/kOpCodeIndexDequantize,
         &dequantize_filter_inputs, &dequantize_filter_outputs));
 
-    const std::vector<int32_t> dequantize_bias_inputs = {
-        tensor_index_float16_bias};
-    const std::vector<int32_t> dequantize_bias_outputs = {tensor_index_bias};
-    operators.emplace_back(CreateOperatorDirect(
-        builder, /*opcode_index=*/kOpCodeIndexDequantize,
-        &dequantize_bias_inputs, &dequantize_bias_outputs));
+    assert(tensor_index_filter + 1 == tensors.size());
 
-    // Suppress unused variable warnings in builds where `assert`s vanish.
-    (void)tensor_index_filter;
-    (void)tensor_index_bias;
+    if (UseBias()) {
+      const int tensor_index_bias = tensors.size();
+      tensors.emplace_back(CreateTensorDirect(
+          builder, &bias_shape, TensorType_FLOAT32, /*buffer=*/kNoBuffer));
 
-    assert(tensor_index_filter + 2 == tensors.size());
-    assert(tensor_index_bias + 1 == tensors.size());
+      const std::vector<int32_t> dequantize_bias_inputs = {
+          tensor_index_float16_bias};
+      const std::vector<int32_t> dequantize_bias_outputs = {tensor_index_bias};
+      operators.emplace_back(CreateOperatorDirect(
+          builder, /*opcode_index=*/kOpCodeIndexDequantize,
+          &dequantize_bias_inputs, &dequantize_bias_outputs));
+
+      assert(tensor_index_bias + 1 == tensors.size());
+    }
   } else {
     std::vector<float> filter_data(OutputChannels() * KernelHeight() *
                                    KernelWidth() * InputChannels());
@@ -252,47 +257,44 @@ std::vector<char> TransposeConvTester::CreateTfLiteModel() const {
       assert(future_tensor_index_filter == tensors.size());
     }
 
-    const int tensor_index_filter = tensors.size();
     tensors.emplace_back(CreateTensorDirect(
         builder, &filter_shape, TensorType_FLOAT32,
         /*buffer=*/SparseWeights() ? kNoBuffer : buffer_index_filter));
 
-    std::vector<float> bias_data(OutputChannels());
-    std::generate(bias_data.begin(), bias_data.end(), f32rng);
+    if (UseBias()) {
+      std::vector<float> bias_data(OutputChannels());
+      std::generate(bias_data.begin(), bias_data.end(), f32rng);
 
-    const int buffer_index_bias = buffers.size();
-    buffers.emplace_back(CreateBuffer(
-        builder,
-        builder.CreateVector(reinterpret_cast<const uint8_t*>(bias_data.data()),
-                             sizeof(float) * bias_data.size())));
+      const int buffer_index_bias = buffers.size();
+      buffers.emplace_back(CreateBuffer(
+          builder, builder.CreateVector(
+                       reinterpret_cast<const uint8_t*>(bias_data.data()),
+                       sizeof(float) * bias_data.size())));
 
-    const int tensor_index_bias = tensors.size();
-    tensors.emplace_back(CreateTensorDirect(builder, &bias_shape,
-                                            TensorType_FLOAT32,
-                                            /*buffer=*/buffer_index_bias));
-
-    // Suppress unused variable warnings in builds where `assert`s vanish.
-    (void)tensor_index_filter;
-    (void)tensor_index_bias;
-
-    assert(tensor_index_filter + 2 == tensors.size());
-    assert(tensor_index_bias + 1 == tensors.size());
+      tensors.emplace_back(CreateTensorDirect(builder, &bias_shape,
+                                              TensorType_FLOAT32,
+                                              /*buffer=*/buffer_index_bias));
+    }
   }
 
-  const int tensor_index_filter = tensors.size() - 2;
-  const int tensor_index_bias = tensors.size() - 1;
+  const int top_tensor = tensors.size() - 1;
+  const int tensor_index_filter = UseBias() ? top_tensor - 1 : top_tensor;
 
   const int tensor_index_input = tensors.size();
   tensors.emplace_back(
       CreateTensorDirect(builder, &input_shape, TensorType_FLOAT32));
 
+  std::vector<int32_t> op_inputs = {tensor_index_output_shape,
+                                    tensor_index_filter, tensor_index_input};
+  if (UseBias()) {
+    const int tensor_index_bias = top_tensor;
+    op_inputs.push_back(tensor_index_bias);
+  }
+
   const int tensor_index_output = tensors.size();
   tensors.emplace_back(
       CreateTensorDirect(builder, &output_shape, TensorType_FLOAT32));
 
-  const std::vector<int32_t> op_inputs = {
-      tensor_index_output_shape, tensor_index_filter, tensor_index_input,
-      tensor_index_bias};
   const std::vector<int32_t> op_outputs = {tensor_index_output};
 
   const int opcode_index_transpose_conv = operator_codes.size();

@@ -146,6 +146,15 @@ class TransposeConvTester {
     return ComputePadding(OutputHeight(), KernelHeight(), StrideHeight());
   }
 
+  inline bool UseBias() const { return use_bias_; }
+
+  inline TransposeConvTester& WithBias(bool use_bias = true) {
+    use_bias_ = use_bias;
+    return *this;
+  }
+
+  inline TransposeConvTester& NoBias() { return WithBias(false); }
+
   void Test(TfLiteDelegate* delegate) const;
 
  private:
@@ -191,6 +200,7 @@ class TransposeConvTester {
   int32_t stride_height_ = 1;
   int32_t stride_width_ = 1;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
+  bool use_bias_ = true;
   bool fp16_weights_ = false;
   bool sparse_weights_ = false;
 };

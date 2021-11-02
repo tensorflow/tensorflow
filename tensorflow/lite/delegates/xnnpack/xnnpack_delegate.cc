@@ -3574,13 +3574,7 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node,
                                  /*min_num_inputs=*/3, /*max_num_inputs=*/4,
                                  /*expected_num_outputs=*/1, node_index));
-    if (node->inputs->size < 4) {
-      // Not integrated into the above check for a more precise error message.
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context, "unsupported TRANSPOSE_CONV node #%d without bias",
-          node_index);
-      return kTfLiteError;
-    }
+    const bool use_bias = node->inputs->size >= 4;
 
     const int output_shape_tensor_index = node->inputs->data[0];
     const TfLiteTensor& output_shape_tensor =
@@ -3624,15 +3618,23 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input_tensor, input_tensor_index, node_index));
 
-    const int bias_tensor_index = node->inputs->data[3];
-    const TfLiteTensor& bias_tensor = tensors[bias_tensor_index];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, bias_tensor, bias_tensor_index, node_index));
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorShape(logging_context, bias_tensor, 1, bias_tensor_index));
-    if (quasi_static_tensors.count(bias_tensor_index) == 0) {
-      TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-          logging_context, bias_tensor, bias_tensor_index, node_index));
+    uint32_t xnnpack_tensor_bias = XNN_INVALID_VALUE_ID;  // "No bias".
+    if (use_bias) {
+      const int bias_tensor_index = node->inputs->data[3];
+      if (bias_tensor_index != kTfLiteOptionalTensor) {
+        const TfLiteTensor& bias_tensor = tensors[bias_tensor_index];
+        TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+            logging_context, bias_tensor, bias_tensor_index, node_index));
+        TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
+                                               bias_tensor_index));
+        if (quasi_static_tensors.count(bias_tensor_index) == 0) {
+          TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+              logging_context, bias_tensor, bias_tensor_index, node_index));
+        }
+        if (subgraph != nullptr) {
+          xnnpack_tensor_bias = xnnpack_tensors[bias_tensor_index];
+        }
+      }
     }
 
     const int output_tensor_index = node->outputs->data[0];
@@ -3703,7 +3705,7 @@ class Subgraph {
           /*output_max=*/+std::numeric_limits<float>::infinity(),
           /*input_id=*/xnnpack_tensors[input_tensor_index],
           /*filter_id=*/xnnpack_tensors[filter_tensor_index],
-          /*bias_id=*/xnnpack_tensors[bias_tensor_index],
+          /*bias_id=*/xnnpack_tensor_bias,
           /*output_id=*/xnnpack_tensors[output_tensor_index],
           /*flags=*/0);
       if (status != xnn_status_success) {
