@@ -1702,11 +1702,10 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   // op4 = mul(op1, op3)
   // op5 = log(op4)
 
-  RankedTensorType output_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  TensorType output_type = result_value.getType().dyn_cast<TensorType>();
+  // Not a tensor output
   if (!output_type) {
-    op->emitOpError("LogSoftmax: output type not ranked tensor.");
+    op->emitOpError("LogSoftmax: output type not tensor.");
     return llvm::None;
   }
 
@@ -1733,15 +1732,11 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
 
   // reduce_sum on last dimension
   int32_t input_rank = input_type.getShape().size();
-  SmallVector<int64_t> rsum_shape(output_type.getShape().begin(),
-                                  output_type.getShape().end());
-  rsum_shape[input_rank - 1] = 1;
-  RankedTensorType rsum_type =
-      RankedTensorType::get(rsum_shape, output_type.getElementType());
   // Keep dims so we don't need to reshape later
   auto op2_reducesum_op1 = CreateOpAndInfer<tosa::ReduceSumOp>(
-      rewriter, op->getLoc(), rsum_type, op1_exp_in.getResult(),
-      rewriter.getI64IntegerAttr(input_rank - 1));
+      rewriter, op->getLoc(),
+      UnrankedTensorType::get(output_type.getElementType()),
+      op1_exp_in.getResult(), rewriter.getI64IntegerAttr(input_rank - 1));
   auto op3_reciprocal_op2 = CreateOpAndInfer<tosa::ReciprocalOp>(
       rewriter, op->getLoc(), op2_reducesum_op1.getType(),
       op2_reducesum_op1.getResult());
