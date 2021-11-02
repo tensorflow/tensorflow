@@ -1180,27 +1180,18 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(
           HloInstruction::CreateUnary(shape, opcode, operands[0]));
-
-      optional<std::vector<PrecisionConfig::Precision>> operand_precision;
-      attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
-                                    &operand_precision};
-      if (operand_precision) {
-        *(instruction->mutable_precision_config()
-              ->mutable_operand_precision()) = {operand_precision->begin(),
-                                                operand_precision->end()};
-      }
       break;
     }
     // Binary ops.
     case HloOpcode::kAdd:
     case HloOpcode::kDivide:
     case HloOpcode::kMultiply:
-    case HloOpcode::kPower:
     case HloOpcode::kSubtract:
     case HloOpcode::kAtan2:
     case HloOpcode::kComplex:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
+    case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
@@ -1222,15 +1213,6 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(HloInstruction::CreateBinary(
           shape, opcode, operands[0], operands[1]));
-
-      optional<std::vector<PrecisionConfig::Precision>> operand_precision;
-      attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
-                                    &operand_precision};
-      if (operand_precision) {
-        *(instruction->mutable_precision_config()
-              ->mutable_operand_precision()) = {operand_precision->begin(),
-                                                operand_precision->end()};
-      }
       break;
     }
     // Ternary ops.

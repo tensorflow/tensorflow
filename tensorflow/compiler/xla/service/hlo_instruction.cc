@@ -899,9 +899,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
               computation_map.at(computation_id));
         }
       }
-      if (proto.has_precision_config()) {
-        *(instruction->mutable_precision_config()) = proto.precision_config();
-      }
+      TF_RET_CHECK(!proto.has_precision_config())
+          << instruction->opcode() << proto.DebugString();
       TF_RET_CHECK(!proto.has_dot_dimension_numbers()) << instruction->opcode();
       break;
     }
@@ -1729,7 +1728,6 @@ void HloInstruction::SetupDerivedInstruction(
   } else {
     derived_instruction->clear_sharding();
   }
-  *(derived_instruction->mutable_precision_config()) = precision_config_;
   derived_instruction->set_metadata(metadata_);
   derived_instruction->set_frontend_attributes(frontend_attributes_);
 }
@@ -2273,11 +2271,6 @@ bool HloInstruction::IdenticalInternal(
   }
 
   if (backend_config_ != other.backend_config_) {
-    return false;
-  }
-
-  if (!absl::c_equal(precision_config_.operand_precision(),
-                     other.precision_config_.operand_precision())) {
     return false;
   }
 
@@ -3223,11 +3216,9 @@ HloInstructionProto HloInstruction::ToProto() const {
   proto.set_name(name_);
   proto.set_opcode(HloOpcodeString(opcode_));
   *proto.mutable_shape() = shape_.ToProto();
-
   for (const HloInstruction* operand : operands_) {
     proto.add_operand_ids(operand->unique_id());
   }
-
   for (const HloInstruction* control : control_predecessors_) {
     proto.add_control_predecessor_ids(control->unique_id());
   }
@@ -3240,14 +3231,9 @@ HloInstructionProto HloInstruction::ToProto() const {
     }
   }
 
-  if (precision_config().operand_precision_size() > 0) {
-    *(proto.mutable_precision_config()) = precision_config();
-  }
-
   if (has_sharding()) {
     *proto.mutable_sharding() = sharding().ToProto();
   }
-
   if (!outer_dimension_partitions_.empty()) {
     for (const auto& idx : outer_dimension_partitions_) {
       proto.mutable_outer_dimension_partitions()->Add(idx);
@@ -4204,11 +4190,27 @@ Status HloInstruction::set_backend_config(
 }
 
 const PrecisionConfig& HloInstruction::precision_config() const {
-  return precision_config_;
+  if (auto* convolution = DynCast<HloConvolutionInstruction>(this)) {
+    return convolution->precision_config();
+  }
+  if (auto* dot = DynCast<HloDotInstruction>(this)) {
+    return dot->precision_config();
+  }
+
+  if (auto* custom_call = DynCast<HloCustomCallInstruction>(this)) {
+    return custom_call->precision_config();
+  }
+  LOG(FATAL) << "Unimplemented method.";
 }
 
 PrecisionConfig* HloInstruction::mutable_precision_config() {
-  return &precision_config_;
+  if (auto* convolution = DynCast<HloConvolutionInstruction>(this)) {
+    return convolution->mutable_precision_config();
+  }
+  if (auto* dot = DynCast<HloDotInstruction>(this)) {
+    return dot->mutable_precision_config();
+  }
+  LOG(FATAL) << "Unimplemented method.";
 }
 
 HloModule* HloInstruction::GetModule() const {
