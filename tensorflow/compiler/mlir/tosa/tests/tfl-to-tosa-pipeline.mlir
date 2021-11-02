@@ -1267,6 +1267,46 @@ func @test_softmax_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.0156164625
 
 // -----
 
+
+// CHECK-LABEL: test_softmax_qi16
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<31> : tensor<1x1xi32>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<7> : tensor<1x1xi32>}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<32768> : tensor<1x1xi32>}
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.const"() {value = dense<14> : tensor<1x1xi32>}
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.const"() {value = dense<1073741824> : tensor<1x1xi32>}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.const"() {value = dense<1> : tensor<1x1xi32>}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.const"() {value = dense<32767> : tensor<1x1xi32>}
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.const"() {value = dense<"0xF{{.*}}>
+// CHECK-DAG: %[[VAR8:.*]] = "tosa.const"() {value = dense<"0x0{{.*}}> : tensor<513xi16>}
+// CHECK-DAG: %[[VAR9:.*]] = "tosa.rescale"(%arg0) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
+// CHECK-DAG: %[[VAR10:.*]] = "tosa.reduce_max"(%[[VAR9]]) {axis = 1 : i64}
+// CHECK-DAG: %[[VAR11:.*]] = "tosa.sub"(%[[VAR9]], %[[VAR10]])
+// CHECK-DAG: %[[VAR12:.*]] = "tosa.rescale"(%[[VAR11]]) {double_round = true, input_zp = 0 : i32, multiplier = [1717965619 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [32 : i32]}
+// CHECK-DAG: %[[VAR13:.*]] = "tosa.add"(%[[VAR12]], %[[VAR6]])
+// CHECK-DAG: %[[VAR14:.*]] = "tosa.cast"(%[[VAR13]])
+// CHECK-DAG: %[[VAR15:.*]] = "tosa.table"(%[[VAR14]], %[[VAR8]])
+// CHECK-DAG: %[[VAR16:.*]] = "tosa.arithmetic_right_shift"(%[[VAR15]], %[[VAR1]]) {round = true}
+// CHECK-DAG: %[[VAR17:.*]] = "tosa.reduce_sum"(%[[VAR16]]) {axis = 1 : i64}
+// CHECK-DAG: %[[VAR18:.*]] = "tosa.clz"(%[[VAR17]])
+// CHECK-DAG: %[[VAR19:.*]] = "tosa.sub"(%[[VAR18]], %[[VAR5]])
+// CHECK-DAG: %[[VAR20:.*]] = "tosa.logical_left_shift"(%[[VAR17]], %[[VAR19]])
+// CHECK-DAG: %[[VAR21:.*]] = "tosa.sub"(%[[VAR20]], %[[VAR4]])
+// CHECK-DAG: %[[VAR22:.*]] = "tosa.arithmetic_right_shift"(%[[VAR21]], %[[VAR3]]) {round = true}
+// CHECK-DAG: %[[VAR23:.*]] = "tosa.sub"(%[[VAR22]], %[[VAR2]])
+// CHECK-DAG: %[[VAR24:.*]] = "tosa.cast"(%[[VAR23]])
+// CHECK-DAG: %[[VAR25:.*]] = "tosa.table"(%[[VAR24]], %[[VAR7]])
+// CHECK-DAG: %[[VAR26:.*]] = "tosa.arithmetic_right_shift"(%[[VAR25]], %[[VAR1]]) {round = true}
+// CHECK-DAG: %[[VAR27:.*]] = "tosa.mul"(%[[VAR26]], %[[VAR16]]) {shift = 0 : i32}
+// CHECK-DAG: %[[VAR28:.*]] = "tosa.sub"(%[[VAR0]], %[[VAR18]])
+// CHECK-DAG: %[[VAR29:.*]] = "tosa.arithmetic_right_shift"(%[[VAR27]], %[[VAR28]]) {round = true}
+// CHECK: %[[VAR30:.*]] = "tosa.rescale"(%[[VAR29]]) {double_round = false, input_zp = 0 : i32, multiplier = [1073741824 : i32], output_zp = 0 : i32, per_channel = false, scale32 = true, shift = [30 : i32]}
+func @test_softmax_qi16(%arg0: tensor<14x19x!quant.uniform<i16:f32, 6.103533087298274E-5>>) -> tensor<14x19x!quant.uniform<i16:f32, 3.0517578125E-5>> {
+  %0 = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<14x19x!quant.uniform<i16:f32, 6.103533087298274E-5>>) -> tensor<14x19x!quant.uniform<i16:f32, 3.0517578125E-5>>
+  return %0 : tensor<14x19x!quant.uniform<i16:f32, 3.0517578125E-5>>
+}
+
+// -----
+
 // CHECK-LABEL: test_sigmoid_qi8
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<256xi8>}
 // CHECK: %[[VAR1:.*]] = "tosa.table"(%arg0, %[[VAR0]])
