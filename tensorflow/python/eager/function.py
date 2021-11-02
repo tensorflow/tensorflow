@@ -97,7 +97,7 @@ SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 # TODO(jiaweix): remove this flag and related args (b/198782192)
 ENCODE_VARIABLES_BY_RESOURCE_ID = True
 # TODO(b/201533914): Remove this flag and related args
-USE_FULL_TRACE_TYPE = False
+USE_FULL_TRACE_TYPE = True
 
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
