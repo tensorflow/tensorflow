@@ -35,6 +35,7 @@ function run_build () {
   source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
   "${BAZEL_WRAPPER_PATH}" \
+    --profile="${KOKORO_ARTIFACTS_DIR}/profile.json" \
     test \
     --nodistinct_host_configuration \
     --build_tag_filters="${tag_filters}" \
