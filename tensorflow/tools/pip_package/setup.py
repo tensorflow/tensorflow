@@ -103,7 +103,7 @@ REQUIRED_PACKAGES = [
     # When updating these, please also update the nightly versions below
     'tensorboard ~= 2.6',
     'tensorflow_estimator < 2.7',
-    'keras ~= 2.6',
+    'keras >= 2.6.0, < 2.7',
 ]
 
 
