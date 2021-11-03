@@ -17,7 +17,6 @@
 import collections
 import copy
 import os
-import pipes
 import re
 import shlex
 

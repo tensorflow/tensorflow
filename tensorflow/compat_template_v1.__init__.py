@@ -48,7 +48,7 @@ setattr(_current_module, "keras", keras)
 # Explicitly import lazy-loaded modules to support autocompletion.
 # pylint: disable=g-import-not-at-top
 if _typing.TYPE_CHECKING:
-    from tensorflow_estimator.python.estimator.api._v1 import estimator
+  from tensorflow_estimator.python.estimator.api._v1 import estimator
 # pylint: enable=g-import-not-at-top
 
 

@@ -14,8 +14,6 @@
 # ==============================================================================
 """Miscellaneous utilities that don't fit anywhere else."""
 
-import sys
-
 
 class BasicRef(object):
   """This shim emulates the nonlocal keyword in Py2-compatible source."""

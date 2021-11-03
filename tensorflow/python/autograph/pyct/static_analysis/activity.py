@@ -21,7 +21,6 @@ import copy
 import weakref
 
 import gast
-import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import qual_names
