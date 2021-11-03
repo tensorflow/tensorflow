@@ -45,7 +45,8 @@ OVERALL_RETVAL=0
 # previous day. Hence, we are checking here that only the proper wheels get
 # updated.
 TODAY=`date +%Y%m%d`
-for f in $(ls "${KOKORO_GFILE_DIR}"/tf_nightly*dev${TODAY}*cp3*-cp3*-win_amd64.whl); do
+WHEEL_PATTERN=tf_nightly*dev"${TODAY}"*cp3*-cp3*-win_amd64.whl
+for f in $(find "${KOKORO_GFILE_DIR}" -name "${WHEEL_PATTERN}"); do
   test_tf_whl_size $f
   RETVAL=$?
 
