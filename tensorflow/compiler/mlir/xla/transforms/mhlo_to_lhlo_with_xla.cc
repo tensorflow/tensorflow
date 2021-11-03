@@ -910,6 +910,9 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
         builder_.getBoolAttr(
             algorithm.math_type() ==
             stream_executor::dnn::AlgorithmProto::TENSOR_OP_MATH),
+        builder_.getI64IntegerAttr(algorithm.has_workspace_size()
+                                       ? algorithm.workspace_size().value()
+                                       : -1),
         get_layout_attribute(custom_call->operand(0)->shape().layout()),
         get_layout_attribute(custom_call->operand(1)->shape().layout()),
         get_layout_attribute(custom_call->shape().tuple_shapes(0).layout()),
