@@ -193,6 +193,8 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
     return kTfLiteOk;
   if (src->bytes != dst->bytes)
     return kTfLiteError;
+  if (src == dst)
+    return kTfLiteOk;
 
   dst->type = src->type;
   if (dst->dims)
