@@ -83,6 +83,12 @@ def ApproxTopK(
     comparator: XlaComputation,
     recall_target: Optional[float],
     aggregate_to_topk: Optional[bool]) -> XlaOp: ...
+def ApproxTopKReductionOutputSize(
+    input_size: int,
+    rank: int,
+    top_k: int,
+    recall_target: float,
+    aggregate_to_topk: Optional[bool]) -> Tuple[int, int]: ...
 def ReduceScatter(
     operand: XlaOp,
     computation: XlaComputation,
