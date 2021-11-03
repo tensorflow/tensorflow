@@ -852,12 +852,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_MEAN:
+    case BuiltinOperator_MIRROR_PAD:
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
+    case BuiltinOperator_RSQRT:
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_DEPTH_TO_SPACE:
-    case BuiltinOperator_RSQRT:
       // In case of int16 inputs, the version is 3.
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 3;
@@ -1002,7 +1003,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_GREATER:
     case BuiltinOperator_LESS_EQUAL:
     case BuiltinOperator_SQUARED_DIFFERENCE:
-    case BuiltinOperator_MIRROR_PAD:
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
     case BuiltinOperator_TOPK_V2:
       if (op_sig.inputs.at(0).type == kTfLiteInt16 ||
           op_sig.inputs.at(1).type == kTfLiteInt16 ||

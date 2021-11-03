@@ -117,8 +117,8 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant, int number_of_bits) {
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_DEPTH_TO_SPACE:
       // We skip inputs 1 and 2 since they aren't real valued (they are shapes).
-      property.inputs = {{0, {}}};
-      property.outputs = {{0, {}}};
+      property.inputs = {{0, tensor_property_default}};
+      property.outputs = {{0, tensor_property_default}};
       property.restrict_same_input_output_scale = [](TensorType) {
         return true;
       };
