@@ -1231,6 +1231,19 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "framework_resource_var_test",
+    size = "small",
+    srcs = ["resource_var_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "op_kernel_test_base",
     testonly = True,
