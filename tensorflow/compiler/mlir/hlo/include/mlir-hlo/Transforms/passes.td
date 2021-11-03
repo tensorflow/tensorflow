@@ -47,7 +47,8 @@ def CopyRemoval : FunctionPass<"copy-removal"> {
 def BufferPacking : FunctionPass<"buffer-packing"> {
   let summary = "";
   let description = [{ }];
-  let dependentDialects = ["StandardOpsDialect","memref::MemRefDialect"];
+  let dependentDialects = ["StandardOpsDialect","memref::MemRefDialect",
+    "arith::ArithmeticDialect"];
   let constructor = "createBufferPackingPass()";
   let options = [
    Option<"window_size_", "window-size", "unsigned",

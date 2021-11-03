@@ -378,8 +378,8 @@ public:
         Location loc = viewDefOp->getLoc();
         mlir::OpBuilder viewBuilder(viewDefOp);
 
-        // Create a ConstantOp with the aligned offset.
-        Value constantOp = viewBuilder.create<mlir::ConstantOp>(
+        // Create a arithmetic ConstantOp with the aligned offset.
+        Value constantOp = viewBuilder.create<mlir::arith::ConstantOp>(
             loc, viewBuilder.getIndexType(),
             viewBuilder.getIntegerAttr(viewBuilder.getIndexType(), offset));
 
