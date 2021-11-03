@@ -110,7 +110,10 @@ tf_proto_library(
     name = "backend_configs",
     srcs = ["backend_configs.proto"],
     cc_api_version = 2,
-    protodeps = ["//tensorflow/compiler/xla:xla_data_proto"],
+    protodeps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/stream_executor:dnn_proto",
+    ],
 )
 
 cc_library(

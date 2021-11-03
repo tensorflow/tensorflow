@@ -414,8 +414,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
     profile_results.emplace_back();
     AutotuneResult& result = profile_results.back();
-    result.mutable_conv()->set_algorithm(alg.algo_id());
-    result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
+    *result.mutable_algorithm() = alg.ToProto();
 
     if (absl::c_linear_search(disabled_algos, alg)) {
       LOG(INFO) << "Omitted potentially buggy algorithm " << alg.ToString()
@@ -650,9 +649,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     auto profile_result = algorithms[0];
     profile_results.emplace_back();
     auto& result = profile_results.back();
-    result.mutable_conv()->set_algorithm(profile_result.algorithm().algo_id());
-    result.mutable_conv()->set_tensor_ops_enabled(
-        profile_result.algorithm().tensor_ops_enabled());
+    *result.mutable_algorithm() = profile_result.algorithm().ToProto();
 
     result.set_scratch_bytes(profile_result.scratch_size());
     *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
@@ -750,8 +747,7 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
 
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());
-  backend_config.set_algorithm(best_algo.conv().algorithm());
-  backend_config.set_tensor_ops_enabled(best_algo.conv().tensor_ops_enabled());
+  *backend_config.mutable_algorithm() = best_algo.algorithm();
 
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));

@@ -902,9 +902,14 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
         &custom_call->precision_config(), &builder_));
     op.result_scaleAttr(
         builder_.getF64FloatAttr(backend_config.conv_result_scale()));
+
+    const auto& algorithm = backend_config.algorithm();
+
     auto config = mlir::lmhlo_gpu::ConvolutionBackendConfig::get(
-        builder_.getI64IntegerAttr(backend_config.algorithm()),
-        builder_.getBoolAttr(backend_config.tensor_ops_enabled()),
+        builder_.getI64IntegerAttr(algorithm.algo_id()),
+        builder_.getBoolAttr(
+            algorithm.math_type() ==
+            stream_executor::dnn::AlgorithmProto::TENSOR_OP_MATH),
         get_layout_attribute(custom_call->operand(0)->shape().layout()),
         get_layout_attribute(custom_call->operand(1)->shape().layout()),
         get_layout_attribute(custom_call->shape().tuple_shapes(0).layout()),
