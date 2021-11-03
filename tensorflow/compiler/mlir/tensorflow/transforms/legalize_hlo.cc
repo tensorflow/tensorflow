@@ -72,7 +72,7 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConvOp conv_op, ArrayRef<Value> args,
+      mhlo::ConvOp conv_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (!IsSupportedConvOp(conv_op)) {
       return failure();
@@ -360,7 +360,7 @@ class ConvertConvBackpropInputOp : public OpConversionPattern<mhlo::ConvOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConvOp conv_op, ArrayRef<Value> args,
+      mhlo::ConvOp conv_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (IsSupportedConvOp(conv_op, rewriter).failed()) {
       return rewriter.notifyMatchFailure(
@@ -539,7 +539,7 @@ class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::SliceOp slice_op, ArrayRef<Value> args,
+      mhlo::SliceOp slice_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     DenseIntElementsAttr strides = slice_op.strides();
     // Strides must be 1 otherwise we cannot legalize this `mhlo.slice` op.
@@ -574,7 +574,7 @@ class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::DynamicSliceOp op, ArrayRef<Value> args,
+      mhlo::DynamicSliceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     ShapedType input_type = op.operand().getType().cast<ShapedType>();
     if (!input_type.hasStaticShape()) return failure();
@@ -730,7 +730,7 @@ class ConvertDynamicUpdateSliceOp
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::DynamicUpdateSliceOp op, ArrayRef<Value> args,
+      mhlo::DynamicUpdateSliceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     ShapedType operand_type = op.operand().getType().cast<ShapedType>();
     ShapedType update_type =
@@ -949,7 +949,7 @@ class ConvertSortToTfTopk : public OpConversionPattern<mhlo::SortOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::SortOp op, ArrayRef<Value> args,
+      mhlo::SortOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (op->getOperands().size() != 2)
       return rewriter.notifyMatchFailure(
@@ -1212,7 +1212,7 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ReduceOp reduce_op, ArrayRef<Value> args,
+      mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (failed(MatchReduceOpInput(reduce_op))) return failure();
 
@@ -1332,7 +1332,7 @@ class ConvertReduceOpToTfArgMinMax
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::ReduceOp reduce_op, ArrayRef<Value> args,
+      mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (reduce_op.inputs().size() != 2) return failure();
     if (reduce_op.dimensions().getNumElements() != 1) return failure();
@@ -1501,7 +1501,7 @@ class ConvertIotaOpToTfRange : public OpConversionPattern<mhlo::IotaOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::IotaOp iota_op, ArrayRef<Value> args,
+      mhlo::IotaOp iota_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     RankedTensorType type =
         iota_op.getType().dyn_cast_or_null<RankedTensorType>();
@@ -1640,7 +1640,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       : OpConversionPattern(context, /*benefit=*/10) {}
 
   LogicalResult matchAndRewrite(
-      mhlo::DivOp div_op, ArrayRef<Value> args,
+      mhlo::DivOp div_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     auto rw =
         dyn_cast_or_null<mhlo::ReduceWindowOp>(div_op.lhs().getDefiningOp());
@@ -1761,7 +1761,7 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ReduceWindowOp rw, ArrayRef<Value> args,
+      mhlo::ReduceWindowOp rw, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     // Check that the reduce-window is a max-reduce-window.
     if (failed(MatchBinaryReduceFunction<mhlo::MaxOp>(rw.body())))
@@ -1937,7 +1937,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
   };
 
   LogicalResult matchAndRewrite(
-      mhlo::GatherOp gather_op, ArrayRef<Value> args,
+      mhlo::GatherOp gather_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     Value operand = gather_op.operand();
     Value start_indices = gather_op.start_indices();
@@ -2137,7 +2137,7 @@ class ConvertWhileOp : public OpConversionPattern<mhlo::WhileOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::WhileOp while_op, ArrayRef<Value> args,
+      mhlo::WhileOp while_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     // HLO WhileOp should have two regions: cond and body.
     if (while_op->getNumRegions() != 2) return failure();
@@ -2185,7 +2185,7 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ScatterOp scatter_op, ArrayRef<Value> args,
+      mhlo::ScatterOp scatter_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     Value operand = scatter_op.operand();
     Value indices = scatter_op.scatter_indices();
