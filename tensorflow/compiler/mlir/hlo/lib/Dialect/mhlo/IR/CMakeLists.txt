@@ -40,12 +40,18 @@ add_mlir_dialect_library(ChloDialect
 add_mlir_library(MhloInferShapeEqualityOpInterface
   infer_shape_equality_op_interface.cc
 
+  LINK_LIBS PUBLIC
+  MLIRIR
+
   DEPENDS
   MLIRinfer_shape_equality_op_interfaceIncGen
 )
 
 add_mlir_library(LmhloStructuredInterface
   lhlo_structured_interface.cc
+
+  LINK_LIBS PUBLIC
+  MLIRIR
 
   DEPENDS
   MLIRlhlo_structured_interfaceIncGen
