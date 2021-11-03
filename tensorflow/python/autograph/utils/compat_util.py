@@ -14,10 +14,7 @@
 # ==============================================================================
 """Miscellaneous utilities that don't fit anywhere else."""
 
-import importlib
 import sys
-
-import six
 
 
 class BasicRef(object):
@@ -25,10 +22,3 @@ class BasicRef(object):
 
   def __init__(self, init_value):
     self.value = init_value
-
-
-def deprecated_py2_support(module_name):
-  """Swaps calling module with a Py2-specific implementation. Noop in Py3."""
-  if six.PY2:
-    legacy_module = importlib.import_module(module_name + '_deprecated_py2')
-    sys.modules[module_name] = legacy_module

@@ -25,7 +25,6 @@ import tempfile
 import warnings
 
 import numpy as np
-import six
 
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
@@ -124,34 +123,19 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   # str is bytes in py2, but unicode in py3.
   def _ToUnicode(self, s):
-    if six.PY2:
-      if isinstance(s, unicode):
-        return s
-      return s.decode("utf-8")
-    else:
-      if isinstance(s, str):
-        return s
-      return s.decode("utf-8")
+    if isinstance(s, str):
+      return s
+    return s.decode("utf-8")
 
   def _ToBytes(self, s):
-    if six.PY2:
-      if isinstance(s, unicode):
-        return s.encode("utf-8")
-      return s
-    else:
-      if isinstance(s, str):
-        return s.encode("utf-8")
-      return s
+    if isinstance(s, str):
+      return s.encode("utf-8")
+    return s
 
   def _ToString(self, s):
-    if six.PY2:
-      if isinstance(s, unicode):
-        return s.encode("utf-8")
+    if isinstance(s, str):
       return s
-    else:
-      if isinstance(s, str):
-        return s
-      return s.decode("utf-8")
+    return s.decode("utf-8")
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TfTrtIntegrationTestBase, self).__init__(methodName)

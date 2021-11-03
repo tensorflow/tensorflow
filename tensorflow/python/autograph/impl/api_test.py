@@ -1144,9 +1144,6 @@ class ApiTest(test.TestCase):
 
   def test_tf_convert_allowlisted_method(self):
 
-    if six.PY2:
-      self.skipTest('Test bank not comptible with Python 2.')
-
     class TestClass(object):
 
       def method(self):

@@ -49,9 +49,6 @@ SPECIAL_BUILTINS = {
     'zip': zip
 }
 
-if six.PY2:
-  SPECIAL_BUILTINS['xrange'] = xrange
-
 
 def islambda(f):
   if not tf_inspect.isfunction(f):

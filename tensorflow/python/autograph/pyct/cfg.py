@@ -42,7 +42,6 @@ import weakref
 
 import astunparse
 import gast
-import six
 
 from tensorflow.python.autograph.pyct import anno
 
@@ -207,10 +206,6 @@ class GraphVisitor(object):
     ast_node = node.ast_node
     if anno.hasanno(ast_node, anno.Basic.SKIP_PROCESSING):
       return True
-    if six.PY2:
-      if (isinstance(ast_node, gast.Name) and
-          ast_node.id in ('None', 'True', 'False')):
-        return True
     return isinstance(ast_node,
                       (gast.Break, gast.Continue, gast.Raise, gast.Pass))
 
