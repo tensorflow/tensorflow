@@ -583,15 +583,15 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     // omitting logging through the logger.
     if (!crash_on_checking_failure) {
       tensorflow::Logger::GetSingleton()->LogProto(log);
-    }
-  }
-
-  // Crash on miscompares and redzone violations if desired.  Do this after
-  // logging the autotuning results, otherwise we won't get any data!
-  for (const auto& result : profile_results) {
-    if (result.has_failure() &&
-        result.failure().kind() != AutotuneResult::DISQUALIFIED) {
-      CHECK(!crash_on_checking_failure);
+    } else {
+      // Crash on miscompares and redzone violations if desired.
+      for (const auto& profile : profile_results) {
+        if (profile.has_failure() &&
+            profile.failure().kind() != AutotuneResult::DISQUALIFIED) {
+          LOG(FATAL) << "crash_on_checking_failure encountered errors:\n\n"
+                     << log.DebugString();
+        }
+      }
     }
   }
 
