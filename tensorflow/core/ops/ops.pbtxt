@@ -37790,6 +37790,13 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "Relu"
