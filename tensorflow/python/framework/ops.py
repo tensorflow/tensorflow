@@ -3125,9 +3125,14 @@ class Graph(object):
     # Estimator and optimizer V1 use cases.
     self._is_loss_scaled_by_optimizer = False
     self._container = ""
+
+    # The current AutomaticControlDependencies context manager.
+    self.experimental_acd_manager = None
     # Set to True if this graph is being built in an
     # AutomaticControlDependencies context.
+    # Deprecated: use acd_manager instead.
     self._add_control_dependencies = False
+
     # Cache for OpDef protobufs retrieved via the C API.
     self._op_def_cache = {}
     # Cache for constant results of `broadcast_gradient_args()`. The keys are
