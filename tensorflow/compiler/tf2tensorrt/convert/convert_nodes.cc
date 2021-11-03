@@ -3902,7 +3902,10 @@ Status ConvertIdentity(OpConverterParams* params) {
   // 5.0, however once we know that it does it would be nice to use that
   // instead.
   if (params->validation_only) return Status::OK();
-  params->outputs->push_back(params->inputs.at(0));
+
+  for (int i = 0; i < params->inputs.size(); i++) {
+    params->outputs->push_back(params->inputs.at(i));
+  }
   return Status::OK();
 }
 
@@ -6710,8 +6713,8 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertArgMinMax, {"ArgMin", "ArgMax"});
 // The following are no-ops during inference and will not be mapped to any
 // TRT layer.
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertIdentity,
-                                  {"Identity", "Snapshot", "StopGradient",
-                                   "_CopyFromHostToGpu"});
+                                  {"Identity", "IdentityN", "Snapshot",
+                                   "StopGradient", "_CopyFromHostToGpu"});
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBatchMatMul,
                                   {"BatchMatMul", "BatchMatMulV2"});
 
