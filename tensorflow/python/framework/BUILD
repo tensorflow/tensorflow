@@ -1871,21 +1871,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "tensor_shape_div_test",
-    size = "small",
-    srcs = ["tensor_shape_div_test.py"],
-    main = "tensor_shape_div_test.py",
-    python_version = "PY3",
-    deps = [
-        ":for_generated_wrappers",
-        ":test_lib",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform_test",
-        "@six_archive//:six",
-    ],
-)
-
-tf_py_test(
     name = "tensor_util_test",
     size = "small",
     srcs = ["tensor_util_test.py"],
