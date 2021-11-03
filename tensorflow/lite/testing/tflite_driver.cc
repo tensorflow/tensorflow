@@ -521,6 +521,12 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
   if (!IsValid()) return;
   auto* tensor = interpreter_->tensor(id);
   switch (tensor->type) {
+    case kTfLiteFloat64: {
+      const auto& values = testing::Split<double>(csv_values, ",");
+      if (!CheckSizes<double>(tensor->bytes, values.size())) return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     case kTfLiteFloat32: {
       const auto& values = testing::Split<float>(csv_values, ",");
       if (!CheckSizes<float>(tensor->bytes, values.size())) return;

@@ -67,22 +67,9 @@ using BrokenTestMap =
 // TODO(ahentz): make sure we clean this list up frequently.
 const BrokenTestMap& GetKnownBrokenTests() {
   static const BrokenTestMap* const kBrokenTests = new BrokenTestMap({
-      // SpaceToBatchND only supports 4D tensors.
-      {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])",
-       {"70848787", false}},
-
-      // BatchToSpaceND only supports 4D tensors.
-      {R"(^\/batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\])",
-       {"70848787", false}},
-
-      // ResizeBilinear looks completely incompatible with Tensorflow
-      {R"(^\/resize_bilinear.*dtype=tf.int32)", {"72401107", false}},
-
       // Select kernel doesn't support broadcasting yet.
       {R"(^\/where.*1,2,3,1)", {"134692786", false}},
 
-      {R"(^\/div.*dtype=tf\.int64)", {"119126484", false}},
-      {R"(^\/floor_div.*dtype=tf\.int64)", {"119126484", false}},
       // TODO(b/194364155): TF and TFLite have different behaviors when output
       // nan values in LocalResponseNorm ops.
       {R"(^\/local_response_norm.*alpha=-3.*beta=2)", {"194364155", true}},
