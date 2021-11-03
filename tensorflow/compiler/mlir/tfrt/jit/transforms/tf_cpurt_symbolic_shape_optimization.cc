@@ -124,8 +124,8 @@ bool isKnownBroadcastable(ShapeComponentAnalysis& analysis,
 LogicalResult CstrBroadcastableOpLowering::matchAndRewrite(
     shape::CstrBroadcastableOp op, mlir::PatternRewriter& rewriter) const {
   ShapeComponentAnalysis shape_component_analysis;
-  if (!isKnownBroadcastable(shape_component_analysis, op.shapes(),
-                            op.shapes().front()))
+  if (!isKnownBroadcastable(shape_component_analysis, op.getShapes(),
+                            op.getShapes().front()))
     return failure();
 
   // Replace constraint with a true witness.
@@ -207,8 +207,8 @@ llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis& analysis,
 LogicalResult BroadcastOpLowering::matchAndRewrite(
     shape::BroadcastOp op, mlir::PatternRewriter& rewriter) const {
   ShapeComponentAnalysis shape_component_analysis;
-  auto new_broadcast = simplifyBroadcast(shape_component_analysis, op.shapes(),
-                                         op.getLoc(), &rewriter);
+  auto new_broadcast = simplifyBroadcast(
+      shape_component_analysis, op.getShapes(), op.getLoc(), &rewriter);
   if (!new_broadcast) return failure();
   rewriter.replaceOp(op, {*new_broadcast});
   return success();

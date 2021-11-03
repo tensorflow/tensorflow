@@ -144,7 +144,7 @@ Value loadGlobalString(OpBuilder& builder, const Location& loc,
 
 // Returns true if the globalOp has the same value as `value`.
 bool checkGlobalOpContent(GlobalOp globalOp, StringRef value) {
-  Optional<Attribute> optValue = globalOp.value();
+  Optional<Attribute> optValue = globalOp.getValue();
   if (!optValue) return false;
 
   StringAttr attr = (*optValue).cast<StringAttr>();

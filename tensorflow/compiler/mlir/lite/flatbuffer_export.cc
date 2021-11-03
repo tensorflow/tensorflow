@@ -717,7 +717,7 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
     // arith::ConstantOp have ElementAttr at this point due to validation of the
     // TFLite module.
-    attr = cst.value().cast<ElementsAttr>();
+    attr = cst.getValue().cast<ElementsAttr>();
   } else if (auto cst = dyn_cast<mlir::TF::ConstOp>(inst)) {
     attr = cst.value();
   } else if (auto cst = dyn_cast<tfl::ConstOp>(inst)) {
@@ -948,7 +948,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
   auto get_call_index = [&](mlir::Block& b) -> Optional<int> {
     if (b.getOperations().size() != 2) return llvm::None;
     if (auto call_op = dyn_cast<mlir::CallOp>(b.front()))
-      return subgraph_index_map_.at(call_op.callee().str());
+      return subgraph_index_map_.at(call_op.getCallee().str());
     return llvm::None;
   };
   auto body_subgraph_index = get_call_index(op.body().front());

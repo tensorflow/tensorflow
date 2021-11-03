@@ -2938,7 +2938,7 @@ struct ComputeReshapeShapeConversion
       Value lhs = accounted_num_els.getBody()->getArgument(1);
       Value rhs = accounted_num_els.getBody()->getArgument(2);
       rewriter.create<shape::YieldOp>(
-          loc, rewriter.create<arith::MulIOp>(loc, lhs, rhs).result());
+          loc, rewriter.create<arith::MulIOp>(loc, lhs, rhs).getResult());
     }
     Value missing_dim_val = rewriter.create<arith::DivUIOp>(
         loc, num_elements, accounted_num_els->getResult(0));

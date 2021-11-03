@@ -1251,7 +1251,7 @@ struct ConvertSelectOp : public OpConversionPattern<BroadcastSelectOp> {
         loc, ArrayRef<Type>{result_type}, broadcastable_cstr);
 
     OpBuilder::InsertionGuard guard(rewriter);
-    rewriter.createBlock(&assuming_op.doRegion());
+    rewriter.createBlock(&assuming_op.getDoRegion());
 
     Value result_extents = rewriter.createOrFold<shape::BroadcastOp>(
         loc, shape::getExtentTensorType(op.getContext()),
@@ -1393,10 +1393,10 @@ struct ConvertRankedDynamicBroadcastBinaryOp
     auto broadcastable_cstr =
         rewriter.create<shape::CstrBroadcastableOp>(loc, lhs_shape, rhs_shape);
     auto assuming_op = rewriter.create<shape::AssumingOp>(
-        loc, ArrayRef<Type>{result_type}, broadcastable_cstr.result());
+        loc, ArrayRef<Type>{result_type}, broadcastable_cstr.getResult());
 
     OpBuilder::InsertionGuard guard(rewriter);
-    rewriter.createBlock(&assuming_op.doRegion());
+    rewriter.createBlock(&assuming_op.getDoRegion());
 
     int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
     Value result_extents =

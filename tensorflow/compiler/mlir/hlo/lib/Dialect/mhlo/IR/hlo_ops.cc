@@ -2225,10 +2225,12 @@ struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
     auto stride_op = stride_val.getDefiningOp<mlir::arith::ConstantOp>();
     if (!start_op || !limit_op || !stride_op) return failure();
 
-    auto start_attr = start_op.value().dyn_cast_or_null<DenseIntElementsAttr>();
-    auto limit_attr = limit_op.value().dyn_cast_or_null<DenseIntElementsAttr>();
+    auto start_attr =
+        start_op.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
+    auto limit_attr =
+        limit_op.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
     auto stride_attr =
-        stride_op.value().dyn_cast_or_null<DenseIntElementsAttr>();
+        stride_op.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
     if (!start_attr || !limit_attr || !stride_attr) return failure();
 
     SmallVector<int64_t, 4> temp_start_indices;

@@ -172,7 +172,7 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
   // we set its value as a const tensor of specified size and value 0.
   EXPECT_TRUE(mlir::cast<mlir::arith::ConstantOp>(
                   it->getOpOperand(15).get().getDefiningOp())
-                  .value()
+                  .getValue()
                   .cast<ElementsAttr>()
                   .getValue<FloatAttr>(0)
                   .getValue()

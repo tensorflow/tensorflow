@@ -43,10 +43,10 @@ struct IndexCastConverter : public OpRewritePattern<arith::IndexCastOp> {
         op, op.getType(),
         result_ty.hasStaticShape() ? ValueRange{}
                                    : ValueRange{rewriter.create<tensor::DimOp>(
-                                         op.getLoc(), op.in(), 0)},
+                                         op.getLoc(), op.getIn(), 0)},
         [&](OpBuilder &b, Location loc, ValueRange args) {
           Value dim = args.front();
-          Value extent = b.create<tensor::ExtractOp>(loc, op.in(), dim);
+          Value extent = b.create<tensor::ExtractOp>(loc, op.getIn(), dim);
           Value casted = b.create<arith::IndexCastOp>(
               loc, extent, result_ty.getElementType());
           b.create<tensor::YieldOp>(loc, casted);
