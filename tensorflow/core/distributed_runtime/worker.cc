@@ -57,7 +57,8 @@ void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
   Status s = env_->session_mgr->CreateSession(
       request->session_handle(), request->server_def(),
       request->cluster_device_attributes(), request->isolate_session_state(),
-      request->master_task(), request->master_incarnation());
+      request->master_task(), request->master_incarnation(),
+      request->coordination_service_config());
   done(s);
 }
 
@@ -225,6 +226,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   session->graph_mgr()->ExecuteAsync(
       request->graph_handle(), step_id, session.get(), request->exec_opts(),
       collector, response, cm, in,
+      env_->session_mgr->GetCoordinationServiceAgent(),
       [this, step_id, response, session, cm, out, token, collector,
        device_profiler_session, opts, done](const Status& status) {
         Status s = status;
@@ -317,6 +319,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     session->graph_mgr()->ExecuteAsync(
         graph_handle, step_id, session.get(), request->exec_opts(),
         nullptr /* collector */, nullptr /* response */, cm, in,
+        env_->session_mgr->GetCoordinationServiceAgent(),
         [this, token, step_id, session](Status s) {
           cancellation_manager_.DeregisterCallback(token);
           partial_run_mgr_.ExecutorDone(step_id, s);

@@ -44,6 +44,7 @@ class StepStatsCollector;
 class RendezvousMgrInterface;
 class DeviceMgr;
 class WorkerSession;
+class CoordinationServiceAgent;
 
 // GraphMgr keeps track of a set of graphs that are registered with a
 // TensorFlow worker. Each registered graph is identified by a handle
@@ -85,6 +86,8 @@ class GraphMgr {
   //
   // If "out" is not nullptr, "out" specifies all keys the execution
   // should receive upon finish.
+  // TODO(hanyangtay): Clean up the function signature such that input-only
+  // parameters come first.
   typedef std::map<string, Tensor> NamedTensors;
   typedef std::function<void(const Status&)> StatusCallback;
   void ExecuteAsync(const string& handle, const int64_t step_id,
@@ -92,7 +95,9 @@ class GraphMgr {
                     StepStatsCollector* collector,
                     MutableRunGraphResponseWrapper* response,
                     CancellationManager* cancellation_manager,
-                    const NamedTensors& in, StatusCallback done);
+                    const NamedTensors& in,
+                    CoordinationServiceAgent* coordination_service_agent,
+                    StatusCallback done);
 
   Status SendInputs(const int64_t step_id, const NamedTensors& in);
   Status RecvOutputs(const int64_t step_id, NamedTensors* out);
@@ -167,7 +172,9 @@ class GraphMgr {
       const string& handle, int64_t step_id, Item* item, Rendezvous* rendezvous,
       CollectiveExecutor::Handle* ce_handle, StepStatsCollector* collector,
       CostGraphDef* cost_graph, CancellationManager* cancellation_manager,
-      WorkerSession* session, int64_t start_time_usecs, StatusCallback done);
+      WorkerSession* session, int64_t start_time_usecs,
+      CoordinationServiceAgent* coordination_service_agent,
+      StatusCallback done);
 
   // Don't attempt to process cost models unless explicitly requested for at
   // least one of the items.

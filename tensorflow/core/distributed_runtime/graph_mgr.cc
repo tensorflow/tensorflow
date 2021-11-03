@@ -412,12 +412,14 @@ void GraphMgr::RecvOutputsAsync(const int64_t step_id, NamedTensors* out,
       });
 }
 
-void GraphMgr::ExecuteAsync(const string& handle, const int64_t step_id,
-                            WorkerSession* session, const ExecutorOpts& opts,
-                            StepStatsCollector* collector,
-                            MutableRunGraphResponseWrapper* response,
-                            CancellationManager* cancellation_manager,
-                            const NamedTensors& in, StatusCallback done) {
+// TODO(hanyangtay): Clean up the function signature such that input-only
+// parameters come first.
+void GraphMgr::ExecuteAsync(
+    const string& handle, const int64_t step_id, WorkerSession* session,
+    const ExecutorOpts& opts, StepStatsCollector* collector,
+    MutableRunGraphResponseWrapper* response,
+    CancellationManager* cancellation_manager, const NamedTensors& in,
+    CoordinationServiceAgent* coordination_service_agent, StatusCallback done) {
   const uint64 start_time_usecs = Env::Default()->NowMicros();
   profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish or RunGraphDone.
@@ -489,6 +491,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64_t step_id,
   StartParallelExecutors(
       handle, step_id, item, rendezvous, ce_handle, collector, cost_graph,
       cancellation_manager, session, start_time_usecs,
+      coordination_service_agent,
       [item, rendezvous, ce_handle, done, start_time_usecs, input_size,
        step_id](const Status& s) {
         profiler::TraceMeConsumer activity(
@@ -512,7 +515,8 @@ void GraphMgr::StartParallelExecutors(
     const string& handle, int64_t step_id, Item* item, Rendezvous* rendezvous,
     CollectiveExecutor::Handle* ce_handle, StepStatsCollector* collector,
     CostGraphDef* cost_graph, CancellationManager* cancellation_manager,
-    WorkerSession* session, int64_t start_time_usecs, StatusCallback done) {
+    WorkerSession* session, int64_t start_time_usecs,
+    CoordinationServiceAgent* coordination_service_agent, StatusCallback done) {
   const int num_units = item->units.size();
   CHECK_GE(num_units, 1);
   ScopedStepContainer* step_container = new ScopedStepContainer(
@@ -536,6 +540,8 @@ void GraphMgr::StartParallelExecutors(
   args.step_container = step_container;
   args.sync_on_finish = sync_on_finish_;
   args.start_time_usecs = start_time_usecs;
+  args.coordination_service_agent = coordination_service_agent;
+
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, handle);
   }

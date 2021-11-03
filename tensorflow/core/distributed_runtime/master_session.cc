@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -1369,6 +1370,8 @@ Status MasterSession::CreateWorkerSessions(const ClusterDef& cluster_def) {
       workers[i].request.set_isolate_session_state(
           session_opts_.config.isolate_session_state());
     }
+    *workers[i].request.mutable_coordination_service_config() =
+        session_opts_.config.experimental().coordination_config();
     if (session_opts_.config.experimental()
             .share_session_state_in_clusterspec_propagation()) {
       // In a dynamic cluster, the ClusterSpec info is usually propagated by
