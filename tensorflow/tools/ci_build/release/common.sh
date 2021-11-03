@@ -156,13 +156,29 @@ function install_ubuntu_16_python_pip_deps {
   # LINT.ThenChange(:mac_pip_installations)
 }
 
-function install_ubuntu_pip_venv_deps {
+function install_ubuntu_pip_deps {
   # Install requirements in the python environment
   which python
   which pip
-  pip install --upgrade pip wheel
-  pip install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
-  pip list
+  PIP_CMD="python -m pip"
+  ${PIP_CMD} list
+  ${PIP_CMD} install --upgrade pip wheel
+  ${PIP_CMD} install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
+  ${PIP_CMD} list
+}
+
+function setup_venv_ubuntu () {
+  # Create virtual env and install dependencies
+  # First argument needs to be the python executable.
+  ${1} -m venv ~/.venv/tf
+  source ~/.venv/tf/bin/activate
+  install_ubuntu_pip_deps
+}
+
+function remove_venv_ubuntu () {
+  # Deactivate virtual environment and clean up
+  deactivate
+  rm -rf ~/.venv/tf
 }
 
 function install_macos_pip_deps {
