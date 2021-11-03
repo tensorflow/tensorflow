@@ -3372,12 +3372,12 @@ def TFL_SpaceToDepthOp: TFL_Op<"space_to_depth", [
    }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QI16, QUI8, TFL_Quint8]>:$input,
     Confined<I32Attr, [IntPositive]>:$block_size
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output
+    TFL_TensorOf<[F32, I32, I64, QI8, QI16, QUI8, TFL_Quint8]>:$output
   );
 
   let hasOptions = 1;
@@ -3402,12 +3402,12 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
    }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64, TFL_Quint8, UI8, QI8, QUI8]>:$input,
+    TFL_TensorOf<[F32, I8, I32, I64, TFL_Quint8, UI8, QI8, QI16, QUI8]>:$input,
     Confined<I32Attr, [IntPositive]>:$block_size
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I32, I64, TFL_Quint8, UI8, QI8, QUI8]>:$output
+    TFL_TensorOf<[F32, I8, I32, I64, TFL_Quint8, UI8, QI8, QI16, QUI8]>:$output
   );
 
   let hasOptions = 1;

@@ -104,25 +104,18 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_SPACE_TO_DEPTH:
+    case BuiltinOperator_DEPTH_TO_SPACE:
       // We skip inputs 1 and 2 since they aren't real valued (they are shapes).
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_BROADCAST_TO:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 3;
-      break;
-    case BuiltinOperator_DEPTH_TO_SPACE:
-      property.inputs = {{0, {}}};
-      property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
-      property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_SPLIT:
       // We skip input 0 since it is the split dim which is not real valued.

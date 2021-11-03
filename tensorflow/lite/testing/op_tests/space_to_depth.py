@@ -33,6 +33,7 @@ def make_space_to_depth_tests(options):
       "input_shape": [[2, 12, 24, 1], [1, 12, 24, 1]],
       "block_size": [2, 3, 4],
       "fully_quantize": [True],
+      "quant_16x8": [False, True],
   }]
 
   def build_graph(parameters):
