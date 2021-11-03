@@ -489,53 +489,36 @@ TEST_F(BinaryOpsTest, EqualUint8_tSpecialCases) {
 
 /// Test `tf.FloorDiv`.
 
-template <typename T>
+template <typename T, std::enable_if_t<llvm::is_one_of<T, float, double>::value,
+                                       bool> = true>
 T baseline_floor_div(T lhs, T rhs) {
   return std::floor(lhs / rhs);
 }
 
-template <>
-Eigen::half baseline_floor_div(Eigen::half lhs, Eigen::half rhs) {
-  return static_cast<Eigen::half>(std::floor(static_cast<float>(lhs / rhs)));
+template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, Eigen::half>::value, bool> = true>
+T baseline_floor_div(T lhs, T rhs) {
+  return static_cast<T>(std::floor(static_cast<float>(lhs / rhs)));
 }
 
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-template <>
-int8_t baseline_floor_div(int8_t lhs, int8_t rhs) {
-  int8_t res = lhs / rhs;
-  if (((lhs < 0 && rhs > 0) || (lhs > 0 && rhs < 0)) && lhs % rhs) {
-    --res;
-  }
-  return res;
-}
-#endif
-
-template <>
-int16_t baseline_floor_div(int16_t lhs, int16_t rhs) {
-  int16_t res = lhs / rhs;
+template <typename T, std::enable_if_t<llvm::is_one_of<T, int8_t, int16_t,
+                                                       int32_t, int64_t>::value,
+                                       bool> = true>
+T baseline_floor_div(T lhs, T rhs) {
+  T res = lhs / rhs;
   if (((lhs < 0 && rhs > 0) || (lhs > 0 && rhs < 0)) && lhs % rhs) {
     --res;
   }
   return res;
 }
 
-template <>
-int64_t baseline_floor_div(int64_t lhs, int64_t rhs) {
-  int64_t res = lhs / rhs;
-  if (((lhs < 0 && rhs > 0) || (lhs > 0 && rhs < 0)) && lhs % rhs) {
-    --res;
-  }
-  return res;
-}
-
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-template <>
-uint64_t baseline_floor_div(uint64_t lhs, uint64_t rhs) {
+template <typename T,
+          std::enable_if_t<
+              llvm::is_one_of<T, uint8_t, uint16_t, uint32_t, uint64_t>::value,
+              bool> = true>
+T baseline_floor_div(T lhs, T rhs) {
   return lhs / rhs;
 }
-#endif
 
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     FloorDiv,
