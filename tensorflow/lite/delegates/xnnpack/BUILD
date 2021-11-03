@@ -479,6 +479,24 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "quantized_transpose_conv_tester",
+    testonly = 1,
+    srcs = ["quantized_transpose_conv_tester.cc"],
+    hdrs = ["quantized_transpose_conv_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
 ############################## Integration tests ###############################
 
 cc_library(
@@ -1343,6 +1361,36 @@ cc_test(
     deps = [
         ":test_main",
         ":transpose_conv_tester",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_transpose_conv_test",
+    srcs = ["signed_quantized_transpose_conv_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_transpose_conv_tester",
+        ":test_main",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_transpose_conv_test",
+    srcs = ["unsigned_quantized_transpose_conv_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_transpose_conv_tester",
+        ":test_main",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],

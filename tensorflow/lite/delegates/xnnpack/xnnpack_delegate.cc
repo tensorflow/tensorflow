@@ -3600,7 +3600,7 @@ class Subgraph {
 
     const int filter_tensor_index = node->inputs->data[1];
     const TfLiteTensor& filter_tensor = tensors[filter_tensor_index];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, filter_tensor, filter_tensor_index, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, filter_tensor, 4,
                                            filter_tensor_index));
@@ -3611,7 +3611,7 @@ class Subgraph {
 
     const int input_tensor_index = node->inputs->data[2];
     const TfLiteTensor& input_tensor = tensors[input_tensor_index];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, input_tensor, input_tensor_index, node_index));
     TF_LITE_ENSURE_STATUS(
         CheckTensorShape(logging_context, input_tensor, 4, input_tensor_index));
@@ -3623,7 +3623,7 @@ class Subgraph {
       const int bias_tensor_index = node->inputs->data[3];
       if (bias_tensor_index != kTfLiteOptionalTensor) {
         const TfLiteTensor& bias_tensor = tensors[bias_tensor_index];
-        TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt32Type(
             logging_context, bias_tensor, bias_tensor_index, node_index));
         TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
                                                bias_tensor_index));
@@ -3639,7 +3639,7 @@ class Subgraph {
 
     const int output_tensor_index = node->outputs->data[0];
     const TfLiteTensor& output_tensor = tensors[output_tensor_index];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         logging_context, output_tensor, output_tensor_index, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 4,
                                            output_tensor_index));

@@ -73,7 +73,7 @@ void TransposeConvTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
-  int input_data_size =
+  const int input_data_size =
       BatchSize() * InputHeight() * InputWidth() * InputChannels();
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
   std::generate(default_input_data, default_input_data + input_data_size,
@@ -92,9 +92,9 @@ void TransposeConvTester::Test(TfLiteDelegate* delegate) const {
   float* xnnpack_output_data = delegate_interpreter->typed_tensor<float>(
       delegate_interpreter->outputs()[0]);
 
-  for (size_t i = 0;
-       i < BatchSize() * OutputHeight() * OutputWidth() * OutputChannels();
-       i++) {
+  const int output_data_size =
+      BatchSize() * OutputHeight() * OutputWidth() * OutputChannels();
+  for (size_t i = 0; i < output_data_size; i++) {
     ASSERT_NEAR(default_output_data[i], xnnpack_output_data[i],
                 std::numeric_limits<float>::epsilon() *
                     std::max(std::abs(default_output_data[i]) * 25.0f, 1.0f));
@@ -221,7 +221,7 @@ std::vector<char> TransposeConvTester::CreateTfLiteModel() const {
                      sizeof(float) * filter_data.size())));
 
     if (SparseWeights()) {
-      int dims_count = filter_shape.size();
+      const int dims_count = filter_shape.size();
       std::vector<flatbuffers::Offset<DimensionMetadata>> dim_metadata(
           dims_count);
       std::vector<int> traversal_order(dims_count);

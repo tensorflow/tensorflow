@@ -26,15 +26,19 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
+
+class Interpreter;
+
 namespace xnnpack {
 
-class TransposeConvTester {
+class QuantizedTransposeConvTester {
  public:
-  TransposeConvTester() = default;
-  TransposeConvTester(const TransposeConvTester&) = delete;
-  TransposeConvTester& operator=(const TransposeConvTester&) = delete;
+  explicit QuantizedTransposeConvTester() = default;
+  QuantizedTransposeConvTester(const QuantizedTransposeConvTester&) = delete;
+  QuantizedTransposeConvTester& operator=(const QuantizedTransposeConvTester&) =
+      delete;
 
-  inline TransposeConvTester& BatchSize(int32_t batch_size) {
+  inline QuantizedTransposeConvTester& BatchSize(int32_t batch_size) {
     EXPECT_GT(batch_size, 0);
     batch_size_ = batch_size;
     return *this;
@@ -42,7 +46,7 @@ class TransposeConvTester {
 
   inline int32_t BatchSize() const { return batch_size_; }
 
-  inline TransposeConvTester& InputChannels(int32_t input_channels) {
+  inline QuantizedTransposeConvTester& InputChannels(int32_t input_channels) {
     EXPECT_GT(input_channels, 0);
     input_channels_ = input_channels;
     return *this;
@@ -50,7 +54,7 @@ class TransposeConvTester {
 
   inline int32_t InputChannels() const { return input_channels_; }
 
-  inline TransposeConvTester& OutputChannels(int32_t output_channels) {
+  inline QuantizedTransposeConvTester& OutputChannels(int32_t output_channels) {
     EXPECT_GT(output_channels, 0);
     output_channels_ = output_channels;
     return *this;
@@ -58,7 +62,7 @@ class TransposeConvTester {
 
   inline int32_t OutputChannels() const { return output_channels_; }
 
-  inline TransposeConvTester& OutputHeight(int32_t output_height) {
+  inline QuantizedTransposeConvTester& OutputHeight(int32_t output_height) {
     EXPECT_GT(output_height, 0);
     output_height_ = output_height;
     return *this;
@@ -66,7 +70,7 @@ class TransposeConvTester {
 
   inline int32_t OutputHeight() const { return output_height_; }
 
-  inline TransposeConvTester& OutputWidth(int32_t output_width) {
+  inline QuantizedTransposeConvTester& OutputWidth(int32_t output_width) {
     EXPECT_GT(output_width, 0);
     output_width_ = output_width;
     return *this;
@@ -74,7 +78,7 @@ class TransposeConvTester {
 
   inline int32_t OutputWidth() const { return output_width_; }
 
-  inline TransposeConvTester& KernelHeight(int32_t kernel_height) {
+  inline QuantizedTransposeConvTester& KernelHeight(int32_t kernel_height) {
     EXPECT_GT(kernel_height, 0);
     kernel_height_ = kernel_height;
     return *this;
@@ -82,7 +86,7 @@ class TransposeConvTester {
 
   inline int32_t KernelHeight() const { return kernel_height_; }
 
-  inline TransposeConvTester& KernelWidth(int32_t kernel_width) {
+  inline QuantizedTransposeConvTester& KernelWidth(int32_t kernel_width) {
     EXPECT_GT(kernel_width, 0);
     kernel_width_ = kernel_width;
     return *this;
@@ -90,7 +94,7 @@ class TransposeConvTester {
 
   inline int32_t KernelWidth() const { return kernel_width_; }
 
-  inline TransposeConvTester& StrideHeight(int32_t stride_height) {
+  inline QuantizedTransposeConvTester& StrideHeight(int32_t stride_height) {
     EXPECT_GT(stride_height, 0);
     stride_height_ = stride_height;
     return *this;
@@ -98,7 +102,7 @@ class TransposeConvTester {
 
   inline int32_t StrideHeight() const { return stride_height_; }
 
-  inline TransposeConvTester& StrideWidth(int32_t stride_width) {
+  inline QuantizedTransposeConvTester& StrideWidth(int32_t stride_width) {
     EXPECT_GT(stride_width, 0);
     stride_width_ = stride_width;
     return *this;
@@ -106,26 +110,19 @@ class TransposeConvTester {
 
   inline int32_t StrideWidth() const { return stride_width_; }
 
-  inline TransposeConvTester& FP16Weights() {
-    fp16_weights_ = true;
-    return *this;
-  }
-
-  inline bool FP16Weights() const { return fp16_weights_; }
-
-  inline TransposeConvTester& SparseWeights() {
+  inline QuantizedTransposeConvTester& SparseWeights() {
     sparse_weights_ = true;
     return *this;
   }
 
   inline bool SparseWeights() const { return sparse_weights_; }
 
-  inline TransposeConvTester& SamePadding() {
+  inline QuantizedTransposeConvTester& SamePadding() {
     padding_ = ::tflite::Padding_SAME;
     return *this;
   }
 
-  inline TransposeConvTester& ValidPadding() {
+  inline QuantizedTransposeConvTester& ValidPadding() {
     padding_ = ::tflite::Padding_VALID;
     return *this;
   }
@@ -150,12 +147,23 @@ class TransposeConvTester {
 
   inline bool UseBias() const { return use_bias_; }
 
-  inline TransposeConvTester& WithBias(bool use_bias = true) {
+  inline QuantizedTransposeConvTester& WithBias(bool use_bias = true) {
     use_bias_ = use_bias;
     return *this;
   }
 
-  inline TransposeConvTester& NoBias() { return WithBias(false); }
+  inline QuantizedTransposeConvTester& NoBias() { return WithBias(false); }
+
+  inline QuantizedTransposeConvTester& Unsigned(bool is_unsigned) {
+    unsigned_ = is_unsigned;
+    return *this;
+  }
+
+  inline QuantizedTransposeConvTester& Signed(bool is_signed = true) {
+    return Unsigned(!is_signed);
+  }
+
+  inline bool Unsigned() const { return unsigned_; }
 
   void Test(TfLiteDelegate* delegate) const;
 
@@ -190,6 +198,11 @@ class TransposeConvTester {
  private:
   std::vector<char> CreateTfLiteModel() const;
 
+  template <typename WeightType>
+  void EnsureOutputsClose(const Interpreter* default_interpreter,
+                          const Interpreter* delegate_interpreter) const;
+
+ private:
   int32_t batch_size_ = 1;
   int32_t input_channels_ = 1;
   int32_t output_channels_ = 1;
@@ -200,8 +213,8 @@ class TransposeConvTester {
   int32_t stride_height_ = 1;
   int32_t stride_width_ = 1;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
+  bool unsigned_ = true;
   bool use_bias_ = true;
-  bool fp16_weights_ = false;
   bool sparse_weights_ = false;
 };
 
