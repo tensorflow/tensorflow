@@ -524,3 +524,8 @@ def LegalizeImag : Pat<(TF_ImagOp $arg), (TFL_ImagOp $arg)>;
 def LegalizeBucketize : Pat<
   (TF_BucketizeOp $input, F32ArrayAttr:$boundaries),
   (TFL_BucketizeOp $input, $boundaries)>;
+
+def LegalizeRandomUniform : Pat<
+  (TF_RandomUniformOp $shape, $seed, $seed2),
+  (TFL_RandomUniformOp $shape, (convertIntAttrTo64Bit $seed),
+   (convertIntAttrTo64Bit $seed2))>;
