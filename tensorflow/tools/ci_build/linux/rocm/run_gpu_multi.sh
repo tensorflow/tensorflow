@@ -73,16 +73,8 @@ bazel test \
 //tensorflow/python/distribute:tf_function_test_2gpu \
 //tensorflow/python/distribute:vars_test_2gpu \
 //tensorflow/python/distribute:warm_starting_util_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:category_crossing_distribution_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:category_encoding_distribution_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:discretization_distribution_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:hashing_distribution_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:image_preprocessing_distribution_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:index_lookup_distribution_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:text_vectorization_distribution_test_2gpu \
 //tensorflow/python/keras/utils:multi_gpu_utils_test_2gpu \
 //tensorflow/python/keras/utils:multi_gpu_utils_test_xla_2gpu \
-//tensorflow/python/kernel_tests:dynamic_partition_op_test_2gpu \
 //tensorflow/python/training:saver_test_2gpu \
 
 
