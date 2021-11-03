@@ -718,4 +718,5 @@ def as_dtype(type_value):
   if isinstance(type_value, _dtypes.DType):
     return _INTERN_TABLE[type_value.as_datatype_enum]
 
-  raise TypeError(f"Cannot convert value {type_value!r} to a TensorFlow DType.")
+  raise TypeError(f"Cannot convert the argument `type_value`: {type_value!r} "
+                  "to a TensorFlow DType.")
