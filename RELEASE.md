@@ -1,3 +1,7 @@
+# Release 2.6.2
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.6.1
 
 This release introduces several vulnerability fixes:
