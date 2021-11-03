@@ -105,6 +105,9 @@ def ReorderReshapeFakeQuant :
 class UpdateShapeWithAxis<int i> : NativeCodeCall<
   "quant::CastQuantizedTypeAttrFromExpressedType($_builder, $0, $1.getType(), " # i # ")">;
 
+class CanUpdateShapeWithAxis<int i> : Constraint<
+  CPred<"quant::CastQuantizedTypeAttrFromExpressedType($_builder, $0, $1.getType(), " # i # ")">>;
+
 class UsedBy<string op> : Constraint<
   CPred<"llvm::isa<mlir::TFL::" # op # "Op>(*$0.getUsers().begin())">>;
 
@@ -116,12 +119,15 @@ def ReorderTransposeDequantQuant :
               (TFL_DequantizeOp (TFL_QuantizeOp $input, $qtype)), $perm),
           (TFL_DequantizeOp (TFL_QuantizeOp
                                 (TF_TransposeOp $input, $perm),
-                                (UpdateShapeWithAxis<-1> $qtype, $old_value)))>;
+                                (UpdateShapeWithAxis<-1> $qtype, $old_value))),
+          [(CanUpdateShapeWithAxis<-1> $qtype, $old_value)]>;
+
 def ReorderReshapeDequantQuant : Pat<(TF_ReshapeOp:$old_value
               (TFL_DequantizeOp (TFL_QuantizeOp $input, $qtype)), $shape),
           (TFL_DequantizeOp
               (TFL_QuantizeOp (TF_ReshapeOp $input, $shape),
-              (UpdateShapeWithAxis<-1> $qtype, $old_value)))>;
+              (UpdateShapeWithAxis<-1> $qtype, $old_value))),
+          [(CanUpdateShapeWithAxis<-1> $qtype, $old_value)]>;
 
 // The axis is set to 0 because the transpose is from the legalization of
 // tf.conv2d and the new channel axis is the first dimension.
@@ -131,8 +137,10 @@ def ReorderTransposeDequantQuantUsedByConv :
           (TFL_DequantizeOp (TFL_QuantizeOp
                                 (TF_TransposeOp $input, $perm),
                                 (UpdateShapeWithAxis<0> $qtype, $old_value))),
-  [(UsedBy<"Conv2D"> $old_value)],
+  [(UsedBy<"Conv2D"> $old_value),
+   (CanUpdateShapeWithAxis<0> $qtype, $old_value)],
   (addBenefit 10)>;
+
 // The axis is set to 3, because this reshape is from the legalization of
 // tf.depthwiseconvnative and the new channel axis is the last dimension.
 def ReorderReshapeDequantQuantUsedByDepthwiseConv :
@@ -141,7 +149,8 @@ def ReorderReshapeDequantQuantUsedByDepthwiseConv :
           (TFL_DequantizeOp
               (TFL_QuantizeOp (TF_ReshapeOp $input, $shape),
               (UpdateShapeWithAxis<3> $qtype, $old_value))),
-  [(UsedBy<"DepthwiseConv2D"> $old_value)],
+  [(UsedBy<"DepthwiseConv2D"> $old_value),
+   (CanUpdateShapeWithAxis<3> $qtype, $old_value)],
   (addBenefit 10)>;
 
 // The Rank op produces result which is independent with the quantization
