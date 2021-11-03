@@ -101,7 +101,7 @@ REQUIRED_PACKAGES = [
     'tensorflow_estimator >= 2.7.0, < 2.8',
     # Keras release is not backward compatible with old tf release, and we have
     # to make the version aligned between TF and Keras.
-    'keras >= 2.7.0rc0, < 2.8',
+    'keras >= 2.7.0, < 2.8',
     'tensorflow-io-gcs-filesystem >= 0.21.0',
 ]
 
