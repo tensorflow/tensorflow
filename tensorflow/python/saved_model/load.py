@@ -335,7 +335,7 @@ class Loader(object):
           for node_id in proto.bound_inputs
           if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
       ]
-      # TODO(andresp): This is only injecting the captured inputs into the
+      # TODO(b/205010575): This is only injecting the captured inputs into the
       # concrete function, note that we did not modify the FuncGraph
       # itself.
       captured_inputs_list = []
@@ -503,7 +503,7 @@ class Loader(object):
   def _restore_checkpoint(self):
     """Load state from checkpoint into the deserialized objects."""
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
-    # TODO(andresp): Clean use of private methods of TrackableSaver.
+    # TODO(b/205010730): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
     saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
     with ops.device("CPU"):
