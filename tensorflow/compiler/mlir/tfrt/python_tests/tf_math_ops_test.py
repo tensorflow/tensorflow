@@ -74,6 +74,15 @@ def test_1d(op_name, fn, vectorize=False, lb=-1.0, ub=1.0, rtol_enum=Rtol.BASE):
 
 class TfMathOpsTest(parameterized.TestCase):
   @parameterized.named_parameters(
+      # Note: for now we are testing for identical results to TF (and therefore
+      # Eigen). In the short term, this will work because Eigen's approximations
+      # don't change too often. However, in the long term could become a
+      # maintenance burden.
+      # TODO(ecg): relax tolerances to accommodate for changes in Eigen, and add
+      # a flag to control the minimum tolerance, so that we can manually check
+      # for identical results to Eigen.
+      ('exp_scalar', 'Exp', math.exp, False, Rtol.AVX2),
+      ('exp_vector', 'Exp', math.exp, True, Rtol.AVX2),
       ('reciprocal_scalar', 'Reciprocal', math.reciprocal, False, Rtol.ZERO),
       ('reciprocal_vector', 'Reciprocal', math.reciprocal, True, Rtol.ZERO),
       # Rsqrt: The AVX2 intrinsic is only emitted with vectorization.
