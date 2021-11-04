@@ -1485,6 +1485,21 @@ SpmdPartitioningVisitor::MakePartitioningState() {
   return state;
 }
 
+std::vector<ReplicaGroup> SpmdPartitioningVisitor::CreateReplicaGroups(
+    std::vector<std::vector<int64_t>>& groups) {
+  std::vector<ReplicaGroup> device_groups;
+  device_groups.reserve(groups.size() * num_replicas_);
+  for (int64_t i = 0; i < num_replicas_; ++i) {
+    for (const auto& group : groups) {
+      device_groups.emplace_back();
+      for (int64_t id : group) {
+        device_groups.back().add_replica_ids(i * num_partitions_ + id);
+      }
+    }
+  }
+  return device_groups;
+}
+
 Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   if (hlo->HasSideEffect()) {
     return Unimplemented("Side-effect ops cannot be replicated: %s",
