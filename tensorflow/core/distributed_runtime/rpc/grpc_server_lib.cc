@@ -314,7 +314,14 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
           std::unique_ptr<WorkerCacheInterface> worker_cache,
           std::unique_ptr<DeviceSet> device_set,
           std::vector<string> filtered_worker_list) {
+        auto session_config = options.config;
+
+        // Make sure that both the server and session have session config.
         options.config.MergeFrom(config);
+
+        // Ensure that session config  has a higher priority than session config
+        // in server .
+        options.config.MergeFrom(session_config);
         return new MasterSession(options, env, std::move(remote_devs),
                                  std::move(worker_cache), std::move(device_set),
                                  std::move(filtered_worker_list),
