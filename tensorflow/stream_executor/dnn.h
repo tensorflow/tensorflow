@@ -1388,10 +1388,13 @@ class DnnSupport {
   virtual port::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
       const dnn::FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data,
       const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
+      ScratchAllocator* scratch_allocator,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
   virtual port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
