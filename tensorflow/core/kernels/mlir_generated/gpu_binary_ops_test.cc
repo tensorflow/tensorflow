@@ -49,6 +49,10 @@ GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Float, float, float, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Double, double, double, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Int8, int8_t, int8_t, baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Int16, int16_t, int16_t, baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Int64, int64_t, int64_t, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/UInt8, uint8_t, uint8_t, baseline_add,
@@ -60,13 +64,6 @@ GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Complex128, std::complex<double>,
                        std::complex<double>, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Int8, int8_t, int8_t, baseline_add,
-                       test::OpsTestConfig().ExpectStrictlyEqual())
-GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Int16, int16_t, int16_t, baseline_add,
-                       test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
 
 /// Test `tf.AddV2`.
 
