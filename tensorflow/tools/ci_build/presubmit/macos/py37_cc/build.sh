@@ -45,12 +45,8 @@ function run_build () {
     --test_tag_filters="${tag_filters}" \
     --action_env=PATH \
     --remote_accept_cached=true \
-    --spawn_strategy=standalone \
     --remote_local_fallback=false \
     --remote_timeout=600 \
-    --strategy=Javac=standalone \
-    --strategy=Closure=standalone \
-    --genrule_strategy=standalone \
     -- //tensorflow/python/... # ${DEFAULT_BAZEL_TARGETS} -//tensorflow/java/... -//tensorflow/lite/java/...
 
   # Copy log to output to be available to GitHub
