@@ -147,7 +147,32 @@ class GenericType(trace.TraceType):
         or isinstance(value, composite_tensor.CompositeTensor))
 
 
+# TODO(b/182990542): Trigger function cache to remove associated concrete
+# function at the deletion of referrant.
+class WeakrefType(GenericType):
+  """Represents weakref of an arbitrary Python object."""
+
+  def __eq__(self, other):
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    if not isinstance(other, WeakrefType):
+      return False
+
+    if self._object() is None or other._object() is None:
+      return False
+
+    if self._object() is other._object():
+      return True
+
+    return self._object == other._object
+
+  def __hash__(self):
+    return self._object_hash
+
+
 _pywrap_utils.RegisterType("GenericType", GenericType)
+_pywrap_utils.RegisterType("WeakrefType", WeakrefType)
 
 
 class OrderedCollectionType(trace.TraceType):
