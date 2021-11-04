@@ -878,7 +878,7 @@ TEST_F(UnaryOpsTest, RintWithCache) {
   do {
     ASSERT_GE(max_tries--, 0);
   } while (!env->LocalTempFilename(&jit_dir));
-  auto *original_env = getenv(kTFJitCacheDirEnvVar);
+  char* original_env = getenv(kTFJitCacheDirEnvVar);
   setenv(kTFJitCacheDirEnvVar, jit_dir.c_str(), 1);
 
   // Run the actual test
@@ -891,7 +891,7 @@ TEST_F(UnaryOpsTest, RintWithCache) {
   TF_ASSERT_OK(env->GetChildren(jit_dir, &children));
   ASSERT_EQ(1, children.size());
 
-  setenv(kTFJitCacheDirEnvVar, original_env, 1);
+  if (original_env != nullptr) setenv(kTFJitCacheDirEnvVar, original_env, 1);
 }
 #endif
 
