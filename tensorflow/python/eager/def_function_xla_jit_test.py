@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+import gc
+
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -693,9 +695,11 @@ class DefFunctionTest(xla_test.XLATestCase):
       arg1 = random_ops.random_normal([2])
       arg2 = random_ops.random_normal([2])
 
+      gc.collect()
       initial_usage = context.context().get_memory_info(
           v.device)['current'] if on_gpu else 0
       update_var(arg1, arg2)
+      gc.collect()
       final_usage = context.context().get_memory_info(
           v.device)['current'] if on_gpu else 0
       self.assertEqual(initial_usage, final_usage)
@@ -717,9 +721,11 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       arg = random_ops.random_normal([1])
 
+      gc.collect()
       initial_usage = context.context().get_memory_info(
           v.device)['current'] if on_gpu else 0
       update_var(constant_op.constant([1, 1]), arg)
+      gc.collect()
       final_usage = context.context().get_memory_info(
           v.device)['current'] if on_gpu else 0
       self.assertEqual(initial_usage, final_usage)
@@ -770,11 +776,13 @@ class DefFunctionTest(xla_test.XLATestCase):
       b = random_ops.random_normal([10, 10])
 
       on_gpu = 'gpu' in self.device.lower()
+      gc.collect()
       initial_usage = context.context().get_memory_info(
           b.backing_device)['current'] if on_gpu else 0
 
       f(a, b)
 
+      gc.collect()
       final_usage = context.context().get_memory_info(
           b.backing_device)['current'] if on_gpu else 0
       self.assertEqual(initial_usage, final_usage)
