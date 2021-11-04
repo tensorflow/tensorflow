@@ -19,6 +19,7 @@ import collections
 import itertools
 
 from absl.testing import parameterized
+import six
 
 from tensorflow.python import tf2
 from tensorflow.python.distribute import ps_values
