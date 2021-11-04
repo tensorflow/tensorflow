@@ -345,8 +345,6 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Div,
     /*test_name=*/Int8, int8_t, int8_t, test::DefaultInput<int8_t>(),
@@ -362,7 +360,6 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/Uint64, uint64_t, uint64_t, test::DefaultInput<uint64_t>(),
     test::DefaultInputNonZero<uint64_t>(), baseline_div,
     test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
 
 // The following tests don't work with Eigen kernels if the Eigen kernels are
 // compiled with nvcc.
