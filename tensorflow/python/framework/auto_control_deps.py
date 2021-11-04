@@ -119,6 +119,7 @@ SKIPPED_ORDER_INSENSITIVE_STATEFUL_OPS = frozenset((
     "EnqueueTPUEmbeddingIntegerBatch",
     "EnqueueTPUEmbeddingSparseTensorBatch",
     "EnqueueTPUEmbeddingRaggedTensorBatch",
+    "EnqueueTPUEmbeddingArbitraryTensorBatch",
     "RestoreV2",
     "SaveV2",
     "InfeedEnqueue",
