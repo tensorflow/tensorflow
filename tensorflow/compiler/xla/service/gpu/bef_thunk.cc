@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 
 #if BEF_THUNKS
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project

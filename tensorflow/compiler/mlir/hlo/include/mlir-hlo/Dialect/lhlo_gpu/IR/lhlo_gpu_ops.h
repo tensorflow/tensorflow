@@ -15,15 +15,14 @@ limitations under the License.
 
 // This file defines the operations used in the LHLO dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_GPU_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_GPU_OPS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
-#include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -32,15 +31,11 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Interfaces/CopyOpInterface.h"
-#include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
-#include "mlir/Interfaces/ViewLikeInterface.h"
 
 namespace mlir {
 class OpBuilder;
 }  // namespace mlir
-
 
 namespace mlir {
 namespace lmhlo_gpu {
@@ -55,6 +50,6 @@ class LmhloGpuDialect : public Dialect {
 }  // end namespace mlir
 
 #define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h.inc"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_GPU_OPS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H_

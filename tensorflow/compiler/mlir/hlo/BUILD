@@ -283,16 +283,16 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-struct-attr-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h.inc",
+            "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.h.inc",
         ),
         (
             ["-gen-struct-attr-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.cc.inc",
+            "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.td",
-    deps = [":hlo_ops_td_files"],
+    td_file = "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.td",
+    deps = [":lhlo_gpu_ops_td_files"],
 )
 
 gentbl_cc_library(
@@ -302,16 +302,16 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-enum-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.h.inc",
+            "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h.inc",
         ),
         (
             ["-gen-enum-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.cc.inc",
+            "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.td",
-    deps = [":hlo_ops_td_files"],
+    td_file = "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.td",
+    deps = [":lhlo_gpu_ops_td_files"],
 )
 
 gentbl_filegroup(
@@ -357,12 +357,12 @@ cc_library(
 cc_library(
     name = "lhlo_gpu_ops_structs",
     srcs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h.inc",
-        "lib/Dialect/mhlo/IR/lhlo_gpu_ops_structs.cc",
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.cc.inc",
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.h.inc",
+        "lib/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.cc",
     ],
     hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.h",
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.h",
     ],
     includes = ["include"],
     deps = [
@@ -375,17 +375,28 @@ cc_library(
 cc_library(
     name = "lhlo_gpu_ops_enums",
     srcs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.h.inc",
-        "lib/Dialect/mhlo/IR/lhlo_gpu_ops_enums.cc",
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.cc.inc",
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h.inc",
+        "lib/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.cc",
     ],
     hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.h",
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h",
     ],
     includes = ["include"],
     deps = [
         ":lhlo_gpu_ops_enums_inc_gen",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+td_library(
+    name = "lhlo_gpu_ops_td_files",
+    srcs = glob(["include/mlir-hlo/Dialect/lhlo_gpu/IR/*.td"]),
+    compatible_with = get_compatible_with_cloud(),
+    includes = ["include"],
+    deps = [
+        ":hlo_ops_td_files",
+        "@llvm-project//mlir:SideEffectTdFiles",
     ],
 )
 
@@ -396,16 +407,16 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-op-decls"],
-            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h.inc",
+            "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h.inc",
         ),
         (
             ["-gen-op-defs"],
-            "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.cc.inc",
+            "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.td",
-    deps = [":hlo_ops_td_files"],
+    td_file = "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.td",
+    deps = [":lhlo_gpu_ops_td_files"],
 )
 
 #TODO(aminim): revisit the naming and grouping of these rules post-move.
@@ -632,12 +643,12 @@ cc_library(
 cc_library(
     name = "lhlo_gpu",
     srcs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h.inc",
-        "lib/Dialect/mhlo/IR/lhlo_gpu_ops.cc",
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.cc.inc",
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h.inc",
+        "lib/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.cc",
     ],
     hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h",
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h",
     ],
     includes = ["include"],
     deps = [
@@ -853,7 +864,6 @@ cc_library(
         ":disc_ral",
         ":hlo",
         ":lhlo",
-        ":lhlo_gpu",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -1898,8 +1908,7 @@ cc_binary(
     deps = [
         ":all_passes",
         ":disc_ral",
-        ":hlo",
-        ":lhlo",
+        ":hlo_dialect_registration",
         ":lhlo_gpu",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",

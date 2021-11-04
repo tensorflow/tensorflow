@@ -13,6 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-add_subdirectory(disc-ral)
-add_subdirectory(lhlo_gpu)
-add_subdirectory(mhlo)
+include_directories(BEFORE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_mlir_dialect_library(LmhloGPUDialect
+  lhlo_gpu_ops.cc
+  lhlo_gpu_ops_structs.cc
+  lhlo_gpu_ops_enums.cc
+
+  DEPENDS
+  MLIRlhlo_gpu_opsIncGen
+
+  LINK_LIBS PUBLIC
+  MhloDialect
+  MLIRIR
+  HloOpsCommon
+)

@@ -13,6 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.h"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.h"
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.cc.inc"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.cc.inc"

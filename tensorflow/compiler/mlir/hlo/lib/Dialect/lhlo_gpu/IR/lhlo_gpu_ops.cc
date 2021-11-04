@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines the operations used in the LMHLO GPU dialect.
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -57,7 +57,7 @@ LmhloGpuDialect::LmhloGpuDialect(MLIRContext *context)
   context->loadDialect<mhlo::MhloDialect>();
   addOperations<
 #define GET_OP_LIST
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.cc.inc"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.cc.inc"
       >();
 }
 
@@ -78,4 +78,4 @@ static LogicalResult Verify(AllReduceStartOp op) {
 }  // namespace mlir
 
 #define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.cc.inc"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.cc.inc"

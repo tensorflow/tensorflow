@@ -99,32 +99,16 @@ add_mlir_dialect_library(LmhloDialect
   MLIRIR
 )
 
-add_mlir_dialect_library(LmhloGPUDialect
-  lhlo_gpu_ops.cc
-  lhlo_gpu_ops_structs.cc
-  lhlo_gpu_ops_enums.cc
-
-  DEPENDS
-  MLIRlhlo_gpu_opsIncGen
-
-  LINK_LIBS PUBLIC
-  MhloDialect
-  MLIRIR
-  HloOpsCommon
-)
-
 add_mlir_dialect_library(MhloRegisterDialects
   init.cc
 DEPENDS
   MLIRchlo_opsIncGen
   MLIRhlo_opsIncGen
   MLIRlhlo_opsIncGen
-  MLIRlhlo_gpu_opsIncGen
 )
 target_link_libraries(MhloRegisterDialects
   PUBLIC
   ChloDialect
   MhloDialect
   LmhloDialect
-  LmhloGPUDialect
 )

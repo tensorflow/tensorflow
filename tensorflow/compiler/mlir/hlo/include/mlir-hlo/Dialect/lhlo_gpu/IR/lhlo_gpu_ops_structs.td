@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef LHLO_GPU_OPS_STRUCTS
 #define LHLO_GPU_OPS_STRUCTS
 
-include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_base.td"
+include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_base.td"
 
 def ConvolutionBackendConfigAttr : StructAttr<"ConvolutionBackendConfig",
                                           LHLO_GPU_Dialect, [
