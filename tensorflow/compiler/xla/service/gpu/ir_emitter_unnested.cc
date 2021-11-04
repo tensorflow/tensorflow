@@ -1039,10 +1039,6 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
           op.backend_config().tensor_ops_enabled().getValue()
               ? se::dnn::AlgorithmProto::TENSOR_OP_MATH
               : se::dnn::AlgorithmProto::DEFAULT_MATH);
-      auto workspace_size = op.backend_config().workspace_size().getInt();
-      if (workspace_size >= 0) {
-        algorithm->mutable_workspace_size()->set_value(workspace_size);
-      }
     }
     descriptor.backend_config.set_conv_result_scale(
         op.result_scale().convertToDouble());
