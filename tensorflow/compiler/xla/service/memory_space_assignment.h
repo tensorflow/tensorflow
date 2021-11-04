@@ -632,6 +632,10 @@ class MemorySpaceAssignment {
       copy_start_schedule_after_ = copy_start_schedule_after;
     }
 
+    void set_copy_done_schedule_before(int64_t copy_done_schedule_before) {
+      copy_done_schedule_before_ = copy_done_schedule_before;
+    }
+
     bool is_cross_program_prefetch() const {
       return is_cross_program_prefetch_;
     }
