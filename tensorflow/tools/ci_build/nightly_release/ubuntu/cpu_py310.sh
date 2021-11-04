@@ -18,25 +18,24 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-update_bazel_linux
+install_bazelisk
 
 # Setup virtual environment and install dependencies
-setup_venv_ubuntu python3.9
+setup_venv_ubuntu python3.10
 
 export PYTHON_BIN_PATH=$(which python)
 "$PYTHON_BIN_PATH" tensorflow/tools/ci_build/update_version.py --nightly
 
 # Build the pip package
 bazel build \
-  --config=release_gpu_linux \
+  --config=release_cpu_linux \
   --action_env=PYTHON_BIN_PATH="$PYTHON_BIN_PATH" \
   tensorflow/tools/pip_package:build_pip_package
 
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --nightly_flag
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --gpu --nightly_flag
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --cpu --nightly_flag
 
 # Upload wheel files
-upload_wheel_gpu_ubuntu
+upload_wheel_cpu_ubuntu
 
 # Remove and cleanup virtual environment
 remove_venv_ubuntu

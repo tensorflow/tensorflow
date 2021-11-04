@@ -21,7 +21,7 @@ source tensorflow/tools/ci_build/release/common.sh
 update_bazel_linux
 
 # Setup virtual environment and install dependencies
-setup_venv_ubuntu python3.9
+setup_venv_ubuntu python3.10
 
 export PYTHON_BIN_PATH=$(which python)
 "$PYTHON_BIN_PATH" tensorflow/tools/ci_build/update_version.py --nightly
