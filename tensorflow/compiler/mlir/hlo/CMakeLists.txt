@@ -39,7 +39,7 @@ option(MHLO_ENABLE_BINDINGS_PYTHON "Enables MHLO python bindings" OFF)
 #-------------------------------------------------------------------------------
 set(MHLO_EXTERNAL_PROJECT_BUILD OFF)
 
-if(NOT (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR))
+if(NOT (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR) AND NOT MLIR_BINARY_DIR)
   # Building as part of LLVM via the external project mechanism.
   set(MHLO_EXTERNAL_PROJECT_BUILD ON)
 else()
