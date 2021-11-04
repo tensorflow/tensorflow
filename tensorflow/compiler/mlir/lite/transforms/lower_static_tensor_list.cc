@@ -722,12 +722,14 @@ struct ConvertTensorListResize
     auto then_branch_op = rewriter.create<FuncOp>(loc, "cond_true", func_type);
     CreateCondTrueBranch(op, shape_dtype, result_type, then_branch_op,
                          &rewriter);
+    then_branch_op.setVisibility(FuncOp::Visibility::Private);
 
     // Constructs `else_branch`, which is executed when `if_cond` evaluates to
     // false.
     auto else_branch_op = rewriter.create<FuncOp>(loc, "cond_false", func_type);
     CreateCondFalseBranch(loc, shape_dtype, result_type, else_branch_op,
                           &rewriter);
+    else_branch_op.setVisibility(FuncOp::Visibility::Private);
 
     // Inserts the two blocks' names into the symbol table held by the module.
     // Using SymbolTable will ensure that the inserted symbol names are
