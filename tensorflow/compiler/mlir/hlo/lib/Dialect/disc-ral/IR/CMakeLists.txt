@@ -13,11 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+include_directories(BEFORE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR})
 
-set(LLVM_TARGET_DEFINITIONS mhlo_passes.td)
-mlir_tablegen(mhlo_passes.h.inc -gen-pass-decls -name MHLO)
-add_public_tablegen_target(MLIRMhloPassIncGen)
+add_mlir_dialect_library(DiscRalDialect
+  disc_ral_ops.cc
 
-set(LLVM_TARGET_DEFINITIONS lmhlo_passes.td)
-mlir_tablegen(lmhlo_passes.h.inc -gen-pass-decls -name LMHLO)
-add_public_tablegen_target(MLIRLmhloPassIncGen)
+  DEPENDS
+  MLIRdisc_ral_opsIncGen
+
+  LINK_LIBS PUBLIC
+  MLIRIR
+  MLIRMemRef
+  MLIRTensor
+)

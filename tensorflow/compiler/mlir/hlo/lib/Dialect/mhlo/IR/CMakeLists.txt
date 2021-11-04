@@ -113,18 +113,6 @@ add_mlir_dialect_library(LmhloGPUDialect
   HloOpsCommon
 )
 
-add_mlir_dialect_library(DiscRalDialect
-  disc_ral_ops.cc
-
-  DEPENDS
-  MLIRdisc_ral_opsIncGen
-
-  LINK_LIBS PUBLIC
-  MLIRIR
-  MLIRMemRef
-  MLIRTensor
-)
-
 add_mlir_dialect_library(MhloRegisterDialects
   init.cc
 DEPENDS

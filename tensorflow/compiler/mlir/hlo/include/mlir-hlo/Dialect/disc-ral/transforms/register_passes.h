@@ -13,33 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSDETAIL_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSDETAIL_H_
+#ifndef MLIR_HLO_DIALECT_DISC_RAL_TRANSFORMS_REGISTER_PASSES_H_
+#define MLIR_HLO_DIALECT_DISC_RAL_TRANSFORMS_REGISTER_PASSES_H_
 
+#include "mlir-hlo/Dialect/disc-ral/transforms/passes.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
-namespace scf {
-class SCFDialect;
-}
-namespace memref {
-class MemRefDialect;
-}
+namespace disc_ral {
 
-namespace mhlo {
-class MhloDialect;
-#define GEN_PASS_CLASSES
-#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
+#define GEN_PASS_REGISTRATION
+#include "mlir-hlo/Dialect/disc-ral/transforms/disc_ral_passes.h.inc"
 
-}  // end namespace mhlo
+inline void registerAllDiscRalPasses() { registerRALPasses(); }
 
-namespace lmhlo {
+}  // namespace disc_ral
+}  // namespace mlir
 
-#define GEN_PASS_CLASSES
-#include "mlir-hlo/Dialect/mhlo/transforms/lmhlo_passes.h.inc"
-
-}  // end namespace lmhlo
-
-}  // end namespace mlir
-
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSDETAIL_H_
+#endif  // MLIR_HLO_DIALECT_DISC_RAL_TRANSFORMS_REGISTER_PASSES_H_

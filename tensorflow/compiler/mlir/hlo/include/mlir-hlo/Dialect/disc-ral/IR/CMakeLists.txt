@@ -12,12 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 
-set(LLVM_TARGET_DEFINITIONS mhlo_passes.td)
-mlir_tablegen(mhlo_passes.h.inc -gen-pass-decls -name MHLO)
-add_public_tablegen_target(MLIRMhloPassIncGen)
+function(add_disc_ral_dialect dialect)
+  set(LLVM_TARGET_DEFINITIONS ${dialect}.td)
+  mlir_tablegen(${dialect}.h.inc -gen-op-decls)
+  mlir_tablegen(${dialect}.cc.inc -gen-op-defs)
+  add_public_tablegen_target(MLIR${dialect}IncGen)
+  add_dependencies(mlir-headers MLIR${dialect}IncGen)
+endfunction()
 
-set(LLVM_TARGET_DEFINITIONS lmhlo_passes.td)
-mlir_tablegen(lmhlo_passes.h.inc -gen-pass-decls -name LMHLO)
-add_public_tablegen_target(MLIRLmhloPassIncGen)
+add_disc_ral_dialect(disc_ral_ops)

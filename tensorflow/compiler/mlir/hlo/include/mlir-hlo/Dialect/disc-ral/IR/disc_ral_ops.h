@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines the operations used in the disc_ral dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_DISC_RAL_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_DISC_RAL_OPS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_DISC_RAL_IR_DISC_RAL_OPS_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_DISC_RAL_IR_DISC_RAL_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -61,6 +61,6 @@ class RalExecutionContextType
 }  // end namespace mlir
 
 #define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/mhlo/IR/disc_ral_ops.h.inc"
+#include "mlir-hlo/Dialect/disc-ral/IR/disc_ral_ops.h.inc"
 
-#endif  //  TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_DISC_RAL_OPS_H_
+#endif  //  TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_DISC_RAL_IR_DISC_RAL_OPS_H_
