@@ -182,6 +182,12 @@ TEST(ArrayTest, StringificationEmpty3D) {
   EXPECT_EQ(expected, arr.ToString());
 }
 
+TEST(ArrayTest, Stringification3DOneZeroDim) {
+  Array<int64_t> arr({1, 0, 2}, 0);
+  constexpr absl::string_view expected = "[[[, ]]]";
+  EXPECT_EQ(expected, arr.ToString());
+}
+
 TEST(ArrayTest, Each) {
   Array<int64_t> arr({2, 3, 4});
   arr.FillWithMultiples(1);

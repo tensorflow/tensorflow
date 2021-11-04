@@ -69,9 +69,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
     const QuantizationSpecs& quant_specs);
 
-// Creates an instance of the TensorFlow Lite dialect PrepareDynamicQuantize
-// pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicQuantizePass(
+// Creates an instance of the TensorFlow Lite dialect
+// PrepareDynamicRangeQuantize pass.
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicRangeQuantizePass(
     const QuantizationSpecs& quant_specs);
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.

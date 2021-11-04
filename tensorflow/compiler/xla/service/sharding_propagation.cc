@@ -1398,7 +1398,7 @@ absl::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     }
     case HloOpcode::kGetTupleElement: {
       int64_t sharding_index = 0;
-      for (int64_t i = 0; i < instruction.shape().tuple_shapes_size(); ++i) {
+      for (int i = 0; i < instruction.shape().tuple_shapes_size(); ++i) {
         if (i == user.tuple_index()) {
           break;
         }

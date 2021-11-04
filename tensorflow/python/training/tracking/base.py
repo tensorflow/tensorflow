@@ -15,6 +15,7 @@
 # ==============================================================================
 import abc
 import collections
+import weakref
 
 import six
 
@@ -44,8 +45,7 @@ OBJECT_CONFIG_JSON_KEY = "OBJECT_CONFIG_JSON"
 
 
 @tf_export("__internal__.tracking.TrackableReference", v1=[])
-class TrackableReference(
-    collections.namedtuple("TrackableReference", ["name", "ref"])):
+class TrackableReference(object):
   """A named reference to a trackable object for use with the `Trackable` class.
 
   These references mark named `Trackable` dependencies of a `Trackable` object
@@ -55,6 +55,49 @@ class TrackableReference(
     name: The local name for this dependency.
     ref: The `Trackable` object being referenced.
   """
+
+  __slots__ = ("_name", "_ref")
+
+  def __init__(self, name, ref):
+    self._name = name
+    self._ref = ref
+
+  @property
+  def name(self):
+    return self._name
+
+  @property
+  def ref(self):
+    return self._ref
+
+  def __iter__(self):
+    yield self.name
+    yield self.ref
+
+  def __repr__(self):
+    return f"{self.__class__.__name__}(name={self.name}, ref={self.ref})"
+
+  def __eq__(self, o):
+    if isinstance(o, tuple):
+      return (self.name, self.ref) == o
+    elif isinstance(o, TrackableReference):
+      return self.name == o.name and self.ref == o.ref
+    else:
+      return False
+
+
+class WeakTrackableReference(TrackableReference):
+  """TrackableReference that stores weak references."""
+  __slots__ = ()
+
+  def __init__(self, name, ref):
+    if not isinstance(self, weakref.ref):
+      ref = weakref.ref(ref)
+    super(WeakTrackableReference, self).__init__(name=name, ref=ref)
+
+  @property
+  def ref(self):
+    return self._ref()
 
 
 # TODO(bfontain):  Update once sharded initialization interface is finalized.
@@ -464,6 +507,10 @@ class CheckpointPosition(object):
     return self._checkpoint.object_graph_proto.nodes[self._proto_id]
 
   @property
+  def proto_id(self):
+    return self._proto_id
+
+  @property
   def restore_uid(self):
     return self._checkpoint.restore_uid
 
@@ -515,8 +562,9 @@ class CheckpointPosition(object):
     if slot_variable is None:
       # The optimizer returns None if the restore should not be done (yet).
       return
-    slot_variable_position.checkpoint.object_by_proto_id[
-        slot_variable_id] = slot_variable
+    self.checkpoint.all_python_objects.add(slot_variable)
+    self.checkpoint.matched_proto_ids.add(slot_variable_position.proto_id)
+    self.checkpoint.object_by_proto_id[slot_variable_id] = slot_variable
     # pylint: disable=protected-access
     slot_variable._maybe_initialize_trackable()
     slot_variable._self_update_uid = self.checkpoint.restore_uid

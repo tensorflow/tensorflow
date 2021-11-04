@@ -3594,6 +3594,7 @@ crelu_v2.__doc__ = crelu.__doc__
 
 
 @tf_export("nn.relu6")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def relu6(features, name=None):
   """Computes Rectified Linear 6: `min(max(features, 0), 6)`.
@@ -3629,6 +3630,7 @@ def relu6(features, name=None):
     return gen_nn_ops.relu6(features, name=name)
 
 @tf_export("nn.leaky_relu")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def leaky_relu(features, alpha=0.2, name=None):
   """Compute the Leaky ReLU activation function.
@@ -3663,6 +3665,7 @@ def leaky_relu(features, alpha=0.2, name=None):
 
 
 @tf_export("nn.gelu", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def gelu(features, approximate=False, name=None):
   """Compute the Gaussian Error Linear Unit (GELU) activation function.
@@ -3872,6 +3875,7 @@ softmax.__doc__ = softmax_v2.__doc__
 
 
 @tf_export(v1=["nn.log_softmax", "math.log_softmax"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def log_softmax(logits, axis=None, name=None, dim=None):
@@ -4630,7 +4634,7 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
   window in `value`.
 
   Args:
-    input: A 5-D `Tensor` of shape `[batch, height, width, channels]` and type
+    input: A 5-D `Tensor` of shape `[batch, depth, height, width, channels]` and type
       `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
     ksize: An int or list of `ints` that has length `1`, `3` or `5`. The size of
       the window for each dimension of the input tensor.
@@ -6420,3 +6424,11 @@ def isotonic_regression(inputs, decreasing=True, axis=-1):
       return -output, segments
 
   return _wrap_2d_function(inputs, compute_on_matrix, axis)
+
+
+# Register elementwise ops that don't have Python wrappers.
+# Unary elementwise ops.
+dispatch.register_unary_elementwise_api(gen_nn_ops.elu)
+dispatch.register_unary_elementwise_api(gen_nn_ops.relu)
+dispatch.register_unary_elementwise_api(gen_nn_ops.selu)
+dispatch.register_unary_elementwise_api(gen_nn_ops.softsign)

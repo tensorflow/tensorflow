@@ -82,13 +82,9 @@ bool IsCublasGemm(const HloInstruction& hlo);
 
 constexpr int64_t kWarpSize = 32;
 
-// Need at least 256 threads/block for reasonable tree reduction
+// Need at least 1024 threads/block for reasonable tree reduction
 // performance (assuming all data fits).
-#if TENSORFLOW_USE_ROCM
 constexpr int64_t kMinThreadsXRowReduction = 1024;
-#else
-constexpr int64_t kMinThreadsXRowReduction = 256;
-#endif
 
 // When doing batched row reduction, how big the batch dimension could be.
 static constexpr int64_t kBatchedReductionRaceFreeBound = 8;

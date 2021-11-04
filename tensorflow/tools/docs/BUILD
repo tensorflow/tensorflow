@@ -64,6 +64,8 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python/distribute:distribute_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
@@ -114,6 +116,8 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python/distribute:distribute_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
@@ -133,6 +137,26 @@ py_test(
     ],
     deps = [
         ":tf_doctest_lib",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "fenced_doctest_lib",
+    srcs = ["fenced_doctest_lib.py"],
+    deps = [
+        ":tf_doctest_lib",
+        "@astor_archive//:astor",
+    ],
+)
+
+py_test(
+    name = "fenced_doctest_test",
+    srcs = ["fenced_doctest_test.py"],
+    data = glob(["**/create_model.md"]),
+    deps = [
+        ":fenced_doctest_lib",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],

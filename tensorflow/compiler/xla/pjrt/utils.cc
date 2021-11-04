@@ -44,7 +44,7 @@ StatusOr<Shape> GetShardedShape(const Shape& shape,
           sharding.DebugString(), shape.ToString());
     }
     std::vector<Shape> sharded_subshapes;
-    const auto tuple_shapes_size = shape.tuple_shapes_size();
+    const int tuple_shapes_size = shape.tuple_shapes_size();
     sharded_subshapes.reserve(tuple_shapes_size);
     for (int i = 0; i < tuple_shapes_size; ++i) {
       TF_ASSIGN_OR_RETURN(

@@ -143,6 +143,7 @@ def _map_structure(pyobj, coders):
       f"No encoder for object {str(pyobj)} of type {type(pyobj)}.")
 
 
+@tf_export("__internal__.saved_model.encode_structure", v1=[])
 def encode_structure(nested_structure):
   """Encodes nested structures composed of encodable types into a proto.
 
@@ -174,6 +175,7 @@ def can_encode(nested_structure):
   return True
 
 
+@tf_export("__internal__.saved_model.decode_proto", v1=[])
 def decode_proto(proto):
   """Decodes proto representing a nested structure.
 

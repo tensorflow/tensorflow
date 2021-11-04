@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
 
 #include <gtest/gtest.h>
-
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
+#include "tensorflow/compiler/tf2tensorrt/convert/op_converter.h"
 
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
+
 TEST(TestOpConverterRegistry, TestOpConverterRegistry) {
   bool flag{false};
 

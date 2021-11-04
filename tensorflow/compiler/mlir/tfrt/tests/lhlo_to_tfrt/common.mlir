@@ -1,7 +1,5 @@
-// RUN: lhlo-tfrt-opt %s    \
-// RUN:   -lmhlo-to-gpu     \
-// RUN:   -gpu-async-region \
-// RUN:   -gpu-to-tfrt-gpu  \
+// RUN: lhlo-tfrt-opt %s     \
+// RUN:   -lmhlo-to-tfrt-gpu \
 // RUN: | FileCheck %s
 
 // CHECK:      func @view(

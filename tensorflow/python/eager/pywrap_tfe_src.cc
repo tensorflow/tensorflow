@@ -4359,29 +4359,13 @@ tensorflow::StatusOr<PyObject*> MakeDictType(PyObject* mapping,
 
   tensorflow::Safe_PyObjectPtr dict(PyDict_New());
   for (int i = 0; i < size; i++) {
-    PyObject* key = PyList_GetItem(keys.get(), i);
+    PyObject* key = PyList_GET_ITEM(keys.get(), i);
     tensorflow::Safe_PyObjectPtr value(PyObject_GetItem(mapping, key));
-    // TODO(b/202447704): Drop support for tracing keys.
-    auto key_trace = EncodeTraceType(key, context);
-    if (!key_trace.ok()) {
-      return key_trace.status();
-    }
-
-    if (PyDict_Contains(dict.get(), key_trace.ValueOrDie())) {
-      Py_DECREF(key_trace.ValueOrDie());
-      return tensorflow::errors::InvalidArgument(
-          "Multiple keys produce the same TraceType for the mapping "
-          "collection: ",
-          GetStringPyObjectRepr(mapping));
-    }
-
     auto value_trace = EncodeTraceType(value.get(), context);
     if (!value_trace.ok()) {
       return value_trace.status();
     }
-    PyDict_SetItem(dict.get(), key_trace.ValueOrDie(),
-                   value_trace.ValueOrDie());
-    Py_DECREF(key_trace.ValueOrDie());
+    PyDict_SetItem(dict.get(), key, value_trace.ValueOrDie());
     Py_DECREF(value_trace.ValueOrDie());
   }
 

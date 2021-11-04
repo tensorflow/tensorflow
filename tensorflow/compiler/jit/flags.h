@@ -162,6 +162,7 @@ const IntroduceFloatingPointJitterPassFlags&
 GetIntroduceFloatingPointJitterPassFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
+void ResetMlirCommonFlags();
 
 // Returns the effective MLIR bridge rollout state based on the flags and the
 // optional configuration.

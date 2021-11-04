@@ -67,6 +67,13 @@ REGISTER_OP("SleepOp")
     .Input("sleep_seconds: int32")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("SleepIdentityOp")
+    .Input("sleep_seconds: int32")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_RESOURCE_HANDLE_OP(StubResource);
 
 REGISTER_OP("ResourceInitializedOp")
@@ -202,6 +209,19 @@ class SleepOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("SleepOp").Device(DEVICE_CPU), SleepOp);
+
+class SleepIdentityOp : public OpKernel {
+ public:
+  explicit SleepIdentityOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    absl::SleepFor(absl::Seconds(ctx->input(0).scalar<int>()()));
+    ctx->set_output(0, ctx->input(1));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("SleepIdentityOp").Device(DEVICE_CPU),
+                        SleepIdentityOp);
 
 // Stubbed-out resource to test resource handle ops.
 class StubResource : public ResourceBase {

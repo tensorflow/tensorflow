@@ -1080,8 +1080,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     if (static_engine && !use_implicit_batch_) {
       // load profiles
       std::vector<ExecutionContext> exec_contexts;
-      TF_RETURN_IF_ERROR(
-          cache_res->profiles_.RestoreProfiles(static_engine.get()));
+      TF_RETURN_IF_ERROR(cache_res->profiles_.RestoreProfiles(
+          static_engine.get(), ctx->num_inputs()));
       TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
           static_engine.get(), &exec_contexts));
       cache.emplace(input_concrete_shapes,

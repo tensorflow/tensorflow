@@ -58,19 +58,23 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
-// applies a set of passes to convert the module to TF Lite dialect and
-// serializes the result to a string. Depending on an attribute in the module
-// main function, full integer quantization is applied.
-// If `quantizated_buffer_type` is provided as INT8 or FLOAT16, the
-// corresponding weight quantization will take place.
-// If `export_to_mlir` is true, the
-// result is exported in MLIR text format, otherwise exported in flat buffer.
+// applies a set of passes (configured accordingly to the provided
+// `pass_config`) to convert the module to TF Lite dialect and serializes the
+// result to a string. Depending on an attribute in the module main function,
+// full integer quantization is applied.
+// * `quantizated_buffer_type` can be set to INT8 or FLOAT16 to trigger the
+// corresponding weight quantization.
+// * `export_to_mlir` enables exporting to MLIR text format, otherwise exported
+// in flat buffer. If the
+// * `session` pointer may provided, it will be used to freeze resource
+// variables. If the `saved_model_dir` directory path is provided, then the
+// `tf_saved_model.asset` ops will be freezed.
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir,
-    const toco::TocoFlags& toco_flags,
-    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    std::string* result, mlir::PassManager* pass_manager);
+    llvm::StringRef saved_model_dir,
+    llvm::Optional<tensorflow::Session*> session, std::string* result);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_

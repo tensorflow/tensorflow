@@ -146,7 +146,8 @@ class InitializeTRTResource : public OpKernel {
         // Restore profiles if there are any. Currently only 1 engine is allowed
         // in dynamic mode therefore we call this only for the 0th engine.
         // it is a no-op in implicit batch mode.
-        OP_REQUIRES_OK(ctx, resource->profiles_.RestoreProfiles(raw_engine));
+        OP_REQUIRES_OK(ctx, resource->profiles_.RestoreProfiles(
+                                raw_engine, engine_input_shapes.size()));
         OP_REQUIRES_OK(ctx, resource->profiles_.CreateExecutionContexts(
                                 raw_engine, &ctx_vec));
       } else {

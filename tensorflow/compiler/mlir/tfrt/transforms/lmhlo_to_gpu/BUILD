@@ -35,6 +35,29 @@ cc_library(
 )
 
 cc_library(
+    name = "pass_utils",
+    srcs = ["pass_utils.cc"],
+    hdrs = ["pass_utils.h"],
+    tags = ["gpu"],
+    visibility = if_google([
+        "//platforms/xla/tests/gpu:__pkg__",
+    ]) + [
+        "//tensorflow/compiler/mlir/tfrt:__pkg__",
+        "//tensorflow/compiler/xla/service/gpu:__pkg__",
+    ],
+    deps = [
+        ":lmhlo_to_tfrt_gpu",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_gpu_binary",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "lmhlo_to_gpu",
     srcs = [
         "ccl_pattern.cc",
@@ -85,6 +108,28 @@ cc_library(
         "@tf_runtime//backends/gpu:gpu_wrapper",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "lmhlo_to_tfrt_gpu",
+    srcs = ["lmhlo_to_tfrt_gpu.cc"],
+    hdrs = ["lmhlo_to_tfrt_gpu.h"],
+    tags = ["gpu"],
+    visibility = if_google([
+        "//platforms/xla/tests/gpu:__pkg__",
+    ]) + [
+        "//tensorflow/compiler/mlir/tfrt:__pkg__",
+        "//tensorflow/compiler/xla/service/gpu:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu",
+        "@llvm-project//mlir:GPUTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TransformUtils",
+        "@tf_runtime//backends/gpu:gpu_opdefs",
+        "@tf_runtime//backends/gpu:gpu_passes",
+    ],
 )
 
 # The lmhlo-to-gpu-binary pass is a separate target to avoid a dependency cycle:

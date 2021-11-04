@@ -49,6 +49,7 @@ class LocalRendezvous {
                  const Rendezvous::Args& recv_args,
                  Rendezvous::DoneCallback done);
   void StartAbort(const Status& status);
+  Status status();
 
  private:
   struct Item;

@@ -1828,8 +1828,6 @@ Status Converter::GetInputs(const NodeDef& node_def,
   return Status::OK();
 }
 
-enum class TrtInputArg { kTensor = 1, kWeight = 2, kBoth = 3 };
-
 // Checks that the number of inputs match, and enforces that the inputs marked
 // as weights are constant. Inputs are allowed to be both weight and tensor.
 Status CheckInputsWeights(

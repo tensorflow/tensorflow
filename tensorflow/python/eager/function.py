@@ -1538,14 +1538,7 @@ class ConcreteFunction(core.ConcreteFunction):
     """Enables the structured signature by supplying a function_spec."""
     self._function_spec = None
     self._pre_initialized_function_spec = function_spec
-
-    # Note: when ConcreteFunctions are built by recreate_function() in
-    # function_deserialization.py, they don't have a structured_input_signature
-    # yet.  In that case, _initialize_function_spec() gets called by
-    # _setup_functions_structures() in load.py.
-    if (function_spec is not None and
-        self.structured_input_signature is not None):
-      self._initialize_function_spec()
+    self._initialize_function_spec()
 
   def _initialize_function_spec(self):
     """Updates `self._function_spec` to include varargs and bound variables.
@@ -2324,7 +2317,7 @@ class ConcreteFunction(core.ConcreteFunction):
       """Returns a string describing the spec for a single argument."""
       if isinstance(spec, tensor_spec.TensorSpec):
         return "{} Tensor, shape={}".format(spec.dtype.name, spec.shape)
-      elif nest.is_sequence(spec):
+      elif nest.is_nested(spec):
         pieces = nest.flatten(spec, expand_composites=False)
         markers = [_Marker("<{}>".format(i + 1)) for i in range(len(pieces))]
         structure = nest.pack_sequence_as(spec, markers)

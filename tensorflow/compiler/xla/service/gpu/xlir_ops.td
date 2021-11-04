@@ -87,29 +87,25 @@ def XLIR_CclCollectivePermuteOp : XLIR_Op<"ccl.collective_permute"> {
 
 def XLIR_CustomCallOp : XLIR_Op<"custom_call"> {
   let description = [{
-    xlir.custom_call invokes a host function, supplied in the ExecutionContext
-    (CustomCallContext), using 'buffers' for the purposes of enqueuing
-    operations on the GPU device. 'opaque' is used to supply an arbitrary string
-    of bytes to the host function call.
+    xlir.custom_call invokes the host function 'symbol' from the
+    CustomCallTargetRegistry. The target must have the following signature:
 
-    Optionally specify an 'args_to_target_args' and/or
-    'results_to_target_results' to rearrange 'buffers' supplied to the host
-    function. Example:
-        buffers = [ A, B ]
-        args_to_target_args = [ 0, 2 ]
-        target_args_count = 5
-        (rearranged buffers = [ A, nullptr, B, nulltpr, nullptr ])
+    void target(void* stream, void* const pointers[],
+                const char* opaque, size_t opaque_size,
+                XlaCustomCallStatus* status);
+
+    The 'indices' maps the 'pointers' array to 'buffers', or nullptr for
+    negative values.
+
+    'opaque' is an arbitrary array of bytes passed as extra arguments.
   }];
-  let arguments = (ins GPU_StreamType:$stream, TFRT_ChainType:$chain,
+  let arguments = (ins GPU_StreamType:$stream,
                    Variadic<GPU_BufferType>:$buffers,
-                   I64ArrayAttr:$args_to_target_args, StrAttr:$opaque,
-                   I64ArrayAttr:$results_to_target_results,
-                   I64Attr:$target_args_count, I64Attr:$target_results_count);
+                   TFRT_ChainType:$chain, StrAttr:$symbol,
+                   I32ArrayAttr:$indices, StrAttr:$opaque);
   let results = (outs TFRT_ChainType);
   let assemblyFormat = [{
-    $stream`,` $chain`,` $buffers`,` $args_to_target_args`,`
-    $results_to_target_results`,` $target_args_count`,` $target_results_count
-    attr-dict
+    $stream`,` $buffers`,` $chain attr-dict
   }];
 }
 
