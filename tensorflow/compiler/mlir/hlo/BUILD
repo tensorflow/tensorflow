@@ -8,7 +8,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
-    default_visibility = [":friends"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
