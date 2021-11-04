@@ -41,6 +41,11 @@ namespace xla {
 //   only keep the final k elements on TPU. This option is useful when user
 //   wanted to forward the approximate results to host and aggregate the results
 //   on CPU for better throughput.
+// reduction_input_size_override: When set to a positive value, it overrides the
+//   size determined by operands[reduction_dim] for evaluating the recall. This
+//   option is useful when the given operand is only a subset of the overall
+//   computation in SPMD or distributed pipelines, where the true input size
+//   cannot be deferred by the operand shape.
 //
 // Returns a sequence of multidimensional arrays of type T_0, ..., T_{N-1},
 // which contains the approximate top-ks from the input operands. When
@@ -53,9 +58,10 @@ namespace xla {
 XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                  absl::Span<const XlaOp> init_values, int64_t top_k,
                  int64_t reduction_dim, const XlaComputation& comparator,
-                 float recall_target = 0.9, bool aggregate_to_topk = true);
+                 float recall_target = 0.9, bool aggregate_to_topk = true,
+                 int64_t reduction_input_size_override = -1);
 
-// Determine the output size of the reduciton dimension. This is useful for jax
+// Determine the output size of the reduction dimension. This is useful for jax
 // abstract eval to determine the output size.
 //
 // input_size: Input size of the reduction dimension.

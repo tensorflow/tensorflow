@@ -104,7 +104,8 @@ XlaOp SortAndSliceBuilder(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                  absl::Span<const XlaOp> init_values, int64_t top_k,
                  int64_t reduction_dim, const XlaComputation& comparator,
-                 float recall_target, bool aggregate_to_topk) {
+                 float recall_target, bool aggregate_to_topk,
+                 int64_t reduction_input_size_override) {
   // Validates shapes and ranks
   if (operands.size() != init_values.size()) {
     return builder->ReportError(
@@ -169,6 +170,17 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                                  comparator);
     }
     return Tuple(builder, operands);
+  }
+  // Only override the input size when we really need to compute the ApproxTopK
+  // through the PartialReduce TPU Op.
+  if (reduction_input_size_override >= 0) {
+    if (n < reduction_input_size_override) {
+      return builder->ReportError(
+          InvalidArgument("reduction_input_size_override should be greater "
+                          "equals to opeands[reduction_dim], which is %d",
+                          n));
+    }
+    n = reduction_input_size_override;
   }
 
   auto status_or_approx_output_size = ApproxTopKReductionOutputSize(
