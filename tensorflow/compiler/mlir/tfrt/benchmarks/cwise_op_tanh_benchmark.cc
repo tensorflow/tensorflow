@@ -29,19 +29,19 @@ using f32 = float;
 
 #define EXPR_BUILDER [](auto& in) { return in.tanh(); }
 
-BM_TFMlir(Tanh, mlir_input, "tanh_1d", 1, f32, 1.0, 0.0)
+BM_TFMlir(Tanh, mlir_input, "tanh_1d", 1, f32, 1.0, 0.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
     ->Arg(10 * 1024);
 
-BM_EigenScalar(Tanh, EXPR_BUILDER, 1, f32, 1.0, 0.0)
+BM_EigenScalar(Tanh, EXPR_BUILDER, 1, f32, 1.0, 0.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)
     ->Arg(10 * 1024);
 
-BM_EigenVectorized(Tanh, EXPR_BUILDER, 1, f32, 1.0, 0.0)
+BM_EigenVectorized(Tanh, EXPR_BUILDER, 1, f32, 1.0, 0.0, /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)

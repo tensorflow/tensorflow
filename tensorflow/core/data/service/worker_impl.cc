@@ -20,7 +20,9 @@ limitations under the License.
 #include <utility>
 
 #include "grpcpp/create_channel.h"
+#include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -54,13 +56,18 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-const constexpr uint64 kRetryIntervalMicros = 5ull * 1000 * 1000;
+constexpr int64_t kRetryIntervalMicros = 5 * 1000 * 1000;        // 5 seconds.
+constexpr int64_t kDefaultHeartBeatIntervalMs = 30 * 1000;       // 30 seconds.
+constexpr int64_t kDefaultDispatcherTimeoutMs = 60 * 60 * 1000;  // 1 hour.
+
+using WorkerConfig = experimental::WorkerConfig;
 
 // Moves the element into the response. If the tensor contains a single
 // CompressedElement variant, the move will be zero-copy. Otherwise, the tensor
@@ -86,15 +93,25 @@ Status MoveElementToResponse(std::vector<Tensor>&& element,
   *resp.mutable_compressed() = *compressed;
   return Status::OK();
 }
+
+WorkerConfig ApplyWorkerDefaults(const WorkerConfig& config) {
+  WorkerConfig new_config(config);
+  if (new_config.heartbeat_interval_ms() == 0) {
+    new_config.set_heartbeat_interval_ms(kDefaultHeartBeatIntervalMs);
+  }
+  if (new_config.dispatcher_timeout_ms() == 0) {
+    new_config.set_dispatcher_timeout_ms(kDefaultDispatcherTimeoutMs);
+  }
+  return new_config;
+}
 }  // namespace
 
 mutex LocalWorkers::mu_(LINKER_INITIALIZED);
 LocalWorkers::AddressToWorkerMap* LocalWorkers::local_workers_ =
     new AddressToWorkerMap();
 
-DataServiceWorkerImpl::DataServiceWorkerImpl(
-    const experimental::WorkerConfig& config)
-    : config_(config) {
+DataServiceWorkerImpl::DataServiceWorkerImpl(const WorkerConfig& config)
+    : config_(ApplyWorkerDefaults(config)) {
   metrics::RecordTFDataServiceWorkerCreated();
 }
 
@@ -108,6 +125,7 @@ DataServiceWorkerImpl::~DataServiceWorkerImpl() {
 Status DataServiceWorkerImpl::Start(const std::string& worker_address,
                                     const std::string& transfer_address) {
   VLOG(3) << "Starting tf.data service worker at address " << worker_address;
+  TF_RETURN_IF_ERROR(ValidateWorkerConfig());
   worker_address_ = worker_address;
   transfer_address_ = transfer_address;
 
@@ -158,6 +176,20 @@ void DataServiceWorkerImpl::Stop() {
   // complete requests.
   Env::Default()->SleepForMicroseconds(config_.shutdown_quiet_period_ms() *
                                        1000);
+}
+
+Status DataServiceWorkerImpl::ValidateWorkerConfig() const {
+  const bool any_tag_is_empty = absl::c_any_of(
+      config_.worker_tags(),
+      [](const std::string& worker_tag) { return worker_tag.empty(); });
+  if (any_tag_is_empty) {
+    return errors::FailedPrecondition(
+        "Worker tags cannot be empty. Got tags {",
+        absl::StrJoin(config_.worker_tags().begin(),
+                      config_.worker_tags().end(), ", "),
+        "}");
+  }
+  return Status::OK();
 }
 
 Status DataServiceWorkerImpl::GetElementResult(
@@ -455,15 +487,19 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       current_tasks.push_back(task.first);
     }
   }
-  std::vector<TaskDef> new_tasks;
-  std::vector<int64_t> task_ids_to_delete;
-  TF_RETURN_IF_ERROR(dispatcher_->WorkerHeartbeat(
-      worker_address_, transfer_address_, current_tasks, new_tasks,
-      task_ids_to_delete));
+  WorkerHeartbeatRequest request;
+  request.set_worker_address(worker_address_);
+  request.set_transfer_address(transfer_address_);
+  *request.mutable_worker_tags() = config_.worker_tags();
+  *request.mutable_current_tasks() = {current_tasks.begin(),
+                                      current_tasks.end()};
+  TF_ASSIGN_OR_RETURN(WorkerHeartbeatResponse response,
+                      dispatcher_->WorkerHeartbeat(request));
+
   std::vector<std::shared_ptr<Task>> tasks_to_delete;
   {
     mutex_lock l(mu_);
-    for (const auto& task : new_tasks) {
+    for (const auto& task : response.new_tasks()) {
       VLOG(1) << "Received new task from dispatcher with id " << task.task_id();
       if (deleted_tasks_.contains(task.task_id())) {
         continue;
@@ -474,8 +510,8 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
                      << ": " << s;
       }
     }
-    tasks_to_delete.reserve(task_ids_to_delete.size());
-    for (int64_t task_id : task_ids_to_delete) {
+    tasks_to_delete.reserve(response.tasks_to_delete_size());
+    for (int64_t task_id : response.tasks_to_delete()) {
       VLOG(3) << "Deleting task " << task_id
               << " at the request of the dispatcher";
       if (!tasks_.contains(task_id)) {

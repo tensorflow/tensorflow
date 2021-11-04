@@ -329,7 +329,7 @@ class HloSharding {
   int64_t SubgroupReplicationDim() const {
     auto it = absl::c_find(subgroup_types_, OpSharding::REPLICATED);
     if (it != subgroup_types_.end()) {
-      return it - subgroup_types_.begin();
+      return (it - subgroup_types_.begin()) + TiledDataRank();
     }
     if (replicate_on_last_tile_dim_) {
       return tile_assignment_.num_dimensions() - 1;
@@ -341,7 +341,7 @@ class HloSharding {
   int64_t SubgroupManualDim() const {
     auto it = absl::c_find(subgroup_types_, OpSharding::MANUAL);
     if (it != subgroup_types_.end()) {
-      return it - subgroup_types_.begin();
+      return (it - subgroup_types_.begin()) + TiledDataRank();
     }
     return -1;
   }

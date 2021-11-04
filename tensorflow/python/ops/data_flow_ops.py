@@ -14,10 +14,6 @@
 #==============================================================================
 """Data Flow Operations."""
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import hashlib
 import threading
 
@@ -25,6 +21,7 @@ import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as _dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
@@ -1568,7 +1565,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     """
     return_val = gen_data_flow_ops.sparse_accumulator_take_gradient(
         self._accumulator_ref, num_required, dtype=self._dtype, name=name)
-    return ops.IndexedSlices(
+    return indexed_slices.IndexedSlices(
         indices=return_val.indices,
         values=return_val.values,
         dense_shape=return_val.shape)

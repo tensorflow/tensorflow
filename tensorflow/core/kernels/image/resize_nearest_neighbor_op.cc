@@ -110,7 +110,7 @@ struct BoolToScaler {};
 
 struct HalfPixelScalerForNN {
   inline float operator()(const int x, const float scale) const {
-    // All of the nearest neigbor code below immediately follows a call to this
+    // All of the nearest neighbor code below immediately follows a call to this
     // function with a std::floor(), so instead of subtracting the 0.5 as we
     // do in HalfPixelScale, we leave it as is, as the std::floor does the
     // correct thing.

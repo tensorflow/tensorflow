@@ -21,10 +21,6 @@ operators that allow adding dropouts, projections, or embeddings for inputs.
 Constructing multi-layer cells is supported by the class `MultiRNNCell`, or by
 calling the `rnn` ops several times.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import warnings
 

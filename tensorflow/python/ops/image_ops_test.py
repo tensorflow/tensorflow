@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.image_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import colorsys
 import contextlib
 import functools
@@ -1594,7 +1590,7 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
                                 "Shape must be rank 0 but is rank 1"):
       image_ops.adjust_contrast(x_np, [2.0])
 
-  @test_util.run_all_in_graph_and_eager_modes
+  @test_util.run_in_graph_and_eager_modes
   def testDeterminismUnimplementedExceptionThrowing(self):
     """Test d9m-unimplemented exception-throwing when op-determinism is enabled.
 
@@ -2293,6 +2289,21 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
       y = image_ops.pad_to_bounding_box(image, 0, 0, 55, 66)
       self.assertTrue(y.op.name.startswith("pad_to_bounding_box"))
 
+  def testInvalidInput(self):
+    # Test case for GitHub issue 46890.
+    if test_util.is_xla_enabled():
+      # TODO(b/200850176): test fails with XLA.
+      return
+    with self.session():
+      with self.assertRaises(errors_impl.InternalError):
+        v = image_ops.pad_to_bounding_box(
+            image=np.ones((1, 1, 1)),
+            target_height=5191549470,
+            target_width=5191549470,
+            offset_height=1,
+            offset_width=1)
+        self.evaluate(v)
+
 
 class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
 
@@ -2643,6 +2654,25 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([3], end.shape)
       self.assertAllEqual([1, 1, 4], bbox_for_drawing.shape)
 
+  def testDeterminismExceptionThrowing(self):
+    with test_util.deterministic_ops():
+      with self.assertRaisesRegex(
+          ValueError, "requires a non-zero seed to be passed in when "
+          "determinism is enabled"):
+        image_ops_impl.sample_distorted_bounding_box_v2(
+            image_size=[50, 50, 1],
+            bounding_boxes=[[[0., 0., 1., 1.]]],
+        )
+      image_ops_impl.sample_distorted_bounding_box_v2(
+          image_size=[50, 50, 1], bounding_boxes=[[[0., 0., 1., 1.]]], seed=1)
+
+      with self.assertRaisesRegex(
+          ValueError, 'requires "seed" or "seed2" to be non-zero when '
+          "determinism is enabled"):
+        image_ops_impl.sample_distorted_bounding_box(
+            image_size=[50, 50, 1], bounding_boxes=[[[0., 0., 1., 1.]]])
+      image_ops_impl.sample_distorted_bounding_box(
+          image_size=[50, 50, 1], bounding_boxes=[[[0., 0., 1., 1.]]], seed=1)
 
 class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
 

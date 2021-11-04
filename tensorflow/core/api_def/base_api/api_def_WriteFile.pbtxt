@@ -12,8 +12,8 @@ END
 scalar. The content to be written to the output file.
 END
   }
-  summary: "Writes contents to the file at input filename. Creates file and recursively"
+  summary: "Writes `contents` to the file at input `filename`."
   description: <<END
-creates directory if not existing.
+Creates the file and recursively creates directory if it does not exist.
 END
 }

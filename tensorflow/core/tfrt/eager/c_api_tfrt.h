@@ -190,6 +190,12 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
     GetEagerContext()->SetLogDevicePlacement(enable);
   }
 
+  void SetRunEagerOpAsFunction(bool enable) override {
+    // TODO(tfrt-devs): Move this flag to a common place that can be shared
+    // by current TF and TFRT.
+    GetEagerContext()->SetRunEagerOpAsFunction(enable);
+  }
+
   tensorflow::EagerExecutor& Executor() override {
     return GetEagerContext()->Executor();
   }
@@ -559,6 +565,9 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
   absl::optional<tensorflow::ManagedStackTrace> GetStackTrace() override {
     return stack_trace_;
   }
+
+  // Currently not supported.
+  void SetStepId(int64_t step_id) override {}
 
   // For LLVM style RTTI.
   static bool classof(const AbstractOperation* ptr) {

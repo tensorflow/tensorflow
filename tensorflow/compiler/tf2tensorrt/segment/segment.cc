@@ -712,8 +712,7 @@ Status SegmentGraph(const Graph* tf_graph,
   // Use a union-find to collect the nodes that belong to the same
   // segment. A node value of nullptr indicates that the node is not a candidate
   // for TRT.
-  std::unordered_set<string> unsupported_ops;
-  int num_unsupported_ops = 0;
+  std::map<string, int> unsupported_ops_map = {};
 
   // Getting the operations denylisted for conversion
   string tftrt_op_denylist_str;
@@ -739,8 +738,7 @@ Status SegmentGraph(const Graph* tf_graph,
               << "(Op type: " << node->tf_node()->type_string() << "), "
               << "(Op name: " << node->name() << "), "
               << "(Reason: " << reason << ")";
-      unsupported_ops.emplace(node->tf_node()->type_string());
-      num_unsupported_ops++;
+      unsupported_ops_map[node->tf_node()->type_string()]++;
       node = nullptr;
     };
     absl::optional<DeviceNameUtils::ParsedName> device_name =
@@ -781,15 +779,39 @@ Status SegmentGraph(const Graph* tf_graph,
     AddSegmentForNode(graph_properties, &node_segments, node, *device_name,
                       options.use_implicit_batch);
   }
-  string msg = StrCat(
-      "There are ", num_unsupported_ops, " ops of ", unsupported_ops.size(),
-      " different types in the graph that", " are not converted to TensorRT: ");
-  for (const auto& elem : unsupported_ops) {
-    StrAppend(&msg, elem, ", ");
+  string unsupported_op_report =
+      StrCat("\n", string(80, '#'), "\n",
+             "TensorRT unsupported/unconverted OP Report:");
+  int total_unconverted_ops{0};
+
+  // Copy key-value pair from unsupported_ops_map to vector of pairs
+  std::vector<std::pair<std::string, int>> vect;
+  for (auto& it : unsupported_ops_map) {
+    vect.push_back(it);
   }
-  LOG(INFO) << msg << "(For more information see "
-            << "https://docs.nvidia.com/deeplearning"
-            << "/frameworks/tf-trt-user-guide/index.html#supported-ops).";
+
+  // Sort in descending order using the number of uses of the OP that are not
+  // converted.
+  std::sort(vect.begin(), vect.end(),
+            [](const std::pair<std::string, int>& a,
+               const std::pair<std::string, int>& b) -> bool {
+              return a.second > b.second;
+            });
+
+  for (auto& it : vect) {
+    unsupported_op_report = StrCat(unsupported_op_report, "\n\t- ", it.first,
+                                   " -> ", it.second, "x");
+    total_unconverted_ops += it.second;
+  }
+
+  unsupported_op_report =
+      StrCat(unsupported_op_report, "\n", string(80, '-'),
+             "\n\t - Total unconverted OPs: ", total_unconverted_ops,
+             "\n\t - Total unconverted OP Types: ", unsupported_ops_map.size(),
+             "\nFor more information see https://docs.nvidia.com/deeplearning",
+             "/frameworks/tf-trt-user-guide/index.html#supported-ops.", "\n",
+             string(80, '#'));
+  LOG(WARNING) << unsupported_op_report;
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs

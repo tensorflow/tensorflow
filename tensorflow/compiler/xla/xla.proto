@@ -294,8 +294,7 @@ message DebugOptions {
   // Denylist for cuDNN convolutions.
   string xla_gpu_algorithm_denylist_path = 128;
 
-  // Guarantee run-to-run determinism from reductions on XLA:GPU.
-  bool xla_gpu_deterministic_reductions = 130;
+  reserved 130;  // Was xla_gpu_deterministic_reductions
 
   // Debug options that trigger execution errors when NaN or Inf are detected.
   bool xla_tpu_detect_nan = 135;
@@ -335,6 +334,19 @@ message DebugOptions {
   // Convert synchronous all-reduces ops into asynchronous.
   bool xla_gpu_enable_async_all_reduce = 152;
 
+  // Size threshold (in bytes) for the GPU all-reduce combiner.
+  int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
+
+  // Combine GPU all-reduces into a single operation over a contiguous buffer.
+  bool xla_gpu_all_reduce_contiguous = 158;
+
+  // Number of devices per host for first stage of BlueConnect decomposition
+  // pass. The pass will attempt to decompose all-reduces ops into a
+  // ReduceScatter-AllReduce-AllGather sequence, with the initial ReduceScatter
+  // being performed over all of the devices in the same host. Set to < 1 to
+  // disable all-reduce decomposition.
+  int32 xla_gpu_all_reduce_blueconnect_num_devices_per_host = 159;
+
   // Disable dumping metadata in HLO dumps.
   bool xla_dump_disable_metadata = 153;
 
@@ -343,7 +355,11 @@ message DebugOptions {
   // enables dumping in all pipelines.
   string xla_dump_hlo_pipeline_re = 154;
 
-  // Next id: 156
+  // If true, abort immediately when conv algorithm picker fails, rather than
+  // logging a warning and proceeding with fallback.
+  bool xla_gpu_strict_conv_algorithm_picker = 156;
+
+  // Next id: 160
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -408,6 +424,15 @@ message ExecutionOptions {
   bool deduplicate_hlo = 12;
 
   reserved 13;  // Was broadcast_replicated_parameters_via_collectives
+
+  // Allows sharding propagation to propagate to the outputs. This changes the
+  // output shape of the computation (which is undesirable), but it can be used
+  // to allow to run partial compilation to determine what would be the output
+  // sharding of a computation if XLA would be allowed to propagate the sharding
+  // which can be used by higher level framework as a way to query intermediate
+  // sharding of operations when multiple computation would be chained and
+  // merged together.
+  bool allow_spmd_sharding_propagation_to_output = 14;
 }
 
 message GetDeviceHandlesRequest {

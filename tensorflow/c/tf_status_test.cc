@@ -32,7 +32,7 @@ TEST(TF_Status, PayloadsSet) {
   TF_SetPayload(tf_status, "c", "3");
 
   const std::unordered_map<std::string, std::string> payloads =
-      tf_status->status.GetAllPayloads();
+      errors::GetPayloads(tf_status->status);
   EXPECT_EQ(payloads.size(), 3);
   EXPECT_EQ(payloads.at("a"), "1");
   EXPECT_EQ(payloads.at("b"), "2");

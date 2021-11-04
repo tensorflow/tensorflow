@@ -54,9 +54,9 @@ func @decompose_tf_concat_n(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tenso
 // CHECK-LABEL: decompose_tf_split
 func @decompose_tf_split(%arg0: tensor<3xf32>) -> (tensor<f32>) {
   %0 = "tfr.cast"(%arg0) : (tensor<3xf32>) -> !tfr.tensor
-  %n = std.constant 3: i32
+  %n = arith.constant 3: i32
   %split = tfr.call @tf__risc_split(%0, %n) : (!tfr.tensor, i32) -> !tfr.tensor_list
-  %i0 = std.constant 0: index
+  %i0 = arith.constant 0: index
   %s0 = tfr.get_element %split[%i0] : (!tfr.tensor_list, index) -> !tfr.tensor
   %4 = "tfr.cast"(%s0) : (!tfr.tensor) -> tensor<f32>
   return %4 : tensor<f32>
@@ -81,7 +81,7 @@ func @decompose_tf_cast(%arg0: tensor<f32>) -> tensor<i32> {
 
 // CHECK-LABEL: convert_to_scalar_tensor
 func @convert_to_scalar_tensor() -> tensor<f32> {
-  %0 = constant 3.0: f32
+  %0 = arith.constant 3.0: f32
   %t = tfr.constant f32 -> !tfr.attr
   %cst = tfr.call @tf__const(%0, %t) : (f32, !tfr.attr) -> !tfr.tensor
   %4 = "tfr.cast"(%cst) : (!tfr.tensor) -> tensor<f32>

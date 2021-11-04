@@ -60,15 +60,15 @@ struct DotOpConverter : public OpRewritePattern<DotOp> {
 
     // We don't currently support batching dimensions, or multiple contraction
     // dimensions.
-    mhlo::DotDimensionNumbers dot_dimension_numbers =
+    mhlo::DotDimensionNumbersAttr dot_dimension_numbers =
         op.dot_dimension_numbers();
-    if (dot_dimension_numbers.lhs_batching_dimensions().size() > 0 ||
-        dot_dimension_numbers.rhs_batching_dimensions().size() > 0)
+    if (!dot_dimension_numbers.getLhsBatchingDimensions().empty() ||
+        !dot_dimension_numbers.getRhsBatchingDimensions().empty())
       return failure();
-    if (dot_dimension_numbers.lhs_contracting_dimensions().size() != 1 ||
-        *dot_dimension_numbers.lhs_contracting_dimensions().begin() != 1 ||
-        dot_dimension_numbers.rhs_contracting_dimensions().size() != 1 ||
-        *dot_dimension_numbers.rhs_contracting_dimensions().begin() != 0) {
+    if (dot_dimension_numbers.getLhsContractingDimensions().size() != 1 ||
+        *dot_dimension_numbers.getLhsContractingDimensions().begin() != 1 ||
+        dot_dimension_numbers.getRhsContractingDimensions().size() != 1 ||
+        *dot_dimension_numbers.getRhsContractingDimensions().begin() != 0) {
       return failure();
     }
 
@@ -183,10 +183,11 @@ static Value getZeroValue(Type type, Location loc, PatternRewriter& rewriter) {
   assert(type.isIntOrFloat() && "Expected int or float");
 
   if (IntegerType intType = type.dyn_cast<IntegerType>())
-    return rewriter.create<mlir::ConstantIntOp>(loc, 0, intType.getWidth());
+    return rewriter.create<mlir::arith::ConstantIntOp>(loc, 0,
+                                                       intType.getWidth());
 
   FloatType floatType = type.cast<FloatType>();
-  return rewriter.create<mlir::ConstantFloatOp>(
+  return rewriter.create<mlir::arith::ConstantFloatOp>(
       loc, APFloat::getZero(floatType.getFloatSemantics()), floatType);
 }
 
@@ -263,40 +264,22 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
         !start_indices_type.hasStaticShape() || !output_type.hasStaticShape())
       return rewriter.notifyMatchFailure(op, "only static shaped type allowed");
 
-    mhlo::GatherDimensionNumbers gather_dim = op.dimension_numbersAttr();
+    mhlo::GatherDimensionNumbersAttr gather_dim = op.dimension_numbers();
 
-    // Collapsed_slice_dim.
-    DenseIntElementsAttr collapsed_slice_dims_attr =
-        gather_dim.collapsed_slice_dims();
-    SmallVector<int64_t, 4> collapsed_slice_dims;
-    for (const APInt& dim : collapsed_slice_dims_attr.getIntValues())
-      collapsed_slice_dims.push_back(dim.getSExtValue());
-
-    // Offset_dim.
-    DenseIntElementsAttr offset_dims_attr = gather_dim.offset_dims();
-    SmallVector<int64_t, 4> offset_dims;
-    for (const APInt& dim : offset_dims_attr.getIntValues())
-      offset_dims.push_back(dim.getSExtValue());
-
-    // Start_index_map.
-    DenseIntElementsAttr start_index_map_attr = gather_dim.start_index_map();
-    SmallVector<int64_t, 4> start_index_map;
-    for (const APInt& dim : start_index_map_attr.getIntValues())
-      start_index_map.push_back(dim.getSExtValue());
-
-    // Index_vector_dim.
-    IntegerAttr index_vector_dim_attr = gather_dim.index_vector_dim();
-    int64_t index_vector_dim = index_vector_dim_attr.getValue().getSExtValue();
+    auto collapsed_slice_dims = gather_dim.getCollapsedSliceDims();
+    auto offset_dims = gather_dim.getOffsetDims();
+    auto start_index_map = gather_dim.getStartIndexMap();
+    int64_t index_vector_dim = gather_dim.getIndexVectorDim();
 
     // Slice_sizes.
     DenseIntElementsAttr slice_sizes_attr = op.slice_sizesAttr();
     SmallVector<int64_t, 4> slice_sizes;
-    for (const APInt& dim : slice_sizes_attr.getIntValues())
+    for (const APInt& dim : slice_sizes_attr.getValues<APInt>())
       slice_sizes.push_back(dim.getSExtValue());
 
     // Creating constants with 0 value. We need the Integer type constant value
     // because the indices type will be Integer.
-    Value zero_int_val = rewriter.create<mlir::ConstantIntOp>(
+    Value zero_int_val = rewriter.create<mlir::arith::ConstantIntOp>(
         loc, 0, start_indices_type.getElementType());
     Type element_type = output_type.getElementType();
     Value zero_load_value = getZeroValue(element_type, loc, rewriter);
@@ -314,9 +297,10 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     // fetch start_indices in affine transformation.
     SmallVector<Value, 4> start_indices_index;
     for (unsigned i = 0; i < start_indices_numbers; i++) {
-      Value i_val = rewriter.create<mlir::ConstantIntOp>(
+      Value i_val = rewriter.create<mlir::arith::ConstantIntOp>(
           loc, i, start_indices_type.getElementType());
-      i_val = rewriter.create<IndexCastOp>(loc, i_val, rewriter.getIndexType());
+      i_val = rewriter.create<arith::IndexCastOp>(loc, i_val,
+                                                  rewriter.getIndexType());
       start_indices_index.push_back(i_val);
     }
 
@@ -326,7 +310,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     // them with 0.
     SmallVector<Value, 4> S_in;
     SmallVector<Value, 4> O_in;
-    Value zero_index_val = rewriter.create<IndexCastOp>(
+    Value zero_index_val = rewriter.create<arith::IndexCastOp>(
         loc, zero_int_val, rewriter.getIndexType());
     for (unsigned i = 0; i < operand_rank; i++) {
       S_in.push_back(zero_index_val);
@@ -396,8 +380,8 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
             start_indices_index[i]);
         Value start_index = rewriter.create<AffineLoadOp>(loc, start_indices,
                                                           batch_induction_vars);
-        start_index = rewriter.create<IndexCastOp>(loc, start_index,
-                                                   rewriter.getIndexType());
+        start_index = rewriter.create<arith::IndexCastOp>(
+            loc, start_index, rewriter.getIndexType());
         S_in[start_index_map[i]] = start_index;
         batch_induction_vars.erase(batch_induction_vars.begin() +
                                    index_vector_dim);
@@ -407,8 +391,8 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
       // fetch the start_index from batch_induction_vars.
       Value start_index = rewriter.create<AffineLoadOp>(loc, start_indices,
                                                         batch_induction_vars);
-      start_index = rewriter.create<IndexCastOp>(loc, start_index,
-                                                 rewriter.getIndexType());
+      start_index = rewriter.create<arith::IndexCastOp>(
+          loc, start_index, rewriter.getIndexType());
       S_in[0] = start_index;
     }
 
@@ -421,38 +405,40 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     // the corresponding operand index.
     for (unsigned k = 0, i = 0; k < start_index_map.size(); k++) {
       i = start_index_map[k];
-      Value add_start_index_offset = rewriter.create<mlir::AddIOp>(
+      Value add_start_index_offset = rewriter.create<mlir::arith::AddIOp>(
           loc, rewriter.getIndexType(), S_in[i], O_in[i]);
-      Value predicate = rewriter.create<mlir::CmpIOp>(
-          loc, CmpIPredicate::eq, add_start_index_offset, operand_index[i]);
+      Value predicate = rewriter.create<mlir::arith::CmpIOp>(
+          loc, arith::CmpIPredicate::eq, add_start_index_offset,
+          operand_index[i]);
       predicates.push_back(predicate);
     }
 
     // Since the no. of predicates is equal to start_index_map.size() we
-    // iterate over pairs of predicates and join them with AndOp.
+    // iterate over pairs of predicates and join them with arith::AndIOp.
     unsigned num_equality_checks = start_index_map.size() / 2;
     // We store the final predicate formed by joining other predicates with
-    // AndOp in result_predicate.
+    // arith::AndIOp in result_predicate.
     Value result_predicate = nullptr;
     for (unsigned i = 0; i < num_equality_checks; i += 2) {
       Value predicateA = predicates[i];
       Value predicateB = predicates[i + 1];
       Value and_predicate =
-          rewriter.create<mlir::AndOp>(loc, predicateA, predicateB);
+          rewriter.create<mlir::arith::AndIOp>(loc, predicateA, predicateB);
       result_predicate = (i == 0) ? and_predicate
-                                  : rewriter.create<mlir::AndOp>(
+                                  : rewriter.create<mlir::arith::AndIOp>(
                                         loc, result_predicate, and_predicate);
     }
     // We fetch the last predicate value. In case this is the only predicate
     // we let result_predicate be equal to this predicate value. Else if there
-    // are odd number of predicates we join it to other predicates using AndOp.
+    // are odd number of predicates we join it to other predicates using
+    // arith::AndIOp.
     Value predicate = predicates.back();
     if (!result_predicate) result_predicate = predicate;
     // In case there are odd number of predicates we join the last predicate
-    // to the result_predicate using AndOp.
+    // to the result_predicate using arith::AndIOp.
     else if (start_index_map.size() % 2 == 1)
-      result_predicate =
-          rewriter.create<mlir::AndOp>(loc, result_predicate, predicate);
+      result_predicate = rewriter.create<mlir::arith::AndIOp>(
+          loc, result_predicate, predicate);
 
     // We use the loaded value if the index computed by adding offsets to
     // starting index is equal to the current operand index. We use 0 as a value
@@ -465,11 +451,11 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
 
     // The selected value is added to the previous value stored in output array.
     if (element_type.isa<FloatType>())
-      output_value =
-          rewriter.create<AddFOp>(loc, element_type, select_load, output_value);
+      output_value = rewriter.create<arith::AddFOp>(loc, element_type,
+                                                    select_load, output_value);
     else
-      output_value =
-          rewriter.create<AddIOp>(loc, element_type, select_load, output_value);
+      output_value = rewriter.create<arith::AddIOp>(loc, element_type,
+                                                    select_load, output_value);
     rewriter.create<AffineStoreOp>(loc, output_value, output,
                                    output_induction_vars);
     rewriter.eraseOp(op);
@@ -526,7 +512,6 @@ struct UnaryOpConverter : public OpRewritePattern<LhloOpTy> {
     ArrayRef<int64_t> shape = inputType.getShape();
 
     SmallVector<Value, 4> induction_vars;
-    Location loc = op.getLoc();
 
     LogicalResult map_status = success();
     auto body_builder = [&](OpBuilder& builder, Location loc,

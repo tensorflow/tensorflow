@@ -62,6 +62,7 @@ py_library(
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/compat",
         "//tensorflow/python/data/experimental/service:_pywrap_utils",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
@@ -141,7 +142,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":random_ops",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tf2",
@@ -149,8 +149,6 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:structure",
-        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/util:tf_export",
     ],
 )

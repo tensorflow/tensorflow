@@ -31,6 +31,10 @@ namespace {
 constexpr const char kAuto[] = "AUTO";
 constexpr const char kAny[] = "ANY";
 constexpr const char kLocal[] = "LOCAL";
+
+constexpr const char kColocated[] = "COLOCATED";
+constexpr const char kRemote[] = "REMOTE";
+constexpr const char kHybrid[] = "HYBRID";
 }  // namespace
 
 bool IsNoShard(const ProcessingModeDef& processing_mode) {
@@ -111,5 +115,20 @@ std::string TargetWorkersToString(TargetWorkers target_workers) {
   }
 }
 
+StatusOr<DeploymentMode> ParseDeploymentMode(absl::string_view s) {
+  std::string str_upper = absl::AsciiStrToUpper(s);
+  if (str_upper == kColocated) {
+    return DeploymentMode::COLOCATED;
+  }
+  if (str_upper == kRemote) {
+    return DeploymentMode::REMOTE;
+  }
+  if (str_upper == kHybrid) {
+    return DeploymentMode::HYBRID;
+  }
+  return errors::InvalidArgument("Invalid tf.data service deployment mode: ", s,
+                                 ". Supported modes are "
+                                 "COLOCATED, REMOTE, and HYBRID.");
+}
 }  // namespace data
 }  // namespace tensorflow

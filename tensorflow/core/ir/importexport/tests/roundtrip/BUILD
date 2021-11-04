@@ -1,6 +1,6 @@
 # Regression tests for bridge.
 load(":roundtrip.bzl", "glob_roundtrip_tests")
-load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
     default_visibility = [":friends"],
@@ -40,7 +40,7 @@ glob_roundtrip_tests(
     test_file_exts = ["pbtxt"],
 )
 
-tf_native_cc_binary(
+tf_cc_binary(
     name = "verify-roundtrip",
     testonly = 1,
     srcs = ["verify_roundtrip.cc"],

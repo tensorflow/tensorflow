@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
@@ -21,7 +22,7 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 // Basically x - y => x + y * -1
 def SubToAdd : Pat<(TFL_SubOp $lhs, $rhs, $act),
   (TFL_AddOp $lhs, (TF_MulOp $rhs,
-                  (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>,
+                  (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>,
                    "-1.0f">)), $act)>;
 
 // Squash tfl.dequantize and tfl.quantize pairs.

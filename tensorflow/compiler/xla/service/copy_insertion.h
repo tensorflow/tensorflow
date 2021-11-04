@@ -99,9 +99,6 @@ class CopyInsertion : public HloModulePass {
 
  private:
   Status AddCopiesToResolveInterference(HloModule* module);
-  // TODO(b/189898980): the region based live range analysis currently
-  // does not enforce a strict ordering of the merged live ranges. This may
-  // cause problems for parallel workloads (e.g., in SPMD).
   int64_t use_region_based_live_range_analysis_;
 };
 

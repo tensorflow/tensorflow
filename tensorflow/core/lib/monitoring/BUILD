@@ -83,6 +83,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -126,6 +127,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:types",
     ],
 )
 

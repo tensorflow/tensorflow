@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functions for Python 2 vs. 3 compatibility that are private to TensorFlow."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.util.compat import as_str_any
 
 

@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """System configuration library."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os.path as _os_path
 import platform as _platform
 

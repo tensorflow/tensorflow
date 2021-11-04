@@ -1840,15 +1840,9 @@ static Status BuildGeneralDeviceAssignment(
 
   // Checks num_replicas is sane first to avoid integer overflow.
   if (num_replicas > num_tpu_devices) {
-#ifdef PLATFORM_CLOUD_TPU
     return errors::InvalidArgument("Requested num_replicas=", num_replicas,
                                    " but there are only ", num_tpu_devices,
                                    " cores in the TPU topology.");
-#else
-    return errors::InvalidArgument("Requested num_replicas=", num_replicas,
-                                   " but there are only ", num_tpu_devices,
-                                   " cores in the TPU topology.");
-#endif
   }
   if (num_replicas * num_cores_per_replica > num_tpu_devices) {
     return errors::InvalidArgument(
@@ -3046,7 +3040,7 @@ Status ComputeShardedArgShapes(TensorShape* shape,
     sharded_rank--;
   }
   for (int dim_idx = 0; dim_idx < sharded_rank; ++dim_idx) {
-    auto sharded_dim = tensorflow::MathUtil::CeilOfRatio<int64>(
+    auto sharded_dim = tensorflow::MathUtil::CeilOfRatio<int64_t>(
         shape->dim_size(dim_idx), sharding.tile_assignment_dimensions(dim_idx));
     shape->set_dim(dim_idx, sharded_dim);
   }

@@ -15,10 +15,6 @@
 # ==============================================================================
 """TensorFlow Lite tooling helper functionality."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import functools
 import pprint
@@ -55,6 +51,7 @@ from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _fr
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import OpResolverType  # pylint: disable=unused-import
+from tensorflow.lite.python.metrics import metrics
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
@@ -74,6 +71,8 @@ from tensorflow.lite.python.util import modify_model_io_type as _modify_model_io
 from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
 from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.lite.python.util import trace_model_call as _trace_model_call
+from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugger  # pylint: disable=unused-import
+from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugOptions  # pylint: disable=unused-import
 from tensorflow.python import saved_model as _saved_model
 from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
@@ -94,13 +93,6 @@ from tensorflow.python.saved_model.loader_impl import parse_saved_model_with_deb
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util.tf_export import tf_export as _tf_export
-
-# pylint: disable=g-import-not-at-top
-try:
-  from tensorflow.lite.python import metrics_portable as metrics
-except ImportError:
-  from tensorflow.lite.python import metrics_nonportable as metrics
-# pylint: enable=g-import-not-at-top
 
 
 @_tf_export("lite.Optimize")
@@ -162,6 +154,7 @@ class Optimize(enum.Enum):
     return str(self.value)
 
 
+# TODO(b/198099651): move converter implementation out of lite.py
 @_tf_export("lite.RepresentativeDataset")
 class RepresentativeDataset(object):
   """Representative dataset used to optimize the model.
@@ -237,8 +230,13 @@ class TargetSpec(object):
 class QuantizationMode(object):
   """QuantizationMode determines the quantization type from user options."""
 
-  def __init__(self, optimizations, target_spec, representative_dataset,
-               graph_def, disable_per_channel=False):
+  def __init__(self,
+               optimizations,
+               target_spec,
+               representative_dataset,
+               graph_def,
+               disable_per_channel=False,
+               experimental_new_dynamic_range_quantizer=False):
     self._optimizations = optimizations
     for deprecated_optimization in [
         Optimize.OPTIMIZE_FOR_SIZE, Optimize.OPTIMIZE_FOR_LATENCY
@@ -254,6 +252,9 @@ class QuantizationMode(object):
 
     self._validate_int8_required()
     self._disable_per_channel = disable_per_channel
+
+    self._enable_new_dynamic_range_quantizer = (
+        experimental_new_dynamic_range_quantizer)
 
   # TODO(b/162537905): Refactor the following quantization functions -
   # re-organize and refactor for better readability.
@@ -353,7 +354,10 @@ class QuantizationMode(object):
           "post_training_quantize": True,  # enable dynamic range quantization
           "quantize_to_float16": False,  # disable float16 quantization
           # experimental: disable per-channel (per-axis) quantization.
-          "disable_per_channel_quantization": self._disable_per_channel
+          "disable_per_channel_quantization":
+              self._disable_per_channel,
+          "enable_mlir_dynamic_range_quantizer":
+              self._enable_new_dynamic_range_quantizer
       }
     elif self.post_training_fp16():
       return {
@@ -362,7 +366,7 @@ class QuantizationMode(object):
           "post_training_quantize": True,
           "quantize_to_float16": True,  # enable float16 quantization
           "accumulation_type":
-              self._target_spec._experimental_supported_accumulation_type,
+              self._target_spec._experimental_supported_accumulation_type,  # pylint: disable=protected-access
           "allow_bfloat16":
               self.is_bfloat16_inference_allowed()
       }
@@ -432,9 +436,11 @@ class QuantizationMode(object):
   def contains_training_quant_op(self):
     """Checks if the graph contains any training-time quantization ops."""
     training_quant_ops = frozenset({
-        "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxVarsPerChannel",
-        "FakeQuantWithMinMaxArgs", "FakeQuantWithMinMaxArgsPerChannel",
-        "QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3"
+        "FakeQuantWithMinMaxVars",
+        "FakeQuantWithMinMaxVarsPerChannel",
+        "FakeQuantWithMinMaxArgs",
+        "QuantizeAndDequantizeV2",
+        "QuantizeAndDequantizeV3",
     })
 
     if self._graph_def:
@@ -459,7 +465,6 @@ class TFLiteConverterBase(object):
     self.experimental_new_converter = True
     self.experimental_new_quantizer = True
     self.experimental_enable_resource_variables = False
-    self._experimental_new_quantizer = None
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
     self._experimental_disable_per_channel = False
@@ -475,6 +480,14 @@ class TFLiteConverterBase(object):
     self._experimental_lower_tensor_list_ops = True
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
+
+    # When the value is true, the MLIR quantantizer triggers dynamic range
+    # quantization in MLIR instead of the old TOCO quantizer. Used only if
+    # experimental_new_quantizer is on.
+    # TODO(b/204727097): Enable _experimental_new_dynamic_range_quantizer
+    # by default and remove the flag once feature parity with the old quantizer
+    # is verified.
+    self._experimental_new_dynamic_range_quantizer = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -634,10 +647,6 @@ class TFLiteConverterBase(object):
   def _sparsify_model(self):
     return Optimize.EXPERIMENTAL_SPARSITY in self.optimizations
 
-  def _validate_experimental_new_quantizer_flag(self):
-    if self._experimental_new_quantizer is not None:
-      raise ValueError("Please use 'experimental_new_quantizer' instead.")
-
   def _increase_conversion_attempt_metric(self):
     self._tflite_metrics.increase_counter_converter_attempt()
 
@@ -653,9 +662,10 @@ class TFLiteConverterBase(object):
     converter_kwargs.update(self._get_base_converter_args())
 
     # Optimization parameters.
-    quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, graph_def,
-                                  self._experimental_disable_per_channel)
+    quant_mode = QuantizationMode(
+        self.optimizations, self.target_spec, self.representative_dataset,
+        graph_def, self._experimental_disable_per_channel,
+        self._experimental_new_dynamic_range_quantizer)
     converter_kwargs.update({
         "optimization_default":
             quant_mode.any_optimization_enabled(),
@@ -849,11 +859,11 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     """
     # Update conversion params with graph_def.
     self._save_conversion_params_metric(graph_def)
-    self._quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                        self.representative_dataset, graph_def,
-                                        self._experimental_disable_per_channel)
+    self._quant_mode = QuantizationMode(
+        self.optimizations, self.target_spec, self.representative_dataset,
+        graph_def, self._experimental_disable_per_channel,
+        self._experimental_new_dynamic_range_quantizer)
     self._validate_inference_input_output_types(self._quant_mode)
-    self._validate_experimental_new_quantizer_flag()
 
     if not self._is_unknown_shapes_allowed():
       # Checks dimensions in input tensor.
@@ -1023,9 +1033,10 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     # Update conversion params with graph_def.
     self._save_conversion_params_metric(graph_def)
     # Get quantization options and do some sanity checks.
-    quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, graph_def,
-                                  self._experimental_disable_per_channel)
+    quant_mode = QuantizationMode(
+        self.optimizations, self.target_spec, self.representative_dataset,
+        graph_def, self._experimental_disable_per_channel,
+        self._experimental_new_dynamic_range_quantizer)
     self._validate_inference_input_output_types(quant_mode)
 
     converter_kwargs = {
@@ -1841,9 +1852,10 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     """
     self._validate_inputs(self._input_tensors, self.quantized_input_stats)
 
-    quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, self._graph_def,
-                                  self._experimental_disable_per_channel)
+    quant_mode = QuantizationMode(
+        self.optimizations, self.target_spec, self.representative_dataset,
+        self._graph_def, self._experimental_disable_per_channel,
+        self._experimental_new_dynamic_range_quantizer)
 
     optimized_graph = self._optimize_tf_model(self._graph_def,
                                               self._input_tensors,
@@ -1879,7 +1891,6 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
                    "by setting experimental_new_converter=False")
 
     self._validate_quantized_input_stats(converter_kwargs, quant_mode)
-    self._validate_experimental_new_quantizer_flag()
     # Converts model.
     if self._has_valid_tensors():
       result = _toco_convert_impl(

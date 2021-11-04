@@ -19,7 +19,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_replace.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -27,7 +29,8 @@ namespace gpu {
 namespace {
 void UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
                    const Convolution2DAttributes& conv_attr,
-                   CalculationsPrecision precision, GPUOperation* op) {
+                   const GpuInfo& gpu_info, CalculationsPrecision precision,
+                   GPUOperation* op) {
   int dw_dst_ch_aligned = AlignByN(dw_attr.weights.shape.i, 4);
   int dw_weights_count =
       dw_dst_ch_aligned * dw_attr.weights.shape.h * dw_attr.weights.shape.w;
@@ -95,7 +98,8 @@ void UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
   BufferDescriptor desc;
   desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
-  desc.memory_type = MemoryType::CONSTANT;
+  desc.memory_type =
+      gpu_info.IsMali() ? MemoryType::GLOBAL : MemoryType::CONSTANT;
   desc.size = float_size * gpu_data.size();
   desc.data.resize(desc.size);
 
@@ -111,9 +115,10 @@ void UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
                       absl::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
-std::string GenerateCode(const OperationDef& op_def,
+std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
                          const DepthwiseConvolution2DAttributes& dw_attr,
-                         int result_depth, GPUOperation* result) {
+                         ReLUAttributes* relu_attr_ptr, int result_depth,
+                         GPUOperation* result) {
   auto src_desc = op_def.src_tensors[0];
   src_desc.SetAddressMode(AddressMode::kZero);
   result->AddSrcTensor("src_tensor", src_desc);
@@ -142,7 +147,8 @@ std::string GenerateCode(const OperationDef& op_def,
        "\n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  __constant FLT4* constants = args.constants.GetPtr();\n";
+  std::string mem_type = gpu_info.IsMali() ? "__global" : "__constant";
+  c += "  " + mem_type + " FLT4* constants = args.constants.GetPtr();\n";
   int intermediate_depth = DivideRoundUp(dw_attr.weights.shape.i, 4);
   int weights_counter = 0;
   for (int d = 0; d < intermediate_depth; ++d) {
@@ -205,6 +211,17 @@ std::string GenerateCode(const OperationDef& op_def,
       }
     }
   }
+  if (relu_attr_ptr) {
+    std::string elementwise_code;
+    CreateReLU(*relu_attr_ptr, op_def.precision, &result->args_,
+               &elementwise_code);
+    for (int d = 0; d < intermediate_depth; ++d) {
+      const std::string var_name = "dw_res_" + std::to_string(d);
+      const std::string elementwise_new_code =
+          absl::StrReplaceAll(elementwise_code, {{"in_out_value", var_name}});
+      c += "  {  " + elementwise_new_code + "  }\n";
+    }
+  }
   for (int d = 0; d < result_depth; ++d) {
     c += "  FLT4 conv_res_" + std::to_string(d) + " = constants[" +
          std::to_string(weights_counter++) + "];\n";
@@ -259,6 +276,19 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
           conv_shape.o <= 8 && conv_shape.i * conv_shape.o <= 8 * 16;
       return good_dw && good_conv && recommended_dw && recommended_conv;
     }
+  } else if (gpu_info.IsMali()) {
+    if (gpu_info.mali_info.IsValhallGen2() &&
+        definition.precision == CalculationsPrecision::F16 &&
+        definition.src_tensors[0].SupportsZeroClamp(Axis::WIDTH) &&
+        definition.src_tensors[0].SupportsZeroClamp(Axis::HEIGHT)) {
+      bool recommended_dw = dw_shape.i <= 16 &&
+                            dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 16;
+      bool recommended_conv =
+          conv_shape.o <= 16 && conv_shape.i * conv_shape.o <= 16 * 16;
+      return good_dw && good_conv && recommended_dw && recommended_conv;
+    } else {
+      return false;
+    }
   } else {
     if (definition.precision == CalculationsPrecision::F16) {
       bool recommended_dw = dw_shape.i <= 32 &&
@@ -277,15 +307,15 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
 }
 
 GPUOperation CreateDepthwiseConvPlus1x1Conv(
-    const OperationDef& definition,
+    const OperationDef& definition, const GpuInfo& gpu_info,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr) {
+    const Convolution2DAttributes& conv_attr, ReLUAttributes* relu_attr_ptr) {
   GPUOperation result(definition);
   result.code_ =
-      GenerateCode(definition, dw_attr,
+      GenerateCode(definition, gpu_info, dw_attr, relu_attr_ptr,
                    DivideRoundUp(conv_attr.weights.shape.o, 4), &result);
   result.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_ZIs1;
-  UploadWeights(dw_attr, conv_attr, definition.precision, &result);
+  UploadWeights(dw_attr, conv_attr, gpu_info, definition.precision, &result);
   return result;
 }
 

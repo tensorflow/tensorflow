@@ -1520,7 +1520,7 @@ REGISTER_OP("Range")
       } else if (dtype == DT_INT8) {
         return RangeSize<int8>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT64) {
-        return RangeSize<int64>(start_t, limit_t, delta_t, c);
+        return RangeSize<int64_t>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_UINT32) {
         return RangeSize<uint32>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {
@@ -1560,7 +1560,7 @@ REGISTER_OP("LinSpace")
       if (num_t->dtype() == DT_INT32) {
         num = num_t->scalar<int32>()();
       } else {
-        num = num_t->scalar<int64>()();
+        num = num_t->scalar<int64_t>()();
       }
       if (num <= 0) return errors::InvalidArgument("Requires num > 0: ", num);
       c->set_output(0, c->Vector(num));
@@ -1727,9 +1727,9 @@ REGISTER_OP("DenseBincount")
       DataType dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (dtype == DT_INT32) {
-        size_val = static_cast<int64>(size_tensor->scalar<int32>()());
+        size_val = static_cast<int64_t>(size_tensor->scalar<int32>()());
       } else if (dtype == DT_INT64) {
-        size_val = size_tensor->scalar<int64>()();
+        size_val = size_tensor->scalar<int64_t>()();
       } else {
         return errors::InvalidArgument("size dtype must be int32 or int64");
       }
@@ -1768,9 +1768,9 @@ REGISTER_OP("SparseBincount")
       DataType dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (dtype == DT_INT32) {
-        size_val = static_cast<int64>(size_tensor->scalar<int32>()());
+        size_val = static_cast<int64_t>(size_tensor->scalar<int32>()());
       } else if (dtype == DT_INT64) {
-        size_val = size_tensor->scalar<int64>()();
+        size_val = size_tensor->scalar<int64_t>()();
       } else {
         return errors::InvalidArgument("size dtype must be int32 or int64");
       }
@@ -1789,8 +1789,8 @@ REGISTER_OP("SparseBincount")
       if (shape_tensor->NumElements() == 1) {
         c->set_output(0, c->MakeShape({size_val}));
       } else if (shape_tensor->NumElements() == 2) {
-        c->set_output(0,
-                      c->MakeShape({shape_tensor->flat<int64>()(0), size_val}));
+        c->set_output(
+            0, c->MakeShape({shape_tensor->flat<int64_t>()(0), size_val}));
       } else {
         return errors::InvalidArgument("Input must be less than rank 2");
       }

@@ -55,8 +55,9 @@ class CacheDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{CacheDatasetOp::kOutputTypes, output_dtypes_},
-                    {CacheDatasetOp::kOutputShapes, output_shapes_}};
+    *attr_vector = {{"output_types", output_dtypes_},
+                    {"output_shapes", output_shapes_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 

@@ -515,6 +515,7 @@ cc_library(
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
         "reference/space_to_depth.h",
@@ -615,6 +616,7 @@ cc_library(
         "reference/requantize.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
         "reference/space_to_depth.h",
@@ -1107,6 +1109,17 @@ cc_test(
 cc_test(
     name = "per_channel_dequantize_test",
     srcs = ["per_channel_dequantize_test.cc"],
+    deps = [
+        ":reference_base",
+        ":types",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "per_channel_quantize_test",
+    srcs = ["per_channel_quantize_test.cc"],
     deps = [
         ":reference_base",
         ":types",

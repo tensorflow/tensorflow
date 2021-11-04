@@ -58,14 +58,9 @@ Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
                                            const NodeFilter& node_filter = {},
                                            bool include_functions = false);
 
-// This pass looks at the graph, and turns V1 control flow structure
-// (Switch/Merge/etc.) into V2 control flow structure (If/While).
-class FunctionalizeControlFlowPass : public GraphOptimizationPass {
- public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
-};
-
-// Same as the above but only modifies functions that will be executed by XLA.
+// Rewrites the graph by turning V1 control flow structure
+// (Switch/Merge/etc.) into V2 control flow structure (If/While), only modifies
+// functions that will be executed by XLA.
 class FunctionalizeControlFlowForXlaPass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override;

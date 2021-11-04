@@ -12,7 +12,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/training/tracking:__pkg__",
         "//tensorflow/tools/pip_package:__pkg__",
-        "//tensorflow_models/official/vision/beta/projects/residual_mobilenet/modeling/backbones:__pkg__",
+        "//tensorflow_models/official/projects/residual_mobilenet/modeling/backbones:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -51,10 +51,9 @@ py_library(
         ":recurrent_v2",
         ":rnn_cell_wrapper_v2",
         ":wrappers",
+        "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers/normalization",
-        "//tensorflow/python/keras/layers/preprocessing",
-        "//tensorflow/python/keras/premade",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
@@ -879,17 +878,5 @@ tf_py_test(
         "//tensorflow/python/keras/legacy_tf_layers:layers_base",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "layers_test",
-    size = "small",
-    srcs = ["layers_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":layers",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:tf2",
     ],
 )

@@ -1340,18 +1340,20 @@ class FusedBatchNormOpBase : public OpKernel {
         errors::InvalidArgument("offset must have the same number of elements "
                                 "as the channels of x, got ",
                                 offset.NumElements(), " and ", num_channels));
-    if (estimated_mean.NumElements() != 0) {
+    if (!is_training_ || exponential_avg_factor_ != 1.) {
+      std::string prefix_msg = is_training_ ? "When exponential_avg_factor != 1"
+                                            : "When is_training=false";
       OP_REQUIRES(context, estimated_mean.NumElements() == num_channels,
                   errors::InvalidArgument(
-                      "mean must be empty or have the same number of "
-                      "elements as the channels of x, got ",
+                      prefix_msg,
+                      ", mean must have the same number "
+                      "of elements as the channels of x, got ",
                       estimated_mean.NumElements(), " and ", num_channels));
-    }
-    if (estimated_variance.NumElements() != 0) {
       OP_REQUIRES(context, estimated_variance.NumElements() == num_channels,
                   errors::InvalidArgument(
-                      "variance must be empty or have the same number of "
-                      "elements as the channels of x, got ",
+                      prefix_msg,
+                      ", variance must have the same "
+                      "number of elements as the channels of x, got ",
                       estimated_variance.NumElements(), " and ", num_channels));
     }
 
@@ -1543,6 +1545,11 @@ class FusedBatchNormGradOpBase : public OpKernel {
                 errors::InvalidArgument(
                     "saved variance must be 1-dimensional",
                     saved_maybe_inv_var_or_pop_var.shape().DebugString()));
+    OP_REQUIRES(
+        context, x.shape() == y_backprop.shape(),
+        errors::InvalidArgument(
+            "x and y_backprop must have same shape, but x has shape ",
+            x.shape(), " and y_backprop has shape ", y_backprop.shape()));
     if (use_activation) {
       OP_REQUIRES(
           context, x.dim_size(3) % 4 == 0,
@@ -1568,6 +1575,23 @@ class FusedBatchNormGradOpBase : public OpKernel {
       OP_REQUIRES(context, y_backprop.CopyFrom(y_backprop, dest_shape),
                   errors::InvalidArgument("Error during tensor copy."));
     }
+
+    const auto num_channels = GetTensorDim(x, tensor_format_, 'C');
+    OP_REQUIRES(
+        context, scale.NumElements() == num_channels,
+        errors::InvalidArgument("scale must have the same number of elements "
+                                "as the channels of x, got ",
+                                scale.NumElements(), " and ", num_channels));
+    OP_REQUIRES(
+        context, saved_mean_or_pop_mean.NumElements() == num_channels,
+        errors::InvalidArgument("reserve_space_1 must have the same number of "
+                                "elements as the channels of x, got ",
+                                scale.NumElements(), " and ", num_channels));
+    OP_REQUIRES(
+        context, saved_maybe_inv_var_or_pop_var.NumElements() == num_channels,
+        errors::InvalidArgument("reserve_space_2 must have the same number of "
+                                "elements as the channels of x, got ",
+                                scale.NumElements(), " and ", num_channels));
 
     Tensor* x_backprop = nullptr;
     auto alloc_shape = use_reshape ? dest_shape : x_shape;

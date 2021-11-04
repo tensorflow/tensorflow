@@ -15,6 +15,7 @@
 
 import enum
 import inspect
+import typing
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
 
 import numpy as np
@@ -229,6 +230,11 @@ class OpSharding_Type(enum.IntEnum):
   TUPLE: int
   OTHER: int
 
+class OpSharding:
+  Type: typing.Type[OpSharding_Type]
+  type: OpSharding_Type
+  replicate_on_last_dim: bool
+
 class ChannelHandle_ChannelType(enum.IntEnum):
   CHANNEL_TYPE_INVALID: int
   DEVICE_TO_DEVICE: int
@@ -442,20 +448,20 @@ class DistributedRuntimeClient:
 def get_distributed_runtime_service(
     address: str,
     num_nodes: int,
-    heartbeat_interval: Optional[int],
-    max_missing_heartbeats: Optional[int],
-    enumerate_devices_timeout: Optional[int],
-    shutdown_timeout: Optional[int]) -> DistributedRuntimeService: ...
+    heartbeat_interval: Optional[int] = ...,
+    max_missing_heartbeats: Optional[int] = ...,
+    enumerate_devices_timeout: Optional[int] = ...,
+    shutdown_timeout: Optional[int] = ...) -> DistributedRuntimeService: ...
 def get_distributed_runtime_client(
     address: str,
     node_id: int,
-    rpc_timeout: Optional[int],
-    init_timeout: Optional[int],
-    shutdown_timeout: Optional[int],
-    heartbeat_interval: Optional[int],
-    max_missing_heartbeats: Optional[int],
-    missed_heartbeat_callback: Optional[Any],
-    shutdown_on_destruction: Optional[bool]) -> DistributedRuntimeClient: ...
+    rpc_timeout: Optional[int] = ...,
+    init_timeout: Optional[int] = ...,
+    shutdown_timeout: Optional[int] = ...,
+    heartbeat_interval: Optional[int] = ...,
+    max_missing_heartbeats: Optional[int] = ...,
+    missed_heartbeat_callback: Optional[Any] = ...,
+    shutdown_on_destruction: Optional[bool] = ...) -> DistributedRuntimeClient: ...
 
 def collect_garbage() -> None: ...
 

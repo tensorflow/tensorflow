@@ -306,7 +306,7 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
 
     // We have already solved L z = P rhs above. Now we solve U x = z,
     // possibly perturbing small pivots to avoid overflow. The variable tol
-    // contains eps * max( abs( u(:,:) ) ). If tiny pivots are encoutered,
+    // contains eps * max( abs( u(:,:) ) ). If tiny pivots are encountered,
     // they are perturbed by a small amount on the scale of tol to avoid
     // overflow or scaled up to avoid underflow.
     RealScalar tol = eps * max_abs_u;

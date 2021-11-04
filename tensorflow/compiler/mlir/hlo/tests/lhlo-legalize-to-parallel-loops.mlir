@@ -16,11 +16,11 @@ func @reduce(%arg: memref<100x10x5xf32>,
 // CHECK-SAME: [[ARG_BUF:%.*]]: memref<100x10x5xf32>,
 // CHECK-SAME: [[INIT_BUF:%.*]]: memref<f32>,
 // CHECK-SAME: [[RESULT_BUF:%.*]]: memref<100x5xf32>) {
-// CHECK-DAG:  [[C0:%.*]] = constant 0 : index
-// CHECK-DAG:  [[C1:%.*]] = constant 1 : index
-// CHECK-DAG:  [[C5:%.*]] = constant 5 : index
-// CHECK-DAG:  [[C10:%.*]] = constant 10 : index
-// CHECK-DAG:  [[C100:%.*]] = constant 100 : index
+// CHECK-DAG:  [[C0:%.*]] = arith.constant 0 : index
+// CHECK-DAG:  [[C1:%.*]] = arith.constant 1 : index
+// CHECK-DAG:  [[C5:%.*]] = arith.constant 5 : index
+// CHECK-DAG:  [[C10:%.*]] = arith.constant 10 : index
+// CHECK-DAG:  [[C100:%.*]] = arith.constant 100 : index
 // CHECK:  [[INIT:%.*]] = memref.load [[INIT_BUF]]
 // CHECK:  scf.parallel ([[I:%.*]], [[K:%.*]]) = ([[C0]], [[C0]])
 // CHECK-SAME:                     to ([[C100]], [[C5]]) step ([[C1]], [[C1]]) {
@@ -62,9 +62,9 @@ func @reduce_no_outer_loop(%arg: memref<100xf32>,
 // CHECK-SAME: [[ARG_BUF:%.*]]: memref<100xf32>,
 // CHECK-SAME: [[ELEM_TO_REDUCE_BUF:%.*]]: memref<f32>,
 // CHECK-SAME: [[RESULT_BUF:%.*]]: memref<1xf32>) {
-// CHECK-DAG:  [[C0:%.*]] = constant 0 : index
-// CHECK-DAG:  [[C1:%.*]] = constant 1 : index
-// CHECK-DAG:  [[C100:%.*]] = constant 100 : index
+// CHECK-DAG:  [[C0:%.*]] = arith.constant 0 : index
+// CHECK-DAG:  [[C1:%.*]] = arith.constant 1 : index
+// CHECK-DAG:  [[C100:%.*]] = arith.constant 100 : index
 // CHECK:      [[INIT:%.*]] = memref.load [[INIT_BUF]]
 // CHECK:      [[REDUCTION_RESULT:%.*]] = scf.parallel ([[I:%.*]]) = ([[C0]])
 // CHECK-SAME:     to ([[C100]]) step ([[C1]]) init ([[INIT]]) -> f32 {
@@ -101,9 +101,9 @@ func @dynamic_reduce(%arg: memref<?x?x?xf32>,
 // CHECK-SAME: [[ARG_BUF:%.*]]: memref<?x?x?xf32>,
 // CHECK-SAME: [[INIT_BUF:%.*]]: memref<f32>,
 // CHECK-SAME: [[RESULT_BUF:%.*]]: memref<?x?xf32>) {
-// CHECK-DAG:  [[C0:%.*]] = constant 0 : index
-// CHECK-DAG:  [[C1:%.*]] = constant 1 : index
-// CHECK-DAG:  [[C2:%.*]] = constant 2 : index
+// CHECK-DAG:  [[C0:%.*]] = arith.constant 0 : index
+// CHECK-DAG:  [[C1:%.*]] = arith.constant 1 : index
+// CHECK-DAG:  [[C2:%.*]] = arith.constant 2 : index
 // CHECK:  [[DIM0:%.*]] = memref.dim [[ARG_BUF]], [[C0]] : memref<?x?x?xf32>
 // CHECK:  [[DIM1:%.*]] = memref.dim [[ARG_BUF]], [[C1]] : memref<?x?x?xf32>
 // CHECK:  [[DIM2:%.*]] = memref.dim [[ARG_BUF]], [[C2]] : memref<?x?x?xf32>
@@ -151,12 +151,12 @@ func @reduce_window(%arg: memref<112x112xf32>,
 // CHECK-SAME:      [[OPERAND_BUF:%.*]]: memref<112x112xf32>,
 // CHECK-SAME:      [[INIT_BUF:%.*]]: memref<f32>,
 // CHECK-SAME:      [[RESULT_BUF:%.*]]: memref<56x56xf32>) {
-// CHECK-DAG:  [[C0:%.*]] = constant 0 : index
-// CHECK-DAG:  [[C1:%.*]] = constant 1 : index
-// CHECK-DAG:  [[C2:%.*]] = constant 2 : index
-// CHECK-DAG:  [[C3:%.*]] = constant 3 : index
-// CHECK-DAG:  [[C56:%.*]] = constant 56 : index
-// CHECK-DAG:  [[C112:%.*]] = constant 112 : index
+// CHECK-DAG:  [[C0:%.*]] = arith.constant 0 : index
+// CHECK-DAG:  [[C1:%.*]] = arith.constant 1 : index
+// CHECK-DAG:  [[C2:%.*]] = arith.constant 2 : index
+// CHECK-DAG:  [[C3:%.*]] = arith.constant 3 : index
+// CHECK-DAG:  [[C56:%.*]] = arith.constant 56 : index
+// CHECK-DAG:  [[C112:%.*]] = arith.constant 112 : index
 // CHECK:      [[INIT:%.*]] = memref.load [[INIT_BUF]][] : memref<f32>
 // CHECK:      scf.parallel ([[I:%.*]], [[J:%.*]]) = ([[C0]], [[C0]])
 // CHECK-SAME:         to ([[C56]], [[C56]]) step ([[C1]], [[C1]]) {
@@ -165,14 +165,14 @@ func @reduce_window(%arg: memref<112x112xf32>,
 // CHECK-SAME:       to ([[C3]], [[C3]]) step ([[C1]], [[C1]])
 // CHECK-SAME:       init ([[INIT]]) -> f32 {
 
-// CHECK:          [[START_I:%.*]] = muli [[I]], [[C2]] : index
-// CHECK:          [[INDEX_I:%.*]] = addi [[START_I]], [[IW]] : index
-// CHECK:          [[INDEX_I_FITS:%.*]] = cmpi ult, [[INDEX_I]], [[C112]]
+// CHECK:          [[START_I:%.*]] = arith.muli [[I]], [[C2]] : index
+// CHECK:          [[INDEX_I:%.*]] = arith.addi [[START_I]], [[IW]] : index
+// CHECK:          [[INDEX_I_FITS:%.*]] = arith.cmpi ult, [[INDEX_I]], [[C112]]
 
-// CHECK:          [[START_J:%.*]] = muli [[J]], [[C2]] : index
-// CHECK:          [[INDEX_J:%.*]] = addi [[START_J]], [[JW]] : index
-// CHECK:          [[INDEX_J_FITS:%.*]] = cmpi ult, [[INDEX_J]], [[C112]]
-// CHECK:          [[IN_BOUNDS_1:%.*]] = and [[INDEX_I_FITS]], [[INDEX_J_FITS]]
+// CHECK:          [[START_J:%.*]] = arith.muli [[J]], [[C2]] : index
+// CHECK:          [[INDEX_J:%.*]] = arith.addi [[START_J]], [[JW]] : index
+// CHECK:          [[INDEX_J_FITS:%.*]] = arith.cmpi ult, [[INDEX_J]], [[C112]]
+// CHECK:          [[IN_BOUNDS_1:%.*]] = arith.andi [[INDEX_I_FITS]], [[INDEX_J_FITS]]
 
 // CHECK:          [[ELEM_TO_REDUCE:%.*]] = scf.if [[IN_BOUNDS_1]] -> (f32) {
 // CHECK:            [[OPERAND_ELEM:%.*]] =

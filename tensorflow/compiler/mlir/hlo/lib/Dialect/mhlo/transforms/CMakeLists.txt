@@ -107,6 +107,8 @@ add_mlir_library(MhloToLhloConversion
   LINK_LIBS PUBLIC
   MhloDialect
   LmhloDialect
+  MLIRArithmetic
+  MLIRArithmeticTransforms
   MLIRIR
   MLIRPass
   MLIRMath
@@ -254,6 +256,9 @@ add_mlir_library(DiscRalToLLVM
 
   LINK_LIBS PUBLIC
   DiscRalDialect
+  MLIRArithmetic
+  MLIRArithmeticToLLVM
+  MLIRArithmeticTransforms
   MLIRGPUOps
   MLIRIR
   MLIRLLVMCommonConversion

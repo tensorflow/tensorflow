@@ -109,7 +109,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     return input_->output_shapes();
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     if (count_ == -1 || input_->Cardinality() == kInfiniteCardinality) {
       return kInfiniteCardinality;
     } else if (input_->Cardinality() == kUnknownCardinality) {
@@ -130,16 +130,12 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     {
       mutex_lock l(mu_);
       if (shuffled_indices_.empty()) {
         InitializeRandomAccessIndices();
       }
-    }
-    const int64 cardinality = Cardinality();
-    if (index < 0 || index >= cardinality) {
-      return errors::OutOfRange("Index out of range [0, ", cardinality,
-                                "):", index);
     }
     int64 shuffled_index;
     {
@@ -327,6 +323,9 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>();
       TF_RETURN_IF_ERROR(
           ReadElementsFromCheckpoint(ctx, reader, prefix(), buffer_.get()));
+      for (const auto& element : *buffer_) {
+        RecordBufferEnqueue(ctx, element);
+      }
       buffer_->resize(dataset()->buffer_size_);
       slices_.clear();
       for (size_t i = 0; i < slices_size; ++i) {

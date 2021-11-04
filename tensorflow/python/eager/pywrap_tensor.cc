@@ -550,7 +550,11 @@ void EagerTensor_dealloc(EagerTensor* self) {
   // create it ourselves.
   Py_CLEAR(self->dict);
   if (self->handle != nullptr) {
+    // Destructor may call arbitrary functions that end up calling into
+    // Python from another thread.
+    Py_BEGIN_ALLOW_THREADS;
     TFE_DeleteTensorHandle(self->handle);
+    Py_END_ALLOW_THREADS;
     self->handle = nullptr;
   }
 

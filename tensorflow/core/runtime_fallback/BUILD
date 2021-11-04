@@ -8,6 +8,7 @@ package_group(
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/tfrt/...",
         "//learning/brain/mobile/lite/...",
     ]),
 )
@@ -185,6 +186,7 @@ alias(
         ":internal",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
+        "//third_party/tf_runtime_google:__subpackages__",
     ],
 )
 

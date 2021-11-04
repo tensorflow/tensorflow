@@ -66,9 +66,8 @@ class WorkerClientTest : public ::testing::Test {
   StatusOr<int64_t> RegisterDataset(const int64_t range) {
     const auto dataset_def = RangeSquareDataset(range);
     int64_t dataset_id = 0;
-    absl::optional<std::string> element_spec;
     TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
-        dataset_def, element_spec, dataset_id));
+        dataset_def, DataServiceMetadata(), dataset_id));
     return dataset_id;
   }
 
@@ -142,7 +141,7 @@ TEST_F(WorkerClientTest, LocalRead) {
   LocalWorkers::Remove(GetWorkerAddress());
   EXPECT_THAT(GetElement(*client, task_id),
               StatusIs(error::CANCELLED,
-                       MatchesRegex("Worker.*is no longer available.*")));
+                       MatchesRegex("Local worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
@@ -161,7 +160,7 @@ TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
   LocalWorkers::Remove(GetWorkerAddress());
   EXPECT_THAT(GetElement(*client, task_id),
               StatusIs(error::CANCELLED,
-                       MatchesRegex("Worker.*is no longer available.*")));
+                       MatchesRegex("Local worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, GrpcRead) {
@@ -178,12 +177,12 @@ TEST_F(WorkerClientTest, GrpcRead) {
     EXPECT_FALSE(result.end_of_sequence);
   }
 
-  // Remove the local worker from `LocalWorkers`. Since the client reads from
-  // gRPC, this will not cause the request to fail.
+  // Remove the local worker from `LocalWorkers`. Since the client reads from a
+  // local server, this should cause the request to fail.
   LocalWorkers::Remove(GetWorkerAddress());
-  TF_ASSERT_OK_AND_ASSIGN(GetElementResult result,
-                          GetElement(*client, task_id));
-  EXPECT_TRUE(result.end_of_sequence);
+  EXPECT_THAT(GetElement(*client, task_id),
+              StatusIs(error::CANCELLED,
+                       MatchesRegex("Local worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, LocalServerShutsDown) {
@@ -198,7 +197,7 @@ TEST_F(WorkerClientTest, LocalServerShutsDown) {
   test_cluster_->StopWorkers();
   EXPECT_THAT(GetElement(*client, task_id),
               StatusIs(error::CANCELLED,
-                       MatchesRegex("Worker.*is no longer available.*")));
+                       MatchesRegex("Local worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, CancelClient) {

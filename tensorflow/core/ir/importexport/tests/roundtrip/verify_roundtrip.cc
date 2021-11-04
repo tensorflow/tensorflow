@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
     // Roundtrip the module to text to ensure the custom printers are complete.
     std::string module_txt;
     llvm::raw_string_ostream os(module_txt);
-    module->print(os);
+    module->print(os, mlir::OpPrintingFlags().enableDebugInfo());
 
     auto new_module = mlir::parseSourceString(os.str(), module->getContext());
     if (!new_module) {

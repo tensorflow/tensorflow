@@ -37,14 +37,15 @@ limitations under the License.
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Error.h"
-#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
@@ -61,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
+#include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
@@ -85,12 +87,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_simplifier.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/eigh_expander.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -145,14 +149,59 @@ namespace {
 // Hopefully this will all go away at some point in favor of a better
 // integration.
 void LoadMLIRDialects(mlir::MLIRContext& context) {
-  context.loadDialect<mlir::linalg::LinalgDialect, mlir::scf::SCFDialect,
-                      mlir::vector::VectorDialect, mlir::StandardOpsDialect,
-                      mlir::AffineDialect>();
+  context
+      .loadDialect<mlir::arith::ArithmeticDialect, mlir::linalg::LinalgDialect,
+                   mlir::scf::SCFDialect, mlir::vector::VectorDialect,
+                   mlir::StandardOpsDialect, mlir::AffineDialect>();
 }
 
 }  // namespace
 
 namespace xla {
+
+namespace {
+
+// For each computation in the module, determines whether that computation
+// calls a custom-call function, either directly or indirectly (e.g. because it
+// calls another computation that does).
+absl::flat_hash_map<const HloComputation*, bool>
+ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
+  absl::flat_hash_map<const HloComputation*, bool> custom_call_map;
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(&module);
+
+  // Can never fail because we always return an OK status from the visitor.
+  TF_CHECK_OK(call_graph->VisitNodes([&custom_call_map](
+                                         const CallGraphNode& node) {
+    const HloComputation* computation = node.computation();
+
+    for (const HloInstruction* instruction : computation->instructions()) {
+      // The computation contains a custom-call instruction directly.
+      if (DynCast<HloCustomCallInstruction>(instruction)) {
+        custom_call_map[computation] = true;
+        return Status::OK();
+      }
+      // The computation calls something that contains a custom-call
+      // instruction (directly or indirectly). This lookup relies on the call
+      // graph traversing callees before callers, so that the map is always
+      // populated for all callees at this point.
+      for (const HloComputation* callee : instruction->called_computations()) {
+        bool callee_contains_custom_call = FindOrDie(custom_call_map, callee);
+        if (callee_contains_custom_call) {
+          custom_call_map[computation] = true;
+          return Status::OK();
+        }
+      }
+    }
+
+    custom_call_map[computation] = false;
+    return Status::OK();
+  }));
+
+  return custom_call_map;
+}
+
+}  // namespace
+
 namespace cpu {
 using BufferInfo = cpu_function_runtime::BufferInfo;
 
@@ -362,7 +411,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<LogisticExpander>(
       /*expansion_type=*/LogisticExpansionType::kExp);
   pipeline.AddPass<ConditionalCanonicalizer>();
-  pipeline.AddPass<DynamicPadder>();
+  pipeline.AddPass<DynamicDimensionSimplifier>();
+  auto dynamic_padder_options = DynamicPadderOptions();
+  dynamic_padder_options.shape_check_mode =
+      DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+  pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
   pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
 
@@ -398,6 +451,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<ConditionalSimplifier>();
   }();
+  pipeline.AddPass<BitcastDtypesExpander>();
 
   pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
     return sort->operand(0)->shape().element_type() == F32;
@@ -420,8 +474,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout(), target_machine_features);
 
-  pipeline.AddPass<CpuInstructionFusion>();
-
   return pipeline.Run(module).status();
 }
 
@@ -429,12 +481,15 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     HloModule* module, bool is_aot_compile,
     LLVMTargetMachineFeatures* target_machine_features) {
   HloPassPipeline pipeline("HLO passes after layout assignment");
-  // After layout assignment, use a layout-sensitive verifier.
 
+  // After layout assignment, use a layout-sensitive verifier.
   pipeline.AddPass<HloPassPipeline>("after layout assignment")
       .AddInvariantCheckerDebug<HloVerifier>(
           /*layout_sensitive=*/true,
           /*allow_mixed_precision=*/false);
+
+  // Add a fusion pass now that layout assignment is done.
+  pipeline.AddPass<CpuInstructionFusion>();
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -481,6 +536,11 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
 Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
                                  llvm::TargetMachine* target_machine) {
+  if (DumpingEnabledForHloModule(*module)) {
+    hlo_proto_ = absl::make_unique<HloProto>();
+    *hlo_proto_->mutable_hlo_module() = module->ToProto();
+  }
+
   LLVMTargetMachineFeatures target_machine_features(target_machine);
   TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(module, is_aot_compile,
                                                    &target_machine_features));
@@ -611,34 +671,25 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
-StatusOr<
-    std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-CpuCompiler::RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
-                                              se::StreamExecutor* executor,
-                                              bool optimize,
-                                              const CompileOptions& options) {
-  if (optimize) {
-    TF_ASSIGN_OR_RETURN(module,
-                        RunHloPasses(std::move(module), executor, options));
-  }
-
+StatusOr<std::unique_ptr<BufferAssignment>> CpuCompiler::AssignBuffers(
+    const HloModule* module) {
   // Select an order for emitting the HLO instructions for each computation.
   // Using this sequence enables tighter buffer liveness analysis and reduced
   // memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
-                      ScheduleModule(module.get(), BufferSizeBytesFunction(),
+                      ScheduleModule(module, BufferSizeBytesFunction(),
                                      ComputationSchedulerToModuleScheduler(
                                          DFSMemoryScheduler)));
 
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(module.get(),
+      BufferAssigner::Run(module,
                           absl::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allocate_buffers_for_constants=*/true));
 
-  return std::make_tuple(std::move(module), std::move(assignment));
+  return std::move(assignment);
 }
 
 namespace {
@@ -766,6 +817,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   IrEmitter ir_emitter(&mlir_context, *module, *assignment, llvm_module.get(),
                        std::move(instruction_to_profile_idx),
                        std::move(computation_to_profile_idx),
+                       ModuleComputationsTransitivelyContainCustomCall(*module),
                        &target_machine_features,
 #ifdef MEMORY_SANITIZER
                        /*emit_code_for_msan=*/true
@@ -826,10 +878,15 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   }
 
   // Dump computation proto state and buffer assignment for debug and test, if
-  // dump is enabled.
-  if (DumpingEnabledForHloModule(cpu_executable->module())) {
+  // dump or embed_ir_in_executable is enabled.
+  if (embed_ir_in_executable ||
+      DumpingEnabledForHloModule(cpu_executable->module())) {
     auto hlo_proto = absl::make_unique<HloProto>();
-    *hlo_proto->mutable_hlo_module() = cpu_executable->module().ToProto();
+    if (hlo_proto_) {
+      *hlo_proto = *hlo_proto_;
+    } else {
+      *hlo_proto->mutable_hlo_module() = cpu_executable->module().ToProto();
+    }
     *hlo_proto->mutable_buffer_assignment() =
         cpu_executable->buffer_assignment().ToProto();
     cpu_executable->set_hlo_proto(std::move(hlo_proto));
@@ -984,12 +1041,14 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     }
 
     LLVMTargetMachineFeatures target_machine_features(target_machine.get());
-    IrEmitter ir_emitter(&mlir_context, *module, *assignment, &llvm_module,
-                         std::move(instruction_to_profile_idx),
-                         std::move(computation_to_profile_idx),
-                         &target_machine_features,
-                         // TODO(b/66051036): Run full msan for AOT.
-                         /*emit_code_for_msan=*/false);
+    IrEmitter ir_emitter(
+        &mlir_context, *module, *assignment, &llvm_module,
+        std::move(instruction_to_profile_idx),
+        std::move(computation_to_profile_idx),
+        ModuleComputationsTransitivelyContainCustomCall(*module),
+        &target_machine_features,
+        // TODO(b/66051036): Run full msan for AOT.
+        /*emit_code_for_msan=*/false);
 
     TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 

@@ -33,6 +33,7 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 # Attribute used to keep track of when we're inside a user-defined constructor
 # (in which case the fields of `self` may be modified).
@@ -89,6 +90,7 @@ class ExtensionTypeMetaclass(abc.ABCMeta):
 # ==============================================================================
 # Base class for user-defined types
 # ==============================================================================
+@tf_export('experimental.ExtensionType')
 class ExtensionType(
     composite_tensor.CompositeTensor, metaclass=ExtensionTypeMetaclass):
   """Base class for TensorFlow `ExtensionType` classes.
@@ -119,16 +121,9 @@ class ExtensionType(
   Tuples               | `params: typing.Tuple[int, float, int, int]`
   Tuples w/ Ellipsis   | `lengths: typing.Tuple[int, ...]`
   Mappings             | `tags: typing.Mapping[str, str]`
-  TensorSpec instances | `t2: tf.TensorSpec(shape=[8, None], dtype=tf.int32)`
-  TypeSpec instances   | `rt2: tf.RaggedTensorSpec(ragged_rank=2)`
 
   Fields annotated with `typing.Mapping` will be stored using an immutable
   mapping type.
-
-  Due to technical limitations of Python's `typing` module, `TensorSpec`
-  and `TypeSpec` instances may not currently be nested inside generic types
-  (such as `typing.Union` or `typing.Tuple`).  TODO(b/184564088) Define
-  tf generic types to avoid this limitation.
 
   ExtensionType values are immutable -- i.e., once constructed, you can not
   modify or delete any of their instance members.
@@ -137,12 +132,12 @@ class ExtensionType(
 
   >>> class MaskedTensor(ExtensionType):
   ...   values: tf.Tensor
-  ...   mask: tf.TensorSpec(shape=None, dtype=tf.bool)
+  ...   mask: tf.Tensor
 
   >>> class Toy(ExtensionType):
   ...   name: str
   ...   price: ops.Tensor
-  ...   features: typing.Mapping[str, ops.Tensor]
+  ...   features: typing.Mapping[str, tf.Tensor]
 
   >>> class ToyStore(ExtensionType):
   ...   name: str
@@ -170,7 +165,7 @@ class ExtensionType(
       A list of `ExtensionTypeField` objects.  Forward references are resolved
       if possible, or left unresolved otherwise.
     """
-    if cls._tf_extension_type_cached_fields is not None:
+    if '_tf_extension_type_cached_fields' in cls.__dict__:  # do not inherit.
       return cls._tf_extension_type_cached_fields
 
     try:
@@ -362,10 +357,6 @@ def is_packed(value):
 # ==============================================================================
 # Base class for the tf.ExtensionType TypeSpecs
 # ==============================================================================
-# TODO(b/184565242) Support custom TypeSpec constructors.
-# TODO(b/184565242) Support custom TypeSpec methods & properties.
-# TODO(b/184565242) Support custom TypeSpec validation.
-# TODO(b/184565242) Support custom TypeSpec repr.
 # TODO(b/184565242) Support customizing type relaxation for tracing.
 # TODO(b/184565242) Support conversion to/from FullType.
 # TODO(b/195884675) Support batch and unbatch.
@@ -512,6 +503,213 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
     return copy
 
 
+@tf_export('experimental.ExtensionTypeBatchEncoder')
+class ExtensionTypeBatchEncoder(type_spec.TypeSpecBatchEncoder):
+  """Class used to encode and decode extension type values for batching.
+
+  In order to be batched and unbatched by APIs such as `tf.data.Dataset`,
+  `tf.keras`, and `tf.map_fn`, extension type values must be encoded as a list
+  of `tf.Tensor`s, where stacking, unstacking, or concatenating these encoded
+  tensors and then decoding the result must be equivalent to stacking,
+  unstacking, or concatenating the original values. `ExtensionTypeBatchEncoder`s
+  are responsible for implementing this encoding.
+
+  The default `ExtensionTypeBatchEncoder` that is used by
+  `BatchableExtensionType` assumes that extension type values can be stacked,
+  unstacked, or concatenated by simply stacking, unstacking, or concatenating
+  every nested `Tensor`, `ExtensionType`, `CompositeTensor`, and `TensorShape`
+  field.
+
+  Extension types where this is not the case will need to override
+  `__batch_encoder__` with a custom encoder that overrides the `batch`,
+  `unbatch`, `encode`, and `decode` methods. E.g.:
+
+  >>> class CustomBatchEncoder(ExtensionTypeBatchEncoder):
+  ...   pass # Override batch(), unbatch(), encode(), and decode().
+
+  >>> class CustomType(BatchableExtensionType):
+  ...   x: tf.Tensor
+  ...   y: tf.Tensor
+  ...   shape: tf.TensorShape
+  ...   __batch_encoder__ = CustomBatchEncoder()
+
+  For example, `tf.RaggedTensor` and `tf.SparseTensor` both use custom batch
+  encodings which define ops to "box" and "unbox" individual values into
+  `tf.variant` tensors.
+  """
+
+  def batch(self, spec, batch_size):
+    """Returns the TypeSpec representing a batch of values described by `spec`.
+
+    The default definition returns a `TypeSpec` that is equal to `spec`, except
+    that an outer axis with size `batch_size` is added to every nested
+    `TypeSpec` and `TensorShape` field.  Subclasses may override this default
+    definition, when necessary.
+
+    Args:
+      spec: The `TypeSpec` for an individual value.
+      batch_size: An `int` indicating the number of values that are batched
+        together, or `None` if the batch size is not known.
+
+    Returns:
+      A `TypeSpec` for a batch of values.
+    """
+
+    def batch_field(f):
+      if isinstance(f, type_spec.BatchableTypeSpec):
+        return f.__batch_encoder__.batch(f, batch_size)
+      elif isinstance(f, tensor_shape.TensorShape):
+        return [batch_size] + f
+      else:
+        return f
+
+    fields = tuple(spec.__dict__.items())
+    batched_fields = nest.map_structure(batch_field, fields)
+    return _create_object_from_type_and_dict(type(spec), batched_fields)
+
+  def unbatch(self, spec):
+    """Returns the TypeSpec for a single unbatched element in `spec`.
+
+    The default definition returns a `TypeSpec` that is equal to `spec`, except
+    that the outermost axis is removed from every nested `TypeSpec`, and
+    `TensorShape` field.  Subclasses may override this default definition, when
+    necessary.
+
+    Args:
+      spec: The `TypeSpec` for a batch of values.
+
+    Returns:
+      A `TypeSpec` for an individual value.
+    """
+
+    def unbatch_field(f):
+      if isinstance(f, type_spec.BatchableTypeSpec):
+        return f.__batch_encoder__.unbatch(f)
+      elif isinstance(f, tensor_shape.TensorShape):
+        return f[1:]
+      else:
+        return f
+
+    fields = tuple(spec.__dict__.items())
+    unbatched_fields = nest.map_structure(unbatch_field, fields)
+    return _create_object_from_type_and_dict(type(spec), unbatched_fields)
+
+  def encode(self, spec, value, minimum_rank=0):
+    """Encodes `value` as a nest of batchable Tensors or CompositeTensors.
+
+    The default definition returns a flat tuple of all the `Tensor`s,
+    `CompositeTensor`s, and `ExtensionType`s from a depth-first traversal of
+    `value`'s fields. Subclasses may override this default definition, when
+    necessary.
+
+    Args:
+      spec: The TypeSpec of the value to encode.
+      value: A value compatible with `spec`.
+      minimum_rank: The minimum rank for the returned Tensors, CompositeTensors,
+        and ExtensionType values.  This can be used to ensure that the encoded
+        values can be unbatched this number of times.   If `minimum_rank>0`,
+        then `t.shape[:minimum_rank]` must be compatible for all values `t`
+        returned by `encode`.
+
+    Returns:
+      A nest (as defined by `tf.nest`) of `tf.Tensor`s, batchable
+      `tf.CompositeTensor`s, or `tf.ExtensionType`s.  Stacking, unstacking, or
+      concatenating these encoded values and then decoding the result must be
+      equivalent to stacking, unstacking, or concatenating the original values.
+    """
+    return spec._to_components(value)  # pylint: disable=protected-access
+
+  def decode(self, spec, encoded_value):
+    """Decodes `value` from a batchable tensor encoding.
+
+    See `encode` for a description of the default encoding.  Subclasses may
+    override this default definition, when necessary.
+
+    Args:
+      spec: The TypeSpec for the result value.  If encoded values with spec `s`
+        were batched, then `spec` should be `s.batch(batch_size)`; or if encoded
+        values with spec `s` were unbatched, then `spec` should be
+        `s.unbatch()`.
+      encoded_value: A nest of values returned by `encode`; or a nest of
+        values that was formed by stacking, unstacking, or concatenating the
+        corresponding elements of values returned by `encode`.
+
+    Returns:
+      A value compatible with `type_spec`.
+    """
+    return spec._from_components(encoded_value)  # pylint: disable=protected-access
+
+  def encoding_specs(self, spec):
+    """Returns a list of `TensorSpec`(s) describing the encoding for `spec`.
+
+    See `encode` for a description of the default encoding.  Subclasses may
+    override this default definition, when necessary.
+
+    Args:
+      spec: The TypeSpec whose encoding should be described.
+
+    Returns:
+      A nest (as defined by `tf.nest) of `tf.TypeSpec`, describing the values
+      that are returned by `self.encode(spec, ...)`.  All TypeSpecs in this
+      nest must be batchable.
+    """
+    return spec._component_specs  # pylint: disable=protected-access
+
+
+class BatchableExtensionTypeSpec(ExtensionTypeSpec,
+                                 type_spec.BatchableTypeSpec):
+  """Base class for TypeSpecs for BatchableExtensionTypes."""
+
+  __batch_encoder__ = ExtensionTypeBatchEncoder()
+
+  def _batch(self, batch_size):
+    return self.__batch_encoder__.batch(self, batch_size)
+
+  def _unbatch(self):
+    return self.__batch_encoder__.unbatch(self)
+
+  def _to_tensor_list(self, value):
+    return type_spec.batchable_to_tensor_list(self, value)
+
+  def _to_batched_tensor_list(self, value):
+    return type_spec.batchable_to_tensor_list(self, value, minimum_rank=1)
+
+  def _from_compatible_tensor_list(self, tensor_list):
+    return type_spec.batchable_from_tensor_list(self, tensor_list)
+
+  @property
+  def _flat_tensor_specs(self):
+    return type_spec.get_batchable_flat_tensor_specs(self)
+
+
+@tf_export('experimental.BatchableExtensionType')
+class BatchableExtensionType(ExtensionType):
+  """An ExtensionType that can be batched and unbatched.
+
+  `BatchableExtensionType`s can be used with APIs that require batching or
+  unbatching, including `Keras`, `tf.data.Dataset`, and `tf.map_fn`.  E.g.:
+
+  >>> class Vehicle(BatchableExtensionType):
+  ...   top_speed: tf.Tensor
+  ...   mpg: tf.Tensor
+  >>> batch = Vehicle([120, 150, 80], [30, 40, 12])
+  >>> tf.map_fn(lambda vehicle: vehicle.top_speed * vehicle.mpg, batch,
+  ...           fn_output_signature=tf.int32).numpy()
+  array([3600, 6000,  960], dtype=int32)
+
+  An `ExtensionTypeBatchEncoder` is used by these APIs to encode `ExtensionType`
+  values. The default encoder assumes that values can be stacked, unstacked, or
+  concatenated by simply stacking, unstacking, or concatenating every nested
+  `Tensor`, `ExtensionType`, `CompositeTensor`, or `TensorShape` field.
+  Extension types where this is not the case will need to override
+  `__batch_encoder__` with a custom `ExtensionTypeBatchEncoder`.  See
+  `tf.experimental.ExtensionTypeBatchEncoder` for more details.
+  """
+  # Let the metaclass know that it should *not* transform this class (since
+  # this class is part of the ExtensionType framework, and not a user class).
+  _tf_extension_type_do_not_transform_this_class = True
+
+
 # For Pickle __reduce__ protocol:
 def _deserialize_for_reduce(value_type, serialization):
   return value_type.Spec._deserialize(serialization)  # pylint: disable=protected-access
@@ -544,21 +742,34 @@ def _change_nested_mappings_to(value, new_type):
 
 def _check_field_annotations(cls):
   """Validates the field annotations for tf.ExtensionType subclass `cls`."""
+  annotations = getattr(cls, '__annotations__', {})
+
   # Check that no fields use reserved names.
-  for name in cls.__dict__:
+  for name, value in cls.__dict__.items():
+    if name == 'Spec':
+      if not isinstance(value, type):
+        raise ValueError(f'{cls.__qualname__}.Spec must be a nested class; '
+                         f'got {value}.')
+      if (value.__bases__ != (type_spec.TypeSpec,) and value.__bases__ !=
+          (object,)):
+        raise ValueError(f'{cls.__qualname__}.Spec must be directly subclassed '
+                         'from tf.TypeSpec.')
+    elif extension_type_field.ExtensionTypeField.is_reserved_name(name):
+      raise ValueError(f'The field annotations for {cls.__name__} are '
+                       f"invalid. Field '{name}' is reserved.")
+  for name in annotations:
     if extension_type_field.ExtensionTypeField.is_reserved_name(name):
-      raise ValueError(f'The field annotations for {cls.__name__} are invalid. '
-                       f"Field '{name}' is reserved.")
+      raise ValueError(f'The field annotations for {cls.__name__} are '
+                       f"invalid. Field '{name}' is reserved.")
 
   # Check that all fields have type annotaitons.
-  annotations = getattr(cls, '__annotations__', {})
   for (key, value) in cls.__dict__.items():
     if not (key in annotations or callable(value) or key.startswith('_abc_') or
             key == '_tf_extension_type_fields' or
             key.startswith('__') and key.endswith('__') or
             isinstance(value, (property, classmethod, staticmethod))):
-      raise ValueError(f'The field annotations for {cls.__name__} are invalid. '
-                       f'Field {key} is missing a type annotation.')
+      raise ValueError(f'The field annotations for {cls.__name__} are '
+                       f'invalid. Field {key} is missing a type annotation.')
 
 
 def _add_extension_type_constructor(cls):
@@ -584,28 +795,32 @@ def _wrap_user_constructor(cls):
   cls.__init__ = tf_decorator.make_decorator(user_constructor, wrapped_init)
 
 
+_NO_DEFAULT = extension_type_field.ExtensionTypeField.NO_DEFAULT
+
+
 # TODO(b/184565242) Consider using the templating system from autograph here.
 def _build_extension_type_constructor(cls):
   """Builds a constructor for tf.ExtensionType subclass `cls`."""
   fields = cls._tf_extension_type_fields()  # pylint: disable=protected-access
 
-  # Check that no-default fields don't follow default fields.  (Otherwise, we
-  # can't build a well-formed constructor.)
-  default_fields = []
-  for field in fields:
-    if field.default is not extension_type_field.ExtensionTypeField.NO_DEFAULT:
-      default_fields.append(field.name)
-    elif default_fields:
-      raise ValueError(
-          f'In definition for {cls.__name__}: Field without default '
-          f'{field.name!r} follows field with default {default_fields[-1]!r}.  '
-          f'Either add a default value for {field.name!r}, or move it before '
-          f'{default_fields[0]!r} in the field annotations.')
+  # Mark any no-default fields that follow default fields as keyword_only.
+  got_default = False
+  keyword_only_start = len(fields)
+  for i in range(len(fields)):
+    if got_default:
+      if fields[i].default is _NO_DEFAULT:
+        keyword_only_start = i
+        break
+    elif fields[i].default is not _NO_DEFAULT:
+      got_default = True
 
   params = []
-  kind = tf_inspect.Parameter.POSITIONAL_OR_KEYWORD
-  for field in fields:
-    if field.default is extension_type_field.ExtensionTypeField.NO_DEFAULT:
+  for i, field in enumerate(fields):
+    if i < keyword_only_start:
+      kind = tf_inspect.Parameter.POSITIONAL_OR_KEYWORD
+    else:
+      kind = tf_inspect.Parameter.KEYWORD_ONLY
+    if field.default is _NO_DEFAULT:
       default = tf_inspect.Parameter.empty
     else:
       default = field.default
@@ -663,18 +878,49 @@ def _build_spec_constructor(cls):
 
 def _add_type_spec(cls):
   """Creates a nested TypeSpec class for tf.ExtensionType subclass `cls`."""
-  # Build the TypeSpec class for this ExtensionType, and add it as a
-  # nested class.
   spec_name = cls.__name__ + '.Spec'
+  spec_qualname = cls.__qualname__ + '.Spec'
+
   # Set __module__ explicitly as a dynamic created class has module='abc'
   # by default.
   spec_dict = {'value_type': cls, '__module__': cls.__module__}
-  spec = type(spec_name, (ExtensionTypeSpec,), spec_dict)
-  spec.__qualname__ = cls.__qualname__ + '.Spec'
+
+  # Copy user-supplied customizations into the TypeSpec.
+  user_spec = cls.__dict__.get('Spec', None)
+  if user_spec is not None:
+    for (name, value) in user_spec.__dict__.items():
+      if extension_type_field.ExtensionTypeField.is_reserved_name(name):
+        raise ValueError(f'TypeSpec {spec_qualname} uses reserved '
+                         f"name '{name}'.")
+      if cls._tf_extension_type_has_field(name):  # pylint: disable=protected-access
+        raise ValueError(f"TypeSpec {spec_qualname} defines a variable '{name}'"
+                         f' which shadows a field in {cls.__qualname__}')
+      if name in ('__module__', '__dict__', '__weakref__'):
+        continue
+
+      spec_dict[name] = value
+
+  if issubclass(cls, BatchableExtensionType):
+    type_spec_base = BatchableExtensionTypeSpec
+    if hasattr(cls,
+               '__batch_encoder__') and '__batch_encoder__' not in spec_dict:
+      spec_dict['__batch_encoder__'] = cls.__batch_encoder__
+  else:
+    type_spec_base = ExtensionTypeSpec
+    if hasattr(cls, '__batch_encoder__') or '__batch_encoder__' in spec_dict:
+      raise ValueError('__batch_encoder__ should only be defined for '
+                       'BatchableExtensionType classes.')
+
+  # Build the TypeSpec and store it as a nested class inside `cls`.
+  spec = type(spec_name, (type_spec_base,), spec_dict)
+  spec.__qualname__ = spec_qualname
   setattr(cls, 'Spec', spec)
 
   # Build a constructor for the TypeSpec class.
-  _build_spec_constructor(spec)
+  if '__init__' in spec.__dict__:
+    _wrap_user_constructor(spec)
+  else:
+    _build_spec_constructor(spec)
 
   cls.__abstractmethods__ -= {'_type_spec'}
 

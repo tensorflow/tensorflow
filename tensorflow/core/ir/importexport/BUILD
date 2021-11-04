@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
-load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
     default_visibility = [":__subpackages__"],
@@ -11,12 +11,13 @@ cc_library(
     name = "import",
     srcs = [
         "functiondef_import.cc",
+        "functiondef_import.h",
         "import.cc",
     ],
     hdrs = [
-        "functiondef_import.h",
         "import.h",
     ],
+    visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         ":convert_attributes",
         ":convert_tensor",
@@ -44,11 +45,12 @@ cc_library(
     srcs = [
         "export.cc",
         "functiondef_export.cc",
+        "functiondef_export.h",
     ],
     hdrs = [
         "export.h",
-        "functiondef_export.h",
     ],
+    visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         ":convert_attributes",
         ":convert_tensor",
@@ -184,7 +186,7 @@ cc_library(
 )
 
 # Command line tool to convert to/from GraphDef to MLIR Graph.
-tf_native_cc_binary(
+tf_cc_binary(
     name = "tfg-translate",
     srcs = ["tfg-translate.cc"],
     deps = [

@@ -148,13 +148,14 @@ bool SubGraphMatcher<MatchingDirection::kFollowInputs>::DoesOpTypePatternMatch(
 // Current implementation supports pattern maching toward node's inputs only.
 template <>
 bool SubGraphMatcher<MatchingDirection::kFollowInputs>::GetMatchedNodes(
-    const OpTypePattern& pattern, MutableNodeView* node_view,
-    std::map<string, int>* matched_nodes_map,
+    const OpTypePattern& pattern,
+    const std::unordered_set<string>& nodes_to_preserve,
+    MutableNodeView* node_view, std::map<string, int>* matched_nodes_map,
     std::set<int>* remove_node_indices) {
   bool found_match = false;
   match_.reset(new NodeViewMatch());
   if (DoesOpTypePatternMatch(pattern, node_view, match_.get())) {
-    if (!HasRemoveNodeExternalDependents()) {
+    if (IsSafeNodesToRemove(nodes_to_preserve)) {
       found_match = true;
       *matched_nodes_map = this->node_label_to_index_;
       *remove_node_indices = this->remove_node_indices_;

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for functions module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.converters import functions
 from tensorflow.python.autograph.converters import return_statements
 from tensorflow.python.autograph.core import ag_ctx

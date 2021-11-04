@@ -73,21 +73,6 @@ bool IsShapeConsumer(const NodeDef& node) {
 
 }  // namespace
 
-namespace internal {
-// Specialized template class method GetNodeDefFromGraph.
-template <>
-NodeDef* NodeMapInternal<GraphDef, NodeDef>::GetNodeDefFromGraph(
-    GraphDef* graph, int64_t i) const {
-  return graph->mutable_node(i);
-}
-
-template <>
-const NodeDef*
-NodeMapInternal<const GraphDef, const NodeDef>::GetNodeDefFromGraph(
-    const GraphDef* graph, int64_t i) const {
-  return &graph->node(i);
-}
-}  // namespace internal
 string TensorIdToString(const TensorId& tensor_id) {
   return tensor_id.index() == 0 ? string(tensor_id.node())
                                 : tensor_id.ToString();

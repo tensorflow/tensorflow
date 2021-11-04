@@ -72,8 +72,9 @@ class ModelAnalyzer():
     like checking GPU delegate compatibility.
 
     WARNING: Experimental interface, subject to change.
-    WARNING: The output format is not guaranteed to stay stable, so don't
+             The output format is not guaranteed to stay stable, so don't
              write scripts to this.
+
     Args:
       model_path: TFLite flatbuffer model path.
       model_content: TFLite flatbuffer model object.

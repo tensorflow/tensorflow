@@ -46,8 +46,9 @@ class TensorDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{TensorDatasetOp::kToutput_types, output_dtypes_},
-                    {TensorDatasetOp::kOutputShapes, output_shapes_}};
+    *attr_vector = {{"Toutput_types", output_dtypes_},
+                    {"output_shapes", output_shapes_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 

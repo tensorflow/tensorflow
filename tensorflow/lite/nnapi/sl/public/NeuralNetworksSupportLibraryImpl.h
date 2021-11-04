@@ -32,6 +32,7 @@ limitations under the License.
  *   - DO NOT CHANGE THE LAYOUT OR SIZE OF STRUCTURES
  */
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,6 +43,101 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif
+/**
+ * Performance information for the reference workload.
+ *
+ * Used by a driver to report its performance characteristics.
+ */
+typedef struct {
+  /**
+   * Ratio of the time taken by the driver to execute the workload compared to
+   * the time the CPU would take for the same workload. A lower number is
+   * better.
+   */
+  float execTime;
+
+  /**
+   * Ratio of the energy used by the driver compared to what the CPU would use
+   * for doing the same workload. A lower number is better.
+   */
+  float powerUsage;
+} SL_ANeuralNetworksPerformanceInfo;
+
+/**
+ * Driver performance when operating on a particular data type. In the case of
+ * float32 data, this is used when the calculations are not relaxed.
+ */
+typedef struct {
+  int32_t operandType;
+  SL_ANeuralNetworksPerformanceInfo performanceInfo;
+} SL_ANeuralNetworksOperandPerformanceInfo;
+
+/**
+ * Information about NNAPI Vendor extension operand type.
+ */
+typedef struct {
+  /**
+   * The byte size of the operand (if scalar) or of a single element (if
+   * tensor).
+   */
+  uint32_t byteSize;
+
+  /**
+   * The extension operand type.
+   */
+  uint16_t type;
+
+  /**
+   * Indicates whether the extension operand type represents a tensor or a
+   * scalar.
+   */
+  bool isTensor;
+} SL_ANeuralNetworksExtensionOperandTypeInformation;
+
+/**
+ * The different performance info kinds.
+ */
+typedef enum {
+  /**
+   * Driver performance when operating on float32 data but performing
+   * calculations with range and/or precision as low as that of the IEEE 754
+   * 16-bit floating-point format.
+   */
+  SL_ANEURALNETWORKS_CAPABILITIES_PERFORMANCE_RELAXED_SCALAR = 0,
+
+  /**
+   * Driver performance when operating on float32 data but performing
+   * calculations with range and/or precision as low as that of the IEEE 754
+   * 16-bit floating-point format.
+   */
+  SL_ANEURALNETWORKS_CAPABILITIES_PERFORMANCE_RELAXED_TENSOR = 1,
+
+  /**
+   * Performance of an {@link ANEURALNETWORKS_IF} operation is the sum of {@link
+   * ANEURALNETWORKS_IF}'s performance and the mean of performance for the two
+   * branch subgraphs, where performance for a subgraph is the sum of the
+   * performance of all operations within the subgraph.
+   */
+  SL_ANEURALNETWORKS_CAPABILITIES_PERFORMANCE_IF = 2,
+
+  /**
+   * Performance of a {@link ANEURALNETWORKS_WHILE} operation is the sum of
+   * {@link ANEURALNETWORKS_WHILE}'s performance, performance for the condition
+   * subgraph and performance for the body subgraph, where performance for a
+   * subgraph is the sum of the performance of all operations within the
+   * subgraph.
+   */
+  SL_ANEURALNETWORKS_CAPABILITIES_PERFORMANCE_WHILE = 3,
+} SL_ANeuralNetworksPerformanceInfoCode;
+
+typedef struct ANeuralNetworksDiagnosticCompilationInfo
+    ANeuralNetworksDiagnosticCompilationInfo;
+typedef struct ANeuralNetworksDiagnosticExecutionInfo
+    ANeuralNetworksDiagnosticExecutionInfo;
+typedef void (*ANeuralNetworksDiagnosticCompilationFinishedCallback)(
+    const void* context, const ANeuralNetworksDiagnosticCompilationInfo* info);
+typedef void (*ANeuralNetworksDiagnosticExecutionFinishedCallback)(
+    const void* context, const ANeuralNetworksDiagnosticExecutionInfo* info);
 
 /**
  * Base version of NnApiSLDriverImpl with version information.
@@ -56,13 +152,13 @@ extern "C" {
  * a strict superset of NnApiSLDriverImplFL(N), and NnApiSLDriverImplFL(M)* can
  * be reinterpret_cast to NnApiSLDriverImplFL(N)* safely.
  */
-struct NnApiSLDriverImpl {
+typedef struct NnApiSLDriverImpl {
   /**
    * Version of the NnApiSLDriverImpl struct. Uses {@link FeatureLevelCode}
    * values for versioning.
    */
   int64_t implFeatureLevel;
-};
+} NnApiSLDriverImpl;
 
 /**
  * NnApiSLDriverImpl for an Updatable SL Driver implementing {@link
@@ -71,7 +167,7 @@ struct NnApiSLDriverImpl {
  * This struct must set its implFeatureLevel to {@link
  * ANEURALNETWORKS_FEATURE_LEVEL_5}.
  */
-struct NnApiSLDriverImplFL5 {
+typedef struct NnApiSLDriverImplFL5 {
   /**
    * Base type with version information. Allows to cast a pointer of this type
    * to NnApiSLDriverImpl* with valid version information.
@@ -771,10 +867,369 @@ struct NnApiSLDriverImplFL5 {
   int64_t (*ANeuralNetworks_getRuntimeFeatureLevel)();
 
   /**
-   * 72nd pointer required to align to 8 bytes on 32bit archs.
+   * SL Driver implementation of a function similar to
+   * {@link ANeuralNetworksCompilation_setCaching} that takes file descriptors
+   * instead of a cache directory.
+   * Behavior and outputs match NNAPI Runtime function
+   * {@link ANeuralNetworksCompilation_setCaching},
+   * at the feature level of this NnApiSLDriver struct.
    */
-  void (*reserved_placeholder1)();
-};
+  int (*SL_ANeuralNetworksCompilation_setCachingFromFds)(
+      ANeuralNetworksCompilation* compilation, const int* modelCacheFds,
+      const uint32_t numModelCacheFiles, const int* dataCacheFds,
+      const uint32_t numDataCacheFiles, const uint8_t* token);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDevice_getNumberOfCacheFilesNeeded}. Behavior, arguments,
+   * and outputs match NNAPI Runtime function
+   * {@link SL_ANeuralNetworksDevice_getNumberOfCacheFilesNeeded},
+   * at the feature level of this NnApiSLDriver struct.
+   */
+  int (*SL_ANeuralNetworksDevice_getNumberOfCacheFilesNeeded)(
+      const ANeuralNetworksDevice* device, uint32_t* numModelCacheFiles,
+      uint32_t* numDataCacheFiles);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDevice_getPerformanceInfo}. Behavior, arguments, and
+   * outputs match NNAPI Runtime function
+   * {@link SL_ANeuralNetworksDevice_getPerformanceInfo},
+   * at the feature level of this NnApiSLDriver struct.
+   */
+  int (*SL_ANeuralNetworksDevice_getPerformanceInfo)(
+      const ANeuralNetworksDevice* device, int32_t performanceInfoKind,
+      SL_ANeuralNetworksPerformanceInfo* performanceInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDevice_forEachOperandPerformanceInfo}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function
+   * {@link SL_ANeuralNetworksDevice_forEachOperandPerformanceInfo},
+   * at the feature level of this NnApiSLDriver struct.
+   */
+  int (*SL_ANeuralNetworksDevice_forEachOperandPerformanceInfo)(
+      const ANeuralNetworksDevice* device, void* context,
+      void (*callback)(SL_ANeuralNetworksOperandPerformanceInfo, void*));
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDevice_getVendorExtensionCount}. Behavior, arguments, and
+   * outputs match NNAPI Runtime function
+   * {@link SL_ANeuralNetworksDevice_getVendorExtensionCount},
+   * at the feature level of this NnApiSLDriver struct.
+   */
+  int (*SL_ANeuralNetworksDevice_getVendorExtensionCount)(
+      const ANeuralNetworksDevice* device, uint32_t* vendorExtensionCount);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDevice_getVendorExtensionName}. Behavior, arguments, and
+   * outputs match NNAPI Runtime function
+   * {@link SL_ANeuralNetworksDevice_getVendorExtensionName},
+   * at the feature level of this NnApiSLDriver struct.
+   */
+  int (*SL_ANeuralNetworksDevice_getVendorExtensionName)(
+      const ANeuralNetworksDevice* device, uint32_t vendorExtensionIndex,
+      const char** extensionName);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDevice_forEachVendorExtensionOperandTypeInformation}.
+   * Behavior, arguments, and outputs match NNAPI Runtime function
+   * {@link
+   * SL_ANeuralNetworksDevice_forEachVendorExtensionOperandTypeInformation}, at
+   * the feature level of this NnApiSLDriver struct.
+   */
+  int (*SL_ANeuralNetworksDevice_forEachVendorExtensionOperandTypeInformation)(
+      const ANeuralNetworksDevice* device, uint32_t vendorExtensionIndex,
+      void* context,
+      void (*callback)(SL_ANeuralNetworksExtensionOperandTypeInformation,
+                       void*));
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getSessionId}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getSessionId}, at the feature
+   * level of this NnApiSLDriver struct.
+   */
+  int32_t (*SL_ANeuralNetworksDiagnosticCompilationInfo_getSessionId)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getNnApiVersion}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getNnApiVersion}, at the
+   * feature level of this NnApiSLDriver struct.
+   */
+  int64_t (*SL_ANeuralNetworksDiagnosticCompilationInfo_getNnApiVersion)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getModelArchHash}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getModelArchHash}, at the
+   * feature level of this NnApiSLDriver struct.
+   */
+  const uint8_t* (
+      *SL_ANeuralNetworksDiagnosticCompilationInfo_getModelArchHash)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getDeviceIds}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getDeviceIds}, at the feature
+   * level of this NnApiSLDriver struct.
+   */
+  const char* (*SL_ANeuralNetworksDiagnosticCompilationInfo_getDeviceIds)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getErrorCode}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getErrorCode}, at the feature
+   * level of this NnApiSLDriver struct.
+   */
+  int32_t (*SL_ANeuralNetworksDiagnosticCompilationInfo_getErrorCode)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getInputDataClass}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getInputDataClass}, at the
+   * feature level of this NnApiSLDriver struct.
+   */
+  ANeuralNetworksDiagnosticDataClass (
+      *SL_ANeuralNetworksDiagnosticCompilationInfo_getInputDataClass)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getOutputDataClass}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getOutputDataClass}, at the
+   * feature level of this NnApiSLDriver struct.
+   */
+  ANeuralNetworksDiagnosticDataClass (
+      *SL_ANeuralNetworksDiagnosticCompilationInfo_getOutputDataClass)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getCompilationTimeNanos}.
+   * Behavior, arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_getCompilationTimeNanos}, at
+   * the feature level of this NnApiSLDriver struct.
+   */
+  uint64_t (
+      *SL_ANeuralNetworksDiagnosticCompilationInfo_getCompilationTimeNanos)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_isCachingEnabled}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_isCachingEnabled}, at the
+   * feature level of this NnApiSLDriver struct.
+   */
+  bool (*SL_ANeuralNetworksDiagnosticCompilationInfo_isCachingEnabled)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_isControlFlowUsed}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_isControlFlowUsed}, at the
+   * feature level of this NnApiSLDriver struct.
+   */
+  bool (*SL_ANeuralNetworksDiagnosticCompilationInfo_isControlFlowUsed)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_areDynamicTensorsUsed}.
+   * Behavior, arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticCompilationInfo_areDynamicTensorsUsed}, at the
+   * feature level of this NnApiSLDriver struct.
+   */
+  bool (*SL_ANeuralNetworksDiagnosticCompilationInfo_areDynamicTensorsUsed)(
+      const ANeuralNetworksDiagnosticCompilationInfo*
+          diagnosticCompilationInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getSessionId}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getSessionId}, at the feature
+   * level of this NnApiSLDriver struct.
+   */
+  int32_t (*SL_ANeuralNetworksDiagnosticExecutionInfo_getSessionId)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getNnApiVersion}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getNnApiVersion}, at the feature
+   * level of this NnApiSLDriver struct.
+   */
+  int64_t (*SL_ANeuralNetworksDiagnosticExecutionInfo_getNnApiVersion)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getModelArchHash}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getModelArchHash}, at the feature
+   * level of this NnApiSLDriver struct.
+   */
+  const uint8_t* (*SL_ANeuralNetworksDiagnosticExecutionInfo_getModelArchHash)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getDeviceIds}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getDeviceIds}, at the feature
+   * level of this NnApiSLDriver struct.
+   */
+  const char* (*SL_ANeuralNetworksDiagnosticExecutionInfo_getDeviceIds)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getExecutionMode}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getExecutionMode}, at the feature
+   * level of this NnApiSLDriver struct.
+   */
+  ANeuralNetworksDiagnosticExecutionMode (
+      *SL_ANeuralNetworksDiagnosticExecutionInfo_getExecutionMode)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getInputDataClass}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getInputDataClass}, at the
+   * feature level of this NnApiSLDriver struct.
+   */
+  ANeuralNetworksDiagnosticDataClass (
+      *SL_ANeuralNetworksDiagnosticExecutionInfo_getInputDataClass)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getOutputDataClass}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getOutputDataClass}, at the
+   * feature level of this NnApiSLDriver struct.
+   */
+  ANeuralNetworksDiagnosticDataClass (
+      *SL_ANeuralNetworksDiagnosticExecutionInfo_getOutputDataClass)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getErrorCode}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getErrorCode}, at the feature
+   * level of this NnApiSLDriver struct.
+   */
+  uint32_t (*SL_ANeuralNetworksDiagnosticExecutionInfo_getErrorCode)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getRuntimeExecutionTimeNanos}.
+   * Behavior, arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getRuntimeExecutionTimeNanos}, at
+   * the feature level of this NnApiSLDriver struct.
+   */
+  uint64_t (
+      *SL_ANeuralNetworksDiagnosticExecutionInfo_getRuntimeExecutionTimeNanos)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getDriverExecutionTimeNanos}.
+   * Behavior, arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getDriverExecutionTimeNanos}, at
+   * the feature level of this NnApiSLDriver struct.
+   */
+  uint64_t (
+      *SL_ANeuralNetworksDiagnosticExecutionInfo_getDriverExecutionTimeNanos)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getHardwareExecutionTimeNanos}.
+   * Behavior, arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_getHardwareExecutionTimeNanos},
+   * at the feature level of this NnApiSLDriver struct.
+   */
+  uint64_t (
+      *SL_ANeuralNetworksDiagnosticExecutionInfo_getHardwareExecutionTimeNanos)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_isCachingEnabled}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_isCachingEnabled}, at the feature
+   * level of this NnApiSLDriver struct.
+   */
+  bool (*SL_ANeuralNetworksDiagnosticExecutionInfo_isCachingEnabled)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_isControlFlowUsed}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_isControlFlowUsed}, at the
+   * feature level of this NnApiSLDriver struct.
+   */
+  bool (*SL_ANeuralNetworksDiagnosticExecutionInfo_isControlFlowUsed)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_areDynamicTensorsUsed}. Behavior,
+   * arguments, and outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnosticExecutionInfo_areDynamicTensorsUsed}, at the
+   * feature level of this NnApiSLDriver struct.
+   */
+  bool (*SL_ANeuralNetworksDiagnosticExecutionInfo_areDynamicTensorsUsed)(
+      const ANeuralNetworksDiagnosticExecutionInfo* diagnosticExecutionInfo);
+
+  /**
+   * SL Driver implementation of {@link
+   * SL_ANeuralNetworksDiagnostic_registerCallbacks}. Behavior, arguments, and
+   * outputs match NNAPI Runtime function {@link
+   * SL_ANeuralNetworksDiagnostic_registerCallbacks}, at the feature level of
+   * this NnApiSLDriver struct.
+   */
+  void (*SL_ANeuralNetworksDiagnostic_registerCallbacks)(
+      ANeuralNetworksDiagnosticCompilationFinishedCallback compilationCallback,
+      ANeuralNetworksDiagnosticExecutionFinishedCallback executionCallback,
+      void* callbackContext);
+} NnApiSLDriverImplFL5;
 
 #ifdef __cplusplus
 }  // extern "C"

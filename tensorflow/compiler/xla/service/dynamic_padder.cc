@@ -367,6 +367,7 @@ Status RewriteDynamicReshapeSplitInput(
       ShapeUtil::MakeShape(xla::S32, {operand_shape.dimensions(input_dim)});
 
   std::vector<int64_t> reshaped_dims;
+  reshaped_dims.reserve(output_dims.size());
   for (int64_t output_dim : output_dims) {
     reshaped_dims.push_back(reshape->shape().dimensions(output_dim));
   }
@@ -583,6 +584,7 @@ Status RewriteDynamicReshapeCombineInput(
   const Shape mask_output_shape =
       ShapeUtil::MakeShape(xla::S32, {output_shape.dimensions(output_dim)});
   std::vector<int64_t> input_dim_sizes;
+  input_dim_sizes.reserve(input_dims.size());
   for (int64_t input_dim : input_dims) {
     input_dim_sizes.push_back(input_shape.dimensions(input_dim));
   }
@@ -1607,9 +1609,11 @@ StatusOr<bool> RewriteDynamicReshape(
     auto end = common_factors[i + 1];
     std::vector<int64_t> input_dims;
     std::vector<int64_t> output_dims;
+    input_dims.reserve(end.first - start.first);
     for (int64_t dim = start.first; dim < end.first; ++dim) {
       input_dims.push_back(dim);
     }
+    output_dims.reserve(end.second - start.second);
     for (int64_t dim = start.second; dim < end.second; ++dim) {
       output_dims.push_back(dim);
     }
@@ -1754,7 +1758,7 @@ Status InsertPadToStaticAfterModuleInputs(HloModule* module) {
 class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
  public:
   explicit DynamicShapeRemovingVisitor(
-      const DynamicPadder::OpSupportsDynamismHandler&
+      const DynamicPadderOptions::OpSupportsDynamismHandler&
           op_supports_dynamism_handler,
       DynamicDimensionInference* dynamic_dimension_inference)
       : op_supports_dynamism_handler_(op_supports_dynamism_handler),
@@ -1770,7 +1774,7 @@ class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
   Status HandleParameter(HloInstruction* hlo) override;
 
   static Status Run(HloComputation* computation,
-                    const DynamicPadder::OpSupportsDynamismHandler&
+                    const DynamicPadderOptions::OpSupportsDynamismHandler&
                         op_supports_dynamism_handler,
                     DynamicDimensionInference* dynamic_shape_inference,
                     bool require_dynamic_output) {
@@ -1799,7 +1803,8 @@ class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
   // returns the new instruction.
   StatusOr<HloInstruction*> ConvertToDynamic(HloInstruction* inst);
 
-  const DynamicPadder::OpSupportsDynamismHandler& op_supports_dynamism_handler_;
+  const DynamicPadderOptions::OpSupportsDynamismHandler&
+      op_supports_dynamism_handler_;
 
   DynamicDimensionInference* dynamic_dimension_inference_;
 };
@@ -2013,13 +2018,14 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(InsertPadToStaticAfterModuleInputs(module));
   TF_ASSIGN_OR_RETURN(
       DynamicDimensionInference dynamic_dimension_inference,
-      DynamicDimensionInference::Run(module, custom_call_handler_));
+      DynamicDimensionInference::Run(module, options_.custom_call_handler,
+                                     options_.shape_check_mode));
 
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       OpDynamismSupport has_dynamism_support = OpDynamismSupport::kNoSupport;
-      if (op_supports_dynamism_handler_ != nullptr) {
-        has_dynamism_support = op_supports_dynamism_handler_(inst);
+      if (options_.op_supports_dynamism_handler != nullptr) {
+        has_dynamism_support = options_.op_supports_dynamism_handler(inst);
       }
       // This op support dynamic lowering, no padding is required.
       if (has_dynamism_support != OpDynamismSupport::kNoSupport) {
@@ -2154,10 +2160,10 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
     HloComputation* computation = *it;
     // if slice_dynamic_output_ is set and this is entry computation, we need
     // the output tensor to be in dynamic form.
-    bool require_dynamic_output =
-        slice_dynamic_output_ && computation == module->entry_computation();
+    bool require_dynamic_output = options_.slice_dynamic_output &&
+                                  computation == module->entry_computation();
     TF_RETURN_IF_ERROR(DynamicShapeRemovingVisitor::Run(
-        computation, op_supports_dynamism_handler_,
+        computation, options_.op_supports_dynamism_handler,
         &dynamic_dimension_inference,
         /*require_dynamic_output=*/require_dynamic_output));
   }

@@ -102,6 +102,4 @@ std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass() {
 }
 }  // namespace TF
 
-static PassRegistration<MaterializePassthroughOpPass> registration;
-
 }  // namespace mlir

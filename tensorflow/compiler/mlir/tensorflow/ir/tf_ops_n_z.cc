@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -362,7 +363,7 @@ LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
     return failure();
 
   SmallVector<int32_t, 8> shuffled_paddings(paddings_value.getNumElements());
-  for (auto index_pair : llvm::enumerate(paddings_value.getIntValues())) {
+  for (auto index_pair : llvm::enumerate(paddings_value.getValues<APInt>())) {
     size_t outer_idx = index_pair.index() / 2;
     size_t inner_idx = index_pair.index() % 2;
 
@@ -737,7 +738,7 @@ LogicalResult GetReshapeOutputType(Value tensor, Value shape,
   int64_t shape_ty_size = 1;
   llvm::SmallVector<int64_t, 8> output_ty_shape;
   output_ty_shape.reserve(shape_attr.getNumElements());
-  for (const auto &dim : llvm::enumerate(shape_attr.getIntValues())) {
+  for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
     if (size == ShapedType::kDynamicSize) {
       if (unknown_index != -1)
@@ -1577,6 +1578,29 @@ void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// SqueezeOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SqueezeOp op) {
+  auto input_type = op.input().getType().dyn_cast<RankedTensorType>();
+
+  if (!input_type) return success();  // Can't verify squeeze dims.
+
+  int64_t input_rank = input_type.getRank();
+  for (const auto &squeeze_dim_apint :
+       op.squeeze_dims().getAsValueRange<IntegerAttr>()) {
+    int64_t squeeze_dim = squeeze_dim_apint.getSExtValue();
+    if (squeeze_dim < -input_rank || squeeze_dim >= input_rank) {
+      return op.emitOpError()
+             << "squeeze dimension " << squeeze_dim << " not in ["
+             << -input_rank << ", " << input_rank << ")";
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // SubOp
 //===----------------------------------------------------------------------===//
 
@@ -2134,12 +2158,14 @@ SummaryWriterOp::GetResourceHandleValueAndIdList(
 void TPUExecuteOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.reserve(args().size() + 1);
+  effects.reserve(args().size() + 2);
 
   // There may be some TPU Embedding ops in the computation, so this effect is
   // added conservatively.
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUEmbedding::get());
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::TPUCompileExecute::get());
 
   for (Value value : args()) {
     if (value.getType()
@@ -2200,12 +2226,14 @@ static LogicalResult Verify(TPUExecuteAndUpdateVariablesOp op) {
 void TPUExecuteAndUpdateVariablesOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.reserve(device_var_reads_indices().size() + 1);
+  effects.reserve(device_var_reads_indices().size() + 2);
 
   // There may be some TPU Embedding ops in the computation, so this effect is
   // added conservatively.
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUEmbedding::get());
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::TPUCompileExecute::get());
   auto resource_handles = llvm::make_filter_range(args(), [](Value value) {
     return value.getType()
         .cast<TensorType>()

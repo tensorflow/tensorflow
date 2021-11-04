@@ -96,8 +96,7 @@ void NormalizeNode(NodeDef* node) {
   const OpDef* op_def = nullptr;
   (void)tensorflow::OpRegistry::Global()->LookUpOpDef(node->op(), &op_def);
   if (op_def) StripDefaultsFromNodeDef(*op_def, node);
-  // TODO(aminim): Fix this
-  node->clear_experimental_debug_info();
+  node->clear_experimental_type();
 }
 
 void NormalizeTensorData(GraphDef& graphdef) {
@@ -169,8 +168,8 @@ Status TestRoundTrip(GraphDef& graphdef) {
   }
   NormalizeTensorData(new_graph);
   NormalizeTensorData(original_graph);
-  if (!proto2::util::MessageDifferencer::Equivalent(original_graph,
-                                                    new_graph)) {
+  if (!tensorflow::protobuf::util::MessageDifferencer::Equivalent(
+          original_graph, new_graph)) {
     LOG(ERROR) << "GraphDef didn't Roundtrip:";
     llvm::errs()
         << "\n=========\n\n"

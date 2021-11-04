@@ -15,6 +15,7 @@ py_library(
         ":metric_utils",
         ":utils",
         ":values",
+        ":watchdog",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:func_graph",
@@ -167,4 +168,21 @@ py_library(
     name = "remote_eager_lib",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "watchdog",
+    srcs = ["watchdog.py"],
+    srcs_version = "PY3",
+    deps = [],
+)
+
+tf_py_test(
+    name = "watchdog_test",
+    srcs = ["watchdog_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":watchdog",
+        "//tensorflow/python/eager:test",
+    ],
 )

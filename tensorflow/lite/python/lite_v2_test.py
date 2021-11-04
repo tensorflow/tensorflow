@@ -15,10 +15,6 @@
 # ==============================================================================
 """Tests for lite.py functionality related to TensorFlow 2.0."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ctypes
 import functools
 import os
@@ -285,6 +281,25 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(
         'The inference_input_type and inference_output_type '
         'must be tf.float32.', str(error.exception))
+
+  @parameterized.named_parameters(
+      ('EnableMlirQuantizer', True),  # enable mlir quantizer
+      ('DisableMlirQuantizer', False))  # disable mlir quantizer
+  def testQuantizationRemovesQDQsForFloatIO(self, mlir_quantizer):
+    func, calibration_gen = self._getSqrtModel()
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [func.get_concrete_function()])
+    converter.representative_dataset = calibration_gen
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.experimental_new_quantizer = mlir_quantizer
+    quantized_model = converter.convert()
+
+    interpreter = Interpreter(model_content=quantized_model)
+    interpreter.allocate_tensors()
+    # The model should have only one sqrt op.
+    op_details = interpreter._get_ops_details()
+    self.assertLen(op_details, 1)
+    self.assertEqual(op_details[0]['op_name'], 'SQRT')
 
   @parameterized.named_parameters(
       ('_Default', False, False, dtypes.float32),
@@ -1774,10 +1789,22 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(sub_output['output_0'], -2)
 
   @parameterized.named_parameters(
-      ('_DefaultFLOAT32InputOutput', dtypes.float32),
-      ('_INT8InputOutput', dtypes.int8), ('_UINT8InputOutput', dtypes.uint8))
+      ('_Default', False, False, dtypes.float32, False),
+      ('_DefaultMlirQuant', False, False, dtypes.float32, True),
+      ('_INT8InputOutput', False, False, dtypes.int8),
+      ('_UINT8InputOutput', False, False, dtypes.uint8),
+      ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
+      ('_IntOnly_UINT8InputOutput', True, False, dtypes.uint8),
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutputMlirQuant', True, False, dtypes.int8, True),
+      ('_IntOnly_UINT8InputOutputMlirQuant', True, False, dtypes.uint8, True))
   @test_util.run_v2_only
-  def testMultipleFunctionQuantizedModel(self, inference_input_output_type):
+  def testMultipleFunctionQuantizedModel(self,
+                                         is_int_only,
+                                         is_int16_quantize,
+                                         inference_input_output_type,
+                                         enable_mlir_quantizer=False):
     """Convert multiple functions in a multi-functional model."""
     root = self._getMultiFunctionModel()
     input_data = tf.constant(1., shape=[1])
@@ -1802,9 +1829,25 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
     converter.representative_dataset = representative_dataset_gen
-    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    if is_int_only:
+      if is_int16_quantize:
+        converter.target_spec.supported_ops = [
+            lite.OpsSet
+            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]
+      else:
+        converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
+    else:
+      if is_int16_quantize:
+        converter.target_spec.supported_ops = [
+            lite.OpsSet
+            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]
+      else:
+        converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS]
     converter.inference_input_type = inference_input_output_type
     converter.inference_output_type = inference_input_output_type
+    converter.experimental_new_quantizer = enable_mlir_quantizer
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
 
@@ -1831,7 +1874,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertIsNotNone(add_output['output_0'])
     input_details = add_signature_runner.get_input_details()
     self.assertLen(input_details, 1)
-    self.assertEqual('add_x:0', input_details['x']['name'])
+    self.assertStartsWith(input_details['x']['name'], 'add_x:0')
     self.assertEqual(inference_input_output_type.as_numpy_dtype,
                      input_details['x']['dtype'])
     self.assertTrue(([1] == input_details['x']['shape']).all())
@@ -1843,8 +1886,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertIsNotNone(sub_output['output_0'])
     output_details = sub_signature_runner.get_output_details()
     self.assertLen(output_details, 1)
-    self.assertEqual('StatefulPartitionedCall:0',
-                     output_details['output_0']['name'])
+    self.assertStartsWith(output_details['output_0']['name'],
+                          'StatefulPartitionedCall:0')
     self.assertEqual(inference_input_output_type.as_numpy_dtype,
                      output_details['output_0']['dtype'])
     self.assertTrue(([1] == output_details['output_0']['shape']).all())
@@ -2099,6 +2142,49 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertLen(quant_params['scales'], expected_num_params)
     self.assertLen(quant_params['zero_points'], expected_num_params)
 
+  @parameterized.named_parameters(
+      ('_PerChannelMlirDynamicRangeQuant', True, False),
+      ('_PerChannelTocoDynamicRangeQuant', False, False),
+      ('_PerTensorMlirDynamicRangeQuant', True, True),
+      ('_PerTensorTocoDynamicRangeQuant', False, True))
+  @test_util.run_v2_only
+  def testMlirDynamicRangeQuantization(self,
+                                       enable_new_dynamic_range_quantizer,
+                                       disable_per_channel):
+    num_filters = 1024
+    conv_name = 'sequential/conv2d/Conv2D1'
+    model = tf.keras.models.Sequential(
+        [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')])
+    model.build(input_shape=(1, 32, 32, 3))
+    saved_model_dir = self.create_tempdir()
+    save(model, saved_model_dir.full_path)
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(
+        saved_model_dir.full_path)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter._experimental_new_dynamic_range_quantizer = (
+        enable_new_dynamic_range_quantizer)
+    converter._experimental_disable_per_channel = disable_per_channel
+    quantized_tflite_model = converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    quantized_weight = next(
+        d for d in interpreter.get_tensor_details() if d['name'] == conv_name)
+    quant_params = quantized_weight['quantization_parameters']
+    expected_num_params = 1 if disable_per_channel else num_filters
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
+
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    # TODO(b/204288134): add test parameter for float16 dynamic range
+    # quantization.
+    self.assertEqual(np.int8, quantized_weight['dtype'])
+
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
@@ -2253,6 +2339,47 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
                           ['tensor_input'])
     self.assertEqual(
         list(signature_defs['serving_default']['outputs']), ['output_tensor'])
+
+  @parameterized.named_parameters(
+      ('_PerChannelMlirDynamicRangeQuant', True, False),
+      ('_PerChannelTocoDynamicRangeQuant', False, False),
+      ('_PerTensorMlirDynamicRangeQuant', True, True),
+      ('_PerTensorTocoDynamicRangeQuant', False, True))
+  @test_util.run_v2_only
+  def testMlirDynamicRangeQuantization(self,
+                                       enable_new_dynamic_range_quantizer,
+                                       disable_per_channel):
+    num_filters = 1024
+    conv_name = 'sequential/conv2d/Conv2D1'
+    model = tf.keras.models.Sequential(
+        [tf.keras.Input(shape=(32, 32, 3)),
+         tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')])
+    model.build()
+
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter._experimental_new_dynamic_range_quantizer = (
+        enable_new_dynamic_range_quantizer)
+    converter._experimental_disable_per_channel = disable_per_channel
+    quantized_tflite_model = converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    quantized_weight = next(
+        d for d in interpreter.get_tensor_details() if d['name'] == conv_name)
+    quant_params = quantized_weight['quantization_parameters']
+    expected_num_params = 1 if disable_per_channel else num_filters
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
+
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    # TODO(b/204288134): add test parameter for float16 dynamic range
+    # quantization.
+    self.assertEqual(np.int8, quantized_weight['dtype'])
 
 
 class FromJaxModelTest(lite_v2_test_util.ModelTest):

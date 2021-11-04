@@ -181,7 +181,15 @@ class SingleOpModel {
   // Set a delegate that is applied right after graph is prepared. This is
   // useful for testing other runtimes like NN API or GPU.
   // Note: the caller still owns the memory of the passed-in `delegate`.
-  void SetDelegate(TfLiteDelegate* delegate) { delegate_ = delegate; }
+  void SetDelegate(TfLiteDelegate* delegate) {
+    delegate_ = delegate;
+    // As this is a manually-set TF Lite delegate, we assume the intention of
+    // the test is to test against the particular delegate, hence bypassing
+    // applying TfLite default delegates (i.e. the XNNPACK delegate).
+    if (delegate_ != nullptr) {
+      SetBypassDefaultDelegates();
+    }
+  }
 
   TfLiteStatus ApplyDelegate();
 
@@ -617,6 +625,10 @@ class SingleOpModel {
  protected:
   int32_t GetTensorSize(int index) const;
 
+  // Tell TF Lite runtime to skip applying default delegates (i.e. XNNPACK
+  // delegate) when handling this op-level model.
+  void SetBypassDefaultDelegates() { bypass_default_delegates_ = true; }
+
   flatbuffers::FlatBufferBuilder builder_;
   std::unique_ptr<tflite::Interpreter> interpreter_;
   std::unique_ptr<OpResolver> resolver_;
@@ -865,6 +877,10 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   TfLiteDelegate* delegate_ = nullptr;  // not own the memory.
   int num_applied_delegates_ = 0;
+
+  // Whether to bypass the application of TF Lite default delegates (i.e.
+  // XNNPACK delegate) at rutnime.
+  bool bypass_default_delegates_ = false;
 };
 
 // Populate string tensors.

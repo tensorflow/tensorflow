@@ -151,7 +151,7 @@ GraphExecutionState::~GraphExecutionState() {
   }
 
   // NOTE(mrry): This makes a copy of `graph_def`, which is
-  // regrettable. We could make `GraphDef` objects sharable between
+  // regrettable. We could make `GraphDef` objects shareable between
   // execution states to optimize pruned graph execution, but since
   // this case is primarily used for interactive sessions, we make the
   // bet that graph construction is not performance-critical. (Note

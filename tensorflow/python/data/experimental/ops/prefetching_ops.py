@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrapper for prefetching_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import function
 from tensorflow.python.framework import device as framework_device
@@ -48,7 +45,7 @@ def prefetch_to_device(device, buffer_size=None):
   Tensor 1 is on device /job:localhost/replica:0/task:0/device:CPU:0
   Tensor 2 is on device /job:localhost/replica:0/task:0/device:CPU:0
   Tensor 3 is on device /job:localhost/replica:0/task:0/device:CPU:0
-  
+
   Args:
     device: A string. The name of a device to which elements will be prefetched.
     buffer_size: (Optional.) The number of elements to buffer on `device`.
@@ -223,9 +220,10 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
   # GPU
   def make_one_shot_iterator(self):
     if self._is_gpu_target:
-      raise ValueError("Cannot create a one shot iterator when using "
-                       "`tf.data.experimental.copy_to_device()` on GPU. Please "
-                       "use `Dataset.make_initializable_iterator()` instead.")
+      raise ValueError(
+          "`make_one_shot_iterator` is not compatible with GPU execution. "
+          "Please use `Dataset.make_initializable_iterator()` instead."
+      )
     else:
       return super(_CopyToDeviceDataset, self).make_one_shot_iterator()
 
@@ -238,7 +236,7 @@ class _MapOnGpuDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
 
-    self._map_func = dataset_ops.StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func,
         self._transformation_name(),
         dataset=input_dataset,

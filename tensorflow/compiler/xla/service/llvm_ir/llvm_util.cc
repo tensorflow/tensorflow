@@ -717,5 +717,47 @@ llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
   return state_value_old;
 }
 
+llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilder<>* b) {
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  llvm::IRBuilder<>::InsertPointGuard guard(*b);
+  llvm::BasicBlock* early_return =
+      llvm::BasicBlock::Create(/*Context=*/module->getContext(),
+                               /*Name=*/"early_return",
+                               /*Parent=*/function);
+  b->SetInsertPoint(early_return);
+  b->CreateRetVoid();
+  return early_return;
+}
+
+void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilder<>* b,
+                     llvm::BasicBlock* return_block) {
+  if (!return_block) {
+    return_block = EmitReturnBlock(b);
+  }
+
+  llvm::BasicBlock* continued;
+
+  // Implicitly check whtether we are already at the end of unterminated block.
+  if (b->GetInsertBlock()->getTerminator() == nullptr) {
+    // If we are generating code into an incomplete basic block we can just
+    // create a new basic block to jump to after our conditional branch.
+    continued = llvm_ir::CreateBasicBlock(/*insert_before=*/nullptr,
+                                          /*name=*/"", b);
+  } else {
+    // If we are generating code into a basic block that already has code, we
+    // need to split that block so as to not disturb the existing code.
+    auto original = b->GetInsertBlock();
+    continued = original->splitBasicBlock(b->GetInsertPoint());
+    // Remove the auto-generated unconditional branch to replace with our
+    // conditional branch.
+    original->getTerminator()->eraseFromParent();
+    b->SetInsertPoint(original);
+  }
+
+  b->CreateCondBr(condition, continued, return_block);
+  b->SetInsertPoint(continued, continued->getFirstInsertionPt());
+}
+
 }  // namespace llvm_ir
 }  // namespace xla

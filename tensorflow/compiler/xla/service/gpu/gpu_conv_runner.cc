@@ -86,10 +86,10 @@ Status RunGpuConvForward(GpuConvParams params,
         params.config.conv_result_scale);
   }
   return stream->ConvolveWithAlgorithm(
-      params.config.input_descriptor, input_buf,
-      params.config.filter_descriptor, filter_buf, params.config.conv_desc,
-      params.config.output_descriptor, &output_buf, scratch_allocator,
-      algorithm, options.profile_result);
+      se::dnn::ConvolutionKind::FORWARD, params.config.input_descriptor,
+      input_buf, params.config.filter_descriptor, filter_buf,
+      params.config.output_descriptor, output_buf, params.config.conv_desc,
+      scratch_allocator, algorithm, options.profile_result);
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
@@ -175,11 +175,12 @@ Status RunGpuConvInternalImpl(GpuConvParams params,
             "StreamExecutor doesn't support scaled convolution: %lf.",
             params.config.conv_result_scale);
       }
-      return stream->ConvolveBackwardDataWithAlgorithm(
+      return stream->ConvolveWithAlgorithm(
+          se::dnn::ConvolutionKind::BACKWARD_DATA,
+          params.config.input_descriptor, input_buf,
           params.config.filter_descriptor, filter_buf,
           params.config.output_descriptor, output_buf, params.config.conv_desc,
-          params.config.input_descriptor, &input_buf, scratch_allocator,
-          algorithm, options.profile_result);
+          scratch_allocator, algorithm, options.profile_result);
       break;
     case CudnnConvKind::kBackwardFilter:
       if (params.config.conv_result_scale != 1) {
@@ -187,11 +188,12 @@ Status RunGpuConvInternalImpl(GpuConvParams params,
             "StreamExecutor doesn't support scaled convolution: %lf.",
             params.config.conv_result_scale);
       }
-      return stream->ConvolveBackwardFilterWithAlgorithm(
+      return stream->ConvolveWithAlgorithm(
+          se::dnn::ConvolutionKind::BACKWARD_FILTER,
           params.config.input_descriptor, input_buf,
+          params.config.filter_descriptor, filter_buf,
           params.config.output_descriptor, output_buf, params.config.conv_desc,
-          params.config.filter_descriptor, &filter_buf, scratch_allocator,
-          algorithm, options.profile_result);
+          scratch_allocator, algorithm, options.profile_result);
       break;
     case CudnnConvKind::kForwardActivation: {
       return RunGpuConvForwardActivation<ElementType, BiasType, OutputType>(
@@ -302,13 +304,12 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   config.output_type = result_shape.element_type();
   config.kind = desc.kind;
 
-  // The third field is scratch size stored from conv_algorithm_picker
+  // The second field is scratch size stored from conv_algorithm_picker
   // The operand is added to the shape field of the conv instruction
   // in GpuConvAlgorithmPicker::RunOnInstruction() call.
   config.algorithm = se::dnn::AlgorithmConfig(
-      se::dnn::AlgorithmDesc(backend_config.algorithm(),
-                             backend_config.tensor_ops_enabled()),
-      desc.scratch_size);
+      se::dnn::AlgorithmDesc(backend_config.algorithm()), desc.scratch_size);
+
   config.conv_result_scale = backend_config.conv_result_scale();
 
   switch (config.kind) {
@@ -347,10 +348,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   const Window& window = desc.window;
   const ConvolutionDimensionNumbers& dnums = desc.dnums;
 
-  VLOG(3) << "Convolution Algorithm: "
-          << config.algorithm.algorithm()->algo_id();
-  VLOG(3) << "tensor_ops_enabled: "
-          << config.algorithm.algorithm()->tensor_ops_enabled();
+  VLOG(3) << "Convolution Algorithm: " << config.algorithm.ToString();
   VLOG(3) << "Convolution kind: " << CudnnConvKindToString(config.kind);
   VLOG(3) << "input shape: "
           << ShapeUtil::HumanStringWithLayout(config.input_shape);

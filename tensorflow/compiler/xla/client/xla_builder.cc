@@ -179,6 +179,7 @@ StatusOr<Shape> XlaBuilder::GetShape(XlaOp op) const {
 StatusOr<std::vector<Shape>> XlaBuilder::GetOperandShapes(
     absl::Span<const XlaOp> operands) const {
   std::vector<Shape> operand_shapes;
+  operand_shapes.reserve(operands.size());
   for (XlaOp operand : operands) {
     TF_ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(operand));
     operand_shapes.push_back(*shape);
@@ -473,7 +474,7 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64_t root_id,
   if (remove_dynamic_dimensions) {
     std::function<void(Shape*)> remove_dynamic_dimension = [&](Shape* shape) {
       if (shape->tuple_shapes_size() != 0) {
-        for (int64_t i = 0; i < shape->tuple_shapes_size(); ++i) {
+        for (int i = 0; i < shape->tuple_shapes_size(); ++i) {
           remove_dynamic_dimension(shape->mutable_tuple_shapes(i));
         }
       }
@@ -655,7 +656,10 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
 
       std::vector<int64_t> to_size;
       std::vector<bool> to_size_is_dynamic;
-      for (int i = 0; i < shape.rank(); i++) {
+      const auto rank = shape.rank();
+      to_size.reserve(rank);
+      to_size_is_dynamic.reserve(rank);
+      for (int i = 0; i < rank; i++) {
         to_size.push_back(shape.dimensions(i));
         to_size_is_dynamic.push_back(shape.is_dynamic_dimension(i));
       }
@@ -1957,6 +1961,12 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     absl::optional<ConvolutionDimensionNumbers> dnums,
     CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   HloInstructionProto instr;
+  // Bit of a hack: conv-bias-activation-forward custom-calls are created
+  // through this API. Give them a user-friendly name. (This has no effect on
+  // correctness, it's just cosmetic.)
+  if (call_target_name == "__cudnn$convBiasActivationForward") {
+    instr.set_name("cudnn-conv-bias-activation");
+  }
   *instr.mutable_shape() = shape.ToProto();
   instr.set_custom_call_target(call_target_name);
   instr.set_backend_config(opaque);
@@ -2140,7 +2150,7 @@ XlaOp XlaBuilder::BitcastConvertType(XlaOp operand,
                                      PrimitiveType new_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferConvertShape(
+    TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferBitcastConvertShape(
                                          *operand_shape, new_element_type));
     return BitcastConvertTypeInternal(shape, operand);
   });
@@ -2831,7 +2841,7 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
       if (operand_shape->tuple_shapes_size() == 0) {
         return Unimplemented("0 element tuple AllReduce is not supported");
       }
-      for (int64_t i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
+      for (int i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
         if (operand_shape->tuple_shapes(i).element_type() !=
             operand_shape->tuple_shapes(0).element_type()) {
           return Unimplemented(
@@ -2909,7 +2919,7 @@ XlaOp XlaBuilder::ReduceScatter(
       if (operand_shape->tuple_shapes_size() == 0) {
         return Unimplemented("0 element tuple ReduceScatter is not supported");
       }
-      for (int64_t i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
+      for (int i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
         if (operand_shape->tuple_shapes(i).element_type() !=
             operand_shape->tuple_shapes(0).element_type()) {
           return Unimplemented(
@@ -3008,7 +3018,9 @@ XlaOp XlaBuilder::AllToAllArray(XlaOp operand, int64_t split_dimension,
     all_to_all = Reshape(all_to_all, sizes);
 
     std::vector<int64_t> permutation;
-    for (int64_t i = 0; i < operand_shape->rank(); ++i) {
+    const auto rank = operand_shape->rank();
+    permutation.reserve(rank + 1);
+    for (int64_t i = 0; i < rank; ++i) {
       int64_t dim_after_reshape = i >= split_dimension ? i + 1 : i;
       if (i == concat_dimension) {
         permutation.push_back(split_dimension);

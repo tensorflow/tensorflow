@@ -146,6 +146,7 @@ StatusOr<Shape> TransferBuffersFromOutfeedInternal(
   xfeed_manager->outfeed()->EnqueueBuffersAtomically(buffer_pointers);
   VLOG(2) << "Waiting for buffer to be notified as populated.";
   std::vector<Shape> outfed_shapes;
+  outfed_shapes.reserve(buffers.size());
   for (auto& buffer : buffers) {
     TF_ASSIGN_OR_RETURN(Shape outfed_shape, buffer->WaitForNotification());
     outfed_shapes.push_back(std::move(outfed_shape));
@@ -248,7 +249,7 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
   }
 
   std::vector<std::pair<void*, int64_t>> buffer_data;
-  for (int64_t i = 0; i < literal.shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < literal.shape().tuple_shapes_size(); ++i) {
     const Shape& tuple_element_shape =
         ShapeUtil::GetTupleElementShape(literal.shape(), i);
     int64_t size = cpu::runtime::GetByteSizeRequirement(tuple_element_shape,

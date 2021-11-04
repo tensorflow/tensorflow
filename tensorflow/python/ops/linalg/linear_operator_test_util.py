@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities for testing `LinearOperator` and sub-classes."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import itertools
 
@@ -754,8 +750,7 @@ def _test_composite_tensor(use_placeholder, shapes_info, dtype):
       self.assertAC(loop_y_, mat_y_)
 
       # Ensure that the `TypeSpec` can be encoded.
-      struct_coder = nested_structure_coder.StructureCoder()
-      struct_coder.encode_structure(operator._type_spec)  # pylint: disable=protected-access
+      nested_structure_coder.encode_structure(operator._type_spec)  # pylint: disable=protected-access
   return test_composite_tensor
 
 

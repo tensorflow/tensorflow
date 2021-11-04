@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tensorflow.data;
 
+import "tensorflow/core/framework/model.proto";
+
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/dataset_options_go_proto";
 
 // Represents the type of auto-sharding we enable.
@@ -25,7 +27,7 @@ enum AutoShardPolicy {
   OFF = -1;
 }
 
-// next: 4
+// next: 5
 message AutotuneOptions {
   // Whether to automatically tune performance knobs.
   oneof optional_enabled {
@@ -42,6 +44,15 @@ message AutotuneOptions {
   // 0, defaults to half of the available RAM in bytes.
   oneof optional_ram_budget {
     int64 ram_budget = 3;
+  }
+
+  // When autotuning is enabled (through autotune), determines the algorithm to
+  // use. If not explicitly set by user, autotuning will follow HILL_CLIMB
+  // algorithm but has more flexibility to tune parameters more aggressively,
+  // in which case the behavior is implementation specific and may change over
+  // time.
+  oneof optional_autotune_algorithm {
+    model.AutotuneAlgorithm autotune_algorithm = 4;
   }
 }
 

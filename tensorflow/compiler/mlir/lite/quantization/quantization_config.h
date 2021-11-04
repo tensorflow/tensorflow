@@ -42,6 +42,9 @@ struct QuantizationSpecs {
   // DT_HALF and DT_QINT8 inference type.
   bool weight_quantization = false;
 
+  // Whether use the MLIR dynamic range quantizer instead of the old TOCO one.
+  bool enable_mlir_dynamic_range_quantizer = false;
+
   // Whether the quantization passes are triggered for post-training
   // quantization. If it is true, the model input doesn't require user specified
   // input ranges.
@@ -96,6 +99,7 @@ struct QuantizationSpecs {
 
   // A bitmask to encode support for reduced precision inference in the model.
   ReducedPrecisionSupport support_mask = ReducedPrecisionSupport::None;
+
   // Whether run the passes to propagate the quantization parameters and graph
   // rewrites. Returns false if the inference_type is DT_FLOAT or
   // `weight_quantization` flag is set.
@@ -103,8 +107,17 @@ struct QuantizationSpecs {
     return inference_type != tensorflow::DT_FLOAT && !weight_quantization;
   }
 
-  // Whether run the passes to only quantize the weights.
-  bool RunWeightQuantization() const { return weight_quantization; }
+  // TODO(b/202075505): make implicit weight type clearer
+  // Whether run the passes and graph rewrites for dynamic range quantization.
+  bool RunAndRewriteDynamicRangeQuantizationPasses() const {
+    // TODO(b/201389248): add condition that symmetric, signed, int8 only
+    // If fail, log will appear to let user know nothing happened.
+    bool dynamic_range_quantize =
+        (inference_type != tensorflow::DT_FLOAT) && weight_quantization &&
+        !post_training_quantization && !disable_infer_tensor_range &&
+        enable_mlir_dynamic_range_quantizer;
+    return dynamic_range_quantize;
+  }
 
   // Whether this inference type represents a signed storage type.
   bool IsSignedInferenceType() const {

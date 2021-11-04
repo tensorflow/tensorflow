@@ -38,7 +38,6 @@ namespace gpu {
 //   f[600] tmp = f[600] bitcast(f[10,20,30] input)
 //   f[] out = reduce(f[600] tmp, dimensions={0})
 //
-// TODO(cheshire): handle variadic reduction
 class ReductionDimensionGrouper : public HloModulePass {
  public:
   absl::string_view name() const override {

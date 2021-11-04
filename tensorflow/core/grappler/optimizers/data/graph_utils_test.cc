@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
+#include "tensorflow/core/framework/dataset_metadata.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -406,6 +407,17 @@ TEST(GraphUtilsTest, TestCopyShapesAndTypesAttrsToutputTypes) {
   EXPECT_TRUE(CopyShapesAndTypesAttrs(from, &to_node));
   EXPECT_EQ(to_node.attr().at(kOutputShapes).i(), 666);
   EXPECT_EQ(to_node.attr().at(kOutputTypes).i(), 888);
+}
+
+TEST(GraphUtilsTest, TestSetMetadataName) {
+  NodeDef node = NDef("range", "RangeDataset", {},
+                      {{kOutputShapes, 666}, {kOutputTypes, 888}});
+  EXPECT_TRUE(SetMetadataName("metadata_name", &node).ok());
+  EXPECT_TRUE(node.attr().contains("metadata"));
+  data::Metadata metadata;
+  metadata.ParseFromString(node.attr().at("metadata").s());
+  EXPECT_EQ("metadata_name", metadata.name());
+  EXPECT_FALSE(SetMetadataName("new_metadata_name", &node).ok());
 }
 
 }  // namespace

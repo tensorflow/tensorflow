@@ -31,11 +31,9 @@ limitations under the License.
 namespace xla {
 
 StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
-    const HloModule& test_module,
-    const ::stream_executor::Platform::Id& test_platform_id,
+    const HloModule& test_module, HloRunnerInterface* test_runner,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
-    const std::function<Status(const HloModule&,
-                               const ::stream_executor::Platform::Id&,
+    const std::function<Status(const HloModule&, HloRunnerInterface*,
                                HloModule*)>& module_modifier_hook) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   // The combination of fast math and optimizations leads to unsound code
@@ -51,8 +49,8 @@ StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
   std::unique_ptr<HloModule> reference_module =
       test_module.Clone(reference_config, "reference");
   if (module_modifier_hook) {
-    TF_RETURN_IF_ERROR(module_modifier_hook(test_module, test_platform_id,
-                                            reference_module.get()));
+    TF_RETURN_IF_ERROR(
+        module_modifier_hook(test_module, test_runner, reference_module.get()));
   } else {
     TF_RETURN_IF_ERROR(Despecializer().Run(reference_module.get()).status());
   }

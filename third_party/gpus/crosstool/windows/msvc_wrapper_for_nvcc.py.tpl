@@ -20,8 +20,6 @@ DESCRIPTION:
   This script is the Windows version of //third_party/gpus/crosstool/crosstool_wrapper_is_not_gcc
 """
 
-from __future__ import print_function
-
 from argparse import ArgumentParser
 import os
 import subprocess

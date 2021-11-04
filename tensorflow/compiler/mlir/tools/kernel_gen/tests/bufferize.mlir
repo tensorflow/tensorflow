@@ -7,10 +7,10 @@
 // CHECK-LABEL: @tensor.extract
 // CHECK-SAME: (%[[ARG:.*]]: memref<?xf32>) -> f32
 func @tensor.extract(%arg : tensor<?xf32>) -> f32 {
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: %[[RESULT:.*]] = memref.load %[[ARG]][%[[C0]]]
   // CHECK: return %[[RESULT]]
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   %result = tensor.extract %arg[%c0] : tensor<?xf32>
   return %result : f32
 }
@@ -18,20 +18,20 @@ func @tensor.extract(%arg : tensor<?xf32>) -> f32 {
 // CHECK-LABEL: @tensor.from_elements
 // CHECK-SAME: (%[[A:.*]]: f32) -> f32
 func @tensor.from_elements(%a : f32) -> f32 {
-  // CHECK: %[[B:.*]] = constant 1.2
-  // CHECK: %[[C:.*]] = constant 2.3
+  // CHECK-DAG: %[[B:.*]] = arith.constant 1.2
+  // CHECK-DAG: %[[C:.*]] = arith.constant 2.3
   // ALLOC: %[[MEM:.*]] = memref.alloc() : memref<3xf32>
   // ALLOCA: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: store %[[A]], %[[MEM]][%[[C0]]] : memref<3xf32>
-  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK: %[[C1:.*]] = arith.constant 1 : index
   // CHECK: store %[[B]], %[[MEM]][%[[C1]]] : memref<3xf32>
-  // CHECK: %[[C2:.*]] = constant 2 : index
+  // CHECK: %[[C2:.*]] = arith.constant 2 : index
   // CHECK: store %[[C]], %[[MEM]][%[[C2]]] : memref<3xf32>
-  %b = constant 1.2 : f32
-  %c = constant 2.3 : f32
+  %b = arith.constant 1.2 : f32
+  %c = arith.constant 2.3 : f32
   %tfe = tensor.from_elements %a, %b, %c : tensor<3xf32>
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   %result = tensor.extract %tfe[%c0] : tensor<3xf32>
   return %result : f32
 }
@@ -42,8 +42,8 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
   // CHECK: %[[SIZE:.*]] = rank %[[ARG]] : memref<*xf32>
   // ALLOC: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) : memref<?xindex>
   // ALLOCA: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) : memref<?xindex>
-  // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
   // CHECK: scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[SIZE]]) step (%[[C1]]) {
   // CHECK:   %[[ELEM:.*]] = memref.dim %[[ARG]], %[[I]] : memref<*xf32>
   // CHECK:   memref.store %[[ELEM]], %[[MEM]][%[[I]]] : memref<?xindex>
@@ -55,7 +55,7 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
     %elem = tensor.dim %arg, %i : tensor<*xf32>
     tensor.yield %elem : index
   } : tensor<?xindex>
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   %result = tensor.extract %tfe[%c0] : tensor<?xindex>
   return %result : index
 }
@@ -81,17 +81,17 @@ func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
 // CHECK-SAME: -> memref<3xf32>
 func @const() -> tensor<3xf32> {
   // CHECK: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
-  // CHECK: %[[C4:.*]] = constant 4.000000e+00 : f32
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C4:.*]] = arith.constant 4.000000e+00 : f32
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C0]]] : memref<3xf32>
-  // CHECK: %[[C5:.*]] = constant 5.000000e+00 : f32
-  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C5:.*]] = arith.constant 5.000000e+00 : f32
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
   // CHECK: store %[[C5]], %[[MEM]][%[[C1]]] : memref<3xf32>
-  // CHECK: %[[C6:.*]] = constant 6.000000e+00 : f32
-  // CHECK: %[[C2:.*]] = constant 2 : index
+  // CHECK-DAG: %[[C6:.*]] = arith.constant 6.000000e+00 : f32
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
   // CHECK: store %[[C6]], %[[MEM]][%[[C2]]] : memref<3xf32>
   // CHECK-NEXT: return %[[MEM]] : memref<3xf32>
-  %result = constant dense<[4.0, 5.0, 6.0]> : tensor<3xf32>
+  %result = arith.constant dense<[4.0, 5.0, 6.0]> : tensor<3xf32>
   return %result : tensor<3xf32>
 }
 
@@ -99,27 +99,27 @@ func @const() -> tensor<3xf32> {
 // CHECK-SAME: -> memref<3xf32>
 func @const_splat() -> tensor<3xf32> {
   // CHECK: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
-  // CHECK: %[[C4:.*]] = constant 4.000000e+00 : f32
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C4:.*]] = arith.constant 4.000000e+00 : f32
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C0]]] : memref<3xf32>
-  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK: %[[C1:.*]] = arith.constant 1 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C1]]] : memref<3xf32>
-  // CHECK: %[[C2:.*]] = constant 2 : index
+  // CHECK: %[[C2:.*]] = arith.constant 2 : index
   // CHECK: store %[[C4]], %[[MEM]][%[[C2]]] : memref<3xf32>
   // CHECK-NEXT: return %[[MEM]] : memref<3xf32>
-  %result = constant dense<4.0> : tensor<3xf32>
+  %result = arith.constant dense<4.0> : tensor<3xf32>
   return %result : tensor<3xf32>
 }
 
 // CHECK-LABEL: @minimum_broadcast_shapes
 // CHECK-SAME: (%[[LHS:.*]]: memref<?xindex>, %[[RHS:.*]]: memref<?xindex>)
 func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>) -> (tensor<?xindex>, tensor<?xindex>) {
-  // CHECK-NEXT: %[[C0:.*]] = constant 0 : index
+  // CHECK-NEXT: %[[C0:.*]] = arith.constant 0 : index
   // CHECK-NEXT: %[[RANK_LHS:.*]] = memref.dim %[[LHS]], %[[C0]] : memref<?xindex>
   // CHECK-NEXT: %[[RANK_RHS:.*]] = memref.dim %[[RHS]], %[[C0]] : memref<?xindex>
-  // CHECK-NEXT: %[[IS_GREATER_RANK:.*]] = cmpi ugt, %[[RANK_RHS]], %[[RANK_LHS]] : index
+  // CHECK-NEXT: %[[IS_GREATER_RANK:.*]] = arith.cmpi ugt, %[[RANK_RHS]], %[[RANK_LHS]] : index
   // CHECK-NEXT: %[[MAX_RANK:.*]] = select %[[IS_GREATER_RANK]], %[[RANK_RHS]], %[[RANK_LHS]] : index
-  // CHECK-NEXT: %[[C1_1:.*]] = constant 1 : index
+  // CHECK-NEXT: %[[C1_1:.*]] = arith.constant 1 : index
   // CHECK-NEXT: %[[RESULT_LHS:.*]] = memref.alloca(%[[RANK_LHS]]) : memref<?xindex>
   // CHECK-NEXT: scf.for %[[IV_LHS:.*]] = %[[C0]] to %[[RANK_LHS]] step %[[C1_1]] {
   // CHECK-NEXT:   memref.store %[[C1_1]], %[[RESULT_LHS]][%[[IV_LHS]]] : memref<?xindex>
@@ -128,70 +128,70 @@ func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>) -> 
   // CHECK-NEXT: scf.for %[[IV_RHS:.*]] = %[[C0]] to %[[RANK_RHS]] step %[[C1_1]] {
   // CHECK-NEXT:   memref.store %[[C1_1]], %[[RESULT_RHS]][%[[IV_RHS]]] : memref<?xindex>
   // CHECK-NEXT:  }
-  // CHECK-NEXT: %[[C2:.*]] = constant 2 : index
-  // CHECK-NEXT: %[[UPPER_BOUND:.*]] = addi %[[MAX_RANK]], %[[C2]] : index
-  // CHECK-NEXT: %[[FALSE:.*]] = constant false
+  // CHECK-NEXT: %[[C2:.*]] = arith.constant 2 : index
+  // CHECK-NEXT: %[[UPPER_BOUND:.*]] = arith.addi %[[MAX_RANK]], %[[C2]] : index
+  // CHECK-NEXT: %[[FALSE:.*]] = arith.constant false
   // CHECK-NEXT: %[[MAIN_FOR:.*]]:5 = scf.for %[[IV:.*]] = %[[C1_1]] to %[[UPPER_BOUND]] step %[[C1_1]]
   // CHECK-SAME:     iter_args(%[[BC0:.*]] = %[[FALSE]], %[[BC1:.*]] = %[[FALSE]], %[[RUNNING_PRODUCT:.*]] = %[[C1_1]], %[[OFFSET:.*]] = %[[C0]], %[[INVALID:.*]] = %[[FALSE]]) -> (i1, i1, index, index, i1) {
 
   // First shape.
-  // CHECK-NEXT:   %[[IS_OUT_OF_BOUNDS:.*]] = cmpi ult, %[[RANK_LHS]], %[[IV]] : index
-  // CHECK-NEXT:   %[[DIMENSION0:.*]] = subi %[[RANK_LHS]], %[[IV]] : index
+  // CHECK-NEXT:   %[[IS_OUT_OF_BOUNDS:.*]] = arith.cmpi ult, %[[RANK_LHS]], %[[IV]] : index
+  // CHECK-NEXT:   %[[DIMENSION0:.*]] = arith.subi %[[RANK_LHS]], %[[IV]] : index
   // CHECK-NEXT:   %[[CURRENT_SIZE:.*]] = scf.if %[[IS_OUT_OF_BOUNDS]] -> (index) {
   // CHECK-NEXT:     scf.yield %[[C1_1]] : index
   // CHECK-NEXT:   } else {
   // CHECK-NEXT:     %[[SIZE:.*]] = memref.load %[[LHS]][%[[DIMENSION0]]] : memref<?xindex>
   // CHECK-NEXT:     scf.yield %[[SIZE]] : index
   // CHECK-NEXT:   }
-  // CHECK-NEXT:   %[[CURRENT_SIZE_NOT_ONE0:.*]] = cmpi ne, %[[CURRENT_SIZE]], %[[C1_1]] : index
+  // CHECK-NEXT:   %[[CURRENT_SIZE_NOT_ONE0:.*]] = arith.cmpi ne, %[[CURRENT_SIZE]], %[[C1_1]] : index
   // CHECK-NEXT:   %[[NEW_SAME_SIZE:.*]] = select %[[CURRENT_SIZE_NOT_ONE0]], %[[CURRENT_SIZE]], %[[C1_1]] : index
-  // CHECK-NEXT:   %[[SAME_SIZE_WAS_NOT_ONE:.*]] = cmpi ne, %[[C1_1]], %[[C1_1]] : index
-  // CHECK-NEXT:   %[[IS_DIFFERENT_SIZE:.*]] = cmpi ne, %[[C1_1]], %[[NEW_SAME_SIZE]] : index
-  // CHECK-NEXT:   %[[IS_INVALID:.*]] = and %[[SAME_SIZE_WAS_NOT_ONE]], %[[IS_DIFFERENT_SIZE]] : i1
-  // CHECK-NEXT:   %[[HAS_INVALID_BROADCAST:.*]] = or %[[FALSE]], %[[IS_INVALID]] : i1
+  // CHECK-NEXT:   %[[SAME_SIZE_WAS_NOT_ONE:.*]] = arith.cmpi ne, %[[C1_1]], %[[C1_1]] : index
+  // CHECK-NEXT:   %[[IS_DIFFERENT_SIZE:.*]] = arith.cmpi ne, %[[C1_1]], %[[NEW_SAME_SIZE]] : index
+  // CHECK-NEXT:   %[[IS_INVALID:.*]] = arith.andi %[[SAME_SIZE_WAS_NOT_ONE]], %[[IS_DIFFERENT_SIZE]] : i1
+  // CHECK-NEXT:   %[[HAS_INVALID_BROADCAST:.*]] = arith.ori %[[FALSE]], %[[IS_INVALID]] : i1
 
   // Second shape.
-  // CHECK-NEXT:   %[[IS_OUT_OF_BOUNDS:.*]] = cmpi ult, %[[RANK_RHS]], %[[IV]] : index
-  // CHECK-NEXT:   %[[DIMENSION1:.*]] = subi %[[RANK_RHS]], %[[IV]] : index
+  // CHECK-NEXT:   %[[IS_OUT_OF_BOUNDS:.*]] = arith.cmpi ult, %[[RANK_RHS]], %[[IV]] : index
+  // CHECK-NEXT:   %[[DIMENSION1:.*]] = arith.subi %[[RANK_RHS]], %[[IV]] : index
   // CHECK-NEXT:   %[[CURRENT_SIZE:.*]] = scf.if %[[IS_OUT_OF_BOUNDS]] -> (index) {
   // CHECK-NEXT:     scf.yield %[[C1_1]] : index
   // CHECK-NEXT:   } else {
   // CHECK-NEXT:     %[[SIZE:.*]] = memref.load %[[RHS]][%[[DIMENSION1]]] : memref<?xindex>
   // CHECK-NEXT:     scf.yield %[[SIZE]] : index
   // CHECK-NEXT:   }
-  // CHECK-NEXT:   %[[CURRENT_SIZE_NOT_ONE1:.*]] = cmpi ne, %[[CURRENT_SIZE]], %[[C1_1]] : index
+  // CHECK-NEXT:   %[[CURRENT_SIZE_NOT_ONE1:.*]] = arith.cmpi ne, %[[CURRENT_SIZE]], %[[C1_1]] : index
   // CHECK-NEXT:   %[[NEW_NEW_SAME_SIZE:.*]] = select %[[CURRENT_SIZE_NOT_ONE1]], %[[CURRENT_SIZE]], %[[NEW_SAME_SIZE]] : index
-  // CHECK-NEXT:   %[[SAME_SIZE_WAS_NOT_ONE:.*]] = cmpi ne, %[[NEW_SAME_SIZE]], %[[C1_1]] : index
-  // CHECK-NEXT:   %[[IS_DIFFERENT_SIZE:.*]] = cmpi ne, %[[NEW_SAME_SIZE]], %[[NEW_NEW_SAME_SIZE]] : index
-  // CHECK-NEXT:   %[[IS_INVALID:.*]] = and %[[SAME_SIZE_WAS_NOT_ONE]], %[[IS_DIFFERENT_SIZE]] : i1
-  // CHECK-NEXT:   %[[NEW_HAS_INVALID_BROADCAST:.*]] = or %[[HAS_INVALID_BROADCAST]], %[[IS_INVALID]] : i1
+  // CHECK-NEXT:   %[[SAME_SIZE_WAS_NOT_ONE:.*]] = arith.cmpi ne, %[[NEW_SAME_SIZE]], %[[C1_1]] : index
+  // CHECK-NEXT:   %[[IS_DIFFERENT_SIZE:.*]] = arith.cmpi ne, %[[NEW_SAME_SIZE]], %[[NEW_NEW_SAME_SIZE]] : index
+  // CHECK-NEXT:   %[[IS_INVALID:.*]] = arith.andi %[[SAME_SIZE_WAS_NOT_ONE]], %[[IS_DIFFERENT_SIZE]] : i1
+  // CHECK-NEXT:   %[[NEW_HAS_INVALID_BROADCAST:.*]] = arith.ori %[[HAS_INVALID_BROADCAST]], %[[IS_INVALID]] : i1
 
-  // CHECK-NEXT:   %[[SAME_SIZE_IS_ONE:.*]] = cmpi eq, %[[NEW_NEW_SAME_SIZE]], %[[C1_1]] : index
+  // CHECK-NEXT:   %[[SAME_SIZE_IS_ONE:.*]] = arith.cmpi eq, %[[NEW_NEW_SAME_SIZE]], %[[C1_1]] : index
   // CHECK-NEXT:   %[[NO_BROADCASTING_0:.*]] = select %[[SAME_SIZE_IS_ONE]], %[[BC0]], %[[CURRENT_SIZE_NOT_ONE0]] : i1
-  // CHECK-NEXT:   %[[BCASTING_IS_DIFFERENT0:.*]] = cmpi ne, %[[BC0]], %[[NO_BROADCASTING_0]] : i1
-  // CHECK-NEXT:   %[[DIFFERENT_SET0:.*]] = or %[[FALSE]], %[[BCASTING_IS_DIFFERENT0]] : i1
+  // CHECK-NEXT:   %[[BCASTING_IS_DIFFERENT0:.*]] = arith.cmpi ne, %[[BC0]], %[[NO_BROADCASTING_0]] : i1
+  // CHECK-NEXT:   %[[DIFFERENT_SET0:.*]] = arith.ori %[[FALSE]], %[[BCASTING_IS_DIFFERENT0]] : i1
   // CHECK-NEXT:   %[[NO_BROADCASTING_1:.*]] = select %[[SAME_SIZE_IS_ONE]], %[[BC1]], %[[CURRENT_SIZE_NOT_ONE1]] : i1
-  // CHECK-NEXT:   %[[BCASTING_IS_DIFFERENT1:.*]] = cmpi ne, %[[BC1]], %[[NO_BROADCASTING_1]] : i1
-  // CHECK-NEXT:   %[[DIFFERENT_SET1:.*]] = or %[[DIFFERENT_SET0]], %[[BCASTING_IS_DIFFERENT1]] : i1
+  // CHECK-NEXT:   %[[BCASTING_IS_DIFFERENT1:.*]] = arith.cmpi ne, %[[BC1]], %[[NO_BROADCASTING_1]] : i1
+  // CHECK-NEXT:   %[[DIFFERENT_SET1:.*]] = arith.ori %[[DIFFERENT_SET0]], %[[BCASTING_IS_DIFFERENT1]] : i1
 
-  // CHECK-NEXT:   %[[LAST_ITERATION:.*]] = cmpi sgt, %[[IV]], %[[MAX_RANK]] : index
-  // CHECK-NEXT:   %[[STOP_COMBINING:.*]] = or %[[LAST_ITERATION]], %[[DIFFERENT_SET1]] : i1
+  // CHECK-NEXT:   %[[LAST_ITERATION:.*]] = arith.cmpi sgt, %[[IV]], %[[MAX_RANK]] : index
+  // CHECK-NEXT:   %[[STOP_COMBINING:.*]] = arith.ori %[[LAST_ITERATION]], %[[DIFFERENT_SET1]] : i1
   // CHECK-NEXT:   %[[IF_STOP_COMBINING:.*]]:2 = scf.if %[[STOP_COMBINING]] -> (index, index) {
-  // CHECK-NEXT:     %[[RUNNING_PRODUCT_NOT_ONE:.*]] = cmpi ne, %[[RUNNING_PRODUCT]], %[[C1_1]] : index
+  // CHECK-NEXT:     %[[RUNNING_PRODUCT_NOT_ONE:.*]] = arith.cmpi ne, %[[RUNNING_PRODUCT]], %[[C1_1]] : index
   // CHECK-NEXT:     %[[NEW_DIMENSION_OFFSET:.*]] = scf.if %[[RUNNING_PRODUCT_NOT_ONE]] -> (index) {
-  // CHECK-NEXT:       %[[NEW_DIM_OFFSET:.*]] = addi %[[OFFSET]], %[[C1_1]] : index
-  // CHECK-NEXT:       %[[MINUS_ONE:.*]] = constant -1 : index
-  // CHECK-NEXT:       %[[WAS_IN_BOUNDS0:.*]] = cmpi sge, %[[DIMENSION0]], %[[MINUS_ONE]] : index
-  // CHECK-NEXT:       %[[SHOULD_STORE_DIM:.*]] = or %[[WAS_IN_BOUNDS0]], %[[BC0]] : i1
+  // CHECK-NEXT:       %[[NEW_DIM_OFFSET:.*]] = arith.addi %[[OFFSET]], %[[C1_1]] : index
+  // CHECK-NEXT:       %[[MINUS_ONE:.*]] = arith.constant -1 : index
+  // CHECK-NEXT:       %[[WAS_IN_BOUNDS0:.*]] = arith.cmpi sge, %[[DIMENSION0]], %[[MINUS_ONE]] : index
+  // CHECK-NEXT:       %[[SHOULD_STORE_DIM:.*]] = arith.ori %[[WAS_IN_BOUNDS0]], %[[BC0]] : i1
   // CHECK-NEXT:       scf.if %[[SHOULD_STORE_DIM]] {
-  // CHECK-NEXT:         %[[OUTPUT_DIM:.*]] = subi %[[RANK_LHS]], %[[NEW_DIM_OFFSET]] : index
+  // CHECK-NEXT:         %[[OUTPUT_DIM:.*]] = arith.subi %[[RANK_LHS]], %[[NEW_DIM_OFFSET]] : index
   // CHECK-NEXT:         %[[OUTPUT_SIZE:.*]] = select %[[BC0]], %[[RUNNING_PRODUCT]], %[[C1_1]] : index
   // CHECK-NEXT:         memref.store %[[OUTPUT_SIZE]], %[[RESULT_LHS]][%[[OUTPUT_DIM]]] : memref<?xindex>
   // CHECK-NEXT:       }
-  // CHECK-NEXT:       %[[WAS_IN_BOUNDS1:.*]] = cmpi sge, %[[DIMENSION1]], %[[MINUS_ONE]] : index
-  // CHECK-NEXT:       %[[SHOULD_STORE_DIM:.*]] = or %[[WAS_IN_BOUNDS1]], %[[BC1]] : i1
+  // CHECK-NEXT:       %[[WAS_IN_BOUNDS1:.*]] = arith.cmpi sge, %[[DIMENSION1]], %[[MINUS_ONE]] : index
+  // CHECK-NEXT:       %[[SHOULD_STORE_DIM:.*]] = arith.ori %[[WAS_IN_BOUNDS1]], %[[BC1]] : i1
   // CHECK-NEXT:       scf.if %[[SHOULD_STORE_DIM]] {
-  // CHECK-NEXT:         %[[OUTPUT_DIM:.*]] = subi %[[RANK_RHS]], %[[NEW_DIM_OFFSET]] : index
+  // CHECK-NEXT:         %[[OUTPUT_DIM:.*]] = arith.subi %[[RANK_RHS]], %[[NEW_DIM_OFFSET]] : index
   // CHECK-NEXT:         %[[OUTPUT_SIZE:.*]] = select %[[BC1]], %[[RUNNING_PRODUCT]], %[[C1_1]] : index
   // CHECK-NEXT:         memref.store %[[OUTPUT_SIZE]], %[[RESULT_RHS]][%[[OUTPUT_DIM]]] : memref<?xindex>
   // CHECK-NEXT:       }
@@ -201,33 +201,33 @@ func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>) -> 
   // CHECK-NEXT:     }
   // CHECK-NEXT:     scf.yield %[[NEW_NEW_SAME_SIZE]], %[[NEW_DIMENSION_OFFSET]] : index, index
   // CHECK-NEXT:   } else {
-  // CHECK-NEXT:     %[[NEW_PRODUCT:.*]] = muli %[[RUNNING_PRODUCT]], %[[NEW_NEW_SAME_SIZE]] : index
+  // CHECK-NEXT:     %[[NEW_PRODUCT:.*]] = arith.muli %[[RUNNING_PRODUCT]], %[[NEW_NEW_SAME_SIZE]] : index
   // CHECK-NEXT:     scf.yield %[[NEW_PRODUCT]], %[[OFFSET]] : index, index
   // CHECK-NEXT:   }
-  // CHECK-NEXT:   %[[NEW_INVALID:.*]] = or %[[INVALID]], %[[NEW_HAS_INVALID_BROADCAST]] : i1
+  // CHECK-NEXT:   %[[NEW_INVALID:.*]] = arith.ori %[[INVALID]], %[[NEW_HAS_INVALID_BROADCAST]] : i1
   // CHECK-NEXT:   scf.yield %[[NO_BROADCASTING_0]], %[[NO_BROADCASTING_1]], %[[IF_STOP_COMBINING]]#0, %[[IF_STOP_COMBINING]]#1, %[[NEW_INVALID]] : i1, i1, index, index, i1
   // CHECK-NEXT: }
 
   // Count leading ones in first result shape.
-  // CHECK-NEXT: %[[TRUE:.*]] = constant true
-  // CHECK-NEXT: %[[C0:.*]] = constant 0 : index
-  // CHECK-NEXT: %[[C1:.*]] = constant 1 : index
+  // CHECK-NEXT: %[[TRUE:.*]] = arith.constant true
+  // CHECK-NEXT: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-NEXT: %[[C1:.*]] = arith.constant 1 : index
   // CHECK-NEXT: %[[FOR_0:.*]]:2 = scf.for %[[IV:.*]] = %[[C0]] to %[[RANK_LHS]] step %[[C1]] iter_args(%[[ALL_ONES:.*]] = %[[TRUE]], %[[ONE_COUNT:.*]] = %[[C0]]) -> (i1, index) {
   // CHECK-NEXT:   %[[SIZE:.*]] = memref.load %[[RESULT_LHS]][%[[IV]]] : memref<?xindex>
-  // CHECK-NEXT:   %[[IS_ONE:.*]] = cmpi eq, %[[SIZE]], %[[C1]] : index
-  // CHECK-NEXT:   %[[NEXT_ALL_ONES:.*]] = and %[[ALL_ONES]], %[[IS_ONE]] : i1
-  // CHECK-NEXT:   %[[ONE_COUNT_PLUS_ONE:.*]] = addi %[[ONE_COUNT]], %[[C1]] : index
+  // CHECK-NEXT:   %[[IS_ONE:.*]] = arith.cmpi eq, %[[SIZE]], %[[C1]] : index
+  // CHECK-NEXT:   %[[NEXT_ALL_ONES:.*]] = arith.andi %[[ALL_ONES]], %[[IS_ONE]] : i1
+  // CHECK-NEXT:   %[[ONE_COUNT_PLUS_ONE:.*]] = arith.addi %[[ONE_COUNT]], %[[C1]] : index
   // CHECK-NEXT:   %[[NEXT_ONE_COUNT:.*]] = select %[[NEXT_ALL_ONES]], %[[ONE_COUNT_PLUS_ONE]], %[[ONE_COUNT]] : index
   // CHECK-NEXT:   scf.yield %[[NEXT_ALL_ONES]], %[[NEXT_ONE_COUNT]] : i1, index
   // CHECK-NEXT: }
 
   // Copy the results with leading ones removed.
-  // CHECK-NEXT: %[[REDUCED_RANK_LHS:.*]] = subi %[[RANK_LHS]], %[[FOR_0]]#1 : index
+  // CHECK-NEXT: %[[REDUCED_RANK_LHS:.*]] = arith.subi %[[RANK_LHS]], %[[FOR_0]]#1 : index
   // CHECK-NEXT: %[[REDUCED_RESULT_LHS:.*]] = memref.alloca(%[[REDUCED_RANK_LHS]]) : memref<?xindex>
-  // CHECK-NEXT: %[[C0:.*]] = constant 0 : index
-  // CHECK-NEXT: %[[C1:.*]] = constant 1 : index
+  // CHECK-NEXT: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-NEXT: %[[C1:.*]] = arith.constant 1 : index
   // CHECK-NEXT: scf.for %[[IV:.*]] = %[[C0]] to %[[REDUCED_RANK_LHS]] step %[[C1]] {
-  // CHECK-NEXT:   %[[WITH_OFFSET:.*]] = addi %[[IV]], %[[FOR_0]]#1 : index
+  // CHECK-NEXT:   %[[WITH_OFFSET:.*]] = arith.addi %[[IV]], %[[FOR_0]]#1 : index
   // CHECK-NEXT:   %[[LOAD:.*]] = memref.load %[[RESULT_LHS]][%[[WITH_OFFSET]]] : memref<?xindex>
   // CHECK-NEXT:   memref.store %[[LOAD]], %[[REDUCED_RESULT_LHS]][%[[IV]]] : memref<?xindex>
   // CHECK-NEXT: }
@@ -269,90 +269,4 @@ func @jit_execute(%f : !tf_framework.jit_callable, %arg : tensor<*xf32>)
   // CHECK: return %[[RES]] : memref<*xf32>
   %0 = tf_framework.jit_execute %f(%arg) : tensor<*xf32> -> tensor<*xf32>
   return %0 : tensor<*xf32>
-}
-
-// -----
-
-//      CHECK:  func @tiled_dot
-func @tiled_dot(%A: tensor<10xf32>, %B: tensor<10xf32>,
-                %C: tensor<f32>) -> tensor<f32> {
-  %c0 = constant 0 : index
-  %c2 = constant 2 : index
-  %c10 = constant 10 : index
-
-  %dot = linalg.tiled_loop (%i) = (%c0) to (%c10) step (%c2)
-       ins (%A_ = %A: tensor<10xf32>, %B_ = %B: tensor<10xf32>)
-       outs (%C_ = %C: tensor<f32>)
-       iterators["reduction"] {
-    %A_sub = tensor.extract_slice %A_[%i] [%c2] [1]
-      : tensor<10xf32> to tensor<?xf32>
-    %B_sub = tensor.extract_slice %B_[%i] [%c2] [1]
-      : tensor<10xf32> to tensor<?xf32>
-    %dot_sub = linalg.dot ins(%A_sub, %B_sub : tensor<?xf32>, tensor<?xf32>)
-                          outs(%C_ : tensor<f32>) -> tensor<f32>
-    linalg.yield %dot_sub : tensor<f32>
-  }
-  // CHECK: linalg.tiled_loop
-  // CHECK-SAME: ins (%[[A:arg[0-9]]] = %{{arg[0-9]}}: memref<10xf32>,
-  // CHECK-SAME:      %[[B:arg[0-9]]] = %{{arg[0-9]}}: memref<10xf32>
-  // CHECK-SAME: outs (%[[C:arg[0-9]]] = %{{arg[0-9]}}: memref<f32>)
-
-  // CHECK-NEXT: %[[SV_A:.*]] = memref.subview %[[A]]
-  // CHECK-NEXT: %[[SV_B:.*]] = memref.subview %[[B]]
-  // CHECK:      %[[TMP:.*]] = memref.alloc
-  // CHECK-NEXT: linalg.copy(%[[C]], %[[TMP]])
-  // CHECK-NEXT: linalg.dot ins(%[[SV_A]], %[[SV_B]]
-  // CHECK-SAME:            outs(%[[TMP]] : memref<f32>)
-  // CHECK-NEXT: linalg.copy(%[[TMP]], %[[C]])
-  // CHECK-NEXT: linalg.yield
-  return %dot : tensor<f32>
-}
-
-// -----
-
-#map0 = affine_map<(d0) -> (d0)>
-
-func @tiled_add(%A: tensor<10xf32>, %B: tensor<10xf32>,
-                  %C: tensor<10xf32>) -> tensor<10xf32> {
-  %c0 = constant 0 : index
-  %c2 = constant 2 : index
-  %c10 = constant 10 : index
-
-  %sum = linalg.tiled_loop (%i) = (%c0) to (%c10) step (%c2)
-       ins (%A_ = %A: tensor<10xf32>, %B_ = %B: tensor<10xf32>)
-       outs (%C_ = %C: tensor<10xf32>) {
-    %A_sub = tensor.extract_slice %A_[%i] [%c2] [1]
-      : tensor<10xf32> to tensor<?xf32>
-    %B_sub = tensor.extract_slice %B_[%i] [%c2] [1]
-      : tensor<10xf32> to tensor<?xf32>
-    %C_sub = tensor.extract_slice %C_[%i] [%c2] [1]
-      : tensor<10xf32> to tensor<?xf32>
-    %sum_sub = linalg.generic {
-      indexing_maps = [#map0, #map0, #map0],
-      iterator_types = ["parallel"]
-    } ins(%A_sub, %B_sub : tensor<?xf32>, tensor<?xf32>)
-      outs(%C_sub : tensor<?xf32>) {
-      ^bb0(%a: f32, %b: f32, %c: f32):
-        %0 = std.addf %a, %b : f32
-        linalg.yield %0 : f32
-    } -> tensor<?xf32>
-    %update = tensor.insert_slice %sum_sub into %C_[%i] [%c2] [1]
-      : tensor<?xf32> into tensor<10xf32>
-    linalg.yield %update : tensor<10xf32>
-  }
-  // CHECK: linalg.tiled_loop
-  // CHECK-SAME: ins (%[[A:arg[0-9]]] = %{{arg[0-9]}}: memref<10xf32>,
-  // CHECK-SAME:      %[[B:arg[0-9]]] = %{{arg[0-9]}}: memref<10xf32>
-  // CHECK-SAME: outs (%[[C:arg[0-9]]] = %{{arg[0-9]}}: memref<10xf32>)
-
-  // CHECK-NEXT:  %[[SV_A:.*]] = memref.subview %[[A]]
-  // CHECK-NEXT:  %[[SV_B:.*]] = memref.subview %[[B]]
-  // CHECK:       %[[TMP:.*]] = memref.alloc
-  // CHECK-NEXT:  linalg.generic
-  // CHECK-SAME:    ins(%[[SV_A]], %[[SV_B]]
-  // CHECK-SAME:    outs(%[[TMP]] : memref<?xf32>)
-  // CHECK:  %[[SV_C:.*]] = memref.subview %[[C]]
-  // CHECK-NEXT:  linalg.copy(%[[TMP]], %[[SV_C]])
-  // CHECK-NEXT:  linalg.yield
-  return %sum : tensor<10xf32>
 }

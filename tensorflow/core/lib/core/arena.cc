@@ -232,7 +232,7 @@ void* Arena::GetMemoryFallback(const size_t size, const int alignment) {
 // ----------------------------------------------------------------------
 
 void Arena::FreeBlocks() {
-  for (size_t i = 1; i < blocks_alloced_; ++i) {  // keep first block alloced
+  for (size_t i = 1; i < blocks_alloced_; ++i) {  // keep first block allocated
     port::AlignedFree(first_blocks_[i].mem);
     first_blocks_[i].mem = nullptr;
     first_blocks_[i].size = 0;

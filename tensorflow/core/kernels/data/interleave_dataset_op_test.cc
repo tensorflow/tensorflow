@@ -69,10 +69,11 @@ class InterleaveDatasetParams : public DatasetParams {
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{InterleaveDatasetOp::kFunc, func_},
-                    {InterleaveDatasetOp::kTarguments, type_arguments_},
-                    {InterleaveDatasetOp::kOutputShapes, output_shapes_},
-                    {InterleaveDatasetOp::kOutputTypes, output_dtypes_}};
+    *attr_vector = {{"f", func_},
+                    {"Targuments", type_arguments_},
+                    {"output_shapes", output_shapes_},
+                    {"output_types", output_dtypes_},
+                    {"metadata", ""}};
     return Status::OK();
   }
 

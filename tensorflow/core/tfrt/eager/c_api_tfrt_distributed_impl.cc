@@ -106,11 +106,16 @@ class DistributedManagerContextImpl
   void UpdateRequestContextBuilder(RequestContextBuilder* builder) override;
   void PopulateRemoteDevices(tensorflow::DeviceSet* dev_set) override;
 
+  int64_t GetNextStepId() override { return ++step_id_; }
+
+  int64_t step_id() override { return step_id_; }
+
  private:
   HostContext* host_context_;
   std::unique_ptr<tfrt::ServerContext> server_context_;
   AsyncValueRef<tfrt::DistributedContext> dist_context_;
   std::unique_ptr<tensorflow::StaticDeviceMgr> tf_devices_;
+  std::atomic<int64_t> step_id_;
 };
 
 DistributedManagerContextImpl::DistributedManagerContextImpl(

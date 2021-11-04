@@ -230,6 +230,12 @@ TEST(ShapeUtilTest, CompatibleTuples) {
   EXPECT_TRUE(ShapeUtil::Compatible(tuple1, tuple2));
 }
 
+TEST(ShapeUtilTest, MakeMaybeTupleShape) {
+  Shape s1 =
+      ShapeUtil::MakeMaybeTupleShape({ShapeUtil::MakeShape(F32, {3, 2})});
+  EXPECT_TRUE(ShapeUtil::Compatible(s1, ShapeUtil::MakeShape(F32, {3, 2})));
+}
+
 TEST(ShapeUtilTest, CompatibleTuplesIgnoringFpPrecision) {
   Shape tuple1 = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(BF16, {3, 2}), ShapeUtil::MakeShape(F32, {4, 5})});

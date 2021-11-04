@@ -70,10 +70,14 @@ gentbl_cc_library(
 
 cc_library(
     name = "Dialect",
-    srcs = ["ops.cc"],
+    srcs = [
+        "ops.cc",
+        "tf_op_wrapper.cc",
+    ],
     hdrs = [
         "dialect.h",
         "ops.h",
+        "tf_op_wrapper.h",
     ],
     deps = [
         ":DialectIncGen",
@@ -83,18 +87,5 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
-    name = "OpWrapper",
-    srcs = ["tf_op_wrapper.cc"],
-    hdrs = [
-        "tf_op_wrapper.h",
-    ],
-    deps = [
-        ":Dialect",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
     ],
 )

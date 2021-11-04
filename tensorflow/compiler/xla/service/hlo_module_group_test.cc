@@ -192,7 +192,9 @@ ENTRY entry {
     ASSERT_EQ(metadata->companion_sets().size(), 1);
 
     std::vector<int64_t> module_ids;
-    for (HloInstruction* companion : *metadata->companion_sets()[0]) {
+    const auto& companion_sets = *metadata->companion_sets()[0];
+    module_ids.reserve(companion_sets.size());
+    for (HloInstruction* companion : companion_sets) {
       module_ids.push_back(metadata->GetModuleId(companion->GetModule()));
     }
 

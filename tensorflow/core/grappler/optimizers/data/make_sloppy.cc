@@ -19,27 +19,11 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
-#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
+#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
 namespace tensorflow {
 namespace grappler {
-
-namespace {
-constexpr std::array<const char*, 3> kSloppyAttrOps = {
-    "ParallelInterleaveDatasetV2",
-    "ParallelMapDataset",
-    "ParseExampleDataset",
-};
-
-constexpr std::array<const char*, 5> kDeterministicAttrOps = {
-    "LegacyParallelInterleaveDatasetV2",
-    "ParallelInterleaveDatasetV3",
-    "ParallelInterleaveDatasetV4",
-    "ParallelMapDatasetV2",
-    "ParallelBatchDataset",
-};
-}  // anonymous namespace
 
 Status MakeSloppy::OptimizeAndCollectStats(Cluster* cluster,
                                            const GrapplerItem& item,
@@ -49,20 +33,16 @@ Status MakeSloppy::OptimizeAndCollectStats(Cluster* cluster,
   MutableGraphView graph(output);
 
   for (NodeDef& node : *output->mutable_node()) {
-    for (const auto& op_name : kSloppyAttrOps) {
-      if (node.op() == op_name) {
-        (*node.mutable_attr())["sloppy"].set_b(true);
-        stats->num_changes++;
-        break;
-      }
+    if (graph_utils::HasSloppyAttr(node.op())) {
+      (*node.mutable_attr())["sloppy"].set_b(true);
+      stats->num_changes++;
+      break;
     }
-    for (const auto& op_name : kDeterministicAttrOps) {
-      if (node.op() == op_name &&
-          node.attr().at("deterministic").s() == "default") {
-        (*node.mutable_attr())["deterministic"].set_s("false");
-        stats->num_changes++;
-        break;
-      }
+    if (graph_utils::HasDeterministicAttr(node.op()) &&
+        node.attr().at("deterministic").s() == "default") {
+      (*node.mutable_attr())["deterministic"].set_s("false");
+      stats->num_changes++;
+      break;
     }
   }
   return Status::OK();

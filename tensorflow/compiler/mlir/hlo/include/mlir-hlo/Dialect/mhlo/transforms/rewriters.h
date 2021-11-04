@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_
 #define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_
 
+#include <functional>
 #include <memory>
 
 #include "mlir/IR/MLIRContext.h"
@@ -26,7 +27,7 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
-struct RemoveSignTypeConverter;
+class RemoveSignTypeConverter;
 
 // Collection of rewrite patterns for lowering a general dot product.
 void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
@@ -64,12 +65,15 @@ void populateHLOToLHLOConversionPattern(MLIRContext *context,
 
 // Collection of rewrite patterns for lowering of HLO to memref dialect.
 // These patterns generally assume that the HLO operation are aliasing their
-// input memrefs. If enforce_identity_map is set to true, copies will be
+// input memrefs. If enforce_identity_map returns true for an op, copies will be
 // inserted when the lowering would otherwise lead to a memref with a
 // non-identity map.
 void populateHLOToMemrefConversionPattern(
     BufferizeTypeConverter *converter, RemoveSignTypeConverter *sign_converter,
-    OwningRewritePatternList *patterns, bool enforce_identity_map = true);
+    OwningRewritePatternList *patterns,
+    std::function<bool(Operation *)> enforce_identity_map = [](Operation *) {
+      return true;
+    });
 
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,

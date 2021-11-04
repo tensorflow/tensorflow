@@ -39,15 +39,17 @@ func @conv_forward_generic(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2
   // This defined a 2D convolution over a 8x8 single channel input using a 2x2
   // filter and with an output of 7x7xf16. The 1x1x8x8 is (N, C, H, W)
   "lmhlo_gpu.conv_forward"(%input, %filter, %output, %scratch)
-    { dimension_numbers = {input_batch_dimension = 0 : i64,
-                           input_feature_dimension = 1 : i64,
-                           input_spatial_dimensions = dense<[2,3]> : tensor<2xi64>,
-                           kernel_input_feature_dimension = 0 : i64,
-                           kernel_output_feature_dimension = 1 : i64,
-                           kernel_spatial_dimensions = dense<[2,3]> : tensor<2xi64>,
-                           output_batch_dimension = 0 : i64,
-                           output_feature_dimension = 1 : i64,
-                           output_spatial_dimensions = dense<[2,3]> : tensor<2xi64>},
+    { dimension_numbers = #mhlo.conv<raw
+        input_batch_dimension = 0,
+        input_feature_dimension = 1,
+        input_spatial_dimensions = [2, 3],
+        kernel_input_feature_dimension = 0,
+        kernel_output_feature_dimension = 1,
+        kernel_spatial_dimensions = [2, 3],
+        output_batch_dimension = 0,
+        output_feature_dimension = 1,
+        output_spatial_dimensions = [2, 3]
+      >,
       window_strides = dense<[1, 1]> : tensor<2xi64>,
       padding = dense<[[0, 0], [1, 0]]> : tensor<2x2xi64>,
       lhs_dilation = dense<[1,1]> : tensor<2xi64>,
@@ -56,6 +58,7 @@ func @conv_forward_generic(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2
       batch_group_count = 1,
       result_scale = 1.0,
       backend_config = {algorithm=0,
+                        workspace_size = -1,
                         operand_0_layout = [3,2,1,0],
                         operand_1_layout = [3,2,1,0],
                         result_layout = [3,2,1,0],
@@ -77,6 +80,7 @@ func @conv_forward(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2xf16>, %
     window = {stride = [1, 1], pad = [[0, 0], [1, 0]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
     { feature_group_count = 1, batch_group_count = 1, result_scale = 1.0,
       backend_config = {algorithm=0,
+                        workspace_size = -1,
                         operand_0_layout = [3,2,1,0],
                         operand_1_layout = [3,2,1,0],
                         result_layout = [3,2,1,0],
@@ -95,6 +99,7 @@ func @conv_backfilter(%input : memref<3x56x56x16xf64>, %filter: memref<3x3x3x64x
     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
     window = {stride = [1, 1], pad = [[0, 0], [0, 0]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
     { backend_config = {algorithm = 1 : i64,
+                        workspace_size = -1,
                         operand_0_layout = [3,2,1,0],
                         operand_1_layout = [3,2,1,0],
                         result_layout = [3,2,1,0],
@@ -117,6 +122,7 @@ func @conv_backinput(%input : memref<4x5x16x16xf64>, %filter : memref<5x3x7x7xf6
     dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1],
     window = {stride = [1, 1], pad = [[3, 0], [1, 5]], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [1, 1]}
     { backend_config = {algorithm = 1 : i64,
+                        workspace_size = -1,
                         operand_0_layout = [3,2,1,0],
                         operand_1_layout = [3,2,1,0],
                         result_layout = [3,2,1,0],
@@ -140,6 +146,7 @@ func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32xf16>,
     window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
     {activation_mode = "Relu",
      backend_config = {algorithm = 1 : i64,
+                       workspace_size = -1,
                        operand_0_layout = [3,2,1,0],
                        operand_1_layout = [3,2,1,0],
                        result_layout = [3,2,1,0],
@@ -163,6 +170,7 @@ func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x
     window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
     {activation_mode = "Relu",
      backend_config = {algorithm = 1 : i64,
+                       workspace_size = -1,
                        operand_0_layout = [3,2,1,0],
                        operand_1_layout = [3,2,1,0],
                        result_layout = [3,2,1,0],
@@ -178,18 +186,20 @@ func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x
 
 // CHECK-LABEL: func @gemm
 func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>) {
-  "lmhlo_gpu.gemm"(%lhs, %rhs, %output) { dot_dimension_numbers = {
-       lhs_batching_dimensions = dense<[1,1]> : tensor<2xi64>,
-       rhs_batching_dimensions = dense<[1,1]> : tensor<2xi64>,
-       lhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>,
-       rhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>},
-       alpha_real = 0.5,
-       alpha_imag = 0.0,
-       batch_size = 1,
-       lhs_stride = 20,
-       rhs_stride = 20,
-       algorithm = 0}
-    : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
+  "lmhlo_gpu.gemm"(%lhs, %rhs, %output) {
+    dot_dimension_numbers = #mhlo.dot<
+       lhs_batching_dimensions = [1,1],
+       rhs_batching_dimensions = [1,1],
+       lhs_contracting_dimensions = [1,1],
+       rhs_contracting_dimensions = [1,1]
+    >,
+    alpha_real = 0.5,
+    alpha_imag = 0.0,
+    batch_size = 1,
+    lhs_stride = 20,
+    rhs_stride = 20,
+    algorithm = 0
+  } : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
   return
 }
 
@@ -197,19 +207,21 @@ func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>
 // CHECK-LABEL: func @gemm_bias
 func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
                 %bias: memref<5x5xf32>, %output:memref<5x5xf32>) {
-  "lmhlo_gpu.gemm_bias"(%lhs, %rhs, %bias, %output) { dot_dimension_numbers = {
-       lhs_batching_dimensions = dense<[1,1]> : tensor<2xi64>,
-       rhs_batching_dimensions = dense<[1,1]> : tensor<2xi64>,
-       lhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>,
-       rhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>},
-       alpha_real = 0.5,
-       alpha_imag = 0.0,
-       beta = 1.0,
-       batch_size = 1,
-       lhs_stride = 20,
-       rhs_stride = 20,
-       algorithm = 0}
-    : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>, memref<5x5xf32>) -> ()
+  "lmhlo_gpu.gemm_bias"(%lhs, %rhs, %bias, %output) {
+    dot_dimension_numbers = #mhlo.dot<
+       lhs_batching_dimensions = [1,1],
+       rhs_batching_dimensions = [1,1],
+       lhs_contracting_dimensions = [1,1],
+       rhs_contracting_dimensions = [1,1]
+    >,
+    alpha_real = 0.5,
+    alpha_imag = 0.0,
+    beta = 1.0,
+    batch_size = 1,
+    lhs_stride = 20,
+    rhs_stride = 20,
+    algorithm = 0
+  } : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>, memref<5x5xf32>) -> ()
   return
 }
 

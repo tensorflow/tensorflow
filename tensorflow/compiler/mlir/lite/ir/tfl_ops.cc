@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -1656,7 +1657,7 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
   int64_t shape_ty_size = 1;
   llvm::SmallVector<int64_t, 8> output_ty_shape;
   output_ty_shape.reserve(shape_attr.getNumElements());
-  for (const auto &dim : llvm::enumerate(shape_attr.getIntValues())) {
+  for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
     if (size == ShapedType::kDynamicSize) {
       if (unknown_index != -1)
@@ -2729,16 +2730,33 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   return value();
 }
 
+bool ConstOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+  // Allow the type inferred to not match exactly the inferred type as the
+  // inferred type is from the element attribute's type while the op may have
+  // gotten constructed from TF const op or be in a partial state of shape
+  // refinement, so allow it to only be compatible. The op will be refined
+  // during shape inference and casts inserted as needed to satisfy type
+  // constraints of consumers.
+  return succeeded(verifyCompatibleShapes(l, r));
+}
+
 namespace {
 struct FoldPseudoConstOp : public OpRewritePattern<ConstOp> {
   using OpRewritePattern<ConstOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(ConstOp const_op,
                                 PatternRewriter &rewriter) const override {
-    if (!ConstantOp::isBuildableWith(const_op.value(), const_op.getType()))
-      return failure();
-    rewriter.replaceOpWithNewOp<ConstantOp>(const_op, const_op.value());
-    return success();
+    if (arith::ConstantOp::isBuildableWith(const_op.value(),
+                                           const_op.getType())) {
+      rewriter.replaceOpWithNewOp<arith::ConstantOp>(const_op,
+                                                     const_op.value());
+      return success();
+    } else if (ConstantOp::isBuildableWith(const_op.value(),
+                                           const_op.getType())) {
+      rewriter.replaceOpWithNewOp<ConstantOp>(const_op, const_op.value());
+      return success();
+    }
+    return failure();
   }
 };
 
@@ -3191,6 +3209,25 @@ static LogicalResult Verify(TransposeOp op) {
     }
   }
 
+  // Verify the quantized axis if the type is UniformQuantizedPerAxisType. Other
+  // verifications to make sure the input and output has the same quantization
+  // type, scale and zero point are performed by the SameOperandsAndResultsScale
+  // trait.
+  auto in_per_axis_qtype =
+      QuantizedType::getQuantizedElementType(input_type)
+          .dyn_cast_or_null<quant::UniformQuantizedPerAxisType>();
+  auto out_per_axis_qtype =
+      QuantizedType::getQuantizedElementType(output_type)
+          .dyn_cast_or_null<quant::UniformQuantizedPerAxisType>();
+  if (in_per_axis_qtype && out_per_axis_qtype) {
+    if (out_per_axis_qtype.getQuantizedDimension() < axes.size() &&
+        axes[out_per_axis_qtype.getQuantizedDimension()] !=
+            in_per_axis_qtype.getQuantizedDimension()) {
+      return op.emitOpError(
+          "has mismatched quantized axes of input and output");
+    }
+  }
+
   return success();
 }
 
@@ -3200,14 +3237,14 @@ static void BuildTransposeOp(OpBuilder *builder, OperationState &result,
   auto input_type = input.getType().cast<TensorType>();
   DenseIntElementsAttr perm_const;
   if (!input_type.hasRank() || !matchPattern(perm, m_Constant(&perm_const)) ||
-      perm_const.getIntValues().empty()) {
+      perm_const.empty()) {
     TFL::TransposeOp::build(
         *builder, result, UnrankedTensorType::get(input_type.getElementType()),
         input, perm);
     return;
   }
 
-  const auto perm_value_it = perm_const.getIntValues().begin();
+  const auto perm_value_it = perm_const.value_begin<APInt>();
 
   const ArrayRef<int64_t> input_shape = input_type.getShape();
   SmallVector<int64_t, 4> output_shape(input_shape.size());
@@ -3217,10 +3254,31 @@ static void BuildTransposeOp(OpBuilder *builder, OperationState &result,
     output_shape[i] = input_shape[perm_val.getSExtValue()];
   }
 
-  TFL::TransposeOp::build(
-      *builder, result,
-      RankedTensorType::get(output_shape, input_type.getElementType()), input,
-      perm);
+  auto element_type = input_type.getElementType();
+  // For UniformQuantizedPerAxisType element type, the quantized dimension
+  // should be changed corresponding with the transpose.
+  auto per_axis_qtype =
+      QuantizedType::getQuantizedElementType(input_type)
+          .dyn_cast_or_null<quant::UniformQuantizedPerAxisType>();
+  if (per_axis_qtype) {
+    int32_t quantized_dimension = per_axis_qtype.getQuantizedDimension();
+    for (int i = 0; i < output_shape.size(); ++i) {
+      const APInt perm_val = perm_value_it[i];
+      if (perm_val.getSExtValue() == quantized_dimension) {
+        quantized_dimension = i;
+        break;
+      }
+    }
+    element_type = quant::UniformQuantizedPerAxisType::get(
+        per_axis_qtype.getFlags(), per_axis_qtype.getStorageType(),
+        per_axis_qtype.getExpressedType(), per_axis_qtype.getScales(),
+        per_axis_qtype.getZeroPoints(), quantized_dimension,
+        per_axis_qtype.getStorageTypeMin(), per_axis_qtype.getStorageTypeMax());
+  }
+
+  TFL::TransposeOp::build(*builder, result,
+                          RankedTensorType::get(output_shape, element_type),
+                          input, perm);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3262,6 +3320,37 @@ void IfOp::getSuccessorRegions(Optional<unsigned> index,
 }
 
 //===----------------------------------------------------------------------===//
+// PolyCallOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+// Canonicalize converted TF ops into PolymorphicCall op so different
+// representations are preserved.
+struct PolyCallResultOperandsMatchAndImplicitCapture
+    : public OpRewritePattern<PolyCallOp> {
+  using OpRewritePattern<PolyCallOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PolyCallOp while_op,
+                                PatternRewriter &rewriter) const override {
+    // Finish this.
+    return success();
+  }
+};
+
+}  // namespace
+
+void PolyCallOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<PolyCallResultOperandsMatchAndImplicitCapture>(context);
+}
+
+void PolyCallOp::getSuccessorRegions(
+    Optional<unsigned> index, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor> &regions) {
+  // Defaults to first region for TFLite execution.
+}
+
+//===----------------------------------------------------------------------===//
 // WhileOp
 //===----------------------------------------------------------------------===//
 
@@ -3270,7 +3359,23 @@ LogicalResult Verify(WhileOp op) {
     return op.emitOpError(llvm::formatv(
         "number of operands does not match number of results ({0} != {1})",
         op.getNumOperands(), op.getNumResults()));
-  // TODO(jpienaar): Verify operand, result & block arguments types
+  if (op.cond().front().getNumArguments() !=
+      op.body().front().getNumArguments())
+    return op.emitOpError(llvm::formatv(
+        "number of arguments in condition function does not match number of "
+        "arguments in body function ({0} != {1})",
+        op.cond().front().getNumArguments(),
+        op.body().front().getNumArguments()));
+  // Verify shapes are compatible.
+  for (auto it : llvm::zip(op.cond().front().getArgumentTypes(),
+                           op.body().front().getArgumentTypes())) {
+    if (failed(mlir::verifyCompatibleShape(std::get<0>(it), std::get<1>(it))))
+      return op->emitOpError(llvm::formatv(
+          "condition function's argument type does not match body "
+          "function's argument type ({0} != {1})",
+          std::get<0>(it), std::get<1>(it)));
+  }
+
   return success();
 }
 
@@ -3578,6 +3683,8 @@ Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
   if (value.isa<OpaqueElementsAttr>() ||
       (value.isa<ElementsAttr>() && value.getType() != type))
     return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
+  if (arith::ConstantOp::isBuildableWith(value, type))
+    return builder.create<arith::ConstantOp>(loc, type, value);
   if (ConstantOp::isBuildableWith(value, type))
     return builder.create<ConstantOp>(loc, type, value);
   return nullptr;

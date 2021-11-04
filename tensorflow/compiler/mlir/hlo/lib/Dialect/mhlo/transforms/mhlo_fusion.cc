@@ -546,6 +546,37 @@ struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
         output_types.push_back(v.getType());
       }
 
+      //      /-----\
+      //     /       V
+      // A(fused) -- B -- C(fused) -- D(fused)
+      // mlir ops Adjacency List likely above
+      // the B is consumer of fused A, so B need move behind D
+      // because fusion op create at D's location
+      DenseSet<Operation*> fused_set(pattern.begin(), pattern.end());
+      DenseSet<Operation*> consumers_set;
+      SmallVector<Operation*, 4> consumers_vec;
+      auto first_iter = pattern.front()->getIterator();
+      auto last_iter = pattern.back()->getIterator();
+      for (Operation& cur_op : llvm::make_range(first_iter, last_iter)) {
+        // isn't fused op && consumer's op
+        // move this after fusion op
+        if (!fused_set.contains(&cur_op)) {
+          // fused op's consumer or consumer's consumer
+          bool is_consumer = llvm::any_of(
+              cur_op.getOperands(), [&fused_set, &consumers_set](Value v) {
+                auto op = v.getDefiningOp();
+                return fused_set.contains(op) || consumers_set.contains(op);
+              });
+          if (is_consumer) {
+            consumers_set.insert(&cur_op);
+            consumers_vec.push_back(&cur_op);
+          }
+        }
+      }
+      for (auto op : llvm::reverse(consumers_vec)) {
+        op->moveAfter(pattern.back());
+      }
+
       FusionOp fusion =
           b.create<mhlo::FusionOp>(fused_loc, output_types, inputs);
       Region& region = fusion.fused_computation();

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for cfg module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gast
 
 from tensorflow.python.autograph.pyct import cfg

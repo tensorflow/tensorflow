@@ -632,6 +632,11 @@ TF_CAPI_EXPORT void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx,
                                                      unsigned char enable,
                                                      TF_Status* status);
 
+// Enables running eager ops as function.
+TF_CAPI_EXPORT void TFE_ContextSetRunEagerOpAsFunction(TFE_Context* ctx,
+                                                       unsigned char enable,
+                                                       TF_Status* status);
+
 // Returns the device type of the operation that produced `h`.
 TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
     TFE_TensorHandle* h, TF_Status* status);

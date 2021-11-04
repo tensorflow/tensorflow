@@ -81,7 +81,9 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override { return tensors_[0].dim_size(0); }
+  int64_t CardinalityInternal() const override {
+    return tensors_[0].dim_size(0);
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return Status::OK();
@@ -91,13 +93,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
-    if (tensors_.empty()) {
-      return errors::FailedPrecondition("Cannot index into empty tensor.");
-    }
-    if (index < 0 || index >= tensors_[0].dim_size(0)) {
-      return errors::OutOfRange("Index out of range [0, ",
-                                tensors_[0].dim_size(0), "):", index);
-    }
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     out_tensors->clear();
     out_tensors->reserve(tensors_.size());
     for (int i = 0; i < tensors_.size(); ++i) {
@@ -114,7 +110,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     components.reserve(tensors_.size());
     for (const Tensor& t : tensors_) {
       Node* node;
-      if (ctx->serialize_data_tensors()) {
+      if (!ctx->is_graph_rewrite()) {
         TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
         if (is_files_) {
           Node* file_node;

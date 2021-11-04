@@ -96,7 +96,7 @@ function generate_tflite_framework {
 
   # Build the framework package.
   popd > /dev/null
-  bazel build -c opt --config=ios --ios_multi_cpus=${TARGET_ARCHS}  \
+  bazel build -c opt --config=ios --ios_multi_cpus="${TARGET_ARCHS}" \
     //${TMP_DIR}:TensorFlowLiteC_framework
 
   OUT_FILES+=("bazel-bin/${TMP_DIR}/TensorFlowLiteC_framework.zip")
@@ -125,7 +125,7 @@ function generate_flex_framework {
   popd
 
   # Build the framework.
-  bazel build -c opt --config=ios --ios_multi_cpus=${TARGET_ARCHS} \
+  bazel build -c opt --config=ios --ios_multi_cpus="${TARGET_ARCHS}" \
     //${TMP_DIR}:TensorFlowLiteSelectTfOps_framework
 
   OUT_FILES+=("bazel-bin/${TMP_DIR}/TensorFlowLiteSelectTfOps_framework.zip")

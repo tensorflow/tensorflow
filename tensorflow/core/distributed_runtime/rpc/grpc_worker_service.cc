@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
@@ -669,7 +670,7 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
           AllocatorAttributes cpu_attr;
           cpu_attr.set_gpu_compatible(true);
           cpu_attr.set_nic_compatible(true);
-          ScopedMemoryDebugAnnotation op_annotation(
+          profiler::ScopedMemoryDebugAnnotation op_annotation(
               "GrpcWorker::RecvBufAsync::consumer_callback", request->step_id(),
               "dynamic", hook->prod_value->dtype(),
               [hook]() { return hook->prod_value->shape().DebugString(); });

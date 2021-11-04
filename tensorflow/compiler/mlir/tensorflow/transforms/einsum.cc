@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -62,7 +63,7 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
   auto perm_type = RankedTensorType::get(
       {static_cast<int32_t>(permutation.size())}, rewriter->getIntegerType(32));
   auto perm_attr = DenseElementsAttr::get(perm_type, permutation);
-  auto perm_op = rewriter->create<ConstantOp>(loc, perm_type, perm_attr);
+  auto perm_op = rewriter->create<arith::ConstantOp>(loc, perm_type, perm_attr);
   SmallVector<int64_t, 4> transposed_shape(shape.begin(), shape.end());
   for (int i = 0, end = shape.size(); i < end; ++i) {
     transposed_shape[i] = shape[permutation[i]];
@@ -82,7 +83,7 @@ TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
   Type resultType = RankedTensorType::get(shape, element_type);
   auto constant_attr = DenseElementsAttr::get(shape_spec_type, shape);
   auto shape_tensor =
-      rewriter->create<ConstantOp>(loc, shape_spec_type, constant_attr);
+      rewriter->create<arith::ConstantOp>(loc, shape_spec_type, constant_attr);
   return rewriter->create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
                                          /*shape=*/shape_tensor);
 }
@@ -507,6 +508,20 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   return success();
 }
 
+// Transform Einsum to other TF Ops for the supported variants.
+struct TransformEinsumPass
+    : public TransformEinsumPassBase<TransformEinsumPass> {
+  void runOnFunction() override;
+};
+
+void TransformEinsumPass::runOnFunction() {
+  OwningRewritePatternList patterns(&getContext());
+  auto func = getFunction();
+
+  patterns.insert<ConvertTFEinsumOp>(&getContext());
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+}
+
 }  // namespace
 
 LogicalResult ConvertTFEinsumOp::matchAndRewrite(
@@ -528,27 +543,9 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }
 
-// Transform Einsum to other TF Ops for the supported variants.
-struct TransformEinsumPass
-    : public PassWrapper<TransformEinsumPass, FunctionPass> {
-  StringRef getArgument() const final { return "tf-einsum"; }
-
-  StringRef getDescription() const final {
-    return "Transform Einsum to other TF Ops for the supported variants";
-  }
-
-  void runOnFunction() override;
-};
-
-void TransformEinsumPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
-
-  patterns.insert<ConvertTFEinsumOp>(&getContext());
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+std::unique_ptr<FunctionPass> CreateTransformEinsumPass() {
+  return std::make_unique<TransformEinsumPass>();
 }
-
-static PassRegistration<TransformEinsumPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

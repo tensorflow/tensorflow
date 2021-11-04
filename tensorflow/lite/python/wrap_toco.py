@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Wraps toco interface with python lazy loader."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # We need to import pywrap_tensorflow prior to the toco wrapper.
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import

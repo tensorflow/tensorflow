@@ -210,25 +210,51 @@ class CudnnSupport : public dnn::DnnSupport {
       CudaComputeCapability cuda_compute_capability,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
-  bool GetConvolveExecutionPlans(
-      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+  port::Status GetConvolveRunners(
+      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+      dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      ScratchAllocator* scratch_allocator,
+      std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans)
+      override;
+
+  port::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
+      const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
+      dnn::DataType input_type, dnn::DataType output_type,
       const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans)
-      override;
+      const dnn::ConvolutionDescriptor& convolution_descriptor) override;
 
-  port::Status GetFusedConvolveExecutionPlans(
-      dnn::ConvolutionKind kind, dnn::DataType element_type,
-      double conv_input_scale, double side_input_scale, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor,
+  port::Status GetFusedConvolveRunners(
+      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+      dnn::DataType input_type, dnn::DataType bias_type,
+      dnn::DataType output_type, double conv_scale, double side_input_scale,
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& bias_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode,
-      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans);
+      std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans)
+      override;
+
+  port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+  FusedConvolveRunnerFromDesc(
+      const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
+      dnn::DataType input_type, dnn::DataType bias_type,
+      dnn::DataType output_type, double conv_scale, double side_input_scale,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      dnn::ActivationMode activation_mode) override;
 
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
@@ -309,19 +335,6 @@ class CudnnSupport : public dnn::DnnSupport {
       dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       dnn::ProfileResult* output_profile_result) override;
 
-  port::Status DoConvolveWithExecutionPlan(
-      dnn::ConvolutionKind kind, dnn::DataType element_type,
-      dnn::DataType output_type, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::AlgorithmConfig& plan_config,
-      ScratchAllocator* scratch_allocator,
-      dnn::ProfileResult* output_profile_result);
-
   port::Status DoFusedConvolve(
       Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
       dnn::DataType bias_type, dnn::DataType output_type,
@@ -337,21 +350,6 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemoryBase output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) override;
-
-  port::Status DoFusedConvolveWithExecutionPlan(
-      Stream* stream, dnn::DataType element_type,
-      const dnn::BatchDescriptor& conv_input_descriptor,
-      DeviceMemoryBase conv_input_data, double conv_input_scale,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      DeviceMemoryBase side_input_data, double side_input_scale,
-      const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
-      dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data, ScratchAllocator* scratch_allocator,
-      const dnn::AlgorithmConfig& algorithm_config,
-      dnn::ProfileResult* output_profile_result);
 
   bool DoConvolveQuantized(
       Stream* stream, const dnn::BatchDescriptor& input_descriptor,

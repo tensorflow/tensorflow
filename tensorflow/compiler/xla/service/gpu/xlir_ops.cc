@@ -37,6 +37,39 @@ XlirDialect::XlirDialect(mlir::MLIRContext *context)
       >();
 }
 
+// The following Enum parsers/printers are duplicated from
+// tf_runtime/backends/gpu/lib/kernels/gpu_ops.cc.
+template <typename T>
+static ParseResult parseEnum(OpAsmParser &parser,
+                             tfrt::gpu::EnumAttr<T> &attribute,
+                             llvm::Expected<T> (*parse_func)(StringRef)) {
+  StringRef name;
+  if (failed(parser.parseKeyword(&name))) return failure();
+  auto value = parse_func(name);
+  if (!value) {
+    return parser.emitError(parser.getCurrentLocation(),
+                            toString(value.takeError()));
+  }
+  attribute =
+      tfrt::gpu::EnumAttr<T>::get(parser.getBuilder().getContext(), *value);
+  return success();
+}
+
+template <typename T>
+static ParseResult parseEnum(OpAsmParser &parser,
+                             tfrt::gpu::EnumAttr<T> &attribute) {
+  auto parse_func = [](StringRef name) {
+    return tfrt::gpu::wrapper::Parse<T>(name);
+  };
+  return parseEnum(parser, attribute, +parse_func);
+}
+
+template <typename T>
+static void printEnum(OpAsmPrinter &printer, Operation *,
+                      tfrt::gpu::EnumAttr<T> attribute) {
+  tfrt::gpu::wrapper::operator<<(printer.getStream(), attribute.getValue());
+}
+
 }  // namespace gpu
 }  // namespace xla
 

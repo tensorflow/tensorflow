@@ -91,12 +91,9 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
     collect_contracting_batching_dims(rhs_tokens, lhs_tokens,
                                       rhs_contracting_dims, rhs_batching_dims);
 
-    auto dim_numbers = mhlo::DotDimensionNumbers::get(
-        Make1DElementsAttr(rewriter, lhs_batching_dims),
-        Make1DElementsAttr(rewriter, rhs_batching_dims),
-        Make1DElementsAttr(rewriter, lhs_contracting_dims),
-        Make1DElementsAttr(rewriter, rhs_contracting_dims),
-        rewriter.getContext());
+    auto dim_numbers = mhlo::DotDimensionNumbersAttr::get(
+        rewriter.getContext(), lhs_batching_dims, rhs_batching_dims,
+        lhs_contracting_dims, rhs_contracting_dims);
     rewriter.replaceOpWithNewOp<DotGeneralOp>(
         einsum, einsum.getType(), einsum.lhs(), einsum.rhs(), dim_numbers,
         /*precision_config=*/ArrayAttr{});

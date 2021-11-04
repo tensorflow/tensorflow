@@ -15,10 +15,6 @@
 # ==============================================================================
 """Tests for metrics collecting in coordinator."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2

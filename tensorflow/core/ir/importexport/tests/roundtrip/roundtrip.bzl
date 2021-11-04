@@ -10,9 +10,13 @@ def roundtrip_test(name, roundtrip_cmd, args, test_file, size):
       test_file: Input file used for testing.
       size: Size of the test.
     """
+
+    # Disable tests on windows for now (b/198639342)
+    # It fails here with "Source file is a Windows executable file, target name extension should match source file extension"
     native.sh_test(
         name = "{0}.test".format(name),
         srcs = [roundtrip_cmd],
+        tags = ["no_windows"],
         args = args + ["$(location {0})".format(test_file)],
         data = [roundtrip_cmd, test_file],
         size = size,

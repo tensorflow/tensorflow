@@ -24,9 +24,11 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_custom_call_status.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
+#include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -235,6 +237,18 @@ INSTANTIATE_TEST_CASE_P(MKLMatMulTestInstantiaion, MKLMatMulTest,
                                            ::testing::Bool()),
                         MKLMatMulTest::Name);
 #endif  // ENABLE_MKL
+
+TEST_F(CpuRuntimeTest, SuccessStatus) {
+  XlaCustomCallStatus success_status;
+  // Success is the default state.
+  ASSERT_TRUE(__xla_cpu_runtime_StatusIsSuccess(&success_status));
+}
+
+TEST_F(CpuRuntimeTest, FailureStatus) {
+  XlaCustomCallStatus success_status;
+  XlaCustomCallStatusSetFailure(&success_status, "Failed", 6);
+  ASSERT_FALSE(__xla_cpu_runtime_StatusIsSuccess(&success_status));
+}
 
 }  // namespace
 }  // namespace xla

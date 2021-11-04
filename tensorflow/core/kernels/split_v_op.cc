@@ -138,6 +138,13 @@ class SplitVOpBase : public OpKernel {
       (*split_sizes_vec)[neg_one_dim] = input_size_split_dim - determined_size;
     }
 
+    for (int i = 0; i < split_sizes_vec->size(); ++i) {
+      const Tlen& split_size = (*split_sizes_vec)[i];
+      OP_REQUIRES(context, split_size >= Tlen(0),
+                  errors::InvalidArgument("Split size at index ", i,
+                                          " must be >= 0. Got: ", split_size));
+    }
+
     // Special case 2: split along the 1st dimension. The requirements are that
     // either we are splitting the outer dimension of two or more such that
     // every outer subpart is aligned or that the split sizes mean that they are
@@ -260,7 +267,7 @@ class SplitVOpCPUImpl {
   template <typename MakeSizesType, typename ReshapeResultType>
   void operator()(OpKernelContext* context,
                   const InputReshapedType& input_reshaped,
-                  const std::vector<int64>& split_start_points,
+                  const std::vector<int64_t>& split_start_points,
                   const TensorShape& input_shape, int32_t split_dim,
                   Eigen::DenseIndex prefix_dim_size,
                   Eigen::DenseIndex split_dim_size,

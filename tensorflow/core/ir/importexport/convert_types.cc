@@ -183,7 +183,12 @@ Status ConvertToMlirShape(const TensorShapeProto& input_shape,
     if (d.size() > std::numeric_limits<int64_t>::max()) {
       return InvalidArgument("Shape element overflows");
     }
-    shape->push_back(d.size());
+    // This isn't really expected, but Grappler is using such shapes for its
+    // symbolic shape analysis and it may spill into here.
+    if (d.size() < ShapedType::kDynamicSize)
+      shape->push_back(ShapedType::kDynamicSize);
+    else
+      shape->push_back(d.size());
   }
   return Status::OK();
 }

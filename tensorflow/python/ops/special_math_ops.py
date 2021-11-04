@@ -17,10 +17,6 @@
 To avoid circular dependencies, some math_ops should go here.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import re

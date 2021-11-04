@@ -133,8 +133,8 @@ xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp& operand,
 }
 
 XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn() {
-  return [](const TensorShape& shape, DataType dtype,
-            bool use_fast_memory) -> StatusOr<xla::Shape> {
+  return [](const TensorShape& shape, DataType dtype, bool use_fast_memory,
+            TpuLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
     return xla_shape;
@@ -174,9 +174,10 @@ Status RewriteLayoutWithShardedShape(
         XLAShapeToTensorShape(per_device_xla_shape, &per_device_tensor_shape));
     TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
                                             xla_shape->element_type()));
-    TF_ASSIGN_OR_RETURN(per_device_xla_shape,
-                        shape_representation_fn(per_device_tensor_shape, dtype,
-                                                use_fast_memory));
+    TF_ASSIGN_OR_RETURN(
+        per_device_xla_shape,
+        shape_representation_fn(per_device_tensor_shape, dtype, use_fast_memory,
+                                TpuLayoutPreference::kNoPreference));
     *xla_shape->mutable_layout() = per_device_xla_shape.layout();
   }
   return Status::OK();
@@ -190,7 +191,7 @@ StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     absl::optional<xla::OpSharding> sharding, bool fast_mem) {
   if (original_shape.IsTuple()) {
     std::vector<xla::XlaOp> elements;
-    for (int64_t i = 0; i < original_shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < original_shape.tuple_shapes_size(); ++i) {
       auto subsharding = sharding ? sharding->tuple_shardings(i) : sharding;
       TF_ASSIGN_OR_RETURN(auto element,
                           ReshapeWithCorrectRepresentationAndSharding(
@@ -206,8 +207,9 @@ StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
   TF_RETURN_IF_ERROR(XLAShapeToTensorShape(original_shape, &shape));
   TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
                                           original_shape.element_type()));
-  TF_ASSIGN_OR_RETURN(auto to_shape,
-                      shape_representation_fn(shape, dtype, fast_mem));
+  TF_ASSIGN_OR_RETURN(auto to_shape, shape_representation_fn(
+                                         shape, dtype, fast_mem,
+                                         TpuLayoutPreference::kNoPreference));
   if (sharding) {
     TF_ASSIGN_OR_RETURN(auto hlo_sharding,
                         xla::HloSharding::FromProto(*sharding));
@@ -224,13 +226,13 @@ StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
 
 Status ResolveDeviceAssignment(
     OpKernelContext* ctx,
-    const absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>&
-        collective_reduce_info,
+    const absl::optional<XlaCompilationResult::CollectiveInfo>& collective_info,
     xla::ExecutableRunOptions& run_options,
     xla::DeviceAssignment& device_assignment,
     xla::gpu::GpuExecutableRunOptions& gpu_options) {
-  static const int kTimeoutSeconds = 30;
-  if (!collective_reduce_info) {
+  // TODO(nnigania): workaround for b/199436990
+  static const int kTimeoutSeconds = 300;
+  if (!collective_info) {
     // An empty device assignment is sufficient for the case where no
     // collectives are present.
     return Status::OK();
@@ -244,8 +246,8 @@ Status ResolveDeviceAssignment(
   params->name = "xla-reduction-compilation";
   params->group.device_type =
       DeviceType{static_cast<Device*>(ctx->device())->device_type()};
-  params->group.group_size = collective_reduce_info->group_size;
-  params->group.group_key = collective_reduce_info->group_key;
+  params->group.group_size = collective_info->group_size;
+  params->group.group_key = collective_info->group_key;
   params->instance.type = REDUCTION_COLLECTIVE;
   params->instance.impl_details.communication_hint = "nccl";
   params->instance.impl_details.timeout_seconds = kTimeoutSeconds;
@@ -271,7 +273,7 @@ Status ResolveDeviceAssignment(
   device_assignment = xla::DeviceAssignment(params->group.group_size, 1);
   for (int device_idx = 0; device_idx < params->group.group_size;
        device_idx++) {
-    const DeviceAttributes& device = params->group.devices[device_idx];
+    const DeviceAttributes& device = params->group.members[device_idx].device;
     if (device.xla_global_id() == -1) {
       if (params->group.device_type == DEVICE_TPU) {
         return errors::InvalidArgument(
@@ -308,7 +310,7 @@ Status ResolveDeviceAssignment(
     for (int device_idx = 0; device_idx < params->group.group_size;
          device_idx++) {
       const DeviceAttributes& device_attributes =
-          params->group.devices[device_idx];
+          params->group.members[device_idx].device;
       Device* resolved_device = nullptr;
       Status lookup_status =
           device_mgr->LookupDevice(device_attributes.name(), &resolved_device);

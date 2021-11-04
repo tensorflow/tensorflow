@@ -59,8 +59,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/random/philox_random.h"
-#include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace mlir {
@@ -184,54 +182,10 @@ DECL_CONVERT_OP(Pack);
 DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
 DECL_CONVERT_OP(Unpack);
-DECL_CONVERT_OP(RandomUniform);
 DECL_CONVERT_OP(Conv3D);
 DECL_CONVERT_OP(Conv3DBackpropInputV2);
 
 #undef DECL_CONVERT_OP
-
-LogicalResult ConvertTFRandomUniformOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto random_uniform_op = cast<TF::RandomUniformOp>(op);
-  if (random_uniform_op.seed() == 0 && random_uniform_op.seed2() == 0) {
-    return failure();
-  }
-  if (!random_uniform_op.dtype().isF32()) {
-    return failure();
-  }
-  typedef tensorflow::random::UniformDistribution<
-      tensorflow::random::PhiloxRandom, float>
-      Distribution;
-
-  tensorflow::random::PhiloxRandom generator(random_uniform_op.seed(),
-                                             random_uniform_op.seed2());
-  Distribution dist;
-  size_t num_elements = 0;
-  if (auto output_type =
-          random_uniform_op.output().getType().dyn_cast_or_null<ShapedType>()) {
-    if (auto ranked_output = output_type.dyn_cast_or_null<RankedTensorType>()) {
-      if (!ranked_output.hasRank() || ranked_output.getNumDynamicDims() != 0) {
-        return failure();
-      }
-      num_elements = output_type.getNumElements();
-      size_t offset = 0;
-      size_t num_samples = Distribution::kResultElementCount;
-      llvm::SmallVector<float, 32> data;
-      data.resize(num_elements);
-      while (offset < num_elements) {
-        const typename Distribution::ResultType samples = dist(&generator);
-        std::copy(&samples[0],
-                  &samples[0] + std::min(num_samples, data.size() - offset),
-                  &data[0] + offset);
-        offset += num_samples;
-      }
-      auto output_data = DenseFPElementsAttr::get(output_type, data);
-      rewriter.replaceOpWithNewOp<ConstantOp>(op, output_type, output_data);
-      return success();
-    }
-  }
-  return failure();
-}
 
 // Converts any IntegerAttr to an IntegerAttr of an i32 type.
 // The value won't change in the new attribute, but if the value is out of
@@ -287,7 +241,7 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
 
     auto permute_attr = DenseIntElementsAttr::get(
         RankedTensorType::get({2}, rewriter.getI32Type()), {1, 0});
-    auto permute = rewriter.create<ConstantOp>(
+    auto permute = rewriter.create<arith::ConstantOp>(
         op->getLoc(), permute_attr.getType(), permute_attr);
     llvm::SmallVector<int64_t, 2> new_shape{type.getShape()[1],
                                             type.getShape()[0]};
@@ -670,6 +624,12 @@ class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
 
     // Calculates symbolic broadcast shape that is only used in types.
     SmallVector<int64_t, 4> symbolic_broadcast_shape;
+    // Matches fail when lhs or rhs is unranked tensor.
+    // TODO(b/176202543): Support unranked tensor.
+    if (!lhs.getType().cast<ShapedType>().hasRank() ||
+        !rhs.getType().cast<ShapedType>().hasRank()) {
+      return failure();
+    }
     if (!OpTrait::util::getBroadcastedShape(
             lhs.getType().cast<ShapedType>().getShape(),
             rhs.getType().cast<ShapedType>().getShape(),
@@ -782,6 +742,14 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
     auto lhs = op->getOperand(1);
     auto rhs = op->getOperand(2);
     auto out = op->getResult(0);
+
+    // Matches fail when lhs|rhs|cond is unranked tensor.
+    // TODO(b/176202543): Support unranked tensor.
+    if (!lhs.getType().cast<ShapedType>().hasRank() ||
+        !rhs.getType().cast<ShapedType>().hasRank() ||
+        !cond.getType().cast<ShapedType>().hasRank()) {
+      return failure();
+    }
 
     // Calculates symbolic broadcast shape that is only used in types.
     SmallVector<int64_t, 4> symbolic_broadcast_lhs_rhs_shape;
@@ -925,8 +893,7 @@ void addPatterns(MLIRContext* context, OwningRewritePatternList& patterns) {
       .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
               ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFAssertOp,
-              ConvertTFRandomUniformOp, ConvertTFConv3DOp,
-              ConvertTFConv3DBackpropInputV2Op>(context);
+              ConvertTFConv3DOp, ConvertTFConv3DBackpropInputV2Op>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,
@@ -955,6 +922,7 @@ void LegalizeTF::runOnFunction() {
   // It is legal to have TF ops in the graph still which can be
   // used later or in the case of SELECT were we allow TF ops in the final
   // graph.
+  target.addLegalOp<mlir::arith::ConstantOp>();
   target.addLegalOp<mlir::ConstantOp>();
   target.addLegalOp<ConstOp>();
   if (run_tfl_runtime_verification_) {

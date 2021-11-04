@@ -16,24 +16,13 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "mlir/Analysis/BufferViewFlowAnalysis.h"  // from @llvm-project
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 
 namespace mlir {
 namespace kernel_gen {
@@ -42,18 +31,25 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-// A pass to remove memref::AllocOps and memref::CopyOps ops if the only user
-// of the copy is a linalg::GenericOp.
-void RemoveMemrefCopy(FuncOp func) {
+// A pass to remove memref::AllocOps and memref::CopyOps ops.
+//
+// The idea behind this pass is to collect all patterns we are interested in in
+// a single place. Eventually, this should be replaced by a generalized copy
+// removal pass.
+
+// Handles the pattern where an input operand of a linalg generic is copied
+// even though the producer is not mutated.
+void RemoveCopyIfTargetOnlyRead(FuncOp func) {
   llvm::SmallVector<memref::AllocOp, 8> allocs_to_remove;
   llvm::SmallVector<memref::CopyOp, 8> copies_to_remove;
 
-  // Gather all allocs and copies which are consumed by linalg::GenericOp ops.
+  // Gather all allocs and copies which are only read and have an immutable
+  // source.
   func->walk([&](memref::AllocOp op) {
     memref::CopyOp copy;
-    linalg::GenericOp generic;
+    MemoryEffectOpInterface reader;
     bool at_most_one_copy = true;
-    bool at_most_one_generic = true;
+    bool at_most_one_read = true;
     for (auto user : op->getUsers()) {
       if (auto copy_user = dyn_cast<memref::CopyOp>(user)) {
         if (copy) {
@@ -61,44 +57,112 @@ void RemoveMemrefCopy(FuncOp func) {
         } else {
           copy = copy_user;
         }
-      } else if (auto generic_user = dyn_cast<linalg::GenericOp>(user)) {
-        if (generic) {
-          at_most_one_generic = false;
-        } else {
-          generic = generic_user;
-        }
+        continue;
       }
+      if (auto effect_interface = cast<MemoryEffectOpInterface>(user)) {
+        if (reader) {
+          at_most_one_read = false;
+        } else {
+          reader = effect_interface;
+        }
+        SmallVector<MemoryEffects::EffectInstance, 2> effects;
+        effect_interface.getEffectsOnValue(op.getResult(), effects);
+        if (llvm::any_of(effects, [](MemoryEffects::EffectInstance it) {
+              return !isa<MemoryEffects::Read>(it.getEffect());
+            })) {
+          at_most_one_read = false;
+        }
+        continue;
+      }
+      // We don't understand this use, be conservative.
+      at_most_one_read = false;
     }
     if (!copy || !at_most_one_copy) return;
-    if (!generic || !at_most_one_generic) return;
+    if (!reader || !at_most_one_read) return;
     // The copy should have the alloc op as target.
     if (copy.getTarget() != op.getResult()) return;
 
-    // The copy should be before the linalg::GenericOp.
-    if (copy->getBlock() != generic->getBlock() ||
-        !copy->isBeforeInBlock(generic)) {
+    // The copy should be before the reading use.
+    if (copy->getBlock() != reader->getBlock() ||
+        !copy->isBeforeInBlock(reader)) {
       return;
     }
+
+    // No write effects between copy and use. With aliasing information, this
+    // could be made more precise but for now we have to be conservative. The
+    // only thing we allow are writes to values that are allocated after the
+    // copy, as the aliasing is clear in those cases.
+    bool source_is_mutated = false;
+    for (Operation *pos = copy->getNextNode(), *end = reader; pos != end;
+         pos = pos->getNextNode()) {
+      auto effect_interface = dyn_cast<MemoryEffectOpInterface>(pos);
+      if (!effect_interface) {
+        continue;
+      }
+      SmallVector<MemoryEffects::EffectInstance, 2> effects;
+      effect_interface.getEffects<MemoryEffects::Write>(effects);
+      for (auto effect : effects) {
+        if (auto alloc = effect.getValue().getDefiningOp<memref::AllocOp>()) {
+          if (alloc->getBlock() == copy->getBlock() &&
+              copy->isBeforeInBlock(alloc)) {
+            continue;
+          }
+        }
+        source_is_mutated = true;
+        break;
+      }
+    }
+    if (source_is_mutated) return;
+
+    op->replaceAllUsesWith(ValueRange{copy.getSource()});
     allocs_to_remove.push_back(op);
     copies_to_remove.push_back(copy);
   });
-  for (auto it : llvm::zip(allocs_to_remove, copies_to_remove)) {
-    auto alloc_op = std::get<0>(it);
-    auto copy_op = std::get<1>(it);
-    auto source = copy_op.getSource().getDefiningOp();
-    copy_op->erase();
-    alloc_op->replaceAllUsesWith(source);
-    alloc_op->erase();
-  }
+  llvm::for_each(allocs_to_remove, [](Operation *op) { op->erase(); });
+  llvm::for_each(copies_to_remove, [](Operation *op) { op->erase(); });
 }
+
+// Handles the case where the last instructions of a function implements a copy
+// back to a function argument.
+void RemoveCopyIfTargetIsFunctionArg(FuncOp func) {
+  // For now only support this on functions with a single block.
+  if (!func.getBody().hasOneBlock()) return;
+
+  llvm::SmallVector<memref::AllocOp> allocs_to_remove;
+  llvm::SmallVector<memref::CopyOp> copies_to_remove;
+
+  Block &body = func.getBody().front();
+  for (auto &op : llvm::reverse(body.without_terminator())) {
+    if (auto copy = dyn_cast<memref::CopyOp>(op)) {
+      auto block_arg = copy.getTarget().dyn_cast<BlockArgument>();
+      if (!block_arg) break;
+      if (!isa<FuncOp>(block_arg.getOwner()->getParentOp()) ||
+          !block_arg.hasOneUse())
+        break;
+      auto alloc = copy.getSource().getDefiningOp<memref::AllocOp>();
+      if (!alloc) break;
+      alloc->replaceAllUsesWith(ValueRange{block_arg});
+      allocs_to_remove.push_back(alloc);
+      copies_to_remove.push_back(copy);
+      continue;
+    }
+    break;
+  }
+  llvm::for_each(allocs_to_remove, [](Operation *op) { op->erase(); });
+  llvm::for_each(copies_to_remove, [](Operation *op) { op->erase(); });
+}
+
 }  // namespace
 
 struct CopyCleanupPass : public CopyCleanupPassBase<CopyCleanupPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<memref::MemRefDialect, linalg::LinalgDialect>();
+    registry.insert<memref::MemRefDialect>();
   }
 
-  void runOnFunction() override { RemoveMemrefCopy(getFunction()); }
+  void runOnFunction() override {
+    RemoveCopyIfTargetOnlyRead(getFunction());
+    RemoveCopyIfTargetIsFunctionArg(getFunction());
+  }
 };
 
 std::unique_ptr<FunctionPass> CreateCopyCleanupPass() {

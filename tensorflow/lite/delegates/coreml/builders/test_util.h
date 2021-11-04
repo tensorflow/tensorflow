@@ -25,13 +25,9 @@ namespace delegates {
 namespace coreml {
 class SingleOpModelWithCoreMlDelegate : public tflite::SingleOpModel {
  public:
-  SingleOpModelWithCoreMlDelegate() : delegate_(nullptr, [](TfLiteDelegate*) {}) {}
-
   static const char kDelegateName[];
 
-  void ApplyDelegate();
-  void ApplyDelegateAndInvoke();
-
+  SingleOpModelWithCoreMlDelegate();
   tflite::Interpreter* interpreter() { return interpreter_.get(); }
 
  protected:

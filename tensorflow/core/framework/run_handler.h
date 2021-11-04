@@ -129,7 +129,8 @@ class RunHandlerEnvironment {
   RunHandlerEnvironment(Env* env, const ThreadOptions& thread_options,
                         const string& name);
 
-  EnvThread* CreateThread(std::function<void()> f);
+  EnvThread* CreateThread(std::function<void()> f,
+                          const std::string& thread_name);
 
   Task CreateTask(std::function<void()> f);
 

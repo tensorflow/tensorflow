@@ -623,7 +623,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
         MaybeAddPrefixToColocationConstraints(fn_nodes, prefix, &ndef));
 
     Status added_node;
-    Node* clone = g->AddNode(ndef, &added_node);
+    Node* clone = g->AddNode(std::move(ndef), &added_node);
     TF_CHECK_OK(added_node);
     node_map[n->id()] = clone;
     clone->SetStackTrace(n->GetStackTrace());

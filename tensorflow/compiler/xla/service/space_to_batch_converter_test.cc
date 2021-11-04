@@ -65,6 +65,37 @@ ENTRY computation {
   EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 1);
 }
 
+TEST_F(SpaceToBatchConverterTest, SimpleBatch1ConvXpose) {
+  string hlo_string = R"(
+  
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,258,258,32] parameter(0)
+  %p1 = bf16[3,3,32,32] parameter(1)
+  %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3}, 
+  dim_labels=b01f_01io->b01f
+  ROOT tr = bf16[1,256,256,32] transpose(%convolution), dimensions={0,2,1,3}
+}
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+
+  EXPECT_THAT(root->operand(0), op::Slice());
+  auto reshape = root->operand(0)->operand(0);
+  EXPECT_THAT(reshape, op::Reshape());
+  // This should be the original root transpose - which we handle transparently.
+  EXPECT_THAT(reshape->operand(0), op::Select());
+  EXPECT_THAT(reshape->operand(0)->operand(1), op::Convolution());
+}
+
 TEST_F(SpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
   string hlo_string = R"(
   HloModule module  

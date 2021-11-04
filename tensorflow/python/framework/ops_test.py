@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import os
 import threading
@@ -480,13 +476,13 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
   def testToTensor(self):
     values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
     indices = constant_op.constant([0, 2])
-    x = ops.IndexedSlices(values, indices)
+    x = indexed_slices.IndexedSlices(values, indices)
     with self.assertRaises(ValueError):
       tensor = ops.convert_to_tensor(x, name="tensor")
     self.assertEqual(tensor_shape.TensorShape(None), x.shape)
 
     dense_shape = constant_op.constant([3, 2])
-    y = ops.IndexedSlices(values, indices, dense_shape)
+    y = indexed_slices.IndexedSlices(values, indices, dense_shape)
     tensor = ops.convert_to_tensor(y, name="tensor")
     self.assertAllEqual(tensor.shape, y.shape)
     self.assertAllEqual(self.evaluate(tensor), [[2, 3], [0, 0], [5, 7]])
@@ -500,20 +496,20 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
         b = array_ops.gather(array_ops.gather(var, [2, 3]), [0, 1])
         r = special_math_ops.einsum("ij,ij->i", a, b)
       g = tape.gradient(r, [var])[0]
-      values = g.values if isinstance(g, ops.IndexedSlices) else g
+      values = g.values if isinstance(g, indexed_slices.IndexedSlices) else g
       self.assertAllEqual(values.get_shape(), [4, 1])
 
   def testNegation(self):
     values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
     indices = constant_op.constant([0, 2])
-    x = -ops.IndexedSlices(values, indices)
+    x = -indexed_slices.IndexedSlices(values, indices)
     self.assertAllEqual(x.values, [[-2, -3], [-5, -7]])
     self.assertAllEqual(x.indices, [0, 2])
 
   def testScalarMul(self):
     values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
     indices = constant_op.constant([0, 2])
-    x = math_ops.scalar_mul(-2, ops.IndexedSlices(values, indices))
+    x = math_ops.scalar_mul(-2, indexed_slices.IndexedSlices(values, indices))
     self.assertAllEqual(x.values, [[-4, -6], [-10, -14]])
     self.assertAllEqual(x.indices, [0, 2])
 
@@ -545,7 +541,7 @@ class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
 
   def testValueType(self):
     spec1 = indexed_slices.IndexedSlicesSpec()
-    self.assertEqual(spec1.value_type, ops.IndexedSlices)
+    self.assertEqual(spec1.value_type, indexed_slices.IndexedSlices)
 
   @parameterized.parameters([
       (indexed_slices.IndexedSlicesSpec(),
@@ -612,7 +608,7 @@ class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
       },
   ])
   def testToFromComponents(self, spec, indices, values, dense_shape=None):
-    x = ops.IndexedSlices(indices, values, dense_shape)
+    x = indexed_slices.IndexedSlices(indices, values, dense_shape)
     actual_components = spec._to_components(x)
     if dense_shape is None:
       self.assertAllTensorsEqual(actual_components, [indices, values])
@@ -2910,7 +2906,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
                                     "Attempting to capture an EagerTensor"):
           math_ops.add(c, c)
         c2 = constant_op.constant(2.0)
-      with self.assertRaisesRegex(TypeError, "Graph tensors"):
+      with self.assertRaises(TypeError):
         math_ops.add(c2, c2)
 
   def testPreservesNameScopeInEagerExecution(self):

@@ -733,6 +733,8 @@ class ShapeInference {
 
   bool InferShapeForCast(Operation* op);
 
+  bool InferShapeForRestore(Operation* op);
+
   // Infers the shape IfOp outputs based on the shapes of the then and else
   // function result types.
   bool InferShapeForIf(IfOp op);
@@ -808,6 +810,9 @@ void ShapeInference::EnqueueCallers(FuncOp fn) {
 
 bool ShapeInference::UpdateTypeAndInsertIncompatibleUseCasts(Type new_type,
                                                              Value result) {
+  // No changes needed if the new type is unchanged.
+  if (new_type == result.getType()) return false;
+
   Operation* cast_op = nullptr;
   // First insert cast back for uses that need a cast and then
   // update the type.
@@ -893,8 +898,10 @@ bool ShapeInference::InferShapeForCast(Operation* op) {
 bool ShapeInference::InferShapeForIf(IfOp op) {
   DCOMMENT_OP(op.getOperation(), "Infer shape for if ");
   bool changed = false;
-  auto then_results = op.then_function().getType().getResults();
-  auto else_results = op.else_function().getType().getResults();
+  auto then_results =
+      op.ResolveThenFunction(&symbol_table_).getType().getResults();
+  auto else_results =
+      op.ResolveElseFunction(&symbol_table_).getType().getResults();
   for (auto it : llvm::zip(op.getResults(), then_results, else_results)) {
     // If then and else types do not match, skip refinement for that result.
     if (std::get<1>(it) != std::get<2>(it)) continue;
@@ -953,6 +960,36 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
   }
 
   return changed;
+}
+
+// Infer the shape of `Restore` and `RestoreV2` op based on the first
+// `AssignVariableOp` that uses the result. This requires that the resource
+// subtype inference is completed.
+bool ShapeInference::InferShapeForRestore(Operation* op) {
+  DCOMMENT_OP(op, "Inferring shape for Restore,RestoreV2");
+  // Currently only support single output.
+  if (op->getNumResults() != 1) return false;
+  if (!CanBeRefined(op->getResult(0).getType())) return false;
+
+  // Look for any `AssignVariableOp` that uses the result of this op.
+  for (auto use : op->getUsers()) {
+    TF::AssignVariableOp assign_op = llvm::dyn_cast<TF::AssignVariableOp>(use);
+    if (!assign_op) {
+      continue;
+    }
+    auto subtypes = getElementTypeOrSelf(assign_op.resource())
+                        .cast<TF::ResourceType>()
+                        .getSubtypes();
+    if (subtypes.empty()) {
+      continue;
+    }
+    // Update the result type of this op with the resource's type. We only use
+    // the resource subtype of the first user since shapes from all the users
+    // should be equal or compatible.
+    return UpdateTypeAndInsertIncompatibleUseCasts(subtypes.front(),
+                                                   op->getResult(0));
+  }
+  return false;
 }
 
 // Helper structure to capture shapes & types for Dataset input.
@@ -1219,7 +1256,7 @@ ShapeHandle ShapeInference::ComputeOutputAsShape(OpResult result,
             LLVM_DEBUG(llvm::dbgs() << "Unexpected number of elements\n");
             return {};
           }
-          int64_t val = (*dea.getIntValues().begin()).getSExtValue();
+          int64_t val = (*dea.getValues<APInt>().begin()).getSExtValue();
           dims[i] = ic->MakeDim(val);
         }
       }
@@ -1384,6 +1421,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
                             << op->getName() << "'.\n");
     return false;
   }
+
+  if (isa<TF::RestoreOp, TF::RestoreV2Op>(op)) return InferShapeForRestore(op);
 
   // Handle call operations by looking up callee and inferring return shape as
   // needed.
@@ -1685,7 +1724,9 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
     DCOMMENT("Propagating shapes into If");
     return PropagateShapeToFunctions(
         module, if_op.input().getTypes(),
-        {if_op.then_function(), if_op.else_function()}, max_iterations);
+        {if_op.ResolveThenFunction(&symbol_table_),
+         if_op.ResolveElseFunction(&symbol_table_)},
+        max_iterations);
   } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
     SmallVector<FuncOp, 4> branches;
     case_op.get_branch_functions(branches);
@@ -1699,14 +1740,18 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
     if (while_op.shape_invariant()) {
       auto compatible_types = GetWhileCompatibleTypes(
           while_op.input().getTypes(), while_op.output().getTypes(),
-          while_op.body_function().getType().getInputs());
+          while_op.ResolveBodyFunction(&symbol_table_).getType().getInputs());
       return PropagateShapeToFunctions(
           module, compatible_types,
-          {while_op.cond_function(), while_op.body_function()}, max_iterations);
+          {while_op.ResolveCondFunction(&symbol_table_),
+           while_op.ResolveBodyFunction(&symbol_table_)},
+          max_iterations);
     }
     return PropagateShapeToFunctions(
         module, while_op.input().getTypes(),
-        {while_op.cond_function(), while_op.body_function()}, max_iterations);
+        {while_op.ResolveCondFunction(&symbol_table_),
+         while_op.ResolveBodyFunction(&symbol_table_)},
+        max_iterations);
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
     if (auto func = dyn_cast<FuncOp>(call_op.resolveCallable(&symbol_table_))) {
       PropagateConstantToCallee(call_op, func, module);

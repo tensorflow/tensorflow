@@ -1,0 +1,15 @@
+op {
+  graph_op_name: "InfeedEnqueueTuple"
+  visibility: HIDDEN
+  description: <<END
+
+When using `tf.raw_ops.InfeedEnqueueTuple` with TF2 eager execution, you need to
+[manually add dependencies](https://www.tensorflow.org/api_docs/python/tf/Graph#control_dependencies)
+for `InfeedEnqueueTuple` to prevent it from being pruned,
+because it is not connected to any output nodes by default. For example, you can
+add control dependency manually to ensure the execution of each training
+iteration is in serial order. As a stateful op, `InfeedEnqueueTuple` is
+intentionally excluded from adding control dependencies automatically.
+
+END
+}

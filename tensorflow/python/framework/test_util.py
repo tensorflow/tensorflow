@@ -15,10 +15,6 @@
 
 # pylint: disable=invalid-name
 """Test utils for tensorflow."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 from collections import OrderedDict
 import contextlib
@@ -60,6 +56,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import gpu_util
 from tensorflow.python.framework import importer
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
@@ -1095,6 +1092,124 @@ def run_all_in_graph_and_eager_modes(cls):
   return cls
 
 
+def enable_eager_op_as_function(fn):
+  """Decorator for enabling eager_op_as_function on a test.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will enable run_eager_op_as_function,
+  reset the context, execute the test, then reset the context to the state
+  it was in prior to this test.
+
+  Example:
+
+  class MyTest(test.TestCase):
+
+    @enable_eager_op_as_function
+    def testFoo(self):
+      ...
+
+  Args:
+    fn: the function to be wrapped.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def wrapper(*args, **kwargs):
+    # If `run_eager_op_as_function` is already enabled do nothing.
+    if context.run_eager_op_as_function_enabled():
+      return fn(*args, **kwargs)
+
+    context.enable_run_eager_op_as_function()
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      context.disable_run_eager_op_as_function()
+
+  return wrapper
+
+
+def with_eager_op_as_function(cls=None, only_as_function=False):
+  """Adds methods that call original methods with eager_op_as_function enabled.
+
+  Example:
+
+  @test_util.with_eager_op_as_function
+  class SessionTest(test.TestCase):
+
+    def testEnabledForEagerOpAsFunction(self):
+      ...
+
+    @disable_eager_op_as_function("b/xyzabc")
+    def testDisabledForEagerOpAsFunction(self):
+      ...
+
+  Generated class:
+  class SessionTest(test.TestCase):
+
+    def testEnabledForEagerOpAsFunction(self):
+      ...
+
+    def testEnabledForEagerOpAsFunctionWithEagerOpAsFunctionEnabled(self):
+      // Enable run_eager_op_as_function
+      // Reset context
+      testEnabledForEagerOpAsFunction(self)
+      // Disable run_eager_op_as_function
+      // Reset context
+
+    def testDisabledForEagerOpAsFunction(self):
+      ...
+
+  Args:
+    cls: class to decorate.
+    only_as_function: whether to run all the tests in the TestCase in eager mode
+      and in eager_op_as_function mode. By default it will run all tests in both
+      modes. When `only_as_function=True` tests will not be run in eager mode.
+
+  Returns:
+    cls with new test methods added.
+  """
+
+  def decorator(cls):
+    if context.run_eager_op_as_function_enabled():
+      return cls
+
+    for name, value in cls.__dict__.copy().items():
+      if (callable(value) and
+          (name.startswith(unittest.TestLoader.testMethodPrefix) or
+           name.startswith("benchmark")) and
+          not getattr(value, "_disable_eager_op_as_function", False)):
+        setattr(cls, name + "WithEagerOpAsFunctionEnabled",
+                enable_eager_op_as_function(value))
+        if only_as_function:
+          delattr(cls, name)
+    return cls
+
+  if cls is not None:
+    return decorator(cls)
+
+  return decorator
+
+
+def disable_eager_op_as_function(unused_msg):
+  """Decorator for a function in a with_eager_op_as_function enabled test class.
+
+  Blocks the function from being run with eager_op_as_function enabled.
+
+  Args:
+    unused_msg: Reason for disabling.
+
+  Returns:
+    The wrapped function with _disable_eager_op_as_function attr set to True.
+  """
+
+  def wrapper(func):
+    func._disable_eager_op_as_function = True
+    return func
+
+  return wrapper
+
+
 def build_as_function_and_v1_graph(func=None):
   """Run a test case in v1 graph mode and inside tf.function in eager mode.
 
@@ -1714,10 +1829,10 @@ def force_cpu():
 def deterministic_ops():
   """Enables deterministic ops."""
   try:
-    config.enable_deterministic_ops(True)
+    config.enable_op_determinism()
     yield
   finally:
-    config.enable_deterministic_ops(False)
+    config.disable_op_determinism()
 
 
 class CapturedWrites(object):
@@ -2355,8 +2470,8 @@ class TensorFlowTestCase(googletest.TestCase):
           return ragged_tensor_value.RaggedTensorValue(
               self._eval_tensor(tensor.values),
               self._eval_tensor(tensor.row_splits))
-        elif isinstance(tensor, ops.IndexedSlices):
-          return ops.IndexedSlicesValue(
+        elif isinstance(tensor, indexed_slices.IndexedSlices):
+          return indexed_slices.IndexedSlicesValue(
               values=tensor.values.numpy(),
               indices=tensor.indices.numpy(),
               dense_shape=tensor.dense_shape.numpy())
@@ -2752,6 +2867,8 @@ class TensorFlowTestCase(googletest.TestCase):
                                atol=1e-6,
                                path=None,
                                msg=None):
+    if ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b):
+      return self._assertRaggedClose(a, b, rtol, atol, msg)
     path = path or []
     path_str = (("[" + "][".join(str(p) for p in path) + "]") if path else "")
     msg = msg if msg else ""
@@ -2790,7 +2907,7 @@ class TensorFlowTestCase(googletest.TestCase):
             atol=atol,
             msg="Mismatched value: a%s is different from b%s. %s" %
             (path_str, path_str, msg))
-      except (ValueError, TypeError) as e:
+      except (ValueError, TypeError, NotImplementedError) as e:
         if len(a) != len(b):
           raise ValueError(
               "Mismatched length: a%s has %d items, but b%s has %d items. %s" %
@@ -2847,8 +2964,6 @@ class TensorFlowTestCase(googletest.TestCase):
           to the nested structure, e.g. given `a = [(1, 1), {'d': (6, 7)}]` and
           `[p] = [1]['d']`, then `a[p] = (6, 7)`.
     """
-    if ragged_tensor.is_ragged(a) or ragged_tensor.is_ragged(b):
-      return self._assertRaggedClose(a, b, rtol, atol, msg)
     self._assertAllCloseRecursive(a, b, rtol=rtol, atol=atol, msg=msg)
 
   @py_func_if_in_function
@@ -3272,6 +3387,32 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertEqual(
         device1, device2,
         "Devices %s and %s are not equal. %s" % (device1, device2, msg))
+
+  @py_func_if_in_function
+  def assertDictEqual(self, a, b, msg=None):
+    """Assert that two given dictionary of tensors are the same.
+
+    Args:
+      a: Expected dictionary with numpy ndarray or anything else that can be
+        converted to one as values.
+      b: Actual dictionary with numpy ndarray or anything else that can be
+        converted to one as values.
+      msg: Optional message to report on failure.
+    """
+    # To keep backwards compatibility, we first try the base class
+    # assertDictEqual. If that fails we try the tensorflow one.
+    try:
+      super().assertDictEqual(a, b, msg)
+    except Exception:  # pylint: disable=broad-except
+      self.assertSameElements(a.keys(), b.keys())  # pylint: disable=g-assert-in-except
+      for k, v in a.items():
+        (a_k, b_k) = self.evaluate_if_both_tensors(v, b[k])
+        a_k = self._GetNdArray(a_k)
+        b_k = self._GetNdArray(b_k)
+        if np.issubdtype(a_k.dtype, np.floating):
+          self.assertAllClose(v, b[k], msg=k)
+        else:
+          self.assertAllEqual(v, b[k], msg=k)
 
   def _GetPyList(self, a):
     """Converts `a` to a nested python list."""

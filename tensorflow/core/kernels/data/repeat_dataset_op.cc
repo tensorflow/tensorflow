@@ -74,7 +74,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(RepeatDatasetOp::kDatasetType);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t n = input_->Cardinality();
     if (count_ < 0) {
       if (n == 0) {
@@ -98,6 +98,12 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    return input_->Get(ctx, index % input_->Cardinality(), out_tensors);
   }
 
  protected:

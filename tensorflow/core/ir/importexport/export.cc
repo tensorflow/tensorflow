@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/FunctionSupport.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -208,6 +209,27 @@ Status GetReturnNode(GraphFuncOp function, Value operand, unsigned index,
   return Status::OK();
 }
 
+// Converts a location to the debug information for the node def, if we find
+// supported location, that is a top-level NameLoc or any NameLoc nested inside
+// a FusedLoc. Other kind of location are ignored. If a NameLoc is of the form
+// "name@func" we parse it and import the two appropriately.
+void ExtractExperimentalDebugInfoFromLocation(
+    mlir::Location inst_loc, NodeDef::ExperimentalDebugInfo *debug_info) {
+  auto add_name_loc = [&](mlir::NameLoc name_loc) {
+    StringRef node, func;
+    std::tie(node, func) = name_loc.getName().strref().split('@');
+    debug_info->add_original_node_names(node.str());
+    if (!func.empty()) debug_info->add_original_func_names(func.str());
+  };
+  if (auto fused = inst_loc.dyn_cast<mlir::FusedLoc>()) {
+    for (Location loc : fused.getLocations())
+      if (auto name_loc = loc.dyn_cast<mlir::NameLoc>()) add_name_loc(name_loc);
+    return;
+  }
+  if (auto name_loc = inst_loc.dyn_cast<mlir::NameLoc>())
+    add_name_loc(name_loc);
+}
+
 // Convert an MLIR operation to a NodeDef. The `control_ty` is the instance of
 // the `ControlType` to compare against and detect a control dependency case.
 Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
@@ -253,6 +275,13 @@ Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
     if (it != node->mutable_attr()->end() && it->second.s().empty())
       node->mutable_attr()->erase("_mlir_assigned_device");
   }
+
+  // Export the location as debug info on the nodes.
+  ExtractExperimentalDebugInfoFromLocation(
+      op.getLoc(), node->mutable_experimental_debug_info());
+  if (node->experimental_debug_info().original_node_names().empty())
+    node->clear_experimental_debug_info();
+
   return Status::OK();
 }
 

@@ -52,6 +52,10 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   Status EnsureInitialized() override;
 
  private:
+  // Returns the data transfer protocol, preferring to use the local transfer
+  // protocol if a local tf.data worker exists.
+  std::string GetDataTransferProtocol() const;
+
   const std::string transfer_protocol_;
   mutex mu_;
   // Initialization is guarded by `mu_`, but using the stub does not require

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests that the system configuration methods work properly."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import cluster_pb2
@@ -46,15 +42,18 @@ def reset_eager(fn):
       return fn(*args, **kwargs)
     finally:
       # Reset the context.
-      context._context = None
+      context._reset_mlir_flags()
+      context._reset_context()
       ops.enable_eager_execution_internal()
       assert context._context is not None
 
   return wrapper
 
 
+@test_util.with_eager_op_as_function
 class ConfigTest(test.TestCase, parameterized.TestCase):
 
+  @test_util.disable_eager_op_as_function('b/204320409')
   @test_util.run_gpu_only
   @reset_eager
   def testDevicePolicy(self):
@@ -227,6 +226,14 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         context.context().config.experimental.mlir_bridge_rollout,
         config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_DISABLED)
+
+  @reset_eager
+  def testResetMlirFlags(self):
+    # Default value of enable_mlir_bridge is false.
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
+    self.assertEqual(
+        context.context().config.experimental.mlir_bridge_rollout,
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_UNSPECIFIED)
 
   @reset_eager
   def testEnableMlirGraphOptimization(self):
@@ -855,12 +862,12 @@ class DeviceTest(test.TestCase):
     # This does not test any ops are deterministic, because that is tested by
     # many kernel tests.
     try:
-      config.enable_deterministic_ops(False)
-      self.assertFalse(config.deterministic_ops_enabled())
-      config.enable_deterministic_ops(True)
-      self.assertTrue(config.deterministic_ops_enabled())
+      config.disable_op_determinism()
+      self.assertFalse(config.is_op_determinism_enabled())
+      config.enable_op_determinism()
+      self.assertTrue(config.is_op_determinism_enabled())
     finally:
-      config.enable_deterministic_ops(False)
+      config.disable_op_determinism()
 
 
 class TensorFloat32Test(test.TestCase):

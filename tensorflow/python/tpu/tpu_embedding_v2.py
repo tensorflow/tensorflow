@@ -14,11 +14,6 @@
 # ==============================================================================
 """Mid level API for TPU Embeddings."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-
 import functools
 from typing import Any, Dict, Callable, Iterable, List, Optional, Text, Tuple, Union
 
@@ -364,6 +359,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     Raises:
       ValueError: If per_replica_batch_size is None and object was created in a
         TPUStrategy scope.
+      RuntimeError: If tpu embedding is already initialized on TPU.
     """
     if self._built:
       return
@@ -373,7 +369,14 @@ class TPUEmbedding(tracking.AutoTrackable):
         raise ValueError(
             "When calling TpuShardedVariable.build under TpuStrategy you must "
             "specify a per_replica_batch_size argument.")
-
+      # If the tpu embedding is already initialized on TPU, raise runtime error.
+      # Below logic is not added in `initialize_system_for_tpu_embedding`
+      # because doing exception control flow in graph mode is difficult.
+      if tpu_ops.is_tpu_embedding_initialized():
+        raise RuntimeError(
+            "TPU is already initialized for embeddings. This may be caused by "
+            "using multiple TPUEmbedding instances in a TPU scope which is "
+            "unsupported")
       self._batch_size = per_replica_batch_size
 
       self._config_proto = self._create_config_proto()
@@ -1110,7 +1113,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     # expand_composites here is important, we need to check the device of each
     # underlying tensor.
     for input_tensor, input_path in zip(flat_inputs, flat_paths):
-      if nest.is_sequence_or_composite(input_tensor):
+      if nest.is_nested_or_composite(input_tensor):
         input_tensors = nest.flatten(input_tensor, expand_composites=True)
       else:
         input_tensors = [input_tensor]
@@ -1545,7 +1548,7 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
   @tf.function(input_signature=[{'feature_one': tf.TensorSpec(...),
                                  'feature_two': tf.TensorSpec(...),
                                  'feature_three': tf.TensorSpec(...)}])
-  def serve_tensors(embedding_featurese):
+  def serve_tensors(embedding_features):
     embedded_features = tf.tpu.experimental.embedding.serving_embedding_lookup(
         embedding_features, None, embedding.embedding_tables,
         feature_config)

@@ -9,6 +9,7 @@ package tensorflow;
 
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
+import "tensorflow/stream_executor/dnn.proto";
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
@@ -26,8 +27,15 @@ message ComputeCapability {
 message AutotuneResult {
   enum FailureKind {
     UNKNOWN = 0;
+
+    // Algorithm wrote memory outside its output buffers.
     REDZONE_MODIFIED = 1;
+
+    // Algorithm gave a different result from a reference algorithm.
     WRONG_RESULT = 2;
+
+    // Algorithm was rejected for failing to run or for known bugs.
+    DISQUALIFIED = 3;
   }
 
   message FailureResult {
@@ -44,11 +52,13 @@ message AutotuneResult {
       ConvKey reference_conv = 11;
       GemmKey reference_gemm = 12;
       CudaConvPlanKey reference_cuda_conv_plan = 14;
+      stream_executor.dnn.AlgorithmProto reference_algorithm = 15;
     }
 
     int64 buffer_address = 13;
   }
 
+  // Legacy and unused in new data; superseded by AlgorithmProto.
   message ConvKey {
     int64 algorithm = 1;
     bool tensor_ops_enabled = 2;
@@ -58,6 +68,7 @@ message AutotuneResult {
     int64 algorithm = 1;
   }
 
+  // Legacy and unused in new data; superseded by AlgorithmProto.
   message CudaConvPlanKey {
     string exec_plan_id = 1;
   }
@@ -71,9 +82,10 @@ message AutotuneResult {
     ConvKey conv = 5;
     GemmKey gemm = 6;
     CudaConvPlanKey cuda_conv_plan = 15;
+    stream_executor.dnn.AlgorithmProto algorithm = 16;
   }
 
-  // Next ID: 16
+  // Next ID: 17
 }
 
 message AutotuningLog {

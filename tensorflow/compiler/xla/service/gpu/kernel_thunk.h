@@ -60,6 +60,14 @@ class KernelThunk : public Thunk {
                     se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  const std::vector<const BufferAllocation*>& arguments() const {
+    return args_;
+  }
+  const string& kernel_name() const { return kernel_name_; }
+  const LaunchDimensions& launch_dimensions() const {
+    return launch_dimensions_;
+  }
+
  private:
   // Buffers passed to the kernel as arguments.
   const std::vector<const BufferAllocation*> args_;

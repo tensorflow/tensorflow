@@ -328,7 +328,7 @@ AppleInfo::AppleInfo(const std::string& gpu_description) {
       {"apple a10x gpu", AppleGpu::kA10X}, {"apple a11 gpu", AppleGpu::kA11},
       {"apple a12 gpu", AppleGpu::kA12},   {"apple a12x gpu", AppleGpu::kA12X},
       {"apple a12z gpu", AppleGpu::kA12Z}, {"apple a13 gpu", AppleGpu::kA13},
-      {"apple a14 gpu", AppleGpu::kA14},
+      {"apple a14 gpu", AppleGpu::kA14},   {"apple a15 gpu", AppleGpu::kA15},
   };
   auto it = kMapping.find(gpu_description);
   if (it != kMapping.end()) {
@@ -346,7 +346,8 @@ bool AppleInfo::IsLocalMemoryPreferredOverGlobal() const {
 bool AppleInfo::IsBionic() const {
   return gpu_type == AppleGpu::kA11 || gpu_type == AppleGpu::kA12 ||
          gpu_type == AppleGpu::kA12X || gpu_type == AppleGpu::kA12Z ||
-         gpu_type == AppleGpu::kA13 || gpu_type == AppleGpu::kA14;
+         gpu_type == AppleGpu::kA13 || gpu_type == AppleGpu::kA14 ||
+         gpu_type == AppleGpu::kA15;
 }
 
 bool AppleInfo::IsRoundToNearestSupported() const { return IsBionic(); }
@@ -379,9 +380,18 @@ int AppleInfo::GetComputeUnitsCount() const {
       return 4;
     case AppleGpu::kA14:
       return 4;
+    case AppleGpu::kA15:
+      if (compute_units != -1) {
+        return compute_units;
+      }
+      return 5;
     case AppleGpu::kUnknown:
-      return 1;
+      return 4;
   }
+}
+
+void AppleInfo::SetComputeUnits(int compute_units_count) {
+  compute_units = compute_units_count;
 }
 
 MaliInfo::MaliInfo(const std::string& gpu_description)
@@ -421,10 +431,15 @@ bool MaliInfo::IsBifrost() const {
   return IsBifrostGen1() || IsBifrostGen2() || IsBifrostGen3();
 }
 
-bool MaliInfo::IsValhall() const {
-  return gpu_version == MaliGpu::kG57 || gpu_version == MaliGpu::kG77 ||
-         gpu_version == MaliGpu::kG68 || gpu_version == MaliGpu::kG78;
+bool MaliInfo::IsValhallGen1() const {
+  return gpu_version == MaliGpu::kG57 || gpu_version == MaliGpu::kG77;
 }
+
+bool MaliInfo::IsValhallGen2() const {
+  return gpu_version == MaliGpu::kG68 || gpu_version == MaliGpu::kG78;
+}
+
+bool MaliInfo::IsValhall() const { return IsValhallGen1() || IsValhallGen2(); }
 
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuApi gpu_api, GpuInfo* gpu_info) {

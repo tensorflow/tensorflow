@@ -1,6 +1,11 @@
 """Definitions for targets that use the TFLite shims."""
 
-load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
+load(
+    "//tensorflow/lite:build_def.bzl",
+    "tflite_copts_warnings",
+    "tflite_custom_c_library",
+    "tflite_jni_binary",
+)
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 def alias_with_tflite(name, actual, **kwargs):
@@ -116,6 +121,7 @@ def cc_test_with_tflite(
 def java_library_with_tflite(
         name,
         deps = [],
+        runtime_deps = [],
         tflite_deps = [],
         tflite_jni_binaries = [],
         exports = [],
@@ -128,12 +134,14 @@ def java_library_with_tflite(
 
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
-    direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    direct or indirect 'tflite_deps' or 'tflite_jni_binaries' dependency
+    on one of the "shim" library targets from
+    //third_party/tensorflow/lite/core/shims:*.
 
     Args:
       name: as for java_library.
       deps: as for java_library.
+      runtime_deps: as for java_library.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite' / 'java_library_with_tflite'.
       tflite_jni_binaries: dependencies on shared libraries that are defined
@@ -153,6 +161,7 @@ def java_library_with_tflite(
 def java_test_with_tflite(
         name,
         deps = [],
+        runtime_deps = [],
         tflite_deps = [],
         tflite_jni_binaries = [],
         **kwargs):
@@ -163,12 +172,14 @@ def java_test_with_tflite(
 
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
-    direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    direct or indirect 'tflite_deps' or 'tflite_jni_binaries' dependency
+    on one of the "shim" library targets from
+    //third_party/tensorflow/lite/core/shims:*.
 
     Args:
       name: as for java_library.
       deps: as for java_library.
+      runtime_deps: as for java_library.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite' / 'java_library_with_tflite'.
       tflite_jni_binaries: dependencies on shared libraries that are defined
@@ -177,7 +188,8 @@ def java_test_with_tflite(
     """
     native.java_test(
         name = name,
-        deps = deps + tflite_deps + tflite_jni_binaries,
+        deps = deps + tflite_deps,
+        runtime_deps = deps + tflite_jni_binaries,
         **kwargs
     )
 
@@ -206,5 +218,35 @@ def jni_binary_with_tflite(
     tflite_jni_binary(
         name = name,
         deps = deps + tflite_deps,
+        **kwargs
+    )
+
+def custom_c_library_with_tflite(
+        name,
+        models = [],
+        **kwargs):
+    """Generates a tflite c library, stripping off unused operators.
+
+    This library includes the C API and the op kernels used in the given models.
+
+    Args:
+        name: Str, name of the target.
+        models: List of models. This TFLite build will only include
+            operators used in these models. If the list is empty, all builtin
+            operators are included.
+       **kwargs: kwargs to cc_library_with_tflite.
+    """
+    tflite_custom_c_library(
+        name = "%s_c_api" % name,
+        models = models,
+    )
+
+    cc_library_with_tflite(
+        name = name,
+        hdrs = ["//tensorflow/lite/core/shims:c/c_api.h"],
+        copts = tflite_copts_warnings(),
+        deps = [
+            ":%s_c_api" % name,
+        ],
         **kwargs
     )

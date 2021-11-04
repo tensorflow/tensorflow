@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for vectorization of array kernels."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -211,8 +207,6 @@ class ArrayTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_slice_loop_variant_begin(self):
-    self.skipTest("TODO(b/191880259): re-enable once XLA compile times are "
-                  "addressed.")
     x = random_ops.random_uniform([3, 2, 5, 3])
 
     def loop_fn(i):

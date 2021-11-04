@@ -15,10 +15,6 @@
 # ==============================================================================
 """Upgrader for Python scripts from 1.* TensorFlow to 2.0 TensorFlow."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 import copy
 import functools

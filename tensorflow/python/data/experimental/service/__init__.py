@@ -230,6 +230,23 @@ For backwards compatibility, `processing_mode` may also be set to the strings
 `"parallel_epochs"` or `"distributed_epoch"`, which are respectively equivalent
 to `ShardingPolicy.OFF` and `ShardingPolicy.DYNAMIC`.
 
+### Coordinated Data Read
+
+By default, when multiple consumers read from the same job, they receive data on
+a first-come first-served basis. In some use cases, it is advantageous to
+coordinate the consumers. At each step, consumers read data from the same
+worker.
+
+For example, the tf.data service can be used to coordinate example sizes across
+a cluster during synchronous training, so that during each step all replicas
+train on similar-sized elements. To achieve this, define a dataset which
+generates rounds of `num_consumers` consecutive similar-sized batches, then
+enable coordinated reads by setting `consumer_index` and `num_consumers`.
+
+NOTE: To keep consumers in sync, coordinated reads require that the dataset have
+infinite cardinality. You can get this by adding `.repeat()` at the end of the
+dataset definition.
+
 ### Jobs
 
 A tf.data service "job" refers to the process of reading from a dataset managed
@@ -366,10 +383,6 @@ dataset = coordinator.create_per_worker_dataset(new_dataset_fn)
   registered from the same process that created the resource (e.g. the "chief"
   job of ParameterServerStrategy).
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops.data_service_ops import distribute
 from tensorflow.python.data.experimental.ops.data_service_ops import from_dataset_id

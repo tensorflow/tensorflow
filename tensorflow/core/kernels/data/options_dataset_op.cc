@@ -67,7 +67,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);

@@ -1622,7 +1622,7 @@ void ShapeInferenceTest::TestMergeHandles(bool input_not_output) {
   NodeDef def;
   InferenceContext c(kVersion, def, MakeOpDef(2, 2), {S({}), S({})}, {}, {},
                      {});
-  auto make_shape = [&c](std::initializer_list<int64> dim_sizes) {
+  auto make_shape = [&c](std::initializer_list<int64_t> dim_sizes) {
     ShapeHandle s;
     TF_CHECK_OK(c.MakeShapeFromPartialTensorShape(S(dim_sizes), &s));
     return s;
@@ -1733,7 +1733,7 @@ void ShapeInferenceTest::TestRelaxHandles(bool input_not_output) {
   NodeDef def;
   InferenceContext c(kVersion, def, MakeOpDef(2, 2), {S({}), S({})}, {}, {},
                      {});
-  auto make_shape = [&c](std::initializer_list<int64> dim_sizes) {
+  auto make_shape = [&c](std::initializer_list<int64_t> dim_sizes) {
     ShapeHandle s;
     TF_CHECK_OK(c.MakeShapeFromPartialTensorShape(S(dim_sizes), &s));
     return s;

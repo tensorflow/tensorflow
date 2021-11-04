@@ -30,10 +30,10 @@ namespace transforms {
 namespace {
 
 // index_cast is not defined on tensors, so lower it to a tensor.generate.
-struct IndexCastConverter : public OpRewritePattern<IndexCastOp> {
+struct IndexCastConverter : public OpRewritePattern<arith::IndexCastOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(IndexCastOp op,
+  LogicalResult matchAndRewrite(arith::IndexCastOp op,
                                 PatternRewriter &rewriter) const final {
     // Only rank 1 is supported for now.
     auto result_ty = op.getType().dyn_cast<ShapedType>();
@@ -43,12 +43,12 @@ struct IndexCastConverter : public OpRewritePattern<IndexCastOp> {
         op, op.getType(),
         result_ty.hasStaticShape() ? ValueRange{}
                                    : ValueRange{rewriter.create<tensor::DimOp>(
-                                         op.getLoc(), op.in(), 0)},
+                                         op.getLoc(), op.getIn(), 0)},
         [&](OpBuilder &b, Location loc, ValueRange args) {
           Value dim = args.front();
-          Value extent = b.create<tensor::ExtractOp>(loc, op.in(), dim);
-          Value casted =
-              b.create<IndexCastOp>(loc, extent, result_ty.getElementType());
+          Value extent = b.create<tensor::ExtractOp>(loc, op.getIn(), dim);
+          Value casted = b.create<arith::IndexCastOp>(
+              loc, extent, result_ty.getElementType());
           b.create<tensor::YieldOp>(loc, casted);
         });
     return success();

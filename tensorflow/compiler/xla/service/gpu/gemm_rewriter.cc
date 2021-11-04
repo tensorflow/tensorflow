@@ -29,8 +29,20 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
 
 namespace m = match;
+
+// Give this instruction a more useful name than "custom-call.42".
+Status SetName(HloModule *module, HloInstruction *gemm) {
+  GemmBackendConfig config;
+  TF_ASSIGN_OR_RETURN(config, gemm->backend_config<GemmBackendConfig>());
+  bool is_batch_dot = config.batch_size() > 1;
+
+  module->SetAndUniquifyInstrName(
+      gemm, is_batch_dot ? "cublas-batch-gemm" : "cublas-gemm");
+  return Status::OK();
+}
 
 // The rewriting proceeds in a bottom-up way:
 //
@@ -78,6 +90,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       gemm_config.set_lhs_stride(lhs_stride);
       gemm_config.set_rhs_stride(rhs_stride);
       TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gemm_config));
+      TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
       TF_RETURN_IF_ERROR(
           ReplaceWithNewInstruction(instr, std::move(gemm_call)));
     }
@@ -137,6 +150,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                  existing_gemm->mutable_operand(1), bias},
                 kGemmCallTarget);
         TF_RETURN_IF_ERROR(gemm_call->set_backend_config(config));
+        TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
         TF_RETURN_IF_ERROR(
             ReplaceWithNewInstruction(instr, std::move(gemm_call)));
       }
@@ -145,11 +159,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-static StatusOr<bool> RunOnComputation(HloComputation *computation) {
+StatusOr<bool> RunOnComputation(HloComputation *computation) {
   GemmRewriterVisitor visitor;
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
+
+}  // anonymous namespace
 
 StatusOr<bool> GemmRewriter::Run(HloModule *module) {
   bool changed = false;

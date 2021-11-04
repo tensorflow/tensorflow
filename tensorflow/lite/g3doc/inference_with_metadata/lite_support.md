@@ -83,7 +83,7 @@ tensorImage = imageProcessor.process(tensorImage);
 [metadata exractor library](../convert/metadata.md#read-the-metadata-from-models)
 as well as other model information.
 
-### Baisc audio data processing
+### Basic audio data processing
 
 The TensorFlow Lite Support Library also defines a `TensorAudio` class wrapping
 some basic audio data processing methods. It's mostly used together with

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for dense_features."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -410,6 +406,7 @@ class DenseFeaturesTest(keras_parameterized.TestCase):
       net = df.DenseFeatures([price1, price2])(features)
       with _initialized_session() as sess:
         with self.assertRaisesRegex(errors.OpError,
+                                    'Dimension 0 in both shapes must be equal|'
                                     'Dimensions of inputs should match'):
           sess.run(net, feed_dict={features['price1']: [[1.], [5.], [7.]]})
 

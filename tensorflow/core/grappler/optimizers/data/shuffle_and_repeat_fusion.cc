@@ -69,6 +69,9 @@ Status FuseShuffleV1AndRepeat(const NodeDef& shuffle_node,
   graph_utils::CopyShapesAndTypesAttrs(shuffle_node, fused_node);
   graph_utils::CopyAttribute(kReshuffleEachIteration, shuffle_node, fused_node);
 
+  // Optionally set the `metadata` attribute.
+  graph_utils::MaybeSetFusedMetadata(shuffle_node, repeat_node, fused_node);
+
   return Status::OK();
 }
 
@@ -106,6 +109,9 @@ Status FuseShuffleV2AndRepeat(const NodeDef& shuffle_node,
   // Default the `reshuffle_each_iteration` attribute to true.
   (*fused_node->mutable_attr())[kReshuffleEachIteration].set_b(true);
 
+  // Optionally set the `metadata` attribute.
+  graph_utils::MaybeSetFusedMetadata(shuffle_node, repeat_node, fused_node);
+
   return Status::OK();
 }
 
@@ -139,6 +145,9 @@ Status FuseShuffleV3AndRepeat(const NodeDef& shuffle_node,
   // attributes.
   graph_utils::CopyShapesAndTypesAttrs(shuffle_node, fused_node);
   graph_utils::CopyAttribute(kReshuffleEachIteration, shuffle_node, fused_node);
+
+  // Optionally set the `metadata` attribute.
+  graph_utils::MaybeSetFusedMetadata(shuffle_node, repeat_node, fused_node);
 
   return Status::OK();
 }

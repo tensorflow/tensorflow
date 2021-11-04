@@ -73,12 +73,11 @@ class ShuffleDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
-    attr_vector->emplace_back(ShuffleDatasetOpBase::kOutputTypes,
-                              output_dtypes_);
-    attr_vector->emplace_back(ShuffleDatasetOpBase::kOutputShapes,
-                              output_shapes_);
-    attr_vector->emplace_back(ShuffleDatasetOp::kReshuffleEachIteration,
+    attr_vector->emplace_back("output_types", output_dtypes_);
+    attr_vector->emplace_back("output_shapes", output_shapes_);
+    attr_vector->emplace_back("reshuffle_each_iteration",
                               reshuffle_each_iteration_);
+    attr_vector->emplace_back("metadata", "");
     return Status::OK();
   }
 

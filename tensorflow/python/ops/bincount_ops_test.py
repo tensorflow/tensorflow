@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for bincount ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -833,6 +829,25 @@ class TestSparseCountFailureModes(test.TestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "must have the same row splits"):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
+
+
+class RawOpsHeapOobTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_v1_only("Test security error")
+  def testSparseCountSparseOutputBadIndicesShapeTooSmall(self):
+    indices = [1]
+    values = [[1]]
+    weights = []
+    dense_shape = [10]
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 2 but is rank 1 for"):
+      self.evaluate(
+          gen_count_ops.SparseCountSparseOutput(
+              indices=indices,
+              values=values,
+              dense_shape=dense_shape,
+              weights=weights,
+              binary_output=True))
 
 
 @test_util.run_all_in_graph_and_eager_modes

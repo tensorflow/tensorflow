@@ -222,14 +222,16 @@ class ScopedDataFormatUpgrader {
 
 // TransposeContext.
 
-Status TransposeContext::InitializeTransposeContext(const GrapplerItem& item,
+Status TransposeContext::InitializeTransposeContext(bool assume_valid_feeds,
+                                                    const GrapplerItem& item,
                                                     const Cluster* cluster,
                                                     TransposeContext* context) {
   DCHECK(context != nullptr);
   context->graph_properties = absl::make_unique<GraphProperties>(item);
-  TF_RETURN_IF_ERROR(context->graph_properties->InferStatically(false));
-  TF_RETURN_IF_ERROR(context->graph_properties->AnnotateOutputShapes(
-      &context->graph, /*allow_symbolic_shapes=*/true));
+  TF_RETURN_IF_ERROR(
+      context->graph_properties->InferStatically(assume_valid_feeds));
+  TF_RETURN_IF_ERROR(
+      context->graph_properties->AnnotateOutputShapes(&context->graph));
   Status status;
   context->graph_view =
       absl::make_unique<utils::MutableGraphView>(&context->graph, &status);

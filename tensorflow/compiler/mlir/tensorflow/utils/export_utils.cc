@@ -70,11 +70,21 @@ std::set<std::string>* GlobalOpPrefixes() {
 }
 
 // Converts a location to the debug information for the node def.
-Status ConvertLocation(mlir::Location inst_loc,
+Status ConvertLocation(mlir::Location inst_loc, llvm::StringRef node_name,
                        NodeDef::ExperimentalDebugInfo* debug_info) {
   if (auto call_site = inst_loc.dyn_cast<mlir::CallSiteLoc>()) {
     if (auto name_loc = call_site.getCallee().dyn_cast<mlir::NameLoc>()) {
-      debug_info->add_original_node_names(name_loc.getName().c_str());
+      llvm::StringRef original_node_name, original_func_name;
+      std::tie(original_node_name, original_func_name) =
+          name_loc.getName().strref().split('@');
+      // The location points to the current node def.
+      if (node_name == original_node_name && original_func_name.empty()) {
+        return Status::OK();
+      }
+      debug_info->add_original_node_names(original_node_name.str());
+      if (!original_func_name.empty()) {
+        debug_info->add_original_func_names(original_func_name.str());
+      }
     }
   } else if (auto fused = inst_loc.dyn_cast<mlir::FusedLoc>()) {
     auto locations = fused.getLocations();
@@ -82,7 +92,7 @@ Status ConvertLocation(mlir::Location inst_loc,
       return errors::InvalidArgument("expected experimental debuf info.");
     // skip the first one, which is the name of the node_def.
     for (int i = 0, end = locations.size() - 1; i < end; ++i) {
-      TF_RETURN_IF_ERROR(ConvertLocation(locations[i], debug_info));
+      TF_RETURN_IF_ERROR(ConvertLocation(locations[i], node_name, debug_info));
     }
   }
   return Status::OK();
@@ -331,7 +341,7 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
 
   // Add the node debug info.
   TF_RETURN_IF_ERROR(ConvertLocation(
-      inst->getLoc(), node_def->mutable_experimental_debug_info()));
+      inst->getLoc(), name, node_def->mutable_experimental_debug_info()));
 
   return node_def;
 }

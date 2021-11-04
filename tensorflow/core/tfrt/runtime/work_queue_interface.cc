@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 
-#include "tensorflow/core/platform/context.h"
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -31,52 +31,33 @@ class DefaultWorkQueueWrapper final : public WorkQueueInterface {
   std::string name() const override { return work_queue_->name(); }
 
   void AddTask(tfrt::TaskFunction work) override {
-    tensorflow::Context context(tensorflow::ContextKind::kThread);
-    tfrt::TaskFunction wrapped_work(
-        [context = std::move(context), work = std::move(work)]() mutable {
-          tensorflow::WithContext wc(context);
-          work();
-        });
-
-    work_queue_->AddTask(std::move(wrapped_work));
+    work_queue_->AddTask(WrapWork(/*id=*/0, "inter", std::move(work)));
   }
 
   void AddTask(const tfrt::ExecutionContext& exec_ctx,
                tfrt::TaskFunction work) override {
-    tensorflow::Context context(tensorflow::ContextKind::kThread);
-    tfrt::TaskFunction wrapped_work(
-        [context = std::move(context), work = std::move(work)]() mutable {
-          tensorflow::WithContext wc(context);
-          work();
-        });
-
-    work_queue_->AddTask(exec_ctx, std::move(wrapped_work));
+    int64_t id = 0;
+    if (auto* request_context = exec_ctx.request_ctx()) {
+      id = request_context->id();
+    }
+    work_queue_->AddTask(exec_ctx, WrapWork(id, "inter", std::move(work)));
   }
 
   llvm::Optional<tfrt::TaskFunction> AddBlockingTask(
       tfrt::TaskFunction work, bool allow_queuing) override {
-    tensorflow::Context context(tensorflow::ContextKind::kThread);
-    tfrt::TaskFunction wrapped_work(
-        [context = std::move(context), work = std::move(work)]() mutable {
-          tensorflow::WithContext wc(context);
-          work();
-        });
-
-    return work_queue_->AddBlockingTask(std::move(wrapped_work), allow_queuing);
+    return work_queue_->AddBlockingTask(
+        WrapWork(/*id=*/0, "blocking", std::move(work)), allow_queuing);
   }
 
   llvm::Optional<tfrt::TaskFunction> AddBlockingTask(
       const tfrt::ExecutionContext& exec_ctx, tfrt::TaskFunction work,
       bool allow_queuing) override {
-    tensorflow::Context context(tensorflow::ContextKind::kThread);
-    tfrt::TaskFunction wrapped_work(
-        [context = std::move(context), work = std::move(work)]() mutable {
-          tensorflow::WithContext wc(context);
-          work();
-        });
-
-    return work_queue_->AddBlockingTask(exec_ctx, std::move(wrapped_work),
-                                        allow_queuing);
+    int64_t id = 0;
+    if (auto* request_context = exec_ctx.request_ctx()) {
+      id = request_context->id();
+    }
+    return work_queue_->AddBlockingTask(
+        exec_ctx, WrapWork(id, "blocking", std::move(work)), allow_queuing);
   }
 
   void Await(

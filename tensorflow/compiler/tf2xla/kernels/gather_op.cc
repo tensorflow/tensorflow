@@ -176,9 +176,12 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
 
     const auto params_dims = input_shape.dims();
     if (-params_dims > axis_input || axis_input >= params_dims) {
-      return errors::InvalidArgument("Expected axis in the range [",
-                                     -params_dims, ", ", params_dims,
-                                     "), but got ", axis_input);
+      // Check that params has rank of at least axis + 1.
+      const auto min_params_rank =
+          axis_input < 0 ? -axis_input : axis_input + 1;
+      return errors::InvalidArgument("Shape must be at least rank ",
+                                     min_params_rank, " but is rank ",
+                                     params_dims);
     }
     if (axis_input < 0) {
       axis_input += params_dims;

@@ -19,6 +19,7 @@ import collections
 import os
 import time
 
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
@@ -208,7 +209,7 @@ def get_timestamped_export_dir(export_dir_base):
   while attempts < MAX_DIRECTORY_CREATION_ATTEMPTS:
     timestamp = int(time.time())
 
-    result_dir = os.path.join(
+    result_dir = file_io.join(
         compat.as_bytes(export_dir_base), compat.as_bytes(str(timestamp)))
     if not gfile.Exists(result_dir):
       # Collisions are still possible (though extremely unlikely): this
@@ -241,9 +242,8 @@ def get_temp_export_dir(timestamped_export_dir):
     str_name = basename.decode('utf-8')
   else:
     str_name = str(basename)
-  temp_export_dir = os.path.join(
-      compat.as_bytes(dirname),
-      compat.as_bytes('temp-{}'.format(str_name)))
+  temp_export_dir = file_io.join(
+      compat.as_bytes(dirname), compat.as_bytes('temp-{}'.format(str_name)))
   return temp_export_dir
 
 

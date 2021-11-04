@@ -40,7 +40,11 @@ void ConvertTFLQuantOpsToMlirQuantOps(FuncOp func) {
     } else if (auto q = llvm::dyn_cast<ConstOp>(op)) {
       auto value = q.value();
       auto type = q.getResult().getType();
-      if (ConstantOp::isBuildableWith(value, type)) {
+      if (arith::ConstantOp::isBuildableWith(value, type)) {
+        auto c = b.create<arith::ConstantOp>(q.getLoc(), q.value());
+        q.output().replaceAllUsesWith(c);
+        q.erase();
+      } else if (ConstantOp::isBuildableWith(value, type)) {
         auto c = b.create<ConstantOp>(q.getLoc(), q.value());
         q.output().replaceAllUsesWith(c);
         q.erase();

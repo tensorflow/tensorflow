@@ -347,6 +347,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
     ],
 )
@@ -933,6 +934,7 @@ cc_library(
         ":dma_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
@@ -1460,6 +1462,7 @@ cc_library(
         ":device_mgr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
     ],
 )
 
@@ -1589,6 +1592,13 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+cc_library(
+    name = "local_session_selection",
+    srcs = ["local_session_selection.cc"],
+    hdrs = ["local_session_selection.h"],
+    copts = tf_copts(),
 )
 
 cc_library(
@@ -1854,6 +1864,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -1880,6 +1891,7 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":core_cpu_internal",
+        ":local_session_selection",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
@@ -1935,6 +1947,7 @@ cc_library(
     hdrs = ["no_op_cost_measurement.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":cost_constants",
         ":cost_measurement_registry",
         "@com_google_absl//absl/strings",
     ],
@@ -1987,6 +2000,26 @@ cc_library(
         ":request_cost_accessor_registry",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "cost_util",
+    srcs = ["cost_util.cc"],
+    hdrs = ["cost_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cost_measurement",
+        ":cost_measurement_registry",
+        ":request_cost_accessor",
+        ":request_cost_accessor_registry",
+    ],
+)
+
+cc_library(
+    name = "cost_constants",
+    hdrs = ["cost_constants.h"],
+    visibility = ["//visibility:public"],
+    deps = [],
 )
 
 # -----------------------------------------------------------------------------
@@ -3043,6 +3076,19 @@ tf_cc_test(
     srcs = ["null_request_cost_accessor_test.cc"],
     deps = [
         ":null_request_cost_accessor",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "cost_util_test",
+    srcs = ["cost_util_test.cc"],
+    deps = [
+        ":cost_measurement_registry",
+        ":cost_util",
+        ":request_cost_accessor_registry",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

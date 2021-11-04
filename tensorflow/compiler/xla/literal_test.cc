@@ -1228,15 +1228,12 @@ TEST_F(LiteralUtilTest, F16) {
   half h1(1.0f);
   half h2(2.0f);
   auto m2 = LiteralUtil::CreateR2<half>({{h1, h2}, {h2, h1}});
-  const char* d2 = reinterpret_cast<const char*>(m2.data<half>().data());
-  EXPECT_EQ(d2[0], 0);
-  EXPECT_EQ(d2[1], 0x3C);
-  EXPECT_EQ(d2[2], 0);
-  EXPECT_EQ(d2[3], 0x40);
-  EXPECT_EQ(d2[4], 0);
-  EXPECT_EQ(d2[5], 0x40);
-  EXPECT_EQ(d2[6], 0);
-  EXPECT_EQ(d2[7], 0x3C);
+  const uint16_t* d2 =
+      reinterpret_cast<const uint16_t*>(m2.data<half>().data());
+  EXPECT_EQ(d2[0], 0x3C00);
+  EXPECT_EQ(d2[1], 0x4000);
+  EXPECT_EQ(d2[2], 0x4000);
+  EXPECT_EQ(d2[3], 0x3C00);
 }
 
 TEST_F(LiteralUtilTest, Populate) {
@@ -1506,20 +1503,24 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
 }
 
 TEST_F(LiteralUtilTest, BitcastConvert) {
-  auto original = LiteralUtil::CreateR1<uint32>(
+  Literal original = LiteralUtil::CreateR1<uint32>(
       {absl::bit_cast<uint32>(2.5f), absl::bit_cast<uint32>(-42.25f),
        absl::bit_cast<uint32>(100.f), 0xbeef});
-  auto expected = LiteralUtil::CreateR1<float>(
+  Literal expected = LiteralUtil::CreateR1<float>(
       {2.5f, -42.25f, 100.0f, absl::bit_cast<float>(0xbeef)});
-  TF_ASSERT_OK_AND_ASSIGN(Literal converted, original.BitcastConvert(F32));
+  TF_ASSERT_OK_AND_ASSIGN(Literal converted,
+                          original.BitcastConvert(ShapeUtil::ChangeElementType(
+                              original.shape(), F32)));
 }
 
 TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
-  auto literal = LiteralUtil::CreateR0<uint32>(1234);
-  Status status = literal.BitcastConvert(F64).status();
+  Literal literal = LiteralUtil::CreateR0<uint32>(1234);
+  Status status =
+      literal.BitcastConvert(ShapeUtil::ChangeElementType(literal.shape(), F64))
+          .status();
   EXPECT_NE(Status::OK(), status);
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "bit widths are different"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(),
+                                "to a shape of different size"));
 }
 
 // Sets the layout of the given ShapeProto to the default.

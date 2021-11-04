@@ -22,6 +22,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
@@ -36,6 +38,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Vector/VectorOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -47,7 +50,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -97,7 +99,7 @@ class CustomBufferizeTypeConverter : public BufferizeTypeConverter {
       // TODO(pifon) : Change how target materialization is invoked in dialect
       // conversion.
       if (auto memref_type = inputs[0].getType().dyn_cast<MemRefType>()) {
-        assert(!memref_type.getAffineMaps().empty());
+        assert(!memref_type.getLayout().isIdentity());
         return inputs[0];
       }
       assert(inputs[0].getType().isa<TensorType>());
@@ -113,17 +115,20 @@ struct ComputeOpAndFuncBufferizePass
     registry.insert<lmhlo::LmhloDialect, memref::MemRefDialect>();
   }
 
- public:
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<complex::ComplexDialect, lmhlo::LmhloDialect,
-                           memref::MemRefDialect, StandardOpsDialect,
-                           tensor::TensorDialect, math::MathDialect>();
-    target.addLegalOp<UnrealizedConversionCastOp>();
+    target.addLegalDialect<
+        arith::ArithmeticDialect, complex::ComplexDialect, lmhlo::LmhloDialect,
+        AffineDialect, vector::VectorDialect, memref::MemRefDialect,
+        StandardOpsDialect, tensor::TensorDialect, math::MathDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp, linalg::TiledLoopOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
-    target.addIllegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>();
+    target.addDynamicallyLegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>(
+        [&](Operation* op) {
+          return mlir::isa<linalg::TiledLoopOp>(op->getParentOp());
+        });
 
     CustomBufferizeTypeConverter converter;
     mhlo::RemoveSignTypeConverter remove_sign_converter;
@@ -131,7 +136,12 @@ struct ComputeOpAndFuncBufferizePass
     // Configure bufferize pattern for functions and lhlo.
     mhlo::populateHLOToMemrefConversionPattern(
         &converter, &remove_sign_converter, &patterns,
-        /*enforce_identity_map=*/false);
+        /*enforce_identity_map=*/[](Operation* op) {
+          // Insert a copy if the broadcast escapes.
+          return llvm::any_of(op->getUsers(), [](Operation* user) {
+            return isa<mlir::ReturnOp>(user);
+          });
+        });
     populateFuncOpTypeConversionPattern(patterns, converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
@@ -140,7 +150,6 @@ struct ComputeOpAndFuncBufferizePass
     // Configure legality and structural patterns.
     populateBufferizeMaterializationLegality(target);
     linalg::populateLinalgBufferizePatterns(converter, patterns);
-    populateTiledLoopBufferizePattern(&getContext(), &converter, &patterns);
     populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
                                                       target);
     scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
@@ -153,8 +162,60 @@ struct ComputeOpAndFuncBufferizePass
              converter.isLegal(&op.getBody());
     });
     auto isLegalOp = [&](Operation* op) { return converter.isLegal(op); };
-    target.addDynamicallyLegalDialect<linalg::LinalgDialect>(isLegalOp);
     target.addDynamicallyLegalOp<CallOp, ReturnOp>(isLegalOp);
+
+    auto isLegalOrInsideTiledLoop = [&](Operation* op) {
+      return converter.isLegal(op) ||
+             mlir::isa<linalg::TiledLoopOp>(op->getParentOp());
+    };
+    target.addDynamicallyLegalDialect<linalg::LinalgDialect>(
+        isLegalOrInsideTiledLoop);
+    target
+        .addDynamicallyLegalOp<vector::TransferWriteOp, vector::TransferReadOp>(
+            isLegalOrInsideTiledLoop);
+
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns))))
+      signalPassFailure();
+  }
+};
+
+struct TiledLoopBufferizePass
+    : public TiledLoopBufferizePassBase<TiledLoopBufferizePass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<memref::MemRefDialect>();
+  }
+
+  void runOnFunction() override {
+    RewritePatternSet patterns(&getContext());
+    auto& context = getContext();
+    ConversionTarget target(context);
+    target.addLegalDialect<
+        arith::ArithmeticDialect, complex::ComplexDialect, lmhlo::LmhloDialect,
+        AffineDialect, vector::VectorDialect, memref::MemRefDialect,
+        StandardOpsDialect, tensor::TensorDialect, math::MathDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
+    target.addIllegalDialect<mhlo::MhloDialect>();
+    target.addIllegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>();
+
+    CustomBufferizeTypeConverter converter;
+    mhlo::RemoveSignTypeConverter remove_sign_converter;
+
+    // Configure bufferize pattern.
+    populateCallOpTypeConversionPattern(patterns, converter);
+    populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
+    populateReturnOpTypeConversionPattern(patterns, converter);
+    populateBufferizeMaterializationLegality(target);
+    populateTiledLoopBufferizePattern(&getContext(), &converter, &patterns);
+    populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
+                                                      target);
+    scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
+                                                         target);
+    // Configure legality.
+    auto isLegalOp = [&](Operation* op) { return converter.isLegal(op); };
+    target.addDynamicallyLegalDialect<linalg::LinalgDialect>(isLegalOp);
+    target.addDynamicallyLegalOp<CallOp, vector::TransferWriteOp,
+                                 vector::TransferReadOp>(isLegalOp);
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
@@ -175,11 +236,11 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     auto& context = getContext();
     ConversionTarget target(context);
     target.addLegalDialect<
-        complex::ComplexDialect, memref::MemRefDialect, StandardOpsDialect,
-        scf::SCFDialect, tensor::TensorDialect,
-        tf_framework::TFFrameworkDialect, AffineDialect, shape::ShapeDialect,
-        lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect,
-        vector::VectorDialect>();
+        arith::ArithmeticDialect, complex::ComplexDialect,
+        memref::MemRefDialect, StandardOpsDialect, scf::SCFDialect,
+        tensor::TensorDialect, tf_framework::TFFrameworkDialect, AffineDialect,
+        shape::ShapeDialect, lmhlo::LmhloDialect, linalg::LinalgDialect,
+        math::MathDialect, vector::VectorDialect>();
     target.addLegalOp<FuncOp, ModuleOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
@@ -193,12 +254,14 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     };
-    target.addDynamicallyLegalOp<ConstantOp, IndexCastOp, RankOp, SelectOp,
+    target.addDynamicallyLegalOp<ConstantOp, arith::ConstantOp,
+                                 arith::IndexCastOp, RankOp, SelectOp,
                                  tf_framework::JITExecuteOp>(typesAreLegal);
 
     RewritePatternSet patterns(&getContext());
     linalg::populateLinalgBufferizePatterns(converter, patterns);
     populateTensorBufferizePatterns(converter, patterns);
+    arith::populateArithmeticBufferizePatterns(converter, patterns);
     populateStdBufferizePatterns(converter, patterns);
     populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
     populateExtraBufferizePatterns(&getContext(), &converter, &patterns);
@@ -219,6 +282,10 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 std::unique_ptr<OperationPass<ModuleOp> >
 CreateComputeOpAndFuncBufferizePass() {
   return std::make_unique<ComputeOpAndFuncBufferizePass>();
+}
+
+std::unique_ptr<FunctionPass> CreateTiledLoopBufferizePass() {
+  return std::make_unique<TiledLoopBufferizePass>();
 }
 
 std::unique_ptr<OperationPass<ModuleOp> > CreateFinalBufferizePass() {

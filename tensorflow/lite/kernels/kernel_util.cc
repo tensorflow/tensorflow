@@ -410,19 +410,39 @@ bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
+TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
+                                     const TfLiteTensor* input,
+                                     TfLiteIntArray** output_shape) {
+  if (NumDimensions(input) != 1) {
+    TF_LITE_KERNEL_LOG(const_cast<TfLiteContext*>(context),
+                       "Invalid %dD input tensor (must be a 1D tensor).",
+                       NumDimensions(input));
+    return kTfLiteError;
+  }
+  const int output_dims = SizeOfDimension(input, 0);
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
+      TfLiteIntArrayCreate(output_dims), TfLiteIntArrayFree);
+  for (int i = 0; i < output_dims; i++) {
+    shape->data[i] = input->data.i32[i];
+  }
+  *output_shape = shape.release();
+  return kTfLiteOk;
+}
 
 // TODO(b/172067338): Having this function be part of TF_LITE_STATIC_MEMORY
 // build results in a 6KB size increase, even though the function is unsused for
 // that build. What appears to be happening is that while the linker drops the
 // unsused function, the string library that gets pulled in is not dropped,
 // resulting in the increased binary size.
-std::string GetShapeDebugString(const TfLiteIntArray* shape) {
+const std::string GetShapeDebugString(const TfLiteIntArray* shape) {
   std::string str;
   for (int d = 0; d < shape->size; ++d) {
     if (str.empty())
       str = "[" + std::to_string(shape->data[d]);
     else
-      str += ", " + std::to_string(shape->data[d]);
+      // Don't add space after "," to make the output consistent with
+      // tensorflow::shape_inference::InferenceContext::DebugString()
+      str += "," + std::to_string(shape->data[d]);
   }
   str += "]";
   return str;

@@ -18,9 +18,13 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/disc_ral_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
@@ -140,7 +144,7 @@ Value loadGlobalString(OpBuilder& builder, const Location& loc,
 
 // Returns true if the globalOp has the same value as `value`.
 bool checkGlobalOpContent(GlobalOp globalOp, StringRef value) {
-  Optional<Attribute> optValue = globalOp.value();
+  Optional<Attribute> optValue = globalOp.getValue();
   if (!optValue) return false;
 
   StringAttr attr = (*optValue).cast<StringAttr>();
@@ -193,13 +197,12 @@ class DispatchOpToLLVMPattern : public ConvertOpToLLVMPattern<DispatchOp> {
   // Packs the inputs and outputs into a type-erased pointer array.
   // For example, `int func(int)` -> `void func(void* args[]) where args =
   // {in_ptr, out_ptr}`
-  Value rewriteInsOutsOfDispatchOp(DispatchOp dispatch_op,
-                                   ArrayRef<Value> operands,
+  Value rewriteInsOutsOfDispatchOp(DispatchOp dispatch_op, ValueRange operands,
                                    ConversionPatternRewriter& rewriter,
                                    SmallVectorImpl<Value>& resultPtrs) const;
 
   LogicalResult matchAndRewrite(
-      DispatchOp dispatch_op, ArrayRef<Value> operands,
+      DispatchOp dispatch_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override;
 
  private:
@@ -257,7 +260,7 @@ LLVMFuncOp DispatchOpToLLVMPattern::getOrInsertDispatchFunction(
 //   llvm.store %fieldPtr, %elementPtr
 // return %array
 Value DispatchOpToLLVMPattern::rewriteInsOutsOfDispatchOp(
-    DispatchOp dispatch_op, ArrayRef<Value> operands,
+    DispatchOp dispatch_op, ValueRange operands,
     ConversionPatternRewriter& rewriter,
     SmallVectorImpl<Value>& resultPtrs) const {
   MLIRContext* ctx = rewriter.getContext();
@@ -312,7 +315,7 @@ Value DispatchOpToLLVMPattern::rewriteInsOutsOfDispatchOp(
 }
 
 LogicalResult DispatchOpToLLVMPattern::matchAndRewrite(
-    DispatchOp dispatch_op, ArrayRef<Value> operands,
+    DispatchOp dispatch_op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   StrT target_name;
   if (failed(getDispatchOpSignatureEncoding(dispatch_op, target_name))) {
@@ -325,13 +328,12 @@ LogicalResult DispatchOpToLLVMPattern::matchAndRewrite(
 
   Operation* op = dispatch_op.getOperation();
   Location loc = op->getLoc();
-  DispatchOp::Adaptor adaptor(operands);
   SmallVector<Value, 3> callOpOperands;
   LLVMFuncOp dispatch_func = getOrInsertDispatchFunction(rewriter, op);
 
   SmallVector<Value, 1> resultPtrs;
-  Value packedArgs =
-      rewriteInsOutsOfDispatchOp(dispatch_op, operands, rewriter, resultPtrs);
+  Value packedArgs = rewriteInsOutsOfDispatchOp(
+      dispatch_op, adaptor.getOperands(), rewriter, resultPtrs);
 
   // the first argument is ral_context
   callOpOperands.push_back(adaptor.ctx());
@@ -366,13 +368,13 @@ class ConvertLaunchFuncOpToRalCallPattern
         symbol_table_(symbol_table) {}
 
  private:
-  Value generateParamsArray(gpu::LaunchFuncOp launch_op,
-                            ArrayRef<Value> operands, OpBuilder& builder) const;
+  Value generateParamsArray(gpu::LaunchFuncOp launch_op, ValueRange operands,
+                            OpBuilder& builder) const;
   Value generateKernelNameConstant(StringRef moduleName, StringRef name,
                                    Location loc, OpBuilder& builder) const;
 
   LogicalResult matchAndRewrite(
-      gpu::LaunchFuncOp launch_op, ArrayRef<Value> operands,
+      gpu::LaunchFuncOp launch_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override;
 
   SymbolTable& symbol_table_;
@@ -392,7 +394,7 @@ class ConvertLaunchFuncOpToRalCallPattern
 //   llvm.store %fieldPtr, %elementPtr
 // return %array
 Value ConvertLaunchFuncOpToRalCallPattern::generateParamsArray(
-    gpu::LaunchFuncOp launch_op, ArrayRef<Value> operands,
+    gpu::LaunchFuncOp launch_op, ValueRange operands,
     OpBuilder& builder) const {
   MLIRContext* ctx = builder.getContext();
   Type llvm_pointer_type = LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
@@ -440,7 +442,7 @@ Value ConvertLaunchFuncOpToRalCallPattern::generateParamsArray(
 // Emits LLVM IR to launch a kernel function. Expects the module that contains
 // the compiled kernel function as a cubin in the `kRalGpuLaunch` attribute.
 LogicalResult ConvertLaunchFuncOpToRalCallPattern::matchAndRewrite(
-    gpu::LaunchFuncOp launch_op, ArrayRef<Value> operands,
+    gpu::LaunchFuncOp launch_op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   if (!launch_op.asyncDependencies().empty() || launch_op.asyncToken()) {
     return rewriter.notifyMatchFailure(
@@ -488,13 +490,11 @@ LogicalResult ConvertLaunchFuncOpToRalCallPattern::matchAndRewrite(
       rewriter, symbol_table_, op, kernel_name_global_name,
       kernel_name_buffer.str());
 
-  auto adaptor =
-      gpu::LaunchFuncOpAdaptor(operands, launch_op->getAttrDictionary());
-
   // The Ral Context is the first argument of the surrounding LLVMFunc.
   Value context_arg =
       launch_op->getParentOfType<LLVM::LLVMFuncOp>().getArgument(0);
-  auto kernel_params = generateParamsArray(launch_op, operands, rewriter);
+  auto kernel_params =
+      generateParamsArray(launch_op, adaptor.getOperands(), rewriter);
 
   Type llvm_int32_type = IntegerType::get(rewriter.getContext(), 32);
   Value zero = rewriter.create<LLVM::ConstantOp>(loc, llvm_int32_type,
@@ -538,7 +538,10 @@ class RalToLLVMPass : public RalToLLVMPassBase<RalToLLVMPass> {
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
+    arith::populateArithmeticExpandOpsPatterns(patterns);
     populateStdExpandOpsPatterns(patterns);
+    arith::populateArithmeticToLLVMConversionPatterns(type_converter, patterns);
+    populateMathToLLVMConversionPatterns(type_converter, patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
     populateDiscRalToLLVMConversionPatterns(&type_converter, &symbol_table,
                                             &patterns);
@@ -546,8 +549,9 @@ class RalToLLVMPass : public RalToLLVMPassBase<RalToLLVMPass> {
     // Set target.
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addIllegalDialect<StandardOpsDialect, gpu::GPUDialect,
-                             disc_ral::RalDialect, math::MathDialect>();
+    target.addIllegalDialect<arith::ArithmeticDialect, StandardOpsDialect,
+                             gpu::GPUDialect, disc_ral::RalDialect,
+                             math::MathDialect>();
     target.addIllegalOp<UnrealizedConversionCastOp>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();

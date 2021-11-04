@@ -1170,8 +1170,8 @@ Status InferenceContext::AttachContext(const Status& status) {
   }
 
   strings::StrAppend(&error_context, ".");
-  return Status(status.code(),
-                strings::StrCat(status.error_message(), error_context));
+  return errors::CreateWithUpdatedMessage(
+      status, strings::StrCat(status.error_message(), error_context));
 }
 
 bool InferenceContext::MergeHandleShapesAndTypes(

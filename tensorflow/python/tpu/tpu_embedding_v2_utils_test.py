@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for TPU Embeddings mid level API utils on TPU."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
@@ -69,7 +65,7 @@ class ConfigTest(test.TestCase):
 
   def test_table_config_repr(self):
     table = tpu_embedding_v2_utils.TableConfig(
-        vocabulary_size=2, dim=4, initializer=None,
+        vocabulary_size=2, dim=4,
         combiner='sum', name='table')
 
     self.assertEqual(

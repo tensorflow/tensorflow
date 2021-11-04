@@ -37,17 +37,6 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
     MLIRContext* context, const tensorflow::GraphDebugInfo& debug_info,
     const tensorflow::GraphDef& graphdef);
 
-tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
-    MLIRContext* context, const tensorflow::Graph& graph,
-    const tensorflow::GraphDebugInfo& debug_info,
-    const tensorflow::FunctionLibraryDefinition& flib_def);
-
-tensorflow::StatusOr<GraphFuncOp> ImportFunctionToMlir(
-    ModuleOp module, const tensorflow::GraphDebugInfo& debug_info,
-    const tensorflow::FunctionLibraryDefinition& flib_def,
-    absl::string_view func_name,
-    tensorflow::AttrSlice instantiation_attributes);
-
 // Convert an array of "handle_data" (a DType and a Shape) to an MLIR array
 // attribute. Each entry will be itself an ArrayAttribute containing a TypeAttr
 // and a ShapeAttr

@@ -289,10 +289,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleBitcastConvert(HloInstruction* convert) override {
     const HloInstruction* operand = convert->operand(0);
-    TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), convert->shape()));
     TF_ASSIGN_OR_RETURN(Literal result,
                         parent_->GetEvaluatedLiteralFor(operand).BitcastConvert(
-                            convert->shape().element_type()));
+                            convert->shape()));
 
     parent_->evaluated_[convert] = std::move(result);
     return Status::OK();

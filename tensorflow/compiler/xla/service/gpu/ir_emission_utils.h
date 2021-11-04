@@ -82,9 +82,9 @@ bool IsCublasGemm(const HloInstruction& hlo);
 
 constexpr int64_t kWarpSize = 32;
 
-// Need at least 256 threads/block for reasonable tree reduction
+// Need at least 1024 threads/block for reasonable tree reduction
 // performance (assuming all data fits).
-constexpr int64_t kMinThreadsXRowReduction = 256;
+constexpr int64_t kMinThreadsXRowReduction = 1024;
 
 // When doing batched row reduction, how big the batch dimension could be.
 static constexpr int64_t kBatchedReductionRaceFreeBound = 8;
@@ -195,9 +195,8 @@ class FusionLayoutAnalysis {
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
-// MLIR variant that relies on the shape layouts from fusion layout analysis.
-bool IsReductionFromOrToContiguousDimensions(
-    mlir::Operation* op, const FusionLayoutAnalysis& layout_analysis);
+// MLIR variant.
+bool IsReductionFromOrToContiguousDimensions(mlir::Operation* op);
 
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all

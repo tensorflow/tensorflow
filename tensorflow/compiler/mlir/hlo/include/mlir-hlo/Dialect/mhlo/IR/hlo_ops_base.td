@@ -23,6 +23,7 @@ def HLO_Dialect : Dialect {
   let cppNamespace = "::mlir::mhlo";
 }
 
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.td"
 

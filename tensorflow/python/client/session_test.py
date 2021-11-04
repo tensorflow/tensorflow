@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.python.client.session.Session."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os
 import random
@@ -42,6 +38,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import importer
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
@@ -76,6 +73,7 @@ except ImportError:
 defaultdict = collections.defaultdict  # pylint:disable=invalid-name
 
 
+@test_util.with_eager_op_as_function
 class SessionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -851,7 +849,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       indices = np.array([[3, 2, 0], [4, 5, 1]]).astype(np.int64)
       values = np.array([1.0, 2.0]).astype(np.float32)
       dense_shape = np.array([7, 9, 2]).astype(np.int64)
-      ind = ops.IndexedSlices(
+      ind = indexed_slices.IndexedSlices(
           constant_op.constant(values), constant_op.constant(indices),
           constant_op.constant(dense_shape))
       # Single fetch, use as tuple
@@ -886,7 +884,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       values = np.array([1.0, 2.0]).astype(np.float32)
       indices = np.array([[3, 2, 0], [4, 5, 1]]).astype(np.int64)
       dense_shape = np.array([7, 9, 2]).astype(np.int64)
-      ind = ops.IndexedSlices(
+      ind = indexed_slices.IndexedSlices(
           array_ops.placeholder(dtype=np.float32, shape=(2,)),
           array_ops.placeholder(dtype=np.int64, shape=(2, 3)),
           array_ops.placeholder(dtype=np.int64, shape=(3,)),
@@ -894,7 +892,8 @@ class SessionTest(test_util.TensorFlowTestCase):
       ind_values = array_ops.identity(ind.values)
       ind_indices = array_ops.identity(ind.indices)
       ind_dense_shape = array_ops.identity(ind.dense_shape)
-      ind2 = ops.IndexedSlices(ind_values, ind_indices, ind_dense_shape)
+      ind2 = indexed_slices.IndexedSlices(ind_values, ind_indices,
+                                          ind_dense_shape)
       # Feed with tuple
       values_out, indices_out, dense_shape_out = s.run(
           [ind_values, ind_indices, ind_dense_shape], {
@@ -904,16 +903,15 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(indices_out, indices)
       self.assertAllEqual(dense_shape_out, dense_shape)
       # Feed with IndexedSlicesValue
-      values_out, indices_out, dense_shape_out = s.run(
-          [ind_values, ind_indices, ind_dense_shape], {
-              ind: ops.IndexedSlicesValue(values, indices, dense_shape)
-          })
+      values_out, indices_out, dense_shape_out = s.run([
+          ind_values, ind_indices, ind_dense_shape
+      ], {ind: indexed_slices.IndexedSlicesValue(values, indices, dense_shape)})
       self.assertAllEqual(values_out, values)
       self.assertAllEqual(indices_out, indices)
       self.assertAllEqual(dense_shape_out, dense_shape)
       # Feed with IndexedSlicesValue, fetch IndexedSlicesValue
       ind2_out = s.run(ind2, {
-          ind: ops.IndexedSlicesValue(values, indices, dense_shape)
+          ind: indexed_slices.IndexedSlicesValue(values, indices, dense_shape)
       })
       self.assertAllEqual(ind2_out.values, values)
       self.assertAllEqual(ind2_out.indices, indices)
@@ -924,7 +922,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       indices = np.array([[3, 2, 0], [4, 5, 1]]).astype(np.int64)
       values = np.array([1.0, 2.0]).astype(np.float32)
       dense_shape = None
-      ind = ops.IndexedSlices(
+      ind = indexed_slices.IndexedSlices(
           constant_op.constant(values), constant_op.constant(indices), None)
       # Single fetch, use as tuple
       ind_out = s.run(ind)
@@ -958,12 +956,12 @@ class SessionTest(test_util.TensorFlowTestCase):
       values = np.array([1.0, 2.0]).astype(np.float32)
       indices = np.array([[3, 2, 0], [4, 5, 1]]).astype(np.int64)
       dense_shape = None
-      ind = ops.IndexedSlices(
+      ind = indexed_slices.IndexedSlices(
           array_ops.placeholder(dtype=np.float32, shape=(2,)),
           array_ops.placeholder(dtype=np.int64, shape=(2, 3)), None)
       ind_values = array_ops.identity(ind.values)
       ind_indices = array_ops.identity(ind.indices)
-      ind2 = ops.IndexedSlices(ind_values, ind_indices)
+      ind2 = indexed_slices.IndexedSlices(ind_values, ind_indices)
       # Feed with tuple
       values_out, indices_out = s.run([ind_values, ind_indices], {
           ind: (values, indices)
@@ -972,13 +970,13 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(indices_out, indices)
       # Feed with IndexedSlicesValue
       values_out, indices_out = s.run([ind_values, ind_indices], {
-          ind: ops.IndexedSlicesValue(values, indices, dense_shape)
+          ind: indexed_slices.IndexedSlicesValue(values, indices, dense_shape)
       })
       self.assertAllEqual(values_out, values)
       self.assertAllEqual(indices_out, indices)
       # Feed with IndexedSlicesValue, fetch IndexedSlicesValue
       ind2_out = s.run(ind2, {
-          ind: ops.IndexedSlicesValue(values, indices, dense_shape)
+          ind: indexed_slices.IndexedSlicesValue(values, indices, dense_shape)
       })
       self.assertAllEqual(ind2_out.values, values)
       self.assertAllEqual(ind2_out.indices, indices)
@@ -1846,11 +1844,14 @@ class SessionTest(test_util.TensorFlowTestCase):
           pass
 
   def testInvalidArgument(self):
-    with self.assertRaisesRegex(TypeError, 'target must be a string'):
+    with self.assertRaisesRegex(TypeError,
+                                'Argument `target` must be a string'):
       session.Session(37)
-    with self.assertRaisesRegex(TypeError, 'config must be a tf.ConfigProto'):
+    with self.assertRaisesRegex(TypeError,
+                                'Argument `config` must be a tf.ConfigProto'):
       session.Session(config=37)
-    with self.assertRaisesRegex(TypeError, 'graph must be a tf.Graph'):
+    with self.assertRaisesRegex(TypeError,
+                                'Argument `graph` must be a tf.Graph'):
       session.Session(graph=37)
 
   @test_util.run_v1_only('b/120545219')
@@ -1958,8 +1959,15 @@ class SessionTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(c, 3)
     self.assertEqual(d, 3)
+
     # Ensure that we did log device placement.
-    add_executions = [l for l in str(log).splitlines() if 'AddV2' in l]
+    # We have three modes of execution at the moment:
+    # (1) TF1 Graph (2) TF2 eager (3) TF2 eager with function wrapping.
+    # The codepaths taken by each are slightly different in all resulting in
+    # slightly different logging messages.
+    log_msg = ('Executing op AddV2'
+               if ops.executing_eagerly_outside_functions() else 'AddV2')
+    add_executions = [l for l in str(log).splitlines() if log_msg in l]
     self.assertEqual(len(add_executions), 2)
 
     @def_function.function

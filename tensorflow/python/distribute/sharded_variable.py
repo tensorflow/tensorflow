@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """ShardedVariable class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import math
 from typing import Sequence
@@ -25,6 +21,7 @@ import numpy as np
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
@@ -600,7 +597,8 @@ class ShardedVariableMixin(trackable.Trackable):
                                                      len(self._variables))
 
     return [
-        ops.IndexedSlices(values=per_var_values[i], indices=per_var_indices[i])
+        indexed_slices_lib.IndexedSlices(
+            values=per_var_values[i], indices=per_var_indices[i])
         for i in range(len(self._variables))
     ]
 
