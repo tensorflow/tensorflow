@@ -1355,7 +1355,9 @@ class ConvertReduceOpToTfArgMinMax
     if (!MatchIota(reduce_op.dimensions(), iota)) return failure();
 
     // Match the reduction computation.
-    if (failed(matchReduceComputation(reduce_op.body()))) return failure();
+    const bool is_float = input_init.getElementType().isa<FloatType>();
+    if (failed(matchReduceComputation(reduce_op.body(), is_float)))
+      return failure();
 
     Value input = reduce_op.inputs().front();
     int64_t axis = reduce_op.dimensions().getValue<int64_t>({0});
@@ -1391,7 +1393,9 @@ class ConvertReduceOpToTfArgMinMax
   // %8 = select(%7, %lhs_index, %rhs_index)
   // %9 = tuple(%3, %8)
   // return %9
-  LogicalResult matchReduceComputation(Region &computation) const {
+  // Also note that %1 may be folded if %lhs_value is of integer types.
+  LogicalResult matchReduceComputation(Region &computation,
+                                       bool is_float) const {
     Block &body = computation.front();
     if (body.getNumArguments() != 4) return failure();
 
@@ -1411,9 +1415,32 @@ class ConvertReduceOpToTfArgMinMax
         value_select.on_false() != body.getArgument(2))
       return failure();
 
-    mhlo::OrOp value_or = llvm::dyn_cast_or_null<mhlo::OrOp>(
-        value_select.getOperand(0).getDefiningOp());
-    if (!value_or) return failure();
+    if (is_float) {
+      mhlo::OrOp value_or = llvm::dyn_cast_or_null<mhlo::OrOp>(
+          value_select.getOperand(0).getDefiningOp());
+      if (!value_or) return failure();
+
+      mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
+          value_or.lhs().getDefiningOp());
+      if (!value_gt || value_gt.comparison_direction() != CompareDirection() ||
+          value_gt.lhs() != body.getArgument(0) ||
+          value_gt.rhs() != body.getArgument(2))
+        return failure();
+
+      mhlo::CompareOp value_ne = llvm::dyn_cast_or_null<mhlo::CompareOp>(
+          value_or.rhs().getDefiningOp());
+      if (!value_ne || value_ne.comparison_direction() != "NE" ||
+          value_ne.lhs() != body.getArgument(0) ||
+          value_ne.rhs() != body.getArgument(0))
+        return failure();
+    } else {
+      mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
+          value_select.getOperand(0).getDefiningOp());
+      if (!value_gt || value_gt.comparison_direction() != CompareDirection() ||
+          value_gt.lhs() != body.getArgument(0) ||
+          value_gt.rhs() != body.getArgument(2))
+        return failure();
+    }
 
     mhlo::SelectOp index_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
         return_tuple.getOperand(1).getDefiningOp());
@@ -1421,24 +1448,10 @@ class ConvertReduceOpToTfArgMinMax
         index_select.on_false() != body.getArgument(3))
       return failure();
 
-    mhlo::CompareOp value_gt =
-        llvm::dyn_cast_or_null<mhlo::CompareOp>(value_or.lhs().getDefiningOp());
-    if (!value_gt || value_gt.comparison_direction() != CompareDirection() ||
-        value_gt.lhs() != body.getArgument(0) ||
-        value_gt.rhs() != body.getArgument(2))
-      return failure();
-
-    mhlo::CompareOp value_ne =
-        llvm::dyn_cast_or_null<mhlo::CompareOp>(value_or.rhs().getDefiningOp());
-    if (!value_ne || value_ne.comparison_direction() != "NE" ||
-        value_ne.lhs() != body.getArgument(0) ||
-        value_ne.rhs() != body.getArgument(0))
-      return failure();
-
     mhlo::OrOp index_or =
         llvm::dyn_cast_or_null<mhlo::OrOp>(index_select.pred().getDefiningOp());
 
-    if (!index_or || index_or.lhs() != value_or) return failure();
+    if (!index_or || index_or.lhs() != value_select.pred()) return failure();
 
     mhlo::AndOp index_and =
         llvm::dyn_cast_or_null<mhlo::AndOp>(index_or.rhs().getDefiningOp());
@@ -1473,11 +1486,18 @@ class ConvertReduceOpToTfArgmax
 
   const char *CompareDirection() const override { return "GT"; }
   bool IsValueInitValue(const DenseElementsAttr &attr) const override {
-    if (attr.getNumElements() != 1 ||
-        !attr.getType().getElementType().isa<FloatType>())
+    auto element_type = attr.getType().getElementType();
+    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat() ||
+        element_type.isInteger(1))
       return false;
-    auto value = *attr.value_begin<APFloat>();
-    return value.isNegative() && value.isInfinity();
+    if (element_type.isa<FloatType>()) {
+      auto value = *attr.value_begin<APFloat>();
+      return value.isNegative() && value.isInfinity();
+    } else {
+      auto value = *attr.value_begin<APInt>();
+      return element_type.isUnsignedInteger() ? value.isMinValue()
+                                              : value.isMinSignedValue();
+    }
   }
 };
 
@@ -1488,11 +1508,18 @@ class ConvertReduceOpToTfArgmin
 
   const char *CompareDirection() const override { return "LT"; }
   bool IsValueInitValue(const DenseElementsAttr &attr) const override {
-    if (attr.getNumElements() != 1 ||
-        !attr.getType().getElementType().isa<FloatType>())
+    auto element_type = attr.getType().getElementType();
+    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat() ||
+        element_type.isInteger(1))
       return false;
-    auto value = *attr.value_begin<APFloat>();
-    return !value.isNegative() && value.isInfinity();
+    if (element_type.isa<FloatType>()) {
+      auto value = *attr.value_begin<APFloat>();
+      return !value.isNegative() && value.isInfinity();
+    } else {
+      auto value = *attr.value_begin<APInt>();
+      return element_type.isUnsignedInteger() ? value.isMaxValue()
+                                              : value.isMaxSignedValue();
+    }
   }
 };
 
