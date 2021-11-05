@@ -537,6 +537,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/data:finalization_utils",
         "//tensorflow/core/kernels/data:iterator_ops",
         "//tensorflow/core/platform",
     ],
