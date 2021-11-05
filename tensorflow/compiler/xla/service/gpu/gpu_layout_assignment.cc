@@ -210,16 +210,6 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   return Status::OK();
 }
 
-// Imposes the default layout with first two dimensions swapped on input
-// `shape`.
-static void SetFortranLayout(Shape* shape) {
-  LayoutUtil::SetToDefaultLayout(shape);
-  int n = shape->mutable_layout()->minor_to_major_size();
-  CHECK_GE(n, 2);
-  std::swap(shape->mutable_layout()->mutable_minor_to_major()->at(0),
-            shape->mutable_layout()->mutable_minor_to_major()->at(1));
-}
-
 Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   // Add convolution constraints in reverse postorder that the earliest
@@ -236,27 +226,6 @@ Status GpuLayoutAssignment::AddBackendConstraints(
 
     CHECK(!IsCublasGemm(*instruction))
         << "Gemm rewriting should run after layout assignment";
-
-    // For unbatched S8xS8->S32 matrix multiplication enforce a TN layout, which
-    // will allow the NVidia GPUs to use TensorCores.
-    if (IsMatrixMultiplication(*instruction)) {
-      Shape output_shape = instruction->shape();
-      Shape p1_shape = instruction->operand(0)->shape();
-      Shape p2_shape = instruction->operand(1)->shape();
-      if (output_shape.element_type() == PrimitiveType::S32 &&
-          p1_shape.element_type() == PrimitiveType::S8 &&
-          p2_shape.element_type() == PrimitiveType::S8 &&
-          output_shape.dimensions_size() == 2 &&
-          p1_shape.dimensions_size() == 2 && p2_shape.dimensions_size() == 2) {
-        LayoutUtil::SetToDefaultLayout(&p1_shape);
-        SetFortranLayout(&p2_shape);
-        LayoutUtil::SetToDefaultLayout(&output_shape);
-        TF_RETURN_IF_ERROR(SetOperandLayout(p1_shape, instruction, 0));
-        TF_RETURN_IF_ERROR(SetOperandLayout(p2_shape, instruction, 1));
-        TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
-        return Status::OK();
-      }
-    }
 
     // For batched dot we require the default layout.
     // TODO(b/112111608): This is overly conservative, the only real restriction
@@ -320,12 +289,19 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       // b) the two minor dimensions are in fortran (column-major) order,
       // although for the 'a' argument we could potentially accept row-major
       // order and fold the transpose into the operator.
+      auto set_fortran_layout = [](Shape* shape) {
+        LayoutUtil::SetToDefaultLayout(shape);
+        int n = shape->mutable_layout()->minor_to_major_size();
+        CHECK_GE(n, 2);
+        std::swap(shape->mutable_layout()->mutable_minor_to_major()->at(0),
+                  shape->mutable_layout()->mutable_minor_to_major()->at(1));
+      };
       Shape op0_shape = instruction->operand(0)->shape();
       Shape op1_shape = instruction->operand(1)->shape();
       Shape output_shape = instruction->shape();
-      SetFortranLayout(&op0_shape);
-      SetFortranLayout(&op1_shape);
-      SetFortranLayout(&output_shape);
+      set_fortran_layout(&op0_shape);
+      set_fortran_layout(&op1_shape);
+      set_fortran_layout(&output_shape);
       TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
       TF_RETURN_IF_ERROR(SetOperandLayout(op1_shape, instruction, 1));
       TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
