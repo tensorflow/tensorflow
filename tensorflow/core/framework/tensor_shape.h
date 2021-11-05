@@ -359,6 +359,23 @@ class TensorShape : public TensorShapeBase<TensorShape> {
  public:
   using TensorShapeBase<TensorShape>::TensorShapeBase;
 
+  // These factory methods should be used instead of the constructors that take
+  // an array of sizes if calling code cannot validate that the sizes specify a
+  // valid `TensorShape`.
+  // The value in `*out` is valid iff the returned value is `Status::OK`.
+  static Status BuildTensorShape(gtl::ArraySlice<int64_t> dim_sizes,
+                                 TensorShape* out) {
+    return BuildTensorShapeBase(dim_sizes, out);
+  }
+  static Status BuildTensorShape(std::initializer_list<int64_t> dim_sizes,
+                                 TensorShape* out) {
+    return BuildTensorShape(gtl::ArraySlice<int64_t>(dim_sizes), out);
+  }
+  static Status BuildTensorShape(const TensorShapeProto& proto,
+                                 TensorShape* out) {
+    return BuildTensorShapeBase(proto, out);
+  }
+
   /// Allow a TensorShape to be used as a PartialTensorShape without copying
   operator const PartialTensorShape&() const;  // NOLINT(runtime/explicit)
 
@@ -510,6 +527,23 @@ class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
  public:
   PartialTensorShape() {}
   using TensorShapeBase<PartialTensorShape>::TensorShapeBase;
+
+  // These factory methods should be used instead of the constructors that take
+  // an array of sizes if calling code cannot validate that the sizes specify a
+  // valid `PartialTensorShape`.
+  // The value in `*out` is valid iff the returned value is `Status::OK`.
+  static Status BuildPartialTensorShape(gtl::ArraySlice<int64_t> dim_sizes,
+                                        PartialTensorShape* out) {
+    return BuildTensorShapeBase(dim_sizes, out);
+  }
+  static Status BuildPartialTensorShape(
+      std::initializer_list<int64_t> dim_sizes, PartialTensorShape* out) {
+    return BuildPartialTensorShape(gtl::ArraySlice<int64_t>(dim_sizes), out);
+  }
+  static Status BuildPartialTensorShape(const TensorShapeProto& proto,
+                                        PartialTensorShape* out) {
+    return BuildTensorShapeBase(proto, out);
+  }
 
   /// Add a dimension to the end ("inner-most"), returns a new
   /// PartialTensorShape.
