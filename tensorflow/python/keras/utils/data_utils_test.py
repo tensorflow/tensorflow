@@ -27,6 +27,7 @@ from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.platform import test
 
 
+
 class TestGetFileAndValidateIt(test.TestCase):
 
   def test_get_file_and_validate_it(self):

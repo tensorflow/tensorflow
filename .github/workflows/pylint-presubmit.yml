@@ -23,6 +23,7 @@ jobs:
   build:
     name: PyLint
     runs-on: ubuntu-latest
+    container: tensorflow/tensorflow:latest-devel
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -34,15 +35,6 @@ jobs:
     - name: Report list of changed files
       run: |
         echo Changed files: ${{ steps.get_file_changes.outputs.files }}
-    - name: Set up Python 3.8
-      uses: actions/setup-python@v1
-      with:
-        python-version: 3.8
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pylint numpy wheel
-        pip install keras_preprocessing --no-deps
     - name: Run PyLint on changed files
       run: |
         echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" | grep ".py$" | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc
