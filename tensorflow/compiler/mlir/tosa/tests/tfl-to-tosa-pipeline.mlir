@@ -1087,8 +1087,7 @@ func @test_one_hot(%arg0: tensor<4x4xi32>, %arg1: tensor<f32>, %arg2: tensor<f32
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1x1xf32>}
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() {value = dense<6.10360876E-5> : tensor<1x1x1xf32>}
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.mul"(%arg0, %[[VAR0]]) {shift = 0 : i32}
-// CHECK-DAG: %[[VAR6:.*]] = "tosa.add"(%[[VAR4]], %[[VAR1]])
-// CHECK-DAG: %[[VAR7:.*]] = "tosa.cast"(%[[VAR6]])
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.cast"(%[[VAR4]])
 // CHECK-DAG: %[[VAR8:.*]] = "tosa.cast"(%[[VAR7]])
 // CHECK-DAG: %[[VAR10:.*]] = "tosa.sub"(%[[VAR8]], %[[VAR1]])
 // CHECK: %[[VAR12:.*]] = "tosa.mul"(%[[VAR10]], %[[VAR2]]) {shift = 0 : i32}
