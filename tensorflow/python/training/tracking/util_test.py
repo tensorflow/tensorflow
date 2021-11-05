@@ -915,6 +915,36 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     del no_v
     self.assertEqual(delete_counter, 2)
 
+  def test_defer_objects_with_values_only(self):
+    # Tests that deferred dependencies are only added if the node in the
+    # object graph has children or checkpointed values.
+    root = tracking.AutoTrackable()
+    root.branch_with_value = tracking.AutoTrackable()
+    root.branch_with_value.v = variables_lib.Variable(5.0)
+    root.branch_no_value = tracking.AutoTrackable()
+    root.branch_no_value.child = tracking.AutoTrackable()
+    root.v = variables_lib.Variable(1.0)
+
+    checkpoint = trackable_utils.Checkpoint(model=root)
+    checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    save_path = checkpoint.save(checkpoint_prefix)
+
+    new_root = tracking.AutoTrackable()
+    checkpoint = trackable_utils.Checkpoint(model=new_root)
+    checkpoint.restore(save_path)
+
+    # root should have two nodes with values/children (`branch-with_value`/`v`).
+    self.assertLen(new_root._deferred_dependencies, 2)
+
+    new_root.branch_no_value = tracking.AutoTrackable()
+    self.assertLen(new_root._deferred_dependencies, 2)
+
+    new_root.branch_with_value = tracking.AutoTrackable()
+    self.assertLen(new_root._deferred_dependencies, 1)
+
+    new_root.v = variables_lib.Variable(1.0)
+    self.assertEmpty(new_root._deferred_dependencies, 1)
+
 
 class TemplateTests(parameterized.TestCase, test.TestCase):
 
