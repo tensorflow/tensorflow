@@ -1368,5 +1368,19 @@ TEST_F(XlaBuilderTest, ComparisonType) {
             DynCast<HloCompareInstruction>(root)->type());
 }
 
+TEST_F(XlaBuilderTest, StableLookUpInstructionByHandle) {
+  XlaBuilder b(TestName());
+  internal::XlaBuilderFriend builder_friend;
+  XlaOp le = Le(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+  HloInstructionProto* first_op = builder_friend.GetInstruction(le);
+  // Create some more instructions.
+  for (int i = 0; i < 100; ++i) {
+    (void)Le(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+  }
+  // Make sure first_op hasn't changed.
+  HloInstructionProto* first_op_now = builder_friend.GetInstruction(le);
+  EXPECT_EQ(first_op, first_op_now);
+}
+
 }  // namespace
 }  // namespace xla

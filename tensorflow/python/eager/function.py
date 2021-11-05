@@ -1538,14 +1538,7 @@ class ConcreteFunction(core.ConcreteFunction):
     """Enables the structured signature by supplying a function_spec."""
     self._function_spec = None
     self._pre_initialized_function_spec = function_spec
-
-    # Note: when ConcreteFunctions are built by recreate_function() in
-    # function_deserialization.py, they don't have a structured_input_signature
-    # yet.  In that case, _initialize_function_spec() gets called by
-    # _setup_functions_structures() in load.py.
-    if (function_spec is not None and
-        self.structured_input_signature is not None):
-      self._initialize_function_spec()
+    self._initialize_function_spec()
 
   def _initialize_function_spec(self):
     """Updates `self._function_spec` to include varargs and bound variables.

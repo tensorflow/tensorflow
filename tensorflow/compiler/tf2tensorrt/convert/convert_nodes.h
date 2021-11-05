@@ -386,6 +386,10 @@ class Converter {
                     absl::string_view sub_op_name,
                     absl::optional<int> sub_op_instance = absl::nullopt);
 
+  std::unordered_map<string, TRT_TensorOrWeights>& TensorsMap() {
+    return trt_tensors_;
+  }
+
  private:
   Converter(TrtPrecisionMode precision_mode, bool use_calibration,
             nvinfer1::ILogger* trt_logger, const bool use_implicit_batch,

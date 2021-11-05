@@ -20,12 +20,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/device_profiler_session.h"
+#include "tensorflow/core/protobuf/distributed_runtime_payloads.pb.h"
 
 namespace tensorflow {
 
@@ -55,7 +57,8 @@ void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
   Status s = env_->session_mgr->CreateSession(
       request->session_handle(), request->server_def(),
       request->cluster_device_attributes(), request->isolate_session_state(),
-      request->master_task(), request->master_incarnation());
+      request->master_task(), request->master_incarnation(),
+      request->coordination_service_config());
   done(s);
 }
 
@@ -223,6 +226,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   session->graph_mgr()->ExecuteAsync(
       request->graph_handle(), step_id, session.get(), request->exec_opts(),
       collector, response, cm, in,
+      env_->session_mgr->GetCoordinationServiceAgent(),
       [this, step_id, response, session, cm, out, token, collector,
        device_profiler_session, opts, done](const Status& status) {
         Status s = status;
@@ -315,6 +319,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     session->graph_mgr()->ExecuteAsync(
         graph_handle, step_id, session.get(), request->exec_opts(),
         nullptr /* collector */, nullptr /* response */, cm, in,
+        env_->session_mgr->GetCoordinationServiceAgent(),
         [this, token, step_id, session](Status s) {
           cancellation_manager_.DeregisterCallback(token);
           partial_run_mgr_.ExecutorDone(step_id, s);
@@ -466,13 +471,16 @@ Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
 
   // Does the device have the right incarnation number we expect?
   if ((*src_dev)->attributes().incarnation() != parsed.src_incarnation) {
-    return errors::Aborted(
-        "RecvTensor expects a different device incarnation: ",
-        parsed.src_incarnation, " vs. ", (*src_dev)->attributes().incarnation(),
-        ". Your worker job (\"",
-        env_->session_mgr->LegacySession()->worker_name(),
-        "\") was probably restarted. Check your "
-        "worker job for the reason why it was restarted.");
+    return errors::AbortedWithPayloads(
+        strings::StrCat("RecvTensor expects a different device incarnation: ",
+                        parsed.src_incarnation, " vs. ",
+                        (*src_dev)->attributes().incarnation(),
+                        ". Your worker job (\"",
+                        env_->session_mgr->LegacySession()->worker_name(),
+                        "\") was probably restarted. Check your "
+                        "worker job for the reason why it was restarted."),
+        {{kWorkerPossiblyRestarted,
+          distributed_runtime::WorkerPossiblyRestarted().SerializeAsString()}});
   }
 
   return Status::OK();

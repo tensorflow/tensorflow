@@ -40,7 +40,6 @@ from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
-from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
@@ -142,7 +141,9 @@ class Loader(object):
     self._export_dir = export_dir
     self._concrete_functions = (
         function_deserialization.load_function_def_library(
-            meta_graph.graph_def.library, wrapper_function=_WrapperFunction))
+            library=meta_graph.graph_def.library,
+            saved_object_graph=self._proto,
+            wrapper_function=_WrapperFunction))
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
 
@@ -274,7 +275,6 @@ class Loader(object):
     # trigger other functions to be executed. For now it is only guaranteed to
     # work if the captures of a function only trigger functions without
     # captures.
-    self._setup_functions_structures()
     self._setup_functions_captures()
 
     self._create_saveable_object_factories()
@@ -322,29 +322,6 @@ class Loader(object):
       if reference.local_name == "__call__" and not callable(obj):
         setattr(type(obj), "__call__", _call_attribute)
 
-  def _setup_functions_structures(self):
-    """Setup structure for inputs and outputs of restored functions."""
-    for name, proto in sorted(self._proto.concrete_functions.items()):
-      concrete_function = self._concrete_functions[name]
-      # By setting the structured_outputs directly, we can rely on this
-      # function_lib.ConcreteFunction object to perform the output repacking
-      # logic. The only limitation of that logic is that it only works
-      # with output that is convertible to Tensors and the conversion
-      # always happens. For example tf.TensorShape([2, 3]) will be
-      # converted to Tensor representing [2, 3].
-      original_outputs = nested_structure_coder.decode_proto(
-          proto.output_signature)
-      # The original_outputs here had Tensors converted to TensorSpecs, so
-      # the restored function's structured_outputs field will not be
-      # exactly the same. Fortunately the repacking logic cares only about
-      # the structure; and the unpacking logic cares only about structure
-      # and types.
-      concrete_function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
-      concrete_function._func_graph.structured_input_signature = (  # pylint: disable=protected-access
-          nested_structure_coder.decode_proto(
-              proto.canonicalized_input_signature))
-      concrete_function._initialize_function_spec()  # pylint: disable=protected-access
-
   def _setup_functions_captures(self):
     """Setup captures and variables in restored functions."""
     concrete_functions = sorted(self._proto.concrete_functions.items())
@@ -358,7 +335,7 @@ class Loader(object):
           for node_id in proto.bound_inputs
           if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
       ]
-      # TODO(andresp): This is only injecting the captured inputs into the
+      # TODO(b/205010575): This is only injecting the captured inputs into the
       # concrete function, note that we did not modify the FuncGraph
       # itself.
       captured_inputs_list = []
@@ -526,7 +503,7 @@ class Loader(object):
   def _restore_checkpoint(self):
     """Load state from checkpoint into the deserialized objects."""
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
-    # TODO(andresp): Clean use of private methods of TrackableSaver.
+    # TODO(b/205010730): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
     saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
     with ops.device("CPU"):

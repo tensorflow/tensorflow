@@ -23,18 +23,14 @@ namespace tensorflow {
 
 namespace full_type {
 
-// TODO(mdan): Rename to ReplicateInput (singular).
-ForwardTypeInferenceFn ReplicateInputs(int n) {
-  return [n](const std::vector<std::reference_wrapper<const FullTypeDef>>&
-                 input_types) {
-    DCHECK(input_types.size() == 1)
-        << "expected exactly one input, got " << input_types.size();
-
-    const auto& in_type = input_types[0].get();
+ForwardTypeInferenceFn ReplicateInput(int i, int n) {
+  return [i, n](const std::vector<std::reference_wrapper<const FullTypeDef>>&
+                    input_types) {
+    const FullTypeDef& in_type = input_types.at(i).get();
     FullTypeDef ret_type;
     if (in_type.type_id() != TFT_UNSET) {
       ret_type.set_type_id(TFT_PRODUCT);
-      for (int i = 0; i < n; i++) {
+      for (int k = 0; k < n; k++) {
         *(ret_type.add_args()) = in_type;
       }
     }

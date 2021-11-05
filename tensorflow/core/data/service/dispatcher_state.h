@@ -74,11 +74,15 @@ class DispatcherState {
 
   // A dataset registered with the dispatcher.
   struct Dataset {
-    explicit Dataset(int64_t dataset_id, int64_t fingerprint)
-        : dataset_id(dataset_id), fingerprint(fingerprint) {}
+    explicit Dataset(int64_t dataset_id, int64_t fingerprint,
+                     const DataServiceMetadata& metadata)
+        : dataset_id(dataset_id),
+          fingerprint(fingerprint),
+          metadata(metadata) {}
 
     const int64_t dataset_id;
     const int64_t fingerprint;
+    const DataServiceMetadata metadata;
   };
 
   // A worker registered with the dispatcher.

@@ -47,12 +47,12 @@ class SignlessOpConversion : public OpConversionPattern<T> {
         remove_sign_converter_(remove_sign_converter) {}
 
   LogicalResult matchAndRewrite(
-      T op, ArrayRef<Value> operands,
+      T op, typename T::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
     // Sign-convert operands and result type.
     SmallVector<Value> converted_operands;
-    for (auto operand : operands) {
+    for (auto operand : adaptor.getOperands()) {
       Type original = operand.getType();
       Type converted = remove_sign_converter_->convertType(original);
       if (converted == original) {

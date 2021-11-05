@@ -543,12 +543,18 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/types",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

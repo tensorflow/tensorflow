@@ -263,7 +263,7 @@ struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TF::ConstOp op, ArrayRef<Value> operands,
+      TF::ConstOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // Verify that the opaque elements attribute contains tensor of type variant
     // and scalar shape. The variant type should hold a TensorList.
@@ -346,12 +346,12 @@ struct ConvertTensorListSetItem
   //        0), [-1, -1, ...])), (ExpandDims $item, expand_dim = 0), (Slice
   //        $input, [$index + 1, 0, 0, ...], [-1, -1, ...]))>;
   LogicalResult matchAndRewrite(
-      TF::TensorListSetItemOp op, ArrayRef<Value> operands,
+      TF::TensorListSetItemOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value input = operands[0];
-    Value index = operands[1];
-    Value item = operands[2];
+    Value input = adaptor.getOperands()[0];
+    Value index = adaptor.getOperands()[1];
+    Value item = adaptor.getOperands()[2];
 
     IntegerType shape_dtype = rewriter.getIntegerType(32);
     auto item_rank = rewriter.create<TF::RankOp>(
@@ -407,14 +407,14 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
 
   // Create and return a 1-d tensor with exactly one element equal to the number
   // of list elements to initialize the output tensor list with.
-  virtual Value GetNumElements(OpT op, ArrayRef<Value> operands,
+  virtual Value GetNumElements(OpT op, ValueRange operands,
                                PatternRewriter *rewriter) const = 0;
 
   // Rewrites the original op into `tf.fill`. The result tensor shape is
   // [num_element, element_shape]. All the values in the result tensor will be
   // initialized to 0.
   LogicalResult matchAndRewrite(
-      OpT op, ArrayRef<Value> operands,
+      OpT op, typename OpT::Adaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Type dtype = op.element_dtype();
     if (!(dtype.isF16() || dtype.isF32() || dtype.isF64() ||
@@ -429,7 +429,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
                  : op.emitOpError(error_info);
     }
 
-    Value element_shape = operands[0];
+    Value element_shape = adaptor.getOperands()[0];
     Type shape_dtype = getElementTypeOrSelf(element_shape.getType());
     // If the `element_shape` is a scalar, we try to acquire its shape by
     // looking at the first `TensorListSetItemOp` writing to this tensor list.
@@ -539,7 +539,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
     int64_t result_rank = -1;  // -1 means unknown result rank.
     Type element_dtype = op.element_dtype();
     Type result_type = UnrankedTensorType::get(element_dtype);
-    Value leading_dim = GetNumElements(op, operands, &rewriter);
+    Value leading_dim = GetNumElements(op, adaptor.getOperands(), &rewriter);
     if (auto element_type =
             op.element_type().template dyn_cast<RankedTensorType>()) {
       result_rank = element_type.getRank() + 1;
@@ -587,7 +587,7 @@ struct ConvertTensorListReserve
       : ConvertTensorListInitOp(context, allow_tensorlist_pass_through,
                                 default_to_single_batch) {}
 
-  Value GetNumElements(TF::TensorListReserveOp op, ArrayRef<Value> operands,
+  Value GetNumElements(TF::TensorListReserveOp op, ValueRange operands,
                        PatternRewriter *rewriter) const override {
     Value scalar_zero = CreateI32SplatConst(op.getLoc(), rewriter, {}, 0);
     Type shape_dtype = getElementTypeOrSelf(op.element_shape().getType());
@@ -621,7 +621,7 @@ struct ConvertEmptyTensorList
       : ConvertTensorListInitOp(context, allow_tensorlist_pass_through,
                                 default_to_single_batch) {}
 
-  Value GetNumElements(TF::EmptyTensorListOp op, ArrayRef<Value> operands,
+  Value GetNumElements(TF::EmptyTensorListOp op, ValueRange operands,
                        PatternRewriter *rewriter) const override {
     return CreateI32SplatConst(op.getLoc(), rewriter, {1}, 0);
   }
@@ -632,10 +632,10 @@ struct ConvertTensorListPushBack
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TF::TensorListPushBackOp op, ArrayRef<Value> operands,
+      TF::TensorListPushBackOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Value input_handle = operands[0];
-    Value item = operands[1];
+    Value input_handle = adaptor.getOperands()[0];
+    Value item = adaptor.getOperands()[1];
 
     // Expand the shape of the item so that it will have rank same as the input
     // tensor and it is compatible for the Concat Op.
@@ -673,10 +673,10 @@ struct ConvertTensorListResize
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TF::TensorListResizeOp op, ArrayRef<Value> operands,
+      TF::TensorListResizeOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Value input_handle = operands[0];
-    Value size = operands[1];
+    Value input_handle = adaptor.getOperands()[0];
+    Value size = adaptor.getOperands()[1];
 
     Location loc = op.getLoc();
     Value scalar_zero = CreateI32SplatConst(loc, &rewriter, {}, 0);
@@ -722,12 +722,14 @@ struct ConvertTensorListResize
     auto then_branch_op = rewriter.create<FuncOp>(loc, "cond_true", func_type);
     CreateCondTrueBranch(op, shape_dtype, result_type, then_branch_op,
                          &rewriter);
+    then_branch_op.setVisibility(FuncOp::Visibility::Private);
 
     // Constructs `else_branch`, which is executed when `if_cond` evaluates to
     // false.
     auto else_branch_op = rewriter.create<FuncOp>(loc, "cond_false", func_type);
     CreateCondFalseBranch(loc, shape_dtype, result_type, else_branch_op,
                           &rewriter);
+    else_branch_op.setVisibility(FuncOp::Visibility::Private);
 
     // Inserts the two blocks' names into the symbol table held by the module.
     // Using SymbolTable will ensure that the inserted symbol names are
@@ -826,10 +828,10 @@ struct ConvertTensorListGetItem
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TF::TensorListGetItemOp op, ArrayRef<Value> operands,
+      TF::TensorListGetItemOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Value input = operands[0];
-    Value index = operands[1];
+    Value input = adaptor.getOperands()[0];
+    Value index = adaptor.getOperands()[1];
     rewriter.replaceOpWithNewOp<TF::GatherOp>(op, op.getType(), input, index,
                                               rewriter.getBoolAttr(true));
     return success();
@@ -841,10 +843,10 @@ struct ConvertTensorListLength
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TF::TensorListLengthOp op, ArrayRef<Value> operands,
+      TF::TensorListLengthOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value input_handle = operands[0];
+    Value input_handle = adaptor.getOperands()[0];
 
     BoolAttr true_attr = rewriter.getBoolAttr(true);
     auto shape = rewriter.create<TF::ShapeOp>(loc, input_handle,
@@ -861,11 +863,11 @@ struct ConvertTensorListStack
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TF::TensorListStackOp op, ArrayRef<Value> operands,
+      TF::TensorListStackOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value input = operands[0];
-    Value element_shape = operands[1];
+    Value input = adaptor.getOperands()[0];
+    Value element_shape = adaptor.getOperands()[1];
 
     // If the `element_shape` is a known constant (which is defined when calling
     // `tensor_list_stack`) and also valid (not scalar), we rewrite this op to a
@@ -909,11 +911,11 @@ struct ConvertTensorListConcatV2
       TF::TensorListConcatV2Op>::allow_tensorlist_pass_through_;
 
   LogicalResult matchAndRewrite(
-      TF::TensorListConcatV2Op op, ArrayRef<Value> operands,
+      TF::TensorListConcatV2Op op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value input = operands[0];
-    Value element_shape = operands[1];
+    Value input = adaptor.getOperands()[0];
+    Value element_shape = adaptor.getOperands()[1];
 
     // Only match when `element_shape` is a constant.
     DenseIntElementsAttr dense_elem_attr;
@@ -970,11 +972,11 @@ struct ConvertIdentity : public OpConversionPattern<TF::IdentityOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TF::IdentityOp op, ArrayRef<Value> operands,
+      TF::IdentityOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Value input = operands[0];
-    rewriter.replaceOpWithNewOp<TF::IdentityOp>(op, input.getType(), operands,
-                                                op->getAttrs());
+    Value input = adaptor.getOperands()[0];
+    rewriter.replaceOpWithNewOp<TF::IdentityOp>(
+        op, input.getType(), adaptor.getOperands(), op->getAttrs());
     return success();
   }
 };
@@ -1082,7 +1084,7 @@ template <typename R>
 void UpdateTensorListTypes(
     const llvm::SmallSet<int, 4> &tensor_list_index,
     const llvm::SmallSet<int, 4> &resized_tensor_list_index,
-    ArrayRef<Type> types, R &&range, ArrayRef<Value> operands,
+    ArrayRef<Type> types, R &&range, ValueRange operands,
     llvm::SmallVectorImpl<Type> *updated_types) {
   int i = 0;
   for (const auto it : llvm::zip(types, range, operands)) {
@@ -1145,8 +1147,8 @@ void UpdateFunctionAndRegionType(ConversionPatternRewriter &rewriter,
 // Changes the function type of `cond_func` and `body_func` for the given While
 // op.
 LogicalResult UpdateFunctionTypesForWhileOp(
-    ConversionPatternRewriter &rewriter, TF::WhileOp op,
-    ArrayRef<Value> operands, const llvm::SmallSet<int, 4> &tensor_list_args,
+    ConversionPatternRewriter &rewriter, TF::WhileOp op, ValueRange operands,
+    const llvm::SmallSet<int, 4> &tensor_list_args,
     const llvm::SmallSet<int, 4> &resized_tensor_lists) {
   int func_index = 0;
   for (FuncOp func : {op.cond_function(), op.body_function()}) {
@@ -1190,8 +1192,7 @@ LogicalResult UpdateFunctionTypesForWhileOp(
 // Changes the function type of `then_function` and `else_function` for the
 // given If op.
 LogicalResult UpdateFunctionTypesForIfOp(
-    ConversionPatternRewriter &rewriter, TF::IfOp op,
-    llvm::ArrayRef<Value> operands,
+    ConversionPatternRewriter &rewriter, TF::IfOp op, ValueRange operands,
     const llvm::SmallSet<int, 4> &tensor_list_args,
     const llvm::SmallSet<int, 4> &resized_tensor_lists,
     llvm::ArrayRef<Type> updated_result_types) {
@@ -1276,7 +1277,7 @@ void UpdateTensorListResultTypesForIf(
     const llvm::SmallSet<int, 4> &tensor_list_index,
     const llvm::SmallSet<int, 4> &resized_tensor_list_index,
     const llvm::DenseMap<int, int> &tensor_list_map, ArrayRef<Type> types,
-    R &&range, ArrayRef<Value> operands,
+    R &&range, ValueRange operands,
     llvm::SmallVectorImpl<Type> *updated_types) {
   int i = 0;
   for (const auto it : llvm::zip(types, range)) {
@@ -1306,7 +1307,7 @@ struct ConvertIf : public OpConversionPattern<TF::IfOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TF::IfOp op, ArrayRef<Value> operands,
+      TF::IfOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // Find all Tensor List arugments.
     auto tensor_list_args = GetTensorListArgumentsIndex(op.else_function());
@@ -1324,14 +1325,14 @@ struct ConvertIf : public OpConversionPattern<TF::IfOp> {
 
     UpdateTensorListResultTypesForIf<mlir::ResultRange>(
         tensor_list_results, resized_tensor_lists, tensor_list_map,
-        op_result_types, op->getResults(), operands.drop_front(),
+        op_result_types, op->getResults(), adaptor.getOperands().drop_front(),
         &result_types);
 
     // Create a new if op with new operands and updated result types.
-    auto converted = rewriter.create<TF::IfOp>(op.getLoc(), result_types,
-                                               operands, op->getAttrs());
+    auto converted = rewriter.create<TF::IfOp>(
+        op.getLoc(), result_types, adaptor.getOperands(), op->getAttrs());
     converted->removeAttr("T");
-    (void)UpdateFunctionTypesForIfOp(rewriter, converted, operands,
+    (void)UpdateFunctionTypesForIfOp(rewriter, converted, adaptor.getOperands(),
                                      tensor_list_args, resized_tensor_lists,
                                      result_types);
     rewriter.replaceOp(op, converted.getResults());
@@ -1343,7 +1344,7 @@ struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TF::WhileOp op, ArrayRef<Value> operands,
+      TF::WhileOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // Find all Tensor List arugments.
     auto tensor_list_args = GetTensorListArgumentsIndex(op.body_function());
@@ -1360,14 +1361,15 @@ struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
         GetResizedTensorListIndexes(op.body_function(), tensor_list_args);
     UpdateTensorListTypes<mlir::OperandRange>(
         tensor_list_args, resized_tensor_lists, op_result_types,
-        op.getOperands(), operands, &result_types);
+        op.getOperands(), adaptor.getOperands(), &result_types);
 
     // Create a new while op with new operands and updated result types.
-    auto converted = rewriter.create<TF::WhileOp>(op.getLoc(), result_types,
-                                                  operands, op->getAttrs());
+    auto converted = rewriter.create<TF::WhileOp>(
+        op.getLoc(), result_types, adaptor.getOperands(), op->getAttrs());
     converted->removeAttr("T");
-    (void)UpdateFunctionTypesForWhileOp(rewriter, converted, operands,
-                                        tensor_list_args, resized_tensor_lists);
+    (void)UpdateFunctionTypesForWhileOp(rewriter, converted,
+                                        adaptor.getOperands(), tensor_list_args,
+                                        resized_tensor_lists);
 
     rewriter.replaceOp(op, converted.getResults());
     return success();
@@ -1378,18 +1380,18 @@ struct ConvertWhileRegion : public OpConversionPattern<TF::WhileRegionOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TF::WhileRegionOp op, ArrayRef<Value> operands,
+      TF::WhileRegionOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     llvm::SmallVector<Type, 8> result_types;
     result_types.reserve(op.getNumOperands());
     // Change all DT_VARIANT result types to unranked tensor type.
-    for (auto it : llvm::zip(op.getResultTypes(), operands))
+    for (auto it : llvm::zip(op.getResultTypes(), adaptor.getOperands()))
       result_types.push_back(
           VariantToUnrankedTensorType(std::get<0>(it), std::get<1>(it)));
 
     // Create a new while op with new operands and updated result types.
     auto converted = rewriter.create<TF::WhileRegionOp>(
-        op.getLoc(), result_types, operands, op->getAttrs());
+        op.getLoc(), result_types, adaptor.getOperands(), op->getAttrs());
 
     // Inline the regions from the old while into the new one, and apply
     // signature conversion to inlined region.
@@ -1399,8 +1401,9 @@ struct ConvertWhileRegion : public OpConversionPattern<TF::WhileRegionOp> {
 
       Block &entry = old_region.front();
       // Build signature conversion for the region.
-      TypeConverter::SignatureConversion signature_conversion(operands.size());
-      for (auto it : llvm::zip(entry.getArguments(), operands)) {
+      TypeConverter::SignatureConversion signature_conversion(
+          adaptor.getOperands().size());
+      for (auto it : llvm::zip(entry.getArguments(), adaptor.getOperands())) {
         BlockArgument arg = std::get<0>(it);
         signature_conversion.addInputs(
             arg.getArgNumber(),

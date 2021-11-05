@@ -4,6 +4,7 @@ package tensorflow.data;
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
+// Next tag: 2
 message ProcessingModeDef {
   // Specifies how data is sharded among tf.data service workers.
   enum ShardingPolicy {
@@ -45,4 +46,22 @@ message ProcessingModeDef {
     HINT = 5;
   }
   ShardingPolicy sharding_policy = 1;
+}
+
+// Metadata related to tf.data service datasets.
+// Next tag: 3
+message DataServiceMetadata {
+  oneof optional_element_spec {
+    // Serialized element spec.
+    bytes element_spec = 1;
+  }
+
+  enum Compression {
+    COMPRESSION_UNSPECIFIED = 0;
+    // No compression.
+    OFF = 1;
+    // Snappy compression as defined in tensorflow/core/platform/snappy.h.
+    SNAPPY = 2;
+  }
+  Compression compression = 2;
 }

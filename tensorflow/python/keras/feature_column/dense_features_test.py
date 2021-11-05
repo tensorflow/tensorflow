@@ -406,6 +406,7 @@ class DenseFeaturesTest(keras_parameterized.TestCase):
       net = df.DenseFeatures([price1, price2])(features)
       with _initialized_session() as sess:
         with self.assertRaisesRegex(errors.OpError,
+                                    'Dimension 0 in both shapes must be equal|'
                                     'Dimensions of inputs should match'):
           sess.run(net, feed_dict={features['price1']: [[1.], [5.], [7.]]})
 

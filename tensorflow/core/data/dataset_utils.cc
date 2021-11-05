@@ -83,6 +83,7 @@ constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
 constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
+constexpr char kInjectPrefetchEligibleOpt[] = "inject_prefetch_eligible";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
@@ -811,7 +812,8 @@ absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
       kDisablePrefetchLegacyAutotuneOpt,
       kEnableGradientDescentOpt,
       kMapParallelizationOpt,
-      kInjectPrefetchOpt};
+      kInjectPrefetchOpt,
+      kInjectPrefetchEligibleOpt};
 
   if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
       !autotune_options.enabled()) {
@@ -882,7 +884,7 @@ namespace {
 REGISTER_DATASET_EXPERIMENT("max_parallelism", 100);
 REGISTER_DATASET_EXPERIMENT("max_parallelism_v2", 5);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
-REGISTER_DATASET_EXPERIMENT("inject_prefetch", 0);
+REGISTER_DATASET_EXPERIMENT("inject_prefetch", 5);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

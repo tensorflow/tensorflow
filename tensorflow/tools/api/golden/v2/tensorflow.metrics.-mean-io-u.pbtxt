@@ -1,6 +1,7 @@
 path: "tensorflow.metrics.MeanIoU"
 tf_class {
   is_instance: "<class \'keras.metrics.MeanIoU\'>"
+  is_instance: "<class \'keras.metrics._IoUBase\'>"
   is_instance: "<class \'keras.metrics.Metric\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"

@@ -665,17 +665,6 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "nested_structure_coder_class_test",
-    srcs = ["nested_structure_coder_class_test.py"],
-    deps = [
-        ":nested_structure_coder",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
 py_strict_library(
     name = "save_options",
     srcs = ["save_options.py"],

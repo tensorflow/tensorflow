@@ -17,20 +17,6 @@ include "mlir/Pass/PassBase.td"
 
 // TF SavedModel dialect passes.
 
-def SavedModelLiftVariablePass : Pass<"tf-savedmodel-lift-variable-pass",
-    "ModuleOp"> {
-  let summary = "Convert function arguments to global tensors";
-
-  let description = [{
-    This pass takes care of finding all variables from the function arguments
-    and converting them to the corresponding global tensors, that will be
-    located out of function. Also it converts resource arguments from function
-    types to the corresponding saved model arguments accordingly.
-  }];
-
-  let constructor = "::mlir::tf_saved_model::CreateLiftVariablesPass(nullptr)";
-}
-
 def FreezeGlobalTensorsPass : Pass<"tf-saved-model-freeze-global-tensors", "ModuleOp"> {
   let summary = "Freeze tf_saved_model.global_tensor's in func bodies.";
 
@@ -68,12 +54,6 @@ def RemoveVariablesInSessionInitializerPass : Pass<"tf-saved-model-remove-vars-i
   let summary = "Remove variables in tf saved model's session initializer.";
 
   let constructor = "mlir::tf_saved_model::CreateRemoveVariablesInSessionInitializerPass()";
-}
-
-def InitializeVariablesInSessionInitializerPass : Pass<"tf-saved-model-initialize-variables-in-session-init", "ModuleOp"> {
-  let summary = "Initialize variables in session initializer function.";
-
-  let constructor = "mlir::tf_saved_model::CreateInitializeVariablesInSessionInitializerTestPass()";
 }
 
 def FreezeAssetsPass : Pass<"tf-saved-model-freeze-assets", "ModuleOp"> {

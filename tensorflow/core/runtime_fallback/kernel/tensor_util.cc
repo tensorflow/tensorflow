@@ -68,8 +68,8 @@ tfrt::AsyncValueRef<KernelFallbackTensor> TransferTensorToDevice(
 
   auto result = tfrt::MakeUnconstructedAsyncValueRef<KernelFallbackTensor>();
   bool enqueued = tfrt::EnqueueBlockingWork(
-      exec_ctx, [result = result.CopyRef(), src_cpu, dst_cpu, srcd, dstd,
-                 src = *src, dst = std::move(dst)]() mutable {
+      exec_ctx.host(), [result = result.CopyRef(), src_cpu, dst_cpu, srcd, dstd,
+                        src = *src, dst = std::move(dst)]() mutable {
         tensorflow::DeviceContext* src_device_context = nullptr;
         if (!src_cpu) {
           src_device_context =

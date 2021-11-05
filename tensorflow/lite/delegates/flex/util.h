@@ -44,6 +44,11 @@ TfLiteType GetTensorFlowLiteType(TF_DataType);
 // Returns the TF type name that corresponds to the given TfLiteType.
 const char* TfLiteTypeToTfTypeName(TfLiteType type);
 
+// Returns whether the TfLiteTensor is a resource or variant tensor.
+inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
+  return tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant;
+}
+
 }  // namespace flex
 }  // namespace tflite
 

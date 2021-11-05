@@ -93,18 +93,14 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("concat_dimension"), py::arg("split_count"),
           py::arg("replica_groups") = py::list(),
           py::arg("layout") = absl::nullopt);
-  ops.def(
-      "ApproxTopK",
-      [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
-         absl::Span<const XlaOp> init_values, int64_t top_k,
-         int64_t reduction_dim, const XlaComputation& comparator,
-         float recall_target, bool aggregate_to_topk) {
-        return ApproxTopK(builder, operands, init_values, top_k, reduction_dim,
-                          comparator, recall_target, aggregate_to_topk);
-      },
-      py::arg("builder"), py::arg("operands"), py::arg("init_values"),
-      py::arg("top_k"), py::arg("reduction_dim"), py::arg("comparator"),
-      py::arg("recall_target") = 0.9, py::arg("aggregate_to_topk") = true);
+  ops.def("ApproxTopK", &ApproxTopK, py::arg("builder"), py::arg("operands"),
+          py::arg("init_values"), py::arg("top_k"), py::arg("reduction_dim"),
+          py::arg("comparator"), py::arg("recall_target") = 0.9,
+          py::arg("aggregate_to_topk") = true,
+          py::arg("reduction_input_size_override") = -1);
+  ops.def("ApproxTopKReductionOutputSize", &ApproxTopKReductionOutputSize,
+          py::arg("input_size"), py::arg("rank"), py::arg("top_k"),
+          py::arg("recall_target"), py::arg("aggregate_to_topk") = true);
   ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));

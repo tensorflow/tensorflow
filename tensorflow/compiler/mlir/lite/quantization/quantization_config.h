@@ -42,7 +42,7 @@ struct QuantizationSpecs {
   // DT_HALF and DT_QINT8 inference type.
   bool weight_quantization = false;
 
-  // Whether use the new MLIR dynamic range quantizer instead of the tflite one.
+  // Whether use the MLIR dynamic range quantizer instead of the old TOCO one.
   bool enable_mlir_dynamic_range_quantizer = false;
 
   // Whether the quantization passes are triggered for post-training
@@ -118,9 +118,6 @@ struct QuantizationSpecs {
         enable_mlir_dynamic_range_quantizer;
     return dynamic_range_quantize;
   }
-
-  // Whether run the passes to only quantize the weights.
-  bool RunWeightQuantization() const { return weight_quantization; }
 
   // Whether this inference type represents a signed storage type.
   bool IsSignedInferenceType() const {

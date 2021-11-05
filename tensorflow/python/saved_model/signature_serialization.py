@@ -99,8 +99,8 @@ def find_function_to_export(saveable_view):
   if signature is not None:
     return signature
 
-  # TODO(andresp): Discuss removing this behaviour. It can lead to WTFs when a
-  # user decides to annotate more functions with tf.function and suddenly
+  # TODO(b/205014194): Discuss removing this behaviour. It can lead to WTFs when
+  # a user decides to annotate more functions with tf.function and suddenly
   # serving that model way later in the process stops working.
   possible_signatures = []
   for function in functions.values():

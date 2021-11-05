@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/data/rewrite_utils.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
@@ -31,8 +32,9 @@ constexpr char kDatasetType[] = "Root";
 constexpr char kAlgorithm[] = "algorithm";
 constexpr char kCpuBudget[] = "cpu_budget";
 constexpr char kExperiments[] = "experiments";
-constexpr char kMemBandwidth[] = "mem_bw_used_megabytes_per_sec";
+constexpr char kInjectPrefetchEligibleOpt[] = "inject_prefetch_eligible";
 constexpr char kIntraOpParallelism[] = "intra_op_parallelism";
+constexpr char kMemBandwidth[] = "mem_bw_used_megabytes_per_sec";
 constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
 constexpr char kRamBudget[] = "ram_budget_megabytes";
 constexpr char kRamUsage[] = "ram_usage_megabytes";
@@ -305,6 +307,12 @@ Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
                    &optimizations_default);
   // Disable `enable_gradient_descent` as it assumes presence of ModelDatasetOp.
   optimizations_disabled.insert("enable_gradient_descent");
+  if (!port::JobName().empty()) {
+    // Enable kInjectPrefetchEligibleOpt that does not modify the graph and is
+    // used to check whether the `inject_prefetch` optimization would modify the
+    // graph.
+    optimizations_enabled.insert(kInjectPrefetchEligibleOpt);
+  }
 
   auto experiments = GetExperiments();
   LogAndRecordExperiments(experiments);

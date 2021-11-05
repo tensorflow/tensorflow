@@ -37,6 +37,12 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 1,
 TEST(OptimizationRegistry, OptimizationPass) {
   EXPECT_EQ(0, TestOptimization::count_);
   GraphOptimizationPassOptions options;
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  options.graph = &graph;
+  std::unique_ptr<FunctionLibraryDefinition> flib_def(
+      new FunctionLibraryDefinition(OpRegistry::Global(),
+                                    FunctionDefLibrary{}));
+  options.flib_def = flib_def.get();
   EXPECT_EQ(Status::OK(),
             OptimizationPassRegistry::Global()->RunGrouping(
                 OptimizationPassRegistry::PRE_PLACEMENT, options));

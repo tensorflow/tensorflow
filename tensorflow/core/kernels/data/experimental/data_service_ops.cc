@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/experimental/data_service_ops.h"
 
+#include <string>
 #include <utility>
 
 #include "tensorflow/core/data/dataset_utils.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -47,7 +49,13 @@ RegisterDatasetOp::RegisterDatasetOp(OpKernelConstruction* ctx)
   if (ctx->HasAttr(kElementSpec)) {
     tstring element_spec;
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kElementSpec, &element_spec));
-    element_spec_.emplace(element_spec);
+    element_spec_ = element_spec;
+  }
+
+  if (ctx->HasAttr(kMetadata)) {
+    tstring serialized_metadata;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kMetadata, &serialized_metadata));
+    serialized_metadata_ = serialized_metadata;
   }
 }
 
@@ -86,13 +94,24 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
             s));
   }
 
+  DataServiceMetadata metadata;
+  if (!element_spec_.empty()) {
+    metadata.set_element_spec(element_spec_);
+  }
+  if (!serialized_metadata_.empty()) {
+    OP_REQUIRES(ctx, metadata.ParseFromString(serialized_metadata_),
+                errors::InvalidArgument(
+                    "Failed to parse DataServiceMetadata from string: ",
+                    std::string(serialized_metadata_)));
+  }
+
   DataServiceDispatcherClient client(address, protocol);
   int64_t dataset_id;
   int64_t deadline_micros = EnvTime::NowMicros() + kRetryTimeoutMicros;
   OP_REQUIRES_OK(
       ctx, grpc_util::Retry(
                [&]() {
-                 return client.RegisterDataset(dataset_def, element_spec_,
+                 return client.RegisterDataset(dataset_def, metadata,
                                                dataset_id);
                },
                /*description=*/

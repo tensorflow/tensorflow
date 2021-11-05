@@ -400,10 +400,10 @@ StatusOr<PrimitiveType> MaybeUpcast(
         }
         return InvalidArgument(
             "Cannot concatenate arrays that differ in dimensions other than "
-            "the one being concatenated (the other array dimensions must be "
-            "the same): %s vs %s in dimension %d.",
-            ShapeUtil::HumanString(*arg_shape), ShapeUtil::HumanString(*shape),
-            dimension);
+            "the one being concatenated. Dimension %d in both shapes must be "
+            "equal: %s vs %s.",
+            dimension_number, ShapeUtil::HumanString(*arg_shape),
+            ShapeUtil::HumanString(*shape));
       }
     }
     element_type = ShapeUtil::HigherPrecisionElementType(*shape, *arg_shape);

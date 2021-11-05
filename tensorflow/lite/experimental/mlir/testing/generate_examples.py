@@ -50,6 +50,7 @@ from tensorflow.lite.testing.op_tests.max_pool_with_argmax import make_max_pool_
 from tensorflow.lite.testing.op_tests.parse_example import make_parse_example_tests
 from tensorflow.lite.testing.op_tests.pool3d import make_avg_pool3d_tests
 from tensorflow.lite.testing.op_tests.pool3d import make_max_pool3d_tests
+from tensorflow.lite.testing.op_tests.random_uniform import make_random_uniform_tests
 from tensorflow.lite.testing.op_tests.real import make_real_tests
 from tensorflow.lite.testing.op_tests.reciprocal import make_reciprocal_tests
 from tensorflow.lite.testing.op_tests.rfft import make_rfft_tests
