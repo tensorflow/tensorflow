@@ -505,6 +505,7 @@ cuda_py_test(
         ":context",
         ":def_function",
         ":function",
+        ":function_cache",
         ":test",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",
@@ -644,6 +645,23 @@ py_library(
 )
 
 py_library(
+    name = "function_cache",
+    srcs = ["function_cache.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":function_trace_type",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python/framework:device",
+        "//tensorflow/python/framework:func_graph",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/util",
+    ],
+)
+
+py_library(
     name = "function",
     srcs = ["function.py"],
     srcs_version = "PY3",
@@ -653,7 +671,7 @@ py_library(
         ":core",
         ":execute",
         ":forwardprop_util",
-        ":function_trace_type",
+        ":function_cache",
         ":graph_only_ops",
         ":tape",
         "//tensorflow/python:dtypes",
@@ -666,7 +684,6 @@ py_library(
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:util",
         "//tensorflow/python/ops/numpy_ops:numpy",
-        "//tensorflow/python/saved_model:save_context",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
