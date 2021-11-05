@@ -374,6 +374,28 @@ cc_library(
 )
 
 cc_library(
+    name = "tfe_legalize_tfg",
+    srcs = [
+        "transforms/passes.h",
+        "transforms/passes_detail.h",
+        "transforms/tfg-to-tfe.cc",
+    ],
+    deps = [
+        ":tensorflow",
+        ":tf_device_pass_inc_gen",
+        ":tf_pass_inc_gen",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/ir:Dialect",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "tensorflow_attributes",
     hdrs = [
         "ir/tf_attributes.h",
@@ -681,6 +703,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -1229,6 +1252,7 @@ cc_library(
         ":tf_legalize_hlo",
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
+        ":tfe_legalize_tfg",
         ":tpu_rewrite_device_util",
         ":translate_utils",
         ":unroll_batch_matmul_pass",

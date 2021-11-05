@@ -91,6 +91,11 @@ def LegalizeHloToTfPass : FunctionPass<"tf-legalize-hlo"> {
   let constructor = "TF::CreateLegalizeHloToTfPass()";
 }
 
+def LegalizeTFGToTFPass : Pass<"tfe-legalize-tfg", "ModuleOp"> {
+  let summary = "Legalize from TFG to the TFE dialect";
+  let constructor = "TF::CreateLegalizeTFGToTFEPass()";
+}
+
 def ReplicateToIslandPass : FunctionPass<"tf-replicate-to-island"> {
   let summary = "Lowers device replicate to executor islands";
   let constructor = "TFDevice::CreateReplicateToIslandPass()";
