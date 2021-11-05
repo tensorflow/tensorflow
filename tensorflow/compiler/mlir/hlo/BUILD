@@ -12,30 +12,6 @@ package(
     licenses = ["notice"],
 )
 
-package_group(
-    name = "friends",
-    packages = [
-        "//babelfish/device/...",
-        "//learning/brain/experimental/dtensor/...",
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/google/xla/kernels/...",
-        "//learning/brain/google/xla/mlir/...",
-        "//learning/deepmind/partir/...",
-        "//learning/pathways/data_parallel/tf2xla/...",
-        "//platforms/darwinn/tools/mlir_fuzzer/...",
-        "//platforms/xla/...",
-        "//third_party/auroraml/...",
-        "//third_party/iree/...",
-        "//third_party/mlir_edge/...",
-        "//third_party/py/mlir/...",
-        "//tensorflow/compiler/mlir/...",
-        "//tensorflow/compiler/tf2xla/...",
-        "//tensorflow/compiler/xla/...",
-        # Allow visibility from the mlir language server.
-        "//learning/brain/mlir/mlir_lsp_server/...",
-    ],
-)
-
 exports_files([
     "include/mlir-hlo/Dialect/mhlo/IR/clo_ops.td",
     "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
@@ -1705,10 +1681,7 @@ cc_library(
         "include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h",
         "include/mlir-hlo/Transforms/register_passes.h",
     ],
-    visibility = [
-        ":friends",
-        "//tensorflow/compiler/mlir/python:__pkg__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":DiscRalPassIncGen",
         ":LmhloPassIncGen",
