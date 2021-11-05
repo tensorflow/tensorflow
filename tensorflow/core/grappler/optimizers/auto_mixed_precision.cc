@@ -1045,6 +1045,8 @@ class AutoMixedPrecisionImpl {
   void AddClearAndInferToAllowIfBetweenAllow(
       const absl::flat_hash_set<int>& deny_set,
       absl::flat_hash_set<int>* allow_set) const;
+  void AddInferToAllowIfFollowAllow(const absl::flat_hash_set<int>& deny_set,
+                                    absl::flat_hash_set<int>* allow_set) const;
   void PropagateAllowThroughClear(const absl::flat_hash_set<int>& deny_set,
                                   absl::flat_hash_set<int>* allow_set) const;
   Status ForceColorMatchOnRecurrentEdges(
@@ -1399,7 +1401,9 @@ Status AutoMixedPrecisionImpl::Optimize() {
   //    and clearlist ops), find those that are between (i.e., both upstream
   //    and downstream of) allow nodes, and add them to the allow_set.
   //    This is done to avoid unnecessary casts between allowlist ops.
-  // 4) For all remaining clearlist nodes, add them to the allow_set if they are
+  // 4) For the remaining inferlist nodes, add them to the allow_set if they
+  //    are immediate downstream of allow_set node.
+  // 5) For all remaining clearlist nodes, add them to the allow_set if they are
   //    connected to a node in the allow_set via other clearlist nodes.
   //    This is done to increase the number of ops in the allow_set without
   //    affecting numerical stability.
@@ -1429,16 +1433,21 @@ Status AutoMixedPrecisionImpl::Optimize() {
   AddClearAndInferToAllowIfBetweenAllow(deny_set, &allow_set);
   VLOG(2) << "Finished pass 3";
 
-  VLOG(2) << "Beginning pass 4 to propagate allow from allow nodes through "
-             "clearlist ops";
-  PropagateAllowThroughClear(deny_set, &allow_set);
+  VLOG(2) << "Beginning pass 4 to add infer list ops to allow if they "
+             "directly follow allow nodes";
+  AddInferToAllowIfFollowAllow(deny_set, &allow_set);
   VLOG(2) << "Finished pass 4";
 
-  VLOG(2) << "Beginning pass 5 to remove some nodes which could not be changed "
+  VLOG(2) << "Beginning pass 5 to propagate allow from allow nodes through "
+             "clearlist ops";
+  PropagateAllowThroughClear(deny_set, &allow_set);
+  VLOG(2) << "Finished pass 5";
+
+  VLOG(2) << "Beginning pass 6 to remove some nodes which could not be changed "
              "to F16"
              "from allow set";
   RemoveAllowsetWithFp32(&allow_set);
-  VLOG(2) << "Finished pass 5";
+  VLOG(2) << "Finished pass 6";
 
   VLOG(2) << "Forcing color match between data structure ops";
   for (const auto& cluster : tensor_list_clusters) {
@@ -1755,6 +1764,42 @@ void AutoMixedPrecisionImpl::PropagateAllowThroughClear(
                     << item.node->name() << " ALLOW";
           }
         }));
+  }
+}
+
+// Set infer node to allow if its immediate upstream node is in allow set
+void AutoMixedPrecisionImpl::AddInferToAllowIfFollowAllow(
+    const absl::flat_hash_set<int>& deny_set,
+    absl::flat_hash_set<int>* allow_set) const {
+  // Currently only target for MKL
+  if (mode_ != AutoMixedPrecisionMode::MKL) {
+    return;
+  }
+  for (int item_idx = 0; item_idx < graph_type_view_.num_nodes(); ++item_idx) {
+    const NodeTypeId& item = *graph_type_view_.GetNode(item_idx);
+    if (!ShouldProcess(*item.node) || deny_set.count(item_idx) ||
+        allow_set->count(item_idx) || !f16_inferlist_.count(item.node->op()) ||
+        !IsFloat32(item) || !SupportsF16DataType(item)) {
+      continue;
+    }
+
+    bool has_allow_fanin = false;
+    for (const int fanin : graph_type_view_.GetFanin(item_idx)) {
+      if (deny_set.count(fanin)) {
+        has_allow_fanin = false;
+        break;
+      }
+      if (allow_set->count(fanin)) {
+        has_allow_fanin = true;
+      }
+    }
+    if (has_allow_fanin) {
+      bool inserted = allow_set->insert(item_idx).second;
+      if (VLOG_IS_ON(2) && inserted) {
+        VLOG(2) << "Painting type " << item.type_attr.DebugString() << " of "
+                << item.node->op() << " node " << item.node->name() << " ALLOW";
+      }
+    }
   }
 }
 
