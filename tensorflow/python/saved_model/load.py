@@ -29,7 +29,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import handle_data_util
@@ -57,6 +56,12 @@ from tensorflow.python.util.tf_export import tf_export
 
 # API label for SavedModel metrics.
 _LOAD_V2_LABEL = "load_v2"
+
+# Built-in registrations use the "oneof kind" field in the SavedObject proto,
+# instead of "registered_name" field. The "kind" field has almost the same
+# functionality as the registered_name, but only contains built-in TensorFlow
+# types (like variable, functions, assets).
+_BUILT_IN_REGISTRATIONS = {"asset": tracking.Asset}
 
 
 def _unused_handle():
@@ -581,13 +586,20 @@ class Loader(object):
       the trackable children.
     """
     registered_class = registration.get_registered_class(proto.registered_name)
+    if registered_class is not None:
+      user_proto = proto.serialized_user_proto
+    else:
+      registered_class = _BUILT_IN_REGISTRATIONS.get(proto.WhichOneof("kind"))
+      user_proto = proto
     if registered_class:
       dependencies = {}
       for reference in proto.dependencies:
         dependencies[reference.local_name] = nodes[reference.node_id]
       obj = registered_class._deserialize_from_proto(  # pylint: disable=protected-access
-          proto=proto.serialized_user_proto,
-          dependencies=dependencies)
+          proto=user_proto,
+          dependencies=dependencies,
+          export_dir=self._export_dir,
+          asset_file_def=self._asset_file_def)
       return obj, type(obj)._add_trackable_child  # pylint: disable=protected-access
     else:
       return self._recreate_default(proto, node_id)
@@ -597,7 +609,6 @@ class Loader(object):
     factory = {
         "user_object": (
             lambda: self._recreate_user_object(proto.user_object, node_id)),
-        "asset": lambda: self._recreate_asset(proto.asset),
         "function": lambda: self._recreate_function(proto.function),
         "bare_concrete_function": functools.partial(
             self._recreate_bare_concrete_function,
@@ -631,15 +642,6 @@ class Loader(object):
       pass
 
     return _UserObject(), setattr
-
-  def _recreate_asset(self, proto):
-    filename = file_io.join(
-        saved_model_utils.get_assets_dir(self._export_dir),
-        self._asset_file_def[proto.asset_file_def_index].filename)
-    asset = tracking.Asset(filename)
-    if not context.executing_eagerly():
-      ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, asset.asset_path)
-    return asset, setattr
 
   def _recreate_function(self, proto):
     return function_deserialization.recreate_function(
