@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/tfrt/utils/thread_pool.h"
 #include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/task_function.h"  // from @tf_runtime
@@ -113,6 +115,20 @@ TEST(DefaultWorkQueueWrapperTest, IsInWorkerThread) {
 
   EXPECT_EQ(work_queue_wrapper->IsInWorkerThread(),
             work_queue_ptr->IsInWorkerThread());
+}
+
+TEST(DefaultWorkQueueWrapperTest, IntraOpThreadPool) {
+  auto work_queue = tfrt::CreateSingleThreadedWorkQueue();
+  TfThreadPool intra_op_thread_pool(/*name=*/"tf_intra",
+                                    /*num_threads=*/1);
+  auto work_queue_wrapper =
+      WrapDefaultWorkQueue(std::move(work_queue), &intra_op_thread_pool);
+
+  thread::ThreadPoolInterface* got_intra_op_threadpool;
+  TF_ASSERT_OK(work_queue_wrapper->InitializeRequest(
+      /*request_context_builder=*/nullptr, &got_intra_op_threadpool));
+
+  EXPECT_EQ(got_intra_op_threadpool, &intra_op_thread_pool);
 }
 
 }  // namespace
