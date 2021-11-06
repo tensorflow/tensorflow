@@ -840,15 +840,10 @@ class CheckpointLoadStatus(_LoadStatus):
         object_identity.ObjectIdentitySet(
             self._checkpoint.object_by_proto_id.values()))
     if unused_python_objects:
-      num_unused_python_objects = len(list(unused_python_objects))
-      # Display max number of 10 variables in error message.
-      num_variables_to_show = min(10, num_unused_python_objects)
       raise AssertionError(
-          f"Found {num_unused_python_objects} Python objects that were "
-          "not bound to checkpointed values, likely due to changes in the "
-          f"Python program. Showing {num_variables_to_show} of "
-          f"{num_unused_python_objects} unmatched objects: "
-          f"{list(unused_python_objects)[:num_variables_to_show]}")
+          "Some Python objects were not bound to checkpointed values, likely "
+          f"due to changes in the Python program: "
+          f"{list(unused_python_objects)}")
     return self
 
   def assert_nontrivial_match(self):
