@@ -706,6 +706,8 @@ cc_library(
         ":tensor_shape",
         ":types_proto_cc",
         "//tensorflow/core/lib/strings:strcat",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/util:managed_stack_trace",
