@@ -1144,3 +1144,4 @@ is in training mode or in evaluation mode.
 ### `-tf-verify-for-export`: Verify module is suitable for export back to TF Graph
 Verifies whether all functions in module are of single tf_executor.graph and
 each tf_executor.island in tf_executor.graph only has a single op.
+### `-tfe-legalize-tfg`: Legalize from TFG to the TFE dialect
