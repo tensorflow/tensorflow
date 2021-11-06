@@ -35,6 +35,7 @@ constexpr int32_t kMinSdkVersionForNNAPI13 = 30;
 // TODO(b/185838597): change the remaining kMinSdkVersionForNNAPI* to
 // kNNAPIRuntimeFeatureLevel*.
 constexpr int32_t kNNAPIRuntimeFeatureLevel5 = 31;
+constexpr int32_t kNNAPIRuntimeFeatureLevel6 = 1000006;
 
 // Track tensor indices to NN API tensor indices mapping.
 class OperandMapping {
