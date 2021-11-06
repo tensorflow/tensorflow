@@ -2913,3 +2913,11 @@ func @testRandomUniform(%arg0: tensor<3xi32>) -> tensor<?x?x?xf32> {
   return %0 : tensor<?x?x?xf32>
 }
 
+// -----
+
+// CHECK-LABEL: testRandomStandardNormal
+func @testRandomStandardNormal(%arg0: tensor<3xi32>) -> tensor<?x?x?xf32> {
+  // CHECK: "tfl.random_standard_normal"(%arg0)
+  %0 = "tfl.random_standard_normal"(%arg0) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<3xi32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}

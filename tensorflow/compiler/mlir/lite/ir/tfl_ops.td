@@ -5173,6 +5173,26 @@ lower bound 0 is included in the range, while the upper bound 1 is excluded.
   let customOption = "RandomOptions";
 }
 
+def TFL_RandomStandardNormalOp : TFL_Op<"random_standard_normal", [
+  NoQuantizableResult]> {
+  let summary = "Outputs random values from a normal distribution.";
+
+  let description = [{
+The generated values will have mean 0 and standard deviation 1.
+  }];
+
+  let arguments = (ins
+    TFL_I32Tensor:$shape,
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32]>:$out);
+  let hasOptions = 1;
+  let customOption = "RandomOptions";
+}
+
 #endif // TFL_OPS
 
 // LINT.ThenChange(//tensorflow/lite/tools/versioning/op_version.cc)

@@ -529,3 +529,8 @@ def LegalizeRandomUniform : Pat<
   (TF_RandomUniformOp $shape, $seed, $seed2),
   (TFL_RandomUniformOp $shape, (convertIntAttrTo64Bit $seed),
    (convertIntAttrTo64Bit $seed2))>;
+
+def LegalizeRandomStandardNormal : Pat<
+  (TF_RandomStandardNormalOp $shape, $seed, $seed2),
+  (TFL_RandomStandardNormalOp $shape, (convertIntAttrTo64Bit $seed),
+   (convertIntAttrTo64Bit $seed2))>;
