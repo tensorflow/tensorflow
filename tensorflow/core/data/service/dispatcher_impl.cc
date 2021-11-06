@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
@@ -480,9 +481,10 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   }
 
   int64_t id;
-  TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def, id));
-  if (!request->element_spec().empty()) {
-    TF_RETURN_IF_ERROR(SetElementSpec(id, request->element_spec()));
+  TF_RETURN_IF_ERROR(
+      RegisterDataset(fingerprint, dataset_def, request->metadata(), id));
+  if (!request->metadata().element_spec().empty()) {
+    TF_RETURN_IF_ERROR(SetElementSpec(id, request->metadata().element_spec()));
   }
 
   response->set_dataset_id(id);
@@ -490,15 +492,16 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
-                                                  const DatasetDef& dataset,
-                                                  int64_t& dataset_id)
+Status DataServiceDispatcherImpl::RegisterDataset(
+    uint64 fingerprint, const DatasetDef& dataset,
+    const DataServiceMetadata& metadata, int64_t& dataset_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   dataset_id = state_.NextAvailableDatasetId();
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
   register_dataset->set_fingerprint(fingerprint);
+  *register_dataset->mutable_metadata() = metadata;
   TF_RETURN_IF_ERROR(
       dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));
   return Apply(update);
@@ -527,6 +530,21 @@ Status DataServiceDispatcherImpl::GetElementSpec(
   VLOG(3) << "Get the `element_spec` for registered dataset with dataset id: "
           << dataset_id << ".";
   *response->mutable_element_spec() = element_spec;
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::GetDataServiceMetadata(
+    const GetDataServiceMetadataRequest* request,
+    GetDataServiceMetadataResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  int64_t dataset_id = request->dataset_id();
+  std::shared_ptr<const Dataset> dataset;
+
+  mutex_lock l(mu_);
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
+  VLOG(3) << "Get the data service metadata for dataset id: " << dataset_id
+          << ".";
+  *response->mutable_metadata() = dataset->metadata;
   return Status::OK();
 }
 
@@ -684,13 +702,16 @@ Status DataServiceDispatcherImpl::CreateJob(
     key->set_name(request.job_key().job_name());
     key->set_index(request.job_key().job_name_index());
   }
-  if (request.optional_num_consumers_case() ==
-      GetOrCreateJobRequest::kNumConsumers) {
+  const bool is_coordinated_read = (request.optional_num_consumers_case() ==
+                                    GetOrCreateJobRequest::kNumConsumers);
+  if (is_coordinated_read) {
     create_job->set_num_consumers(request.num_consumers());
   }
   create_job->set_target_workers(request.target_workers());
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
+  tensorflow::metrics::RecordTFDataServiceJobsCreated(
+      request.processing_mode_def(), is_coordinated_read);
   return Status::OK();
 }
 

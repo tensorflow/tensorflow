@@ -68,12 +68,13 @@ message GetVersionResponse {
   int64 version = 1;
 }
 
-// Next tag: 3
+// Next tag: 4
 message GetOrRegisterDatasetRequest {
   // The dataset to register.
   DatasetDef dataset = 1;
-  // The element spec of the dataset (encoded as a string).
-  bytes element_spec = 2;
+  // Metadata related to tf.data service.
+  DataServiceMetadata metadata = 3;
+  reserved 2;
 }
 
 // Next tag: 2
@@ -92,6 +93,18 @@ message GetElementSpecRequest {
 message GetElementSpecResponse {
   // The retrieved element spec.
   bytes element_spec = 1;
+}
+
+// Next tag: 2
+message GetDataServiceMetadataRequest {
+  // The dataset id to get the data service dataset metadata.
+  int64 dataset_id = 1;
+}
+
+// Next tag: 2
+message GetDataServiceMetadataResponse {
+  // The retrieved data service dataset metadata.
+  DataServiceMetadata metadata = 1;
 }
 
 // Next tag: 3
@@ -238,4 +251,8 @@ service DispatcherService {
 
   // Returns the element spec for the registered dataset.
   rpc GetElementSpec(GetElementSpecRequest) returns (GetElementSpecResponse);
+
+  // Returns the data service metadata for the registered dataset.
+  rpc GetDataServiceMetadata(GetDataServiceMetadataRequest)
+      returns (GetDataServiceMetadataResponse);
 }

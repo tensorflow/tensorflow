@@ -47,7 +47,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
@@ -1032,10 +1032,14 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
       dim->set_window_reversal(window_reversal.getValue<bool>(index));
     }
     descriptor.feature_group_count = op.feature_group_count();
-    descriptor.backend_config.set_algorithm(
-        op.backend_config().algorithm().getInt());
-    descriptor.backend_config.set_tensor_ops_enabled(
-        op.backend_config().tensor_ops_enabled().getValue());
+    {
+      auto* algorithm = descriptor.backend_config.mutable_algorithm();
+      algorithm->set_algo_id(op.backend_config().algorithm().getInt());
+      algorithm->set_math_type(
+          op.backend_config().tensor_ops_enabled().getValue()
+              ? se::dnn::AlgorithmProto::TENSOR_OP_MATH
+              : se::dnn::AlgorithmProto::DEFAULT_MATH);
+    }
     descriptor.backend_config.set_conv_result_scale(
         op.result_scale().convertToDouble());
   };
@@ -1547,39 +1551,6 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(results, values_to_slices(custom_call.output()));
   }
 
-  CustomCallThunk::CustomCallTarget custom_call_target;
-
-  // TODO(hanbinyoon): Move this to a location that will serve both
-  // ir_emitter_unnested and BEF Executable.
-  // For information about this calling convention, see
-  // xla/g3doc/custom_call.md.
-  switch (custom_call.api_version()) {
-    case mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL:
-      using original_call_type =
-          void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
-                   const char* /*opaque*/, size_t /*opaque_len*/);
-      custom_call_target = [call_target](CustomCallThunk::Stream stream,
-                                         void** buffers, const char* opaque,
-                                         size_t opaque_len,
-                                         XlaCustomCallStatus*) {
-        auto typed_call_target =
-            reinterpret_cast<original_call_type>(call_target);
-        typed_call_target(stream, buffers, opaque, opaque_len);
-      };
-      break;
-    case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
-      using status_returning_call_type =
-          void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
-                   const char* /*opaque*/, size_t /*opaque_len*/,
-                   XlaCustomCallStatus* /*status*/);
-      custom_call_target =
-          reinterpret_cast<status_returning_call_type>(call_target);
-      break;
-    default:
-      return InternalError("Unknown custom-call API version enum value: %d",
-                           custom_call.api_version());
-  }
-
   std::unique_ptr<Thunk> thunk;
   if (IsBefThunkEnabled()) {
     auto values_to_non_optional_slices = [&](mlir::ValueRange values)
@@ -1605,10 +1576,40 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
     for (const auto& buffer : outputs) {
       buffers.push_back(buffer);
     }
-    TF_ASSIGN_OR_RETURN(thunk, CreateBefCustomCallThunk(
-                                   GetThunkInfo(op), op, std::move(buffers),
-                                   std::move(custom_call_target)));
+    TF_ASSIGN_OR_RETURN(
+        thunk, CreateBefThunk(GetThunkInfo(op), op, std::move(buffers)));
   } else {
+    CustomCallThunk::CustomCallTarget custom_call_target;
+
+    // For information about this calling convention, see
+    // xla/g3doc/custom_call.md.
+    switch (custom_call.api_version()) {
+      case mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL:
+        using original_call_type =
+            void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
+                     const char* /*opaque*/, size_t /*opaque_len*/);
+        custom_call_target = [call_target](CustomCallThunk::Stream stream,
+                                           void** buffers, const char* opaque,
+                                           size_t opaque_len,
+                                           XlaCustomCallStatus*) {
+          auto typed_call_target =
+              reinterpret_cast<original_call_type>(call_target);
+          typed_call_target(stream, buffers, opaque, opaque_len);
+        };
+        break;
+      case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+        using status_returning_call_type =
+            void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
+                     const char* /*opaque*/, size_t /*opaque_len*/,
+                     XlaCustomCallStatus* /*status*/);
+        custom_call_target =
+            reinterpret_cast<status_returning_call_type>(call_target);
+        break;
+      default:
+        return InternalError("Unknown custom-call API version enum value: %d",
+                             custom_call.api_version());
+    }
+
     thunk = absl::make_unique<CustomCallThunk>(
         GetThunkInfo(op), std::move(custom_call_target), std::move(operands),
         std::move(results), custom_call.backend_config().str());
@@ -4937,7 +4938,6 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
   }();
 
   se::CudaComputeCapability cc = ir_emitter_context_->cuda_compute_capability();
-
 
   int smallest_input_dtype_bits = std::numeric_limits<int>::max();
   for (mlir::Value operand : fusion.getInputBuffers()) {

@@ -27,7 +27,7 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
-struct RemoveSignTypeConverter;
+class RemoveSignTypeConverter;
 
 // Collection of rewrite patterns for lowering a general dot product.
 void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
@@ -141,17 +141,6 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
                                    OwningRewritePatternList *patterns);
 
 }  // namespace chlo
-
-class LLVMTypeConverter;
-class SymbolTable;
-
-namespace disc_ral {
-
-void populateDiscRalToLLVMConversionPatterns(LLVMTypeConverter *converter,
-                                             SymbolTable *symbol_table,
-                                             RewritePatternSet *patterns);
-
-}  // namespace disc_ral
 
 }  // namespace mlir
 

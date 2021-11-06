@@ -51,7 +51,7 @@ struct BroadcastRemoveSubsumedOperandsPattern
     // dynamic size.
     SmallVector<int64_t> known_extents;
     SmallVector<SmallVector<int64_t, 4>, 4> operand_extents;
-    for (Value shape : op.shapes()) {
+    for (Value shape : op.getShapes()) {
       auto &extents = operand_extents.emplace_back();
       if (failed(shape::getShapeVec(shape, extents))) return failure();
 
@@ -86,7 +86,7 @@ struct BroadcastRemoveSubsumedOperandsPattern
     // If only some dimensions are known see if any of the operands can be
     // removed without affecting the result.
     SmallVector<Value, 4> filtered_operands;
-    for (auto tuple : llvm::zip(op.shapes(), operand_extents)) {
+    for (auto tuple : llvm::zip(op.getShapes(), operand_extents)) {
       Value shape = std::get<0>(tuple);
       auto &extents = std::get<1>(tuple);
 
@@ -129,7 +129,7 @@ struct BroadcastRemoveSubsumedOperandsPattern
         break;
       }
     }
-    if (filtered_operands.size() != op.shapes().size()) {
+    if (filtered_operands.size() != op.getShapes().size()) {
       rewriter.replaceOpWithNewOp<BroadcastOp>(op, op->getResultTypes(),
                                                filtered_operands);
       return success();
@@ -178,7 +178,7 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
     // returning immediately if a non-1 static dimension is seen.
     ShapeOfOp dynamic_shape;
     int64_t num_dynamic = 0;
-    for (auto shape : broadcast_op.shapes()) {
+    for (auto shape : broadcast_op.getShapes()) {
       auto shape_of_op = shape.getDefiningOp<ShapeOfOp>();
       if (!shape_of_op) return failure();
       auto shaped_type =
@@ -207,7 +207,7 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
 
     // Replace with the single dynamic dimension or 1.
     if (dynamic_shape) {
-      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, dynamic_shape.arg(),
+      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, dynamic_shape.getArg(),
                                                  index);
     } else {
       rewriter.replaceOpWithNewOp<arith::ConstantIndexOp>(op, 1);

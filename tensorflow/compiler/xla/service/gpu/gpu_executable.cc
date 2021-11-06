@@ -169,15 +169,19 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
   return Status::OK();
 }
 
-Status GpuExecutable::ExecuteThunks(
-    const ThunkSchedule& thunk_schedule,
-    const ServiceExecutableRunOptions* run_options,
-    const BufferAllocations& buffer_allocations, bool block_host_until_done) {
-  TF_RETURN_IF_ERROR(
-      CheckCompatibilityWithServiceExecutableRunOptions(run_options));
-  XlaDebugInfoManager::Get()->OnModuleStart(module_name_);
+namespace {
+
+Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
+                           uint64 start_micros, se::Stream* stream_to_sync);
+
+Status ExecuteThunks(const std::string& module_name,
+                     const ThunkSchedule& thunk_schedule,
+                     const ServiceExecutableRunOptions* run_options,
+                     const BufferAllocations& buffer_allocations,
+                     bool block_host_until_done) {
+  XlaDebugInfoManager::Get()->OnModuleStart(module_name);
   auto cleanup = MakeCleanup(
-      [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name_); });
+      [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name); });
 
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
@@ -200,7 +204,7 @@ Status GpuExecutable::ExecuteThunks(
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
   tensorflow::profiler::TraceMe hlo_module_activity(
-      [&] { return absl::StrCat(module_name_, ":XLA GPU module"); },
+      [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
 
   absl::flat_hash_map<const Thunk*, std::unique_ptr<se::Event>>
@@ -249,16 +253,23 @@ Status GpuExecutable::ExecuteThunks(
   }
 
   main_stream->ThenWaitFor(&sub_streams);
+  return MaybeSyncAndProfile(run_options, start_micros,
+                             block_host_until_done ? main_stream : nullptr);
+}
+
+Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
+                           uint64 start_micros,
+                           se::Stream* stream_to_sync = nullptr) {
   // Make sure kernels are completed before deallocating temporary buffers or
   // the profiler state.
   // TODO(b/30100571): we could potentially postpone deallocating the temp
   // buffers until a different computation is executed.
-  if (block_host_until_done) {
-    Status block_status = main_stream->BlockHostUntilDone();
+  if (stream_to_sync) {
+    Status block_status = stream_to_sync->BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s",
-          main_stream, block_status.error_message());
+          stream_to_sync, block_status.error_message());
     }
   }
 
@@ -275,6 +286,8 @@ Status GpuExecutable::ExecuteThunks(
 
   return Status::OK();
 }
+
+}  // namespace
 
 StatusOr<const GpuExecutable::BufferAllocToDeviceMemoryMap*>
 GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
@@ -525,18 +538,26 @@ tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
       std::move(*buffer));
 }
 
-// TODO(hanbinyoon): Support profiling analogous to ScopedAnnotation in
-// ExecuteThunks().
-static Status ExecuteBef(const tfrt::RCReference<tfrt::BEFFile>& bef_file,
+static Status ExecuteBef(const std::string& module_name,
+                         const tfrt::RCReference<tfrt::BEFFile>& bef_file,
                          absl::string_view entry_function_name,
                          const ServiceExecutableRunOptions* run_options,
                          const BufferAllocations& buffer_allocations,
                          size_t num_allocations, bool block_host_until_done) {
-  if (!block_host_until_done) {
-    return Unimplemented(
-        "Currently, we always block the host until BEF execution is "
-        "completed.");
-  }
+  XlaDebugInfoManager::Get()->OnModuleStart(module_name);
+  auto cleanup = MakeCleanup(
+      [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name); });
+
+  se::Stream* main_stream = run_options->stream();
+
+  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
+
+  tensorflow::profiler::TraceMe hlo_module_activity(
+      [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
+      tensorflow::profiler::TraceMeLevel::kInfo);
+
+  // TODO(hanbinyoon): Expand on the annotation.
+  ScopedAnnotation annotation("BefExecution");
 
   // Signature: (chain, stream, inputs..., outputs...) -> (chain).
   const tfrt::Function* function = bef_file->GetFunction(entry_function_name);
@@ -562,10 +583,9 @@ static Status ExecuteBef(const tfrt::RCReference<tfrt::BEFFile>& bef_file,
   // Create owning handles for arguments and add pointer to them to 'args'.
   tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
   args.reserve(function->num_arguments());
-  tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain(exec_ctx.host());
+  tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
-  TF_ASSIGN_OR_RETURN(auto borrowed_stream,
-                      CreateGpuStream(run_options->stream()));
+  TF_ASSIGN_OR_RETURN(auto borrowed_stream, CreateGpuStream(main_stream));
   args.push_back(
       static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(*borrowed_stream)
           .GetAsyncValue());
@@ -593,7 +613,8 @@ static Status ExecuteBef(const tfrt::RCReference<tfrt::BEFFile>& bef_file,
   if (auto* error = result->GetErrorIfPresent())
     return tensorflow::errors::Internal(error->message);
 
-  return Status::OK();
+  return MaybeSyncAndProfile(run_options, start_micros,
+                             block_host_until_done ? main_stream : nullptr);
 }
 #endif  // BEF_EXECUTABLE
 
@@ -743,40 +764,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(result_buffer);
   }
 
-#if BEF_EXECUTABLE
-  if (absl::holds_alternative<OwnedBefBuffer>(thunks_or_bef_)) {
-    const auto& bef_buffer = absl::get<OwnedBefBuffer>(thunks_or_bef_);
-
-    TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
-    tfrt::HostContext* host = runtime_and_queue.core_runtime->GetHostContext();
-    tfrt::RCReference<tfrt::BEFFile> bef_file = tfrt::BEFFile::Open(
-        {bef_buffer.get(), bef_buffer.get_deleter().size},
-        host->GetKernelRegistry(), host->diag_handler(), host->allocator());
-    if (!bef_file) {
-      return InternalError("Failed to load BEF file.");
-    }
-
-    TF_RETURN_IF_ERROR(ExecuteBef(
-        bef_file, bef_buffer.get_deleter().entry_function_name, run_options,
-        buffer_allocations, allocations_.size(), block_host_until_done));
-  } else {
-    return FailedPrecondition("Expected BefBuffer is not supplied.");
-  }
-#else   // BEF_EXECUTABLE
-  if (absl::holds_alternative<OwnedThunkSchedule>(thunks_or_bef_)) {
-    const ThunkSchedule& thunk_schedule =
-        *absl::get<OwnedThunkSchedule>(thunks_or_bef_);
-
-    for (const std::unique_ptr<Thunk>& thunk : thunk_schedule.TotalOrder()) {
-      TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
-    }
-    TF_RETURN_IF_ERROR(ExecuteThunks(thunk_schedule, run_options,
-                                     buffer_allocations,
-                                     block_host_until_done));
-  } else {
-    return FailedPrecondition("Expected ThunkSchedule is not supplied.");
-  }
-#endif  // BEF_EXECUTABLE
+  TF_RETURN_IF_ERROR(ExecuteThunksOrBef(run_options, buffer_allocations,
+                                        block_host_until_done));
 
   // Free all temporary allocations.
   TF_RETURN_IF_ERROR(
@@ -787,6 +776,47 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     MarkToBeReleasedArguments(*args, result);
   }
   return std::move(result);
+}
+
+Status GpuExecutable::ExecuteThunksOrBef(
+    const ServiceExecutableRunOptions* run_options,
+    const BufferAllocations& buffer_allocations, bool block_host_until_done) {
+#if BEF_EXECUTABLE
+  if (!absl::holds_alternative<OwnedBefBuffer>(thunks_or_bef_)) {
+    return FailedPrecondition("Expected BefBuffer is not supplied.");
+  }
+  const auto& bef_buffer = absl::get<OwnedBefBuffer>(thunks_or_bef_);
+
+  TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
+  tfrt::HostContext* host = runtime_and_queue.core_runtime->GetHostContext();
+  tfrt::RCReference<tfrt::BEFFile> bef_file = tfrt::BEFFile::Open(
+      {bef_buffer.get(), bef_buffer.get_deleter().size},
+      host->GetKernelRegistry(), host->diag_handler(), host->allocator());
+  if (!bef_file) {
+    return InternalError("Failed to load BEF file.");
+  }
+  TF_RETURN_IF_ERROR(
+      CheckCompatibilityWithServiceExecutableRunOptions(run_options));
+  return ExecuteBef(module_name_, bef_file,
+                    bef_buffer.get_deleter().entry_function_name, run_options,
+                    buffer_allocations, allocations_.size(),
+                    block_host_until_done);
+#else   // BEF_EXECUTABLE
+  if (!absl::holds_alternative<OwnedThunkSchedule>(thunks_or_bef_)) {
+    return FailedPrecondition("Expected ThunkSchedule is not supplied.");
+  }
+  const ThunkSchedule& thunk_schedule =
+      *absl::get<OwnedThunkSchedule>(thunks_or_bef_);
+
+  se::StreamExecutor* executor = run_options->stream()->parent();
+  for (const std::unique_ptr<Thunk>& thunk : thunk_schedule.TotalOrder()) {
+    TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
+  }
+  TF_RETURN_IF_ERROR(
+      CheckCompatibilityWithServiceExecutableRunOptions(run_options));
+  return ExecuteThunks(module_name_, thunk_schedule, run_options,
+                       buffer_allocations, block_host_until_done);
+#endif  // BEF_EXECUTABLE
 }
 
 int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {

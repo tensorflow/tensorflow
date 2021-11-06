@@ -6585,8 +6585,8 @@ class ConvertDynamicSqueezeOp : public OpRewritePattern<TF::SqueezeOp> {
       int64_t squeeze_dim = squeeze_dim_apint.getSExtValue();
       // Handle negative inputs.
       if (squeeze_dim < 0) squeeze_dim += input_rank;
-      // Bounds check.
-      if (squeeze_dim < 0 || squeeze_dim >= input_rank) return failure();
+      assert(squeeze_dim >= 0 && squeeze_dim < input_rank &&
+             "squeeze dim out of bounds");
 
       squeeze_dims.push_back(squeeze_dim);
     }

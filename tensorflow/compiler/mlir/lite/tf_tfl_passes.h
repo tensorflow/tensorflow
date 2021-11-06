@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/core/public/session.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 
@@ -29,22 +28,43 @@ namespace tensorflow {
 // Add the TF to TFLite passes, specified in the pass_config, into a
 // pass_manager. The session object will be provided when the TF MLIR is
 // imported from saved model version one and utilized for capturing resource
-// variables.
-void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
+// variables. If the `saved_model_dir` directory path is provided, then the
+// `tf_saved_model.asset` ops will be freezed.
+void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
                                 const toco::TocoFlags& toco_flags,
                                 const mlir::TFL::PassConfig& pass_config,
-                                mlir::OpPassManager* pass_manager,
-                                llvm::Optional<tensorflow::Session*> session);
+                                mlir::OpPassManager* pass_manager);
 
+// This is the early part of the conversion in isolation. This enables a caller
+// to inject more information in the middle of the conversion before resuming it
+// (like freezing variables for example).
+void AddPreVariableFreezingTFToTFLConversionPasses(
+    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
+    const mlir::TFL::PassConfig& pass_config,
+    mlir::OpPassManager* pass_manager);
+
+// This is the later part of the conversion in isolation. This enables a caller
+// to resume the conversion after injecting more information in the middle of
+// it.
+void AddPostVariableFreezingTFToTFLConversionPasses(
+    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
+    const mlir::TFL::PassConfig& pass_config,
+    mlir::OpPassManager* pass_manager);
+
+// Simplified API for TF->TFLite conversion with default flags.
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
-                                mlir::OpPassManager* pass_manager,
-                                llvm::Optional<tensorflow::Session*> session);
+                                mlir::OpPassManager* pass_manager);
 
 // Add the Quantization passes, specified in the quant_specs, into a pass
 // manager.
 void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager* pass_manager);
 
+// Add the DynamicRangeQuantization passes, specified in the quant_specs, into a
+// pass manager.
+void AddDynamicRangeQuantizationPasses(
+    const mlir::TFL::QuantizationSpecs& quant_specs,
+    mlir::OpPassManager& pass_manager);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_PASSES_H_

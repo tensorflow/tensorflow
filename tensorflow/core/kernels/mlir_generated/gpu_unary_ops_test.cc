@@ -835,12 +835,27 @@ T baseline_relu(T x) {
 
 GENERATE_DEFAULT_TEST(Relu, DT_FLOAT, DT_FLOAT, baseline_relu,
                       test::OpsTestConfig())
-
 GENERATE_DEFAULT_TEST(Relu, DT_DOUBLE, DT_DOUBLE, baseline_relu,
                       test::OpsTestConfig())
-
 GENERATE_DEFAULT_TEST_2(Relu, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_relu, test::OpsTestConfig())
+
+#if defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TEST(Relu, DT_INT8, DT_INT8, baseline_relu,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Relu, DT_INT16, DT_INT16, baseline_relu,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Relu, DT_INT64, DT_INT64, baseline_relu,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Relu, DT_UINT8, DT_UINT8, baseline_relu,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Relu, DT_UINT16, DT_UINT16, baseline_relu,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Relu, DT_UINT32, DT_UINT32, baseline_relu,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Relu, DT_UINT64, DT_UINT64, baseline_relu,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
 
 /// Test `tf.Rint`.
 
@@ -863,7 +878,7 @@ TEST_F(UnaryOpsTest, RintWithCache) {
   do {
     ASSERT_GE(max_tries--, 0);
   } while (!env->LocalTempFilename(&jit_dir));
-  auto *original_env = getenv(kTFJitCacheDirEnvVar);
+  char* original_env = getenv(kTFJitCacheDirEnvVar);
   setenv(kTFJitCacheDirEnvVar, jit_dir.c_str(), 1);
 
   // Run the actual test
@@ -876,9 +891,8 @@ TEST_F(UnaryOpsTest, RintWithCache) {
   TF_ASSERT_OK(env->GetChildren(jit_dir, &children));
   ASSERT_EQ(1, children.size());
 
-  setenv(kTFJitCacheDirEnvVar, original_env, 1);
+  if (original_env != nullptr) setenv(kTFJitCacheDirEnvVar, original_env, 1);
 }
-
 #endif
 
 GENERATE_DEFAULT_TEST(Rint, DT_FLOAT, DT_FLOAT, baseline_rint,

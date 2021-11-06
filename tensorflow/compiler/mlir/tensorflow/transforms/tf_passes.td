@@ -91,6 +91,11 @@ def LegalizeHloToTfPass : FunctionPass<"tf-legalize-hlo"> {
   let constructor = "TF::CreateLegalizeHloToTfPass()";
 }
 
+def LegalizeTFGToTFPass : Pass<"tfe-legalize-tfg", "ModuleOp"> {
+  let summary = "Legalize from TFG to the TFE dialect";
+  let constructor = "TF::CreateLegalizeTFGToTFEPass()";
+}
+
 def ReplicateToIslandPass : FunctionPass<"tf-replicate-to-island"> {
   let summary = "Lowers device replicate to executor islands";
   let constructor = "TFDevice::CreateReplicateToIslandPass()";
@@ -112,6 +117,11 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
     Option<"max_iterations_", "max-iterations", "int64_t", /*default=*/"10",
            "Maximum shape inference iterations">
   ];
+}
+
+def StripNoinlineAttributePass : Pass<"tf-strip-noinline-attribute", "ModuleOp"> {
+  let summary = "Strip the tf._noinline attribute from top-level functions.";
+  let constructor = "TF::CreateStripNoinlineAttributePass()";
 }
 
 def ExecutorConvertControlToDataOutputsPass : Pass<"tf-executor-convert-control-to-data-outputs", "ModuleOp"> {

@@ -16,10 +16,12 @@
 from tensorflow.python.framework import _memory_checker_test_helper
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework.memory_checker import MemoryChecker
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class MemoryCheckerTest(test.TestCase):
 
   def testNoLeakEmpty(self):

@@ -1578,6 +1578,29 @@ void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// SqueezeOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SqueezeOp op) {
+  auto input_type = op.input().getType().dyn_cast<RankedTensorType>();
+
+  if (!input_type) return success();  // Can't verify squeeze dims.
+
+  int64_t input_rank = input_type.getRank();
+  for (const auto &squeeze_dim_apint :
+       op.squeeze_dims().getAsValueRange<IntegerAttr>()) {
+    int64_t squeeze_dim = squeeze_dim_apint.getSExtValue();
+    if (squeeze_dim < -input_rank || squeeze_dim >= input_rank) {
+      return op.emitOpError()
+             << "squeeze dimension " << squeeze_dim << " not in ["
+             << -input_rank << ", " << input_rank << ")";
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // SubOp
 //===----------------------------------------------------------------------===//
 

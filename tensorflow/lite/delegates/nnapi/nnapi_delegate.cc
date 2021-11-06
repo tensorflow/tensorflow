@@ -364,6 +364,21 @@ bool IsMeanWithDifferentInputOutputQuantization(const TfLiteContext* context,
          input.params.zero_point != output.params.zero_point;
 }
 
+bool IsBroadcastBatchMatMul(const TfLiteContext* context,
+                            const TfLiteNode* node) {
+  const auto& input0 = context->tensors[node->inputs->data[0]];
+  const auto& input1 = context->tensors[node->inputs->data[1]];
+  if (input0.dims->size != input1.dims->size) {
+    return true;
+  }
+  for (int i = 0; i < input0.dims->size - 2; i++) {
+    if (input0.dims->data[i] != input1.dims->data[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool IsHybridOperator(const TfLiteContext* context, int builtin_code,
                       const TfLiteNode* node) {
   switch (builtin_code) {
@@ -2366,7 +2381,11 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinReshape: {
       ExpectOpVersion(version, 1, &val_ctx);
-      ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
+      if (android_sdk_version < kNNAPIRuntimeFeatureLevel6) {
+        ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
+      } else {
+        ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
+      }
       if (node->inputs->size >= 2) {
         Expect(context->tensors[node->inputs->data[1]].allocation_type ==
                    kTfLiteMmapRo,
@@ -3270,14 +3289,19 @@ bool NNAPIDelegateKernel::Validate(
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI13,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
-      EXPECT_INPUT_TYPE_IN(input_type, kTfLiteInt32, kTfLiteFloat32,
-                           kTfLiteInt8);
-      auto builtin = reinterpret_cast<TfLitePackParams*>(node->builtin_data);
-      Expect(builtin->axis != -1 &&
-                 builtin->axis !=
-                     context->tensors[node->inputs->data[0]].dims->size,
-             NNAPIValidationFailureType::kUnsupportedOperandValue,
-             "NNAPI does not support axis being the last dimension", &val_ctx);
+      if (android_sdk_version >= kNNAPIRuntimeFeatureLevel6) {
+        EXPECT_INPUT_TYPE_IN(input_type, kTfLiteInt32, kTfLiteFloat32,
+                             kTfLiteInt8, kTfLiteUInt8);
+      } else {
+        EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteInt8);
+        auto builtin = reinterpret_cast<TfLitePackParams*>(node->builtin_data);
+        Expect(builtin->axis != -1 &&
+                   builtin->axis !=
+                       context->tensors[node->inputs->data[0]].dims->size,
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
+               "NNAPI does not support axis being the last dimension",
+               &val_ctx);
+      }
     } break;
     case kTfLiteBuiltinUnpack: {
       ExpectOpVersion(version, 2, &val_ctx);
@@ -3321,6 +3345,24 @@ bool NNAPIDelegateKernel::Validate(
       Expect(input0_rank <= 4 && input1_rank <= 4,
              NNAPIValidationFailureType::kUnsupportedOperandRank,
              "NNAPI does not support input rank greater than 4", &val_ctx);
+    } break;
+    case kTfLiteBuiltinBatchMatmul: {
+      ExpectOpVersion(version, 2, &val_ctx);
+      ExpectMinAndroidSdkVersion(android_sdk_version,
+                                 kNNAPIRuntimeFeatureLevel6, &val_ctx);
+      const auto& input0 = context->tensors[node->inputs->data[0]];
+      const auto& input1 = context->tensors[node->inputs->data[1]];
+      EXPECT_INPUT_TYPE_IN(input0.type, kTfLiteFloat32, kTfLiteInt32);
+      Expect(input0.type == input1.type,
+             NNAPIValidationFailureType::kUnsupportedHybridOperator,
+             "NNAPI does not support hybrid batch matmul", &val_ctx);
+      Expect(input0.dims->size <= 4 && input0.dims->size >= 2,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "NNAPI does not support input rank greater than 4 or less than 2",
+             &val_ctx);
+      Expect(!IsBroadcastBatchMatMul(context, node),
+             NNAPIValidationFailureType::kUnsupportedInputType,
+             "NNAPI does not support broadcast batch matmul", &val_ctx);
     } break;
     default:
       // All other operators are not mapped.
@@ -4187,6 +4229,16 @@ TfLiteStatus NNAPIDelegateKernel::Map(
     case kTfLiteBuiltinFill: {
       *nn_op_type = ANEURALNETWORKS_FILL;
     } break;
+    case kTfLiteBuiltinBatchMatmul: {
+      auto builtin = reinterpret_cast<TfLiteBatchMatMulParams*>(
+          mapping_args.node->builtin_data);
+      mapping_args.builder->AddScalarBoolOperand(builtin->adj_x);
+      mapping_args.builder->AddScalarBoolOperand(builtin->adj_y);
+      *nn_op_type = ANEURALNETWORKS_BATCH_MATMUL;
+    } break;
+    case kTfLiteBuiltinPack: {
+      *nn_op_type = ANEURALNETWORKS_PACK;
+    } break;
     default:
       // All other operators are not mapped.
       return kTfLiteError;
@@ -4665,7 +4717,8 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
               "associating NNAPI execution input with a memory object", tensor,
               nnapi_errno);
         }
-      } else {
+      } else if (operand_mapping_.lite_index_to_ann(absolute_input_index) !=
+                 -1) {
         // copy data to pre-allocated shared memory.
         memcpy(nn_input_memory_->get_data_ptr() + input_offset,
                tensor->data.raw, tensor->bytes);
@@ -5022,7 +5075,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     }
 
     // Delegate PACK by lowering it into CONCAT + RESHAPE.
-    if (reg->builtin_code == kTfLiteBuiltinPack) {
+    if (reg->builtin_code == kTfLiteBuiltinPack &&
+        target_feature_level_ < kNNAPIRuntimeFeatureLevel6) {
       TF_LITE_ENSURE_STATUS(
           builder.TransformPackIntoSupportedOps(node_index, node, reg));
       continue;
@@ -5170,6 +5224,16 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
           node->inputs->data[0], node->outputs->data[0], need_int8_conversion,
           node_index);
       continue;
+    }
+    // For PACK, NNAPI expects the axis scalar before all input tensors.
+    if (reg->builtin_code == kTfLiteBuiltinPack) {
+      const auto* builtin =
+          reinterpret_cast<TfLitePackParams*>(node->builtin_data);
+      // NNAPI only accepts non-negative axis.
+      auto& input_tensor = context->tensors[node->inputs->data[0]];
+      int axis = builtin->axis < 0 ? input_tensor.dims->size + builtin->axis + 1
+                                   : builtin->axis;
+      TF_LITE_ENSURE_STATUS(builder.AddScalarInt32Operand(axis));
     }
     // Map inputs to NN API tensor indices.
     for (int input_pos = 0; input_pos < node->inputs->size; ++input_pos) {

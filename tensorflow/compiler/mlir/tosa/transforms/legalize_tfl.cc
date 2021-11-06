@@ -31,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
@@ -152,6 +151,7 @@ DECL_CONVERT_OP(Const);
 DECL_CONVERT_OP(QConst);
 DECL_CONVERT_OP(Gather);
 DECL_CONVERT_OP(GatherNd);
+DECL_CONVERT_OP(SparseToDense);
 DECL_CONVERT_OP(OneHot);
 DECL_CONVERT_OP(ArgMax);
 DECL_CONVERT_OP(FakeQuant);
@@ -2947,7 +2947,7 @@ LogicalResult ConvertConstantOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  ElementsAttr attr = tfl_const_op.valueAttr().dyn_cast<ElementsAttr>();
+  ElementsAttr attr = tfl_const_op.getValueAttr().dyn_cast<ElementsAttr>();
 
   auto e_type = output_type.getElementType();
   // TOSA only support up to 48-bits
@@ -2999,6 +2999,86 @@ LogicalResult ConvertTFLGatherNdOp::matchAndRewrite(
 
   if (!result) return failure();
   rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
+}
+
+LogicalResult ConvertTFLSparseToDenseOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_sparse_to_dense_op = cast<TFL::SparseToDenseOp>(op);
+  auto indices = tfl_sparse_to_dense_op.sparse_indices();
+  auto values = tfl_sparse_to_dense_op.sparse_values();
+  auto default_value = tfl_sparse_to_dense_op.default_value();
+  auto indices_ty = indices.getType().cast<ShapedType>();
+  auto indices_ety = indices_ty.getElementType();
+  auto values_ty = values.getType().cast<ShapedType>();
+  auto result_ty =
+      tfl_sparse_to_dense_op.getResult().getType().cast<ShapedType>();
+  auto result_ety = result_ty.getElementType();
+  auto loc = op->getLoc();
+
+  if (!result_ty.hasStaticShape()) return failure();
+  auto result_rank = result_ty.getRank();
+
+  // We want to generate the default tensor we need to scatter. Note that the
+  // result_ty needs to be a statically shaped tensor.
+  ElementsAttr default_value_attr;
+  if (!matchPattern(default_value, m_Constant(&default_value_attr)))
+    return failure();
+
+  if (!default_value_attr.isSplat()) return failure();
+
+  ShapedType scatter_ty =
+      RankedTensorType::get({1, result_ty.getNumElements(), 1}, result_ety);
+
+  Value default_const = rewriter.create<tosa::ConstOp>(
+      loc, scatter_ty,
+      DenseElementsAttr::get(scatter_ty,
+                             default_value_attr.getSplatValue<APInt>().sext(
+                                 result_ety.getIntOrFloatBitWidth())));
+
+  // We need to determine what the index multiplier does
+  llvm::SmallVector<int32_t> multiply_constant_ints;
+  multiply_constant_ints.resize(result_rank, 1);
+  for (int i = result_rank - 1; i > 0; i--) {
+    multiply_constant_ints[i - 1] =
+        result_ty.getDimSize(i) * multiply_constant_ints[i];
+  }
+
+  indices_ety = rewriter.getI32Type();
+  indices_ty = RankedTensorType::get(indices_ty.getShape(), indices_ety);
+  indices = CreateOpAndInfer<tosa::CastOp>(rewriter, loc, indices_ty, indices);
+
+  auto multiply_constant_type =
+      RankedTensorType::get({result_rank}, indices_ety);
+  auto multiply_constant_attr = DenseElementsAttr::get(
+      multiply_constant_type, llvm::makeArrayRef(multiply_constant_ints));
+  Value multiply_constant = CreateOpAndInfer<tosa::ConstOp>(
+      rewriter, loc, multiply_constant_type, multiply_constant_attr);
+
+  Value multiply_op = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, loc, indices_ty, indices, multiply_constant, 0);
+
+  Value reduce_op = CreateOpAndInfer<tosa::ReduceSumOp>(
+      rewriter, loc, UnrankedTensorType::get(indices_ety), multiply_op,
+      rewriter.getI64IntegerAttr(1));
+
+  auto values_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, loc, UnrankedTensorType::get(result_ety), values,
+      rewriter.getI64ArrayAttr(
+          ArrayRef<int64_t>{1, values_ty.getDimSize(0), 1}));
+
+  auto index_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, loc, UnrankedTensorType::get(indices_ety), reduce_op,
+      rewriter.getI64ArrayAttr(ArrayRef<int64_t>{1, indices_ty.getDimSize(0)}));
+
+  auto scatter = CreateOpAndInfer<tosa::ScatterOp>(
+      rewriter, loc, UnrankedTensorType::get(result_ety), default_const,
+      index_reshape_op, values_reshape_op);
+
+  CreateReplaceOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op, result_ty, scatter,
+      rewriter.getI64ArrayAttr(result_ty.getShape()));
 
   return success();
 }
@@ -3065,28 +3145,22 @@ LogicalResult ConvertTFLFakeQuantOp::matchAndRewrite(
 }
 
 void LegalizeTFL::runOnFunction() {
-  ConversionTarget target(getContext());
+  OwningRewritePatternList patterns(&getContext());
+  populateLegalizeTFLPatterns(&getContext(), patterns);
 
-  target.addIllegalDialect<TFL::TensorFlowLiteDialect>();
-  target.addIllegalOp<quant::StatisticsOp>();
-  // Operations are legal if they don't contain any illegal type.
-  target.markUnknownOpDynamicallyLegal([](Operation* op) {
-    if (auto constantOp = dyn_cast<arith::ConstantOp>(op)) {
-      return constantOp.getType().isa<NoneType>();
-    }
-    return true;
-  });
-
-  auto* ctx = &getContext();
   auto func = getFunction();
+  if (ApplyPatternsWithShapeResolution(func, std::move(patterns)).failed()) {
+    signalPassFailure();
+  }
+}
+}  // namespace
 
-  RewritePatternSet patterns(&getContext());
-
+void populateLegalizeTFLPatterns(MLIRContext* ctx,
+                                 RewritePatternSet& patterns) {
   // Add the generated patterns to the list.
   populateWithGenerated(patterns);
 
 #define DEF_PATTERN_INSERT(PAT) patterns.insert<Convert##PAT##Op>(ctx);
-
   DEF_PATTERN_INSERT(TFLRelu);
   DEF_PATTERN_INSERT(TFLRelu6);
   DEF_PATTERN_INSERT(TFLEqual);
@@ -3166,57 +3240,12 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(Constant);
   DEF_PATTERN_INSERT(TFLGather);
   DEF_PATTERN_INSERT(TFLGatherNd);
+  DEF_PATTERN_INSERT(TFLSparseToDense);
   DEF_PATTERN_INSERT(TFLArgMax);
   DEF_PATTERN_INSERT(TFLFakeQuant);
   DEF_PATTERN_INSERT(TFLOneHot);
-
-  GreedyRewriteConfig config;
-  config.useTopDownTraversal = true;
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
-    signalPassFailure();
-  }
-
-  func.walk([&](tosa::ConstOp op) {
-    auto ety = op.value().getType().getElementType();
-    auto new_ty = op.getType().cast<ShapedType>().clone(ety);
-    op.getResult().setType(new_ty);
-  });
-
-  // Insert UnrealizedConversionCasts to guarantee ReturnOp agress with
-  // the FuncOp type.
-  IRRewriter rewriter(func.getContext());
-  func.walk([&](ReturnOp op) {
-    FuncOp parent = dyn_cast<FuncOp>(op->getParentOp());
-    if (!parent) return;
-
-    rewriter.setInsertionPoint(op);
-    FunctionType funcTy = func.getType();
-    auto resultTys = funcTy.getResults();
-
-    bool castAdded = false;
-    SmallVector<Value> castedValues;
-    for (auto it : llvm::zip(op->getOperands(), resultTys)) {
-      Value operand = std::get<0>(it);
-      Type currentTy = operand.getType();
-      Type castTy = std::get<1>(it);
-      if (currentTy == castTy) {
-        castedValues.push_back(operand);
-        continue;
-      }
-
-      castedValues.push_back(
-          rewriter.create<tensor::CastOp>(op.getLoc(), castTy, operand)
-              .getResult());
-
-      castAdded = true;
-    }
-
-    if (castAdded) {
-      rewriter.replaceOpWithNewOp<ReturnOp>(op, castedValues);
-    }
-  });
+#undef DEF_PATTERN_INSERT
 }
-}  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass() {

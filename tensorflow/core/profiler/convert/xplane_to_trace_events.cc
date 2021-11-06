@@ -85,14 +85,17 @@ void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
           event->set_timestamp_ps(xevent.TimestampPs());
           event->set_duration_ps(xevent.DurationPs());
 
-          xevent.ForEachStat([&](const XStatVisitor& stat) {
+          auto for_each_stat = [&](const XStatVisitor& stat) {
             if (stat.ValueCase() == XStat::VALUE_NOT_SET) return;
             if (IsInternalStat(stat.Type())) return;
             if (stat.Type() == StatType::kStepName) {
               event->set_name(stat.ToString());
             }
             args[std::string(stat.Name())] = stat.ToString();
-          });
+          };
+          // The metadata stats should appear before the per-occurrence stats.
+          xevent.Metadata().ForEachStat(for_each_stat);
+          xevent.ForEachStat(for_each_stat);
         });
   });
 }

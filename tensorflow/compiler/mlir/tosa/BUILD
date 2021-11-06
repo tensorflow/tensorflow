@@ -85,9 +85,11 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -183,6 +185,34 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TosaDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "tf_tfl_passes",
+    srcs = [
+        "tf_tfl_passes.cc",
+        "transforms/legalize_tf_tfl.cc",
+    ],
+    hdrs = [
+        "tf_tfl_passes.h",
+        "transforms/passes.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    visibility = [":friends"],
+    deps = [
+        ":legalize_common",
+        ":passes_header",
+        ":tf_passes",
+        ":tfl_passes",
+        "//tensorflow/compiler/mlir/lite:lift_tflite_flex_ops",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//mlir:AffineTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",

@@ -56,6 +56,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import gpu_util
 from tensorflow.python.framework import importer
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
@@ -1207,6 +1208,55 @@ def disable_eager_op_as_function(unused_msg):
     return func
 
   return wrapper
+
+
+def set_xla_env_flag(func=None, flag=""):
+  """Decorator for setting XLA_FLAGS prior to running a test.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will allow users to set any xla flags
+  exposed via the XLA_FLAGS environment variable, execute the test, then reset
+  the XLA_FLAGS to the state it was in prior to this test.
+
+  Example:
+
+  class MyTest(test.TestCase):
+
+    @set_xla_env_flag(flag='--xla_gpu_enable_fast_min_max=false')
+    def testFoo(self):
+      ...
+
+  Args:
+    func: The function to be wrapped.
+    flag: The xla flag to be set in the XLA_FLAGS env variable.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def decorator(f):
+
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+      original_xla_flags = os.environ.get("XLA_FLAGS")
+      new_xla_flags = flag
+      if original_xla_flags:
+        new_xla_flags = new_xla_flags + " " + original_xla_flags
+      os.environ["XLA_FLAGS"] = new_xla_flags
+      try:
+        return f(*args, **kwargs)
+      finally:
+        if original_xla_flags is None:
+          del os.environ["XLA_FLAGS"]
+        else:
+          os.environ["XLA_FLAGS"] = original_xla_flags
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
 
 
 def build_as_function_and_v1_graph(func=None):
@@ -2469,8 +2519,8 @@ class TensorFlowTestCase(googletest.TestCase):
           return ragged_tensor_value.RaggedTensorValue(
               self._eval_tensor(tensor.values),
               self._eval_tensor(tensor.row_splits))
-        elif isinstance(tensor, ops.IndexedSlices):
-          return ops.IndexedSlicesValue(
+        elif isinstance(tensor, indexed_slices.IndexedSlices):
+          return indexed_slices.IndexedSlicesValue(
               values=tensor.values.numpy(),
               indices=tensor.indices.numpy(),
               dense_shape=tensor.dense_shape.numpy())

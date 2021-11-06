@@ -24,12 +24,11 @@ namespace full_type {
 
 namespace {
 
-TEST(ReplicateInputs, Default) {
+TEST(ReplicateInput, Default) {
   FullTypeDef t;
-  t.set_type_id(TFT_PRODUCT);
-  t.add_args()->set_type_id(TFT_ARRAY);
+  t.set_type_id(TFT_ARRAY);
 
-  const auto ret = ReplicateInputs()({t});
+  const auto ret = ReplicateInput()({t});
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -38,12 +37,11 @@ TEST(ReplicateInputs, Default) {
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
 }
 
-TEST(ReplicateInputs, Duplicate) {
+TEST(ReplicateInput, Duplicate) {
   FullTypeDef t;
-  t.set_type_id(TFT_PRODUCT);
-  t.add_args()->set_type_id(TFT_ARRAY);
+  t.set_type_id(TFT_ARRAY);
 
-  const auto ret = ReplicateInputs(2)({t});
+  const auto ret = ReplicateInput(0, 2)({t});
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -53,11 +51,42 @@ TEST(ReplicateInputs, Duplicate) {
   EXPECT_EQ(rt.args(1).type_id(), TFT_ARRAY);
 }
 
-TEST(ReplicateInputs, Unset) {
-  FullTypeDef t;
-  t.set_type_id(TFT_UNSET);
+TEST(ReplicateInput, FirstOfMultipleArgs) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_TENSOR);
 
-  const auto ret = ReplicateInputs()({t});
+  const auto ret = ReplicateInput(0, 2)({t1, t2});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 2);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+  EXPECT_EQ(rt.args(1).type_id(), TFT_ARRAY);
+}
+
+TEST(ReplicateInput, SecondOfMultipleArgs) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_TENSOR);
+
+  const auto ret = ReplicateInput(1, 2)({t1, t2});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 2);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_TENSOR);
+  EXPECT_EQ(rt.args(1).type_id(), TFT_TENSOR);
+}
+
+TEST(ReplicateInput, Unset) {
+  FullTypeDef t;
+
+  const auto ret = ReplicateInput()({t});
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -66,8 +95,7 @@ TEST(ReplicateInputs, Unset) {
 
 TEST(ReplicateIdenticalInputs, Single) {
   FullTypeDef t;
-  t.set_type_id(TFT_PRODUCT);
-  t.add_args()->set_type_id(TFT_ARRAY);
+  t.set_type_id(TFT_ARRAY);
 
   const auto ret = ReplicateIdenticalInputs()({t});
   TF_EXPECT_OK(ret.status());
@@ -80,8 +108,7 @@ TEST(ReplicateIdenticalInputs, Single) {
 
 TEST(ReplicateIdenticalInputs, Double) {
   FullTypeDef t;
-  t.set_type_id(TFT_PRODUCT);
-  t.add_args()->set_type_id(TFT_ARRAY);
+  t.set_type_id(TFT_ARRAY);
 
   const auto ret = ReplicateIdenticalInputs()({t, t});
   TF_EXPECT_OK(ret.status());
@@ -103,14 +130,50 @@ TEST(ReplicateIdenticalInputs, Unset) {
   EXPECT_EQ(rt.type_id(), TFT_UNSET);
 }
 
+TEST(ReplicateIdenticalInputs, UnsetComponents) {
+  FullTypeDef t1;
+  FullTypeDef t2;
+
+  const auto ret = ReplicateIdenticalInputs()({t1, t2});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_UNSET);
+}
+
+TEST(ReplicateIdenticalInputs, UsesPartialInfo_FirstUnknown) {
+  FullTypeDef t1;
+  FullTypeDef t2;
+  t2.set_type_id(TFT_ARRAY);
+
+  const auto ret = ReplicateIdenticalInputs()({t1, t2});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+}
+
+TEST(ReplicateIdenticalInputs, UsesPartialInfo_SecondUnknown) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  FullTypeDef t2;
+
+  const auto ret = ReplicateIdenticalInputs()({t1, t2});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+}
+
 TEST(ReplicateIdenticalInputs, RejectsMismatched) {
   FullTypeDef t1;
-  t1.set_type_id(TFT_PRODUCT);
-  t1.add_args()->set_type_id(TFT_ARRAY);
-
+  t1.set_type_id(TFT_ARRAY);
   FullTypeDef t2;
-  t2.set_type_id(TFT_PRODUCT);
-  t2.add_args()->set_type_id(TFT_TENSOR);
+  t2.set_type_id(TFT_TENSOR);
 
   const auto ret = ReplicateIdenticalInputs()({t1, t2});
   EXPECT_FALSE(ret.status().ok());

@@ -784,6 +784,10 @@ TfLiteStatus Subgraph::AllocateTensors() {
   // instead.
   ResetVariableTensors();
 
+  // Initialize the mapping between tensor index and the last execution plan
+  // index that uses the tensor.
+  InitializeTensorReleaseMap();
+
   return kTfLiteOk;
 }
 
@@ -1248,6 +1252,8 @@ TfLiteStatus Subgraph::Invoke() {
         }
       }
     }
+    // Release dynamic tensor memory if configured by the user.
+    MaybeReleaseDynamicInputs(node, node_index);
   }
 
   return status;
@@ -1836,6 +1842,47 @@ TfLiteStatus Subgraph::PreserveAllTensorsExperimental() {
 
 std::unique_ptr<GraphInfo> Subgraph::CreateGraphInfo() {
   return std::unique_ptr<GraphInfo>(new InterpreterInfo(this));
+}
+
+void Subgraph::InitializeTensorReleaseMap() {
+  for (int i = 0; i < execution_plan_.size(); ++i) {
+    int node_index = execution_plan_[i];
+    const TfLiteNode& node = nodes_and_registration_[node_index].first;
+    for (int input_index = 0; input_index < node.inputs->size; ++input_index) {
+      int input_tensor_index = node.inputs->data[input_index];
+      TfLiteTensor* input_tensor = tensor(input_tensor_index);
+      if (!input_tensor) continue;
+      tensor_to_last_op_index_[input_tensor_index] = node_index;
+    }
+  }
+}
+
+void Subgraph::MaybeReleaseDynamicInputs(const TfLiteNode& node,
+                                         size_t node_index) {
+  if (!release_dynamic_tensors_if_unused_) return;
+  auto tensorIsInput = [&](int index) {
+    for (int idx : inputs_) {
+      if (idx == index) return true;
+    }
+    return false;
+  };
+  // Release dynamic tensor's memory if the current node is the last one that
+  // uses the tensor.
+  for (int input_index = 0; input_index < node.inputs->size; ++input_index) {
+    int input_tensor_index = node.inputs->data[input_index];
+    TfLiteTensor* input_tensor = tensor(input_tensor_index);
+    if (!input_tensor || input_tensor->allocation_type != kTfLiteDynamic ||
+        input_tensor->type == kTfLiteString ||
+        input_tensor->type == kTfLiteResource ||
+        tensorIsInput(input_tensor_index))
+      continue;
+    auto it = tensor_to_last_op_index_.find(input_tensor_index);
+    if (it != tensor_to_last_op_index_.end() && it->second == node_index) {
+      if (input_tensor->data.raw) {
+        TfLiteTensorDataFree(input_tensor);
+      }
+    }
+  }
 }
 
 }  // namespace tflite

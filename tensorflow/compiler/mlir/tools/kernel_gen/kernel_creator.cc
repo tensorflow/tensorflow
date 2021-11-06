@@ -97,8 +97,8 @@ bool IsSmallAlloc(Value alloc) {
     if (type.getRank() <= kMaxRankOfAllocatedMemRef) {
       for (Value alloc_arg : alloc.getDefiningOp()->getOperands()) {
         if (auto select = alloc_arg.getDefiningOp<mlir::SelectOp>()) {
-          if (!select.true_value().getDefiningOp<mlir::RankOp>() ||
-              !select.false_value().getDefiningOp<mlir::RankOp>())
+          if (!select.getTrueValue().getDefiningOp<mlir::RankOp>() ||
+              !select.getFalseValue().getDefiningOp<mlir::RankOp>())
             return false;
         } else if (!alloc_arg.getDefiningOp<mlir::RankOp>()) {
           return false;

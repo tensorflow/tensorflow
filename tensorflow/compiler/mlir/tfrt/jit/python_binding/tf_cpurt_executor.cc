@@ -25,6 +25,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
+#include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs_registration.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
@@ -75,7 +76,12 @@ TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
   CompilationOptions opts;
   // Create an async task for each worker thread.
   opts.num_worker_threads = 4;
-  opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
+  opts.register_dialects = [](mlir::DialectRegistry& registry) {
+    mlir::RegisterAllTensorFlowDialects(registry);
+    // Needed to verify function argument attributes which are used to
+    // annotate dynamic shaped types with static type information.
+    mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
+  };
   opts.register_pass_pipeline = [=](mlir::OpPassManager& pm) {
     tensorflow::TfCpuRtPipelineOptions opts;
     opts.vectorize = vectorize;
@@ -326,6 +332,17 @@ std::vector<py::array> TfCpurtExecutor::Execute(
   return ret_values;
 }
 
+bool TfCpurtExecutor::BuiltWith(const std::string& cpu_feature) {
+  if (cpu_feature == "AVX2") {
+#ifdef __AVX2__
+    return true;
+#else
+    return false;
+#endif
+  }
+  return false;
+}
+
 }  // namespace tensorflow
 
 PYBIND11_MODULE(_tf_cpurt_executor, m) {
@@ -341,5 +358,7 @@ PYBIND11_MODULE(_tf_cpurt_executor, m) {
            py::arg("specialization") =
                tensorflow::TfCpurtExecutor::Specialization::kEnabled,
            py::arg("vectorize") = false)
-      .def("execute", &tensorflow::TfCpurtExecutor::Execute);
+      .def("execute", &tensorflow::TfCpurtExecutor::Execute)
+      .def("built_with", &tensorflow::TfCpurtExecutor::BuiltWith,
+           py::arg("cpu_feature"));
 }

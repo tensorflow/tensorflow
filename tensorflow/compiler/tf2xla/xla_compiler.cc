@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -856,9 +857,11 @@ Status XlaCompiler::XLAShapeForArgument(
           TF_RETURN_IF_ERROR(
               XLAShapeToTensorShape(absl::get<xla::Shape>(arg.shape), &shape));
         }
-        TF_ASSIGN_OR_RETURN(*xla_shape, options_.shape_representation_fn(
-                                            shape, arg.type,
-                                            /*use_fast_memory=*/false));
+        TF_ASSIGN_OR_RETURN(
+            *xla_shape,
+            options_.shape_representation_fn(
+                shape, arg.type,
+                /*use_fast_memory=*/false, TpuLayoutPreference::kNoPreference));
         TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
             arg_sharding, /*use_fast_memory=*/false,
             options_.shape_representation_fn, xla_shape));
@@ -887,7 +890,8 @@ Status XlaCompiler::XLAShapeForArgument(
           TF_ASSIGN_OR_RETURN(*xla_shape,
                               options_.shape_representation_fn(
                                   absl::get<TensorShape>(arg.shape), arg.type,
-                                  /*use_fast_memory=*/arg.fast_mem));
+                                  /*use_fast_memory=*/arg.fast_mem,
+                                  TpuLayoutPreference::kNoPreference));
           TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
               arg_sharding, arg.fast_mem, options_.shape_representation_fn,
               xla_shape));

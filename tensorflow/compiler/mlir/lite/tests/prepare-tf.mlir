@@ -668,5 +668,30 @@ func @add_v2_uint32(%arg0: tensor<ui32>, %arg1: tensor<ui32>) -> tensor<ui32> {
   // CHECK:  return %[[CAST2]] : tensor<ui32>
 }
 
+func @QuantDequantTranspose(%arg0: tensor<2x3xf32>) -> (tensor<2x4xf32>) {
+  %cst = "tf.Const"() {value = dense<1.000000e+00> : tensor<3x4xf32>} : () -> tensor<3x4xf32>
+  %cst_0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tf.Abs"(%cst) {device = ""} : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  %1 = "tf.Max"(%0, %cst_0) {device = "", keep_dims = false} : (tensor<3x4xf32>, tensor<i32>) -> tensor<4xf32>
+  %2 = "tf.Neg"(%1) {device = ""} : (tensor<4xf32>) -> tensor<4xf32>
+  %3 = "tfl.custom_tf"(%cst, %2, %1) ( {
+  ^bb0(%arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %arg3: tensor<*xf32>):  // no predecessors
+    %7 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg1, %arg2, %arg3) {device = "", narrow_range = false, num_bits = 8 : i64} : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    "tfl.yield"(%7) : (tensor<*xf32>) -> ()
+  }) {device = "", narrow_range = false, num_bits = 8 : i64} : (tensor<3x4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<3x4xf32>
+  %4 = "tf.MatMul"(%arg0, %3) {device = "", transpose_a = false, transpose_b = false} : (tensor<2x3xf32>, tensor<3x4xf32>) -> tensor<2x4xf32>
+  %5 = "tf.Identity"(%4) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+  %6 = "tf.Identity"(%5) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+  return %6 : tensor<2x4xf32>
+
+  // CHECK-LABEL: QuantDequantTranspose
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<?xi32>
+  // CHECK: %[[CST_0:.*]] = arith.constant dense<1.00392151> : tensor<3x4xf32>
+  // CHECK: %[[QUANT:.*]] = "tfl.quantize"(%[[CST_0]]) {qtype = tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>} : (tensor<3x4xf32>) -> tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>
+  // CHECK: %[[DEQUANT:.*]] = "tfl.dequantize"(%[[QUANT]]) : (tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>) -> tensor<3x4xf32>
+  // CHECK: %[[TRANSPOSE:.*]] = "tf.Transpose"(%[[DEQUANT]], %[[CST]]) : (tensor<3x4xf32>, tensor<?xi32>) -> tensor<*xf32>
+  // CHECK: %[[MATMUL:.*]] = "tf.MatMul"(%arg0, %[[TRANSPOSE]]) {transpose_a = false, transpose_b = true} : (tensor<2x3xf32>, tensor<*xf32>) -> tensor<2x4xf32>
+  // CHECK: return %[[MATMUL]] : tensor<2x4xf32>
 }
 
+}

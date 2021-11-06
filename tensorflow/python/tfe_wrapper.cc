@@ -693,8 +693,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_EnableXlaDevices", [] {
     tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
   });
+  m.def("TF_ResetMlirFlags", [] { tensorflow::ResetMlirCommonFlags(); });
 
-  // // TFE_Context Logic
+  // TFE_Context Logic
   m.def(
       "TFE_NewContext",
       [](const TFE_ContextOptions* opts) {

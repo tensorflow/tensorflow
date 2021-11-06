@@ -20,6 +20,7 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
@@ -153,6 +154,16 @@ class NAryOpsTest(xla_test.XLATestCase):
         expected = [np.array([[1, 2], [5, 6], [9, 0]], dtype=np.float32),
                     np.array([[3, 4], [7, 8], [1, 2]], dtype=np.float32)]
         self.assertAllEqual(output, expected)
+
+  def testSplitVNegativeSizes(self):
+    with self.session() as session:
+      with self.test_scope():
+        with self.assertRaisesRegexp(
+            (ValueError, errors.InvalidArgumentError),
+            "Split size at index 1 must be >= .*. Got: -2"):
+          _ = session.run(
+              array_ops.split(np.array([1, 2, 3], dtype=np.float32), [-1, -2],
+                              axis=0))
 
   def testStridedSlice(self):
     self._testNAry(lambda x: array_ops.strided_slice(*x),

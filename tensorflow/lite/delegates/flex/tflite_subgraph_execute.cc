@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 #include "tensorflow/lite/delegates/flex/subgraph_resource.h"
+#include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
 
@@ -86,7 +87,8 @@ class TfLiteSubgraphExecute : public OpKernel {
     ResizeInputTensor(ctx, subgraph_selected);
 
     if (tfl_tensors_need_allocation_) {
-      subgraph_selected.AllocateTensors();
+      OP_REQUIRES(ctx, subgraph_selected.AllocateTensors() == kTfLiteOk,
+                  errors::Internal("Failed to call allocate tensors"));
       tfl_tensors_need_allocation_ = false;
     }
 
@@ -148,8 +150,7 @@ class TfLiteSubgraphExecute : public OpKernel {
         }
 
         dynamic_buffer.WriteToTensor(subgraph_input, /*new_shape=*/nullptr);
-      } else if (subgraph_input->type == kTfLiteResource ||
-                 subgraph_input->type == kTfLiteVariant) {
+      } else if (tflite::flex::IsResourceOrVariant(subgraph_input)) {
         // TODO(b/179094265): This is an experimental implementation, subject to
         // change. This can be re-implemented with life cycle management
         // mechanism like reference counting.

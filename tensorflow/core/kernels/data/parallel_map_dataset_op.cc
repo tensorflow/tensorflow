@@ -120,6 +120,19 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     }
   }
 
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    std::vector<Tensor> args;
+    TF_RETURN_IF_ERROR(input_->Get(ctx, index, &args));
+    if (!instantiated_captured_func_) {
+      TF_RETURN_IF_ERROR(
+          captured_func_->Instantiate(InstantiateCapturedFunctionParams(ctx),
+                                      &instantiated_captured_func_));
+    }
+    return instantiated_captured_func_->RunInstantiated(args, out_tensors);
+  }
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return Status::OK();
@@ -681,6 +694,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
   const bool preserve_cardinality_;
   const std::unique_ptr<CapturedFunction> captured_func_;
   const int op_version_;
+  // This is used for random access provided by Get().
+  mutable std::unique_ptr<InstantiatedCapturedFunction>
+      instantiated_captured_func_;
 };
 
 ParallelMapDatasetOp::ParallelMapDatasetOp(OpKernelConstruction* ctx)
@@ -735,7 +751,9 @@ void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                           &captured_func));
 
   if (num_parallel_calls == model::kAutotune) {
-    if (GetExperiments().contains("max_parallelism")) {
+    auto experiments = GetExperiments();
+    if (experiments.contains("max_parallelism") &&
+        !experiments.contains("max_parallelism_v2")) {
       num_parallel_calls = GetCpuBudget();
     } else {
       metrics::RecordTFDataAutotune(kDatasetType);

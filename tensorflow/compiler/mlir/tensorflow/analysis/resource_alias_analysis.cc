@@ -360,6 +360,14 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
       for (auto& resource_handle : resources) {
         AddValueUniqueIDMapping(resource_handle.value, resource_handle.id);
       }
+    } else if (llvm::isa<TPUReplicatedInputOp>(op)) {
+      // TPUReplicateInput only has a single result but we get all results
+      // to use filter_resources and for consistency.
+      for (auto result : filter_resources(op->getResults())) {
+        for (auto operand : op->getOperands()) {
+          PropagateInputToOutput(operand, result);
+        }
+      }
     } else if (llvm::isa<IdentityNOp, IdentityOp>(op)) {
       for (auto result : filter_resources(op->getResults()))
         PropagateInputToOutput(op->getOperand(result.getResultNumber()),

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -74,6 +75,14 @@ void RecordTFDataExperiment(const string& name);
 // `ItertatorResource::GetNext()`.
 void RecordTFDataGetNextDuration(uint64 duration_us);
 
+// Records the histogram of ratios of tf.data autotune algorithm used RAM over
+// the ram budget.
+void RecordTFDataAutotuneUsedRamBudgetRatio(const double ratio);
+
+// Records the histogram of ratios of tf.data autotune algorithm max buffer
+// bytes over the ram budget.
+void RecordTFDataAutotuneMaxBufferBudgetRatio(const double ratio);
+
 // Records the number of times each tf.data fingerprint is used
 // to measure duplicate pre-processing.
 //
@@ -98,6 +107,11 @@ void RecordTFDataOptimization(const string& name, int64_t num_changes);
 // Records that a tf.data service worker has been created.
 void RecordTFDataServiceWorkerCreated();
 
+// Records that a tf.data service job has been created.
+void RecordTFDataServiceJobsCreated(
+    const tensorflow::data::ProcessingModeDef& processing_mode,
+    bool is_coordinated_read);
+
 // Records the file name read by a tf.data Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
@@ -119,6 +133,10 @@ void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
 // `ineligible_reason` is the reason if the input pipeline is ineligible.
 void RecordTFDataAutoShardRewriteBatchSize(
     bool eligible, const std::vector<string>& ineligible_reason);
+
+// Records the number of times each tf.data autotuning algorithm stopping
+// criterion is met.
+void RecordTFDataAutotuneStoppingCriteria(const string& name);
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);

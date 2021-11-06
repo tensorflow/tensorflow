@@ -14,7 +14,7 @@
 # ==============================================================================
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
-from typing import Dict, Optional, Sequence, Type, Tuple
+from typing import Dict, Hashable, Optional, Sequence, Tuple, Type
 import weakref
 
 import numpy as np
@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import core
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import resource_variable_ops
@@ -63,6 +64,11 @@ class GenericType(trace.TraceType):
 
   def most_specific_common_supertype(
       self, others: Sequence[trace.TraceType]) -> Optional[trace.TraceType]:
+    if not others:
+      raise errors.InvalidArgumentError(
+          "Argument `others` to function `most_specific_common_supertype` must be a non-empty Sequence."
+      )
+
     return None
 
   def __eq__(self, other) -> bool:
@@ -141,7 +147,32 @@ class GenericType(trace.TraceType):
         or isinstance(value, composite_tensor.CompositeTensor))
 
 
+# TODO(b/182990542): Trigger function cache to remove associated concrete
+# function at the deletion of referrant.
+class WeakrefType(GenericType):
+  """Represents weakref of an arbitrary Python object."""
+
+  def __eq__(self, other):
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    if not isinstance(other, WeakrefType):
+      return False
+
+    if self._object() is None or other._object() is None:
+      return False
+
+    if self._object() is other._object():
+      return True
+
+    return self._object == other._object
+
+  def __hash__(self):
+    return self._object_hash
+
+
 _pywrap_utils.RegisterType("GenericType", GenericType)
+_pywrap_utils.RegisterType("WeakrefType", WeakrefType)
 
 
 class OrderedCollectionType(trace.TraceType):
@@ -178,6 +209,11 @@ class OrderedCollectionType(trace.TraceType):
 
   def most_specific_common_supertype(self, others: Sequence[trace.TraceType]):
     """See base class."""
+    if not others:
+      raise errors.InvalidArgumentError(
+          "Argument `others` to function `most_specific_common_supertype` must be a non-empty Sequence."
+      )
+
     if not all(self._has_same_structure(other) for other in others):
       return None
 
@@ -242,17 +278,41 @@ class DictType(trace.TraceType):
     mapping: A mapping from TraceType objects to TraceType objects.
   """
 
-  def __init__(self, mapping: Dict[trace.TraceType, trace.TraceType]):
+  def __init__(self, mapping: Dict[Hashable, trace.TraceType]):
     self.mapping = mapping
 
-  # TODO(b/202429845): Figure out how to subtype DictType.
   def is_subtype_of(self, other: trace.TraceType) -> bool:
     """See base class."""
-    return self == other
+
+    if not isinstance(other, DictType):
+      return False
+
+    return all(key in self.mapping and
+               self.mapping[key].is_subtype_of(other.mapping[key])
+               for key in other.mapping)
 
   def most_specific_common_supertype(self, others: Sequence[trace.TraceType]):
     """See base class."""
-    return None
+
+    if not others:
+      raise errors.InvalidArgumentError(
+          "Argument `others` to function `most_specific_common_supertype` must be a non-empty Sequence."
+      )
+
+    if not all(isinstance(other, DictType) for other in others):
+      return None
+
+    new_mapping = {}
+    for key in self.mapping.keys():
+      if all(key in other.mapping for other in others):
+        common = self.mapping[key].most_specific_common_supertype(
+            [other.mapping[key] for other in others])
+        if common is None:
+          return None
+        else:
+          new_mapping[key] = common
+
+    return DictType(new_mapping)
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -288,13 +348,17 @@ def get_arg_spec(inputs, include_tensor_ranks_only,
     A TraceType object representing the function arguments.
   """
 
-  # TODO(b/201533914): Drop GenericType once TFE_Py_EncodeArg returns TraceType.
   signature_context = SignatureContext(include_tensor_ranks_only)
   try:
-    return GenericType(
-        pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
-                                    include_tensor_ranks_only,
-                                    encode_variables_by_resource_id,
-                                    use_full_trace_type))
+    encoding = pywrap_tfe.TFE_Py_EncodeArg(inputs, signature_context,
+                                           include_tensor_ranks_only,
+                                           encode_variables_by_resource_id,
+                                           use_full_trace_type)
+    if use_full_trace_type:
+      return encoding
+    else:
+      # TODO(b/201533914): Drop when use_full_trace_type flag is removed.
+      return GenericType(encoding)
+
   except core._NotOkStatusException as e:  # pylint: disable=protected-access
     raise core._status_to_exception(e) from None  # pylint: disable=protected-access

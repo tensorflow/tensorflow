@@ -384,7 +384,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
     const KernelFallbackCompatRequestState& fallback_request_state,
     const OpKernelRunner& op_kernel_runner) {
-  auto op_chain = tfrt::GetReadyChain(exec_ctx.host());
+  auto op_chain = tfrt::GetReadyChain();
   tensorflow::Status status;
 
   auto expected_input_tf_tensors = ConvertInputTensors(arguments, exec_ctx);

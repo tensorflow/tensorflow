@@ -52,6 +52,9 @@ constexpr char kBufferSize[] = "buffer_size";
 // A key used to identify the input time of the model.
 constexpr char kModelInputTimeKey[] = "model_input_time";
 
+// Default share of available RAM that can be used by model's internal buffers.
+constexpr double kRamBudgetShare = 0.5;
+
 enum class TraversalOrder {
   BFS = 0,
   REVERSE_BFS = 1,
@@ -704,7 +707,8 @@ class Model {
  private:
   // Determines whether optimization should stop given total processing time,
   // estimated output time, and estimated number of buffers bytes.
-  using StopPredicate = std::function<bool(double, double, double)>;
+  using StopPredicate =
+      std::function<bool(const ModelParameters&, double, double, double)>;
 
   static constexpr int64_t kOptimizationPeriodMinMs = 10;
   static constexpr int64_t kOptimizationPeriodMaxMs =

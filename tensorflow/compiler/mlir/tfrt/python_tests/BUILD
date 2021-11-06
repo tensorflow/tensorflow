@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 licenses(["notice"])
 
@@ -100,6 +101,7 @@ py_strict_test(
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -235,18 +237,53 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
-    name = "tf_compile_test",
-    srcs = ["tf_compile_test.py"],
-    data = glob(
-        ["regression_tests/*"],
-        exclude = ["regression_tests/*.disabled.mlir"],
-    ),
-    python_version = "PY3",
-    tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
+td_library(
+    name = "python_test_attrs_td_files",
+    srcs = ["python_test_attrs.td"],
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/platform",
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "python_test_attrs_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-dialect-decls"],
+            "python_test_attrs.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "python_test_attrs.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "python_test_attrs.td",
+    deps = [":python_test_attrs_td_files"],
+)
+
+cc_library(
+    name = "python_test_attrs",
+    srcs = [
+        "python_test_attrs.cc",
+    ],
+    hdrs = [
+        "python_test_attrs.h",
+    ],
+    deps = [
+        ":python_test_attrs_inc_gen",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "python_test_attrs_registration",
+    srcs = ["python_test_attrs_registration.cc"],
+    hdrs = ["python_test_attrs_registration.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":python_test_attrs",
+        "@llvm-project//mlir:IR",
     ],
 )

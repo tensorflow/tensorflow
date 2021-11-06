@@ -281,6 +281,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:resource_variable_ops",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -645,6 +646,7 @@ tf_cuda_cc_test(
     size = "medium",
     srcs = [
         "convert/convert_nodes_test.cc",
+        "convert/op_converter_test.cc",
     ],
     tags = [
         "no_cuda_on_cpu_tap",

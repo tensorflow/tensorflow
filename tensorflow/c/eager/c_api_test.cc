@@ -2071,24 +2071,16 @@ std::vector<std::string> ListDeviceNames(TFE_Context* ctx) {
 }
 
 TEST(CAPI, ShareVariableAcrossContextsWorks) {
+  // TODO(shreepadma): Add a test case with isolate_session_state set to true.
   tensorflow::ServerDef server_def_0 = GetServerDef(3);
   server_def_0.mutable_default_session_config()->set_isolate_session_state(
       false);
   tensorflow::ServerDef server_def_1 =
       ReplaceTaskInServerDef(server_def_0, /*task_index=*/0);
 
-  // Create a `server_def` with `isolate_session_state` set to true. TFE_Context
-  // associated with this ServerDef shouldn't be able to access resource
-  // variables associated with other TFE_Contexts.
-  tensorflow::ServerDef server_def_2 =
-      ReplaceTaskInServerDef(server_def_0, /*task_index=*/0);
-  server_def_2.mutable_default_session_config()->set_isolate_session_state(
-      true);
-
   // These server defs have task index set to 0.
   string serialized_server_def_0 = server_def_0.SerializeAsString();
   string serialized_server_def_1 = server_def_1.SerializeAsString();
-  string serialized_server_def_2 = server_def_2.SerializeAsString();
 
   // Create two worker tasks.
   server_def_0.set_task_index(1);
@@ -2108,8 +2100,6 @@ TEST(CAPI, ShareVariableAcrossContextsWorks) {
                                      /*isolate_session_state=*/false);
   TFE_Context* ctx_1 = CreateContext(serialized_server_def_1,
                                      /*isolate_session_state=*/false);
-  TFE_Context* ctx_2 = CreateContext(serialized_server_def_2,
-                                     /*isolate_session_state=*/true);
 
   // Remote device on `worker1`.
   const char remote_device[] = "/job:localhost/replica:0/task:1/device:CPU:0";
@@ -2126,15 +2116,8 @@ TEST(CAPI, ShareVariableAcrossContextsWorks) {
                           remote_device) != device_names.end());
   }
 
-  {
-    const std::vector<std::string>& device_names = ListDeviceNames(ctx_2);
-    ASSERT_TRUE(std::find(device_names.begin(), device_names.end(),
-                          remote_device) != device_names.end());
-  }
-
   // Create a variable using `ctx_0`.
   // Read the variable using `ctx_1`. This read should succeed.
-  // Read the variable using `ctx_2`. This read should fail.
   // 1. Create a variable on `remote_device`, using `ctx_0`.
   TFE_TensorHandle* handle_0 =
       CreateVariable(ctx_0, 1.2, remote_device, /*variable_name=*/"var2");
@@ -2177,36 +2160,6 @@ TEST(CAPI, ShareVariableAcrossContextsWorks) {
     memcpy(&value, TF_TensorData(t), sizeof(float));
     TF_DeleteTensor(t);
     EXPECT_EQ(1.2f, value);
-    TFE_DeleteTensorHandle(handle_1);
-    TF_DeleteStatus(status);
-    TFE_DeleteTensorHandle(var_handle);
-  }
-
-  // 4. Read `var2` using `ctx_2`. This read should fail because `ctx_2` was
-  // created with `isolate_session_state` set to true.
-  {
-    // Create a handle to `var2`, using `ctx_2`.
-    TFE_TensorHandle* var_handle =
-        CreateVarHandle(ctx_2, remote_device, /*variable_name=*/"var2");
-
-    TFE_TensorHandle* handle_1 = nullptr;
-    int num_retvals = 1;
-    TF_Status* status = TF_NewStatus();
-    TFE_Op* op = TFE_NewOp(ctx_2, "ReadVariableOp", status);
-    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-    TFE_OpAddInput(op, var_handle, status);
-    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    TFE_Execute(op, &handle_1, &num_retvals, status);
-    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    TFE_DeleteOp(op);
-
-    ASSERT_EQ(1, num_retvals);
-    EXPECT_EQ(TF_FLOAT, TFE_TensorHandleDataType(handle_1));
-    TFE_TensorHandleNumDims(handle_1, status);
-
-    // Read the value of tensor handle `handle_1`, it should fail.
-    ASSERT_EQ(TF_FAILED_PRECONDITION, TF_GetCode(status));
     TFE_DeleteTensorHandle(handle_1);
     TF_DeleteStatus(status);
     TFE_DeleteTensorHandle(var_handle);

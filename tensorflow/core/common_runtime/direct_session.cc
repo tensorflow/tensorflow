@@ -440,24 +440,26 @@ Status DirectSession::ExtendLocked(GraphDef graph) {
   if (!(flib_def_ && execution_state_)) {
     // If this is the first call, we can initialize the execution state
     // with `graph` and do not need to call `Extend()`.
-    // NOTE(mrry): The function library created here will be used for
-    // all subsequent extensions of the graph.
-    flib_def_.reset(
-        new FunctionLibraryDefinition(OpRegistry::Global(), graph.library()));
     GraphExecutionStateOptions options;
     options.device_set = &device_set_;
     options.session_options = &options_;
     options.session_handle = session_handle_;
     TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(
         std::move(graph), options, &execution_state_));
+    // NOTE(mrry): The function library created here will be used for
+    // all subsequent extensions of the graph. Also, note how using the copy
+    // constructor of FunctionLibraryDefinition avoids duplicating the memory
+    // that is occupied by its shared_ptr members.
+    flib_def_.reset(
+        new FunctionLibraryDefinition(execution_state_->flib_def()));
     graph_created_ = true;
   } else {
-    TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
     std::unique_ptr<GraphExecutionState> state;
     // TODO(mrry): Rewrite GraphExecutionState::Extend() to take `graph` by
     // value and move `graph` in here.
     TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &state));
     execution_state_.swap(state);
+    TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
   }
   return Status::OK();
 }

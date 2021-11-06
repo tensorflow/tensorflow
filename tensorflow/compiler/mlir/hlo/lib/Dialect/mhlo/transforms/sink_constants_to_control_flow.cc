@@ -32,30 +32,19 @@ namespace {
 // A pass that sinks constants implicitly captured in control flow regions. This
 // is necessary to export to XLA.
 //
-// TODO(b/203775547): Generalize this pass to handle all the ops with regions.
-// Any value used within the region that is defined outside of op's region
-// should be sank to the regions and not just the constants. Ops such as If and
-// While whose computations doesn't require fixed signature like Sort or Reduce
-// have an option to pass outside values as operands of the op to avoid
-// recomputing those within internally. Note that doing so is the only option in
-// case of values defined outside that are BlockArguments of any of the parent
-// region.
+// TODO(b/203775547): Any value used within the region that is defined outside
+// of op's region should be sank to the regions and not just the constants. Ops
+// such as If and While whose computations doesn't require fixed signature like
+// Sort or Reduce have an option to pass outside values as operands of the op to
+// avoid recomputing those within internally. Note that doing so is the only
+// option in case of values defined outside that are BlockArguments of any of
+// the parent region.
 class SinkConstantsToControlFlowPass
     : public SinkConstantsToControlFlowPassBase<
           SinkConstantsToControlFlowPass> {
   void runOnFunction() override {
     getFunction().walk([](Operation* op) {
-      if (auto while_op = llvm::dyn_cast<WhileOp>(op)) {
-        SinkToRegion(&while_op.body());
-        SinkToRegion(&while_op.cond());
-      } else if (auto if_op = llvm::dyn_cast<IfOp>(op)) {
-        SinkToRegion(&if_op.true_branch());
-        SinkToRegion(&if_op.false_branch());
-      } else if (auto reduce_window_op = llvm::dyn_cast<ReduceWindowOp>(op)) {
-        SinkToRegion(&reduce_window_op.body());
-      } else if (auto sort_op = llvm::dyn_cast<SortOp>(op)) {
-        SinkToRegion(&sort_op.comparator());
-      }
+      for (Region& region : op->getRegions()) SinkToRegion(&region);
     });
   }
 

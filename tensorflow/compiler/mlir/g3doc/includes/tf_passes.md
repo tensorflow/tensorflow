@@ -609,6 +609,7 @@ tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} 
 -default-device : The default device to assign.
 ```
 ### `-tf-stack-ops-decomposition`: Decompose stack operations into local variable operations. Needs static shapes.
+### `-tf-strip-noinline-attribute`: Strip the tf._noinline attribute from top-level functions.
 ### `-tf-tensor-array-ops-decomposition`: Decompose tensor array operations into local variable operations.
 A pass that converts tensor array operations to tensor operations and
 read/assign ops on local variables. A later resource lifting pass can further
@@ -1143,3 +1144,4 @@ is in training mode or in evaluation mode.
 ### `-tf-verify-for-export`: Verify module is suitable for export back to TF Graph
 Verifies whether all functions in module are of single tf_executor.graph and
 each tf_executor.island in tf_executor.graph only has a single op.
+### `-tfe-legalize-tfg`: Legalize from TFG to the TFE dialect

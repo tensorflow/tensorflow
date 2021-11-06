@@ -110,6 +110,7 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
 
   // Perform tiling-padding-vectorization if vectorization is enabled.
   if (options.vectorize) {
+    pm.addNestedPass<mlir::FuncOp>(CreateDetensorizeLinalgPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
     pm.addNestedPass<mlir::FuncOp>(CreatePeelTiledLoopsPass());
@@ -168,6 +169,8 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   vec_to_scf_options.unroll = true;
   pm.addNestedPass<mlir::FuncOp>(
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
+
+  pm.addNestedPass<mlir::FuncOp>(CreateMathApproximationPass({"all"}));
 }
 
 void CreateDefaultTfCpuRtPipeline(mlir::OpPassManager& pm) {

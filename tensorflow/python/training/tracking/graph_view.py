@@ -211,22 +211,27 @@ class ObjectGraphView(object):
       saveables_cache: A dictionary mapping `Trackable` objects ->
         attribute names -> SaveableObjects, used to avoid re-creating
         SaveableObjects when graph building.
-      attached_dependencies: Dependencies to attach to the root object. Used
-        when saving a Checkpoint with a defined root object.
+      attached_dependencies: List of dependencies to attach to the root object.
+        Used when saving a Checkpoint with a defined root object. To avoid
+        reference cycles, this should use the WeakTrackableReference class.
     """
-    self._root_ref = root
+    # ObjectGraphView should never contain a strong reference to root, since it
+    # may result in a cycle:
+    #   root -> deferred dependencies -> CheckpointPosition
+    #   -> CheckpointRestoreCoordinator -> ObjectGraphView -> root
+    self._root_ref = (root if isinstance(root, weakref.ref)
+                      else weakref.ref(root))
     self._saveables_cache = saveables_cache
     self._attached_dependencies = attached_dependencies
 
   def __deepcopy__(self, memo):
-    if isinstance(self._root_ref, weakref.ref):
-      # By default, weak references are not copied, which leads to surprising
-      # deepcopy behavior. To fix, we first we copy the object itself, then we
-      # make a weak reference to the copy.
-      strong_root = self._root_ref()
-      if strong_root is not None:
-        strong_copy = copy.deepcopy(strong_root, memo)
-        memo[id(self._root_ref)] = weakref.ref(strong_copy)
+    # By default, weak references are not copied, which leads to surprising
+    # deepcopy behavior. To fix, we first we copy the object itself, then we
+    # make a weak reference to the copy.
+    strong_root = self._root_ref()
+    if strong_root is not None:
+      strong_copy = copy.deepcopy(strong_root, memo)
+      memo[id(self._root_ref)] = weakref.ref(strong_copy)
     # super() does not have a __deepcopy__, so we need to re-implement it
     copied = super().__new__(type(self))
     memo[id(self)] = copied
@@ -305,8 +310,12 @@ class ObjectGraphView(object):
     for checkpoint_id, (trackable, unused_object_proto) in enumerate(
         zip(trackable_objects, object_graph_proto.nodes)):
       assert node_ids[trackable] == checkpoint_id
+
     checkpoint_factory_map, registered_savers = (
         get_checkpoint_factories_and_keys(object_names, object_map))
+
+    # Add attributes, which describe what values are saved in checkpoint for
+    # this trackable.
     _add_attributes_to_object_graph_for_registered_savers(
         registered_savers, object_graph_proto, node_ids)
     named_saveable_objects, feed_additions = (
@@ -415,6 +424,51 @@ class ObjectGraphView(object):
 
     return named_saveable_objects, feed_additions
 
+  def _add_checkpoint_values_check(self, trackable_objects, object_graph_proto):
+    """Determines which objects have checkpoint values and saves to the proto.
+
+    Args:
+      trackable_objects: A list of all trackable objects.
+      object_graph_proto: A `TrackableObjectGraph` proto.
+    """
+    # Trackable -> set of all trackables that depend on it (the "parents").
+    # If a trackable has checkpoint values, then all of the parents can be
+    # marked as having checkpoint values.
+    parents = object_identity.ObjectIdentityDictionary()
+    checkpointed_trackables = object_identity.ObjectIdentitySet()
+
+    # First pass: build dictionary of parent objects and initial set of
+    # checkpointed trackables.
+    for trackable, object_proto in zip(trackable_objects,
+                                       object_graph_proto.nodes):
+      if (object_proto.attributes or object_proto.slot_variables or
+          object_proto.HasField("registered_saver")):
+        checkpointed_trackables.add(trackable)
+      for child_proto in object_proto.children:
+        child = trackable_objects[child_proto.node_id]
+        if child not in parents:
+          parents[child] = object_identity.ObjectIdentitySet()
+        parents[child].add(trackable)
+
+    # Second pass: add all connected parents to set of checkpointed trackables.
+    to_visit = object_identity.ObjectIdentitySet()
+    to_visit.update(checkpointed_trackables)
+
+    while to_visit:
+      trackable = to_visit.pop()
+      if trackable not in parents:
+        # Some trackables may not have parents (e.g. slot variables).
+        continue
+      current_parents = parents.pop(trackable)
+      checkpointed_trackables.update(current_parents)
+      for parent in current_parents:
+        if parent in parents:
+          to_visit.add(parent)
+
+    for node_id, trackable in enumerate(trackable_objects):
+      object_graph_proto.nodes[node_id].has_checkpoint_values.value = bool(
+          trackable in checkpointed_trackables)
+
   def _fill_object_graph_proto(self, trackable_objects,
                                node_ids,
                                slot_variables,
@@ -459,6 +513,9 @@ class ObjectGraphView(object):
             object_names=object_names,
             object_map=object_map,
             call_with_mapped_captures=call_with_mapped_captures))
+    # Gather all trackables that have checkpoint values or descendants with
+    # checkpoint values, and add that info to the proto.
+    self._add_checkpoint_values_check(trackable_objects, object_graph_proto)
     return (named_saveable_objects, object_graph_proto, feed_additions,
             registered_savers)
 

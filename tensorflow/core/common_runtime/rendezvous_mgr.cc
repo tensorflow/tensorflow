@@ -179,6 +179,10 @@ void RefCountedIntraProcessRendezvous::StartAbort(const Status& s) {
   local_.StartAbort(s);
 }
 
+Status RefCountedIntraProcessRendezvous::GetLocalRendezvousStatus() {
+  return local_.status();
+}
+
 PrivateIntraProcessRendezvous::PrivateIntraProcessRendezvous(
     const DeviceMgr* device_mgr)
     : device_mgr_(device_mgr), local_(nullptr) {}

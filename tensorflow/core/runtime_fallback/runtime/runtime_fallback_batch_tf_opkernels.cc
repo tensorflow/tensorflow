@@ -327,7 +327,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   SmallVector<AsyncValue*, 8> arguments;
   arguments.reserve(inputs.size() + 1);
   // The first argument is a Chain.
-  arguments.push_back(GetReadyChain(host_ctx_).release());
+  arguments.push_back(tfrt::GetReadyChain().release());
   for (auto& input : inputs) {
     arguments.push_back(TFTensorToFallbackTensor(input).release());
   }

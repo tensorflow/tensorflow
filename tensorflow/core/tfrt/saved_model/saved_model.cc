@@ -263,7 +263,7 @@ tensorflow::Status RunInitializers(
 
     const auto& signature = initializers_and_signatures.signature_map.at(init);
 
-    auto ready_chain = GetReadyChain(host);
+    auto ready_chain = GetReadyChain();
 
     // The actual arguments are the concat of side-effect chain and assets.
     llvm::SmallVector<AsyncValue*, 1> arguments;
@@ -1228,7 +1228,7 @@ tensorflow::Status SavedModelImpl::RunInternal(
 
   // The first argument is a chain for side-effects. Since SavedModel::Run()
   // only returns when side-effects are visible, we can use a ready chain here.
-  arguments.push_back(GetReadyChain(host).release());
+  arguments.push_back(GetReadyChain().release());
 
   for (const auto& input : inputs) {
     arguments.push_back(
@@ -1253,11 +1253,11 @@ tensorflow::Status SavedModelImpl::RunInternal(
       })};
 
   // Wait for the function execution before checking chain and results.
-  host->Await(executed);
+  exec_ctx.work_queue().Await(executed);
 
   // Wait for all results including the side-effect chain. This ensures that all
   // side-effects are visible when SavedModel::Run() returns.
-  host->Await(chain_and_results);
+  exec_ctx.work_queue().Await(chain_and_results);
 
   DCHECK(!chain_and_results.empty());
 

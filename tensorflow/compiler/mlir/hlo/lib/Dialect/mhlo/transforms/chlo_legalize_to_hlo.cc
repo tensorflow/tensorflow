@@ -48,7 +48,7 @@ namespace {
 struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
   using OpConversionPattern<ConstantLikeOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      ConstantLikeOp op, ArrayRef<Value> operands,
+      ConstantLikeOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     auto result_ty = op.getType().cast<ShapedType>();
 
@@ -63,12 +63,11 @@ struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
     }
 
     // Lower to broadcasted constant.
-    ConstantLikeOp::Adaptor transformed(operands);
     auto loc = op.getLoc();
     Type extent_tensor_type = shape::getExtentTensorType(op.getContext());
     Value constant = rewriter.create<mhlo::ConstOp>(loc, op.value());
     Value uncasted_shape = rewriter.create<shape::ShapeOfOp>(
-        loc, extent_tensor_type, transformed.operand());
+        loc, extent_tensor_type, adaptor.operand());
     Type shape_ty =
         RankedTensorType::get({result_ty.getRank()}, rewriter.getIndexType());
     Value shape =
@@ -440,11 +439,10 @@ Value MaterializeWithUpcast(ConversionPatternRewriter &rewriter, Location loc,
 struct ConvertErfOp : public OpConversionPattern<ErfOp> {
   using OpConversionPattern<ErfOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      ErfOp op, ArrayRef<Value> operands,
+      ErfOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    ErfOp::Adaptor transformed(operands);
-    Value x = transformed.operand();
+    Value x = adaptor.operand();
     Type ty = x.getType().cast<ShapedType>().getElementType();
 
     // For now, we support only f64, f32, and f16.
@@ -455,9 +453,10 @@ struct ConvertErfOp : public OpConversionPattern<ErfOp> {
       return success();
     }
 
-    rewriter.replaceOp(op, MaterializeWithUpcast(
-                               rewriter, loc, operands, rewriter.getF32Type(),
-                               &MaterializeErfApproximationF32));
+    rewriter.replaceOp(
+        op, MaterializeWithUpcast(rewriter, loc, adaptor.getOperands(),
+                                  rewriter.getF32Type(),
+                                  &MaterializeErfApproximationF32));
     return success();
   }
 };
@@ -465,11 +464,10 @@ struct ConvertErfOp : public OpConversionPattern<ErfOp> {
 struct ConvertErfcOp : public OpConversionPattern<ErfcOp> {
   using OpConversionPattern<ErfcOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      ErfcOp op, ArrayRef<Value> operands,
+      ErfcOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    ErfcOp::Adaptor transformed(operands);
-    Value x = transformed.operand();
+    Value x = adaptor.operand();
     Type ty = x.getType().cast<ShapedType>().getElementType();
 
     // For now, we support only f64, f32, and f16.
@@ -480,9 +478,10 @@ struct ConvertErfcOp : public OpConversionPattern<ErfcOp> {
       return success();
     }
 
-    rewriter.replaceOp(op, MaterializeWithUpcast(
-                               rewriter, loc, operands, rewriter.getF32Type(),
-                               &MaterializeErfcApproximationF32));
+    rewriter.replaceOp(
+        op, MaterializeWithUpcast(rewriter, loc, adaptor.getOperands(),
+                                  rewriter.getF32Type(),
+                                  &MaterializeErfcApproximationF32));
     return success();
   }
 };
@@ -675,20 +674,19 @@ Value MaterializeCoshApproximation(ConversionPatternRewriter &rewriter,
 struct ConvertCoshOp : public OpConversionPattern<CoshOp> {
   using OpConversionPattern<CoshOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      CoshOp op, ArrayRef<Value> operands,
+      CoshOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    CoshOp::Adaptor transformed(operands);
-    Value x = transformed.operand();
+    Value x = adaptor.operand();
     if (x.getType().cast<ShapedType>().getElementType().isa<ComplexType>()) {
       // TODO(hinsu): Support operands with complex element types by always
       // using the formula for large x. The compare op is not legal for complex
       // numbers.
       return failure();
     }
-    rewriter.replaceOp(op,
-                       MaterializeWithUpcast(rewriter, op.getLoc(), operands,
-                                             rewriter.getF32Type(),
-                                             &MaterializeCoshApproximation));
+    rewriter.replaceOp(
+        op, MaterializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
+                                  rewriter.getF32Type(),
+                                  &MaterializeCoshApproximation));
     return success();
   }
 };
@@ -998,11 +996,11 @@ Value MaterializePolygamma(ConversionPatternRewriter &rewriter, Location loc,
 struct ConvertLgammaOp : public OpConversionPattern<LgammaOp> {
   using OpConversionPattern<LgammaOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      LgammaOp op, ArrayRef<Value> operands,
+      LgammaOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     FloatType min_precision_ty = rewriter.getF32Type();
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, op.getLoc(), operands,
+        op, MaterializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
                                   min_precision_ty, &MaterializeLgamma));
     return success();
   }
@@ -1011,11 +1009,11 @@ struct ConvertLgammaOp : public OpConversionPattern<LgammaOp> {
 struct ConvertDigammaOp : public OpConversionPattern<DigammaOp> {
   using OpConversionPattern<DigammaOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      DigammaOp op, ArrayRef<Value> operands,
+      DigammaOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     FloatType min_precision_ty = rewriter.getF32Type();
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, op.getLoc(), operands,
+        op, MaterializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
                                   min_precision_ty, &MaterializeDigamma));
     return success();
   }
@@ -1111,10 +1109,10 @@ Value MaterializeNextAfter(ConversionPatternRewriter &rewriter, Location loc,
 struct ConvertNextAfterOp : public OpConversionPattern<NextAfterOp> {
   using OpConversionPattern<NextAfterOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      NextAfterOp op, ArrayRef<Value> operands,
+      NextAfterOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOp(op,
-                       MaterializeNextAfter(rewriter, op.getLoc(), operands));
+    rewriter.replaceOp(
+        op, MaterializeNextAfter(rewriter, op.getLoc(), adaptor.getOperands()));
     return success();
   }
 };
@@ -1122,13 +1120,13 @@ struct ConvertNextAfterOp : public OpConversionPattern<NextAfterOp> {
 struct ConvertPolygammaOp : public OpConversionPattern<PolygammaOp> {
   using OpConversionPattern<PolygammaOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      PolygammaOp op, ArrayRef<Value> operands,
+      PolygammaOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
     FloatType min_precision_ty = rewriter.getF32Type();
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, loc, operands, min_precision_ty,
-                                  &MaterializePolygamma));
+        op, MaterializeWithUpcast(rewriter, loc, adaptor.getOperands(),
+                                  min_precision_ty, &MaterializePolygamma));
     return success();
   }
 };
@@ -1190,19 +1188,18 @@ Value MaterializeSinhApproximation(ConversionPatternRewriter &rewriter,
 struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
   using OpConversionPattern<SinhOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      SinhOp op, ArrayRef<Value> operands,
+      SinhOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    SinhOp::Adaptor transformed(operands);
-    Value x = transformed.operand();
+    Value x = adaptor.operand();
     if (x.getType().cast<ShapedType>().getElementType().isa<ComplexType>()) {
       rewriter.replaceOp(op, MaterializeSinhApproximationForLargeX(
-                                 rewriter, op.getLoc(), operands));
+                                 rewriter, op.getLoc(), adaptor.getOperands()));
       return success();
     }
-    rewriter.replaceOp(op,
-                       MaterializeWithUpcast(rewriter, op.getLoc(), operands,
-                                             rewriter.getF32Type(),
-                                             &MaterializeSinhApproximation));
+    rewriter.replaceOp(
+        op, MaterializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
+                                  rewriter.getF32Type(),
+                                  &MaterializeSinhApproximation));
     return success();
   }
 };
@@ -1210,13 +1207,13 @@ struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
 struct ConvertZetaOp : public OpConversionPattern<ZetaOp> {
   using OpConversionPattern<ZetaOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      ZetaOp op, ArrayRef<Value> operands,
+      ZetaOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
     FloatType min_precision_ty = rewriter.getF32Type();
     rewriter.replaceOp(
-        op, MaterializeWithUpcast(rewriter, loc, operands, min_precision_ty,
-                                  &MaterializeZeta));
+        op, MaterializeWithUpcast(rewriter, loc, adaptor.getOperands(),
+                                  min_precision_ty, &MaterializeZeta));
     return success();
   }
 };
@@ -1224,13 +1221,12 @@ struct ConvertZetaOp : public OpConversionPattern<ZetaOp> {
 struct ConvertSelectOp : public OpConversionPattern<BroadcastSelectOp> {
   using OpConversionPattern<BroadcastSelectOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      BroadcastSelectOp op, ArrayRef<Value> operands,
+      BroadcastSelectOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // Only support ranked operands.
-    typename BroadcastSelectOp::Adaptor transformed(operands);
-    Value pred = transformed.pred();
-    Value on_true = transformed.on_true();
-    Value on_false = transformed.on_false();
+    Value pred = adaptor.pred();
+    Value on_true = adaptor.on_true();
+    Value on_false = adaptor.on_false();
     auto pred_type = pred.getType().dyn_cast<RankedTensorType>();
     auto on_true_type = on_true.getType().dyn_cast<RankedTensorType>();
     auto on_false_type = on_false.getType().dyn_cast<RankedTensorType>();
@@ -1255,7 +1251,7 @@ struct ConvertSelectOp : public OpConversionPattern<BroadcastSelectOp> {
         loc, ArrayRef<Type>{result_type}, broadcastable_cstr);
 
     OpBuilder::InsertionGuard guard(rewriter);
-    rewriter.createBlock(&assuming_op.doRegion());
+    rewriter.createBlock(&assuming_op.getDoRegion());
 
     Value result_extents = rewriter.createOrFold<shape::BroadcastOp>(
         loc, shape::getExtentTensorType(op.getContext()),
@@ -1312,14 +1308,13 @@ struct ConvertTrivialNonBroadcastBinaryOp
     : public OpConversionPattern<ChloOpTy> {
   using OpConversionPattern<ChloOpTy>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      ChloOpTy op, ArrayRef<Value> operands,
+      ChloOpTy op, typename ChloOpTy::Adaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // Only rewrite for statically determinable non-broadcasting cases.
-    typename ChloOpTy::Adaptor transformed(operands);
     auto lhs_type =
-        transformed.lhs().getType().template dyn_cast<RankedTensorType>();
+        adaptor.lhs().getType().template dyn_cast<RankedTensorType>();
     auto rhs_type =
-        transformed.rhs().getType().template dyn_cast<RankedTensorType>();
+        adaptor.rhs().getType().template dyn_cast<RankedTensorType>();
     if (!lhs_type || !rhs_type) return failure();
 
     // Requires rank broadcast.
@@ -1337,8 +1332,9 @@ struct ConvertTrivialNonBroadcastBinaryOp
       }
     }
 
-    rewriter.replaceOp(op, {Adaptor::CreateOp(op, op.getResult().getType(),
-                                              operands, rewriter)});
+    rewriter.replaceOp(op,
+                       {Adaptor::CreateOp(op, op.getResult().getType(),
+                                          adaptor.getOperands(), rewriter)});
     return success();
   }
 };
@@ -1360,12 +1356,11 @@ struct ConvertRankedDynamicBroadcastBinaryOp
     : public OpConversionPattern<ChloOpTy> {
   using OpConversionPattern<ChloOpTy>::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      ChloOpTy op, ArrayRef<Value> operands,
+      ChloOpTy op, typename ChloOpTy::Adaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // Only support ranked operands.
-    typename ChloOpTy::Adaptor transformed(operands);
-    Value lhs = transformed.lhs();
-    Value rhs = transformed.rhs();
+    Value lhs = adaptor.lhs();
+    Value rhs = adaptor.rhs();
     auto lhs_type = lhs.getType().dyn_cast<RankedTensorType>();
     auto rhs_type = rhs.getType().dyn_cast<RankedTensorType>();
     auto result_type =
@@ -1398,10 +1393,10 @@ struct ConvertRankedDynamicBroadcastBinaryOp
     auto broadcastable_cstr =
         rewriter.create<shape::CstrBroadcastableOp>(loc, lhs_shape, rhs_shape);
     auto assuming_op = rewriter.create<shape::AssumingOp>(
-        loc, ArrayRef<Type>{result_type}, broadcastable_cstr.result());
+        loc, ArrayRef<Type>{result_type}, broadcastable_cstr.getResult());
 
     OpBuilder::InsertionGuard guard(rewriter);
-    rewriter.createBlock(&assuming_op.doRegion());
+    rewriter.createBlock(&assuming_op.getDoRegion());
 
     int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
     Value result_extents =

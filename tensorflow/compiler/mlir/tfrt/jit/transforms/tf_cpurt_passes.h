@@ -66,11 +66,18 @@ std::unique_ptr<mlir::FunctionPass> CreateFusionPass();
 std::unique_ptr<mlir::FunctionPass> CreateSymbolicShapeOptimizationPass(
     bool constraints_only = false);
 
+// Pass to replace 0-d tensor inputs to LinalgOp with extracted elements.
+std::unique_ptr<mlir::FunctionPass> CreateDetensorizeLinalgPass();
+
 // Creates `tf_device.cluster` operations according to the TF CPURT clustering
 // policy.
 std::unique_ptr<mlir::FunctionPass> CreateTfCpurtClusteringPass();
 std::unique_ptr<mlir::FunctionPass> CreateTfCpurtClusteringPass(
     llvm::ArrayRef<std::string> oplist, int min_cluster_size);
+
+// Pass to replace math ops with approximations.
+std::unique_ptr<mlir::FunctionPass> CreateMathApproximationPass(
+    llvm::ArrayRef<std::string> oplist = {});
 
 // Returns true if the `value` type is a memref that is contiguous in memory.
 bool IsContiguousMemref(mlir::Value value);
