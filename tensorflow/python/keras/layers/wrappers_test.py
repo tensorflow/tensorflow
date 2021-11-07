@@ -528,6 +528,28 @@ class TimeDistributedTest(keras_parameterized.TestCase):
         epochs=1,
         batch_size=3)
 
+  def test_TimeDistributed_Attention(self):
+    query_input = keras.layers.Input(shape=(None, 1, 10), dtype='float32')
+    value_input = keras.layers.Input(shape=(None, 4, 10), dtype='float32')
+
+    # Query-value attention of shape [batch_size, Tq, filters].
+    query_value_attention_seq = keras.layers.TimeDistributed(
+      keras.layers.Attention())([query_input, value_input])
+    model = keras.models.Model(
+      [query_input, value_input], query_value_attention_seq)
+    model.compile(optimizer='rmsprop', loss='mse')
+    model.fit(
+      [np.random.random((10, 8, 1, 10)), np.random.random((10, 8, 4, 10))],
+      np.random.random((10, 8, 1, 10)),
+      epochs=1,
+      batch_size=10
+    )
+
+    # test config and serialization/deserialization
+    model.get_config()
+    model = keras.models.model_from_json(model.to_json())
+    model.summary()
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class BidirectionalTest(test.TestCase, parameterized.TestCase):
