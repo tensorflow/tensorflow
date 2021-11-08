@@ -1172,9 +1172,7 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     PowInput<int64_t>(), baseline_pow,
     test::OpsTestConfig().ExpectStrictlyEqual())
 
-/// Test the experimental JIT-compiled kernels.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+/// Test the JIT-compiled kernels.
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Pow, /*test_name=*/Int8, int8_t, int8_t, PowInput<int8_t>(),
     PowInput<int8_t>(), baseline_pow,
@@ -1183,7 +1181,6 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     Pow, /*test_name=*/Int16, int16_t, int16_t, PowInput<int16_t>(),
     PowInput<int16_t>(), baseline_pow,
     test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
 
 /// Test `tf.RealDiv`.
 
