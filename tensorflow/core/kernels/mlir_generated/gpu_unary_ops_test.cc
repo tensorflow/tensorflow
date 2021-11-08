@@ -859,10 +859,11 @@ T baseline_rint(T x) {
   return y == T(0) ? T(0) : y;
 }
 
-#if defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+// Test the JIT-compiled kernel.
 GENERATE_DEFAULT_TEST_2(Rint, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_rint,
                         test::OpsTestConfig().ExpectStrictlyEqual())
+
 TEST_F(UnaryOpsTest, RintWithCache) {
   constexpr auto kTFJitCacheDirEnvVar = "TF_JIT_CACHE_DIR";
   // First try to setup a unique directory for the file cache
@@ -887,11 +888,9 @@ TEST_F(UnaryOpsTest, RintWithCache) {
 
   if (original_env != nullptr) setenv(kTFJitCacheDirEnvVar, original_env, 1);
 }
-#endif
 
 GENERATE_DEFAULT_TEST(Rint, DT_FLOAT, DT_FLOAT, baseline_rint,
                       test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Rint, DT_DOUBLE, DT_DOUBLE,
     test::InputAsVector<double>({-1.7, -1.5, -0.2, -0.0, 0.0, 0.2, 0.5000001,
