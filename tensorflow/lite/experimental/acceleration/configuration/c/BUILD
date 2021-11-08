@@ -70,3 +70,27 @@ cc_library(
         "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin_impl",
     ],
 )
+
+cc_library(
+    name = "xnnpack_plugin",
+    srcs = ["xnnpack_plugin.cc"],
+    hdrs = ["xnnpack_plugin.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":delegate_plugin",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+    ],
+)
+
+cc_test(
+    name = "xnnpack_plugin_test",
+    srcs = ["xnnpack_plugin_test.cc"],
+    deps = [
+        ":xnnpack_plugin",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
