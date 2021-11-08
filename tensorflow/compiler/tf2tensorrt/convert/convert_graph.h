@@ -51,6 +51,7 @@ struct ConversionParams {
   bool use_implicit_batch = true;
   ProfileStrategy profile_strategy = ProfileStrategy::kRange;
   bool allow_build_at_runtime = true;
+  bool use_explicit_precision = false;
 };
 
 // Method to call from optimization pass

@@ -57,7 +57,8 @@ REGISTER_OP("TRTEngineOp")
     .Attr("fixed_input_size: bool = true")
     .Attr("output_shapes: list(shape) = []")
     .Attr("static_engine: bool = true")
-    .Attr("profile_strategy: string = ''");
+    .Attr("profile_strategy: string = ''")
+    .Attr("use_explicit_precision: bool = false");
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
