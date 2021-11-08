@@ -211,22 +211,27 @@ class ObjectGraphView(object):
       saveables_cache: A dictionary mapping `Trackable` objects ->
         attribute names -> SaveableObjects, used to avoid re-creating
         SaveableObjects when graph building.
-      attached_dependencies: Dependencies to attach to the root object. Used
-        when saving a Checkpoint with a defined root object.
+      attached_dependencies: List of dependencies to attach to the root object.
+        Used when saving a Checkpoint with a defined root object. To avoid
+        reference cycles, this should use the WeakTrackableReference class.
     """
-    self._root_ref = root
+    # ObjectGraphView should never contain a strong reference to root, since it
+    # may result in a cycle:
+    #   root -> deferred dependencies -> CheckpointPosition
+    #   -> CheckpointRestoreCoordinator -> ObjectGraphView -> root
+    self._root_ref = (root if isinstance(root, weakref.ref)
+                      else weakref.ref(root))
     self._saveables_cache = saveables_cache
     self._attached_dependencies = attached_dependencies
 
   def __deepcopy__(self, memo):
-    if isinstance(self._root_ref, weakref.ref):
-      # By default, weak references are not copied, which leads to surprising
-      # deepcopy behavior. To fix, we first we copy the object itself, then we
-      # make a weak reference to the copy.
-      strong_root = self._root_ref()
-      if strong_root is not None:
-        strong_copy = copy.deepcopy(strong_root, memo)
-        memo[id(self._root_ref)] = weakref.ref(strong_copy)
+    # By default, weak references are not copied, which leads to surprising
+    # deepcopy behavior. To fix, we first we copy the object itself, then we
+    # make a weak reference to the copy.
+    strong_root = self._root_ref()
+    if strong_root is not None:
+      strong_copy = copy.deepcopy(strong_root, memo)
+      memo[id(self._root_ref)] = weakref.ref(strong_copy)
     # super() does not have a __deepcopy__, so we need to re-implement it
     copied = super().__new__(type(self))
     memo[id(self)] = copied

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cmath>
 #include <random>
 
 #include "tensorflow/core/lib/random/philox_random.h"
@@ -24,7 +25,7 @@ limitations under the License.
 namespace tflite {
 namespace ops {
 namespace builtin {
-namespace random_uniform {
+namespace random {
 
 namespace {
 
@@ -33,12 +34,17 @@ constexpr int kOutputTensor = 0;
 
 using Generator = ::tensorflow::random::PhiloxRandom;
 
+enum RandomType {
+  kRandomUniform,
+  kRandomStandardNormal,
+};
+
 struct OpData {
   Generator rng;
 };
 
 // Generates non-deterministic seed.
-int64_t GetNonDeterministicSeed() {
+inline int64_t GetNonDeterministicSeed() {
   static std::mt19937_64* seed_generator = []() {
     std::random_device device("/dev/urandom");
     return new std::mt19937_64(device());
@@ -46,18 +52,40 @@ int64_t GetNonDeterministicSeed() {
   return (*seed_generator)();
 }
 
+
 // Generates random numbers following a uniform distribution from the underlying
 // random integer generator, which returns a uint32 array of size
 // kResultElementCount on each invocation.
-void RandomUniformSample(Generator& rng, float* buffer, size_t buffer_size) {
+void GenerateRandomUniformNumbers(
+    Generator& rng, float* buffer, size_t buffer_size) {
   size_t current_size = 0;
   size_t rng_size = Generator::kResultElementCount;
 
   while (current_size < buffer_size) {
     typename Generator::ResultType samples = rng();
-    int rng_net_size = std::min(rng_size, buffer_size - current_size);
+    const int rng_net_size = std::min(rng_size, buffer_size - current_size);
     for (int i = 0; i < rng_net_size; i++) {
       buffer[current_size + i] = tensorflow::random::Uint32ToFloat(samples[i]);
+    }
+    current_size += rng_net_size;
+  }
+}
+
+// Generates random numbers following a standard normal distribution from the
+// underlying random integer generator, which returns a uint32 array of size
+// kResultElementCount on each invocation.
+void GenerateRandomStandardNormalNumbers(
+    Generator& rng, float* buffer, size_t buffer_size) {
+  size_t current_size = 0;
+  size_t rng_size = Generator::kResultElementCount;
+
+  while (current_size < buffer_size) {
+    typename Generator::ResultType samples = rng();
+    const int rng_net_size = std::min(rng_size, buffer_size - current_size);
+    for (int i = 0; i < rng_net_size; i += 2) {
+      tensorflow::random::BoxMullerFloat(samples[i], samples[i + 1],
+                                         &buffer[current_size + i],
+                                         &buffer[current_size + i + 1]);
     }
     current_size += rng_net_size;
   }
@@ -75,7 +103,7 @@ void Free(TfLiteContext* context, void* buffer) {
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Validate number of inputs and outputs
-  TF_LITE_ENSURE(context, NumInputs(node) >= 1);
+  TF_LITE_ENSURE(context, NumInputs(node) == 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   // Validate input
@@ -90,8 +118,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int64_t seed2 = params->seed2;
   if (seed == 0 && seed2 == 0) {
     // If both seeds are unspecified, generate non-deterministic random numbers.
-    seed = GetNonDeterministicSeed();
-    seed2 = GetNonDeterministicSeed();
+    seed = random::GetNonDeterministicSeed();
+    seed2 = random::GetNonDeterministicSeed();
   }
   Generator rng(seed, seed2);
   data->rng = rng;
@@ -107,7 +135,28 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, output_shape);
 }
 
-TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus EvalRandomType(
+    TfLiteContext* context, TfLiteNode* node, RandomType random_type) {
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  const size_t output_size = NumElements(output);
+  switch (random_type) {
+    case kRandomUniform:
+      GenerateRandomUniformNumbers(
+        data->rng, GetTensorData<float>(output), output_size);
+      break;
+    case kRandomStandardNormal:
+      GenerateRandomStandardNormalNumbers(
+        data->rng, GetTensorData<float>(output), output_size);
+      break;
+    default:
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
+template <RandomType rtype>
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (IsDynamicTensor(output)) {
@@ -118,28 +167,33 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node) {
     context->ResizeTensor(context, output, output_shape);
   }
 
-  OpData* data = reinterpret_cast<OpData*>(node->user_data);
-  const size_t output_size = NumElements(output);
   switch (output->type) {
     case kTfLiteFloat32:
-      RandomUniformSample(data->rng, GetTensorData<float>(output), output_size);
+        EvalRandomType(context, node, rtype);
       break;
     default:
-      TF_LITE_KERNEL_LOG(context,
-                         "Unsupported output datatype for RandomUniform: %s",
-                         TfLiteTypeGetName(output->type));
+      TF_LITE_KERNEL_LOG(
+          context, "Unsupported output datatype for %s op: %s",
+          rtype == kRandomUniform? "RandomUniform": "RandomStandardNormal",
+          TfLiteTypeGetName(output->type));
       return kTfLiteError;
   }
-
   return kTfLiteOk;
 }
 
-}  // namespace random_uniform
+}  // namespace random
 
 TfLiteRegistration* Register_RANDOM_UNIFORM() {
-  static TfLiteRegistration r = {random_uniform::Init, random_uniform::Free,
-                                 random_uniform::Prepare,
-                                 random_uniform::EvalFloat};
+  static TfLiteRegistration r = {random::Init, random::Free,
+                                 random::Prepare,
+                                 random::Eval<random::kRandomUniform>};
+  return &r;
+}
+
+TfLiteRegistration* Register_RANDOM_STANDARD_NORMAL() {
+  static TfLiteRegistration r = {random::Init, random::Free,
+                                 random::Prepare,
+                                 random::Eval<random::kRandomStandardNormal>};
   return &r;
 }
 

@@ -12,18 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for TF_CUDNN_DETERMINISTIC=1."""
+"""Tests for TF_DETERMINISTIC_OPS=1."""
 
-import os
-
-from tensorflow.python.kernel_tests import cudnn_deterministic_base
+from tensorflow.python.framework import config
+from tensorflow.python.kernel_tests.nn_ops import cudnn_deterministic_base
 from tensorflow.python.platform import test
 
 ConvolutionTest = cudnn_deterministic_base.ConvolutionTest
 
 if __name__ == '__main__':
-  # Note that the effect of setting the following environment variable to
-  # 'true' is not tested. Unless we can find a simpler pattern for testing these
-  # environment variables, it would require another test file to be added.
-  os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+  # TODO(reedwm): Merge this file with cudnn_deterministic_base.py.
+  config.enable_op_determinism()
   test.main()

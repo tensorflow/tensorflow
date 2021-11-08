@@ -2232,6 +2232,7 @@ def adjust_contrast(images, contrast_factor):
 
 
 @tf_export('image.adjust_gamma')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def adjust_gamma(image, gamma=1, gain=1):
   """Performs [Gamma Correction](http://en.wikipedia.org/wiki/Gamma_correction).

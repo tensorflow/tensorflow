@@ -1291,7 +1291,7 @@ REGISTER_OP("Identity")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
-    .SetForwardTypeFn(full_type::ReplicateInputs())
+    .SetForwardTypeFn(full_type::ReplicateInput())
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("Snapshot")

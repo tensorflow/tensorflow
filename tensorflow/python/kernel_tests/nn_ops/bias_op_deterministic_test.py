@@ -24,7 +24,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.kernel_tests import bias_op_base
+from tensorflow.python.kernel_tests.nn_ops import bias_op_base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops

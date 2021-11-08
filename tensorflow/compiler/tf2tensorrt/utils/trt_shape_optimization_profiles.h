@@ -50,6 +50,13 @@ struct OptimizationProfileConfig {
   // input dimensions for execution tensors. If engine has shape input tensors,
   // then min[num_inputs + i] store the shape value for input i. For inputs that
   // are not shape tensors min = opt = max = {0, {}}.
+  //
+  // When the OptimizationProfileConfig is created from the network definition
+  // (AddProfiles), then each elements of the min, opt, max vectors are defined.
+  // When the OptimizationProfileConfig object is restored during engine
+  // deserialization (RestoreProfiles), then some inputs can be pruned
+  // (see TrtShapeOptimizationProfile::is_pruned_input_). In that case min[i]
+  // is not defined for pruned inputs (same is true for opt and max).
   std::vector<nvinfer1::Dims> min;
   std::vector<nvinfer1::Dims> opt;
   std::vector<nvinfer1::Dims> max;
@@ -106,7 +113,8 @@ struct OptimizationProfileConfig {
   // Returns true if profile range completely includes the given shapes.
   bool IncludesShapes(const std::vector<TensorShape>& shapes,
                       bool has_shape_tensor,
-                      const std::vector<nvinfer1::Dims>& shape_values) const {
+                      const std::vector<nvinfer1::Dims>& shape_values,
+                      const std::vector<bool>& is_pruned_input) const {
     // min, max, and opt must have the same size which is already verified in
     // SetDimensions.
     if (min.size() != shapes.size() * 2 ||
@@ -117,6 +125,9 @@ struct OptimizationProfileConfig {
       return false;
     }
     for (int i = 0; i < shapes.size(); i++) {
+      if (is_pruned_input[i]) {
+        continue;
+      }
       auto current_shape = shapes[i];
       // min, max, and opt must have the same nbDims, which is already verified
       // in SetDimensions.
@@ -135,6 +146,9 @@ struct OptimizationProfileConfig {
     if (has_shape_tensor) {
       int offset = shapes.size();
       for (int i = 0; i < shape_values.size(); i++) {
+        if (is_pruned_input[i]) {
+          continue;
+        }
         auto shape_val = shape_values[i];
         // min, max, and opt must have the same nbDims, which is already
         // verified in SetDimensions.
@@ -216,7 +230,8 @@ class TrtShapeOptimizationProfile {
   bool NeedProfiles() const { return need_profiles_; }
 
   // Restores profiles from the engine (used after deserialization).
-  Status RestoreProfiles(const nvinfer1::ICudaEngine* engine);
+  Status RestoreProfiles(const nvinfer1::ICudaEngine* engine,
+                         int n_network_inputs);
 
   // Whether the network has any shape tensors.
   bool HasShapeTensor() const { return has_shape_tensor_; }
@@ -258,6 +273,9 @@ class TrtShapeOptimizationProfile {
   // Whether an input tensor is a shape tensor.
   std::vector<bool> is_shape_tensor_;
 
+  // Whether a network input was pruned (only in TRT 7).
+  std::vector<bool> is_pruned_input_;
+
   // Optimization profile generation strategy.
   ProfileStrategy strategy_;
 
@@ -269,6 +287,9 @@ class TrtShapeOptimizationProfile {
   void SetShapeTensorMask(const nvinfer1::ICudaEngine* engine, int n_inputs);
   void SetShapeTensorMask(
       const std::vector<PartialTensorShape>& input_partial_shapes);
+
+  Status SetPrunedMask(const nvinfer1::ICudaEngine* engine,
+                       int n_network_inputs);
 
   void ImplicitBatchModeCompatibleStrategy(
       const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes);

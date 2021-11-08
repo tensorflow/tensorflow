@@ -216,6 +216,10 @@ static mlir::Attribute BuildI32Attr(int32_t value, mlir::Builder builder) {
   return builder.getI32IntegerAttr(value);
 }
 
+static mlir::Attribute BuildI64Attr(int64_t value, mlir::Builder builder) {
+  return builder.getI64IntegerAttr(value);
+}
+
 static mlir::Attribute BuildI64ArrayAttr(std::vector<int32_t> value,
                                          mlir::Builder builder) {
   std::vector<int64_t> typecast(value.begin(), value.end());

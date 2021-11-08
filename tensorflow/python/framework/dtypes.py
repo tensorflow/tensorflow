@@ -33,8 +33,8 @@ _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 class DType(_dtypes.DType):
   """Represents the type of the elements in a `Tensor`.
 
-  `DType`s are used to specify the output data type for operations which
-  require it, or to inspect the data type of existing `Tensor`s.
+  `DType`'s are used to specify the output data type for operations which
+  require it, or to inspect the data type of existing `Tensor`'s.
 
   Examples:
 
@@ -43,7 +43,7 @@ class DType(_dtypes.DType):
   >>> tf.constant(1.0).dtype
   tf.float32
 
-  See `tf.dtypes` for a complete list of `DType`s defined.
+  See `tf.dtypes` for a complete list of `DType`'s defined.
   """
   __slots__ = ()
 

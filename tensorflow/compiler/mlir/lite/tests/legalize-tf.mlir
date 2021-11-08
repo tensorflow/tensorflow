@@ -2185,6 +2185,15 @@ func @broadcast_args_i64(%arg0: tensor<3xi64>, %arg1: tensor<1xi64>) -> tensor<3
 // CHECK:  "tfl.broadcast_args"(%arg0, %arg1) : (tensor<3xi64>, tensor<1xi64>) -> tensor<3xi64>
 }
 
+func @mul_with_unranked_lhs(%arg0: tensor<*xf32>, %arg1: tensor<?x3x2x1xf32>) -> tensor<?x3x2x1xf32> {
+  %0 = "tf.Mul"(%arg0, %arg1): (tensor<*xf32>, tensor<?x3x2x1xf32>) -> tensor<?x3x2x1xf32>
+  return %0 : tensor<?x3x2x1xf32>
+
+  // CHECK-LABEL:mul_with_unranked_lhs
+  // CHECK: %0 = tfl.mul(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<*xf32>, tensor<?x3x2x1xf32>) -> tensor<?x3x2x1xf32>
+  // CHECK: return %0 : tensor<?x3x2x1xf32>
+}
+
 func @mul_with_high_dims_dynamic_shape(%arg0: tensor<8x7x6x5x4x3x2x1xf32>, %arg1: tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x4x3x2x1xf32> {
   %0 = "tf.Mul"(%arg0, %arg1): (tensor<8x7x6x5x4x3x2x1xf32>, tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x4x3x2x1xf32>
   return %0 : tensor<8x7x6x5x4x3x2x1xf32>
@@ -2210,6 +2219,15 @@ func @mul_with_high_dims_dynamic_shape_both_sides(%arg0: tensor<8x7x6x5x?x3x2x1x
   // CHECK: %[[BROADCAST_TO_1:.*]] = "tfl.broadcast_to"(%arg1, %[[BROADCAST_ARGS]]) : (tensor<?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
   // CHECK: %[[MUL:.*]] = tfl.mul %[[BROADCAST_TO]], %[[BROADCAST_TO_1]] {fused_activation_function = "NONE"} : tensor<8x7x6x5x?x3x2x1xf32>
   // CHECK: return %[[MUL]] : tensor<8x7x6x5x?x3x2x1xf32>
+}
+
+func @select_v2_with_unranked_rhs(%arg0: tensor<8x7x6x5x?x3x2x1xf32>, %arg1: tensor<*xf32>, %arg2: tensor<8x7x6x5x?x3x2x1xi1>) -> tensor<8x7x6x5x?x3x2x1xf32> {
+  %0 = "tf.SelectV2"(%arg2, %arg0, %arg1) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8x7x6x5x?x3x2x1xf32>, tensor<*xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  return %0 : tensor<8x7x6x5x?x3x2x1xf32>
+
+  // CHECK-LABEL:select_v2_with_unranked_rhs
+  // CHECK: %0 = "tf.SelectV2"(%arg2, %arg0, %arg1) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8x7x6x5x?x3x2x1xf32>, tensor<*xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  // CHECK: return %0 : tensor<8x7x6x5x?x3x2x1xf32>
 }
 
 func @select_v2_with_high_dims_dynamic_shape_both_sides(%arg0: tensor<8x7x6x5x?x3x2x1xf32>, %arg1: tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32> {

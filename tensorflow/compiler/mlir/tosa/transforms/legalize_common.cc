@@ -1955,42 +1955,66 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
     return llvm::None;
   }
 
-  auto input_shape = input_type.getShape();
+  Type etype = input_type.getElementType();
 
   if (axis < 0) axis += input_type.getRank();
+  assert(num_split > 0);
+  assert(axis >= 0 && axis < input_type.getRank());
+
+  Value slice_value = input_value;
+  bool is_dyn_split = input_type.getDimSize(axis) == -1;
+  if (is_dyn_split) {
+    SmallVector<int64_t> new_shape;
+    for (int i = 0, s = input_type.getRank(); i < s; i++) {
+      if (i != axis) {
+        new_shape.push_back(input_type.getDimSize(i));
+        continue;
+      }
+
+      new_shape.push_back(num_split);
+      new_shape.push_back(-1);
+    }
+    slice_value = CreateOpAndInfer<tosa::ReshapeOp>(
+        rewriter, op->getLoc(), RankedTensorType::get(new_shape, etype),
+        input_value, rewriter.getI64ArrayAttr(new_shape));
+  }
+
+  RankedTensorType slice_type = slice_value.getType().cast<RankedTensorType>();
+  assert((slice_type.getDimSize(axis) % num_split) == 0);
+
+  // Each slice has a different begining point.
+  // The slice size is actually the same each op.
+  SmallVector<int64_t> begin_vals, size_vals;
+  for (int j = 0, s = slice_type.getRank(); j < s; j++) {
+    begin_vals.push_back(0);
+    size_vals.push_back(slice_type.getDimSize(j));
+  }
+  size_vals[axis] = size_vals[axis] / num_split;
 
   SmallVector<Value> results_vec;
-
-  assert(axis >= 0 && axis < input_shape.size());
-  assert((input_shape[axis] % num_split) == 0);
-  assert(num_split > 0);
-
-  int64_t slice_size = input_shape[axis] / num_split;
-
   for (int i = 0; i < num_split; i++) {
-    // Each slice has a different begining point.
-    // The slice size is actually the same each op.
-    SmallVector<int64_t> begin_vals, size_vals;
-
-    for (int j = 0; j < input_shape.size(); j++) {
-      if (j == axis) {
-        begin_vals.push_back(slice_size * i);
-        size_vals.push_back(slice_size);
-      } else {
-        begin_vals.push_back(0);
-        size_vals.push_back(input_shape[j]);
-      }
-    }
-
+    begin_vals[axis] = i * size_vals[axis];
     ArrayAttr begin = rewriter.getI64ArrayAttr(begin_vals);
     ArrayAttr size = rewriter.getI64ArrayAttr(size_vals);
 
-    auto slice_op = CreateOpAndInfer<tosa::SliceOp>(
+    Value result = CreateOpAndInfer<tosa::SliceOp>(
         rewriter, op->getLoc(),
         RankedTensorType::get(size_vals, result_type.getElementType()),
-        input_value, begin, size);
+        slice_value, begin, size);
 
-    results_vec.push_back(slice_op.getResult());
+    if (is_dyn_split) {
+      SmallVector<int64_t> out_reshape_shape;
+      for (int i = 0, s = size_vals.size(); i < s; i++)
+        if (i != axis) out_reshape_shape.push_back(size_vals[i]);
+
+      result = CreateOpAndInfer<tosa::ReshapeOp>(
+                   rewriter, op->getLoc(),
+                   RankedTensorType::get(out_reshape_shape, etype), result,
+                   rewriter.getI64ArrayAttr(out_reshape_shape))
+                   .getResult();
+    }
+
+    results_vec.push_back(result);
   }
 
   return results_vec;
