@@ -347,6 +347,8 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
   XlaBuilder builder(TestName());
   std::vector<float> a_values;
   std::vector<float> b_values;
+  a_values.reserve(count);
+  b_values.reserve(count);
   for (int i = 0; i < count; ++i) {
     a_values.push_back(i / static_cast<float>(count));
     b_values.push_back(2 * i / static_cast<float>(count + 2));
@@ -374,6 +376,7 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
   sum = Add(sum, sum4);
 
   std::vector<float> expected;
+  expected.reserve(count);
   for (int64_t i = 0; i < count; ++i) {
     expected.push_back(4 * (a_values[i] + b_values[i]));
   }
@@ -1593,6 +1596,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowSpecialF32) {
   }
 
   std::vector<float> expected;
+  expected.reserve(values.size());
   for (auto value : values) {
     float sum = 0.0f;
     for (float exponent : exponents) {
@@ -1870,7 +1874,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, SquareIn4D) {
 
   std::vector<float> values_vector;
   std::vector<float> expected_vector;
-  for (int i = 0; i < values.num_elements(); ++i) {
+  const auto num_elements = values.num_elements();
+  values_vector.reserve(num_elements);
+  expected_vector.reserve(num_elements);
+  for (int i = 0; i < num_elements; ++i) {
     values_vector.push_back(static_cast<float>(i) / values.num_elements());
     expected_vector.push_back(values_vector.back() * values_vector.back());
   }
@@ -2351,8 +2358,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2F32s) {
   auto inf = std::numeric_limits<float>::infinity();
   std::vector<float> ys;
   std::vector<float> xs;
-  for (auto y : {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f}) {
-    for (auto x : {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f}) {
+  const auto _ys = {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f};
+  const auto _xs = {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f};
+  const auto n = _ys.size() * _xs.size();
+  ys.reserve(n);
+  xs.reserve(n);
+  for (auto y : _ys) {
+    for (auto x : _xs) {
       ys.push_back(y);
       xs.push_back(x);
     }
@@ -2369,8 +2381,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
   auto inf = std::numeric_limits<float>::infinity();
   std::vector<std::complex<float>> ys;
   std::vector<std::complex<float>> xs;
-  for (auto y : {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f}) {
-    for (auto x : {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f}) {
+  const auto _ys = {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f};
+  const auto _xs = {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f};
+  const auto n = _ys.size() * _xs.size();
+  ys.reserve(n);
+  xs.reserve(n);
+  for (auto y : _ys) {
+    for (auto x : _xs) {
       ys.push_back(y);
       xs.push_back(x);
     }

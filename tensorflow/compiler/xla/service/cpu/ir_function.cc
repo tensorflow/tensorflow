@@ -33,7 +33,8 @@ static std::vector<llvm::Type*> GetComputeFunctionParams(
   llvm::Type* i64_ptr_type =
       llvm::Type::getInt64PtrTy(llvm_module->getContext());
   std::vector<llvm::Type*> compute_function_params(
-      {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type});
+      {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type,
+       i8_ptr_type});
   if (num_dynamic_loop_bounds > 0) {
     compute_function_params.push_back(i64_ptr_type);
   }
@@ -153,6 +154,8 @@ void IrFunction::Initialize(const string& function_name,
   parameters_arg_ = &*arg_iter;
   (++arg_iter)->setName("buffer_table");
   buffer_table_arg_ = &*arg_iter;
+  (++arg_iter)->setName("status");
+  status_arg_ = &*arg_iter;
   if (num_dynamic_loop_bounds_ > 0) {
     (++arg_iter)->setName("dynamic_loop_bounds");
     dynamic_loop_bounds_arg_ = &*arg_iter;
@@ -226,20 +229,19 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
     absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
     absl::string_view name, llvm::Value* return_value_buffer,
     llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
-    llvm::Value* profile_counters_arg) {
+    llvm::Value* status_arg, llvm::Value* profile_counters_arg) {
   llvm::Value* parameter_addresses_buffer =
       EncodeArrayFunctionArguments(parameter_addresses, name, b);
 
   const auto to_int8_ptr = [=](llvm::Value* ptr) {
     return b->CreatePointerCast(ptr, b->getInt8PtrTy());
   };
-  std::vector<llvm::Value*> arguments{
-      to_int8_ptr(return_value_buffer), to_int8_ptr(exec_run_options_arg),
-      parameter_addresses_buffer, buffer_table_arg};
-  if (profile_counters_arg != nullptr) {
-    arguments.push_back(profile_counters_arg);
-  }
-  return arguments;
+  return std::vector<llvm::Value*>{to_int8_ptr(return_value_buffer),
+                                   to_int8_ptr(exec_run_options_arg),
+                                   parameter_addresses_buffer,
+                                   buffer_table_arg,
+                                   status_arg,
+                                   profile_counters_arg};
 }
 
 // Emits a call to a runtime fork/join function which dispatches parallel

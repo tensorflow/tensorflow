@@ -99,8 +99,8 @@ def find_function_to_export(saveable_view):
   if signature is not None:
     return signature
 
-  # TODO(andresp): Discuss removing this behaviour. It can lead to WTFs when a
-  # user decides to annotate more functions with tf.function and suddenly
+  # TODO(b/205014194): Discuss removing this behaviour. It can lead to WTFs when
+  # a user decides to annotate more functions with tf.function and suddenly
   # serving that model way later in the process stops working.
   possible_signatures = []
   for function in functions.values():
@@ -296,8 +296,7 @@ def create_signature_map(signatures):
 
 def validate_saveable_view(saveable_view):
   """Performs signature-related sanity checks on `saveable_view`."""
-  for name, dep in saveable_view.list_dependencies(
-      saveable_view.root):
+  for name, dep in saveable_view.list_children(saveable_view.root):
     if name == SIGNATURE_ATTRIBUTE_NAME:
       if not isinstance(dep, _SignatureMap):
         raise ValueError(

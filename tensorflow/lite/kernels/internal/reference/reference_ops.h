@@ -1237,7 +1237,7 @@ void SelectTrueCoords(const RuntimeShape& input_condition_shape,
 
   int output_index = 0;
   for (int i = 0; i < size; ++i) {
-    if (input_condition_data[i]) {
+    if (input_condition_data[i] != D(0)) {
       // Insert the coordinate of the current item (row major) into output.
       int flat_index = i;
       for (int j = 0; j < cond_rank; ++j) {

@@ -294,7 +294,6 @@ pytype_library(
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
-        "@enum34_archive//:enum",
         "@six_archive//:six",
     ],
 )
@@ -317,8 +316,6 @@ pytype_library(
 pytype_library(
     name = "tpu_function",
     srcs = ["tpu_function.py"],
-    deps = [
-    ],
 )
 
 pytype_library(

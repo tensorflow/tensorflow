@@ -28,6 +28,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/saved_model:registration",
         "//tensorflow/python/training/saving:saveable_object",
         "@six_archive//:six",
     ],
@@ -39,6 +40,21 @@ tf_py_test(
     deps = [
         ":base",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "trackable_utils",
+    srcs = ["trackable_utils.py"],
+    srcs_version = "PY3",
+)
+
+tf_py_test(
+    name = "trackable_utils_test",
+    srcs = ["trackable_utils_test.py"],
+    deps = [
+        ":trackable_utils",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -68,8 +84,19 @@ tf_py_test(
 )
 
 py_library(
-    name = "tracking",
-    srcs = ["tracking.py"],
+    name = "asset",
+    srcs = ["asset.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":base",
+        "//tensorflow/python:lib",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
+    name = "autotrackable",
+    srcs = ["autotrackable.py"],
     srcs_version = "PY3",
     deps = [
         ":base",
@@ -78,12 +105,42 @@ py_library(
 )
 
 tf_py_test(
-    name = "tracking_test",
-    srcs = ["tracking_test.py"],
+    name = "autotrackable_test",
+    srcs = ["autotrackable_test.py"],
+    deps = [
+        ":autotrackable",
+        ":data_structures",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "resource",
+    srcs = ["resource.py"],
+    srcs_version = "PY3",
     deps = [
         ":base",
-        ":tracking",
+    ],
+)
+
+tf_py_test(
+    name = "resource_test",
+    srcs = ["resource_test.py"],
+    deps = [
+        ":base",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "tracking",
+    srcs = ["tracking.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":asset",
+        ":autotrackable",
+        ":data_structures",
+        ":resource",
     ],
 )
 

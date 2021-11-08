@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/debugging/leak_check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
@@ -3980,6 +3982,7 @@ const char kAttrsEnd[] = "a";
 const char kName[] = "'";
 const char kNameEnd[] = "'";
 const char kLocalIdDelim[] = "_";
+const char kTraceTypeDelim[] = "t";
 
 // Container for storing generated string encoding as well as the raw python
 // objects that were not included in the string.
@@ -4186,8 +4189,7 @@ tensorflow::Status EncodeResource(PyObject* arg, EncodingContext& context) {
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status EncodeArgHelperInternal(PyObject* arg,
-                                           EncodingContext& context);
+tensorflow::Status EncodeArgLegacy(PyObject* arg, EncodingContext& context);
 
 // This function doesn't set the type of sequence before
 tensorflow::Status EncodeSequence(PyObject* arg, const char* type,
@@ -4204,7 +4206,7 @@ tensorflow::Status EncodeSequence(PyObject* arg, const char* type,
     if (item == Py_None) {
       absl::StrAppend(&context.result.str, kNone);
     } else {
-      TF_RETURN_IF_ERROR(EncodeArgHelperInternal(item, context));
+      TF_RETURN_IF_ERROR(EncodeArgLegacy(item, context));
     }
   }
   absl::StrAppend(&context.result.str, end_type);
@@ -4223,9 +4225,9 @@ tensorflow::Status EncodeMapping(PyObject* arg, EncodingContext& context) {
 
   for (int i = 0; i < len; i++) {
     PyObject* key = PyList_GetItem(keys.get(), i);
-    TF_RETURN_IF_ERROR(EncodeArgHelperInternal(key, context));
+    TF_RETURN_IF_ERROR(EncodeArgLegacy(key, context));
     tensorflow::Safe_PyObjectPtr value(PyObject_GetItem(arg, key));
-    TF_RETURN_IF_ERROR(EncodeArgHelperInternal(value.get(), context));
+    TF_RETURN_IF_ERROR(EncodeArgLegacy(value.get(), context));
   }
 
   return tensorflow::Status::OK();
@@ -4261,7 +4263,7 @@ tensorflow::Status EncodeAttrs(PyObject* arg, EncodingContext& context) {
     tensorflow::Safe_PyObjectPtr name(
         PyObject_GetAttrString(item.get(), "name"));
     tensorflow::Safe_PyObjectPtr attr_arg(PyObject_GetAttr(arg, name.get()));
-    TF_RETURN_IF_ERROR(EncodeArgHelperInternal(attr_arg.get(), context));
+    TF_RETURN_IF_ERROR(EncodeArgLegacy(attr_arg.get(), context));
   }
   absl::StrAppend(&context.result.str, kAttrsEnd);
 
@@ -4283,8 +4285,177 @@ tensorflow::Status EncodeUnidentified(PyObject* arg, EncodingContext& context) {
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status EncodeArgHelperInternal(PyObject* arg,
-                                           EncodingContext& context) {
+std::string GetStringPyObjectRepr(PyObject* object) {
+  tensorflow::Safe_PyObjectPtr repr(PyObject_Repr(object));
+  if (repr != nullptr) {
+    tensorflow::Safe_PyObjectPtr unicode(PyUnicode_AsASCIIString(repr.get()));
+    if (unicode != nullptr) {
+      return std::string(PyBytes_AsString(unicode.get()));
+    }
+  }
+  PyErr_Clear();
+  return "<object __repr__ could not be created.>";
+}
+
+bool SupportsProtocol(PyObject* object) {
+  // TODO(b/202447704): Drop _tf_tracing_type at protocol export.
+  return PyObject_HasAttrString(object, "_tf_tracing_type") ||
+         PyObject_HasAttrString(object, "__tf_tracing_type__");
+}
+
+tensorflow::StatusOr<PyObject*> GetProtocolTraceType(PyObject* object,
+                                                     PyObject* context) {
+  // TODO(b/202447704): Drop _tf_tracing_type at protocol export.
+  tensorflow::Safe_PyObjectPtr protocol(
+      PyObject_GetAttrString(object, "_tf_tracing_type"));
+
+  if (protocol == nullptr) {
+    PyErr_Clear();
+    protocol.reset(PyObject_GetAttrString(object, "__tf_tracing_type__"));
+    DCHECK(protocol != nullptr);
+  }
+
+  tensorflow::Safe_PyObjectPtr call_args(Py_BuildValue("(O)", context));
+  tensorflow::Safe_PyObjectPtr tracetype(
+      PyObject_CallObject(protocol.get(), call_args.get()));
+
+  if (tracetype.get() == nullptr) {
+    PyErr_Clear();
+    return tensorflow::errors::Unknown(
+        "Call to '__tf_tracing_type__' failed to return a TraceType: ",
+        GetStringPyObjectRepr(object));
+  }
+  Py_INCREF(tracetype.get());
+  return tracetype.get();
+}
+
+tensorflow::StatusOr<PyObject*> EncodeTraceType(PyObject* object,
+                                                PyObject* context);
+
+tensorflow::StatusOr<PyObject*> MakeOrderedCollectionType(PyObject* type,
+                                                          PyObject* sequence,
+                                                          PyObject* context) {
+  tensorflow::Safe_PyObjectPtr py_sequence(
+      PySequence_Fast(sequence, "Unable to create sequence from object."));
+
+  int size = PySequence_Fast_GET_SIZE(py_sequence.get());
+  PyObject** py_sequence_array = PySequence_Fast_ITEMS(py_sequence.get());
+  tensorflow::Safe_PyObjectPtr tuple(PyTuple_New(size));
+  for (int i = 0; i < size; ++i) {
+    auto trace_type = EncodeTraceType(py_sequence_array[i], context);
+    if (!trace_type.ok()) {
+      return trace_type.status();
+    }
+    PyTuple_SET_ITEM(tuple.get(), i, trace_type.ValueOrDie());
+  }
+
+  return PyObject_CallObject(type, tuple.get());
+}
+
+tensorflow::StatusOr<PyObject*> MakeDictType(PyObject* mapping,
+                                             PyObject* context) {
+  tensorflow::Safe_PyObjectPtr keys(tensorflow::swig::MappingKeys(mapping));
+  int size = PyList_Size(keys.get());
+
+  tensorflow::Safe_PyObjectPtr dict(PyDict_New());
+  for (int i = 0; i < size; i++) {
+    PyObject* key = PyList_GET_ITEM(keys.get(), i);
+    tensorflow::Safe_PyObjectPtr value(PyObject_GetItem(mapping, key));
+    auto value_trace = EncodeTraceType(value.get(), context);
+    if (!value_trace.ok()) {
+      return value_trace.status();
+    }
+    PyDict_SetItem(dict.get(), key, value_trace.ValueOrDie());
+    Py_DECREF(value_trace.ValueOrDie());
+  }
+
+  tensorflow::Safe_PyObjectPtr call_args(Py_BuildValue("(O)", dict.get()));
+  return PyObject_CallObject(
+      tensorflow::swig::GetRegisteredPyObject("DictType"), call_args.get());
+}
+
+tensorflow::StatusOr<PyObject*> MakeAttrsType(PyObject* object,
+                                              PyObject* context) {
+  tensorflow::Safe_PyObjectPtr attributes_sequence(
+      PySequence_Fast(PyObject_GetAttrString(object, "__attrs_attrs__"),
+                      "Unable to create sequence from object."));
+
+  int size = PySequence_Fast_GET_SIZE(attributes_sequence.get());
+  PyObject** py_sequence_array =
+      PySequence_Fast_ITEMS(attributes_sequence.get());
+  tensorflow::Safe_PyObjectPtr components_tuple(PyTuple_New(size));
+  for (int i = 0; i < size; ++i) {
+    tensorflow::Safe_PyObjectPtr name(
+        PyObject_GetAttrString(py_sequence_array[i], "name"));
+    tensorflow::Safe_PyObjectPtr attr_arg(PyObject_GetAttr(object, name.get()));
+    auto trace_type = EncodeTraceType(attr_arg.get(), context);
+    if (!trace_type.ok()) {
+      return trace_type.status();
+    }
+    PyTuple_SET_ITEM(components_tuple.get(), i, trace_type.ValueOrDie());
+  }
+
+  tensorflow::Safe_PyObjectPtr object_type(PyObject_Type(object));
+  tensorflow::Safe_PyObjectPtr call_args(
+      Py_BuildValue("(OO)", object_type.get(), components_tuple.get()));
+  return PyObject_CallObject(
+      tensorflow::swig::GetRegisteredPyObject("AttrsType"), call_args.get());
+}
+
+tensorflow::StatusOr<PyObject*> EncodeGenericObject(PyObject* object) {
+  tensorflow::Safe_PyObjectPtr ref(PyWeakref_NewRef(object, nullptr));
+  std::string type_name = "WeakrefType";
+  if (ref == nullptr) {
+    // Happens if the type can not be weakly referenceed (such as int).
+    // https://docs.python.org/3/library/weakref.html
+    PyErr_Clear();
+    Py_INCREF(object);
+    ref = tensorflow::make_safe(object);
+    type_name = "GenericType";
+  }
+
+  PyObject* type_class = tensorflow::swig::GetRegisteredPyObject(type_name);
+
+  tensorflow::Safe_PyObjectPtr call_args(Py_BuildValue("(O)", ref.get()));
+  PyObject* tracetype = PyObject_CallObject(type_class, call_args.get());
+  if (PyErr_Occurred()) {
+    return tensorflow::errors::InvalidArgument(
+        "Python object could not be represented through the generic tracing "
+        "type. ",
+        GetStringPyObjectRepr(object),
+        "\nConsider implementing Tracing Protocol for this class.");
+  }
+  return tracetype;
+}
+
+tensorflow::StatusOr<PyObject*> EncodeTraceType(PyObject* object,
+                                                PyObject* context) {
+  if (SupportsProtocol(object)) {
+    return GetProtocolTraceType(object, context);
+  }
+
+  if (PyList_Check(object)) {
+    return MakeOrderedCollectionType(
+        tensorflow::swig::GetRegisteredPyObject("ListType"), object, context);
+  }
+
+  if (tensorflow::swig::IsTuple(object)) {
+    return MakeOrderedCollectionType(
+        tensorflow::swig::GetRegisteredPyObject("TupleType"), object, context);
+  }
+
+  if (tensorflow::swig::IsMapping(object)) {
+    return MakeDictType(object, context);
+  }
+
+  if (tensorflow::swig::IsAttrs(object)) {
+    return MakeAttrsType(object, context);
+  }
+
+  return EncodeGenericObject(object);
+}
+
+tensorflow::Status EncodeArgLegacy(PyObject* arg, EncodingContext& context) {
   if (tensorflow::swig::IsTensorSpec(arg)) {
     TF_RETURN_IF_ERROR(EncodeTensorOrTensorSpec(arg, true, context));
   } else if (tensorflow::swig::IsTensor(arg)) {
@@ -4313,12 +4484,6 @@ tensorflow::Status EncodeArgHelperInternal(PyObject* arg,
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
-                                          EncodingContext& context) {
-  auto status = EncodeArgHelperInternal(arg, context);
-  return status;
-}
-
 }  // namespace
 
 // `defun` uses dtypes and shapes instead of `Tensors` as cache keys. Dtypes
@@ -4330,16 +4495,28 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
 // `include_tensor_ranks_only` allows caching on arguments excluding shape info,
 // so that a slow path using relaxed shape can rely on a cache key that excludes
 // shapes.
-PyObject* TFE_Py_EncodeArg(PyObject* arg, bool include_tensor_ranks_only,
-                           bool encode_variable_by_resource_id) {
-  EncodingContext context;
-  context.include_tensor_ranks_only = include_tensor_ranks_only;
-  context.encode_variable_by_resource_id = encode_variable_by_resource_id;
-  const auto status = TFE_Py_EncodeArgHelper(arg, context);
-  if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
+PyObject* TFE_Py_EncodeArg(PyObject* arg, PyObject* signature_context,
+                           bool include_tensor_ranks_only,
+                           bool encode_variable_by_resource_id,
+                           bool use_full_trace_type) {
+  if (use_full_trace_type) {
+    tensorflow::StatusOr<PyObject*> trace_type =
+        EncodeTraceType(arg, signature_context);
+    if (trace_type.ok()) {
+      return *trace_type;
+    }
+    MaybeRaiseExceptionFromStatus(trace_type.status(), nullptr);
     return nullptr;
   }
 
+  // TODO(b/201533914): Delete this entire branch of code after stable rollout.
+  EncodingContext context;
+  context.include_tensor_ranks_only = include_tensor_ranks_only;
+  context.encode_variable_by_resource_id = encode_variable_by_resource_id;
+  tensorflow::Status status = EncodeArgLegacy(arg, context);
+  if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
+    return nullptr;
+  }
   return context.result.ToPyTuple();
 }
 

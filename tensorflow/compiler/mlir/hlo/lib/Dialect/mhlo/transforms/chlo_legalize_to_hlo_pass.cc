@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -50,9 +51,10 @@ struct ChloLegalizeToHloPass
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
-    conversionTarget.addLegalDialect<
-        MhloDialect, mlir::StandardOpsDialect, mlir::tensor::TensorDialect,
-        mlir::shape::ShapeDialect, mlir::scf::SCFDialect>();
+    conversionTarget
+        .addLegalDialect<MhloDialect, mlir::arith::ArithmeticDialect,
+                         mlir::StandardOpsDialect, mlir::tensor::TensorDialect,
+                         mlir::shape::ShapeDialect, mlir::scf::SCFDialect>();
     conversionTarget.addLegalOp<chlo::MinimumBroadcastShapesOp>();
 
     if (legalize_broadcasts_) {

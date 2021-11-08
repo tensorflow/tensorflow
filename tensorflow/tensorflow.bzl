@@ -2236,9 +2236,9 @@ def py_binary(name, deps = [], **kwargs):
         **kwargs
     )
 
-def pytype_library(**kwargs):
+def pytype_library(name, pytype_deps = [], pytype_srcs = [], **kwargs):
     # Types not enforced in OSS.
-    native.py_library(**kwargs)
+    native.py_library(name = name, **kwargs)
 
 def tf_py_test(
         name,

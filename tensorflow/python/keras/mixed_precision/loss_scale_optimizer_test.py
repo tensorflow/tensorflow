@@ -25,6 +25,7 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
@@ -160,13 +161,13 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, dynamic=False,
                                                   initial_scale=2)
-    sparse_scaled_grad = ops.IndexedSlices(
+    sparse_scaled_grad = indexed_slices.IndexedSlices(
         ops.convert_to_tensor_v2_with_dispatch([[4., 2.], [8., 5.]]),
         ops.convert_to_tensor_v2_with_dispatch([1, 3], dtype='int32'),
         dense_shape=ops.convert_to_tensor_v2_with_dispatch([5, 2],
                                                            dtype='int32'))
     sparse_grad = opt.get_unscaled_gradients([sparse_scaled_grad])[0]
-    self.assertIsInstance(sparse_grad, ops.IndexedSlices)
+    self.assertIsInstance(sparse_grad, indexed_slices.IndexedSlices)
     self.assertAllEqual([[2., 1.], [4., 2.5]],
                         self.evaluate(sparse_grad.values))
 

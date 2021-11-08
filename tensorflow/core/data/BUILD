@@ -141,6 +141,7 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -424,6 +425,18 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "finalization_utils",
+    srcs = ["finalization_utils.cc"],
+    hdrs = ["finalization_utils.h"],
+    deps = [
+        ":root_dataset",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:refcount",
     ],
 )
 

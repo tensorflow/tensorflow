@@ -9,7 +9,7 @@
 func @main(%value: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // The only expected instruction is a copy from the input into the output.
   // CHECK: %[[INPUT:.*]] = memref.view %[[ARG0]]{{.*}} : memref<16xi8> to memref<2x2xf32>
-  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: %[[OUTPUT:.*]] = memref.view %[[ARG1]][%[[C0]]][] : memref<16xi8> to memref<2x2xf32>
   // CHECK: %[[VAL1:.*]] = memref.tensor_load %[[INPUT]] : memref<2x2xf32>
   // CHECK: %[[VAL2:.*]] = "mhlo.copy"(%[[VAL1]]) : (tensor<2x2xf32>) -> tensor<2x2xf32>

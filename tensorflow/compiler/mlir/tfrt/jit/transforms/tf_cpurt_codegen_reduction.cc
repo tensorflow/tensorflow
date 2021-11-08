@@ -16,8 +16,9 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
@@ -62,7 +63,7 @@ struct TileAndFusePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
     if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
 
     auto tiled_op = tileLinalgOp(rewriter, linalg_op, options);
-    if (!tiled_op) return failure();
+    if (failed(tiled_op)) return failure();
 
     auto tiled_loop_op = mlir::dyn_cast<TiledLoopOp>(tiled_op->loops.front());
     if (!tiled_loop_op) return failure();
@@ -195,7 +196,7 @@ struct FillOfExtractSlice : public mlir::OpRewritePattern<FillOp> {
 // Match 2D row reduction. This is a starting point, we will relax this
 // condition further down the road, when we add support for more reduction
 // types.
-bool is2DRowReduction(mlir::Operation *op) {
+bool is2DRowOrColumnReduction(mlir::Operation *op) {
   auto reduction = mlir::dyn_cast<GenericOp>(op);
   if (!reduction) return false;
 
@@ -216,10 +217,11 @@ struct CodegenReductionPass
 
     auto patterns =
         mlir::linalg::getLinalgTilingCanonicalizationPatterns(context);
+    mlir::memref::populateResolveRankedShapeTypeResultDimsPatterns(patterns);
     auto filter = LinalgTransformationFilter(
                       llvm::None, {Identifier::get("tiled", context)})
                       .addFilter([](Operation *op) {
-                        return success(is2DRowReduction(op));
+                        return success(is2DRowOrColumnReduction(op));
                       });
     patterns.insert<FillOfExtractSlice>(context);
     patterns.insert<TileAndFusePattern>(tiling_options, filter,

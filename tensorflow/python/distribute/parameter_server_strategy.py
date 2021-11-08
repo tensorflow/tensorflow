@@ -22,6 +22,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
@@ -29,6 +30,7 @@ from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
@@ -335,7 +337,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     distribute_utils.validate_colocate(colocate_with_variable, self)
 
   def _experimental_distribute_dataset(self, dataset, options):
-    return input_lib.get_distributed_dataset(
+    return input_util.get_distributed_dataset(
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
@@ -343,7 +345,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         options=options)
 
   def _make_dataset_iterator(self, dataset):
-    return input_lib.DatasetIterator(
+    return input_lib_v1.DatasetIterator(
         dataset,
         self._input_workers,
         self._container_strategy(),
@@ -366,9 +368,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         num_input_pipelines=num_input_pipelines,
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
-    return input_lib.InputFunctionIterator(input_fn, self._input_workers,
-                                           [input_context],
-                                           self._container_strategy())
+    return input_lib_v1.InputFunctionIterator(input_fn, self._input_workers,
+                                              [input_context],
+                                              self._container_strategy())
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
@@ -389,7 +391,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
 
-    return input_lib.get_distributed_datasets_from_function(
+    return input_util.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers_with_options(options), [input_context],
         self._container_strategy(),

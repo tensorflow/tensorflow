@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace spmd {
@@ -530,6 +531,23 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
                                      const HloSharding& root_sharding,
                                      const SpmdPartitionerOptions& options);
 
+  virtual double GetComputationTimeInMilliSec(HloInstruction* hlo) {
+    return 0.0;
+  }
+
+  virtual double GetCommunicationTimeInMilliSec(
+      int64_t bytes, absl::Span<const ReplicaGroup> device_groups) {
+    return 0.0;
+  }
+
+  virtual int GetCommunicationMultiplier(
+      absl::Span<const ReplicaGroup> device_groups) {
+    return 1;
+  }
+
+  std::vector<ReplicaGroup> CreateReplicaGroups(
+      std::vector<std::vector<int64_t>>& groups);
+
   // Information about a loop created for windowed dot-general. Used when
   // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor
   // finishes traversing the graph.
@@ -582,6 +600,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   std::vector<HloSharding> visiting_hlo_operand_shardings_;
   absl::optional<HloSharding> visiting_hlo_sharding_;
   absl::optional<int64_t> visiting_num_partitions_;
+  absl::optional<SPMDCollectiveOpsCreator> visiting_collective_ops_creator_;
+  absl::optional<HloInstruction*> visiting_partition_id_;
   std::vector<PartitionedHlo::PartitioningState> visiting_state_;
   std::vector<std::vector<int64_t>> device_groups_;
 };

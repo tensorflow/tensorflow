@@ -17,11 +17,15 @@ limitations under the License.
 
 #include "absl/functional/bind_front.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_support_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/stream_executor/device_description.h"
+#include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
@@ -281,9 +285,10 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
 
 // Adds padding to cudnn integer convolutions to make input and output feature
 // maps multiples of pad_to (usually 4 or 32).
-static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
-    int pad_to, HloCustomCallInstruction* conv,
-    std::vector<Shape>* new_input_shapes_ptr, Shape* new_result_shape_ptr) {
+StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
+    int pad_to, const se::CudaComputeCapability& compute_capability,
+    HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
+    Shape* new_result_shape_ptr) {
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
   const Shape& input_shape = conv->operand(0)->shape();
   const Shape& kernel_shape = conv->operand(1)->shape();
@@ -331,6 +336,14 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
     // vector size, we choose not to pad.  This is a weird case, because the
     // only useful vector sizes in cudnn (as of writing) are 4 and 32, and those
     // are also the only pad_to cases.
+    return false;
+  }
+
+  // Check that cudnn support our desired integer padding/vectorization.
+  TF_ASSIGN_OR_RETURN(bool cudnn_supports,
+                      CudnnSupportsOptimizedIntegerConvolution(
+                          compute_capability, *conv, pad_to));
+  if (!cudnn_supports) {
     return false;
   }
 
@@ -454,16 +467,16 @@ StatusOr<bool> CudnnPadForConvolutions::Run(HloModule* module) {
       if (compute_capability_.IsAtLeast(7, 5)) {
         TF_ASSIGN_OR_RETURN(
             local_changed,
-            ResolveAndPad(
-                conv, absl::bind_front(
-                          TryResolvePaddedShapesForIntegerConvolution, 32)));
+            ResolveAndPad(conv, absl::bind_front(
+                                    TryResolvePaddedShapesForIntegerConvolution,
+                                    32, compute_capability_)));
       }
       if (!local_changed) {
         TF_ASSIGN_OR_RETURN(
             local_changed,
-            ResolveAndPad(conv,
-                          absl::bind_front(
-                              TryResolvePaddedShapesForIntegerConvolution, 4)));
+            ResolveAndPad(conv, absl::bind_front(
+                                    TryResolvePaddedShapesForIntegerConvolution,
+                                    4, compute_capability_)));
       }
       changed |= local_changed;
     }

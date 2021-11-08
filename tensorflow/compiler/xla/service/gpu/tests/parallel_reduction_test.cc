@@ -115,6 +115,8 @@ TEST_F(ParallelReductionTest, ManyParallelReductions) {
   HloComputation::Builder b(TestName());
   std::vector<HloInstruction*> entry_params;
   std::vector<Shape> output_shapes;
+  entry_params.reserve(num_reduces);
+  output_shapes.reserve(num_reduces);
   for (size_t i = 0; i < num_reduces; ++i) {
     HloInstruction* param = b.AddInstruction(
         HloInstruction::CreateParameter(i, input_shape, "param"));

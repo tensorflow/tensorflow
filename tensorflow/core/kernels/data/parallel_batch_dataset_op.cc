@@ -128,7 +128,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;

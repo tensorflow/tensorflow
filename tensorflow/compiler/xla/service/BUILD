@@ -1474,6 +1474,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -1803,6 +1804,7 @@ cc_library(
     deps = [
         ":fusion_queue",
         ":hlo",
+        ":hlo_dataflow_analysis",
         ":hlo_graph_dumper",
         ":hlo_pass",
         ":hlo_reachability",
@@ -2244,6 +2246,7 @@ cc_library(
         ":pattern_matcher",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_comparison",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -2494,6 +2497,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_pass",
+        ":op_expander_pass",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",

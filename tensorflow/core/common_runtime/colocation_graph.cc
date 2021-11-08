@@ -146,25 +146,6 @@ bool IsVariantWithUnsupportedDeviceCopy(const Node* node) {
   return is_mutex_lock_op || is_dataset_op;
 }
 
-bool HasNoCopyReturns(const Node& node) {
-  if (!node.def().has_experimental_type()) {
-    return false;
-  }
-  const FullTypeDef& ft = node.def().experimental_type();
-  DCHECK(ft.type_id() == TFT_PRODUCT) << ft.DebugString();
-
-  for (const auto& arg : ft.args()) {
-    switch (arg.type_id()) {
-      case TFT_DATASET:
-        return true;
-      default:
-        continue;
-    }
-  }
-
-  return false;
-}
-
 }  // namespace
 
 Status Member::SetParentAndSupportedDevices(
@@ -736,36 +717,6 @@ Status ColocationGraph::ColocateResourceOrRefEdge(const Node* src,
   return Status::OK();
 }
 
-Status ColocationGraph::ColocateUncopiableTypeEdges(
-    std::unordered_set<Node*>* inspection_required) {
-  for (const Edge* edge : graph_.edges()) {
-    if (edge->IsControlEdge()) {
-      continue;
-    }
-    Node* src = edge->src();
-    Node* dst = edge->dst();
-    bool needs_inspection;
-    TF_RETURN_IF_ERROR(inspection_required_checker_.IsPlacerInspectionRequired(
-        *src, &needs_inspection));
-    if (needs_inspection) {
-      inspection_required->insert(src);
-      continue;
-    }
-    TF_RETURN_IF_ERROR(inspection_required_checker_.IsPlacerInspectionRequired(
-        *dst, &needs_inspection));
-    if (needs_inspection) {
-      inspection_required->insert(dst);
-      continue;
-    }
-
-    if (HasNoCopyReturns(*src)) {
-      TF_RETURN_IF_ERROR(ColocateResourceOrRefEdge(src, dst));
-    }
-  }
-
-  return Status::OK();
-}
-
 Status ColocationGraph::ColocateResourceAndRefEdges(
     std::unordered_set<Node*>* inspection_required) {
   // If `node` has an input edge with reference type, add an edge from the
@@ -874,13 +825,17 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
       return !edge.IsControlEdge() && edge_dtype() == DT_VARIANT;
     };
 
-    auto enter = [&](Node* n) -> void {
+    const bool requires_host_placement =
+        node->IsRetval() || node->IsIdentity() || node->IsControlFlow() ||
+        node->IsFunctionCall();
+    auto enter = [&is_host_data_type,
+                  requires_host_placement](Node* n) -> void {
       // TODO(b/199443424): Replace this logic with propagated type information.
       if (IsVariantWithUnsupportedDeviceCopy(n)) {
         // NOTE: Datasets are expected to live on the host. This code should be
         // updated if that changes. Under this assumption, however, we must
         // locate some ops on the host when the input is a dataset variant.
-        if (node->IsRetval() || node->IsIdentity() || node->IsControlFlow()) {
+        if (requires_host_placement) {
           is_host_data_type = true;
         }
       } else {
@@ -934,7 +889,6 @@ Status ColocationGraph::Initialize() {
 
   std::unordered_set<Node*> inspection_required;
   TF_RETURN_IF_ERROR(ColocateResourceAndRefEdges(&inspection_required));
-  TF_RETURN_IF_ERROR(ColocateUncopiableTypeEdges(&inspection_required));
   TF_RETURN_IF_ERROR(AddHostOnlyDataTypesConstraints());
   TF_RETURN_IF_ERROR(AddInspectionConstraints(inspection_required));
   TF_RETURN_IF_ERROR(ColocateAllNodes());

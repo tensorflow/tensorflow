@@ -88,6 +88,9 @@ static LogicalResult verify(ExecuteOpSeq op) {
 static LogicalResult verify(ExecuteOpWithAllocator op) {
   return fallback_common::VerifyExecuteOpCommon(op);
 }
+static LogicalResult verify(ExecuteOpSeqWithAllocator op) {
+  return fallback_common::VerifyExecuteOpCommon(op);
+}
 static LogicalResult verify(BatchFunctionOp op) {
   return fallback_common::VerifyExecuteOpCommon(op);
 }
@@ -154,6 +157,41 @@ static ParseResult parseExecuteOpWithAllocator(OpAsmParser &parser,
                              builder.getType<fallback::TFAllocatorType>(),
                              result.operands))
     return mlir::failure();
+
+  fallback_common::ParseExecuteOpOptions parse_options;
+  parse_options.has_chain = false;
+  parse_options.has_key = true;
+  parse_options.has_device = true;
+  parse_options.has_func_attr = true;
+  parse_options.has_cost = true;
+
+  return fallback_common::ParseExecuteOpCommon(
+      parser, builder, result, builder.getType<fallback::TFTensorType>(),
+      parse_options);
+}
+static ParseResult parseExecuteOpSeqWithAllocator(OpAsmParser &parser,
+                                                  OperationState &result) {
+  auto &builder = parser.getBuilder();
+  llvm::SmallVector<mlir::OpAsmParser::OperandType, 2> chain_and_allocator;
+  if (parser.parseOperandList(chain_and_allocator,
+                              /*requiredOperandCount=*/2,
+                              mlir::OpAsmParser::Delimiter::Paren))
+    return mlir::failure();
+
+  auto &chain = chain_and_allocator[0];
+  auto &allocator = chain_and_allocator[1];
+
+  if (parser.resolveOperands(chain, builder.getType<compiler::ChainType>(),
+                             result.operands))
+    return mlir::failure();
+
+  if (parser.resolveOperands(allocator,
+                             builder.getType<fallback::TFAllocatorType>(),
+                             result.operands))
+    return mlir::failure();
+
+  // The first result is a chain.
+  result.types.push_back(builder.getType<compiler::ChainType>());
 
   fallback_common::ParseExecuteOpOptions parse_options;
   parse_options.has_chain = false;
@@ -257,6 +295,18 @@ static void print(OpAsmPrinter &p, ExecuteOpSeq op) {
 
 static void print(OpAsmPrinter &p, ExecuteOpWithAllocator op) {
   p << "(" << op.allocator() << ") key("
+    << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
+    << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
+    << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
+    << '(' << op.operands() << ')';
+
+  fallback_common::PrintExecuteOpCommon(p, op);
+  fallback_common::PrintExecuteOpFuncAttribute(p, op);
+  if (!op.results().empty()) p << " : " << op.results().size();
+}
+
+static void print(OpAsmPrinter &p, ExecuteOpSeqWithAllocator op) {
+  p << "(" << op.in_op_chain() << ", " << op.allocator() << ") key("
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
     << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
     << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")

@@ -1,4 +1,4 @@
-// RUN: tf-opt -xla-legalize-tf-control-flow %s | FileCheck %s
+// RUN: xla-opt -xla-legalize-tf-control-flow %s | FileCheck %s
 
 // CHECK-LABEL: @if
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<f32>, [[ARG1:%.+]]: tensor<f32>)

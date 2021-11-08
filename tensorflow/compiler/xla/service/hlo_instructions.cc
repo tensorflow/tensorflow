@@ -869,13 +869,17 @@ HloCollectivePermuteInstruction::ExtraAttributesToStringImpl(
       HloChannelInstruction::ExtraAttributesToStringImpl(options);
   {
     std::vector<string> strs;
-    for (const auto& pair : source_target_pairs()) {
+    const auto& pairs = source_target_pairs();
+    strs.reserve(pairs.size());
+    for (const auto& pair : pairs) {
       strs.push_back(StrCat("{", pair.first, ",", pair.second, "}"));
     }
     result.push_back(StrCat("source_target_pairs={", StrJoin(strs, ","), "}"));
   }
   if (!dynamic_slice_sizes_list().empty()) {
     std::vector<string> strs;
+    const auto& sizes_list = dynamic_slice_sizes_list();
+    strs.reserve(sizes_list.size());
     for (const auto& slice_sizes : dynamic_slice_sizes_list()) {
       strs.push_back(StrCat("{", StrJoin(slice_sizes, ","), "}"));
     }
@@ -1915,7 +1919,9 @@ HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
       CHECK_EQ(clone, instruction_to_fuse);
       index -= clone->operand_count();
       std::vector<HloInstruction*> to_be_removed;
-      for (auto old_gte : clone->users()) {
+      const auto& users = clone->users();
+      to_be_removed.reserve(users.size());
+      for (auto old_gte : users) {
         CHECK_EQ(old_gte->opcode(), HloOpcode::kGetTupleElement);
         int64_t old_tuple_index = old_gte->tuple_index();
         HloInstruction* new_gte =
@@ -1982,7 +1988,9 @@ Status HloFusionInstruction::DeduplicateFusionOperands() {
   }
   absl::flat_hash_map<const HloInstruction*, int> operand_indices;
   std::vector<int> operands_to_remove;
-  for (int i = 0; i < operand_count(); ++i) {
+  const int count = operand_count();
+  operands_to_remove.reserve(count);
+  for (int i = 0; i < count; ++i) {
     auto emplace_result = operand_indices.emplace(operand(i), i);
     if (!emplace_result.second) {
       TF_RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
@@ -2066,6 +2074,8 @@ std::vector<string> HloParameterInstruction::ExtraAttributesToStringImpl(
     return result;
   }
   std::vector<string> buffers_replicated_strs;
+  buffers_replicated_strs.reserve(
+      parameter_replicated_at_leaf_buffers_->size());
   for (bool replicated : *parameter_replicated_at_leaf_buffers_) {
     buffers_replicated_strs.push_back(replicated ? "true" : "false");
   }
@@ -2628,6 +2638,7 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
 
   if (layout_constrained()) {
     std::vector<string> shape_strings;
+    shape_strings.reserve(operand_shapes_with_layout_.size());
     for (const Shape& shape : operand_shapes_with_layout_) {
       shape_strings.push_back(ShapeUtil::HumanStringWithLayout(shape));
     }
@@ -2642,6 +2653,7 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
   }
   if (!output_to_operand_aliasing_.empty()) {
     std::vector<string> pair_strings;
+    pair_strings.reserve(output_to_operand_aliasing_.size());
     for (const auto& pair : output_to_operand_aliasing_) {
       pair_strings.push_back(StrCat(pair.first.ToString(), ": (",
                                     pair.second.first, ", ",

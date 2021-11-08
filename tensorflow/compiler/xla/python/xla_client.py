@@ -46,7 +46,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 38
+_version = 43
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -162,7 +162,7 @@ def get_local_backend(name=None):
   return list(backends.values())[-1]
 
 
-class OpMetadata(object):
+class OpMetadata:
   """Python representation of a xla.OpMetadata protobuf."""
   __slots__ = ('op_type', 'op_name', 'source_file', 'source_line')
 
@@ -225,7 +225,7 @@ Shape = _xla.Shape
 Shape.__doc__ = """
 A Shape is an object defined in C++ that duck types like the following class:
 
-class Shape(object):
+class Shape:
   '''Represents an XLA shape.
 
   A shape is either an array shape, having rank-many integer
@@ -274,7 +274,7 @@ ProgramShape = _xla.ProgramShape
 ProgramShape.__doc__ = """
 A ProgramShape is a C++ object that duck types like the following class.
 
-class ProgramShape(object):
+class ProgramShape:
   def __init__(self, parameter_shapes, result_shape):
   def parameter_shapes(self) -> [Shape]:
   def result_shape(self) -> Shape:
@@ -285,7 +285,7 @@ ShapeIndex = _xla.ShapeIndex
 ShapeIndex.__doc__ = """
 A Shape is an object defined in C++ that duck types like the following class:
 
-class ShapeIndex(object):
+class ShapeIndex:
   '''Represents an XLA ShapeIndex.
 
   An index for specifying a particular nested subshape within a shape. Used in
@@ -341,7 +341,7 @@ CompileOptions = _xla.CompileOptions
 HostBufferSemantics = _xla.HostBufferSemantics
 
 # An Executable is a C++ class that duck types with the following API:
-# class Executable(object):
+# class Executable:
 #   def local_devices(self) -> [Device]:
 #   def execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
@@ -465,9 +465,13 @@ def register_custom_call_target(name, fn, platform='cpu'):
 register_cpu_custom_call_target = register_custom_call_target
 
 
-class PaddingConfigDimension(object):
+class PaddingConfigDimension:
   """Python representation of a xla.PaddingConfigDimension protobuf."""
   __slots__ = ('edge_padding_low', 'edge_padding_high', 'interior_padding')
+
+  edge_padding_low: int
+  edge_padding_high: int
+  interior_padding: int
 
   def __init__(self):
     self.edge_padding_low = 0
@@ -475,7 +479,7 @@ class PaddingConfigDimension(object):
     self.interior_padding = 0
 
 
-class PaddingConfig(object):
+class PaddingConfig:
   """Python representation of a xla.PaddingConfig protobuf."""
   __slots__ = ('dimensions',)
 
@@ -508,7 +512,7 @@ def make_padding_config(
   return padding_config
 
 
-class DotDimensionNumbers(object):
+class DotDimensionNumbers:
   """Python representation of a xla.DotDimensionNumbers protobuf."""
   __slots__ = ('lhs_contracting_dimensions', 'rhs_contracting_dimensions',
                'lhs_batch_dimensions', 'rhs_batch_dimensions')
@@ -548,7 +552,7 @@ def make_dot_dimension_numbers(
     return dimension_numbers
 
 
-class ConvolutionDimensionNumbers(object):
+class ConvolutionDimensionNumbers:
   """Python representation of a xla.ConvolutionDimensionNumbers protobuf."""
   __slots__ = ('input_batch_dimension', 'input_feature_dimension',
                'input_spatial_dimensions', 'kernel_input_feature_dimension',
@@ -632,7 +636,7 @@ def make_convolution_dimension_numbers(
   return dimension_numbers
 
 
-class PrecisionConfig(object):
+class PrecisionConfig:
   """Python representation of a xla.PrecisionConfig protobuf."""
   __slots__ = ('operand_precision',)
 
@@ -642,7 +646,7 @@ class PrecisionConfig(object):
     self.operand_precision = []
 
 
-class GatherDimensionNumbers(object):
+class GatherDimensionNumbers:
   """Python representation of a xla.GatherDimensionNumbers protobuf."""
   __slots__ = ('offset_dims', 'collapsed_slice_dims', 'start_index_map',
                'index_vector_dim')
@@ -654,7 +658,7 @@ class GatherDimensionNumbers(object):
     self.index_vector_dim = 0
 
 
-class ScatterDimensionNumbers(object):
+class ScatterDimensionNumbers:
   """Python representation of a xla.ScatterDimensionNumbers protobuf."""
   __slots__ = ('update_window_dims', 'inserted_window_dims',
                'scatter_dims_to_operand_dims', 'index_vector_dim')
@@ -666,7 +670,7 @@ class ScatterDimensionNumbers(object):
     self.index_vector_dim = 0
 
 
-class ReplicaGroup(object):
+class ReplicaGroup:
   """Python representation of a xla.ReplicaGroup protobuf."""
   __slots__ = ('replica_ids',)
 

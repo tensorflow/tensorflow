@@ -857,10 +857,17 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
        "EnqueueTPUEmbeddingSparseTensorBatch",
        "EnqueueTPUEmbeddingRaggedTensorBatch",
+       "EnqueueTPUEmbeddingArbitraryTensorBatch"
 
        // SaveV2 and RestoreV2 should be allowed to operate in parallel on
        // multiple hosts.
-       "SaveV2", "RestoreV2"});
+       "SaveV2",
+       "RestoreV2"
+
+       // InfeedEnqueue are stateful but should not be serialized for the
+       // input pipeline
+       "InfeedEnqueue",
+       "InfeedEnqueueTuple"});
   // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
   return exemption->contains(op);
 }

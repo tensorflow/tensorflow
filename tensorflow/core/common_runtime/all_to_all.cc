@@ -105,12 +105,17 @@ void AllToAll::Run(StatusCallback done) {
   }
   for (int i = 0; i < col_params_->group.group_size; ++i) {
     input_chunks_.push_back(col_ctx_->input->SubSlice(i));
-    output_chunks_.push_back(output_buffer_.SubSlice(i));
+    // Select output index based on user specified rank, if available.
+    int output_index = col_params_->group.members[i].rank;
+    output_chunks_.push_back(output_buffer_.SubSlice(output_index));
   }
+
   for (int i = 0; i < col_params_->group.group_size; ++i) {
-    DispatchSend(col_params_->default_rank, i, &input_chunks_[i],
-                 CheckCounterAndCallDone());
-    DispatchRecv(i, col_params_->default_rank, &output_chunks_[i],
+    auto default_rank = col_params_->default_rank;
+    // Issue send request from current device to all devices in group.
+    DispatchSend(default_rank, i, &input_chunks_[i], CheckCounterAndCallDone());
+    // Issue receive requests from all devices to current device.
+    DispatchRecv(i, default_rank, &output_chunks_[i],
                  CheckCounterAndCallDone());
   }
 }

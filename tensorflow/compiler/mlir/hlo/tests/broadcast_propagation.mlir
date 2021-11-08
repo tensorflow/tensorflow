@@ -450,3 +450,25 @@ func @move_assuming_all_over_assuming_region(%arg0: tensor<?xindex>,
   }
   return
 }
+
+// -----
+
+// CHECK-LABEL: @bcast_select_scalar_pred
+// CHECK-SAME:  %[[PRED:.*]]: tensor<i1>, %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>, %[[SHAPE:.*]]: tensor<2xindex>
+func @bcast_select_scalar_pred(%pred : tensor<i1>, %arg0 : tensor<?x?xf32>,
+    %arg1 : tensor<?x?xf32>, %shape : tensor<2xindex>) -> tensor<?x?xf32> {
+  // CHECK:      %[[BCASTED_PRED:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[PRED]], %[[SHAPE]])
+  // CHECK-SAME:   broadcast_dimensions = dense<>
+  // CHECK:      %[[BCASTED_LHS:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[LHS]], %[[SHAPE]])
+  // CHECK-SAME:   broadcast_dimensions = dense<[0, 1]>
+  // CHECK:      %[[BCASTED_RHS:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[RHS]], %[[SHAPE]])
+  // CHECK-SAME:   broadcast_dimensions = dense<[0, 1]>
+  // CHECK:      %[[RESULT:.*]] = "mhlo.select"(%[[BCASTED_PRED]], %[[BCASTED_LHS]], %[[BCASTED_RHS]])
+  // CHECK:      return %[[RESULT]]
+  %0 = "mhlo.select"(%pred, %arg0, %arg1)
+      : (tensor<i1>, tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  %1 = "mhlo.dynamic_broadcast_in_dim"(%0, %shape)
+      { broadcast_dimensions = dense<[0, 1]> : tensor<2xi64> }
+      : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  return %1 : tensor<?x?xf32>
+}

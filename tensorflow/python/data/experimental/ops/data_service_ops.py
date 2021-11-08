@@ -15,6 +15,7 @@
 """Python API for executing a tf.data.Dataset using a tf.data service."""
 import enum
 import functools
+import typing
 import six
 
 from tensorflow.core.protobuf import data_service_pb2
@@ -99,7 +100,6 @@ class ShardingPolicy(enum.IntEnum):
   DATA = 3
   FILE_OR_DATA = 4
   HINT = 5
-
   # LINT.ThenChange()
 
   def _to_proto(self):
@@ -120,37 +120,16 @@ class ShardingPolicy(enum.IntEnum):
     raise ValueError(f"Unable to convert sharding policy {self!r} to proto.")
 
 
-def _get_validated_sharding_policy(processing_mode):
+def _get_validated_sharding_policy(
+    processing_mode: typing.Union[ShardingPolicy, str]) -> ShardingPolicy:
   """Validates `processing_mode` and converts it to ShardingPolicy."""
 
   if isinstance(processing_mode, ShardingPolicy):
     return processing_mode
-  if compat.forward_compatible(2021, 8, 24):
-    if processing_mode == _PARALLEL_EPOCHS:
-      return ShardingPolicy.OFF
-    if processing_mode == _DISTRIBUTED_EPOCH:
-      return ShardingPolicy.DYNAMIC
-  elif processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
-    return processing_mode
-
-  raise ValueError("tf.data service processing mode should be a "
-                   "`tf.data.experimental.service.ShardingPolicy`, "
-                   "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
-                   f"{processing_mode!r}.")
-
-
-def _serialize(processing_mode):
-  """Serializes `processing_mode`."""
-
-  processing_mode = _get_validated_sharding_policy(processing_mode)
-  if isinstance(processing_mode, ShardingPolicy):
-    # pylint: disable=protected-access
-    processing_mode_def = data_service_pb2.ProcessingModeDef(
-        sharding_policy=_get_validated_sharding_policy(
-            processing_mode)._to_proto())
-    return processing_mode_def.SerializeToString()
-  if processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
-    return processing_mode
+  if processing_mode == _PARALLEL_EPOCHS:
+    return ShardingPolicy.OFF
+  if processing_mode == _DISTRIBUTED_EPOCH:
+    return ShardingPolicy.DYNAMIC
 
   raise ValueError("tf.data service processing mode should be a "
                    "`tf.data.experimental.service.ShardingPolicy`, "
@@ -173,6 +152,15 @@ def _validate_compression(compression):
   if compression not in valid_compressions:
     raise ValueError(f"Invalid `compression` argument: {compression}. "
                      f"Must be one of {valid_compressions}.")
+
+
+def _get_compression_proto(compression):
+  if compression == COMPRESSION_AUTO:
+    return data_service_pb2.DataServiceMetadata.SNAPPY
+  if compression == COMPRESSION_NONE:
+    return data_service_pb2.DataServiceMetadata.OFF
+  raise ValueError(f"Invalid `compression` argument: {compression}. "
+                   f"Must be one of {[COMPRESSION_AUTO, COMPRESSION_NONE]}.")
 
 
 class _DataServiceDatasetV2(dataset_ops.DatasetSource):
@@ -238,8 +226,6 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         service worker. Consumers of a shared job must use the same
         `target_workers`. Defaults to `"AUTO"`.
     """
-    processing_mode = _serialize(
-        _get_validated_sharding_policy(processing_mode))
     if consumer_index is None != num_consumers is None:
       raise ValueError(
           "Must either set both `consumer_index` and `num_consumers`, "
@@ -249,6 +235,9 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
       raise ValueError("`job_name` must be set when setting `num_consumers`. "
                        f"num_consumers was set to {num_consumers}.")
 
+    processing_mode_def = data_service_pb2.ProcessingModeDef(
+        sharding_policy=_get_validated_sharding_policy(
+            processing_mode)._to_proto())
     if job_name is None:
       job_name = ""
     if max_outstanding_requests is None:
@@ -259,7 +248,9 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     self._dataset_id = ops.convert_to_tensor(
         dataset_id, dtype=dtypes.int64, name="dataset_id")
     self._processing_mode = ops.convert_to_tensor(
-        processing_mode, dtype=dtypes.string, name="processing_mode")
+        processing_mode_def.SerializeToString(),
+        dtype=dtypes.string,
+        name="processing_mode")
     self._address = ops.convert_to_tensor(
         address, dtype=dtypes.string, name="address")
     self._protocol = ops.convert_to_tensor(
@@ -607,20 +598,18 @@ def distribute(processing_mode,
   from `job_name="job"`, it will immediately receive end of input, without
   getting any data.
 
-  **Round Robin data consumption**
+  **Coordinated data read**
 
   By default, when multiple consumers read from the same job, they receive data
-  on a first-come first-served basis. In some use cases, it works better to use
-  a strict round-robin order. For example, the tf.data service can be used to
-  coordinate example sizes across a cluster during sychronous training, so that
-  during each step all replicas train on similar-sized elements. To achieve
-  this, define a dataset which generates rounds of `num_consumers` consecutive
-  similar-sized batches, then enable round-robin reads by setting
-  `consumer_index` and `num_consumers`.
+  on a first-come first-served basis. In some use cases, it is advantageous to
+  coordinate the consumers. At each step, consumers read data from the same
+  worker.
 
-  Consumers read data by cycling through all workers, reading one element from
-  each. First, each consumer will read an element from the first worker, then
-  each consumer will read an element from the second worker, and so on.
+  For example, the tf.data service can be used to coordinate example sizes
+  across a cluster during synchronous training, so that during each step all
+  replicas train on similar-sized elements. To achieve this, define a dataset
+  which generates rounds of `num_consumers` consecutive similar-sized batches,
+  then enable coordinated reads by setting `consumer_index` and `num_consumers`.
 
   NOTE: To keep consumers in sync, round robin data consumption requires that
   the dataset have infinite cardinality. You can get this by adding `.repeat()`
@@ -732,10 +721,9 @@ def _register_dataset(service, dataset, compression):
   if external_state_policy is None:
     external_state_policy = ExternalStatePolicy.WARN
 
-  encoded_spec = ""
+  encoded_spec = None
   if context.executing_eagerly():
-    coder = nested_structure_coder.StructureCoder()
-    encoded_spec = coder.encode_structure(
+    encoded_spec = nested_structure_coder.encode_structure(
         dataset.element_spec).SerializeToString()
 
   if compression == COMPRESSION_AUTO:
@@ -745,12 +733,23 @@ def _register_dataset(service, dataset, compression):
   dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
   dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
 
-  dataset_id = gen_experimental_dataset_ops.register_dataset(
-      dataset._variant_tensor,  # pylint: disable=protected-access
-      address=address,
-      protocol=protocol,
-      external_state_policy=external_state_policy.value,
-      element_spec=encoded_spec)
+  if compat.forward_compatible(2021, 12, 10):
+    metadata = data_service_pb2.DataServiceMetadata(
+        element_spec=encoded_spec,
+        compression=_get_compression_proto(compression))
+    dataset_id = gen_experimental_dataset_ops.register_dataset(
+        dataset._variant_tensor,  # pylint: disable=protected-access
+        address=address,
+        protocol=protocol,
+        external_state_policy=external_state_policy.value,
+        metadata=metadata.SerializeToString())
+  else:
+    dataset_id = gen_experimental_dataset_ops.register_dataset(
+        dataset._variant_tensor,  # pylint: disable=protected-access
+        address=address,
+        protocol=protocol,
+        external_state_policy=external_state_policy.value,
+        element_spec=encoded_spec)
 
   return dataset_id
 
@@ -916,8 +915,7 @@ def _from_dataset_id(processing_mode,
 
     struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
     struct_pb.ParseFromString(encoded_spec)
-    coder = nested_structure_coder.StructureCoder()
-    element_spec = coder.decode_proto(struct_pb)
+    element_spec = nested_structure_coder.decode_proto(struct_pb)
 
   # If we compress, the data service side dataset will produce scalar variants.
   compression = _decide_compression(compression, data_transfer_protocol)

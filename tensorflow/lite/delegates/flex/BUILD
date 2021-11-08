@@ -35,6 +35,7 @@ cc_library(
     copts = tf_opts_nortti_if_lite_protos(),
     features = tf_features_nolayering_check_if_android_or_ios(),
     deps = [
+        ":util",
         ":buffer_map_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:string",
@@ -293,6 +294,7 @@ tf_cc_test(
         ":delegate",
         ":delegate_data",
         ":test_util",
+        "//tensorflow/lite/kernels:kernel_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -416,6 +418,7 @@ cc_library(
     deps = [
         ":buffer_map_util",
         ":subgraph_resource",
+        ":util",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_types",

@@ -572,7 +572,7 @@ class Function(core.GenericFunction):
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
     """
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._python_function = python_function
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function,
@@ -602,6 +602,10 @@ class Function(core.GenericFunction):
     self._omit_frequent_tracing_warning = False
     ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
 
+  @property
+  def name(self):
+    return self._name
+
   def __getstate__(self):
     """Custom pickling, to omit unpickleable objects."""
     result = self.__dict__.copy()
@@ -613,7 +617,7 @@ class Function(core.GenericFunction):
   def __setstate__(self, state):
     """Restore from pickled state."""
     self.__dict__ = state
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._key_for_call_stats = self._get_key_for_call_stats()
 

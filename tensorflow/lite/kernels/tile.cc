@@ -268,6 +268,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       Tile<float>(*(input->dims), input, multipliers, output);
       break;
+    case kTfLiteInt8:
+      Tile<int8_t>(*(input->dims), input, multipliers, output);
+      break;
     case kTfLiteUInt8:
       Tile<uint8_t>(*(input->dims), input, multipliers, output);
       break;

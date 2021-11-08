@@ -7,4 +7,7 @@ def llvm_setup(name):
     llvm_disable_optional_support_deps()
 
     # Build @llvm-project from @llvm-raw using overlays.
-    llvm_configure(name = name)
+    llvm_configure(
+        name = name,
+        repo_mapping = {"@python_runtime": "@local_config_python"},
+    )

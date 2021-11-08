@@ -42,6 +42,7 @@ namespace testing {
 namespace {
 const double kRelativeThreshold = 1e-2f;
 const double kAbsoluteThreshold = 1e-4f;
+const char kDefaultSignatureKey[] = "serving_default";
 
 // For quantized tests, we use a different error measurement from float ones.
 // Assumes the baseline is a always a float TF model.
@@ -470,6 +471,34 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
   }
 
   must_allocate_tensors_ = true;
+
+  // The order of inputs and outputs must match the order in "*_tests.txt" and
+  // "*.inputs" files.
+  // TODO(b/192473002): Run the interpreter using signature instead of indexes.
+  auto* signature_runner =
+      interpreter_->GetSignatureRunner(kDefaultSignatureKey);
+  if (signature_runner) {
+    const auto& signature_inputs =
+        interpreter_->signature_inputs(kDefaultSignatureKey);
+    for (const char* name : signature_runner->input_names()) {
+      inputs_.push_back(signature_inputs.at(name));
+    }
+    const auto& signature_outputs =
+        interpreter_->signature_outputs(kDefaultSignatureKey);
+    for (const char* name : signature_runner->output_names()) {
+      outputs_.push_back(signature_outputs.at(name));
+    }
+  }
+
+  // Uses the default order when there is no signature.
+  if (inputs_.empty()) {
+    inputs_.insert(inputs_.end(), interpreter_->inputs().begin(),
+                   interpreter_->inputs().end());
+  }
+  if (outputs_.empty()) {
+    outputs_.insert(outputs_.end(), interpreter_->outputs().begin(),
+                    interpreter_->outputs().end());
+  }
 }
 
 void TfLiteDriver::ResetTensor(int id) {
@@ -492,6 +521,12 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
   if (!IsValid()) return;
   auto* tensor = interpreter_->tensor(id);
   switch (tensor->type) {
+    case kTfLiteFloat64: {
+      const auto& values = testing::Split<double>(csv_values, ",");
+      if (!CheckSizes<double>(tensor->bytes, values.size())) return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     case kTfLiteFloat32: {
       const auto& values = testing::Split<float>(csv_values, ",");
       if (!CheckSizes<float>(tensor->bytes, values.size())) return;

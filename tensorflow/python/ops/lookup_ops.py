@@ -737,7 +737,7 @@ class TextFileInitializer(TableInitializerBase):
 
     if value_index == TextFileIndex.LINE_NUMBER and value_dtype != dtypes.int64:
       raise ValueError("`value_dtype` must be int64 for `value_index` "
-                       f"{TextFileIndex.LINE_NUMBER}, received: {key_dtype}")
+                       f"{TextFileIndex.LINE_NUMBER}, received: {value_dtype}")
     if ((value_index == TextFileIndex.WHOLE_LINE) and
         (not value_dtype.is_integer) and (value_dtype != dtypes.string)):
       raise ValueError(

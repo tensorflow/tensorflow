@@ -17,8 +17,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/test_util.h"
-
-extern const std::string GetDimsDebugString(const TfLiteIntArray* dims);
+#include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace flex {
@@ -388,24 +387,24 @@ TEST(ValidateOutputTensorShapeConsistencyTest, ShapeHandleDebugString) {
   EXPECT_EQ("?", c.DebugString(c.input(3)));
 }
 
-TEST(ValidateOutputTensorShapeConsistencyTest, GetDimsDebugString) {
+TEST(ValidateOutputTensorShapeConsistencyTest, GetShapeDebugString) {
   TfLiteIntArray* dims1 = TfLiteIntArrayCreate(1);
   dims1->data[0] = 1;
-  EXPECT_EQ("[1]", GetDimsDebugString(dims1));
-  free(dims1);
+  EXPECT_EQ("[1]", GetShapeDebugString(dims1));
+  TfLiteIntArrayFree(dims1);
 
   TfLiteIntArray* dims2 = TfLiteIntArrayCreate(2);
   dims2->data[0] = 2;
   dims2->data[1] = 3;
-  EXPECT_EQ("[2,3]", GetDimsDebugString(dims2));
-  free(dims2);
+  EXPECT_EQ("[2,3]", GetShapeDebugString(dims2));
+  TfLiteIntArrayFree(dims2);
 
   TfLiteIntArray* dims3 = TfLiteIntArrayCreate(3);
   dims3->data[0] = 4;
   dims3->data[1] = 5;
   dims3->data[2] = 6;
-  EXPECT_EQ("[4,5,6]", GetDimsDebugString(dims3));
-  free(dims3);
+  EXPECT_EQ("[4,5,6]", GetShapeDebugString(dims3));
+  TfLiteIntArrayFree(dims3);
 }
 
 }  // namespace testing

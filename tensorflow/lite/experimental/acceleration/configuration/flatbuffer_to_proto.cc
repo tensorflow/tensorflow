@@ -202,6 +202,7 @@ proto::NNAPISettings ConvertNNAPISettings(const NNAPISettings& settings) {
   proto_settings.set_allow_fp16_precision_for_fp32(
       settings.allow_fp16_precision_for_fp32());
   proto_settings.set_use_burst_computation(settings.use_burst_computation());
+  proto_settings.set_support_library_handle(settings.support_library_handle());
 
   return proto_settings;
 }

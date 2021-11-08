@@ -55,12 +55,8 @@ class TfLiteDriver : public TestRunner {
   ~TfLiteDriver() override;
 
   void LoadModel(const string& bin_file_path) override;
-  const std::vector<int>& GetInputs() override {
-    return interpreter_->inputs();
-  }
-  const std::vector<int>& GetOutputs() override {
-    return interpreter_->outputs();
-  }
+  const std::vector<int>& GetInputs() override { return inputs_; }
+  const std::vector<int>& GetOutputs() override { return outputs_; }
   void ReshapeTensor(int id, const string& csv_values) override;
   void AllocateTensors() override;
   void ResetTensor(int id) override;
@@ -94,6 +90,8 @@ class TfLiteDriver : public TestRunner {
   class DataExpectation;
   class ShapeExpectation;
 
+  std::vector<int> inputs_;
+  std::vector<int> outputs_;
   std::unique_ptr<OpResolver> resolver_;
   std::unique_ptr<FlatBufferModel> model_;
   std::unique_ptr<Interpreter> interpreter_;

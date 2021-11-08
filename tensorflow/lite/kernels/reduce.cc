@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -604,6 +605,86 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+template <typename T>
+struct EvalData {
+  std::function<T(T, T)> reduce_func;
+  const T* input_data;
+  T output;
+};
+
+// Returns true if 'axis' holds all dims [0 ... N-1] where N is num_dims.
+bool IsReduceAllDims(const TfLiteTensor* axis, int num_axis, int num_dims) {
+  int dims_mask = 0;
+  for (int i = 0; i < num_axis; ++i) {
+    dims_mask |= 1 << (axis->data.i32[i]);
+  }
+  return num_dims == 0 ? dims_mask == 0 : (dims_mask == (1 << num_dims) - 1);
+}
+
+// Worker for reducing single interval. Interval is identified by index
+// from [start, end).
+template <typename T>
+struct ReduceWorkerTask : cpu_backend_threadpool::Task {
+  ReduceWorkerTask(EvalData<T>* eval_data, int start, int end)
+      : eval_data(eval_data), start(start), end(end) {}
+  void Run() override {
+    auto* input_data = eval_data->input_data;
+    T& output = eval_data->output;
+    auto& reducer = eval_data->reduce_func;
+    for (int i = start; i < end; ++i) {
+      output = reducer(output, input_data[i]);
+    }
+  }
+
+ private:
+  EvalData<T>* eval_data;
+  int start;
+  int end;
+};
+
+// Apply reduce operation using the 'reducer' function on all of 'input_data'.
+// and reduce all to single element.
+template <typename T>
+void ReduceAllDims(const T* input_data, const int* input_dims,
+                   const int input_num_dims, T* output_data, T init_value,
+                   T reducer(const T current, const T in),
+                   TfLiteContext* context) {
+  EvalData<T> eval_data;
+  eval_data.reduce_func = reducer;
+  eval_data.input_data = input_data;
+  eval_data.output = init_value;
+
+  int num_elems = 1;
+  for (int i = 0; i < input_num_dims; ++i) {
+    num_elems *= input_dims[i];
+  }
+
+  // Fetch backend context and number of threads.
+  CpuBackendContext* cpu_backend_context =
+      CpuBackendContext::GetFromContext(context);
+  const int thread_count = cpu_backend_context->max_num_threads();
+
+  std::vector<ReduceWorkerTask<T>> tasks;
+  std::vector<EvalData<T>> data;
+  tasks.reserve(thread_count);
+  data.reserve(thread_count);
+  int start = 0;
+  for (int i = 0; i < thread_count; ++i) {
+    data.push_back(eval_data);
+    int end = start + (num_elems - start) / (thread_count - i);
+    tasks.emplace_back(ReduceWorkerTask<T>(&data.back(), start, end));
+    start = end;
+  }
+  // Run all tasks on the thread pool.
+  cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
+                                  cpu_backend_context);
+  // Reduce all data from different workers.
+  output_data[0] = data[0].output;
+  for (int i = 1; i < data.size(); ++i) {
+    output_data[0] = reducer(output_data[0], data[i].output);
+  }
+}
+
 // The underlying logic for Reduce Sum/Prod/Max/Min/Any
 template <typename T>
 TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node,
@@ -630,6 +711,18 @@ TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node,
                       op_context->output->params.scale);
     TF_LITE_ENSURE_EQ(context, input->params.zero_point,
                       op_context->output->params.zero_point);
+  }
+  int num_resolved_axis = 0;
+  if (!tflite::reference_ops::ResolveAxis(
+          input->dims->size, GetTensorData<int>(op_context->axis), num_axis,
+          GetTensorData<int>(resolved_axis), &num_resolved_axis)) {
+    return kTfLiteError;
+  }
+  if (IsReduceAllDims(resolved_axis, num_resolved_axis, input->dims->size)) {
+    ReduceAllDims(GetTensorData<T>(input), input->dims->data, input->dims->size,
+                  GetTensorData<T>(op_context->output), init_value, reducer,
+                  context);
+    return kTfLiteOk;
   }
   TF_LITE_ENSURE(
       context,

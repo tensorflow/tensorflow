@@ -66,7 +66,9 @@ bool HasOperandType(HloInstruction* hlo, PrimitiveType type) {
 Shape GetConvertedTupleShape(const Shape& shape, PrimitiveType from_type,
                              PrimitiveType to_type) {
   std::vector<Shape> new_tuple_subshapes;
-  for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+  const int64_t n = ShapeUtil::TupleElementCount(shape);
+  new_tuple_subshapes.reserve(n);
+  for (int64_t i = 0; i < n; ++i) {
     Shape subshape = ShapeUtil::GetTupleElementShape(shape, i);
     CHECK(!subshape.IsTuple());
     if (subshape.element_type() == from_type) {
@@ -173,7 +175,9 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       // First, convert the operands with eliminate_type_ to operands with
       // replace_with_type_.
       std::vector<HloInstruction*> new_operands;
-      for (HloInstruction* operand : hlo->operands()) {
+      const auto& operands = hlo->operands();
+      new_operands.reserve(operands.size());
+      for (HloInstruction* operand : operands) {
         if (operand->shape().element_type() == eliminate_type_) {
           operand = ToElementType(operand, replace_with_type_);
         }

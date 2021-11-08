@@ -367,6 +367,7 @@ Status RewriteDynamicReshapeSplitInput(
       ShapeUtil::MakeShape(xla::S32, {operand_shape.dimensions(input_dim)});
 
   std::vector<int64_t> reshaped_dims;
+  reshaped_dims.reserve(output_dims.size());
   for (int64_t output_dim : output_dims) {
     reshaped_dims.push_back(reshape->shape().dimensions(output_dim));
   }
@@ -583,6 +584,7 @@ Status RewriteDynamicReshapeCombineInput(
   const Shape mask_output_shape =
       ShapeUtil::MakeShape(xla::S32, {output_shape.dimensions(output_dim)});
   std::vector<int64_t> input_dim_sizes;
+  input_dim_sizes.reserve(input_dims.size());
   for (int64_t input_dim : input_dims) {
     input_dim_sizes.push_back(input_shape.dimensions(input_dim));
   }
@@ -1607,9 +1609,11 @@ StatusOr<bool> RewriteDynamicReshape(
     auto end = common_factors[i + 1];
     std::vector<int64_t> input_dims;
     std::vector<int64_t> output_dims;
+    input_dims.reserve(end.first - start.first);
     for (int64_t dim = start.first; dim < end.first; ++dim) {
       input_dims.push_back(dim);
     }
+    output_dims.reserve(end.second - start.second);
     for (int64_t dim = start.second; dim < end.second; ++dim) {
       output_dims.push_back(dim);
     }

@@ -323,5 +323,29 @@ ENTRY main {
               "{1, 2}, want u32[] 1)");
 }
 
+TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
+  Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
+  std::unique_ptr<HloInstruction> p0 =
+      HloInstruction::CreateParameter(0, shape, "param");
+
+  std::vector<ReplicaGroup> replica_groups(2);
+  replica_groups[0].add_replica_ids(0);
+  replica_groups[0].add_replica_ids(2);
+  replica_groups[1].add_replica_ids(1);
+  replica_groups[1].add_replica_ids(3);
+  std::unique_ptr<HloInstruction> all_to_all =
+      HloInstruction::CreateAllToAll(shape, {p0.get()}, replica_groups,
+                                     /*constrain_layout=*/false,
+                                     /*channel_id=*/absl::nullopt);
+
+  EXPECT_THAT(Explain(p0.get(), op::ReplicaGroups({})),
+              "%param = f32[5,7]{1,0} parameter(0) not a collective op");
+  EXPECT_THAT(Explain(all_to_all.get(), op::ReplicaGroups({{0, 1}, {2, 3}})),
+              "%all-to-all = f32[5,7]{1,0} all-to-all(f32[5,7]{1,0} %param), "
+              "replica_groups={{0,2},{1,3}} has incorrect replica_groups "
+              "(expected: {{0,1},{2,3}})");
+  EXPECT_THAT(all_to_all.get(), op::ReplicaGroups({{0, 2}, {1, 3}}));
+}
+
 }  // namespace
 }  // namespace xla

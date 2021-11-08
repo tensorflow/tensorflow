@@ -169,6 +169,7 @@ struct RuntimeFallbackOpHandlerTraits {
     if (chain) *chain = std::move(ch);
   }
 
+  // TODO(fishx): Remove this method.
   static tfrt::Variant<tfrt::RCReference<tfrt::Device>,
                        tfrt::AsyncValueRef<tfrt::RCReference<tfrt::Device>>>
   GetResultDevice(RuntimeFallbackOpHandler* tf_op_handler,
@@ -206,6 +207,15 @@ struct RuntimeFallbackOpHandlerTraits {
           result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx));
     });
     return std::move(result_device);
+  }
+
+  static tfrt::Variant<tfrt::RCReference<tfrt::Device>,
+                       tfrt::AsyncValueRef<tfrt::RCReference<tfrt::Device>>>
+  GetResultDevice(const RuntimeFallbackOpEntry& op_entry,
+                  RuntimeFallbackOpHandler* tf_op_handler,
+                  const tfrt::AsyncValueRef<tfrt::Tensor>& result_tensor_av,
+                  int index, const ExecutionContext& exec_ctx) {
+    return GetResultDevice(tf_op_handler, result_tensor_av, exec_ctx);
   }
 };
 

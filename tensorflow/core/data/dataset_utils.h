@@ -53,8 +53,11 @@ Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
 // resource is owned by the handle.
 template <typename T>
 Status CreateHandle(OpKernelContext* ctx, T* resource, ResourceHandle* handle) {
+  ResourceMgr* mgr = ctx->resource_manager();
   *handle =
       ResourceHandle::MakeRefCountingHandle(resource, ctx->device()->name());
+  TF_RETURN_IF_ERROR(
+      mgr->CreateUnowned<T>(handle->container(), handle->name(), resource));
   return Status::OK();
 }
 
@@ -324,13 +327,6 @@ void GetOptimizations(const Options& options,
                       absl::flat_hash_set<tstring>* optimizations_enabled,
                       absl::flat_hash_set<tstring>* optimizations_disabled,
                       absl::flat_hash_set<tstring>* optimizations_default);
-
-// Determines which optimizations should be applied.
-absl::flat_hash_set<tstring> SelectOptimizations(
-    const absl::flat_hash_set<string>& experiments,
-    const absl::flat_hash_set<tstring>& optimizations_enabled,
-    const absl::flat_hash_set<tstring>& optimizations_disabled,
-    const absl::flat_hash_set<tstring>& optimizations_default);
 
 // Creates graph rewrite configs based on the given options. The configs will
 // only be used if their corresponding optimizers registered with Grappler are

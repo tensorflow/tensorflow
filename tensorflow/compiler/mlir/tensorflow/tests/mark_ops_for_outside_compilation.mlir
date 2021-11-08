@@ -33,7 +33,7 @@ func @assert_op_string_operand(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
     // CHECK-SAME: _xla_outside_compilation
     // CHECK: "tf.Identity"
     // CHECK-NOT: _xla_outside_compilation
-    %t = constant dense<true> : tensor<i1>
+    %t = arith.constant dense<true> : tensor<i1>
     "tf.Assert"(%t, %arg0) {summarize = 3} : (tensor<i1>, tensor<!tf_type.string>) -> ()
     %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
@@ -275,12 +275,12 @@ func @ops_inside_while_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<!tf_ty
     %1 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
     %2:2 = "tf.WhileRegion"(%1, %arg0) ( {
       ^bb0(%carg0: tensor<f32>, %carg1: tensor<i32>):
-         %limit = constant dense<5> : tensor<i32>
+         %limit = arith.constant dense<5> : tensor<i32>
          %cond = "tf.NotEqual"(%carg1, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
          "tf.Yield"(%cond) : (tensor<i1>) -> ()
     },  {
       ^bb0(%barg0: tensor<f32>, %barg1: tensor<i32>):
-        %one = constant dense<1> : tensor<i32>
+        %one = arith.constant dense<1> : tensor<i32>
         %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
         %3 = "tf.StringToNumber"(%arg1) {out_type = f32} : (tensor<!tf_type.string>) -> tensor<f32>
         "tf.Yield"(%3, %sub) : (tensor<f32>, tensor<i32>) -> ()
@@ -304,12 +304,12 @@ func @while_region_unsupported_op(%arg0: tensor<i32>, %arg1: tensor<!tf_type.str
     %1 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
     %2:2 = "tf.WhileRegion"(%1, %arg0) ( {
       ^bb0(%carg0: tensor<f32>, %carg1: tensor<i32>):
-         %limit = constant dense<5> : tensor<i32>
+         %limit = arith.constant dense<5> : tensor<i32>
          %cond = "tf.NotEqual"(%carg1, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
          "tf.Yield"(%cond) : (tensor<i1>) -> ()
     },  {
       ^bb0(%barg0: tensor<f32>, %barg1: tensor<i32>):
-        %one = constant dense<1> : tensor<i32>
+        %one = arith.constant dense<1> : tensor<i32>
         %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
         // CHECK: "tf.UnsupportedOp"
         // CHECK-SAME: _xla_outside_compilation

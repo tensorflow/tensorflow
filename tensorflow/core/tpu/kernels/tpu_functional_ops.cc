@@ -1203,7 +1203,6 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
   uint64 input_hash = GetInputHash(ctx);
   int64_t ordinal_selector_req_id = -1;
   // Select a TPU core.
-  absl::ReleasableMutexLock lock(&mu_);
   int32_t device_ordinal = 0;
   OP_REQUIRES_OK_ASYNC(
       ctx,
@@ -1211,6 +1210,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                         &device_ordinal),
       done);
   uint64 cache_hash = Hash64Combine(input_hash, device_ordinal);
+  absl::ReleasableMutexLock lock(&mu_);
 
   const std::vector<DeviceAndFHandle>* functions;
 
@@ -1784,7 +1784,14 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
         split_size = xla_sharding.tile_assignment_dimensions(dim);
       }
     }
+    if (split_dim == -1 || split_dim >= var->tensor()->dims()) {
+      return errors::InvalidArgument(
+          "sharding split_dim ", split_dim, " for variable: ", variable->name(),
+          " is -1 or large than the number of dimensions ",
+          var->tensor()->dims());
+    }
   }
+
   const string cname = ctx->resource_manager()->default_container();
   std::vector<Node*> per_core_vars;
   for (int core_index = device_ordinal;
@@ -2549,7 +2556,6 @@ void TPUPartitionedCallOp::ExecuteRemoteFunction(
   std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
 
   profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteRemote");
-  absl::ReaderMutexLock l(&mu_);
   library_runtime_->Run(opts, handle, dummy_args, dummy_rets,
                         [dummy_rets, done, ctx](const Status& status) {
                           if (!status.ok()) {
@@ -2576,7 +2582,6 @@ void TPUPartitionedCallOp::ExecuteLocalFunction(
   auto* rets = new std::vector<Tensor>;
 
   profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteLocal");
-  absl::ReaderMutexLock l(&mu_);
   library_runtime_->Run(opts, handle, args, rets,
                         [rets, done, ctx](const Status& status) {
                           if (!status.ok()) {

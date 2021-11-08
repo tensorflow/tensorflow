@@ -32,9 +32,10 @@ using bfloat16 = tensorflow::bfloat16;
 template <typename NativeT>
 std::vector<NativeT> GenerateInput() {
   std::vector<NativeT> input;
+  const auto n = std::numeric_limits<NativeT>::max();
+  input.reserve(n);
 
-  for (int64_t i = std::numeric_limits<NativeT>::min();
-       i < std::numeric_limits<NativeT>::max(); ++i) {
+  for (int64_t i = std::numeric_limits<NativeT>::min(); i < n; ++i) {
     input.push_back(static_cast<NativeT>(i));
   }
 
@@ -61,6 +62,7 @@ Array2D<uint32> PackLargeInput(Array2D<NativeT> &input) {
 
   for (int h = 0; h < input.height(); h++) {
     std::vector<NativeT> input_row;
+    input_row.reserve(width);
     for (int w = 0; w < width; w++) {
       input_row.push_back(input({h, w}));
     }
@@ -111,6 +113,7 @@ Array2D<bfloat16> GenerateLargeSizeMinCombinedOutput(
 
   for (int h = 0; h < input.height(); h++) {
     std::vector<NativeT> input_row;
+    input_row.reserve(width);
     for (int w = 0; w < width; w++) {
       bfloat16 result =
           static_cast<bfloat16>(input(h, w) + half_range) * scale_factor +
@@ -139,8 +142,9 @@ std::vector<bfloat16> GenerateMinCombinedOutput(const QuantizedRange &range) {
       (static_cast<bfloat16>(std::numeric_limits<NativeT>::max() -
                              std::numeric_limits<NativeT>::min()));
   std::vector<bfloat16> output;
-  for (int64_t i = std::numeric_limits<NativeT>::min();
-       i < std::numeric_limits<NativeT>::max(); ++i) {
+  const auto n = std::numeric_limits<NativeT>::max();
+  output.reserve(n);
+  for (int64_t i = std::numeric_limits<NativeT>::min(); i < n; ++i) {
     bfloat16 result =
         static_cast<bfloat16>(i + half_range) * scale_factor + range.min;
     output.push_back(result);

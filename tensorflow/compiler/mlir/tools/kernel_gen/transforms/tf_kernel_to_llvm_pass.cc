@@ -16,6 +16,7 @@ limitations under the License.
 #include <stdexcept>
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
@@ -26,6 +27,8 @@ limitations under the License.
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -261,7 +264,9 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
+    arith::populateArithmeticExpandOpsPatterns(patterns);
     populateStdExpandOpsPatterns(patterns);
+    arith::populateArithmeticToLLVMConversionPatterns(type_converter, patterns);
     populateMemRefToLLVMConversionPatterns(type_converter, patterns);
     populateMathToLLVMConversionPatterns(type_converter, patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
@@ -275,9 +280,9 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     //  Set target.
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addIllegalDialect<StandardOpsDialect, complex::ComplexDialect,
-                             gpu::GPUDialect, tf_framework::TFFrameworkDialect,
-                             math::MathDialect>();
+    target.addIllegalDialect<
+        arith::ArithmeticDialect, StandardOpsDialect, complex::ComplexDialect,
+        gpu::GPUDialect, tf_framework::TFFrameworkDialect, math::MathDialect>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();
     // Do not look into gpu modules, only consider host-side.

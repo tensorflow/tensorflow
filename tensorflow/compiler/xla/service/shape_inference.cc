@@ -400,10 +400,10 @@ StatusOr<PrimitiveType> MaybeUpcast(
         }
         return InvalidArgument(
             "Cannot concatenate arrays that differ in dimensions other than "
-            "the one being concatenated (the other array dimensions must be "
-            "the same): %s vs %s in dimension %d.",
-            ShapeUtil::HumanString(*arg_shape), ShapeUtil::HumanString(*shape),
-            dimension);
+            "the one being concatenated. Dimension %d in both shapes must be "
+            "equal: %s vs %s.",
+            dimension_number, ShapeUtil::HumanString(*arg_shape),
+            ShapeUtil::HumanString(*shape));
       }
     }
     element_type = ShapeUtil::HigherPrecisionElementType(*shape, *arg_shape);
@@ -710,7 +710,14 @@ Status ValidateDotDimensionNumbers(
   // dimensions except the contracted and batch dimensions.
   std::vector<int64_t> dimensions;
   std::vector<bool> is_dynamic;
-  for (int64_t lhs_dim : dimension_numbers.lhs_batch_dimensions()) {
+  const auto& lhs_batch_dimensions = dimension_numbers.lhs_batch_dimensions();
+  const auto lhs_batch_dimensions_size =
+      lhs.rank() - dimension_numbers.lhs_contracting_dimensions().size() +
+      rhs.rank() - dimension_numbers.rhs_contracting_dimensions().size() -
+      dimension_numbers.rhs_batch_dimensions().size();
+  dimensions.reserve(lhs_batch_dimensions_size);
+  is_dynamic.reserve(lhs_batch_dimensions_size);
+  for (const int64_t lhs_dim : lhs_batch_dimensions) {
     dimensions.push_back(lhs.dimensions(lhs_dim));
     is_dynamic.push_back(lhs.is_dynamic_dimension(lhs_dim));
   }
@@ -786,7 +793,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     // Reject "magic" inference for binops on different shapes, requiring
     // the user to provide an explicit broadcast dimension in this case.
     // See b/25177275 for more details.
-    return InvalidArgument("Automatic shape inference not supported: %s and %s",
+    return InvalidArgument("Shapes must be equal rank, but are %s and %s",
                            ShapeUtil::HumanString(smaller_shape),
                            ShapeUtil::HumanString(larger_shape));
   } else if (broadcast_dimensions.size() != smaller_shape.rank()) {
@@ -1105,6 +1112,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           }
         }
         std::vector<Shape> operand_shape_values;
+        operand_shape_values.reserve(operand_shapes.size());
         for (const Shape* operand_shape : operand_shapes) {
           operand_shape_values.push_back(*operand_shape);
         }
@@ -1144,6 +1152,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
 
     std::vector<string> pieces;
+    pieces.reserve(arg_shapes.size());
     for (const Shape* shape : arg_shapes) {
       pieces.push_back(ShapeUtil::HumanString(*shape));
     }
@@ -2096,6 +2105,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     return *operand_shapes[0];
   }
   std::vector<Shape> operand_shape_values;
+  operand_shape_values.reserve(operand_shapes.size());
   for (const Shape* operand_shape : operand_shapes) {
     operand_shape_values.push_back(*operand_shape);
   }
@@ -2139,18 +2149,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceStartShape(
     absl::Span<const Shape* const> operand_shapes) {
-  TF_ASSIGN_OR_RETURN(Shape shape, InferAllReduceShape(operand_shapes));
-
-  return ShapeUtil::MakeTupleShape({shape, shape});
+  return InferAllReduceShape(operand_shapes);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceDoneShape(
     const Shape& operand_shape) {
-  // The returned value from AllReduceDone is determined from
-  // HloDataflowAnalysis::UpdateAllReduceStartValueSet(). The operand to
-  // AllReduceDone is a tuple of two elements and this function selects
-  // ShapeIndex {1} as the value forwarded.
-  return ShapeUtil::GetTupleElementShape(operand_shape, 1);
+  // The returned value from AllReduceDone is the operand forwarded.
+  return operand_shape;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllToAllShape(
@@ -2271,6 +2276,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   auto init_values = arg_shapes.subspan(num_reduced_args, arg_shapes.size());
   std::vector<PrimitiveType> element_types;
+  element_types.reserve(reduced_args.size());
   for (const Shape* arg : reduced_args) {
     element_types.push_back(arg->element_type());
   }
@@ -2299,7 +2305,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                                 new_dimensions, new_is_dynamic);
   } else {
     std::vector<Shape> result_subshapes;
-    for (const Shape& subshape : to_apply.result().tuple_shapes()) {
+    const auto& tuple_shapes = to_apply.result().tuple_shapes();
+    result_subshapes.reserve(tuple_shapes.size());
+    for (const Shape& subshape : tuple_shapes) {
       result_subshapes.push_back(ShapeUtil::MakeShape(
           subshape.element_type(), new_dimensions, new_is_dynamic));
     }
@@ -2333,6 +2341,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
   }
   std::vector<PrimitiveType> operand_element_type_vec;
+  operand_element_type_vec.reserve(operands.size());
   for (const Shape* s : operands) {
     operand_element_type_vec.push_back(s->element_type());
   }
@@ -2340,7 +2349,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                                         operand_element_type_vec,
                                         /*inputs=*/number_of_input));
   std::vector<Shape> output_shape_vec;
-  for (int i = 0; i < operands.size(); ++i) {
+  const size_t n = operands.size();
+  output_shape_vec.reserve(n);
+  for (size_t i = 0; i < operands.size(); ++i) {
     TF_ASSIGN_OR_RETURN(
         auto cur_output_shape,
         InferReduceWindowShape(*operands[i], *init_values[i], window));
@@ -2552,7 +2563,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   std::vector<int64_t> sizes;
-  for (int64_t dimension = 0; dimension < starts.size(); ++dimension) {
+  const auto starts_size = starts.size();
+  sizes.reserve(starts_size);
+  for (int64_t dimension = 0; dimension < starts_size; ++dimension) {
     int64_t start_index = starts[dimension];
     int64_t limit_index = limits[dimension];
     int64_t stride = strides[dimension];
@@ -3221,6 +3234,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       inferred_shape.set_dynamic_dimension(output_dynamic_dimension, true);
     } else {
       std::vector<int64_t> output_non_degenerated;
+      output_non_degenerated.reserve(output_dim_end);
       for (int64_t i = output_dim_start; i < output_dim_end; ++i) {
         if (new_sizes[i] != 1) {
           output_non_degenerated.push_back(i);
@@ -3733,7 +3747,9 @@ Status ValidateScatterDimensionNumbers(
 
   int64_t inserted_dims_seen = 0;
   std::vector<int64_t> max_update_slice_sizes;
-  for (int i = 0; i < operand_shape.dimensions_size(); ++i) {
+  const auto dimensions_size = operand_shape.dimensions_size();
+  max_update_slice_sizes.reserve(dimensions_size);
+  for (int i = 0; i < dimensions_size; ++i) {
     if (inserted_dims_seen < scatter_dim_numbers.inserted_window_dims_size() &&
         scatter_dim_numbers.inserted_window_dims(inserted_dims_seen) == i) {
       ++inserted_dims_seen;

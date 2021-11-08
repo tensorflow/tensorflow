@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -39,10 +40,13 @@ struct SparseSliceFunctor<CPUDevice, T> {
     const int input_dims = input_shape.NumElements();
 
     sparse::SparseTensor sparse_tensor;
-    OP_REQUIRES_OK(
-        context, sparse::SparseTensor::Create(
-                     input_indices, input_values,
-                     TensorShape(input_shape.vec<int64_t>()), &sparse_tensor));
+    TensorShape sparse_tensor_shape;
+    OP_REQUIRES_OK(context,
+                   TensorShapeBase<TensorShape>::BuildTensorShapeBase(
+                       input_shape.vec<int64_t>(), &sparse_tensor_shape));
+    OP_REQUIRES_OK(context, sparse::SparseTensor::Create(
+                                input_indices, input_values,
+                                sparse_tensor_shape, &sparse_tensor));
 
     const gtl::ArraySlice<int64_t> start(input_start.flat<int64_t>().data(),
                                          input_dims);
@@ -55,11 +59,17 @@ struct SparseSliceFunctor<CPUDevice, T> {
     context->set_output(0, output.indices());
     context->set_output(1, output.values());
 
-    const TensorShape output_shape(output.shape());
+    TensorShape output_shape;
+    OP_REQUIRES_OK(context, TensorShapeBase<TensorShape>::BuildTensorShapeBase(
+                                output.shape(), &output_shape));
+
+    TensorShape allocated_shape;
+    OP_REQUIRES_OK(context, TensorShapeBase<TensorShape>::BuildTensorShapeBase(
+                                {output_shape.dims()}, &allocated_shape));
 
     Tensor* shape = nullptr;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(2, {output_shape.dims()}, &shape));
+                   context->allocate_output(2, allocated_shape, &shape));
     for (int dim = 0; dim < output_shape.dims(); ++dim) {
       shape->vec<int64_t>()(dim) = output_shape.dim_size(dim);
     }

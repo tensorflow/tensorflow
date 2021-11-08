@@ -263,7 +263,7 @@ tensorflow::Status RunInitializers(
 
     const auto& signature = initializers_and_signatures.signature_map.at(init);
 
-    auto ready_chain = GetReadyChain(host);
+    auto ready_chain = GetReadyChain();
 
     // The actual arguments are the concat of side-effect chain and assets.
     llvm::SmallVector<AsyncValue*, 1> arguments;
@@ -434,20 +434,6 @@ StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
   return result;
 }
 
-StatusOr<RCReference<tfrt::BEFFile>> OpenBefFile(
-    const SavedModel::Options& options, const tfrt::BefBuffer& bef) {
-  DCHECK(options.runtime);
-  auto* core_runtime = options.runtime->core_runtime();
-  DCHECK(core_runtime);
-  auto* host_context = core_runtime->GetHostContext();
-  DCHECK(host_context);
-  auto bef_file =
-      BEFFile::Open(bef, host_context->GetKernelRegistry(),
-                    host_context->diag_handler(), host_context->allocator());
-  TF_RET_CHECK(bef_file) << "failed to open BEF";
-  return bef_file;
-}
-
 tensorflow::Status InitSavedModel(
     const InitializersAndSignatures& initializers_and_signatures,
     tfrt::BEFFile* bef_file, const SavedModel::Options& options,
@@ -553,6 +539,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
           tensorflow::TfrtTpuInfraTarget::kTpurt;
     }
   }
+  LOG(INFO) << "TFRT Savedmodel use TPU target "
+            << options.compile_options.tpu_target;
 
   auto statusor_saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {
@@ -613,7 +601,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
     // Step 3: Initialize runtime states using special BEF functions.
     auto init_start_time = absl::Now();
-    TF_ASSIGN_OR_RETURN(auto bef_file, OpenBefFile(options, bef));
+    TF_ASSIGN_OR_RETURN(auto bef_file,
+                        CreateBefFileFromBefBuffer(*options.runtime, bef));
 
     auto tpu_model_resource = std::make_unique<tpu::TpuModelResource>();
     auto resource_context =
@@ -1120,8 +1109,9 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
       options_.compile_options, module.get(), &loading_result->bef));
 
   // Step 3: Initialize runtime states using special BEF functions.
-  TF_ASSIGN_OR_RETURN(loading_result->bef_file,
-                      OpenBefFile(options_, loading_result->bef));
+  TF_ASSIGN_OR_RETURN(
+      loading_result->bef_file,
+      CreateBefFileFromBefBuffer(*options_.runtime, loading_result->bef));
   TF_RETURN_IF_ERROR(RunInitializers(
       /*initializers_and_signatures=*/{}, options_.model_metadata,
       loading_result->bef_file.get(), *options_.runtime,
@@ -1238,7 +1228,7 @@ tensorflow::Status SavedModelImpl::RunInternal(
 
   // The first argument is a chain for side-effects. Since SavedModel::Run()
   // only returns when side-effects are visible, we can use a ready chain here.
-  arguments.push_back(GetReadyChain(host).release());
+  arguments.push_back(GetReadyChain().release());
 
   for (const auto& input : inputs) {
     arguments.push_back(
@@ -1263,11 +1253,11 @@ tensorflow::Status SavedModelImpl::RunInternal(
       })};
 
   // Wait for the function execution before checking chain and results.
-  host->Await(executed);
+  exec_ctx.work_queue().Await(executed);
 
   // Wait for all results including the side-effect chain. This ensures that all
   // side-effects are visible when SavedModel::Run() returns.
-  host->Await(chain_and_results);
+  exec_ctx.work_queue().Await(chain_and_results);
 
   DCHECK(!chain_and_results.empty());
 

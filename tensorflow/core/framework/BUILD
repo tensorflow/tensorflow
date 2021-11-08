@@ -734,7 +734,9 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:intrusive_ptr",
+        "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
@@ -1006,6 +1008,7 @@ cc_library(
         ":node_def_proto_cc",
         ":node_def_util",
         ":op",
+        ":op_def_builder",
         ":op_def_proto_cc",
         ":tensor",
         "//tensorflow/core/lib/core:status",
@@ -1227,6 +1230,19 @@ tf_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "framework_resource_var_test",
+    size = "small",
+    srcs = ["resource_var_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1749,6 +1765,9 @@ tf_proto_library(
     srcs = ["dataset_options.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = [
+        ":model_proto",
+    ],
 )
 
 tf_proto_library(

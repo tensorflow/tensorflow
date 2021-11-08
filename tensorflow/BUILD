@@ -258,15 +258,6 @@ config_setting(
 )
 
 config_setting(
-    name = "msvc_cl_debug",
-    values = {
-        "compiler": "msvc-cl",
-        "compilation_mode": "dbg",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_tensorflow_py_deps",
     define_values = {"no_tensorflow_py_deps": "true"},
     visibility = ["//visibility:public"],
@@ -1047,11 +1038,6 @@ tf_cc_shared_object(
             "-z defs",
             "-Wl,--version-script,$(location //tensorflow:tf_version_script.lds)",
         ],
-    }) + select({
-        "//tensorflow:msvc_cl_debug": [
-            "/DEBUG:FASTLINK",
-        ],
-        "//conditions:default": [],
     }),
     per_os_targets = True,
     soversion = VERSION,
@@ -1300,9 +1286,6 @@ py_library(
         "//conditions:default": [":tf_python_api_gen_v1"],
     }) + [
         ":root_init_gen",
-        "//tensorflow/python/keras/api:keras_python_api_gen",
-        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
-        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",
     ],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],

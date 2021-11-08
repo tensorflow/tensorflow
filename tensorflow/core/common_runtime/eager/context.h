@@ -271,6 +271,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   bool GetReuseRendezvousForFunctions() const {
     return reuse_rendezvous_for_functions_;
   }
+  mutex* reuse_rendezvous_for_functions_mu() {
+    return &reuse_rendezvous_for_functions_mu_;
+  }
 
   bool AllowSoftPlacement() const { return allow_soft_placement_; }
   void SetAllowSoftPlacement(bool enable) override {
@@ -282,9 +285,18 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   void ResetGlobalRendezvousForFunction() override {
     mutex_lock l(global_rendezvous_mu_);
+    // Remove the global rendezvous instance from the local rendezvous table
+    // if it uses local rendezvous type, which forces EagerContext to create a
+    // new local rendezvous instance in the table.
+    local_rendezvous_table_->Remove(-1);
     global_rendezvous_for_functions_ =
         core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
   }
+
+  // Returns the global_rendezvous_for_functions' underlying LocalRendezvous'
+  // status. If the underlying Rendezvous is not in the local_rendezvous_table_
+  // returns OK.
+  Status GetGlobalRendezvousForFunctionLocalRendezvousStatus();
 
   // Returns a function which maps from step_id to rendezvous. This closure
   // respects the value of `SetReuseRendezvousForFunctions` at the time the
@@ -294,7 +306,17 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // The caller of the returned function owns a reference to the resulting
   // Rendezvous.
   std::function<Rendezvous*(int64_t)> RendezvousCreator() {
-    if (reuse_rendezvous_for_functions_) {
+    // There is an implicit assumption that the global_rendezvous_for_functions_
+    // is always an IntraProcessRendezvous to match the behaviour of the
+    // EagerContext's rendezvous.
+    // Ref: tensorflow/c/eager/c_api.cc;l=143;rcl=396387348
+    // If a cross process kernel needs a rendezvous a new InterProcessRendezvous
+    // should be created.
+    if (reuse_rendezvous_for_functions_ && rendezvous_creator_ == nullptr &&
+#if !defined(IS_MOBILE_PLATFORM)
+        worker_env_ == nullptr &&
+#endif
+        remote_device_mgr() == nullptr) {
       return [this](int64_t step_id) {
         mutex_lock l(global_rendezvous_mu_);
         global_rendezvous_for_functions_->Ref();
@@ -525,14 +547,40 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void UpdateClusterFLRAndInitDevices(
       DistributedFunctionLibraryRuntime* cluster_flr);
 
+  // A constant representing the step id used for the global rendezvous.
+  // This is used to distibguish whether a user-specified step id should be set.
+  // Step id value of kGlobalRendezvous is reserved and should not be specified
+  // by the user.
+  static const int64_t kGlobalRendezvousId;
+
  private:
+  // The class for wrapping a map of step_id to local rendezvous instances.
+  class LocalRendezvousTable {
+   public:
+    LocalRendezvousTable() = default;
+    ~LocalRendezvousTable();
+
+    IntraProcessRendezvous* FindOrCreate(int64_t step_id,
+                                         DeviceMgr* device_mgr);
+    IntraProcessRendezvous* Find(int64_t step_id);
+    void Remove(int64_t step_id);
+    void CleanUpAll();
+
+   private:
+    mutable mutex table_lock_;
+    absl::flat_hash_map<int64_t, IntraProcessRendezvous*> table_
+        TF_GUARDED_BY(table_lock_);
+  };
+
   Rendezvous* CreateRendezvous(int64_t step_id) const {
     if (rendezvous_creator_ != nullptr) {
+      VLOG(6) << "Creating rendezvous using the rendezvous_creator_.";
       return rendezvous_creator_(step_id);
     }
 
 #if !defined(IS_MOBILE_PLATFORM)
     if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
+      VLOG(6) << "Creating rendezvous using the worker_env's rendezvous_mgr.";
       auto* remote_r = worker_env_->rendezvous_mgr->Find(step_id);
       remote_r->Initialize(worker_session_.get()).IgnoreError();
       return remote_r;
@@ -540,7 +588,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 #endif
 
     if (remote_device_mgr() == nullptr) {
-      return new IntraProcessRendezvous(local_device_mgr());
+      VLOG(6) << "Creating rendezvous using local_device_mgr.";
+      return local_rendezvous_table_->FindOrCreate(step_id, local_device_mgr());
     }
 
     return nullptr;
@@ -560,6 +609,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                  DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
   void ResetClusterFLR(DistributedFunctionLibraryRuntime* cluster_flr);
+  void UpdateGlobalRendezvousDeviceManager(tensorflow::DeviceMgr* device_mgr);
 
   void ClearResourceContainer(const string& name);
 
@@ -682,11 +732,16 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   const bool log_memory_;
 
+  // The table of local rendezvous instances for intra-process communication.
+  // This make sures only one local rendezvous instance exists per step id.
+  std::unique_ptr<LocalRendezvousTable> local_rendezvous_table_;
+
   // Whether to use same rendezvous instance across function/eager executions.
   std::atomic<bool> reuse_rendezvous_for_functions_{false};
   mutable mutex global_rendezvous_mu_;
   core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_
       TF_GUARDED_BY(global_rendezvous_mu_);
+  mutex reuse_rendezvous_for_functions_mu_;
 
   Env* const env_;
 

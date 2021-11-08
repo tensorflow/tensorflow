@@ -112,12 +112,25 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                                           params);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     if (preserve_cardinality_) {
       return input_->Cardinality();
     } else {
       return kUnknownCardinality;
     }
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    std::vector<Tensor> args;
+    TF_RETURN_IF_ERROR(input_->Get(ctx, index, &args));
+    if (!instantiated_captured_func_) {
+      TF_RETURN_IF_ERROR(
+          captured_func_->Instantiate(InstantiateCapturedFunctionParams(ctx),
+                                      &instantiated_captured_func_));
+    }
+    return instantiated_captured_func_->RunInstantiated(args, out_tensors);
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
@@ -204,11 +217,11 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params),
           mu_(std::make_shared<mutex>()),
           cond_var_(std::make_shared<condition_variable>()),
+          num_parallel_calls_(std::make_shared<model::SharedState>(
+              params.dataset->num_parallel_calls_, mu_, cond_var_)),
           deterministic_(params.dataset->deterministic_.IsDeterministic() ||
                          params.dataset->deterministic_.IsDefault()),
           preserve_cardinality_(params.dataset->preserve_cardinality_),
-          num_parallel_calls_(std::make_shared<model::SharedState>(
-              params.dataset->num_parallel_calls_, mu_, cond_var_)),
           autotune_(params.dataset->num_parallel_calls_ == model::kAutotune) {}
 
     ~Iterator() override {
@@ -220,15 +233,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       interleave_depth_ = ctx->interleave_depth();
-
-      if (autotune_ && GetExperiments().contains("max_parallelism")) {
-        // If both autotune and experiment are ON, we rewrite the
-        // `num_parallel_calls` value and turn off autotune option.
-        num_parallel_calls_ = std::make_shared<model::SharedState>(
-            GetCpuBudget(), num_parallel_calls_->mu,
-            num_parallel_calls_->cond_var);
-        autotune_ = false;
-      }
 
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = ctx->runner_threadpool_size();
@@ -651,11 +655,11 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     // parallelism and there are slots available in the `invocation_results_`
     // buffer.
     const std::shared_ptr<condition_variable> cond_var_;
+    // Identifies the maximum number of parallel calls.
+    const std::shared_ptr<model::SharedState> num_parallel_calls_;
     const bool deterministic_;
     const bool preserve_cardinality_;
-    // Identifies the maximum number of parallel calls.
-    std::shared_ptr<model::SharedState> num_parallel_calls_;
-    bool autotune_;
+    const bool autotune_;
     // Counts the number of outstanding calls.
     int64_t num_calls_ TF_GUARDED_BY(*mu_) = 0;
     // Controls cancellation of `input_impl_`. Must be ordered before
@@ -690,6 +694,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
   const bool preserve_cardinality_;
   const std::unique_ptr<CapturedFunction> captured_func_;
   const int op_version_;
+  // This is used for random access provided by Get().
+  mutable std::unique_ptr<InstantiatedCapturedFunction>
+      instantiated_captured_func_;
 };
 
 ParallelMapDatasetOp::ParallelMapDatasetOp(OpKernelConstruction* ctx)
@@ -744,7 +751,13 @@ void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                           &captured_func));
 
   if (num_parallel_calls == model::kAutotune) {
-    metrics::RecordTFDataAutotune(kDatasetType);
+    auto experiments = GetExperiments();
+    if (experiments.contains("max_parallelism") &&
+        !experiments.contains("max_parallelism_v2")) {
+      num_parallel_calls = GetCpuBudget();
+    } else {
+      metrics::RecordTFDataAutotune(kDatasetType);
+    }
   }
 
   *output =

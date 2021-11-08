@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/common/datavec.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -270,11 +273,6 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
 
 class ValidatorTest : public ::testing::Test {
  public:
-  std::unordered_map<string, OpConverter>& op_validators(
-      TrtNodeValidator* validator) {
-    return validator->op_validators_;
-  }
-
   Status ConvertToTensorOrWeights(const Scope& scope, const Node* node,
                                   int output_port,
                                   TRT_TensorOrWeights* tensor_or_weights) {
@@ -289,10 +287,6 @@ class ValidatorTest : public ::testing::Test {
     return validator.ConvertToTensorOrWeights(node->def(), output_port,
                                               tensor_or_weights);
   }
-
-  const std::set<string>* GetQuantizeOps(TrtNodeValidator* validator) {
-    return validator->quantize_ops;
-  }
 };
 
 TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
@@ -301,8 +295,8 @@ TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
   TrtNodeValidator validator(graph_properties, TrtPrecisionMode::FP32,
                              /*use_calibration=*/false,
                              /*use_implicit_batch=*/true);
-  for (const string& quantize_op : *GetQuantizeOps(&validator)) {
-    QCHECK(op_validators(&validator).count(quantize_op));
+  for (const string& quantize_op : kQuantizationOpNames) {
+    TF_EXPECT_OK(validator.GetValidator(quantize_op).status());
   }
 }
 
@@ -377,6 +371,7 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
                              /*use_calibration=*/false,
                              /*use_implicit_batch=*/true);
 
+  // Override the Add converter.
   bool start_conversion = false;
   bool should_fail = false;
   auto op_converter = [&start_conversion,
@@ -387,13 +382,14 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   };
 
   // Validator not registered.
-  ASSERT_EQ(1, op_validators(&validator).erase("Add"));
+  auto original_op_converter = GetOpConverterRegistry()->LookUp("Add");
+  ASSERT_TRUE(original_op_converter.ok());
+  GetOpConverterRegistry()->Clear("Add");
   EXPECT_THAT(validator.IsTensorRTCandidate(add_node),
               StatusIs(error::UNIMPLEMENTED,
                        HasSubstr("Op type Add is not supported.")));
-
-  // Register validator.
-  op_validators(&validator)["Add"] = op_converter;
+  GetOpConverterRegistry()->Register("Add", kDefaultConverterPriority + 1,
+                                     op_converter);
   TF_EXPECT_OK(validator.IsTensorRTCandidate(add_node));
   EXPECT_EQ(false, start_conversion);
 
@@ -401,6 +397,9 @@ TEST_F(ValidatorTest, IsTensorRTCandidate_Basics) {
   should_fail = true;
   EXPECT_THAT(validator.IsTensorRTCandidate(add_node),
               StatusIs(error::INVALID_ARGUMENT));
+  GetOpConverterRegistry()->Clear("Add");
+  GetOpConverterRegistry()->Register("Add", kDefaultConverterPriority,
+                                     *original_op_converter);
 }
 
 TEST(TrtNodeValidator, IsTensorRTCandidate) {
@@ -491,6 +490,8 @@ class ConverterTest : public ::testing::Test {
   ConverterTest() { Reset(); }
 
   void Reset() {
+    GetOpConverterRegistry()->Clear("MyOp");
+    GetOpConverterRegistry()->Clear("DummyOp");
     converter_ =
         std::move(Converter::Create(TrtPrecisionMode::FP32,
                                     /*use_calibration=*/false, &logger_,
@@ -500,12 +501,9 @@ class ConverterTest : public ::testing::Test {
     weight_store_ = &converter_->weight_store_;
   }
 
-  void AddOpConverter(const string& op_name, OpConverter op_converter) {
-    converter_->op_registry_[op_name] = op_converter;
-  }
-
+  // TODO(cbate): These should be removed or changed to public per black-box
+  // testing principle.
   // Below we expose private methods of Converter for testing.
-
   Status MaybeUpdateBatchSize(int batch_size) {
     return converter_->MaybeUpdateBatchSize(batch_size);
   }
@@ -558,17 +556,19 @@ TEST_F(ConverterTest, ConvertNode) {
     return Status::OK();
   };
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {"my_input"});
-  TF_EXPECT_OK(converter_->AddInputTensor(
+
+  TF_ASSERT_OK(converter_->AddInputTensor(
       "my_input", nvinfer1::DataType::kFLOAT, CreateDims({123}), 1));
 
   // Converter not registered.
-  EXPECT_THAT(converter_->ConvertNode(node_def),
-              StatusIs(error::UNIMPLEMENTED,
-                       HasSubstr("No converter registered for op: MyOp")));
+  EXPECT_THAT(
+      converter_->ConvertNode(node_def),
+      StatusIs(error::NOT_FOUND, HasSubstr("No converter for op MyOp")));
 
   // Register the converter and retry.
-  AddOpConverter("MyOp", op_converter);
-  TF_EXPECT_OK(converter_->ConvertNode(node_def));
+  GetOpConverterRegistry()->Register("MyOp", kDefaultConverterPriority,
+                                     op_converter);
+  TF_ASSERT_OK(converter_->ConvertNode(node_def));
 
   TRT_TensorOrWeights actual_output_1;
   TF_EXPECT_OK(GetTensorOrWeights("my_op", &actual_output_1));
@@ -640,7 +640,8 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
     params->outputs->emplace_back(output_weights);
     return Status::OK();
   };
-  AddOpConverter("MyOp", op_converter);
+  GetOpConverterRegistry()->Register("MyOp", kDefaultConverterPriority,
+                                     op_converter);
 
   // Run the conversion.
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {"my_input"});
@@ -2907,14 +2908,12 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertBinary) {
   ADD_OP("Maximum", ops::Maximum, {3, 6, 3, 6, 3, 6, 3, 6});
   ADD_OP("Pow", ops::Pow, {9, 36, 27, 216, 9, 36, 27, 216});
 #undef ADD_OP
-  // Add all ops supported by ConvertBinary.
-  auto* supported_ops = BinaryOperationMap();
   // Test combinations of tensor vs weight inputs (except when both inputs are
   // weights).
   for (const bool operand_1_is_tensor : {true, false}) {
     for (const bool operand_2_is_tensor : {true, false}) {
       if (!operand_1_is_tensor && !operand_2_is_tensor) continue;
-      for (auto& iter : *supported_ops) {
+      for (auto& iter : kBinaryOperations) {
         string op_name = iter.first;
         SCOPED_TRACE(StrCat(op_name, "_", operand_1_is_tensor ? "T" : "W",
                             operand_2_is_tensor ? "T" : "W"));
@@ -3820,7 +3819,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
   // Same input is used for all tests.
   const std::vector<float> ok_input = {1, 2, 3, 4, 5, 6};
 
-  Status batch_conv_status =
+  Status modified_batch_dim_status =
       (trt_mode_ == TrtTestMode::kImplicitBatch)
           ? errors::Unimplemented(
                 "TensorRT does not allow modifications to "
@@ -3828,20 +3827,20 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           : Status::OK();
   std::vector<TestParams> params = {
       // Modify batch dim, should fail in implicit batch mode.
-      TestParams{
-          /*input_dims=*/{2, 1, 1, 3},
-          /*begin=*/{0, 0, 0, 0},
-          /*end=*/{1, 1, 1, 2},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({0, 0, 0, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 1, 2},
-          /*expected_output=*/{1, 2},
-          batch_conv_status,
-      },
+      TestParams{/*input_dims=*/{2, 1, 1, 3},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*end=*/{1, 1, 1, 2},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({0, 0, 0, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 1, 2},
+                 /*expected_output=*/{1, 2},
+                 /*conversion_status=*/modified_batch_dim_status,
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{}},
       // Unknown batch size without end_mask.
       TestParams{
           /*input_dims=*/{2, 1, 1, 3},
@@ -3855,11 +3854,11 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*shrink_axis_mask=*/0,
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{1, 2},
-          batch_conv_status,
+          modified_batch_dim_status,
           Status::OK(),
-          {-1, 1, 1, 3},
+          /*partial_input_dims=*/{-1, 1, 1, 3},
       },
-      // Unknown batch size but using end_mask, ok.
+      // Test Case 2: Unknown batch size with end_mask.
       TestParams{
           /*input_dims=*/{2, 1, 1, 3},
           /*begin=*/{0, 0, 0, 0},
@@ -3874,24 +3873,25 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output=*/{1, 2, 4, 5},
           Status::OK(),
           Status::OK(),
-          {-1, 1, 1, 3},
+          /*partial_input_dims=*/{-1, 1, 1, 3},
       },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 2, 0},
-          /*end=*/{1, 1, 0, 3},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/0,
-          /*end_mask=*/0,
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{},
-          /*expected_output=*/{},
-          errors::InvalidArgument("\"size\" cannot be negative for "
-                                  "StridedSlice"),
-      },
-      // 2D Crop.
+      // Invalid parameters: end[2] < begin[2]
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 2, 0},
+                 /*end=*/{1, 1, 0, 3},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/0,
+                 /*end_mask=*/0,
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{},
+                 /*expected_output=*/{},
+                 errors::InvalidArgument("\"size\" cannot be negative for "
+                                         "StridedSlice"),
+                 Status::OK(),
+                 /*partial_input_dims=*/{}},
+      // Slice on the last two dimensions. All dimensions are static.
       TestParams{
           /*input_dims=*/{1, 1, 2, 3},
           /*begin=*/{0, 0, 0, 0},
@@ -3905,6 +3905,27 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{1, 2},
       },
+      // Slice on the last two dimensions. The slice is fully
+      // specified for the dynamic dimensions.
+      TestParams{
+          /*input_dims=*/{1, 1, 2, 3},
+          /*begin=*/{0, 0, 0, 0},
+          /*end=*/{0, 0, 1, 2},
+          /*strides=*/{1, 1, 1, 1},
+          /*begin_mask=*/get_mask({0, 0, 0, 0}),
+          /*end_mask=*/get_mask({1, 1, 0, 0}),
+          /*ellipsis_mask=*/0,
+          /*new_axis_mask=*/0,
+          /*shrink_axis_mask=*/0,
+          /*expected_output_dims=*/{1, 1, 1, 2},
+          /*expected_output=*/{1, 2},
+          Status::OK(),
+          Status::OK(),
+          /*partial_input_dims=*/{1, 1, -1, -1},
+      },
+      // End mask is provided on all dimensions. This should override the fact
+      // that the end value is 0. For dynamic shape, it tests
+      // that we can infer tensor size when "end mask" is provided.
       TestParams{
           /*input_dims=*/{1, 1, 2, 3},
           /*begin=*/{0, 0, 1, 1},
@@ -3917,7 +3938,12 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*shrink_axis_mask=*/0,
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{5, 6},
+          Status::OK(),
+          Status::OK(),
+          /*partial_input_dims=*/{1, 1, -1, -1},
       },
+      // End mask is provided for the batch dimension to overwrite the end value
+      // 0 for that dimension.
       TestParams{
           /*input_dims=*/{1, 1, 2, 3},
           /*begin=*/{0, 0, 1, 1},
@@ -3931,60 +3957,73 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{5, 6},
       },
-      // 2D crop with negative stride
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 1, 2},
-          /*end=*/{0, 0, 0, 0},
-          /*strides=*/{1, 1, -1, -1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({1, 1, 0, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 1, 2},
-          /*expected_output=*/{6, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 1, 1},
-          /*end=*/{0, 0, 0, 0},
-          /*strides=*/{1, 1, -1, -1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({1, 1, 1, 1}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 2},
-          /*expected_output=*/{5, 4, 2, 1},
-      },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 0},
-          /*end=*/{0, 0, 0, 0},
-          /*strides=*/{1, 1, -1, -1},
-          /*begin_mask=*/get_mask({0, 0, 1, 1}),
-          /*end_mask=*/get_mask({1, 1, 0, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 1, 2},
-          /*expected_output=*/{6, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 0},
-          /*end=*/{0, 0, 0, 0},
-          /*strides=*/{1, -1, -1, -1},
-          /*begin_mask=*/get_mask({1, 1, 1, 1}),
-          /*end_mask=*/get_mask({1, 1, 1, 1}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 3},
-          /*expected_output=*/{6, 5, 4, 3, 2, 1},
-      },
-      // 2D Crop, with transpose.
+      // Test slice on two dimensions with negative stride, without end_mask set
+      // on crop dimensions.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 1, 2},
+                 /*end=*/{0, 0, 0, 0},
+                 /*strides=*/{1, 1, -1, -1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 0, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 1, 2},
+                 /*expected_output=*/{6, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, 1, -1, -1}},
+      // Test slice on two dimensions with negative stride, with end_mask set on
+      // crop dimensions. In dynamic shape mode, this tests the runtime size
+      // computation.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 1, 1},
+                 /*end=*/{0, 0, 0, 0},
+                 /*strides=*/{1, 1, -1, -1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 2},
+                 /*expected_output=*/{5, 4, 2, 1},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, 1, -1, -1}},
+      // Test slice on two dimensions with negative stride, with begin_mask set
+      // on the crop dimensions. In dynamic shape mode, this tests the runtime
+      // size computation.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*end=*/{0, 0, 0, 0},
+                 /*strides=*/{1, 1, -1, -1},
+                 /*begin_mask=*/get_mask({0, 0, 1, 1}),
+                 /*end_mask=*/get_mask({1, 1, 0, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 1, 2},
+                 /*expected_output=*/{6, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, 1, -1, -1}},
+      // Test the reversal of all non-batch dimensions by providing the begin
+      // masks, end masks, and -1 as strides.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*end=*/{0, 0, 0, 0},
+                 /*strides=*/{1, -1, -1, -1},
+                 /*begin_mask=*/get_mask({1, 1, 1, 1}),
+                 /*end_mask=*/get_mask({1, 1, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 3},
+                 /*expected_output=*/{6, 5, 4, 3, 2, 1},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, -1, -1, -1}},
+      // Slice on dimensions 1 and 2.
       TestParams{
           /*input_dims=*/{1, 2, 3, 1},
           /*begin=*/{0, 0, 0, 0},
@@ -3998,6 +4037,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 2, 1},
           /*expected_output=*/{1, 2},
       },
+      // Slice on dimensions 1 and 2.
       TestParams{
           /*input_dims=*/{1, 2, 3, 1},
           /*begin=*/{0, 1, 1, 0},
@@ -4011,6 +4051,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 2, 1},
           /*expected_output=*/{5, 6},
       },
+      // Slice on dimensions 1 and 3.
       TestParams{
           /*input_dims=*/{1, 2, 1, 3},
           /*begin=*/{0, 0, 0, 0},
@@ -4024,6 +4065,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{1, 2},
       },
+      // Slice on dimensions 1 and 3 with non-zero slice start.
       TestParams{
           /*input_dims=*/{1, 2, 1, 3},
           /*begin=*/{0, 1, 0, 1},
@@ -4037,7 +4079,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 1, 2},
           /*expected_output=*/{5, 6},
       },
-      // 2D Crop, with reshape.
+      // Slice on 3D tensor.
       TestParams{
           /*input_dims=*/{1, 2, 3},
           /*begin=*/{0, 0, 0},
@@ -4051,33 +4093,38 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 2},
           /*expected_output=*/{1, 2},
       },
-      TestParams{
-          /*input_dims=*/{1, 2, 3},
-          /*begin=*/{0, 1, 1},
-          /*end=*/{0, 0, 0},
-          /*strides=*/{1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0}),
-          /*end_mask=*/get_mask({1, 1, 1}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2},
-          /*expected_output=*/{5, 6},
-      },
-      // 1D Crop.
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 0},
-          /*end=*/{0, 0, 0, 2},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({1, 1, 1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 2},
-          /*expected_output=*/{1, 2, 4, 5},
-      },
+      // Slice on 3D tensor using end_mask. For dynamic shape, all
+      // dimensions are dynamic.
+      TestParams{/*input_dims=*/{1, 2, 3},
+                 /*begin=*/{0, 1, 1},
+                 /*end=*/{0, 0, 0},
+                 /*strides=*/{1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2},
+                 /*expected_output=*/{5, 6},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1}},
+      // Slice on 3D tensor using end_mask. For dynamic shape, all
+      // dimensions are dynamic.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*end=*/{0, 0, 0, 2},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 2},
+                 /*expected_output=*/{1, 2, 4, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1, -1}},
       TestParams{
           /*input_dims=*/{1, 1, 2, 3},
           /*begin=*/{0, 0, 1, 0},
@@ -4091,20 +4138,21 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 1, 3},
           /*expected_output=*/{4, 5, 6},
       },
-      // 1D Crop, with transpose.
-      TestParams{
-          /*input_dims=*/{1, 2, 3, 1},
-          /*begin=*/{0, 0, 0, 0},
-          /*end=*/{0, 1, 0, 0},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({1, 0, 1, 1}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 3, 1},
-          /*expected_output=*/{1, 2, 3},
-      },
+      // 1D simple slice.
+      TestParams{/*input_dims=*/{1, 2, 3, 1},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*end=*/{0, 1, 0, 0},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 3, 1},
+                 /*expected_output=*/{1, 2, 3},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1, -1}},
       TestParams{
           /*input_dims=*/{1, 2, 3, 1},
           /*begin=*/{0, 1, 0, 0},
@@ -4118,20 +4166,21 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 3, 1},
           /*expected_output=*/{4, 5, 6},
       },
-      // 1D Crop, with reshape.
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 0},
-          /*end=*/{0, 3},
-          /*strides=*/{1, 1},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 3},
-          /*expected_output=*/{1, 2, 3},
-      },
+      // Simple 1D slice on 2D input.
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 0},
+                 /*end=*/{0, 3},
+                 /*strides=*/{1, 1},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{1, 2, 3},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
       TestParams{
           /*input_dims=*/{1, 1, 6},
           /*begin=*/{0, 0, 2},
@@ -4199,113 +4248,125 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 2, 3},
           /*expected_output=*/{1, 2, 3, 4, 5, 6},
       },
-      // Strides
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 0},
-          /*end=*/{0, 5},
-          /*strides=*/{1, 2},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 3},
-          /*expected_output=*/{1, 3, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 0},
-          /*end=*/{0, 6},
-          /*strides=*/{1, 2},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 3},
-          /*expected_output=*/{1, 3, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 1},
-          /*end=*/{0, 6},
-          /*strides=*/{1, 2},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 3},
-          /*expected_output=*/{2, 4, 6},
-      },
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 2},
-          /*end=*/{0, 6},
-          /*strides=*/{1, 3},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 2},
-          /*expected_output=*/{3, 6},
-      },
-      // Negative non -1 strides
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 5},
-          /*end=*/{0, 0},
-          /*strides=*/{1, -2},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 1}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 3},
-          /*expected_output=*/{6, 4, 2},
-      },
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 5},
-          /*end=*/{0, 0},
-          /*strides=*/{1, -2},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 3},
-          /*expected_output=*/{6, 4, 2},
-      },
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 5},
-          /*end=*/{0, 1},
-          /*strides=*/{1, -3},
-          /*begin_mask=*/get_mask({0, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 2},
-          /*expected_output=*/{6, 3},
-      },
-      // ellipsis_mask
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 1},
-          /*end=*/{0, 2},
-          /*strides=*/{1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({0, 0, 0, 0}),
-          /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 1},
-          /*expected_output=*/{2, 5},
-      },
+      // Stride values >= 2.
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 0},
+                 /*end=*/{0, 5},
+                 /*strides=*/{1, 2},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{1, 3, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 0},
+                 /*end=*/{0, 6},
+                 /*strides=*/{1, 2},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{1, 3, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 1},
+                 /*end=*/{0, 6},
+                 /*strides=*/{1, 2},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{2, 4, 6},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 2},
+                 /*end=*/{0, 6},
+                 /*strides=*/{1, 3},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 2},
+                 /*expected_output=*/{3, 6},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      // Stride values <= -2.
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 5},
+                 /*end=*/{0, 0},
+                 /*strides=*/{1, -2},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{6, 4, 2},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 5},
+                 /*end=*/{0, 0},
+                 /*strides=*/{1, -2},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{6, 4, 2},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 5},
+                 /*end=*/{0, 1},
+                 /*strides=*/{1, -3},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 2},
+                 /*expected_output=*/{6, 3},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1}},
+      // Ellipsis_mask causes leading dimensions to be ignored. Begin, end,
+      // stride, and mask values of size 2 should be interpreted as applying to
+      // the last 2 dimensions, while the ellipsis applies to the first 2 (for a
+      // 4D input tensor).
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 1},
+                 /*end=*/{0, 2},
+                 /*strides=*/{1, 1},
+                 /*begin_mask=*/get_mask({0, 0}),
+                 /*end_mask=*/get_mask({0, 0}),
+                 /*ellipsis_mask=*/get_mask({1, 0, 0}),
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 1},
+                 /*expected_output=*/{2, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1, -1}},
+      // Ellipsis_mask on single inner dimension.
       TestParams{
           /*input_dims=*/{1, 1, 2, 3},
           /*begin=*/{0, 0, 1},
@@ -4319,106 +4380,155 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
           /*expected_output_dims=*/{1, 1, 2, 1},
           /*expected_output=*/{2, 5},
       },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 1},
-          /*end=*/{0, 1, 2, 2},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({0, 0, 0, 0}),
-          /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 1},
-          /*expected_output=*/{2, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 1},
-          /*end=*/{1, 1, 2, 2},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({0, 0, 0, 0}),
-          /*ellipsis_mask=*/get_mask({0, 1, 0, 0}),
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 1},
-          /*expected_output=*/{2, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 0, 1},
-          /*end=*/{0, 1, 1, 2, 2},
-          /*strides=*/{1, 1, 1, 1, 1},
-          /*begin_mask=*/get_mask({0, 0, 0, 0}),
-          /*end_mask=*/get_mask({0, 0, 0, 0}),
-          /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/0,
-          /*expected_output_dims=*/{1, 1, 2, 1},
-          /*expected_output=*/{2, 5},
-      },
-      // shrink_axis_mask
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 1},
-          /*end=*/{0, 0, 0, 2},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({1, 1, 1, 0}),
-          /*end_mask=*/get_mask({1, 1, 1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/get_mask({0, 0, 0, 1}),
-          /*expected_output_dims=*/{1, 1, 2},
-          /*expected_output=*/{2, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 1, 2, 3},
-          /*begin=*/{0, 0, 0, 1},
-          /*end=*/{0, 1, 2, 2},
-          /*strides=*/{1, 1, 1, 1},
-          /*begin_mask=*/get_mask({1, 0, 0, 0}),
-          /*end_mask=*/get_mask({1, 0, 0, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/get_mask({0, 1, 0, 1}),
-          /*expected_output_dims=*/{1, 2},
-          /*expected_output=*/{2, 5},
-      },
-      TestParams{
-          /*input_dims=*/{1, 6},
-          /*begin=*/{0, 0},
-          /*end=*/{0, 1},
-          /*strides=*/{1, 1},
-          /*begin_mask=*/get_mask({1, 0}),
-          /*end_mask=*/get_mask({1, 0}),
-          /*ellipsis_mask=*/0,
-          /*new_axis_mask=*/0,
-          /*shrink_axis_mask=*/get_mask({0, 1}),
-          /*expected_output_dims=*/{1},
-          /*expected_output=*/{1},
-      },
+      // Ellipsis_mask on single leading dimension.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 1},
+                 /*end=*/{0, 1, 2, 2},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({0, 0, 0, 0}),
+                 /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 1},
+                 /*expected_output=*/{2, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1, -1}},
+      // Ellipsis_mask on single inner dimension overrides that dimensions'
+      // begin/end values.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 1, 0, 1},
+                 /*end=*/{1, 1, 2, 2},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({0, 0, 0, 0}),
+                 /*ellipsis_mask=*/get_mask({0, 1, 0, 0}),
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 1},
+                 /*expected_output=*/{2, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1, -1}},
+      // Ellipsis mask on single leading dimension should throw out extra
+      // leading values of begin/end vectors so that only the last N-1 values of
+      // each remain.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 0, 1},
+                 /*end=*/{0, 1, 1, 2, 2},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
+                 /*end_mask=*/get_mask({0, 0, 0, 0}),
+                 /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/0,
+                 /*expected_output_dims=*/{1, 1, 2, 1},
+                 /*expected_output=*/{2, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1, -1}},
+      // Shrink-axis mask set for the final dimension of final size 1 should
+      // remove that dimension from the final shape.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 1},
+                 /*end=*/{0, 0, 0, 2},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({1, 1, 1, 0}),
+                 /*end_mask=*/get_mask({1, 1, 1, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/get_mask({0, 0, 0, 1}),
+                 /*expected_output_dims=*/{1, 1, 2},
+                 /*expected_output=*/{2, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, 1, 2, -1}},
+      // Shrink-axis mask set for multiple dimensions that have a final size of
+      // 1 should remove those dimensions from the final shape.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*begin=*/{0, 0, 0, 1},
+                 /*end=*/{0, 1, 2, 2},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*begin_mask=*/get_mask({1, 0, 0, 0}),
+                 /*end_mask=*/get_mask({1, 0, 0, 0}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/get_mask({0, 1, 0, 1}),
+                 /*expected_output_dims=*/{1, 2},
+                 /*expected_output=*/{2, 5},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, 1, 2, -1}},
+      // Shrink-axis mask set for multiple sequential dimensions of final size 1
+      // should
+      // remove those dimensions from the final shape.
+      TestParams{/*input_dims=*/{6, 1, 1},
+                 /*begin=*/{0, 0, 0},
+                 /*end=*/{0, 0, 0},
+                 /*strides=*/{1, 1, 1},
+                 /*begin_mask=*/get_mask({1, 1, 1}),
+                 /*end_mask=*/get_mask({1, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/0,
+                 /*shrink_axis_mask=*/get_mask({0, 1, 1}),
+                 /*expected_output_dims=*/{6},
+                 /*expected_output=*/{1, 2, 3, 4, 5, 6},
+                 /*conversion_status=*/Status::OK(),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{-1, -1, -1}},
+      // The new_axis_mask parameter is not supported.
+      TestParams{/*input_dims=*/{1, 6},
+                 /*begin=*/{0, 0, 0},
+                 /*end=*/{0, 0, 0},
+                 /*strides=*/{1, 1, 1},
+                 /*begin_mask=*/
+                 get_mask({0, 1, 1}),
+                 /*end_mask=*/get_mask({0, 1, 1}),
+                 /*ellipsis_mask=*/0,
+                 /*new_axis_mask=*/get_mask({1, 0, 0}),
+                 /*shrink_axis_mask=*/get_mask({0, 0, 0}),
+                 /*expected_output_dims=*/{1, 1, 6},
+                 /*expected_output=*/{1, 1, 6},
+                 /*conversion_status=*/
+                 errors::Unimplemented(
+                     "new_axis_mask is not supported for StridedSlice, at"),
+                 /*runtime_status=*/Status::OK(),
+                 /*partial_input_dims=*/{1, 6}},
   };
 
+  int i = 0;
   for (auto p : params) {
-    if (trt_mode_ == TrtTestMode::kDynamicShape ||
-        (trt_mode_ == TrtTestMode::kExplicitBatch &&
-         !HasStaticShape(p.partial_input_dims))) {
-      p.conversion_status = errors::Unimplemented(
-          "Strided slice op not implemented for dynamic shape input");
-    }
     Reset();
     NodeDef node_def = get_strided_slice_nodedef(
         tf_type_, p.begin_mask, p.end_mask, p.ellipsis_mask, p.new_axis_mask,
         p.shrink_axis_mask);
 
-    VLOG(2) << "Preparing test case with dims " << DebugString(p.input_dims);
-    if (p.partial_input_dims.empty()) {
-      AddTestTensor("input", p.input_dims, ok_input);
-    } else {
-      AddTestTensor("input", p.input_dims, tf_type_, ok_input,
-                    p.partial_input_dims);
+    VLOG(2) << "Preparing test case " << i++ << " with dims "
+            << DebugString(p.input_dims);
+
+    switch (trt_mode_) {
+      case TrtTestMode::kImplicitBatch: {
+        AddTestTensor("input", p.input_dims, ok_input);
+        break;
+      }
+      case TrtTestMode::kExplicitBatch: {
+        AddTestTensor("input", p.input_dims, ok_input);
+        break;
+      }
+      case TrtTestMode::kDynamicShape: {
+        if (p.partial_input_dims.size() > 0) {
+          AddTestTensor("input", p.input_dims, tf_type_, ok_input,
+                        p.partial_input_dims);
+
+        } else {
+          AddTestTensor("input", p.input_dims, tf_type_, ok_input,
+                        p.input_dims);
+        }
+        break;
+      }
     }
+
     VLOG(2) << "Adding weights begin: " << DebugString(p.begin)
             << ", end: " << DebugString(p.end)
             << ", strides: " << DebugString(p.strides);
@@ -4446,6 +4556,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
 
   struct TestParams {
     std::vector<int> input_dims;
+    std::vector<int>
+        partial_input_dims;  // Symbolic shape in dynamic shape mode.
     std::vector<int> begin;
     std::vector<int> size;
     std::vector<int> expected_output_dims;
@@ -4454,90 +4566,76 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
     Status runtime_status;
   };
 
-  Status conv_dynamic =
-      trt_mode_ == TrtTestMode::kDynamicShape
-          ? errors::Unimplemented(
-                "Strided slice op not implemented for dynamic shape input")
-          : Status::OK();
-  Status conv_dynamic2 =
-      trt_mode_ == TrtTestMode::kDynamicShape
-          ? errors::Unimplemented(
-                "Input dims must be defined for size = -1, at my_slice")
-          : Status::OK();
   std::vector<TestParams> params = {
-      // Begin is below bounds, should fail.
-      TestParams{
-          {1, 1, 2, 3},
-          {0, 0, -1, 0},
-          {1, 1, 2, 3},
-          {},
-          {},
-          trt_mode_ == TrtTestMode::kDynamicShape
-              ? conv_dynamic
-              : errors::InvalidArgument("\"begin\" for dimension 2 in Slice "
-                                        "is out of range, at my_slice")},
-      // Batch dimension is modified, should fail in implicit batch mode.
-      TestParams{
-          {2, 1, 1, 3},
-          {0, 0, 0, 0},
-          {1, 1, 1, 3},
-          {1, 1, 1, 3},
-          {1, 2, 3},
-          trt_mode_ == TrtTestMode::kImplicitBatch
-              ? errors::Unimplemented("TensorRT does not allow modifications"
-                                      " to the batch dimension, at my_slice")
-              : Status::OK()},
+      // Slice start points must always be >= 0.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
+                 /*begin=*/{0, 0, -1, 0},
+                 /*size=*/{1, 1, 2, 3},
+                 /*expected_output_dims=*/{},
+                 /*expected_output=*/{},
+                 /*conversion_status=*/
+                 errors::InvalidArgument("\"begin\" in Slice "
+                                         "is out of range, at my_slice")},
+      // In implicit batch mode, slicing the batch dimension is not allowed.
+      TestParams{/*input_dims=*/{2, 1, 1, 3},
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*size=*/{1, 1, 1, 3},
+                 /*expected_output_dims=*/{1, 1, 1, 3},
+                 /*expected_output=*/{1, 2, 3},
+                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+                     ? errors::Unimplemented(
+                           "TensorRT does not allow modifications to the batch "
+                           "dimension in implicit batch mode")
+                     : Status::OK()},
       // Dynamic batch size but using size[0] of -1, ok.
       TestParams{{1, 1, 2, 3},
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
                  {0, 0, 0, 0},
                  {-1, 1, 2, 2},
                  {1, 1, 2, 2},
                  {1, 2, 4, 5},
-                 conv_dynamic2},
-      // OK test: but converter fails in dynamic shape mode
+                 Status::OK()},
       TestParams{{1, 1, 2, 3},
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
                  {0, 0, 0, 0},
                  {-1, -1, -1, -1},
                  {1, 1, 2, 3},
                  {1, 2, 3, 4, 5, 6},
-                 conv_dynamic2},
+                 Status::OK()},
       TestParams{{1, 1, 2, 3},
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
                  {0, 0, 0, 0},
                  {1, 1, 2, 3},
                  {1, 1, 2, 3},
                  {1, 2, 3, 4, 5, 6}},
       TestParams{{1, 1, 2, 3},
-                 {0, 0, 0, 0},
-                 {1, -1, 2, 2},
-                 {1, 1, 2, 2},
-                 {1, 2, 4, 5},
-                 conv_dynamic2},
-      TestParams{{1, 6}, {0, 1}, {1, 5}, {1, 5}, {2, 3, 4, 5, 6}},
-      TestParams{{1, 6}, {0, 1}, {-1, 3}, {1, 3}, {2, 3, 4}, conv_dynamic2},
-      //
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*size=*/{1, -1, 2, 2},
+                 /*expected_output_dims=*/{1, 1, 2, 2},
+                 /*expected_output=*/{1, 2, 4, 5},
+                 Status::OK()},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*partial_input_dims=*/{-1, -1},
+                 /*being=*/{0, 1},
+                 /*size=*/{1, 5},
+                 /*expected_output_dims=*/{1, 5},
+                 /*expected_output=*/{2, 3, 4, 5, 6}},
+      TestParams{/*input_dims=*/{1, 6},
+                 /*partial_input_dims=*/{-1, -1},
+                 /*begin=*/{0, 1},
+                 /*size=*/{-1, 3},
+                 /*expected_output_dims=*/{1, 3},
+                 /*expected_output=*/{2, 3, 4}, Status::OK()},
       // In dynamic shape mode we do not know the input shape during
       // conversion, therfore we cannot check out of bound access.
       TestParams{
           {1, 1, 2, 3},
-          {0, 0, 3, 0},
-          {1, 1, 2, 3},
-          {},
-          {},
-          trt_mode_ == TrtTestMode::kDynamicShape
-              ? Status::OK()
-              : errors::InvalidArgument("\"begin\" for dimension 2 in Slice "
-                                        "is out of range, at my_slice"),
-          errors::Internal("Internal: Failed to build TensorRT engine")},
-      TestParams{{1, 1, 2, 3},
-                 {0, 0, 0, 0},
-                 {1, 1, 2, -2},
-                 {},
-                 {},
-                 errors::InvalidArgument("Invalid size value at my_slice")},
-      TestParams{
-          {1, 1, 2, 3},
-          {0, 0, 0, 0},
-          {1, 1, 3, 2},
+          /*partial_input_dims=*/{-1, -1, -1, -1},
+          /*begin=*/{0, 0, 3, 0},
+          /*end=*/{1, 1, 2, 3},
           {},
           {},
           trt_mode_ == TrtTestMode::kDynamicShape
@@ -4546,12 +4644,64 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
                                         "2 in Slice is out of range, at "
                                         "my_slice"),
           errors::Internal("Internal: Failed to build TensorRT engine")},
+      // The slice operation should expect that the "size[i]" values are not
+      // less than -1.
+      TestParams{/*input_dims=*/{1, 1, 2, 3},
+                 /*partial_input_dims=*/{-1, -1, -1, -1},
+                 /*begin=*/{0, 0, 0, 0},
+                 /*size=*/{1, 1, 2, -2},
+                 {},
+                 {},
+                 errors::InvalidArgument(
+                     "\"size\" in Slice is out of range, at my_slice")},
+      TestParams{
+          /*input_dims=*/{1, 1, 2, 3},
+          /*partial_input_dims=*/{-1, -1, -1, -1},
+          /*begin=*/{0, 0, 0, 0},
+          /*size=*/{1, 1, 3, 2},
+          /*expected_output_dims=*/{},
+          /*expected_output=*/{},
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kDynamicShape
+              ? Status::OK()
+              : errors::InvalidArgument("\"begin\" + \"size\" for dimension "
+                                        "2 in Slice is out of range, at "
+                                        "my_slice"),
+          errors::Internal("Internal: Failed to build TensorRT engine")},
   };
 
+  int i = 0;
   for (auto p : params) {
     Reset();
     NodeDef node_def = get_slice_nodedef(tf_type_);
-    AddTestTensor("input", p.input_dims, {1, 2, 3, 4, 5, 6});
+
+    VLOG(2) << "Preparing test case " << i++ << " with dims "
+            << DebugString(p.input_dims);
+
+    // The input tensor always has size 6.
+    std::vector<int> input_vals = {1, 2, 3, 4, 5, 6};
+
+    switch (trt_mode_) {
+      case TrtTestMode::kImplicitBatch: {
+        AddTestTensor("input", p.input_dims, input_vals);
+        break;
+      }
+      case TrtTestMode::kExplicitBatch: {
+        AddTestTensor("input", p.input_dims, input_vals);
+        break;
+      }
+      case TrtTestMode::kDynamicShape: {
+        if (p.partial_input_dims.size() > 0) {
+          AddTestTensor("input", p.input_dims, tf_type_, input_vals,
+                        p.partial_input_dims);
+
+        } else {
+          AddTestTensor("input", p.input_dims, tf_type_, input_vals,
+                        p.input_dims);
+        }
+        break;
+      }
+    }
+
     AddTestWeights<int32>("begin", {static_cast<int>(p.begin.size())}, p.begin);
     AddTestWeights<int32>("size", {static_cast<int>(p.size.size())}, p.size);
 
@@ -5605,28 +5755,32 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
     std::vector<int> expected_output_shape;
     std::vector<int> expected_output;
     bool params_is_tensor;
-    Status status;
+    bool indices_is_tensor;
+    Status conversion_status;
     Status runtime_status;
     Status add_index_status;
   };
 
   // Input is the same {1, 2, 3, 4, 5, 6} for all cases.
   const std::vector<int> params_input = {1, 2, 3, 4, 5, 6};
+
   std::vector<TestParams> test_params = {
       // Axis is batch dimension, should fail in implicit batch mode.
-      TestParams{/*params_shape=*/{2, 1, 1, 3},
-                 /*indices_shape=*/{2},
-                 /*indices=*/{1, 0},
-                 /*axis=*/0,
-                 /*expected_output_shape=*/{2, 1, 1, 3},
-                 /*expected_output=*/{4, 5, 6, 1, 2, 3},
-                 /*params_is_tensor=*/true,
-                 trt_mode_ == TrtTestMode::kImplicitBatch
-                     ? Status{error::UNIMPLEMENTED,
-                              "TensorRT does not allow manipulation of the"
-                              " batch dimension, at my_gather"}
-                     : Status::OK()},
-      // Batch size of indices is not 1 when params is a tensor.
+      TestParams{
+          /*params_shape=*/{2, 1, 1, 3},
+          /*indices_shape=*/{2},
+          /*indices=*/{1, 0},
+          /*axis=*/0,
+          /*expected_output_shape=*/{2, 1, 1, 3},
+          /*expected_output=*/{4, 5, 6, 1, 2, 3},
+          /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? Status{error::UNIMPLEMENTED,
+                       "TensorRT does not allow "
+                       "manipulation of the batch dimension, at my_gather"}
+              : Status::OK()},
+      // Batch size of indices is not 1 when params and indices are tensors.
       TestParams{/*params_shape=*/{2, 1, 3},
                  /*indices_shape=*/{2, 1},
                  /*indices=*/{2, 0},
@@ -5634,11 +5788,25 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                  /*expected_output_shape=*/{2, 1, 2, 1},
                  /*expected_output=*/{3, 1, 6, 4},
                  /*params_is_tensor=*/true,
-                 trt_mode_ == TrtTestMode::kImplicitBatch
+                 /*indices_is_tensor=*/true,
+                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
                      ? Status{error::UNIMPLEMENTED,
-                              "Indices must have a batch size of 1 when params"
-                              " is a tensor."}
+                              "Params and indices must have a"
+                              " batch size of 1 when params and indices are "
+                              "both tensors or both"
+                              " constants."}
                      : Status::OK()},
+      // Batch size of indices is not 1 when params is tensor and indices are
+      // constant.
+      TestParams{/*params_shape=*/{2, 1, 3},
+                 /*indices_shape=*/{2, 1},
+                 /*indices=*/{2, 0},
+                 /*axis=*/2,
+                 /*expected_output_shape=*/{2, 1, 2, 1},
+                 /*expected_output=*/{3, 1, 6, 4},
+                 /*params_is_tensor=*/true,
+                 /*indices_is_tensor=*/false,
+                 /*conversion_status=*/Status::OK()},
       // Axis is not zero when params is a weight, should fail in implicit batch
       // mode.
       TestParams{/*params_shape=*/{2, 1, 3},
@@ -5648,31 +5816,34 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
                  /*expected_output_shape=*/{2, 1, 2},
                  /*expected_output=*/{2, 3, 5, 6},
                  /*params_is_tensor=*/false,
-                 trt_mode_ == TrtTestMode::kImplicitBatch
+                 /*indices_is_tensor=*/true,
+                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
                      ? Status{error::UNIMPLEMENTED,
-                              "The input axis must be zero when params is a"
-                              " weight."}
+                              "The input axis must be zero when "
+                              "params is a weight."}
                      : Status::OK()},
       // Params with only batch dimension.
-      TestParams{/*params_shape=*/{6},
-                 /*indices_shape=*/{2},
-                 /*indices=*/{1, 3},
-                 /*axis=*/0,
-                 /*expected_output_shape=*/{2},
-                 /*expected_output=*/{2, 4},
-                 /*params_is_tensor=*/true,
-                 trt_mode_ == TrtTestMode::kImplicitBatch  // conversion_status
-                     ? Status{error::UNIMPLEMENTED,
-                              "TensorRT does not allow manipulation of the "
-                              "batch dimension, at my_gather"}
-                     : Status::OK(),
-                 Status::OK(),                             // runtime_status
-                 trt_mode_ == TrtTestMode::kImplicitBatch  // add_index_status
-                     ? Status{error::INVALID_ARGUMENT,
-                              "Batch size doesn't match for tensor indices: "
-                              "Provided batch size does not match converter "
-                              "batch size: 2 vs 6"}
-                     : Status::OK()},
+      TestParams{
+          /*params_shape=*/{6},
+          /*indices_shape=*/{2},
+          /*indices=*/{1, 3},
+          /*axis=*/0,
+          /*expected_output_shape=*/{2},
+          /*expected_output=*/{2, 4},
+          /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? Status{error::UNIMPLEMENTED,
+                       "TensorRT does not allow "
+                       "manipulation of the batch dimension, at my_gather"}
+              : Status::OK(),
+          /*runtime_status=*/Status::OK(),
+          /*add_index_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? Status{error::INVALID_ARGUMENT,
+                       "Batch size doesn't match for "
+                       "tensor indices: Provided batch size does not match "
+                       "converter batch size: 2 vs 6"}
+              : Status::OK()},
       // Vector indices, and output rank is rank(params).
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
@@ -5682,6 +5853,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 2, 1},
           /*expected_output=*/{1, 4},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
@@ -5691,6 +5863,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 1, 3},
           /*expected_output=*/{4, 5, 6},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       // Indices with rank>1, and output rank is rank(params) + rank(indices) -
       // 1
@@ -5702,6 +5875,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 2, 1, 1},
           /*expected_output=*/{1, 4},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
@@ -5711,6 +5885,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 2, 1, 1},
           /*expected_output=*/{2, 5},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
@@ -5720,6 +5895,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 2, 1, 1},
           /*expected_output=*/{3, 6},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{1, 1, 2, 3},
@@ -5729,6 +5905,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 2, 1, 3},
           /*expected_output=*/{3, 1, 2, 6, 4, 5},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{1, 3, 2},
@@ -5738,6 +5915,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 3, 1, 2, 2},
           /*expected_output=*/{1, 1, 2, 1, 3, 3, 4, 3, 5, 5, 6, 5},
           /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{1, 2, 3},
@@ -5747,6 +5925,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 2, 3},
           /*expected_output=*/{1, 2, 3, 4, 5, 6},
           /*params_is_tensor=*/false,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{3, 2},
@@ -5756,6 +5935,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 2, 2},
           /*expected_output=*/{1, 2, 3, 4},
           /*params_is_tensor=*/false,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{2, 3},
@@ -5765,6 +5945,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{1, 1, 2, 3},
           /*expected_output=*/{1, 2, 3, 4, 5, 6},
           /*params_is_tensor=*/false,
+          /*indices_is_tensor=*/true,
       },
       TestParams{
           /*params_shape=*/{3, 2},
@@ -5774,21 +5955,73 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*expected_output_shape=*/{2, 2, 2},
           /*expected_output=*/{1, 2, 5, 6, 3, 4, 1, 2},
           /*params_is_tensor=*/false,
+          /*indices_is_tensor=*/true,
       },
+      // Test cases in which indices constant
+      TestParams{
+          /*params_shape=*/{1, 1, 2, 3},
+          /*indices_shape=*/{1, 1},
+          /*indices=*/{0},
+          /*axis=*/3,
+          /*expected_output_shape=*/{1, 1, 2, 1, 1},
+          /*expected_output=*/{1, 4},
+          /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/false,
+      },
+      // Test cases in which both input and indices constant
+      TestParams{/*params_shape=*/{1, 2, 3},
+                 /*indices_shape=*/{1},
+                 /*indices=*/{0},
+                 /*axis=*/0,
+                 /*expected_output_shape=*/{1, 2, 3},
+                 /*expected_output=*/{1, 2, 3, 4, 5, 6},
+                 /*params_is_tensor=*/false,
+                 /*indices_is_tensor=*/false,
+                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+                     ? Status{error::UNIMPLEMENTED,
+                              "Params and indices must have a"
+                              " batch size of 1 when params and indices are "
+                              "both tensors or both"
+                              " constants."}
+                     : Status::OK()},
+      TestParams{/*params_shape=*/{3, 2},
+                 /*indices_shape=*/{2, 2},
+                 /*indices=*/{0, 2, 1, 0},
+                 /*axis=*/0,
+                 /*expected_output_shape=*/{2, 2, 2},
+                 /*expected_output=*/{1, 2, 5, 6, 3, 4, 1, 2},
+                 /*params_is_tensor=*/false,
+                 /*indices_is_tensor=*/false,
+                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+                     ? Status{error::UNIMPLEMENTED,
+                              "Params and indices must have a"
+                              " batch size of 1 when params and indices are "
+                              "both tensors or both"
+                              " constants."}
+                     : Status::OK()},
   };
 
   for (auto p : test_params) {
     Reset();
+
     if (p.params_is_tensor) {
       AddTestTensor("params", p.params_shape, params_input);
     } else {
       AddTestWeights("params", p.params_shape, params_input, tf_type_);
     }
-    AddTestTensor("indices", p.indices_shape, DT_INT32, p.indices, {},
-                  p.add_index_status);
+
+    if (p.indices_is_tensor) {
+      AddTestTensor("indices", p.indices_shape, DT_INT32, p.indices, {},
+                    p.add_index_status);
+    } else {
+      std::vector<int> indices_shape(p.indices_shape);
+      AddTestWeights("indices", indices_shape, p.indices, DT_INT32);
+    }
+
     AddTestWeights<int32>("axis", {1}, {p.axis});
-    TestOpConverter("my_gather", node_def, p.expected_output_shape, p.status,
-                    p.runtime_status, ElementsAreArray(p.expected_output));
+    TestOpConverter("my_gather", node_def, p.expected_output_shape,
+                    p.conversion_status, p.runtime_status,
+                    ElementsAreArray(p.expected_output));
   }
 }
 
@@ -6038,6 +6271,7 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
 auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
   Scope s = Scope::NewRootScope();
   std::vector<Input> values;
+  values.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     const string input_name = StrCat("values_", i);
     values.push_back(ops::Placeholder(s.WithOpName(input_name), dtype));
@@ -6086,12 +6320,12 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
   struct TestParams {
     std::vector<std::vector<int>> input_shapes;
     std::vector<std::vector<int>> input_values;
+    std::vector<bool> inputs_are_tensors;
     int axis;
     std::vector<int> expected_output_dims;
     std::vector<int> expected_output;
     Status conversion_status;
     Status run_status;
-    bool input_as_weight;
   };
 
   const std::vector<std::vector<int>> common_input{CreateVectorIota<int>(6),
@@ -6101,6 +6335,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
       {
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/1,
           /*expected_output_dims=*/{1, 2, 2, 3},
           /*expected_output=*/CreateVectorIota<int>(12),
@@ -6108,6 +6343,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
       {
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/2,
           /*expected_output_dims=*/{1, 1, 4, 3},
           /*expected_output=*/CreateVectorIota<int>(12),
@@ -6115,6 +6351,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
       {
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/3,
           /*expected_output_dims=*/{1, 1, 2, 6},
           /*expected_output=*/
@@ -6124,6 +6361,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*input_shapes=*/{{1, 1}, {1, 2}, {1, 3}, {1, 1}, {1, 1}, {1, 2}},
           /*input_values=*/
           {{1}, {2, 3}, {4, 5, 6}, {7}, {8}, {9, 10}},
+          /*inputs_are_tensors=*/{true, true, true, true, true, true},
           /*axis=*/1,
           /*expected_output_dims=*/{1, 10},
           /*expected_output=*/
@@ -6133,19 +6371,37 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           // An input is a weight
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, false},
           /*axis=*/1,
           /*expected_output_dims=*/{1, 2, 2, 3},
           /*expected_output=*/CreateVectorIota<int>(12),
-          /*conversion_status=*/
-          errors::Unimplemented("The input \"values_1\" for ConcatV2 "
-                                "must be a tensor, at my_concat"),
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? errors::Unimplemented(
+                    "The input \"values_1\" for ConcatV2 must be a tensor, at "
+                    "my_concat")
+              : Status::OK(),
           /*run_status=*/Status::OK(),
-          /*input_as_weight=*/true,
+      },
+      {
+          // An input is a weight
+          /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
+          /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{false, false},
+          /*axis=*/1,
+          /*expected_output_dims=*/{1, 2, 2, 3},
+          /*expected_output=*/CreateVectorIota<int>(12),
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? errors::Unimplemented(
+                    "The input \"values_0\" for ConcatV2 must be a tensor, at "
+                    "my_concat")
+              : Status::OK(),
+          /*run_status=*/Status::OK(),
       },
       {
           // Axis is batch dimension, should fail in implicit batch mode.
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 2, 3}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/0,
           /*expected_output_dims=*/{2, 1, 2, 3},
           /*expected_output=*/CreateVectorIota<int>(12),
@@ -6159,6 +6415,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           // Inconsistent input shape, runtime error in dynamic shape mode.
           /*input_shapes=*/{{1, 1, 2, 3}, {1, 1, 3, 2}},
           /*input_values=*/common_input,
+          /*inputs_are_tensors=*/{true, true},
           /*axis=*/1,
           /*expected_output_dims=*/{2, 1, 2, 3},
           /*expected_output=*/CreateVectorIota<int>(12),
@@ -6173,11 +6430,14 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
     Reset();
     const int num_inputs = p.input_shapes.size();
     EXPECT_EQ(num_inputs, p.input_values.size());
+
     NodeDef node_def = get_concat_nodedef(tf_type_, num_inputs);
+
     // Create inputs.
     for (int j = 0; j < num_inputs; ++j) {
       string name = StrCat("values_", j);
-      if (j == 1 && p.input_as_weight) {
+
+      if (!p.inputs_are_tensors[j]) {
         AddTestWeights(name, p.input_shapes[j], p.input_values[j], tf_type_);
       } else {
         AddTestTensor(name, p.input_shapes[j], p.input_values[j]);
@@ -6489,11 +6749,11 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
 
   const std::vector<float> common_input = CreateVectorIota<float>(6);
 
-  Status run_status = trt_mode_ == TrtTestMode::kDynamicShape
-                          ? errors::Unimplemented(
-                                "Strided slice op not implemented for dynamic "
-                                "shape input")
-                          : Status::OK();
+  Status run_status =
+      trt_mode_ == TrtTestMode::kDynamicShape
+          ? errors::InvalidArgument(
+                "must have statically defined dimensions, at my_unpack")
+          : Status::OK();
 
   std::vector<UnpackTestParams> params = {
       {/*input_shape=*/{1, 1, 2, 1, 3, 1},
@@ -6541,6 +6801,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
 NodeDef GetPackNodeDef(DataType dtype, int num_inputs, int axis) {
   Scope s = Scope::NewRootScope();
   std::vector<Input> values;
+  values.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     const string input_name = StrCat("values_", i);
     values.push_back(ops::Placeholder(s.WithOpName(input_name), dtype));

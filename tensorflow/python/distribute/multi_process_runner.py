@@ -1409,6 +1409,7 @@ def manager():
   This method should only be called after multi_process_runner.test_main() is
   called.
   """
+  _check_initialization()
   global _manager
   with _manager_lock:
     if _manager is None:

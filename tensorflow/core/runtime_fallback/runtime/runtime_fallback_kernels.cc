@@ -641,7 +641,7 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
           host, std::move(*expected_fallback_tensor));
   }
 
-  return GetReadyChain(host);
+  return tfrt::GetReadyChain();
 }
 
 AsyncValueRef<Chain> RuntimeFallbackExecute(

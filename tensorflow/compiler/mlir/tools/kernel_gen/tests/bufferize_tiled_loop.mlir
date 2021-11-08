@@ -5,9 +5,9 @@
 //      CHECK:  func @tiled_dot
 func @tiled_dot(%A: tensor<10xf32>, %B: tensor<10xf32>,
                 %C: tensor<f32>) -> tensor<f32> {
-  %c0 = constant 0 : index
-  %c2 = constant 2 : index
-  %c10 = constant 10 : index
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c10 = arith.constant 10 : index
 
   %dot = linalg.tiled_loop (%i) = (%c0) to (%c10) step (%c2)
        ins (%A_ = %A: tensor<10xf32>, %B_ = %B: tensor<10xf32>)
@@ -40,9 +40,9 @@ func @tiled_dot(%A: tensor<10xf32>, %B: tensor<10xf32>,
 
 func @tiled_add(%A: tensor<10xf32>, %B: tensor<10xf32>,
                   %C: tensor<10xf32>) -> tensor<10xf32> {
-  %c0 = constant 0 : index
-  %c2 = constant 2 : index
-  %c10 = constant 10 : index
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c10 = arith.constant 10 : index
 
   %sum = linalg.tiled_loop (%i) = (%c0) to (%c10) step (%c2)
        ins (%A_ = %A: tensor<10xf32>, %B_ = %B: tensor<10xf32>)
@@ -59,7 +59,7 @@ func @tiled_add(%A: tensor<10xf32>, %B: tensor<10xf32>,
     } ins(%A_sub, %B_sub : tensor<?xf32>, tensor<?xf32>)
       outs(%C_sub : tensor<?xf32>) {
       ^bb0(%a: f32, %b: f32, %c: f32):
-        %0 = std.addf %a, %b : f32
+        %0 = arith.addf %a, %b : f32
         linalg.yield %0 : f32
     } -> tensor<?xf32>
     %update = tensor.insert_slice %sum_sub into %C_[%i] [%c2] [1]

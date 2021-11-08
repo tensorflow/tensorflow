@@ -715,12 +715,12 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
       if (!BatchExists(batch_to_process)) {
         break;
       }
-      if (queues_.empty()) return;
       // We couldn't find any work to do. Wait until a new batch becomes
       // schedulable, or some time has elapsed, before checking again.
       const int64_t kTimeoutMillis =
           1;  // The smallest accepted granule of time.
       WaitForMilliseconds(&l, &schedulable_batch_cv_, kTimeoutMillis);
+      if (queues_.empty()) return;
     }
   }
 

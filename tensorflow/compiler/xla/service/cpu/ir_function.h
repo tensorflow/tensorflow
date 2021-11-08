@@ -97,6 +97,9 @@ class IrFunction {
   // Get the llvm::BasicBlock* that contains this function's "ret" instruction.
   llvm::BasicBlock* return_block() { return return_block_; }
 
+  // Get the llvm::Value* that represents this function's "status" argument.
+  llvm::Value* status_arg() { return status_arg_; }
+
  private:
   // Initialize an llvm::Function with standard signature based on arguments.
   void Initialize(const string& function_name,
@@ -121,6 +124,7 @@ class IrFunction {
   llvm::Value* buffer_table_arg_;
   llvm::Value* dynamic_loop_bounds_arg_ = nullptr;
   llvm::Value* profile_counters_arg_;
+  llvm::Value* status_arg_;
   // Basic block containing return.
   llvm::BasicBlock* return_block_;
 };
@@ -136,7 +140,7 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
     absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
     absl::string_view name, llvm::Value* return_value_buffer,
     llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
-    llvm::Value* profile_counters_arg);
+    llvm::Value* status_arg, llvm::Value* profile_counters_arg);
 
 // Emits a call to a runtime fork/join function which dispatches parallel
 // calls to 'parallel_function' (and joins threads before returning).

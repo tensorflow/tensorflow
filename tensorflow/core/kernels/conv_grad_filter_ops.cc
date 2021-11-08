@@ -660,7 +660,7 @@ struct ConvBackwardFilterAutotuneGroup {
 };
 
 typedef AutotuneSingleton<ConvBackwardFilterAutotuneGroup, ConvParameters,
-                          se::dnn::AlgorithmConfig>
+                          AutotuneEntry<se::dnn::ConvOp>>
     AutotuneConvBwdFilter;
 
 template <typename T>
@@ -981,34 +981,20 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       conv_desc.group_count()              // group_count
   };
 
-  auto config_or = AutotuneUnfusedConv(
+  auto entry_or = AutotuneUnfusedConv(
       cudnn_use_autotune, AutotuneConvBwdFilter::GetInstance(), conv_parameters,
       ctx, se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
       filter_desc, filter_backprop_ptr, conv_desc, output_desc,
       out_backprop_ptr, ConvolveBackwardFilterScratchSize);
-  OP_REQUIRES_OK(ctx, config_or.status());
-  AlgorithmConfig algorithm_config = config_or.ConsumeValueOrDie();
+  OP_REQUIRES_OK(ctx, entry_or.status());
+  auto autotune_entry = entry_or.ConsumeValueOrDie();
 
-  Status cudnn_launch_status;
   DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize, ctx);
-  if (CudnnUseFrontend()) {
-    if (algorithm_config.algorithm().has_value()) {
-      VLOG(4) << "Conv2DBackpropFilter Execution Plan: "
-              << algorithm_config.algorithm()->exec_plan_id();
-    } else {
-      VLOG(4) << "Convolution Autotune has been turned off";
-    }
-    cudnn_launch_status = stream->ConvolveWithExecutionPlan(
-        se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
-        filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
-        conv_desc, &scratch_allocator, algorithm_config, nullptr);
-  } else {
-    cudnn_launch_status = stream->ConvolveWithAlgorithm(
-        se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
-        filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
-        conv_desc, &scratch_allocator, algorithm_config, nullptr);
-  }
-
+  Status cudnn_launch_status = LaunchAutotunedConv(
+      autotune_entry, &scratch_allocator,
+      se::dnn::ConvolutionKind::BACKWARD_FILTER, stream, input_desc, input_ptr,
+      filter_desc, filter_backprop_ptr, conv_desc, output_desc,
+      out_backprop_ptr);
   if (!cudnn_launch_status.ok()) {
     ctx->SetStatus(cudnn_launch_status);
     return;

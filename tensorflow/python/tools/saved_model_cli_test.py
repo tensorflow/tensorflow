@@ -382,7 +382,7 @@ Defined Functions:
     input_expr_str = 'input3=np.zeros([2,2]);input4=[4,5]'
     input_dict = saved_model_cli.preprocess_inputs_arg_string(input_str)
     input_expr_dict = saved_model_cli.preprocess_input_exprs_arg_string(
-        input_expr_str)
+        input_expr_str, safe=False)
     self.assertTrue(input_dict['input1'] == ('/path/file.txt', 'ab3'))
     self.assertTrue(input_dict['input2'] == ('file2', None))
     print(input_expr_dict['input3'])
@@ -418,6 +418,11 @@ Defined Functions:
           }
     """, feature)
 
+  def testInputPreprocessExampleWithCodeInjection(self):
+    input_examples_str = 'inputs=os.system("echo hacked")'
+    with self.assertRaisesRegex(RuntimeError, 'not a valid python literal.'):
+      saved_model_cli.preprocess_input_examples_arg_string(input_examples_str)
+
   def testInputPreProcessFileNames(self):
     input_str = (r'inputx=C:\Program Files\data.npz[v:0];'
                  r'input:0=c:\PROGRA~1\data.npy')
@@ -434,8 +439,8 @@ Defined Functions:
     with self.assertRaises(RuntimeError):
       saved_model_cli.preprocess_inputs_arg_string(input_str)
     input_str = 'inputx:np.zeros((5))'
-    with self.assertRaises(RuntimeError):
-      saved_model_cli.preprocess_input_exprs_arg_string(input_str)
+    with self.assertRaisesRegex(RuntimeError, 'format is incorrect'):
+      saved_model_cli.preprocess_input_exprs_arg_string(input_str, safe=False)
 
   def testInputParserNPY(self):
     x0 = np.array([[1], [2]])

@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -115,18 +116,9 @@ std::string GetRandomStateVariableName() {
 //    tf.TPUReshardVariablesOp(%rvar, %default_format, %rstate)
 //  }
 struct TPUVariableRuntimeReformattingPass
-    : public PassWrapper<TPUVariableRuntimeReformattingPass,
-                         OperationPass<ModuleOp>> {
-  void runOnOperation() override;
-
-  StringRef getArgument() const final {
-    return "tf-tpu-variable-runtime-reformatting";
-  }
-
-  StringRef getDescription() const final {
-    return "Adds device variable formatting op to allow compilation-guided "
-           "variable formatting.";
-  }
+    : public TF::TPUVariableRuntimeReformattingPassBase<
+          TPUVariableRuntimeReformattingPass> {
+  void runOnOperation() final;
 };
 
 // Returns the earlier value of which `v` is an identity. If `skipped` is
@@ -554,8 +546,6 @@ void TPUVariableRuntimeReformattingPass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass() {
   return std::make_unique<TPUVariableRuntimeReformattingPass>();
 }
-
-static PassRegistration<TPUVariableRuntimeReformattingPass> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -94,7 +95,8 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
   // Load dialects involved in the conversion
   mlir::DialectRegistry registry;
   // clang-format off
-  registry.insert<mlir::StandardOpsDialect,
+  registry.insert<mlir::arith::ArithmeticDialect,
+                  mlir::StandardOpsDialect,
                   mlir::scf::SCFDialect,
                   mlir::shape::ShapeDialect,
                   mlir::TF::TensorFlowDialect,

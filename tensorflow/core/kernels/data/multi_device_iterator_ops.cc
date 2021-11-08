@@ -576,7 +576,7 @@ class AnonymousMultiDeviceIteratorOp
  public:
   explicit AnonymousMultiDeviceIteratorOp(OpKernelConstruction* ctx)
       : AnonymousResourceOp<MultiDeviceIterator>(ctx,
-                                                 /* ref_counting */ false,
+                                                 /* ref_counting */ true,
                                                  /* return_deleter */ true) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kDevices, &devices_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
@@ -821,7 +821,7 @@ class DeleteMultiDeviceIteratorOp : public OpKernel {
     // The iterator resource is guaranteed to exist because the variant tensor
     // wrapping the deleter is provided as an unused input to this op, which
     // guarantees that it has not run yet.
-    OP_REQUIRES_OK(ctx, ctx->resource_manager()->Delete(handle));
+    OP_REQUIRES_OK(ctx, DeleteResource(ctx, handle));
   }
 };
 

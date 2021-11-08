@@ -15,7 +15,7 @@
 """Tests for `tf.data.Dataset.concatenate()."""
 from absl.testing import parameterized
 import numpy as np
-
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -107,8 +107,7 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegex(TypeError,
-                                "Incompatible types of input datasets"):
+    with self.assertRaisesRegex(TypeError, "Incompatible dataset elements"):
       input_dataset.concatenate(dataset_to_concatenate)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -126,8 +125,7 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegex(TypeError,
-                                "Incompatible types of input datasets"):
+    with self.assertRaisesRegex(TypeError, "Incompatible dataset elements"):
       input_dataset.concatenate(dataset_to_concatenate)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -143,8 +141,7 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegex(TypeError,
-                                "Incompatible types of input datasets"):
+    with self.assertRaisesRegex(TypeError, "Incompatible dataset elements"):
       input_dataset.concatenate(dataset_to_concatenate)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -181,6 +178,64 @@ class ConcatenateCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     num_outputs = 9
     array = np.tile(np.array([[16], [17], [18], [19], [20]]), 15)
     verify_fn(self, lambda: self._build_concatenate_dataset(array), num_outputs)
+
+
+class ConcatenateRandomAccessTest(test_base.DatasetTestBase,
+                                  parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 3, 4])))
+  def testInvalidIndex(self, index):
+    input_dataset = dataset_ops.Dataset.from_tensor_slices([-1])
+    concatenate_dataset = dataset_ops.Dataset.from_tensor_slices([1, 2])
+    concatenated = input_dataset.concatenate(concatenate_dataset)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(concatenated, index=index))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testConcatenateTwoEmptyDatasets(self):
+    input_dataset = dataset_ops.Dataset.from_tensor_slices([])
+    concatenate_dataset = dataset_ops.Dataset.from_tensor_slices([])
+    concatenated = input_dataset.concatenate(concatenate_dataset)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(concatenated, index=0))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testConcatenateAnEmptyDataset(self):
+    input_dataset = dataset_ops.Dataset.from_tensor_slices([1.0])
+    concatenate_dataset = dataset_ops.Dataset.from_tensor_slices([])
+    concatenated = input_dataset.concatenate(concatenate_dataset)
+    self.assertAllEqual(
+        self.evaluate(random_access.at(concatenated, index=0)), 1.0)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(concatenated, index=1))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testConcatenateOntoEmptyDataset(self):
+    input_dataset = dataset_ops.Dataset.from_tensor_slices([])
+    concatenate_dataset = dataset_ops.Dataset.from_tensor_slices([2.0, 3.0])
+    concatenated = input_dataset.concatenate(concatenate_dataset)
+    self.assertAllEqual(
+        self.evaluate(random_access.at(concatenated, index=0)), 2.0)
+    self.assertAllEqual(
+        self.evaluate(random_access.at(concatenated, index=1)), 3.0)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(concatenated, index=2))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testConcatenateTwoNonEmptyDatasets(self):
+    input_dataset = dataset_ops.Dataset.from_tensor_slices([0, 1, 2])
+    concatenate_dataset = dataset_ops.Dataset.from_tensor_slices([3, 4])
+    concatenated = input_dataset.concatenate(concatenate_dataset)
+    for i in range(5):
+      self.assertAllEqual(random_access.at(concatenated, index=i), i)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(concatenated, index=5))
 
 
 if __name__ == "__main__":

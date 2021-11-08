@@ -57,6 +57,18 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_embedding_configuration_proto_rewrite",
+    srcs = ["tpu_embedding_configuration_proto_rewrite.cc"],
+    hdrs = ["tpu_embedding_configuration_proto_rewrite.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+    ],
+)
+
+cc_library(
     name = "tpu_node_device_util",
     srcs = ["tpu_node_device_util.cc"],
     hdrs = ["tpu_node_device_util.h"],

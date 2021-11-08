@@ -59,7 +59,7 @@ struct FetchConstantMinMaxInputs {
 // Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
 // tf.FakeQyantWithMinMax{Vars|VarsPerChannel|Args}Op
 // before the op being constant folded. Since the constant
-// folding logic will use a "std.constant" op to replace the
+// folding logic will use a "arith.constant" op to replace the
 // "tf.FakeQuantWithMinMaxVarsOp", the "tfl.quantize" op is used to preserve
 // the quantization parameters as a TypeAttr and "tfl.dequantize" op used to
 // convert the output type to the next op. Here are the transformations:

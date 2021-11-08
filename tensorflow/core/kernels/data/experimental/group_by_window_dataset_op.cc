@@ -107,7 +107,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       return "GroupByWindowDatasetOp::Dataset";
     }
 
-    int64_t Cardinality() const override {
+    int64_t CardinalityInternal() const override {
       int64_t n = input_->Cardinality();
       if (n == kInfiniteCardinality) {
         return n;

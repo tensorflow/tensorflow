@@ -18,7 +18,9 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/rewrite_utils.h"
+#include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
@@ -26,17 +28,17 @@ namespace data {
 namespace {
 
 constexpr char kDatasetType[] = "Root";
+
 constexpr char kAlgorithm[] = "algorithm";
 constexpr char kCpuBudget[] = "cpu_budget";
-constexpr char kRamBudget[] = "ram_budget_bytes";
-constexpr char kHillClimb[] = "hill_climb";
-constexpr char kGradientDescent[] = "gradient_descent";
+constexpr char kExperiments[] = "experiments";
+constexpr char kInjectPrefetchEligibleOpt[] = "inject_prefetch_eligible";
 constexpr char kIntraOpParallelism[] = "intra_op_parallelism";
-constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
 constexpr char kMemBandwidth[] = "mem_bw_used_megabytes_per_sec";
-
-// Default share of available RAM that can be used by model's internal buffers.
-constexpr double kRamBudgetShare = 0.5;
+constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
+constexpr char kRamBudget[] = "ram_budget_megabytes";
+constexpr char kRamUsage[] = "ram_usage_megabytes";
+constexpr char kMaxBufferBytes[] = "max_buffered_megabytes";
 
 // If value `x` matches `y`, returns default value `z`. Otherwise, return `x`.
 inline int64_t value_or_default(int64_t x, int64_t y, int64_t z) {
@@ -59,14 +61,19 @@ Status RootDataset::FromOptions(DatasetBase* input, DatasetBase** output) {
   }
   params.autotune = ShouldUseAutotuning(options);
   if (params.autotune) {
-    params.autotune_algorithm = model::AutotuneAlgorithm::HILL_CLIMB;
+    params.autotune_algorithm =
+        options.autotune_options().optional_autotune_algorithm_case() ==
+                AutotuneOptions::kAutotuneAlgorithm
+            ? options.autotune_options().autotune_algorithm()
+            : model::AutotuneAlgorithm::DEFAULT;
     params.autotune_cpu_budget = value_or_default(
         options.autotune_options().cpu_budget(), 0, GetCpuBudget());
     params.autotune_ram_budget =
         value_or_default(options.autotune_options().ram_budget(), 0,
-                         kRamBudgetShare * port::AvailableRam());
+                         model::kRamBudgetShare * port::AvailableRam());
   }
   *output = new RootDataset(input, params);
+  (*output)->Initialize(/*metadata=*/{});
   return Status::OK();
 }
 
@@ -137,6 +144,22 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
           kMemBandwidth,
           strings::Printf("%lld", static_cast<long long>(mem_bw))));
     }
+    const auto memory_info = port::GetMemoryInfo();
+    const auto memory_usage = memory_info.total - memory_info.free;
+    traceme_metadata.push_back(std::make_pair(
+        kRamUsage,
+        strings::Printf("%lld out of %lld (%.2f%%)",
+                        static_cast<long long>(memory_usage / 1.0e6),
+                        static_cast<long long>(memory_info.total / 1.0e6),
+                        static_cast<double>(memory_usage) /
+                            static_cast<double>(memory_info.total))));
+    if (model_node() != nullptr) {
+      traceme_metadata.push_back(std::make_pair(
+          kMaxBufferBytes,
+          strings::Printf(
+              "%lld", static_cast<long long>(
+                          model_node()->TotalMaximumBufferedBytes() / 1.0e6))));
+    }
     return traceme_metadata;
   }
 
@@ -156,6 +179,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       params.runner =
           RunnerWithMaxParallelism(params.runner, max_intra_op_parallelism_);
     }
+    params.options = &dataset()->options();
     return params;
   }
 
@@ -163,11 +187,15 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     mutex_lock l(mu_);
     if (!model_thread_) {
       model_thread_ = ctx->StartThread("tf_data_model", [this]() {
-        Status status =
-            model_->OptimizeLoop(dataset()->params_.autotune_algorithm,
-                                 dataset()->params_.autotune_cpu_budget,
-                                 dataset()->params_.autotune_ram_budget,
-                                 cancellation_manager_.get());
+        auto algorithm = dataset()->params_.autotune_algorithm;
+        if (algorithm == model::AutotuneAlgorithm::DEFAULT &&
+            GetExperiments().contains("max_parallelism_v2")) {
+          algorithm = model::AutotuneAlgorithm::MAX_PARALLELISM;
+        }
+        Status status = model_->OptimizeLoop(
+            algorithm, dataset()->params_.autotune_cpu_budget,
+            dataset()->params_.autotune_ram_budget,
+            cancellation_manager_.get());
         if (!status.ok()) {
           LOG(WARNING) << "Optimization loop failed: " << status.ToString();
         }
@@ -197,16 +225,14 @@ RootDataset::RootDataset(const DatasetBase* input, Params params)
       params_(std::move(params)) {
   if (params_.autotune) {
     traceme_metadata_.push_back(std::make_pair(
-        kAlgorithm,
-        params_.autotune_algorithm == model::AutotuneAlgorithm::HILL_CLIMB
-            ? kHillClimb
-            : kGradientDescent));
+        kAlgorithm, model::AutotuneAlgorithm_Name(params_.autotune_algorithm)));
     traceme_metadata_.push_back(std::make_pair(
         kCpuBudget, strings::Printf("%lld", static_cast<long long>(
                                                 params_.autotune_cpu_budget))));
     traceme_metadata_.push_back(std::make_pair(
-        kRamBudget, strings::Printf("%lld", static_cast<long long>(
-                                                params_.autotune_ram_budget))));
+        kRamBudget,
+        strings::Printf("%lld", static_cast<long long>(
+                                    params_.autotune_ram_budget / 1.0e6))));
   }
   if (params_.max_intra_op_parallelism >= 0) {
     traceme_metadata_.push_back(std::make_pair(
@@ -221,6 +247,11 @@ RootDataset::RootDataset(const DatasetBase* input, Params params)
         strings::Printf("%lld", static_cast<long long>(value_or_default(
                                     params_.private_threadpool_size, 0,
                                     port::MaxParallelism())))));
+  }
+  auto experiments = GetExperiments();
+  if (!experiments.empty()) {
+    traceme_metadata_.push_back(
+        std::make_pair(kExperiments, absl::StrJoin(experiments, " ")));
   }
   input_->Ref();
 }
@@ -245,7 +276,16 @@ string RootDataset::DebugString() const {
   return name_utils::DatasetDebugString(kDatasetType);
 }
 
-int64_t RootDataset::Cardinality() const { return input_->Cardinality(); }
+int64_t RootDataset::CardinalityInternal() const {
+  return input_->Cardinality();
+}
+
+Status RootDataset::Get(OpKernelContext* ctx, int64 index,
+                        std::vector<Tensor>* out_tensors) const {
+  std::vector<const DatasetBase*> inputs;
+  TF_RETURN_IF_ERROR(this->InputDatasets(&inputs));
+  return inputs[0]->Get(ctx, index, out_tensors);
+}
 
 Status RootDataset::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
@@ -274,6 +314,12 @@ Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
                    &optimizations_default);
   // Disable `enable_gradient_descent` as it assumes presence of ModelDatasetOp.
   optimizations_disabled.insert("enable_gradient_descent");
+  if (!port::JobName().empty()) {
+    // Enable kInjectPrefetchEligibleOpt that does not modify the graph and is
+    // used to check whether the `inject_prefetch` optimization would modify the
+    // graph.
+    optimizations_enabled.insert(kInjectPrefetchEligibleOpt);
+  }
 
   auto experiments = GetExperiments();
   LogAndRecordExperiments(experiments);

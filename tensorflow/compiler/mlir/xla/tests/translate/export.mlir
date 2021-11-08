@@ -377,43 +377,43 @@ func @main(%arg0 : tensor<5x2xf32>,
 // CHECK:  HloModule
 func @main() {
   // CHECK:  constant.{{.*}} = s64[] constant(1)
-  %cst = constant dense<1> : tensor<i64>
+  %cst = arith.constant dense<1> : tensor<i64>
   // CHECK:  constant.{{.*}} = f32[2,2,1,1]
   // CHECK-SAME:  { { /*i0=0*/ { /*i1=0*/ {1} }, { /*i1=1*/ {2} } }, { /*i0=1*/ { /*i1=0*/ {3} }, { /*i1=1*/ {4} } } }
-  %cst_0 = constant dense<
+  %cst_0 = arith.constant dense<
     [[[[1.000000e+00]], [[2.000000e+00]]], [[[3.000000e+00]], [[4.000000e+00]]]]
   > : tensor<2x2x1x1xf32>
 
   // CHECK:  s32[1] constant({1})
-  %cst_1 = constant dense<1> : tensor<1xi32>
+  %cst_1 = arith.constant dense<1> : tensor<1xi32>
 
   // CHECK:  %[[C:.*]] = s32[] constant(1)
   // CHECK:  s32[10] broadcast(s32[] %[[C]])
-  %cst_2 = constant dense<1> : tensor<10xi32>
+  %cst_2 = arith.constant dense<1> : tensor<10xi32>
 
   // CHECK:  s32[4] constant({1, 2, 3, 4})
-  %cst_3 = constant dense<[1, 2, 3, 4]> : tensor<4xi32>
+  %cst_3 = arith.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
 
   // CHECK:  s32[2,2] constant({ { 1, 2 }, { 3, 4 } })
-  %cst_4 = constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>
+  %cst_4 = arith.constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>
 
   // CHECK:  s32[2,2] constant({ { 3, 2 }, { 1, 4 } })
-  %cst_5 = constant dense<[[3, 2], [1, 4]]> : tensor<2x2xi32>
+  %cst_5 = arith.constant dense<[[3, 2], [1, 4]]> : tensor<2x2xi32>
 
   // CHECK:  u32[2,2] constant({ { 1, 2 }, { 4, 8 } })
-  %cst_6 = constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
+  %cst_6 = arith.constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
 
   // CHECK: bf16[4] constant({1, 2, 3, 4})
-  %cst_7 = constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
+  %cst_7 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
 
   // CHECK: f16[4] constant({1, -4, -65504, 0.015625}
-  %cst_8 = constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
+  %cst_8 = arith.constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
 
   // CHECK: c64[] constant((1, 0))
-  %cst_9 = constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
+  %cst_9 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>
 
   // CHECK: c128[] constant((1, 0))
-  %cst_10 = constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
+  %cst_10 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
 
   return
 }
@@ -424,17 +424,17 @@ func @main() {
 func @main(%arg0 : tensor<100x26x26x32xf32>, %arg1 : tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
   %result = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
-    dimension_numbers = {
-      input_batch_dimension = 0 : i64,
-      input_feature_dimension = 3 : i64,
-      input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
-      kernel_input_feature_dimension = 3 : i64,
-      kernel_output_feature_dimension = 2 : i64,
-      kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
-      output_batch_dimension = 0 : i64,
-      output_feature_dimension = 3 : i64,
-      output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
-    },
+    dimension_numbers = #mhlo.conv<raw
+      input_batch_dimension = 0,
+      input_feature_dimension = 3,
+      input_spatial_dimensions = [1, 2],
+      kernel_input_feature_dimension = 3,
+      kernel_output_feature_dimension = 2,
+      kernel_spatial_dimensions = [0, 1],
+      output_batch_dimension = 0,
+      output_feature_dimension = 3,
+      output_spatial_dimensions = [1, 2]
+    >,
     feature_group_count = 1 : i64,
     lhs_dilation = dense<1> : tensor<2xi64>,
     padding = dense<2> : tensor<2x2xi64>,
@@ -458,17 +458,17 @@ func @main(%arg0 : tensor<100x26x26x32xf32>, %arg1 : tensor<3x3x1x32xf32>) -> te
 func @main(%arg0 : tensor<100x26x26x32xi8>, %arg1 : tensor<3x3x1x32xi8>) -> tensor<100x28x28x1xi32> {
   %result = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
-    dimension_numbers = {
-      input_batch_dimension = 0 : i64,
-      input_feature_dimension = 3 : i64,
-      input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
-      kernel_input_feature_dimension = 3 : i64,
-      kernel_output_feature_dimension = 2 : i64,
-      kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
-      output_batch_dimension = 0 : i64,
-      output_feature_dimension = 3 : i64,
-      output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
-    },
+    dimension_numbers = #mhlo.conv<raw
+      input_batch_dimension = 0,
+      input_feature_dimension = 3,
+      input_spatial_dimensions = [1, 2],
+      kernel_input_feature_dimension = 3,
+      kernel_output_feature_dimension = 2,
+      kernel_spatial_dimensions = [0, 1],
+      output_batch_dimension = 0,
+      output_feature_dimension = 3,
+      output_spatial_dimensions = [1, 2]
+    >,
     feature_group_count = 1 : i64,
     lhs_dilation = dense<1> : tensor<2xi64>,
     padding = dense<2> : tensor<2x2xi64>,
@@ -531,7 +531,7 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK:  HloModule
 func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> {
-  %0 = "mhlo.custom_call"(%arg0, %arg1) {backend_config = "bar", call_target_name = "foo"} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
+  %0 = "mhlo.custom_call"(%arg0, %arg1) {backend_config = "bar", call_target_name = "foo", has_side_effect = true} : (tensor<2x3xf32>, tensor<5x5xf32>) -> tensor<1x2x3xf32>
   return %0 : tensor<1x2x3xf32>
 }
 
@@ -541,6 +541,7 @@ func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> 
 // CHECK:  ROOT
 // CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]])
 // CHECK-SAME:  custom_call_target="foo"
+// CHECK-SAME:  custom_call_has_side_effect=true
 // CHECK-SAME:  backend_config="bar"
 
 // -----
@@ -580,6 +581,22 @@ func @main(%arg: tensor<16x16xi32>) -> tensor<16x32xbf16> {
 // CHECK:   bf16[2,16,16] convert(u32[2,16,16] %{{.*}})
 // CHECK:   bf16[2,16,16] multiply(bf16[2,16,16] %{{.*}}, bf16[2,16,16] %{{.*}})
 // CHECK:   ROOT
+
+// -----
+
+// Test dot i8xi8 -> i64
+
+func @main(%arg0: tensor<3xi8>, %arg1: tensor<3xi8>) -> tensor<i64> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<3xi8>, tensor<3xi8>) -> tensor<i64>
+  return %0 : tensor<i64>
+}
+
+// CHECK: ENTRY
+// CHECK-SAME: ([[ARG0:.*]]: s8[3], [[ARG1:.*]]: s8[3]) -> s64[] {
+// CHECK: %[[ARG0]] = s8[3] parameter(0)
+// CHECK: %[[ARG1]] = s8[3] parameter(1)
+// CHECK: ROOT
+// CHECK-SAME: s64[] dot(s8[3] %[[ARG0]], s8[3] %[[ARG1]]),
 
 // -----
 

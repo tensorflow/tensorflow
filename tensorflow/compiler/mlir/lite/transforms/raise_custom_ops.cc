@@ -43,6 +43,10 @@ namespace {
 // wrap it by a TFL::CustomTfOp.
 struct RaiseCustomOpsPass
     : public PassWrapper<RaiseCustomOpsPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const final {
+    registry.insert<TensorFlowLiteDialect>();
+  }
+
  public:
   explicit RaiseCustomOpsPass()
       : target_op_names(target_ops.begin(), target_ops.end()) {}

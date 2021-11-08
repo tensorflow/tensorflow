@@ -82,8 +82,8 @@ struct PadOfExtractOfLinalg : public OpRewritePattern<PadTensorOp> {
 
 Value getNeutralOfLinalgOp(OpBuilder &b, mlir::OpOperand &op) {
   auto t = getElementTypeOrSelf(op.get().getType());
-  return b.create<mlir::ConstantOp>(op.getOwner()->getLoc(), t,
-                                    b.getZeroAttr(t));
+  return b.create<mlir::arith::ConstantOp>(op.getOwner()->getLoc(), t,
+                                           b.getZeroAttr(t));
 }
 
 struct PaddingPattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
@@ -108,16 +108,14 @@ struct PaddingPattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
 
     // Attempt to pad the op.
     LinalgOp padded_op;
-    if (mlir::failed(mlir::linalg::rewriteAsPaddedOp(
-            rewriter, op, getNeutralOfLinalgOp, padded_op))) {
+    mlir::FailureOr<llvm::SmallVector<mlir::Value>> new_results =
+        mlir::linalg::rewriteAsPaddedOp(rewriter, op, getNeutralOfLinalgOp,
+                                        nullptr, padded_op);
+    if (mlir::failed(new_results)) {
       return failure();
     }
-    if (padded_op) {
-      filter.replaceLinalgTransformationFilter(rewriter, padded_op);
-    } else {
-      // In case the op did not require padding, mark the op.
-      filter.replaceLinalgTransformationFilter(rewriter, op);
-    }
+    rewriter.replaceOp(op, new_results.getValue());
+    filter.replaceLinalgTransformationFilter(rewriter, padded_op);
     return success();
   }
 

@@ -232,7 +232,7 @@ def _check_trt_version_compatibility():
         "The {version_type} version of TensorRT: `{trt_version}` has now "
         "been removed. Please upgrade to TensorRT 7 or more recent.".format(
             version_type=version_type,
-            trt_version=trt_utils.versionTupleToString(trt_version)))
+            trt_version=trt_utils.version_tuple_to_string(trt_version)))
 
     raise RuntimeError("Incompatible %s TensorRT versions" % version_type)
 
@@ -251,16 +251,16 @@ def _check_trt_version_compatibility():
         "compilation and runtime.\n"
         "\t-TensorRT does not support forward compatibility. The loaded "
         "version has to be equal or more recent than the linked version.",
-        trt_utils.versionTupleToString(loaded_version),
-        trt_utils.versionTupleToString(linked_version))
+        trt_utils.version_tuple_to_string(loaded_version),
+        trt_utils.version_tuple_to_string(linked_version))
     raise RuntimeError("Incompatible TensorRT major version")
 
   elif loaded_version != linked_version:
     logging.info(
         "Loaded TensorRT %s and linked TensorFlow against TensorRT %s. This is "
         "supported because TensorRT minor/patch upgrades are backward "
-        "compatible.", trt_utils.versionTupleToString(loaded_version),
-        trt_utils.versionTupleToString(linked_version))
+        "compatible.", trt_utils.version_tuple_to_string(loaded_version),
+        trt_utils.version_tuple_to_string(linked_version))
 
 
 def _get_tensorrt_rewriter_config(conversion_params,
@@ -1094,9 +1094,9 @@ class TrtGraphConverterV2(object):
 
     Args:
       calibration_input_fn: a generator function that yields input data as a
-        list or tuple, which will be used to execute the converted signature for
-        calibration. All the returned input data should have the same shape.
-        Example: `def input_fn(): yield input1, input2, input3`
+        list or tuple or dict, which will be used to execute the converted
+        signature for calibration. All the returned input data should have the
+        same shape. Example: `def input_fn(): yield input1, input2, input3`
 
     Raises:
       ValueError: if the input combination is invalid.
@@ -1153,7 +1153,11 @@ class TrtGraphConverterV2(object):
 
     if self._need_calibration:
       for inp in calibration_input_fn():
-        self._converted_func(*map(ops.convert_to_tensor, inp))
+        if isinstance(inp, dict):
+          self._converted_func(
+              **{k: ops.convert_to_tensor(v) for k, v in inp.items()})
+        else:
+          self._converted_func(*map(ops.convert_to_tensor, inp))
 
       def _save_calibration_table(node):
         calibration_table = gen_trt_ops.get_calibration_data_op(
@@ -1173,9 +1177,9 @@ class TrtGraphConverterV2(object):
     """Run inference with converted graph in order to build TensorRT engines.
 
     Args:
-      input_fn: a generator function that yields input data as a list or tuple,
-        which will be used to execute the converted signature to generate TRT
-        engines. Example:
+      input_fn: a generator function that yields input data as a list or tuple
+        or dict, which will be used to execute the converted signature to
+        generate TRT engines. Example:
         `def input_fn(): # Let's assume a network with 2 input tensors. We
           generate 3 sets
              # of dummy input data: input_shapes = [[(1, 16), (2, 16)], # 1st
@@ -1216,7 +1220,10 @@ class TrtGraphConverterV2(object):
     for inp in input_fn():
       if not first_input:
         first_input = inp
-      func(*map(ops.convert_to_tensor, inp))
+      if isinstance(inp, dict):
+        func(**{k: ops.convert_to_tensor(v) for k, v in inp.items()})
+      else:
+        func(*map(ops.convert_to_tensor, inp))
 
     if self._need_trt_profiles():
       # Disable profile generation.
@@ -1227,7 +1234,11 @@ class TrtGraphConverterV2(object):
       # the inputs can be used because the shape of this input does not
       # determine the engine and instead the shapes collected in profiles
       # determine the engine.
-      self._converted_func(*map(ops.convert_to_tensor, first_input))
+      if isinstance(first_input, dict):
+        self._converted_func(
+            **{k: ops.convert_to_tensor(v) for k, v in first_input.items()})
+      else:
+        self._converted_func(*map(ops.convert_to_tensor, first_input))
 
     self._build_called_once = True
 

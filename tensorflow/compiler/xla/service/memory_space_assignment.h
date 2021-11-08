@@ -632,6 +632,10 @@ class MemorySpaceAssignment {
       copy_start_schedule_after_ = copy_start_schedule_after;
     }
 
+    void set_copy_done_schedule_before(int64_t copy_done_schedule_before) {
+      copy_done_schedule_before_ = copy_done_schedule_before;
+    }
+
     bool is_cross_program_prefetch() const {
       return is_cross_program_prefetch_;
     }
@@ -1512,6 +1516,10 @@ class AlternateMemoryBestFitHeap
       required_assignments_;
   // Number of bytes reserved in alternate memory space.
   int64_t reserved_in_bytes_ = 0;
+  // A rough measure of the memory pressure of the model, in bytes. Note that
+  // this is pressure for memory capacity (and not accessed bytes), and for
+  // alternate memory (not default memory).
+  int64_t memory_pressure_ = 0;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;

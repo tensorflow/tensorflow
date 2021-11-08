@@ -389,6 +389,24 @@ class HloModule {
     module->metadata_ = std::move(metadata_);
   }
 
+  void set_autofdo_fingerprint(std::string fingerprint) {
+    autofdo_fingerprint_ = fingerprint;
+  }
+
+  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
+
+  void add_profile_info(HloModuleProto::ProfileType profile_type,
+                        double relative_speedup) {
+    HloModuleProto::ProfileInfo profile_info;
+    profile_info.set_profile_type(profile_type);
+    profile_info.set_relative_speedup(relative_speedup);
+    profile_info_list_.push_back(profile_info);
+  }
+
+  void set_relative_speedup(double relative_speedup) {
+    relative_speedup_ = relative_speedup;
+  }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -445,6 +463,16 @@ class HloModule {
 
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
+
+  // a fingerprint to search autofdo profile entry.
+  std::string autofdo_fingerprint_;
+
+  // An array of ProfileInfo specifying what optimization profiles this module
+  // contains, along with the relative speedups.
+  std::vector<HloModuleProto::ProfileInfo> profile_info_list_;
+
+  // Relative speedup of best config compared to default config.
+  double relative_speedup_;
 };
 
 }  // namespace xla

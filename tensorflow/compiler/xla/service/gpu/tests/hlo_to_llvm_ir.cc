@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #endif
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"

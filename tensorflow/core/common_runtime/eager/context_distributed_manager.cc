@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/device_filters.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -597,7 +598,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
     std::shared_ptr<WorkerSession> worker_session;
     LOG_AND_RETURN_IF_ERROR(server->worker_env()->session_mgr->CreateSession(
         session_name, server_def, base_request.cluster_device_attributes(),
-        true));
+        context->session_options().config.isolate_session_state()));
     LOG_AND_RETURN_IF_ERROR(
         server->worker_env()->session_mgr->WorkerSessionForSession(
             session_name, &worker_session));
@@ -691,20 +692,13 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
         server->worker_env()->session_mgr->LegacySession()->worker_cache();
     const auto& config = server_def.default_session_config();
     const bool enable_coordination =
-        !config.experimental().coordination_service().empty();
+        !config.experimental().coordination_config().service_type().empty();
 
     if (enable_coordination) {
       // For coordination leader: start the service instance
-      const std::string& leader =
-          config.experimental().collective_group_leader();
-      DeviceNameUtils::ParsedName parsed;
-      DeviceNameUtils::ParseFullName(leader, &parsed);
-      if (parsed.job == server_def.job_name() &&
-          parsed.task == server_def.task_index()) {
-        LOG_AND_RETURN_IF_ERROR(EnableCoordinationService(
-            config.experimental().coordination_service(), server->worker_env(),
-            server_def, worker_cache));
-      }
+      LOG_AND_RETURN_IF_ERROR(EnableCoordinationService(
+          config.experimental().coordination_config().service_type(),
+          server->worker_env(), server_def, worker_cache));
       LOG_AND_RETURN_IF_ERROR(server->SetCoordinationServiceAgentInstance(
           coordination_service_agent_.get()));
     }
@@ -714,7 +708,8 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       auto session_name = strings::StrCat("eager_", context_->GetContextId());
       std::shared_ptr<WorkerSession> worker_session;
       LOG_AND_RETURN_IF_ERROR(server->worker_env()->session_mgr->CreateSession(
-          session_name, server_def, true));
+          session_name, server_def,
+          context_->session_options().config.isolate_session_state()));
       LOG_AND_RETURN_IF_ERROR(
           server->worker_env()->session_mgr->WorkerSessionForSession(
               session_name, &worker_session));

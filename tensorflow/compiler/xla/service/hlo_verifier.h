@@ -26,7 +26,6 @@ namespace xla {
 
 // Visitor which verifies that the output shape is correctly set. Verifies
 // against the inferred shape for the instruction.
-// TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
   ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision,
@@ -220,6 +219,12 @@ class TargetVerifierMetadata {
   // Returns a target-specific shape size.
   int64_t ShapeSize(const Shape& shape) const {
     return shape_size_function_(shape);
+  }
+
+  void SetShapeSize(std::function<int64_t(const Shape&)> shape_size_function) {
+    CHECK(shape_size_function_ == nullptr)
+        << "shape_size_function_ is already set";
+    shape_size_function_ = shape_size_function;
   }
 
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;

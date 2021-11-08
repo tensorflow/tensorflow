@@ -49,6 +49,10 @@ GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Float, float, float, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Double, double, double, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Int8, int8_t, int8_t, baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Int16, int16_t, int16_t, baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Int64, int64_t, int64_t, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/UInt8, uint8_t, uint8_t, baseline_add,
@@ -59,6 +63,7 @@ GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Complex64, std::complex<float>,
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Complex128, std::complex<double>,
                        std::complex<double>, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+
 
 /// Test `tf.AddV2`.
 
@@ -91,6 +96,15 @@ GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Complex64, std::complex<float>,
 GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Complex128, std::complex<double>,
                        std::complex<double>, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int8, int8_t, int8_t, baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int16, int16_t, int16_t,
+                       baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
 
 /// Test `tf.Atan2`.
 
@@ -330,6 +344,23 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     test::DefaultInputNonZero<uint16_t>(), baseline_div,
     test::OpsTestConfig().ExpectStrictlyEqual())
 
+// These kernels are JIT-compiled.
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Div,
+    /*test_name=*/Int8, int8_t, int8_t, test::DefaultInput<int8_t>(),
+    test::DefaultInputNonZero<int8_t>(), baseline_div,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Div,
+    /*test_name=*/Uint32, uint32_t, uint32_t, test::DefaultInput<uint32_t>(),
+    test::DefaultInputNonZero<uint32_t>(), baseline_div,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Div,
+    /*test_name=*/Uint64, uint64_t, uint64_t, test::DefaultInput<uint64_t>(),
+    test::DefaultInputNonZero<uint64_t>(), baseline_div,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+
 // The following tests don't work with Eigen kernels if the Eigen kernels are
 // compiled with nvcc.
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
@@ -412,13 +443,22 @@ GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Bool, bool, bool, baseline_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int8, int8_t, bool, baseline_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
-GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/UInt8, uint8_t, bool,
-                       baseline_equal,
-                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int16, int16_t, bool,
                        baseline_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int64, int64_t, bool,
+                       baseline_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/UInt8, uint8_t, bool,
+                       baseline_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/UInt16, uint16_t, bool,
+                       baseline_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/UInt32, uint32_t, bool,
+                       baseline_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/UInt64, uint64_t, bool,
                        baseline_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/C64, std::complex<float>, bool,
@@ -438,16 +478,57 @@ TEST_F(BinaryOpsTest, EqualUint8_tSpecialCases) {
 
 /// Test `tf.FloorDiv`.
 
-template <typename T>
+template <typename T, std::enable_if_t<llvm::is_one_of<T, float, double>::value,
+                                       bool> = true>
 T baseline_floor_div(T lhs, T rhs) {
   return std::floor(lhs / rhs);
 }
 
-template <>
-Eigen::half baseline_floor_div(Eigen::half lhs, Eigen::half rhs) {
-  return static_cast<Eigen::half>(std::floor(static_cast<float>(lhs / rhs)));
+template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, Eigen::half>::value, bool> = true>
+T baseline_floor_div(T lhs, T rhs) {
+  return static_cast<T>(std::floor(static_cast<float>(lhs / rhs)));
 }
 
+template <typename T, std::enable_if_t<llvm::is_one_of<T, int8_t, int16_t,
+                                                       int32_t, int64_t>::value,
+                                       bool> = true>
+T baseline_floor_div(T lhs, T rhs) {
+  T res = lhs / rhs;
+  if (((lhs < 0 && rhs > 0) || (lhs > 0 && rhs < 0)) && lhs % rhs) {
+    --res;
+  }
+  return res;
+}
+
+template <typename T,
+          std::enable_if_t<
+              llvm::is_one_of<T, uint8_t, uint16_t, uint32_t, uint64_t>::value,
+              bool> = true>
+T baseline_floor_div(T lhs, T rhs) {
+  return lhs / rhs;
+}
+
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/UInt8, uint8_t, uint8_t, test::DefaultInput<uint8_t>(),
+    test::DefaultInputNonZero<uint8_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/UInt16, uint16_t, uint16_t, test::DefaultInput<uint16_t>(),
+    test::DefaultInputNonZero<uint16_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/Int16, int16_t, int16_t, test::DefaultInput<int16_t>(),
+    test::DefaultInputNonZero<int16_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/Int64, int64_t, int64_t, test::DefaultInput<int64_t>(),
+    test::DefaultInputNonZero<int64_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     FloorDiv,
     /*test_name=*/Half, Eigen::half, Eigen::half,
@@ -462,6 +543,23 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     FloorDiv,
     /*test_name=*/Double, double, double, test::DefaultInput<double>(),
     test::DefaultInputNonZero<double>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
+
+/// Test the JIT-compiled kernels.
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/Int8, int8_t, int8_t, test::DefaultInput<int8_t>(),
+    test::DefaultInputNonZero<int8_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/UInt32, uint32_t, uint32_t, test::DefaultInput<uint32_t>(),
+    test::DefaultInputNonZero<uint32_t>(), baseline_floor_div,
+    test::OpsTestConfig().ExpectStrictlyEqual());
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/UInt64, uint64_t, uint64_t, test::DefaultInput<uint64_t>(),
+    test::DefaultInputNonZero<uint64_t>(), baseline_floor_div,
     test::OpsTestConfig().ExpectStrictlyEqual());
 
 /// Test `tf.Greater`.
@@ -699,6 +797,21 @@ GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/UInt8, uint8_t, uint8_t,
                        baseline_maximum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
+/// Test the experimental JIT-compiled kernels.
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Int8, int8_t, int8_t,
+                       baseline_maximum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/UInt16, uint16_t, uint16_t,
+                       baseline_maximum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/UInt32, uint32_t, uint32_t,
+                       baseline_maximum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/UInt64, uint64_t, uint64_t,
+                       baseline_maximum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+
 /// Test `tf.Minmum`.
 
 template <typename T>
@@ -722,6 +835,21 @@ GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Int64, int64_t, int64_t,
                        baseline_minimum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/UInt8, uint8_t, uint8_t,
+                       baseline_minimum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+
+/// Test the experimental JIT-compiled kernels.
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Int8, int8_t, int8_t,
+                       baseline_minimum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/UInt16, uint16_t, uint16_t,
+                       baseline_minimum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/UInt32, uint32_t, uint32_t,
+                       baseline_minimum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/UInt64, uint64_t, uint64_t,
                        baseline_minimum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
@@ -864,13 +992,22 @@ GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Bool, bool, bool,
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int8, int8_t, bool,
                        baseline_not_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
-GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/UInt8, uint8_t, bool,
-                       baseline_not_equal,
-                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int16, int16_t, bool,
                        baseline_not_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int64, int64_t, bool,
+                       baseline_not_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/UInt8, uint8_t, bool,
+                       baseline_not_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/UInt16, uint16_t, bool,
+                       baseline_not_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/UInt32, uint32_t, bool,
+                       baseline_not_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/UInt64, uint64_t, bool,
                        baseline_not_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/C64, std::complex<float>, bool,
@@ -1024,6 +1161,16 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     PowInput<int64_t>(), baseline_pow,
     test::OpsTestConfig().ExpectStrictlyEqual())
 
+/// Test the JIT-compiled kernels.
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Pow, /*test_name=*/Int8, int8_t, int8_t, PowInput<int8_t>(),
+    PowInput<int8_t>(), baseline_pow,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Pow, /*test_name=*/Int16, int16_t, int16_t, PowInput<int16_t>(),
+    PowInput<int16_t>(), baseline_pow,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+
 /// Test `tf.RealDiv`.
 
 GENERATE_DEFAULT_TESTS(RealDiv,
@@ -1151,11 +1298,15 @@ GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/UInt64, uint64_t, uint64_t,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test the experimental JIT-compiled kernel.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/Int8, int8_t, int8_t, baseline_sub,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/Int16, int16_t, int16_t, baseline_sub,
                        test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
+GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/Uint8, uint8_t, uint8_t, baseline_sub,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/Uint16, uint16_t, uint16_t,
+                       baseline_sub,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 TEST_F(BinaryOpsTest, SubUint32SpecialCases) {
   TestEqualShapes<uint32_t, uint32_t, uint32_t, uint32_t>(

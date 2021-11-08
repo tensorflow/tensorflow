@@ -100,6 +100,9 @@ void ImmutableConstantOp::Compute(OpKernelContext* ctx) {
 
   OP_REQUIRES_OK(ctx,
                  allocator->InitializeFromRegion(region_name_, ctx->env()));
+  OP_REQUIRES(ctx, dtype_ != DT_STRING,
+              errors::Unimplemented("Sorry, DT_STRING is not currently "
+                                    "supported for ImmutableConstOp."));
   ctx->set_output(0, Tensor(allocator.get(), dtype_, shape_));
   OP_REQUIRES_OK(ctx, allocator->allocation_status());
   // Allocator is owned by the tensor from this point.

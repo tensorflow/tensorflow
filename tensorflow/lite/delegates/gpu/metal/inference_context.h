@@ -60,6 +60,23 @@ class InferenceContext {
     CalculationsPrecision precision;
     TensorStorageType storage_type;
     ModelHints hints;
+
+    // Some restrictions for preallocated:
+    //   1) ValueId must be input or output id of GraphFloat32
+    //   2) data_type must be equal to DeduceDataTypeFromPrecision(precision);
+    //      for example for precision F16, data_type must be FLOAT16
+    //   3) Layout must be without Batch dimension if tensor.shape.b == 1
+    //      Layout must be with Batch dimension if tensor.shape.b != 1
+    std::map<ValueId, TensorDescriptor> preallocated;
+  };
+
+  struct GpuModel {
+    std::vector<std::pair<ValueId, ValueId>> input_ids_and_refs;
+    std::vector<std::pair<ValueId, ValueId>> variable_ids_and_refs;
+    std::vector<std::pair<ValueId, ValueId>> output_ids_and_refs;
+    std::vector<MetalNode> nodes;
+    absl::flat_hash_map<ValueId, TensorDescriptor> tensors;
+    absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors;
   };
 
   InferenceContext() = default;
@@ -125,19 +142,12 @@ class InferenceContext {
     kConst,
     kPreallocated
   };
-  absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
-                       ModelHints hints);
-
-  absl::Status ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                                   const GpuInfo& gpu_info,
-                                   const GraphFloat32& graph,
-                                   const std::set<ValueId>& preallocated_ids);
 
   absl::Status CompileOperations(MetalDevice* device);
 
-  absl::Status Merge();
-  absl::Status AllocateTensors(MetalDevice* device,
-                               const std::set<ValueId>& preallocated_ids);
+  absl::Status AllocateTensors(
+      MetalDevice* device,
+      const std::map<ValueId, TensorDescriptor>& preallocated);
   absl::Status AllocateMemoryForConstTensors(MetalDevice* device);
   absl::Status AllocateMemoryForBuffers(MetalDevice* device);
   absl::Status AllocateMemoryForStrongShapes(MetalDevice* device);
@@ -149,69 +159,16 @@ class InferenceContext {
   TensorMemoryType GetTensorMemoryType(ValueId id);
   absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
-  struct DummyTensor {
-    BHWC shape;
-    TensorDescriptor descriptor;
-
-    bool operator==(const DummyTensor& b) const {
-      return shape == b.shape && descriptor == b.descriptor;
-    }
-  };
-
-  class TensorReserver {
-   public:
-    TensorReserver() : next_(0) {}
-    ValueId Add(const DummyTensor& dummy) {
-      reservations_[next_] = dummy;
-      return next_++;
-    }
-    void Add(ValueId id, const DummyTensor& dummy) {
-      reservations_[id] = dummy;
-    }
-    void SetNext(ValueId id) { next_ = id; }
-    DummyTensor Get(ValueId id) { return reservations_[id]; }
-
-    std::vector<std::pair<ValueId, TensorDescriptor>> GetTensorDescs() const {
-      std::vector<std::pair<ValueId, TensorDescriptor>> result;
-      for (auto& v : reservations_) {
-        TensorDescriptor desc = v.second.descriptor;
-        desc.shape.b = v.second.shape.b;
-        desc.shape.h = v.second.shape.h;
-        desc.shape.w = v.second.shape.w;
-        desc.shape.d = 1;
-        desc.shape.c = v.second.shape.c;
-        result.push_back({v.first, desc});
-      }
-      return result;
-    }
-
-    void Add(const std::vector<std::pair<ValueId, TensorDescriptor>>& tensors) {
-      for (auto& v : tensors) {
-        DummyTensor dummy;
-        dummy.descriptor = v.second;
-        dummy.shape.b = v.second.shape.b;
-        dummy.shape.h = v.second.shape.h;
-        dummy.shape.w = v.second.shape.w;
-        dummy.shape.c = v.second.shape.c;
-        Add(v.first, dummy);
-      }
-    }
-
-   private:
-    absl::flat_hash_map<ValueId, DummyTensor> reservations_;
-    ValueId next_;
-  };
-  TensorReserver tensor_reserver_;
+  absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
 
   std::vector<MetalNode> nodes_;
   // contains indexes of compute_tasks_
   std::vector<int> task_ids_with_preallocated_tensors_;
   std::vector<ValueId> input_ids_;
   std::vector<ValueId> output_ids_;
-  CalculationsPrecision precision_;
   std::map<ValueId, MetalSpatialTensor> preallocated_tensors_;
 
-  std::map<ValueId, TensorDescriptor> const_tensors_descs_;
+  absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors_descs_;
   std::map<ValueId, MetalSpatialTensor> const_tensors_;
 
   std::map<ValueId, int> graph_ids_to_shared_buffer_tensors_;

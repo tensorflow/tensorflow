@@ -5,7 +5,7 @@
 // CHECK-SAME: [[CTX:%.*]]: !tf_framework.op_kernel_context
 func @assert(%ctx: !tf_framework.op_kernel_context)
        -> (memref<*xf32>, memref<*xi32>) attributes {tf_entry} {
-  %true = constant true
+  %true = arith.constant true
   tf_framework.assert %ctx, %true, INVALID_ARGUMENT, "the one and only"
   %buf_f32 = tf_framework.alloc(%ctx) : memref<2xf32>
   %unranked_f32 = memref.cast %buf_f32 : memref<2xf32> to memref<*xf32>
@@ -13,7 +13,7 @@ func @assert(%ctx: !tf_framework.op_kernel_context)
   %unranked_i32 = memref.cast %buf_i32 : memref<3xi32> to memref<*xi32>
   return %unranked_f32, %unranked_i32 : memref<*xf32>, memref<*xi32>
 }
-// CHECK:   [[TRUE:%.*]] = constant true
+// CHECK:   [[TRUE:%.*]] = arith.constant true
 // CHECK:   cond_br [[TRUE]], ^bb1, ^bb2
 // CHECK: ^bb1:
 // CHECK:   [[BUF_F32:%.*]] = tf_framework.alloc([[CTX]]) : memref<2xf32>
@@ -34,16 +34,16 @@ func @assert(%ctx: !tf_framework.op_kernel_context)
 // CHECK-SAME: [[CTX:%.*]]: !tf_framework.op_kernel_context
 func @double_assert(%ctx: !tf_framework.op_kernel_context)
        -> memref<*xf32> attributes {tf_entry} {
-  %true = constant true
-  %false = constant false
+  %true = arith.constant true
+  %false = arith.constant false
   tf_framework.assert %ctx, %true, INVALID_ARGUMENT, "first assertion"
   tf_framework.assert %ctx, %false, INVALID_ARGUMENT, "second assertion"
   %buf = tf_framework.alloc(%ctx) : memref<2xf32>
   %unranked_buf = memref.cast %buf : memref<2xf32> to memref<*xf32>
   return %unranked_buf : memref<*xf32>
 }
-// CHECK-DAG:   [[TRUE:%.*]] = constant true
-// CHECK-DAG:   [[FALSE:%.*]] = constant false
+// CHECK-DAG:   [[TRUE:%.*]] = arith.constant true
+// CHECK-DAG:   [[FALSE:%.*]] = arith.constant false
 // CHECK:   cond_br [[TRUE]], ^bb1, ^bb3
 // CHECK: ^bb1:
 // CHECK:   cond_br [[FALSE]], ^bb2, ^bb4

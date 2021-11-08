@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -27,7 +28,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/resource.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
@@ -622,7 +625,7 @@ Status DatasetBase::ComputeNumSources() {
 }
 
 Status DatasetBase::ComputeCardinality() {
-  cardinality_ = this->Cardinality();
+  cardinality_ = this->CardinalityInternal();
   return Status::OK();
 }
 
@@ -644,6 +647,19 @@ Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
                         std::vector<Tensor>* out_tensors) const {
   return errors::Unimplemented(
       "Random access is not implemented for this dataset.");
+}
+
+StatusOr<DatasetBase*> DatasetBase::Finalize(
+    OpKernelContext* ctx,
+    std::function<StatusOr<core::RefCountPtr<DatasetBase>>(
+        const core::RefCountPtr<DatasetBase>&)>
+        make_finalized_dataset) {
+  mutex_lock l(mu_);
+  if (!finalized_dataset_) {
+    TF_ASSIGN_OR_RETURN(finalized_dataset_,
+                        make_finalized_dataset(finalized_dataset_));
+  }
+  return finalized_dataset_.get();
 }
 
 Status DatasetBase::MergeOptionsFromInputs() {
@@ -988,16 +1004,19 @@ string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
 bool DatasetOpKernel::IsDatasetOp(const OpDef& op_def) {
   if (op_def.output_arg_size() != 1) return false;
   if (op_def.output_arg(0).type() != DT_VARIANT) return false;
-  auto& op_name = op_def.name();
+  absl::string_view op_name = op_def.name();
+  if (op_name == "DatasetFromGraph") return true;
   if (absl::EndsWith(op_name, "Dataset")) return true;
   // Check if the suffix matches "DatasetV[0-9]+".
   size_t index = op_name.length() - 1;
   while (index >= 0 && isdigit(op_name[index])) {
     index--;
   }
-  const int64 kPrefixLength = 8;  // length of the `DatasetV` prefix
+  constexpr absl::string_view kDatasetPrefix = "DatasetV";
+  constexpr absl::string_view::size_type kPrefixLength = kDatasetPrefix.size();
   if (index < kPrefixLength - 1 || index == op_name.length() - 1) return false;
-  return op_name.substr(index - kPrefixLength + 1, kPrefixLength) == "DatasetV";
+  return op_name.substr(index - kPrefixLength + 1, kPrefixLength) ==
+         kDatasetPrefix;
 }
 
 void UnaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,

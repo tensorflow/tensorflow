@@ -48,6 +48,11 @@ class TfCpurtExecutor {
   std::vector<pybind11::array> Execute(
       Handle handle, const std::vector<pybind11::array>& arguments);
 
+  // Returns true if the binary was built with the given CPU feature.
+  // The list of supported CPU features is purposedly incomplete; we
+  // will only add features if CPURT relies on them.
+  bool BuiltWith(const std::string& cpu_feature);
+
  private:
   tfrt::HostContext host_context_;
   llvm::DenseMap<Handle, tfrt::cpu::jit::JitExecutable> jit_executables_;

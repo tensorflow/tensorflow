@@ -382,7 +382,7 @@ class ZerosLikeOp : public XlaOpKernel {
       const xla::Shape& list_shape = list_shape_or.ValueOrDie();
       std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
       list_dynamic_dims.reserve(list_shape.tuple_shapes_size() - 1);
-      for (int64_t i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+      for (int i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
         // Set dynamic dimension size to 0 for initialization value.
         std::vector<xla::XlaOp> dynamic_dims;
         const xla::Shape& shape = list_shape.tuple_shapes(i);

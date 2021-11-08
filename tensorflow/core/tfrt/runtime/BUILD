@@ -70,6 +70,8 @@ tf_cc_test(
     srcs = ["work_queue_interface_test.cc"],
     deps = [
         ":work_queue_interface",
+        "//tensorflow/core:test",
+        "//tensorflow/core/tfrt/utils:thread_pool",
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//cpp_tests:common",
@@ -103,7 +105,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status_matchers",
-        "//tensorflow/core/tfrt/utils:test_util",
+        "//tensorflow/core/tfrt/utils:thread_pool",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",

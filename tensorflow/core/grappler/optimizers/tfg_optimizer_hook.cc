@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/ir/importexport/export.h"
@@ -53,6 +54,10 @@ Status TfgGrapplerOptimizer::Optimize(
 #endif  // NDEBUG
 
   tensorflow::GraphDebugInfo debug_info;
+
+  tensorflow::metrics::ScopedCounter<2> metrics(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {"TfgOptimizer", "convert_graphdef_to_tfg"});
   auto error_or_module = ImportGraphDefToMlir(&context, debug_info, item.graph);
   if (!error_or_module.ok()) {
     auto status = error_or_module.status();
@@ -67,6 +72,8 @@ Status TfgGrapplerOptimizer::Optimize(
 #endif
     return status;
   }
+  metrics.ReportAndStop();
+
   ModuleOp module = (*error_or_module).get();
 
   auto graph_op = dyn_cast<GraphOp>(module.getBody()->front());
@@ -89,10 +96,12 @@ Status TfgGrapplerOptimizer::Optimize(
 
   tensorflow::GraphDef graphdef;
   *graphdef.mutable_library() = item.graph.library();
+  metrics.Reset({"TfgOptimizer", "convert_tfg_to_graphdef"});
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       tensorflow::ExportMlirToGraphdef(module, &graphdef),
       "when exporting MLIR module to GraphDef in GrapplerHook");
-  *optimized_graph = graphdef;
+  metrics.ReportAndStop();
+  *optimized_graph = std::move(graphdef);
 #ifndef NDEBUG
   if (VLOG_IS_ON(5)) {
     fprintf(stderr, "After Graph: %s\nMlir Module:\n",

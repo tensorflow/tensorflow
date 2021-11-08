@@ -220,7 +220,8 @@ TEST_F(XlaBuilderTest, ShapeInferenceError) {
   Add(x, y);
   auto statusor = BuildHloModule(&b);
   ASSERT_FALSE(statusor.ok());
-  EXPECT_THAT(statusor.status().error_message(), HasSubstr("shape inference"));
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("Shapes must be equal rank"));
 }
 
 TEST_F(XlaBuilderTest, DynamicDimensionReshapeToR0) {
@@ -560,7 +561,9 @@ TEST_F(XlaBuilderTest, BuildWithSpecificRootWithWrongBuilder) {
 
 TEST_F(XlaBuilderTest, ProtoMatches) {
   std::vector<XlaComputation> computations;
-  for (int i = 0; i < 2; ++i) {
+  const int n = 2;
+  computations.reserve(n);
+  for (int i = 0; i < n; ++i) {
     XlaBuilder b_call("the_only_to_apply");
     auto p0 = Parameter(&b_call, 0, ShapeUtil::MakeShape(F32, {}), "p0");
     auto p1 = Parameter(&b_call, 1, ShapeUtil::MakeShape(F32, {}), "p1");
@@ -1363,6 +1366,20 @@ TEST_F(XlaBuilderTest, ComparisonType) {
   ASSERT_THAT(root, op::Compare(op::Constant(), op::Constant()));
   EXPECT_EQ(Comparison::Type::kSigned,
             DynCast<HloCompareInstruction>(root)->type());
+}
+
+TEST_F(XlaBuilderTest, StableLookUpInstructionByHandle) {
+  XlaBuilder b(TestName());
+  internal::XlaBuilderFriend builder_friend;
+  XlaOp le = Le(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+  HloInstructionProto* first_op = builder_friend.GetInstruction(le);
+  // Create some more instructions.
+  for (int i = 0; i < 100; ++i) {
+    (void)Le(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+  }
+  // Make sure first_op hasn't changed.
+  HloInstructionProto* first_op_now = builder_friend.GetInstruction(le);
+  EXPECT_EQ(first_op, first_op_now);
 }
 
 }  // namespace

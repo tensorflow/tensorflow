@@ -1162,18 +1162,29 @@ llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
   ElementsAttr dim_elem;
   if (!matchPattern(dim_value, m_Constant(&dim_elem))) return llvm::None;
 
-  assert(dim_elem.getType().getRank() == 0 && "expected scalar tensor");
-  int32_t dim = dim_elem.getValue<IntegerAttr>({}).getInt();
-
+  if (dim_elem.getNumElements() > 1) {
+    op->emitOpError("ExpandDims: expected single dimension to expand");
+    return llvm::None;
+  }
+  int32_t dim = dim_elem.getValue<IntegerAttr>({0}).getInt();
+  int32_t input_size = input_shape.size();
   SmallVector<int64_t> reshape_dims;
-  if (dim < 0 || dim >= input_shape.size()) {  // add dim at end of tensor
-    dim = input_shape.size();
+  if (dim >= input_size) {  // add dim at end of tensor
+    dim = input_size;
     for (int i = 0; i < input_shape.size(); i++) {
       reshape_dims.emplace_back(input_shape[i]);
     }
     reshape_dims.emplace_back(1);
   } else {
-    for (int i = 0; i < input_shape.size(); i++) {
+    if (dim < 0) {
+      dim += input_size;
+      if (dim < 0) {
+        op->emitOpError(
+            "ExpandDims: dimension to expand + size of input shape < 0");
+        return llvm::None;
+      }
+    }
+    for (int i = 0; i < input_size; i++) {
       if (i == dim) {
         reshape_dims.emplace_back(1);
       }
@@ -1220,6 +1231,10 @@ llvm::Optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
       }
     }
   } else {
+    for (auto& dim : squeeze_dims) {
+      dim = dim < 0 ? dim + input_shape.size() : dim;
+    }
+
     // Remove only specified dims.
     // First sort the array so they can be picked off in sequence.
     std::sort(squeeze_dims.begin(), squeeze_dims.end(),
@@ -1547,58 +1562,67 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       // Step 2. rescale input from [-65535, 0] to [-32768, 32767] for LUT input
       Value op4_rescale_op3 = buildRescale(
-          rewriter, op, int16_logits_type, op3_sub_op1_op2.getResult(),
-          input_diff_scale, 0, 32767, true, true);
+          rewriter, op, int32_logits_type, op3_sub_op1_op2.getResult(),
+          /*scale=*/input_diff_scale, /*input_zp=*/0, /*output_zp=*/0,
+          /*double_round=*/true, /*scale32=*/true);
+      auto op5_add_op4 = CreateOpAndInfer<tosa::AddOp>(
+          rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
+          getTosaConstTensorSingleI32(rewriter, op, 32767));
+
+      auto op6_cast_op5 = CreateOpAndInfer<tosa::CastOp>(
+          rewriter, op->getLoc(), int16_logits_type, op5_add_op4.getResult());
 
       // Step 3. get exp() result
       // Output is 15.7.
       // In 8-bit case, no interpolation here, since input should be right on
       // table entry.
-      auto op5_table_op4 = CreateOpAndInfer<tosa::TableOp>(
-          rewriter, op->getLoc(), int32_logits_type, op4_rescale_op3,
+      auto op7_table_op6 = CreateOpAndInfer<tosa::TableOp>(
+          rewriter, op->getLoc(), int32_logits_type, op6_cast_op5,
           exp_table_const);
 
       // Right shift 7 bits. output 15. Shouldn't lose any precision since last
       // 7 bits should be all 0.
-      auto op6_rshift_op5 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
-          rewriter, op->getLoc(), int32_logits_type, op5_table_op4.getResult(),
+      auto op8_rshift_op7 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), int32_logits_type, op7_table_op6.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 7), true);
 
       // Step 4. get sum(exp()). output 16.15
-      auto op7_reducesum_op6 = CreateOpAndInfer<tosa::ReduceSumOp>(
-          rewriter, op->getLoc(), int32_rsum_type, op6_rshift_op5.getResult(),
+      auto op9_reducesum_op8 = CreateOpAndInfer<tosa::ReduceSumOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op8_rshift_op7.getResult(),
           rewriter.getI64IntegerAttr(input_rank - 1));
 
       // Step 5. calculate reciprocal(sum(exp()))
       // CLZ returns 32 - first non zero bit
-      auto op8_clz_op7 =
+      auto op10_clz_op9 =
           CreateOpAndInfer<tosa::ClzOp>(rewriter, op->getLoc(), int32_rsum_type,
-                                        op7_reducesum_op6.getResult());
+                                        op9_reducesum_op8.getResult());
 
-      auto op9_sub_op8 = CreateOpAndInfer<tosa::SubOp>(
-          rewriter, op->getLoc(), int32_rsum_type, op8_clz_op7.getResult(),
+      auto op11_sub_op10 = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op10_clz_op9.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 1));
 
       // Left shift to get  1.30 format
-      auto op10_lshift_op7_op9 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
+      auto op12_lshift_op9_op11 = CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
           rewriter, op->getLoc(), int32_rsum_type,
-          op7_reducesum_op6.getResult(), op9_sub_op8.getResult());
+          op9_reducesum_op8.getResult(), op11_sub_op10.getResult());
 
       // Subtract (1 << 30) to make 0 <= x <= 1 under 0.30 format
-      auto op11_sub_op10 = CreateOpAndInfer<tosa::SubOp>(
+      auto op13_sub_op12 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_rsum_type,
-          op10_lshift_op7_op9.getResult(),
+          op12_lshift_op9_op11.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, (1u << 30)));
 
       // Right shift 14 bits to get output range [0, 65535]
-      auto op12_rshift_op11 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
-          rewriter, op->getLoc(), int32_rsum_type, op11_sub_op10.getResult(),
+      auto op14_rshift_op13 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op13_sub_op12.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 14), true);
 
       // Remap input to [-32768, 32767] for LUT input
-      auto op13_rescale_op12 = buildRescale(rewriter, op, int16_rsum_type,
-                                            op12_rshift_op11.getResult(), 1.0,
-                                            32768, 0, false, true);
+      auto op15_add_op14 = CreateOpAndInfer<tosa::SubOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op14_rshift_op13.getResult(),
+          getTosaConstTensorSingleI32(rewriter, op, 32768));
+      auto op16_cast_op15 = CreateOpAndInfer<tosa::CastOp>(
+          rewriter, op->getLoc(), int16_rsum_type, op15_add_op14.getResult());
 
       // Generate table for 1 / (1 + x), for 0 <= x <= 1
       auto one_over_one_plus_x_func = [](double x) -> double {
@@ -1609,35 +1633,35 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
           rewriter, op, one_over_one_plus_x_func, 0.0, 1.0);
 
       // Get (1 / sum(exp(x))) result as 23 bits (including sign bit)
-      auto op14_table_op13 = CreateOpAndInfer<tosa::TableOp>(
-          rewriter, op->getLoc(), int32_rsum_type, op13_rescale_op12,
+      auto op17_table_op16 = CreateOpAndInfer<tosa::TableOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op16_cast_op15,
           one_over_one_plus_x_table_const);
 
       // Right shift 7 bits back to 0.15
-      auto op15_rshift_op14 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
-          rewriter, op->getLoc(), int32_rsum_type, op14_table_op13.getResult(),
+      auto op18_rshift_op17 = CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
+          rewriter, op->getLoc(), int32_rsum_type, op17_table_op16.getResult(),
           getTosaConstTensorSingleI32(rewriter, op, 7), true);
 
       // Step 6. multiply exp(max-x) with 1 / sum(exp(max-x))
       // lhs: 0.15, rhs: 0.15, output: 0.30
-      auto op16_mul_op15_op6 = CreateOpAndInfer<tosa::MulOp>(
-          rewriter, op->getLoc(), int32_logits_type, op15_rshift_op14,
-          op6_rshift_op5, 0);
+      auto op19_mul_op18_op8 = CreateOpAndInfer<tosa::MulOp>(
+          rewriter, op->getLoc(), int32_logits_type, op18_rshift_op17,
+          op8_rshift_op7, 0);
 
-      auto op17_sub_op8 = CreateOpAndInfer<tosa::SubOp>(
+      auto op20_sub_op10 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_rsum_type,
           getTosaConstTensorSingleI32(rewriter, op, 31),
-          op8_clz_op7.getResult());
+          op10_clz_op9.getResult());
 
       // Apply the clz back, we get 0.15 output
       // [0, 32767] corresponding to [0.0, 1.0]
-      auto op18_rshift_op16_op17 =
+      auto op21_rshift_op19_op20 =
           CreateOpAndInfer<tosa::ArithmeticRightShiftOp>(
               rewriter, op->getLoc(), int32_logits_type,
-              op16_mul_op15_op6.getResult(), op17_sub_op8.getResult(), true);
+              op19_mul_op18_op8.getResult(), op20_sub_op10.getResult(), true);
 
       return buildRescale(rewriter, op, output_type,
-                          op18_rshift_op16_op17.getResult(),
+                          op21_rshift_op19_op20.getResult(),
                           (1.0 / out_quant_type.getScale()) * (1.0 / 32768.0),
                           0, out_quant_type.getZeroPoint(), false, true);
     } else {
@@ -1687,11 +1711,10 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   // op4 = mul(op1, op3)
   // op5 = log(op4)
 
-  RankedTensorType output_type =
-      result_value.getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  TensorType output_type = result_value.getType().dyn_cast<TensorType>();
+  // Not a tensor output
   if (!output_type) {
-    op->emitOpError("LogSoftmax: output type not ranked tensor.");
+    op->emitOpError("LogSoftmax: output type not tensor.");
     return llvm::None;
   }
 
@@ -1718,15 +1741,11 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
 
   // reduce_sum on last dimension
   int32_t input_rank = input_type.getShape().size();
-  SmallVector<int64_t> rsum_shape(output_type.getShape().begin(),
-                                  output_type.getShape().end());
-  rsum_shape[input_rank - 1] = 1;
-  RankedTensorType rsum_type =
-      RankedTensorType::get(rsum_shape, output_type.getElementType());
   // Keep dims so we don't need to reshape later
   auto op2_reducesum_op1 = CreateOpAndInfer<tosa::ReduceSumOp>(
-      rewriter, op->getLoc(), rsum_type, op1_exp_in.getResult(),
-      rewriter.getI64IntegerAttr(input_rank - 1));
+      rewriter, op->getLoc(),
+      UnrankedTensorType::get(output_type.getElementType()),
+      op1_exp_in.getResult(), rewriter.getI64IntegerAttr(input_rank - 1));
   auto op3_reciprocal_op2 = CreateOpAndInfer<tosa::ReciprocalOp>(
       rewriter, op->getLoc(), op2_reducesum_op1.getType(),
       op2_reducesum_op1.getResult());
@@ -1940,40 +1959,66 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
     return llvm::None;
   }
 
-  auto input_shape = input_type.getShape();
+  Type etype = input_type.getElementType();
+
+  if (axis < 0) axis += input_type.getRank();
+  assert(num_split > 0);
+  assert(axis >= 0 && axis < input_type.getRank());
+
+  Value slice_value = input_value;
+  bool is_dyn_split = input_type.getDimSize(axis) == -1;
+  if (is_dyn_split) {
+    SmallVector<int64_t> new_shape;
+    for (int i = 0, s = input_type.getRank(); i < s; i++) {
+      if (i != axis) {
+        new_shape.push_back(input_type.getDimSize(i));
+        continue;
+      }
+
+      new_shape.push_back(num_split);
+      new_shape.push_back(-1);
+    }
+    slice_value = CreateOpAndInfer<tosa::ReshapeOp>(
+        rewriter, op->getLoc(), RankedTensorType::get(new_shape, etype),
+        input_value, rewriter.getI64ArrayAttr(new_shape));
+  }
+
+  RankedTensorType slice_type = slice_value.getType().cast<RankedTensorType>();
+  assert((slice_type.getDimSize(axis) % num_split) == 0);
+
+  // Each slice has a different begining point.
+  // The slice size is actually the same each op.
+  SmallVector<int64_t> begin_vals, size_vals;
+  for (int j = 0, s = slice_type.getRank(); j < s; j++) {
+    begin_vals.push_back(0);
+    size_vals.push_back(slice_type.getDimSize(j));
+  }
+  size_vals[axis] = size_vals[axis] / num_split;
 
   SmallVector<Value> results_vec;
-
-  assert(axis >= 0 && axis < input_shape.size());
-  assert((input_shape[axis] % num_split) == 0);
-  assert(num_split > 0);
-
-  int64_t slice_size = input_shape[axis] / num_split;
-
   for (int i = 0; i < num_split; i++) {
-    // Each slice has a different begining point.
-    // The slice size is actually the same each op.
-    SmallVector<int64_t> begin_vals, size_vals;
-
-    for (int j = 0; j < input_shape.size(); j++) {
-      if (j == axis) {
-        begin_vals.push_back(slice_size * i);
-        size_vals.push_back(slice_size);
-      } else {
-        begin_vals.push_back(0);
-        size_vals.push_back(input_shape[j]);
-      }
-    }
-
+    begin_vals[axis] = i * size_vals[axis];
     ArrayAttr begin = rewriter.getI64ArrayAttr(begin_vals);
     ArrayAttr size = rewriter.getI64ArrayAttr(size_vals);
 
-    auto slice_op = CreateOpAndInfer<tosa::SliceOp>(
+    Value result = CreateOpAndInfer<tosa::SliceOp>(
         rewriter, op->getLoc(),
         RankedTensorType::get(size_vals, result_type.getElementType()),
-        input_value, begin, size);
+        slice_value, begin, size);
 
-    results_vec.push_back(slice_op.getResult());
+    if (is_dyn_split) {
+      SmallVector<int64_t> out_reshape_shape;
+      for (int i = 0, s = size_vals.size(); i < s; i++)
+        if (i != axis) out_reshape_shape.push_back(size_vals[i]);
+
+      result = CreateOpAndInfer<tosa::ReshapeOp>(
+                   rewriter, op->getLoc(),
+                   RankedTensorType::get(out_reshape_shape, etype), result,
+                   rewriter.getI64ArrayAttr(out_reshape_shape))
+                   .getResult();
+    }
+
+    results_vec.push_back(result);
   }
 
   return results_vec;
@@ -2047,6 +2092,26 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
   return results_vec;
 }
 
+// Helper function to reverse negative striding. Only checks for -1 as that is
+// the only legal negative stride.
+static Value reverseNegativeStride(PatternRewriter& rewriter, Operation* op,
+                                   Value input, ArrayRef<int32_t> strides) {
+  Type reverse_ty = UnrankedTensorType::get(
+      input.getType().cast<ShapedType>().getElementType());
+  for (auto it : llvm::enumerate(strides)) {
+    auto axis = it.index();
+    auto stride = it.value();
+    if (stride != -1) continue;
+
+    input = CreateOpAndInfer<tosa::ReverseOp>(rewriter, op->getLoc(),
+                                              reverse_ty, input,
+                                              rewriter.getI64IntegerAttr(axis))
+                .getResult();
+  }
+
+  return input;
+}
+
 // Lowers StridedSlice to a sequence of TOSA ops.
 llvm::Optional<Value> convertStridedSliceOp(
     PatternRewriter& rewriter, Operation* op, Value result_value,
@@ -2097,17 +2162,26 @@ llvm::Optional<Value> convertStridedSliceOp(
     return llvm::None;
   }
 
-  bool all_strides_one =
-      strides_attr.isSplat() && strides_attr.getSplatValue<int32_t>() == 1;
+  if (failed(getVectorFromValue32(strides_value, strides))) {
+    (void)rewriter.notifyMatchFailure(op, "strides isn't a constant");
+    return llvm::None;
+  }
+
+  // Current configuration does not support negative strides greater than 1.
+  // Bail out for now (fix if this proves to be legal).
+  for (auto stride : strides)
+    if (stride < -1) return llvm::None;
+
+  bool all_strides_one = true;
+  for (auto stride : strides) all_strides_one &= abs(stride) == 1;
+
   int32_t strides_size = strides_attr.getNumElements();
 
   // If all of the masks are set we can just bypass the entire thing.
   const int32_t all_masks_one = (1 << strides_size) - 1;
   if (all_strides_one && begin_mask == all_masks_one &&
       end_mask == all_masks_one) {
-    return CreateOpAndInfer<tensor::CastOp>(rewriter, op->getLoc(), result_type,
-                                            input_value)
-        .getResult();
+    return reverseNegativeStride(rewriter, op, input_value, strides);
   }
 
   if (failed(getVectorFromValue32(begin_value, begin))) {
@@ -2122,9 +2196,7 @@ llvm::Optional<Value> convertStridedSliceOp(
 
   if (all_strides_one && begin_mask == all_masks_one &&
       end_mask == all_masks_one) {
-    return CreateOpAndInfer<tensor::CastOp>(rewriter, op->getLoc(), result_type,
-                                            input_value)
-        .getResult();
+    return reverseNegativeStride(rewriter, op, input_value, strides);
   }
 
   if (failed(getVectorFromValue32(end_value, end))) {
@@ -2139,11 +2211,6 @@ llvm::Optional<Value> convertStridedSliceOp(
   }
 
   int32_t input_rank = input_type.getRank();
-
-  if (failed(getVectorFromValue32(strides_value, strides))) {
-    return (void)rewriter.notifyMatchFailure(op, "strides isn't a constant"),
-           llvm::None;
-  }
 
   // If strides is incomplete, pad out to the full size.
   while (strides.size() < input_rank) strides.push_back(1);
@@ -2181,12 +2248,11 @@ llvm::Optional<Value> convertStridedSliceOp(
 
     if (end[i] < 0) end[i] += input_shape[i];
 
-    // TODO(suderman): support reverse stride
     a1_begin[i] = begin[i];
     a1_size[i] = end[i] - begin[i];
 
-    a2_shape[i * 2 + 0] = a1_size[i] / strides[i];
-    a2_shape[i * 2 + 1] = strides[i];
+    a2_shape[i * 2 + 0] = a1_size[i] / abs(strides[i]);
+    a2_shape[i * 2 + 1] = abs(strides[i]);
 
     a3_begin[i * 2 + 0] = 0;
     a3_begin[i * 2 + 1] = 0;
@@ -2194,13 +2260,13 @@ llvm::Optional<Value> convertStridedSliceOp(
     if (shrink_axis_mask & (1 << i)) {
       a3_size[i * 2 + 0] = 1;
     } else {
-      a3_size[i * 2 + 0] = a1_size[i] / strides[i];
+      a3_size[i * 2 + 0] = a1_size[i] / abs(strides[i]);
     }
     a3_size[i * 2 + 1] = 1;
 
     if (!(shrink_axis_mask & (1 << i))) {
       if (new_axis_mask & (1 << i)) a4_shape.push_back(1);
-      a4_shape.push_back((a1_size[i] / strides[i]));
+      a4_shape.push_back((a1_size[i] / abs(strides[i])));
     }
   }
 
@@ -2214,9 +2280,8 @@ llvm::Optional<Value> convertStridedSliceOp(
       rewriter.getI64ArrayAttr(a1_begin), rewriter.getI64ArrayAttr(a1_size));
 
   if (all_strides_one) {
-    return CreateOpAndInfer<tensor::CastOp>(rewriter, op->getLoc(), result_type,
-                                            a1_slice_op)
-        .getResult();
+    return reverseNegativeStride(rewriter, op, a1_slice_op.getResult(),
+                                 strides);
   }
 
   // Step 2: reshape the sliced array
@@ -2233,10 +2298,13 @@ llvm::Optional<Value> convertStridedSliceOp(
       rewriter.getI64ArrayAttr(a3_size));
 
   // Step 4: reshape the now-strided tensor
-  return CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), result_type,
-                                           a3_slice_op.getResult(),
-                                           rewriter.getI64ArrayAttr(a4_shape))
-      .getResult();
+  auto a4_reshape_op =
+      CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), result_type,
+                                        a3_slice_op.getResult(),
+                                        rewriter.getI64ArrayAttr(a4_shape))
+          .getResult();
+
+  return reverseNegativeStride(rewriter, op, a4_reshape_op, strides);
 }
 
 // Lowers FloorDiv to a sequence of TOSA operators.
@@ -2715,6 +2783,16 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   auto input_shape = input_type.getShape();
   auto output_shape = output_type.getShape();
 
+  if (input_type.isDynamicDim(1) || input_type.isDynamicDim(2)) {
+    op->emitOpError("ConvertResizeOp: resize dynamic input not supported.");
+    return llvm::None;
+  }
+
+  if (output_type.isDynamicDim(1) || output_type.isDynamicDim(2)) {
+    op->emitOpError("ConvertResizeOp: resize dynamic output not supported.");
+    return llvm::None;
+  }
+
   size_t input_height = input_shape[1];
   size_t input_width = input_shape[2];
   size_t output_height = output_shape[1];
@@ -3122,7 +3200,7 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
                                       Value result_value, Value params_value,
                                       Value indices_value, int32_t batch_dims,
                                       int32_t axis) {
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
+  auto result_type = result_value.getType().dyn_cast<ShapedType>();
   auto params_type = params_value.getType().dyn_cast<RankedTensorType>();
   auto indices_type = indices_value.getType().dyn_cast<RankedTensorType>();
 

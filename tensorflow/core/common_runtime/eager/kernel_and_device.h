@@ -53,9 +53,13 @@ static constexpr const char* const kOutputsOnOpDevice = "_OutputsOnOpDevice";
 class ProcessFunctionLibraryRuntime;
 class FunctionLibraryRuntime;
 
-struct EagerRemoteFunctionParams {
-  int64_t op_id;
-  // Set when this function is a component function.
+const int64_t kInvalidOpId = -1;
+
+// This struc is used for:
+// 1. setting op_id and step_id for single-host remote function scenario, and
+// 2. setting step_id for multi-client parallel_device scenario.
+struct EagerFunctionParams {
+  int64_t op_id = kInvalidOpId;
   absl::optional<int64_t> step_id = absl::nullopt;
 };
 
@@ -132,7 +136,7 @@ class KernelAndDevice : public core::RefCounted {
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      const absl::optional<EagerFunctionParams>& eager_func_params,
       const absl::optional<ManagedStackTrace>& stack_trace,
       CoordinationServiceAgent* coordination_service_agent) = 0;
 
@@ -148,7 +152,7 @@ class KernelAndDevice : public core::RefCounted {
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      const absl::optional<EagerFunctionParams>& eager_func_params,
       CoordinationServiceAgent* coordination_service_agent,
       StatusCallback done) = 0;
 
@@ -207,24 +211,23 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   Status Init(const bool log_device_placement, const NodeDef& ndef,
               GraphCollector* graph_collector) override;
 
-  Status Run(
-      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-      std::vector<EagerKernelRet>* outputs,
-      CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
-      const absl::optional<ManagedStackTrace>& stack_trace,
-      CoordinationServiceAgent* coordination_service_agent) override;
+  Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+             std::vector<EagerKernelRet>* outputs,
+             CancellationManager* cancellation_manager,
+             const absl::optional<EagerFunctionParams>& eager_func_params,
+             const absl::optional<ManagedStackTrace>& stack_trace,
+             CoordinationServiceAgent* coordination_service_agent) override;
 
-  void RunAsync(
-      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-      std::vector<EagerKernelRet>* outputs,
-      CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
-      CoordinationServiceAgent* coordination_service_agent,
-      StatusCallback done) override {
+  void RunAsync(ScopedStepContainer* step_container,
+                const EagerKernelArgs& inputs,
+                std::vector<EagerKernelRet>* outputs,
+                CancellationManager* cancellation_manager,
+                const absl::optional<EagerFunctionParams>& eager_func_params,
+                CoordinationServiceAgent* coordination_service_agent,
+                StatusCallback done) override {
     // Trivial async implementation on top of the sync version
     done(Run(step_container, inputs, outputs, cancellation_manager,
-             remote_func_params, {}, coordination_service_agent));
+             eager_func_params, {}, coordination_service_agent));
   }
 
   const OpKernel* kernel() const override { return kernel_.get(); }
@@ -299,21 +302,20 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   Status Init(const bool log_device_placement, const NodeDef& ndef,
               GraphCollector* graph_collector) override;
 
-  Status Run(
-      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-      std::vector<EagerKernelRet>* outputs,
-      CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
-      const absl::optional<ManagedStackTrace>& stack_trace,
-      CoordinationServiceAgent* coordination_service_agent) override;
+  Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+             std::vector<EagerKernelRet>* outputs,
+             CancellationManager* cancellation_manager,
+             const absl::optional<EagerFunctionParams>& eager_func_params,
+             const absl::optional<ManagedStackTrace>& stack_trace,
+             CoordinationServiceAgent* coordination_service_agent) override;
 
-  void RunAsync(
-      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-      std::vector<EagerKernelRet>* outputs,
-      CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
-      CoordinationServiceAgent* coordination_service_agent,
-      StatusCallback done) override;
+  void RunAsync(ScopedStepContainer* step_container,
+                const EagerKernelArgs& inputs,
+                std::vector<EagerKernelRet>* outputs,
+                CancellationManager* cancellation_manager,
+                const absl::optional<EagerFunctionParams>& eager_func_params,
+                CoordinationServiceAgent* coordination_service_agent,
+                StatusCallback done) override;
 
   const OpKernel* kernel() const override { return nullptr; }
 
@@ -333,7 +335,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   std::shared_ptr<FunctionLibraryRuntime::Options> PrepareForRun(
       ScopedStepContainer* step_container, std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      const absl::optional<EagerFunctionParams>& eager_func_params,
       const absl::optional<ManagedStackTrace>& stack_trace,
       CoordinationServiceAgent* coordination_service_agent);
 
