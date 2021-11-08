@@ -46,6 +46,17 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "nnapi_plugin_test",
+    srcs = ["nnapi_plugin_test.cc"],
+    deps = [
+        ":nnapi_plugin",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "gpu_plugin",
     srcs = ["gpu_plugin.cc"],
