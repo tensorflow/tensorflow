@@ -1019,13 +1019,10 @@ GENERATE_DEFAULT_TEST(Sign, DT_COMPLEX128, DT_COMPLEX128, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Sign, DT_INT8, DT_INT8, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Sign, DT_INT16, DT_INT16, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
 
 /// Test `tf.Sin`.
 
