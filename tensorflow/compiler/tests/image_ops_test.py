@@ -21,8 +21,6 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
-
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -227,7 +225,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     x_v = x_np.reshape([-1, 3])
     y_v = np.ndarray(x_v.shape, dtype=x_v.dtype)
     channel_count = x_v.shape[0]
-    for i in xrange(channel_count):
+    for i in range(channel_count):
       r = x_v[i][0]
       g = x_v[i][1]
       b = x_v[i][2]
@@ -347,7 +345,7 @@ class AdjustSaturationTest(xla_test.XLATestCase):
     x_v = x_np.reshape([-1, 3])
     y_v = np.ndarray(x_v.shape, dtype=x_v.dtype)
     channel_count = x_v.shape[0]
-    for i in xrange(channel_count):
+    for i in range(channel_count):
       r = x_v[i][0]
       g = x_v[i][1]
       b = x_v[i][2]

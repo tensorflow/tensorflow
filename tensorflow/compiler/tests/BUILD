@@ -843,7 +843,6 @@ tf_xla_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform_test",
-        "@six_archive//:six",
     ],
 )
 
