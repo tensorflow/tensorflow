@@ -21,6 +21,11 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Parser.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -196,6 +201,39 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(executable,
                         pjrt_client_->Compile(computation, std::move(options)));
+    TF_ASSIGN_OR_RETURN(fingerprint,
+                        pjrt_client_->ExecutableFingerprint(*executable));
+  }
+  auto traceback = Traceback::Get();
+  return std::make_shared<PyExecutable>(
+      shared_from_this(), std::move(executable), std::move(traceback),
+      std::move(fingerprint));
+}
+
+StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
+    absl::string_view mlir_module, CompileOptions options) {
+  std::unique_ptr<PjRtExecutable> executable;
+  absl::optional<std::string> fingerprint;
+  {
+    py::gil_scoped_release gil_release;
+    mlir::MLIRContext context;
+    mlir::OwningModuleRef module;
+    context.loadDialect<mlir::StandardOpsDialect>();
+    context.loadDialect<mlir::mhlo::MhloDialect>();
+    context.loadDialect<mlir::chlo::HloClientDialect>();
+    mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
+    module = mlir::parseSourceString(mlir_module, &context);
+    if (!module) {
+      return diagnostic_handler.ConsumeStatus();
+    }
+    if (failed(module->verify())) {
+      VLOG(1) << "MLIR verification failed.";
+      module->dump();
+      return diagnostic_handler.ConsumeStatus();
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        executable, pjrt_client_->Compile(module.get(), std::move(options)));
     TF_ASSIGN_OR_RETURN(fingerprint,
                         pjrt_client_->ExecutableFingerprint(*executable));
   }

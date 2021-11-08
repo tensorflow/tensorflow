@@ -22,6 +22,7 @@ import numpy as np
 
 from . import ops
 from . import jax_jit
+from . import mlir
 from . import outfeed_receiver
 from . import pmap_lib
 from . import profiler
