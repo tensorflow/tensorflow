@@ -983,6 +983,15 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
                          dtype_error = true, dtype_error = true);
     }
     if (dtype_error || p == nullptr) return false;
+  } else {
+    // Handle the case of empty tensors (N = 0) or tensors with incomplete shape
+    // (N = -1). All other values of `shape.num_elements()` should be invalid by
+    // construction.
+    // Here, we just need to validate that the `proto.dtype()` value is valid.
+    bool dtype_error = false;
+    CASES_WITH_DEFAULT(proto.dtype(), break, dtype_error = true,
+                       dtype_error = true);
+    if (dtype_error) return false;
   }
   shape_ = shape;
   set_dtype(proto.dtype());
