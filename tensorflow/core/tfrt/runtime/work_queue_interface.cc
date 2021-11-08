@@ -25,7 +25,20 @@ class DefaultWorkQueueWrapper final : public WorkQueueInterface {
   explicit DefaultWorkQueueWrapper(
       std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue)
       : work_queue_(std::move(work_queue)) {}
+
+  DefaultWorkQueueWrapper(std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue,
+                          thread::ThreadPoolInterface* intra_thread_pool)
+      : work_queue_(std::move(work_queue)),
+        intra_thread_pool_(intra_thread_pool) {}
+
   ~DefaultWorkQueueWrapper() override = default;
+
+  tensorflow::Status InitializeRequest(
+      tfrt::RequestContextBuilder* request_context_builder,
+      thread::ThreadPoolInterface** intra_op_threadpool) const override {
+    *intra_op_threadpool = intra_thread_pool_;
+    return tensorflow::Status::OK();
+  }
 
  private:
   std::string name() const override { return work_queue_->name(); }
@@ -77,6 +90,7 @@ class DefaultWorkQueueWrapper final : public WorkQueueInterface {
 
  private:
   std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue_;
+  tensorflow::thread::ThreadPoolInterface* intra_thread_pool_ = nullptr;
 };
 
 }  // namespace
@@ -84,6 +98,13 @@ class DefaultWorkQueueWrapper final : public WorkQueueInterface {
 std::unique_ptr<WorkQueueInterface> WrapDefaultWorkQueue(
     std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue) {
   return std::make_unique<DefaultWorkQueueWrapper>(std::move(work_queue));
+}
+
+std::unique_ptr<WorkQueueInterface> WrapDefaultWorkQueue(
+    std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue,
+    thread::ThreadPoolInterface* intra_thread_pool) {
+  return std::make_unique<DefaultWorkQueueWrapper>(std::move(work_queue),
+                                                   intra_thread_pool);
 }
 
 }  // namespace tfrt_stub

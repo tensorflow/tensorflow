@@ -2947,7 +2947,7 @@ LogicalResult ConvertConstantOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  ElementsAttr attr = tfl_const_op.valueAttr().dyn_cast<ElementsAttr>();
+  ElementsAttr attr = tfl_const_op.getValueAttr().dyn_cast<ElementsAttr>();
 
   auto e_type = output_type.getElementType();
   // TOSA only support up to 48-bits

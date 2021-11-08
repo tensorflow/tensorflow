@@ -4404,17 +4404,20 @@ tensorflow::StatusOr<PyObject*> MakeAttrsType(PyObject* object,
 
 tensorflow::StatusOr<PyObject*> EncodeGenericObject(PyObject* object) {
   tensorflow::Safe_PyObjectPtr ref(PyWeakref_NewRef(object, nullptr));
+  std::string type_name = "WeakrefType";
   if (ref == nullptr) {
+    // Happens if the type can not be weakly referenceed (such as int).
+    // https://docs.python.org/3/library/weakref.html
     PyErr_Clear();
     Py_INCREF(object);
     ref = tensorflow::make_safe(object);
+    type_name = "GenericType";
   }
 
-  PyObject* generic_type =
-      tensorflow::swig::GetRegisteredPyObject("GenericType");
+  PyObject* type_class = tensorflow::swig::GetRegisteredPyObject(type_name);
 
   tensorflow::Safe_PyObjectPtr call_args(Py_BuildValue("(O)", ref.get()));
-  PyObject* tracetype = PyObject_CallObject(generic_type, call_args.get());
+  PyObject* tracetype = PyObject_CallObject(type_class, call_args.get());
   if (PyErr_Occurred()) {
     return tensorflow::errors::InvalidArgument(
         "Python object could not be represented through the generic tracing "

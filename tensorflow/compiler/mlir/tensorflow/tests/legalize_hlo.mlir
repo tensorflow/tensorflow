@@ -2549,6 +2549,35 @@ func @convert_argmin(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4
   return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
 }
 
+// CHECK-LABEL:   func @convert_argmin_i16(
+// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<2xi16>) -> (tensor<i16>, tensor<i32>) {
+// CHECK:           %[[VAL_9:.*]] = "tf.Const"{{.*}}value = dense<0> : tensor<1xi64>
+// CHECK:           %[[VAL_10:.*]] = "tf.Min"(%[[VAL_0]], %[[VAL_9]]) {keep_dims = false} : {{.*}} -> tensor<i16>
+// CHECK:           %[[VAL_11:.*]] = "tf.ArgMin"(%[[VAL_0]], %[[VAL_9]]) : {{.*}} -> tensor<i32>
+// CHECK:           return %[[VAL_10]], %[[VAL_11]]
+// CHECK:         }
+func @convert_argmin_i16(%arg0: tensor<2xi16>) -> (tensor<i16>, tensor<i32>) {
+  %0 = mhlo.constant dense<false> : tensor<i1>
+  %1 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<2xi32>
+  %2 = mhlo.constant dense<32767> : tensor<i16>
+  %3 = mhlo.constant dense<0> : tensor<i32>
+  %4:2 = "mhlo.reduce"(%arg0, %1, %2, %3) ( {
+  ^bb0(%arg1: tensor<i16>, %arg2: tensor<i32>, %arg3: tensor<i16>, %arg4: tensor<i32>):  // no predecessors
+    %11 = mhlo.constant dense<false> : tensor<i1>
+    %12 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = "LT"} : (tensor<i16>, tensor<i16>) -> tensor<i1>
+    %13 = "mhlo.select"(%12, %arg1, %arg3) : (tensor<i1>, tensor<i16>, tensor<i16>) -> tensor<i16>
+    %14 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = "EQ"} : (tensor<i16>, tensor<i16>) -> tensor<i1>
+    %15 = "mhlo.compare"(%arg2, %arg4) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %16 = mhlo.and %14, %15 : tensor<i1>
+    %17 = mhlo.or %12, %16 : tensor<i1>
+    %18 = "mhlo.select"(%17, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+    %19 = "mhlo.tuple"(%13, %18) {xla_shape = "(s16[], s32[])"} : (tensor<i16>, tensor<i32>) -> tuple<tensor<i16>, tensor<i32>>
+    "mhlo.return"(%19) : (tuple<tensor<i16>, tensor<i32>>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<2xi16>, tensor<2xi32>, tensor<i16>, tensor<i32>) -> (tensor<i16>, tensor<i32>)
+  return %4#0, %4#1 : tensor<i16>, tensor<i32>
+}
+
+
 // CHECK-LABEL: func @convert_argmin_constant(
 // CHECK-SAME:                                        %[[VAL_0:.*]]: tensor<2x2x4xf32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0x7F800000> : tensor<f32>} : () -> tensor<f32>

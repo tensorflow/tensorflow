@@ -103,8 +103,7 @@ class CategoricalTest(xla_test.XLATestCase):
       self._testRngIsNotConstant(rng, dtype, output_dtype)
 
   @test.disable_with_predicate(
-      pred=test.is_built_with_rocm,
-      skip_message="Test fails on ROCm.")
+      pred=test.is_built_with_rocm, skip_message="Test fails on ROCm.")
   def testCategoricalIsInRange(self):
     for dtype in self.float_types:
       for output_dtype in self.output_dtypes():

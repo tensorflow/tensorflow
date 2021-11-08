@@ -191,3 +191,20 @@ def DetensorizeLinalg : FunctionPass<"tf-cpurt-detensorize-linalg"> {
   let constructor = "tensorflow::CreateDetensorizeLinalgPass()";
   let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
+
+def MathApproximation : FunctionPass<"tf-cpurt-math-approximation"> {
+  let summary = "Approximate math operations with an implementation meant to "
+                "match Eigen's results. This is a useful property to have when "
+                "comparing results from compiled TF code vs TF1 and TFRT, "
+                "which use Eigen. "
+                "TODO: evaluate the accuracy of these math approximations vs. "
+                "those in upstream MLIR, and merge these upstream if they're "
+                "more accurate.";
+  let constructor = "tensorflow::CreateMathApproximationPass()";
+  let options = [
+   ListOption<"oplist", "oplist", "std::string",
+              "List of math operations to be approximated. Use 'all' to select "
+              "all supported math operations.",
+              "llvm::cl::MiscFlags::CommaSeparated">,
+  ];
+}

@@ -21,12 +21,8 @@ source tensorflow/tools/ci_build/release/common.sh
 # Update bazel
 install_bazelisk
 
-# Create and activate venv for TF build dependencies
-python3.9 -m venv ~/.venv/tf
-source ~/.venv/tf/bin/activate
-
-# Install pip package dependencies in virtual env
-install_ubuntu_pip_venv_deps
+# Setup virtual environment and install dependencies
+setup_venv_ubuntu python3.9
 
 tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-no_oss_py39,-v1only"
 
@@ -46,6 +42,5 @@ bazel test \
   -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
 test_xml_summary_exit
 
-# Deactivate virtual environment and clean up
-deactivate
-rm -rf ~/.venv/tf
+# Remove and cleanup virtual environment
+remove_venv_ubuntu

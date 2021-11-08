@@ -99,7 +99,7 @@ TensorViewOr TfInvokeContext::GetOutput(const int idx,
   if (!status.ok()) return ToAbslStatus(status);
   SH_ASSIGN_OR_RETURN(const TfTensorView& tensor_view,
                       TensorView::New(output_t));
-  return absl::make_unique<TfTensorView>(tensor_view);
+  return absl::make_unique<TfTensorView>(std::move(tensor_view));
 }
 
 int TfInvokeContext::NumInputs() const { return context_->num_inputs(); }

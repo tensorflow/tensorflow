@@ -45,6 +45,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "IoU"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "KLDivergence"
     mtype: "<type \'type\'>"
   }

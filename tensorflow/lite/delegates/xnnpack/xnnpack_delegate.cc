@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
+#include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
@@ -197,6 +198,11 @@ class Subgraph {
         default:
           // All other operators: process all inputs
           for (int k = 0; k < node->inputs->size; k++) {
+            if (registration->builtin_code == kTfLiteBuiltinTransposeConv &&
+                k == 0) {
+              // Ignore the output size parameter (see above).
+              continue;
+            }
             const int t = node->inputs->data[k];
             if (t >= 0) {
               tensors[t] = t;
@@ -598,6 +604,84 @@ class Subgraph {
                                  static_cast<int>(padding), node_index);
         return kTfLiteError;
     }
+  }
+
+  static TfLiteStatus CalculateTransposeConvPaddings(
+      TfLiteContext* context, TfLitePadding padding, int input_height,
+      int input_width, int kernel_height, int kernel_width, int dilation_height,
+      int dilation_width, int stride_height, int stride_width, int node_index,
+      int output_height, int output_width, int* padding_top,
+      int* padding_bottom, int* padding_left, int* padding_right,
+      int* adjustment_height, int* adjustment_width) {
+    const int effective_kernel_height =
+        (kernel_height - 1) * dilation_height + 1;
+    const int effective_kernel_width = (kernel_width - 1) * dilation_width + 1;
+    switch (padding) {
+      case kTfLitePaddingValid: {
+        if (effective_kernel_height > output_height ||
+            effective_kernel_width > output_width) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              context,
+              "output smaller than effective kernel dimensions unsupported "
+              "with VALID padding in TRANSPOSE_CONV node #%d: "
+              "effective kernel size %dx%d (HxW), output %dx%d",
+              node_index, effective_kernel_height, effective_kernel_width,
+              output_height, output_width);
+          return kTfLiteError;
+        }
+
+        *padding_top = *padding_bottom = *padding_left = *padding_right = 0;
+        *adjustment_height = (output_height - kernel_height) % stride_height;
+        *adjustment_width = (output_width - kernel_width) % stride_width;
+        break;
+      }
+      case kTfLitePaddingSame: {
+        int expected_input_height = 0;
+        int expected_input_width = 0;
+        TfLitePaddingValues paddings = ComputePaddingHeightWidth(
+            stride_height, stride_width, dilation_height, dilation_width,
+            output_height, output_width, kernel_height, kernel_width, padding,
+            &expected_input_height, &expected_input_width);
+        if (expected_input_height != input_height ||
+            expected_input_width != input_width) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              context,
+              "inconsistent combination of parameters for TRANSPOSE_CONV op "
+              "in node #%d: computed input size %dx%d (HxW), actual %dx%d",
+              node_index, expected_input_height, expected_input_width,
+              input_height, input_width);
+          return kTfLiteError;
+        }
+
+        // Note: In the derivation of the adjustments below, it was assumed that
+        //       `effective_kernel_...` >= `stride_...` so that `ComputePadding`
+        //       in TFLite doesn't encounter a negative value clamped to zero.
+        if (kernel_height < stride_height || kernel_width < stride_width) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              context,
+              "strides larger than effective kernel dimensions unsupported in "
+              "TRANSPOSE_CONV node #%d: kernel size %dx%d (HxW), strides %dx%d",
+              node_index, effective_kernel_height, effective_kernel_width,
+              stride_height, stride_width);
+          return kTfLiteError;
+        }
+
+        *padding_top = paddings.height;
+        *padding_bottom = paddings.height + paddings.height_offset;
+        *adjustment_height = 0;
+        *padding_left = paddings.width;
+        *padding_right = paddings.width + paddings.width_offset;
+        *adjustment_width = 0;
+        break;
+      }
+      default:
+        TF_LITE_MAYBE_KERNEL_LOG(context,
+                                 "invalid padding mode (%d) in node #%d",
+                                 static_cast<int>(padding), node_index);
+        return kTfLiteError;
+    }
+
+    return kTfLiteOk;
   }
 
   static TfLiteStatus ConvertActivationToOutputRange(
@@ -1521,6 +1605,14 @@ class Subgraph {
 
         return VisitSubNode(subgraph, logging_context, node_index, node,
                             context->tensors, sub_params, xnnpack_tensors);
+      }
+      case kTfLiteBuiltinTransposeConv: {
+        const TfLiteTransposeConvParams* deconv_params =
+            static_cast<const TfLiteTransposeConvParams*>(node->builtin_data);
+
+        return VisitTransposeConvNode(subgraph, logging_context, node_index,
+                                      node, context->tensors, deconv_params,
+                                      quasi_static_tensors, xnnpack_tensors);
       }
       case kTfLiteBuiltinCustom: {
         if (strcmp(registration->custom_name, "Convolution2DTransposeBias") ==
@@ -2604,6 +2696,14 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
+    const int* input_tensor_dims = input_tensor.dims->data;
+    const int input_height = input_tensor_dims[1];
+    const int input_width = input_tensor_dims[2];
+
+    const int* output_tensor_dims = output_tensor.dims->data;
+    const int output_height = output_tensor_dims[1];
+    const int output_width = output_tensor_dims[2];
+
     const int output_channels = filter_tensor.dims->data[0];
     const int kernel_height = filter_tensor.dims->data[1];
     const int kernel_width = filter_tensor.dims->data[2];
@@ -2612,19 +2712,30 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckMediaPipeTransposedConvolutionParams(
         logging_context, deconv_params, node_index));
 
-    uint32_t flags = 0;
-    TF_LITE_ENSURE_STATUS(CalculatePadding(
-        logging_context, deconv_params->padding, &flags, node_index));
+    int padding_top = 0;
+    int padding_bottom = 0;
+    int padding_left = 0;
+    int padding_right = 0;
+    int adjustment_height = 0;
+    int adjustment_width = 0;
+    TF_LITE_ENSURE_STATUS(CalculateTransposeConvPaddings(
+        logging_context, deconv_params->padding, input_height, input_width,
+        kernel_height, kernel_width, /*dilation_height=*/1,
+        /*dilation_width=*/1, deconv_params->stride_height,
+        deconv_params->stride_width, node_index, output_height, output_width,
+        &padding_top, &padding_bottom, &padding_left, &padding_right,
+        &adjustment_height, &adjustment_width));
 
     if (subgraph != nullptr) {
       const xnn_status status = xnn_define_deconvolution_2d(
           subgraph,
-          /*padding_top=*/0,
-          /*padding_right=*/0,
-          /*padding_bottom=*/0,
-          /*padding_left=*/0,
-          /*adjustment_height=*/0,
-          /*adjustment_width=*/0, static_cast<uint32_t>(kernel_height),
+          /*padding_top=*/padding_top,
+          /*padding_right=*/padding_right,
+          /*padding_bottom=*/padding_bottom,
+          /*padding_left=*/padding_left,
+          /*adjustment_height=*/adjustment_height,
+          /*adjustment_width=*/adjustment_width,
+          static_cast<uint32_t>(kernel_height),
           static_cast<uint32_t>(kernel_width),
           static_cast<uint32_t>(deconv_params->stride_height),
           static_cast<uint32_t>(deconv_params->stride_width),
@@ -2638,7 +2749,8 @@ class Subgraph {
           /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*filter_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*bias_id=*/xnnpack_tensors[node->inputs->data[2]],
-          /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+          /*flags=*/0);
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(
             logging_context,
@@ -3444,6 +3556,161 @@ class Subgraph {
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate SUB node #%d",
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitTransposeConvNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const TfLiteTransposeConvParams* deconv_params,
+      const std::unordered_set<int>& quasi_static_tensors,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node,
+                                 /*min_num_inputs=*/3, /*max_num_inputs=*/4,
+                                 /*expected_num_outputs=*/1, node_index));
+    const bool use_bias = node->inputs->size >= 4;
+
+    const int output_shape_tensor_index = node->inputs->data[0];
+    const TfLiteTensor& output_shape_tensor =
+        tensors[output_shape_tensor_index];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorType(logging_context, output_shape_tensor, kTfLiteInt32,
+                        output_shape_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckShapeTensorShape(logging_context, output_shape_tensor,
+                              output_shape_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorStaticAllocation(logging_context, output_shape_tensor,
+                                    output_shape_tensor_index, node_index));
+    const int output_shape_dims = output_shape_tensor.dims->data[0];
+    if (output_shape_dims != 4) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported number of output shape dimensions (%d) in node #%d: "
+          "4 dimensions expected",
+          output_shape_dims, node_index);
+      return kTfLiteError;
+    }
+
+    const int filter_tensor_index = node->inputs->data[1];
+    const TfLiteTensor& filter_tensor = tensors[filter_tensor_index];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+        logging_context, filter_tensor, filter_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, filter_tensor, 4,
+                                           filter_tensor_index));
+    if (quasi_static_tensors.count(filter_tensor_index) == 0) {
+      TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+          logging_context, filter_tensor, filter_tensor_index, node_index));
+    }
+
+    const int input_tensor_index = node->inputs->data[2];
+    const TfLiteTensor& input_tensor = tensors[input_tensor_index];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+        logging_context, input_tensor, input_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorShape(logging_context, input_tensor, 4, input_tensor_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, input_tensor_index, node_index));
+
+    uint32_t xnnpack_tensor_bias = XNN_INVALID_VALUE_ID;  // "No bias".
+    if (use_bias) {
+      const int bias_tensor_index = node->inputs->data[3];
+      if (bias_tensor_index != kTfLiteOptionalTensor) {
+        const TfLiteTensor& bias_tensor = tensors[bias_tensor_index];
+        TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQInt32Type(
+            logging_context, bias_tensor, bias_tensor_index, node_index));
+        TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
+                                               bias_tensor_index));
+        if (quasi_static_tensors.count(bias_tensor_index) == 0) {
+          TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+              logging_context, bias_tensor, bias_tensor_index, node_index));
+        }
+        if (subgraph != nullptr) {
+          xnnpack_tensor_bias = xnnpack_tensors[bias_tensor_index];
+        }
+      }
+    }
+
+    const int output_tensor_index = node->outputs->data[0];
+    const TfLiteTensor& output_tensor = tensors[output_tensor_index];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+        logging_context, output_tensor, output_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 4,
+                                           output_tensor_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, output_tensor_index, node_index));
+
+    const int* input_tensor_dims = input_tensor.dims->data;
+    const int input_height = input_tensor_dims[1];
+    const int input_width = input_tensor_dims[2];
+
+    const int* filter_tensor_dims = filter_tensor.dims->data;
+    const int output_channels = filter_tensor_dims[0];
+    const int kernel_height = filter_tensor_dims[1];
+    const int kernel_width = filter_tensor_dims[2];
+    const int input_channels = filter_tensor_dims[3];
+
+    const int32_t* output_shape = GetTensorData<int32_t>(&output_shape_tensor);
+    const int output_height = output_shape[1];
+    const int output_width = output_shape[2];
+    const int output_tensor_channels = output_shape[3];
+    if (output_channels != output_tensor_channels) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "transpose convolution kernel output channel dimension (%d) "
+          "doesn't match output shape channel dimension (%d) in node #%d: "
+          "4 dimensions expected",
+          output_channels, output_tensor_channels, node_index);
+    }
+
+    int padding_top = 0;
+    int padding_bottom = 0;
+    int padding_left = 0;
+    int padding_right = 0;
+    int adjustment_height = 0;
+    int adjustment_width = 0;
+    TF_LITE_ENSURE_STATUS(CalculateTransposeConvPaddings(
+        logging_context, deconv_params->padding, input_height, input_width,
+        kernel_height, kernel_width, /*dilation_height=*/1,
+        /*dilation_width=*/1, deconv_params->stride_height,
+        deconv_params->stride_width, node_index, output_height, output_width,
+        &padding_top, &padding_bottom, &padding_left, &padding_right,
+        &adjustment_height, &adjustment_width));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_deconvolution_2d(
+          subgraph,
+          /*padding_top=*/padding_top,
+          /*padding_right=*/padding_right,
+          /*padding_bottom=*/padding_bottom,
+          /*padding_left=*/padding_left,
+          /*adjustment_height=*/adjustment_height,
+          /*adjustment_width=*/adjustment_width,
+          static_cast<uint32_t>(kernel_height),
+          static_cast<uint32_t>(kernel_width),
+          static_cast<uint32_t>(deconv_params->stride_height),
+          static_cast<uint32_t>(deconv_params->stride_width),
+          /*dilation_height=*/1,
+          /*dilation_width=*/1,
+          /*groups=*/1,
+          /*group_input_channels=*/input_channels,
+          /*group_output_channels=*/output_channels,
+          /*output_min=*/-std::numeric_limits<float>::infinity(),
+          /*output_max=*/+std::numeric_limits<float>::infinity(),
+          /*input_id=*/xnnpack_tensors[input_tensor_index],
+          /*filter_id=*/xnnpack_tensors[filter_tensor_index],
+          /*bias_id=*/xnnpack_tensor_bias,
+          /*output_id=*/xnnpack_tensors[output_tensor_index],
+          /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate TransposeConv node #%d",
                            node_index);
         return kTfLiteError;
       }

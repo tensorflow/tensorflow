@@ -631,8 +631,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testSetGlobalGeneratorBadWithDefun(self):
-    """Demonstrates that set_global_generator don't work properly with defun.
-    """
+    """Demonstrates set_global_generator does not affect compiled tf.function."""
     shape = (3,)
 
     @def_function.function
@@ -640,11 +639,11 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       return random.get_global_generator().normal(shape)
 
     random.set_global_generator(random.Generator.from_seed(50))
-    with self.assertRaisesWithPredicateMatch(
-        errors.NotFoundError, "Resource .+ does not exist"):
-      _ = f()
-      random.set_global_generator(random.Generator.from_seed(50))
-      _ = f()
+    samples = f()
+    # Resetting global generator has no effect to the compiled tf.function.
+    random.set_global_generator(random.Generator.from_seed(50))
+    # New samples are returned.
+    self.assertNotAllEqual(samples, f())
 
   @test_util.run_v2_only
   def testFunctionArg(self):

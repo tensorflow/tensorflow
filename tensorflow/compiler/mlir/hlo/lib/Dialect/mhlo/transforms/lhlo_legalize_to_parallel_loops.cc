@@ -198,7 +198,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
   using OpConversionPattern<lmhlo::ReduceOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::ReduceOp reduce_op, ArrayRef<Value> /*args*/,
+      lmhlo::ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     // TODO(b/183977252) : Handle variadic ReduceOp/ReduceWindowOp
     if (reduce_op.out().size() != 1) return failure();
@@ -369,7 +369,7 @@ class ReduceWindowOpConverter
   using OpConversionPattern<lmhlo::ReduceWindowOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::ReduceWindowOp reduce_window_op, ArrayRef<Value> /*args*/,
+      lmhlo::ReduceWindowOp reduce_window_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     // TODO(b/183977252) : Handle variadic ReduceOp/ReduceWindowOp
     if (reduce_window_op.out().size() != 1) return failure();
@@ -496,7 +496,7 @@ class SelectAndScatterOpConverter
   using OpConversionPattern<lmhlo::SelectAndScatterOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::SelectAndScatterOp s_and_s_op, ArrayRef<Value> /*args*/,
+      lmhlo::SelectAndScatterOp s_and_s_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = s_and_s_op.getLoc();
     InitializeOutput(s_and_s_op, &rewriter);

@@ -304,13 +304,12 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   config.output_type = result_shape.element_type();
   config.kind = desc.kind;
 
-  // The third field is scratch size stored from conv_algorithm_picker
+  // The second field is scratch size stored from conv_algorithm_picker
   // The operand is added to the shape field of the conv instruction
   // in GpuConvAlgorithmPicker::RunOnInstruction() call.
   config.algorithm = se::dnn::AlgorithmConfig(
-      se::dnn::AlgorithmDesc(backend_config.algorithm(),
-                             backend_config.tensor_ops_enabled()),
-      desc.scratch_size);
+      se::dnn::AlgorithmDesc(backend_config.algorithm()), desc.scratch_size);
+
   config.conv_result_scale = backend_config.conv_result_scale();
 
   switch (config.kind) {
@@ -349,10 +348,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   const Window& window = desc.window;
   const ConvolutionDimensionNumbers& dnums = desc.dnums;
 
-  VLOG(3) << "Convolution Algorithm: "
-          << config.algorithm.algorithm()->algo_id();
-  VLOG(3) << "tensor_ops_enabled: "
-          << config.algorithm.algorithm()->tensor_ops_enabled();
+  VLOG(3) << "Convolution Algorithm: " << config.algorithm.ToString();
   VLOG(3) << "Convolution kind: " << CudnnConvKindToString(config.kind);
   VLOG(3) << "input shape: "
           << ShapeUtil::HumanStringWithLayout(config.input_shape);

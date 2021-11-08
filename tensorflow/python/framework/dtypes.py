@@ -242,7 +242,7 @@ tf_export("dtypes.uint16", "uint16").export_constant(__name__, "uint16")
 
 uint32 = DType(types_pb2.DT_UINT32)
 doc_typealias.document(
-    obj=uint16,
+    obj=uint32,
     doc="Unsigned 32-bit (dword) integer.")
 tf_export("dtypes.uint32", "uint32").export_constant(__name__, "uint32")
 
@@ -718,4 +718,5 @@ def as_dtype(type_value):
   if isinstance(type_value, _dtypes.DType):
     return _INTERN_TABLE[type_value.as_datatype_enum]
 
-  raise TypeError(f"Cannot convert value {type_value!r} to a TensorFlow DType.")
+  raise TypeError(f"Cannot convert the argument `type_value`: {type_value!r} "
+                  "to a TensorFlow DType.")

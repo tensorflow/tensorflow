@@ -2143,6 +2143,14 @@ func @convolution(%arg0: tensor<2x2x3x4xf32>, %arg1: tensor<3x5x5x3xf32>) -> ten
 
 // -----
 
+// CHECK: module
+// CHECK: mhlo.conv = #mhlo.conv<[b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f]>
+module attributes {
+  mhlo.conv = #mhlo.conv<[b, 1, 0, f]x[0, 1, i, o]->[b, 0, 1, f]>
+} {}
+
+// -----
+
 module attributes {
   // expected-error@+1{{Unexpected dimension c, expecting b, f}}
   mhlo.conv = #mhlo.conv<[c, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>

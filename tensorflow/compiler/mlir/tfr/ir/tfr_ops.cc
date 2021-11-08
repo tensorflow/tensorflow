@@ -702,7 +702,7 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
       return failure();
     }
     const double out_scale =
-        out_scale_op.value().cast<FloatAttr>().getValueAsDouble();
+        out_scale_op.getValue().cast<FloatAttr>().getValueAsDouble();
 
     auto in_scales_op =
         scale_factor_op.in_scales().getDefiningOp<BuildListOp>();

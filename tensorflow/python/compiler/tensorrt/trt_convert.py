@@ -232,7 +232,7 @@ def _check_trt_version_compatibility():
         "The {version_type} version of TensorRT: `{trt_version}` has now "
         "been removed. Please upgrade to TensorRT 7 or more recent.".format(
             version_type=version_type,
-            trt_version=trt_utils.versionTupleToString(trt_version)))
+            trt_version=trt_utils.version_tuple_to_string(trt_version)))
 
     raise RuntimeError("Incompatible %s TensorRT versions" % version_type)
 
@@ -251,16 +251,16 @@ def _check_trt_version_compatibility():
         "compilation and runtime.\n"
         "\t-TensorRT does not support forward compatibility. The loaded "
         "version has to be equal or more recent than the linked version.",
-        trt_utils.versionTupleToString(loaded_version),
-        trt_utils.versionTupleToString(linked_version))
+        trt_utils.version_tuple_to_string(loaded_version),
+        trt_utils.version_tuple_to_string(linked_version))
     raise RuntimeError("Incompatible TensorRT major version")
 
   elif loaded_version != linked_version:
     logging.info(
         "Loaded TensorRT %s and linked TensorFlow against TensorRT %s. This is "
         "supported because TensorRT minor/patch upgrades are backward "
-        "compatible.", trt_utils.versionTupleToString(loaded_version),
-        trt_utils.versionTupleToString(linked_version))
+        "compatible.", trt_utils.version_tuple_to_string(loaded_version),
+        trt_utils.version_tuple_to_string(linked_version))
 
 
 def _get_tensorrt_rewriter_config(conversion_params,

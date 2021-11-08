@@ -320,7 +320,8 @@ Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
+/* static */
+int64_t HloCostAnalysis::GetDotFlops(const HloInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
   const Shape& dot_shape = dot->shape();
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
@@ -331,8 +332,11 @@ Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
     reduction_width *= lhs_shape.dimensions(dim);
   }
   // Each output element requires reduction_width FMA operations.
-  current_properties_[kFlopsKey] =
-      kFmaFlops * ShapeUtil::ElementsIn(dot_shape) * reduction_width;
+  return kFmaFlops * ShapeUtil::ElementsIn(dot_shape) * reduction_width;
+}
+
+Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
+  current_properties_[kFlopsKey] = GetDotFlops(dot);
   return Status::OK();
 }
 
@@ -567,7 +571,9 @@ Status HloCostAnalysis::HandleAddDependency(
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
+/* static */
+int64_t HloCostAnalysis::GetConvolutionFlops(
+    const HloInstruction* convolution) {
   auto lhs = convolution->operand(0);
   auto rhs = convolution->operand(1);
   Window window = convolution->window();
@@ -688,7 +694,11 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
       (input_feature / convolution->feature_group_count()) * output_feature *
       (batch / convolution->batch_group_count()) *
       Product(valid_position_counts);
-  current_properties_[kFlopsKey] = fma_count * kFmaFlops;
+  return fma_count * kFmaFlops;
+}
+
+Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
+  current_properties_[kFlopsKey] = GetConvolutionFlops(convolution);
   return Status::OK();
 }
 

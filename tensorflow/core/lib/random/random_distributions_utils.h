@@ -43,6 +43,25 @@ PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32_t x) {
   return result - 1.0f;
 }
 
+// Helper function to convert two 32-bit integers to a double between [0..1).
+PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32_t x0, uint32_t x1) {
+  // IEEE754 doubles are formatted as follows (MSB first):
+  //    sign(1) exponent(11) mantissa(52)
+  // Conceptually construct the following:
+  //    sign == 0
+  //    exponent == 1023  -- an excess 1023 representation of a zero exponent
+  //    mantissa == 52 random bits
+  const uint32_t mhi = x0 & 0xfffffu;  // upper 20 bits of mantissa
+  const uint32_t mlo = x1;             // lower 32 bits of mantissa
+  const uint64_t man = (static_cast<uint64_t>(mhi) << 32) | mlo;  // mantissa
+  const uint64_t exp = static_cast<uint64_t>(1023);
+  const uint64_t val = (exp << 52) | man;
+  // Assumes that endian-ness is same for double and uint64_t.
+  double result;
+  memcpy(&result, &val, sizeof(val));
+  return result - 1.0;
+}
+
 // Helper function to convert two 32-bit uniform integers to two floats
 // under the unit normal distribution.
 PHILOX_DEVICE_INLINE

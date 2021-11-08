@@ -30,14 +30,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 
-@tf_test_util.with_eager_op_as_function
 @combinations.generate(
     combinations.combine(
         strategy=[

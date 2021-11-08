@@ -44,9 +44,9 @@ func @test_transpose_conv2d(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<1x1x16x8
 
 // CHECK-LABEL: test_add
 // CHECK: %[[VAR0:.*]] = "tosa.add"(%arg0, %arg1)
-func @test_add(%arg0: tensor<13x21x1xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
-  %2 = "tf.Add"(%arg0, %arg1)   : (tensor<13x21x1xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
-  return %2 : tensor<13x21x3xf32>
+func @test_add(%arg0: tensor<13x21x1xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %2 = "tf.Add"(%arg0, %arg1)   : (tensor<13x21x1xf32>, tensor<13x21x3xf32>) -> tensor<*xf32>
+  return %2 : tensor<*xf32>
 }
 
 // -----

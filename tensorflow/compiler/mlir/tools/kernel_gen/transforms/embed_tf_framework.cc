@@ -131,9 +131,9 @@ struct AssertOpConverter : public OpConversionPattern<AssertOp> {
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
-    rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, adaptor.arg(),
+    rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, adaptor.getArg(),
                                             ErrorCode::INVALID_ARGUMENT,
-                                            adaptor.msg().getValue());
+                                            adaptor.getMsg().getValue());
     return success();
   }
 };

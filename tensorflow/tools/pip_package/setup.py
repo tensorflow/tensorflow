@@ -97,11 +97,9 @@ REQUIRED_PACKAGES = [
     # These need to be in sync with the existing TF version
     # They are updated during the release process
     # When updating these, please also update the nightly versions below
-    'tensorboard ~= 2.6',
-    'tensorflow_estimator ~= 2.7.0 < 2.8',
-    # Keras release is not backward compatible with old tf release, and we have
-    # to make the version aligned between TF and Keras.
-    'keras >= 2.7.0rc0, < 2.8',
+    'tensorboard >= 2.7, < 2.8',
+    'tensorflow_estimator >= 2.7.0, < 2.8',
+    'keras >= 2.7.0, < 2.8',
     'tensorflow-io-gcs-filesystem >= 0.21.0',
 ]
 
@@ -114,7 +112,7 @@ REQUIRED_PACKAGES = [
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.7.0.a'
+      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.8.0.a'
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.8.0.dev'
     elif 'keras' in pkg and 'keras_preprocessing' not in pkg:

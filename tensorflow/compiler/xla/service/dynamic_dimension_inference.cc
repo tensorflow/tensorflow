@@ -135,6 +135,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleElementwiseUnary(HloInstruction* hlo) override;
 
+  Status HandleElementwiseNary(HloInstruction* hlo);
+
   Status HandleElementwiseBinary(HloInstruction* hlo) override;
 
   Status HandleClamp(HloInstruction* hlo) override;
@@ -152,6 +154,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   Status HandleGather(HloInstruction* hlo) override;
 
   Status HandleScatter(HloInstruction* hlo) override;
+
+  Status HandleMap(HloInstruction* hlo) override;
 
   Status HandleDomain(HloInstruction* hlo) override;
 
@@ -825,7 +829,7 @@ Status DynamicDimensionInferenceVisitor::HandleSelect(HloInstruction* hlo) {
   return PassThroughDynamicDimension(hlo);
 }
 
-Status DynamicDimensionInferenceVisitor::HandleElementwiseBinary(
+Status DynamicDimensionInferenceVisitor::HandleElementwiseNary(
     HloInstruction* hlo) {
   HloComputation* comp = hlo->parent();
   return ForEachOperandDynamicDimension(
@@ -847,6 +851,11 @@ Status DynamicDimensionInferenceVisitor::HandleElementwiseBinary(
         }
         return Status::OK();
       });
+}
+
+Status DynamicDimensionInferenceVisitor::HandleElementwiseBinary(
+    HloInstruction* hlo) {
+  return HandleElementwiseNary(hlo);
 }
 
 Status DynamicDimensionInferenceVisitor::HandleClamp(HloInstruction* hlo) {
@@ -1495,6 +1504,10 @@ Status DynamicDimensionInferenceVisitor::HandleConditional(
   SetVisited(*new_conditional);
   SetVisited(*new_conditional_extracted);
   return Status::OK();
+}
+
+Status DynamicDimensionInferenceVisitor::HandleMap(HloInstruction* hlo) {
+  return HandleElementwiseNary(hlo);
 }
 
 Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {

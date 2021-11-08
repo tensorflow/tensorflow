@@ -14,8 +14,10 @@
 # ==============================================================================
 """Tests for denormal handling."""
 
-import numpy as np
+import os
 import platform
+
+import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
@@ -57,4 +59,14 @@ class DenormalTest(test.TestCase):
 
 
 if __name__ == "__main__":
+  # When eager_op_as_function mode is enabled xla auto-clustering kicks in.
+  # By default xla does not enable flush-to-zero semantics in the GPU backend.
+  # This env flag has to be set before the test is setup. Setting it using the
+  # decorator does not seem to propagate the flag to all required locations.
+  original_xla_flags = os.environ.get("XLA_FLAGS")
+  new_xla_flags = "--xla_gpu_ftz=true"
+  if original_xla_flags:
+    new_xla_flags = new_xla_flags + " " + original_xla_flags
+  os.environ["XLA_FLAGS"] = new_xla_flags
+
   test.main()

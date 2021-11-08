@@ -74,5 +74,18 @@ message TensorTracerReport {
     bool is_traced = 4;
     // Detailed explanation why the tensor is traced or not.
     string explanation = 5;
+    // Detailed stack of operation
+    Stack op_stack_info = 6;
+
+    message Stack {
+      // Function names from stack
+      repeated string stack_fn_names = 1;
+      // Line in stack
+      repeated string stack_lines = 2;
+      // Filenames from stack
+      repeated string stack_filenames = 3;
+      // Line number in file from stack
+      repeated int32 stack_linenos = 4;
+    }
   }
 }

@@ -280,6 +280,13 @@ int64_t RootDataset::CardinalityInternal() const {
   return input_->Cardinality();
 }
 
+Status RootDataset::Get(OpKernelContext* ctx, int64 index,
+                        std::vector<Tensor>* out_tensors) const {
+  std::vector<const DatasetBase*> inputs;
+  TF_RETURN_IF_ERROR(this->InputDatasets(&inputs));
+  return inputs[0]->Get(ctx, index, out_tensors);
+}
+
 Status RootDataset::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
   inputs->push_back(input_);

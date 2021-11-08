@@ -37,6 +37,7 @@ from tensorflow.python.framework import memory_checker
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1007,8 +1008,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(3.0, self.evaluate(v.value()))
     self.evaluate(resource_variable_ops.destroy_resource_op(v.handle))
-    with self.assertRaises(errors.FailedPreconditionError):
-      self.evaluate(v.value())
+    if context.executing_eagerly():
+      # eager mode creates ref-counting variable handles unaffected by
+      # DestroyResourceOp.
+      self.assertEqual(3.0, self.evaluate(v.value()))
+    else:
+      with self.assertRaises(errors.FailedPreconditionError):
+        self.evaluate(v.value())
     # Handle to a resource not actually created.
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
     # Should raise no exception
@@ -1273,7 +1279,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with context.eager_mode():
       var = resource_variable_ops.ResourceVariable(initial_value=1.0,
                                                    name="var8")
-      var_handle = var._handle
+      var_handle = test_ops.make_weak_resource_handle(var._handle)
       del var
       with self.assertRaisesRegex(errors.NotFoundError,
                                   r"Resource .* does not exist."):

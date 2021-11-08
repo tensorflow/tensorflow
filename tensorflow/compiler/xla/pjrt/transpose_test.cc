@@ -438,12 +438,34 @@ static std::vector<TransposeTestCase> BenchmarkCases() {
   return std::vector<TransposeTestCase>{
       TransposeTestCase(/*dims=*/{256, 256},
                         /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{512, 512},
+                        /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{1024, 1024},
+                        /*permutation=*/{1, 0}),
+      TransposeTestCase(/*dims=*/{256, 256, 256},
+                        /*permutation=*/{0, 2, 1}),
+      TransposeTestCase(/*dims=*/{256, 256, 256},
+                        /*permutation=*/{1, 0, 2}),
+      TransposeTestCase(/*dims=*/{256, 256, 256},
+                        /*permutation=*/{1, 2, 0}),
+      TransposeTestCase(/*dims=*/{256, 256, 256},
+                        /*permutation=*/{2, 0, 1}),
+      TransposeTestCase(/*dims=*/{256, 256, 256},
+                        /*permutation=*/{2, 1, 0}),
+      TransposeTestCase(/*dims=*/{512, 512, 512},
+                        /*permutation=*/{0, 2, 1}),
+      TransposeTestCase(/*dims=*/{512, 512, 512},
+                        /*permutation=*/{1, 0, 2}),
+      TransposeTestCase(/*dims=*/{512, 512, 512},
+                        /*permutation=*/{1, 2, 0}),
+      TransposeTestCase(/*dims=*/{512, 512, 512},
+                        /*permutation=*/{2, 0, 1}),
+      TransposeTestCase(/*dims=*/{512, 512, 512},
+                        /*permutation=*/{2, 1, 0}),
       TransposeTestCase(/*dims=*/{64, 224, 224, 3},
                         /*permutation=*/{1, 2, 3, 0}),
       TransposeTestCase(/*dims=*/{256, 64, 64, 3},
                         /*permutation=*/{1, 3, 2, 0}),
-      TransposeTestCase(/*dims=*/{1024, 1024},
-                        /*permutation=*/{1, 0}),
   };
 }
 
@@ -488,7 +510,6 @@ void BM_Transpose(const TransposeTestCase& bm, int parallelism,
     plan->Execute(input.data(), output.data(), [&](std::function<void()> fn) {
       threadpool.Schedule(std::move(fn));
     });
-
     tensorflow::testing::DoNotOptimize(output);
   }
 }
@@ -515,9 +536,10 @@ static void* benchmarks = []() {
   for (const auto& benchmark_case : benchmark_cases) {
     for (const auto& variant : variants) {
       for (int num_threads : std::get<2>(variant)) {
-        std::string name = absl::StrCat(
-            std::get<0>(variant), "_", absl::StrJoin(benchmark_case.dims, "_"),
-            "_perm_", absl::StrJoin(benchmark_case.permutation, "_"));
+        std::string name =
+            absl::StrCat(std::get<0>(variant), "_threads_", num_threads, "_",
+                         absl::StrJoin(benchmark_case.dims, "_"), "_perm_",
+                         absl::StrJoin(benchmark_case.permutation, "_"));
 
         TransposeTestCase testcase = benchmark_case;
         BenchmarkFn fn = std::get<1>(variant);

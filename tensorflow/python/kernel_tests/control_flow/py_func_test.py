@@ -807,7 +807,7 @@ class EagerPyFuncTest(PyFuncTestBase):
 
   def testUnsupportedToutType(self):
     with self.assertRaisesRegex(
-        TypeError, "Cannot convert value {} to a TensorFlow DType."):
+        TypeError, "Cannot convert .* to a TensorFlow DType."):
       script_ops.eager_py_func(lambda x: x, [1], [{}])
 
   def testRaggedTensorArg(self):

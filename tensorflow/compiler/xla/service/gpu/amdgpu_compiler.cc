@@ -89,7 +89,7 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   // also leave behind unnecessary tuple/get-tuple-element pairs that
   // TupleSimplifier fixes.
   pipeline.AddPass<CallInliner>();
-  pipeline.AddPass<TupleSimplifier>();  
+  pipeline.AddPass<TupleSimplifier>();
 
   // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
   // introduces reshapes and transposes that can be eliminated using
