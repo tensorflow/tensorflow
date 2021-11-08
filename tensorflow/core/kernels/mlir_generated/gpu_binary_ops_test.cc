@@ -452,9 +452,6 @@ GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int64, int64_t, bool,
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/UInt8, uint8_t, bool,
                        baseline_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
-
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/UInt16, uint16_t, bool,
                        baseline_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
@@ -464,8 +461,6 @@ GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/UInt32, uint32_t, bool,
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/UInt64, uint64_t, bool,
                        baseline_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
-
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/C64, std::complex<float>, bool,
                        baseline_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
@@ -1007,9 +1002,6 @@ GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int64, int64_t, bool,
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/UInt8, uint8_t, bool,
                        baseline_not_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
-
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/UInt16, uint16_t, bool,
                        baseline_not_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
@@ -1019,8 +1011,6 @@ GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/UInt32, uint32_t, bool,
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/UInt64, uint64_t, bool,
                        baseline_not_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
-
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/C64, std::complex<float>, bool,
                        baseline_not_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
