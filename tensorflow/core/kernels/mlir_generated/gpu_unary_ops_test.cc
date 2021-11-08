@@ -47,28 +47,22 @@ T baseline_abs(T x) {
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_FLOAT, DT_FLOAT, test::NearZeroAndExtremeInput<float>(), std::abs,
     test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_DOUBLE, DT_DOUBLE, test::NearZeroAndExtremeInput<double>(),
     std::abs, test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     Abs, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
     test::NearZeroAndExtremeInput<Eigen::half>(), std::abs,
     test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64_t>(),
     baseline_abs, test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Abs, DT_INT8, DT_INT8, baseline_abs,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Abs, DT_INT16, DT_INT16, baseline_abs,
                       test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
 
 /// Test `tf.Acos`.
 
