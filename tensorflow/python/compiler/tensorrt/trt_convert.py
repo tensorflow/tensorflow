@@ -16,9 +16,12 @@
 
 import collections
 from functools import partial  # pylint: disable=g-importing-member
+import multiprocessing
 import os
 import platform
+import sys
 import tempfile
+import time
 
 import six as _six
 
@@ -861,6 +864,33 @@ class _TRTEngineResource(tracking.TrackableResource):
           handle, ignore_lookup_error=True)
 
 
+class _WaitingWidget(object):
+  def __init__(self):
+    self._p = None
+
+  def print_fn(self, msg):
+    print(msg, end="\033[K")
+    sys.stdout.flush()
+
+  def runner(self):
+    time.sleep(30)  # wait 30 seconds to avoid Python/C++ prints on the console
+    while True:
+      for idx in range(1, 4):
+        time.sleep(1)
+        self.print_fn("\rBuilding TensorRT Engines. Please wait " + "." * idx)
+
+  def __enter__(self):
+    self._p = multiprocessing.Process(target=self.runner)
+    self._p.start()
+    return
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    self._p.terminate()
+    self._p.join()
+    self.print_fn("\r")
+    return
+
+
 @tf_export("experimental.tensorrt.Converter", v1=[])
 class TrtGraphConverterV2(object):
   """An offline converter for TF-TRT transformation for TF 2.0 SavedModels.
@@ -1202,45 +1232,46 @@ class TrtGraphConverterV2(object):
     def _set_profile_generation_mode(value, node):
       node.attr["_profile_generation_mode"].b = value
 
-    if self._need_trt_profiles():
-      # Enable profile generation.
-      self._for_each_trt_node(self._converted_graph_def,
-                              partial(_set_profile_generation_mode, True))
-      # Profile generation is enabled using the _profile_generation_mode
-      # attribute of the TRTEngineOps. We need to rebuild the function to
-      # change this attribute.
-      func = self._rebuild_func(self._converted_func)
-    else:
-      func = self._converted_func
-
-    first_input = None
-    # Run inference:
-    #   Builds TRT engines if self._need_trt_profiles is False.
-    #   Builds TRT optimization profiles if self._need_trt_profiles is True.
-    for inp in input_fn():
-      if not first_input:
-        first_input = inp
-      if isinstance(inp, dict):
-        func(**{k: ops.convert_to_tensor(v) for k, v in inp.items()})
+    with _WaitingWidget():
+      if self._need_trt_profiles():
+        # Enable profile generation.
+        self._for_each_trt_node(self._converted_graph_def,
+                                partial(_set_profile_generation_mode, True))
+        # Profile generation is enabled using the _profile_generation_mode
+        # attribute of the TRTEngineOps. We need to rebuild the function to
+        # change this attribute.
+        func = self._rebuild_func(self._converted_func)
       else:
-        func(*map(ops.convert_to_tensor, inp))
+        func = self._converted_func
 
-    if self._need_trt_profiles():
-      # Disable profile generation.
-      self._for_each_trt_node(self._converted_graph_def,
-                              partial(_set_profile_generation_mode, False))
-      # Use the first input in explicit batch mode to build TensorRT engines
-      # after generating all the profiles. The first input is used but any of
-      # the inputs can be used because the shape of this input does not
-      # determine the engine and instead the shapes collected in profiles
-      # determine the engine.
-      if isinstance(first_input, dict):
-        self._converted_func(
-            **{k: ops.convert_to_tensor(v) for k, v in first_input.items()})
-      else:
-        self._converted_func(*map(ops.convert_to_tensor, first_input))
+      first_input = None
+      # Run inference:
+      #   Builds TRT engines if self._need_trt_profiles is False.
+      #   Builds TRT optimization profiles if self._need_trt_profiles is True.
+      for inp in input_fn():
+        if not first_input:
+          first_input = inp
+        if isinstance(inp, dict):
+          func(**{k: ops.convert_to_tensor(v) for k, v in inp.items()})
+        else:
+          func(*map(ops.convert_to_tensor, inp))
 
-    self._build_called_once = True
+      if self._need_trt_profiles():
+        # Disable profile generation.
+        self._for_each_trt_node(self._converted_graph_def,
+                                partial(_set_profile_generation_mode, False))
+        # Use the first input in explicit batch mode to build TensorRT engines
+        # after generating all the profiles. The first input is used but any of
+        # the inputs can be used because the shape of this input does not
+        # determine the engine and instead the shapes collected in profiles
+        # determine the engine.
+        if isinstance(first_input, dict):
+          self._converted_func(
+              **{k: ops.convert_to_tensor(v) for k, v in first_input.items()})
+        else:
+          self._converted_func(*map(ops.convert_to_tensor, first_input))
+
+      self._build_called_once = True
 
   def save(self, output_saved_model_dir):
     """Save the converted SavedModel.
