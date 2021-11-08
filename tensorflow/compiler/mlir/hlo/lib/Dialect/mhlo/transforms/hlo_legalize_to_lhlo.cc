@@ -247,7 +247,6 @@ struct HloToLhloDotGeneralOpConverter
   }
 };
 
-
 template <typename HloOpTy>
 struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
  public:
