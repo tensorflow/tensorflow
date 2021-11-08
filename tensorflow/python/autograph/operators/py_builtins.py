@@ -127,10 +127,6 @@ def super_in_original_context(f, args, caller_fn_scope):
       `caller_fn_scope`.
   """
 
-  # Python 2 doesn't support implicit argument super variants.
-  if six.PY2:
-    return f(*args)
-
   # Only the no-arg call is desugared.
   if args:
     return f(*args)
@@ -343,12 +339,10 @@ def _tf_py_func_print(objects, kwargs):
 
   def print_wrapper(*vals):
     vals = tuple(v.numpy() if tensor_util.is_tf_type(v) else v for v in vals)
-    if not six.PY2:
-      # TensorFlow doesn't seem to generate Unicode when passing strings to
-      # py_func. This causes the print to add a "b'" wrapper to the output,
-      # which is probably never what you want.
-      vals = tuple(
-          v.decode('utf-8') if isinstance(v, bytes) else v for v in vals)
+    # TensorFlow doesn't seem to generate Unicode when passing strings to
+    # py_func. This causes the print to add a "b'" wrapper to the output,
+    # which is probably never what you want.
+    vals = tuple(v.decode('utf-8') if isinstance(v, bytes) else v for v in vals)
     six.print_(*vals, **override_kwargs)
 
   return py_func.wrap_py_func(
@@ -634,9 +628,6 @@ def _py_sorted(iterable, key, reverse):
 
 SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map,
                       filter, any, all, sorted)
-
-if six.PY2:
-  SUPPORTED_BUILTINS += (xrange,)
 
 BUILTIN_FUNCTIONS_MAP = {
     'abs': abs_,

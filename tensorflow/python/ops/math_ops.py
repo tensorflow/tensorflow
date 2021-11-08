@@ -68,7 +68,6 @@ tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
 """
 import numbers
 import numpy as np
-import six
 from six.moves import builtins
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -2131,9 +2130,8 @@ def _range_tensor_conversion_function(value, dtype=None, name=None,
   return range(value.start, value.stop, value.step, dtype=dtype, name=name)
 
 
-if not six.PY2:
-  ops.register_tensor_conversion_function(builtins.range,
-                                          _range_tensor_conversion_function)
+ops.register_tensor_conversion_function(builtins.range,
+                                        _range_tensor_conversion_function)
 
 
 # Reduction operations
