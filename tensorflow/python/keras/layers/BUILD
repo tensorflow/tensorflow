@@ -52,7 +52,6 @@ py_library(
         ":rnn_cell_wrapper_v2",
         ":wrappers",
         "//tensorflow/python/keras/engine",
-        "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers/normalization",
         "//tensorflow/python/keras/utils:tf_utils",
     ],

@@ -13,7 +13,6 @@ py_library(
         ":feature_column",
         ":feature_column_v2",
         "//tensorflow/python:util",
-        "//tensorflow/python/keras/feature_column",
     ],
 )
 
@@ -23,7 +22,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":utils",
-        "@six_archive//:six",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -48,13 +46,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        # TODO(scottzhu): Remove metrics after we cleanup the keras internal cyclar dependency.
-        #     //third_party/tensorflow/python/feature_column:feature_column
-        #     //third_party/tensorflow/python/keras/engine:engine
-        # .-> //third_party/tensorflow/python/keras/distribute:distribute
-        # |   //third_party/tensorflow/python/keras:metrics
-        # `-- //third_party/tensorflow/python/keras/distribute:distribute
-        "//tensorflow/python/keras:metrics",
+        "@six_archive//:six",
     ],
 )
 
@@ -215,6 +207,7 @@ py_library(
 tf_py_test(
     name = "sequence_feature_column_test",
     srcs = ["sequence_feature_column_test.py"],
+    tags = ["no_oss"],  # Due to the usage of keras component.
     deps = [
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",

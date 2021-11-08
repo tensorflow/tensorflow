@@ -99,21 +99,12 @@ def populate_deserializable_objects():
 
   # Prevent circular dependencies.
   from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.feature_column.sequence_feature_column import SequenceFeatures  # pylint: disable=g-import-not-at-top
 
   LOCAL.ALL_OBJECTS['Input'] = input_layer.Input
   LOCAL.ALL_OBJECTS['InputSpec'] = input_spec.InputSpec
   LOCAL.ALL_OBJECTS['Functional'] = models.Functional
   LOCAL.ALL_OBJECTS['Model'] = models.Model
-  LOCAL.ALL_OBJECTS['SequenceFeatures'] = SequenceFeatures
   LOCAL.ALL_OBJECTS['Sequential'] = models.Sequential
-
-  if tf2.enabled():
-    from tensorflow.python.keras.feature_column.dense_features_v2 import DenseFeatures  # pylint: disable=g-import-not-at-top
-    LOCAL.ALL_OBJECTS['DenseFeatures'] = DenseFeatures
-  else:
-    from tensorflow.python.keras.feature_column.dense_features import DenseFeatures  # pylint: disable=g-import-not-at-top
-    LOCAL.ALL_OBJECTS['DenseFeatures'] = DenseFeatures
 
   # Merge layers, function versions.
   LOCAL.ALL_OBJECTS['add'] = merge.add
