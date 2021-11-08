@@ -203,8 +203,9 @@ template <typename HloOpTy>
 class HloTupleOutputToLhloOpConverter : public BaseOpConversion<HloOpTy> {
 public:
   using BaseOpConversion<HloOpTy>::BaseOpConversion;
+
   LogicalResult matchAndRewrite(
-    HloOpTy hloOp, ArrayRef<Value> operands,
+    HloOpTy hloOp,  typename HloOpTy::Adaptor adaptor,
     ConversionPatternRewriter& rewriter) const final {
     Operation* op = hloOp.getOperation();
     SmallVector<Operation*> allUsers;
@@ -214,7 +215,8 @@ public:
         return failure();
       }
     }
-    SmallVector<Value> buffer_args(operands.begin(), operands.end());
+    SmallVector<Value> buffer_args(adaptor.getOperands().begin(),
+                                   adaptor.getOperands().end());
     if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
     rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(op->getLoc(), llvm::None,
       buffer_args, op->getAttrs());
