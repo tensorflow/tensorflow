@@ -1435,6 +1435,14 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_select_v2_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
     max_supported_rank = 8,
     op = "select_v2",
     tile_size = "256",
