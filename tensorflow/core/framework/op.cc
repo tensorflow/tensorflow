@@ -293,6 +293,9 @@ Status OpListOpRegistry::LookUp(const string& op_type_name,
 namespace register_op {
 
 InitOnStartupMarker OpDefBuilderWrapper::operator()() {
+  // The following line is required to make sure instances protobuf depends are initialized in advance.
+  // See https://github.com/tensorflow/tensorflow/pull/52853#issuecomment-962024458
+  OpDef::descriptor();
   OpRegistry::Global()->Register(
       [builder =
            std::move(builder_)](OpRegistrationData* op_reg_data) -> Status {

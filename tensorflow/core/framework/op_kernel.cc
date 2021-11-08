@@ -1239,6 +1239,9 @@ namespace kernel_factory {
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      StringPiece kernel_class_name,
                                      std::unique_ptr<OpKernelFactory> factory) {
+  // The following line is required to make sure instances protobuf depends are initialized in advance.
+  // See https://github.com/tensorflow/tensorflow/pull/52853#issuecomment-962024458
+  OpDef::descriptor();
   const string key =
       Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
           kernel_def->label());
