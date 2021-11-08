@@ -1397,7 +1397,10 @@ def _queue_children_for_restoration(checkpoint_position, visit_queue):
       else:
         # If the field is not set, do a simple check to see if the dependency
         # has children and/or checkpointed values.
-        has_value = bool(child_proto.children or child_proto.attributes)
+        has_value = bool(child_proto.children or
+                         child_proto.attributes or
+                         child_proto.slot_variables or
+                         child_proto.HasField("registered_saver"))
       if has_value:
         trackable._deferred_dependencies.setdefault(child.local_name,
                                                     []).append(child_position)
