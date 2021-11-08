@@ -90,7 +90,9 @@ cc_test(
     deps = [
         ":xnnpack_plugin",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_googletest//:gtest_main",
+        "@pthreadpool",
     ],
 )

@@ -20,18 +20,21 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "pthreadpool.h"  // from @pthreadpool
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 
 namespace tflite {
 
 class XnnpackTest : public testing::Test {
  public:
+  static constexpr int kNumThreadsForTest = 7;
   void SetUp() override {
     // Construct a FlatBuffer that contains
-    // TFLiteSettings { XNNPackSettings { num_threads: 7 } }.
+    // TFLiteSettings { XNNPackSettings { num_threads: kNumThreadsForTest } }.
     XNNPackSettingsBuilder xnnpack_settings_builder(flatbuffer_builder_);
-    xnnpack_settings_builder.add_num_threads(7);
+    xnnpack_settings_builder.add_num_threads(kNumThreadsForTest);
     flatbuffers::Offset<XNNPackSettings> xnnpack_settings =
         xnnpack_settings_builder.Finish();
     TFLiteSettingsBuilder tflite_settings_builder(flatbuffer_builder_);
@@ -50,6 +53,8 @@ class XnnpackTest : public testing::Test {
   const TFLiteSettings *settings_;
 };
 
+constexpr int XnnpackTest::kNumThreadsForTest;
+
 TEST_F(XnnpackTest, CanCreateAndDestroyDelegate) {
   TfLiteDelegate *delegate =
       TfLiteXnnpackDelegatePluginCApi()->create(settings_);
@@ -66,4 +71,13 @@ TEST_F(XnnpackTest, CanGetDelegateErrno) {
   TfLiteXnnpackDelegatePluginCApi()->destroy(delegate);
 }
 
+TEST_F(XnnpackTest, SetsCorrectThreadCount) {
+  TfLiteDelegate *delegate =
+      TfLiteXnnpackDelegatePluginCApi()->create(settings_);
+  pthreadpool_t threadpool =
+      static_cast<pthreadpool_t>(TfLiteXNNPackDelegateGetThreadPool(delegate));
+  int thread_count = pthreadpool_get_threads_count(threadpool);
+  EXPECT_EQ(thread_count, kNumThreadsForTest);
+  TfLiteXnnpackDelegatePluginCApi()->destroy(delegate);
+}
 }  // namespace tflite
