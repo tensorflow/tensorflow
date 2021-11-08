@@ -1307,11 +1307,10 @@ class ConvertReduceOpToTfMin
   }
 };
 
-template <typename LogicalOp, typename TfReduceOp>
-class ConvertReduceOpToTfAllAny
-    : public ConvertReduceOpToTfOp<LogicalOp, TfReduceOp> {
+class ConvertReduceOpToTfAll
+    : public ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp> {
  public:
-  using ConvertReduceOpToTfOp<LogicalOp, TfReduceOp>::ConvertReduceOpToTfOp;
+  using ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp>::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
     DenseIntElementsAttr init_attr;
@@ -1322,9 +1321,21 @@ class ConvertReduceOpToTfAllAny
     return success();
   }
 };
-using ConvertReduceOpToTfAll =
-    ConvertReduceOpToTfAllAny<mhlo::AndOp, TF::AllOp>;
-using ConvertReduceOpToTfAny = ConvertReduceOpToTfAllAny<mhlo::OrOp, TF::AnyOp>;
+
+class ConvertReduceOpToTfAny
+    : public ConvertReduceOpToTfOp<mhlo::OrOp, TF::AnyOp> {
+ public:
+  using ConvertReduceOpToTfOp<mhlo::OrOp, TF::AnyOp>::ConvertReduceOpToTfOp;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    DenseIntElementsAttr init_attr;
+    if (!matchPattern(init_value, m_Constant(&init_attr)) ||
+        !init_attr.getType().getElementType().isInteger(1) ||
+        !init_attr.isSplat() || init_attr.getSplatValue<BoolAttr>().getValue())
+      return failure();
+    return success();
+  }
+};
 
 template <typename TfReduce, typename TfArgReduce>
 class ConvertReduceOpToTfArgMinMax
