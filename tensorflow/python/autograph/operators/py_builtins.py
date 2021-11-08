@@ -643,6 +643,5 @@ BUILTIN_FUNCTIONS_MAP = {
     'print': print_,
     'range': range_,
     'sorted': sorted_,
-    'xrange': range_,
     'zip': zip_,
 }

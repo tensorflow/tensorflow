@@ -17,7 +17,6 @@
 import itertools
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -37,7 +36,7 @@ def _input_array(num_dims):
     An ndarray of shape [2] * num_dims.
   """
   formatter = "{:0%db}" % num_dims
-  strings = [formatter.format(i) for i in xrange(2**num_dims)]
+  strings = [formatter.format(i) for i in range(2**num_dims)]
   return np.array(strings, dtype="S%d" % num_dims).reshape([2] * num_dims)
 
 
@@ -54,10 +53,10 @@ def _joined_array(num_dims, reduce_dim):
   formatter = "{:0%db}" % (num_dims - 1)
   result = np.zeros(shape=[2] * (num_dims - 1), dtype="S%d" % (2 * num_dims))
   flat = result.ravel()
-  for i in xrange(2**(num_dims - 1)):
+  for i in range(2**(num_dims - 1)):
     dims = formatter.format(i)
     flat[i] = "".join([(dims[:reduce_dim] + "%d" + dims[reduce_dim:]) % j
-                       for j in xrange(2)])
+                       for j in range(2)])
   return result
 
 
@@ -74,7 +73,7 @@ class ReduceJoinTestHelperTest(UnicodeTestCase):
 
   def testInputArray(self):
     num_dims = 3
-    truth = ["{:03b}".format(i) for i in xrange(2**num_dims)]
+    truth = ["{:03b}".format(i) for i in range(2**num_dims)]
     output_array = _input_array(num_dims).reshape([-1])
     self.assertAllEqualUnicode(truth, output_array)
 
@@ -184,26 +183,26 @@ class ReduceJoinTest(UnicodeTestCase):
 
   def testRankFive(self):
     input_array = _input_array(num_dims=5)
-    truths = [_joined_array(num_dims=5, reduce_dim=i) for i in xrange(5)]
+    truths = [_joined_array(num_dims=5, reduce_dim=i) for i in range(5)]
     truth_shape = [2] * 4
-    for i in xrange(5):
+    for i in range(5):
       self._testReduceJoin(input_array, truths[i], truth_shape, axis=i)
 
   def testNegative(self):
     input_array = _input_array(num_dims=5)
-    truths = [_joined_array(num_dims=5, reduce_dim=i) for i in xrange(5)]
+    truths = [_joined_array(num_dims=5, reduce_dim=i) for i in range(5)]
     truth_shape = [2] * 4
-    for i in xrange(5):
+    for i in range(5):
       self._testReduceJoin(input_array, truths[i], truth_shape, axis=i - 5)
 
   def testSingletonDimension(self):
     input_arrays = [
         _input_array(num_dims=5).reshape([2] * i + [1] + [2] * (5 - i))
-        for i in xrange(6)
+        for i in range(6)
     ]
     truth = _input_array(num_dims=5)
     truth_shape = [2] * 5
-    for i in xrange(6):
+    for i in range(6):
       self._testReduceJoin(input_arrays[i], truth, truth_shape, axis=i)
 
   def testSeparator(self):
@@ -292,8 +291,8 @@ class ReduceJoinTest(UnicodeTestCase):
     num_dims = 3
     input_array = _input_array(num_dims=num_dims)
     # Also tests [].
-    for i in xrange(num_dims + 1):
-      for permutation in itertools.permutations(xrange(num_dims), i):
+    for i in range(num_dims + 1):
+      for permutation in itertools.permutations(range(num_dims), i):
         self._testMultipleReduceJoin(input_array, axis=permutation)
 
   @test_util.run_deprecated_v1

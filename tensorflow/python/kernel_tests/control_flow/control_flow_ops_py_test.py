@@ -24,7 +24,6 @@ import time
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -2860,7 +2859,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       r = control_flow_ops.while_loop(c, b, [i], parallel_iterations=1)
       self.assertEqual([10], self.evaluate(r))
-      for i in xrange(10):
+      for i in range(10):
         self.assertEqual([i], self.evaluate(q.dequeue()))
 
   @test_util.run_v1_only("b/120545219")
@@ -5041,7 +5040,7 @@ class WhileOpBenchmark(test.Benchmark):
       self.evaluate(variables.global_variables_initializer())
 
       if static_unroll:
-        for _ in xrange(steps):
+        for _ in range(steps):
           i, x = loop_body(i, x)
       else:
         i, x = control_flow_ops.while_loop(
@@ -5055,12 +5054,12 @@ class WhileOpBenchmark(test.Benchmark):
       # Use group to avoid fetching back results.
       r = control_flow_ops.group(dx, dk)
 
-      for _ in xrange(3):
+      for _ in range(3):
         # exclude warm up time
         self.evaluate(r)
 
       start_time = time.time()
-      for _ in xrange(num_iters):
+      for _ in range(num_iters):
         self.evaluate(r)
       return (time.time() - start_time) / num_iters
 

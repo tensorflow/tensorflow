@@ -15,7 +15,6 @@
 """Tests for confusion_matrix_ops."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -102,7 +101,7 @@ class ConfusionMatrixTest(test.TestCase):
       d, l, cm_out = sess.run([data, lab, cm], {m_neg: 0.0, m_pos: 1.0, s: 1.0})
 
       truth = np.zeros([2, 2], dtype=np_dtype)
-      for i in xrange(len(d)):
+      for i in range(len(d)):
         truth[l[i], d[i]] += 1
 
       self.assertEqual(cm_out.dtype, np_dtype)
