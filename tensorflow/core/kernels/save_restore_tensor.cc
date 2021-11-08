@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/save_restore_tensor.h"
+
+#include <memory>
 #include <numeric>
 #include <unordered_map>
 #include <utility>
@@ -23,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -249,7 +252,21 @@ const int64_t kLargeShapeThreshold = 16 << 20;  // 16M
 // restored from a thread pool: this requires creating a separate BundleReader
 // for each restore.
 struct RestoreOp {
+  RestoreOp(OpKernelContext* context, int idx, const string& tensor_name,
+            const string& shape_and_slice, const string& reader_prefix,
+            DataType dtype)
+      : context(context),
+        idx(idx),
+        tensor_name(tensor_name),
+        shape_and_slice(shape_and_slice),
+        reader_prefix(reader_prefix),
+        dtype(dtype) {}
+
+  // Move-only. It does not make sense to "run()" a copied RestoreOp.
+  RestoreOp(const RestoreOp&) = delete;
   RestoreOp& operator=(const RestoreOp&) = delete;
+  RestoreOp(RestoreOp&&) = default;
+  RestoreOp& operator=(RestoreOp&&) = default;
 
   bool should_run_in_pool(BundleReader* reader) const {
     TensorShape restored_full_shape;
@@ -330,10 +347,11 @@ struct RestoreOp {
   }
 
   OpKernelContext* context;
-  size_t idx;
+  int idx;
   string tensor_name;
   string shape_and_slice;
   string reader_prefix;
+  DataType dtype;
 
   ::tensorflow::Status status;
 };
@@ -349,31 +367,33 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
   const auto& tensor_names_flat = tensor_names.flat<tstring>();
   const auto& shape_and_slices_flat = shape_and_slices.flat<tstring>();
 
-  // Sort lookup keys to improve locality when reading multiple tensors.
-  std::vector<size_t> sorted_name_idx(tensor_names_flat.size());
-  std::iota(sorted_name_idx.begin(), sorted_name_idx.end(), 0);
-  std::sort(sorted_name_idx.begin(), sorted_name_idx.end(),
-            [&tensor_names_flat](size_t a, size_t b) {
-              return tensor_names_flat(a) < tensor_names_flat(b);
-            });
+  std::vector<RestoreOp> restore_ops;
+  restore_ops.reserve(tensor_names_flat.size());
+  for (int i = 0; i < tensor_names_flat.size(); ++i) {
+    restore_ops.push_back({context, i, tensor_names_flat(i),
+                           shape_and_slices_flat(i), prefix_string, dtypes[i]});
+  }
 
-  std::vector<std::unique_ptr<RestoreOp> > pool_restore_ops;
-  std::vector<std::unique_ptr<RestoreOp> > direct_restore_ops;
+  // Sort restore_ops by lookup key to improve locality when reading multiple
+  // tensors.
+  std::sort(restore_ops.begin(), restore_ops.end(),
+            [](const RestoreOp& a, const RestoreOp& b) {
+              return a.tensor_name < b.tensor_name;
+            });
 
   BundleReader default_reader(Env::Default(), prefix_string);
   TF_RETURN_IF_ERROR(default_reader.status());
 
   std::vector<string> mismatched_errors;
-  for (const size_t i : sorted_name_idx) {
+  for (const RestoreOp& restore_op : restore_ops) {
     TensorShape restored_full_shape;
     DataType original_dtype;
-    const string& tensor_name = tensor_names_flat(i);
     TF_RETURN_IF_ERROR(default_reader.LookupDtypeAndShape(
-        tensor_name, &original_dtype, &restored_full_shape));
-    if (dtypes[i] != original_dtype) {
+        restore_op.tensor_name, &original_dtype, &restored_full_shape));
+    if (restore_op.dtype != original_dtype) {
       string error_msg = strings::StrCat(
-          "tensor_name = ", tensor_name, "; expected dtype ",
-          DataTypeString(dtypes[i]), " does not equal original dtype ",
+          "tensor_name = ", restore_op.tensor_name, "; expected dtype ",
+          DataTypeString(restore_op.dtype), " does not equal original dtype ",
           DataTypeString(original_dtype));
       mismatched_errors.emplace_back(error_msg);
     }
@@ -383,15 +403,13 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
     return errors::InvalidArgument(error_msg);
   }
 
-  for (auto i : sorted_name_idx) {
-    const string& tensor_name = tensor_names_flat(i);
-    const string& shape_and_slice = shape_and_slices_flat(i);
-    auto op =
-        new RestoreOp{context, i, tensor_name, shape_and_slice, prefix_string};
-    if (op->should_run_in_pool(&default_reader)) {
-      pool_restore_ops.emplace_back(op);
+  std::vector<RestoreOp*> pool_restore_ops;
+  std::vector<RestoreOp*> direct_restore_ops;
+  for (RestoreOp& restore_op : restore_ops) {
+    if (restore_op.should_run_in_pool(&default_reader)) {
+      pool_restore_ops.push_back(&restore_op);
     } else {
-      direct_restore_ops.emplace_back(op);
+      direct_restore_ops.push_back(&restore_op);
     }
   }
 
@@ -402,29 +420,28 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
     if (!pool_restore_ops.empty()) {
       reader_pool.reset(
           new thread::ThreadPool(Env::Default(), "restore_tensors", 8));
-      for (auto& op : pool_restore_ops) {
-        reader_pool->Schedule([&op]() { op->run_with_new_reader(); });
+      for (auto* op : pool_restore_ops) {
+        reader_pool->Schedule([op]() { op->run_with_new_reader(); });
       }
     }
 
     // Read small tensors from the op thread
-    for (auto& op : direct_restore_ops) {
+    for (auto* op : direct_restore_ops) {
       TF_RETURN_IF_ERROR(op->run(&default_reader));
     }
   }
 
   // Check status of pool ops; this must come after the pool shuts down.
-  for (auto& op : pool_restore_ops) {
+  for (auto* op : pool_restore_ops) {
     TF_RETURN_IF_ERROR(op->status);
   }
 
-  for (auto i : sorted_name_idx) {
-    const string& tensor_name = tensor_names_flat(i);
-    if (dtypes[i] != context->mutable_output(i)->dtype()) {
+  for (const RestoreOp& restore_op : restore_ops) {
+    if (restore_op.dtype != context->mutable_output(restore_op.idx)->dtype()) {
       return errors::InvalidArgument(
-          "tensor_name = ", tensor_name, "; expected dtype ",
-          DataTypeString(dtypes[i]), " does not equal restored dtype ",
-          DataTypeString(context->mutable_output(i)->dtype()));
+          "tensor_name = ", restore_op.tensor_name, "; expected dtype ",
+          DataTypeString(restore_op.dtype), " does not equal restored dtype ",
+          DataTypeString(context->mutable_output(restore_op.idx)->dtype()));
     }
   }
 
