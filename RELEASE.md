@@ -120,6 +120,7 @@
     *   Move autotuning options from`tf.data.Options.experimental_optimization.autotune*` to a newly created `tf.data.Options.autotune.*` and remove support for `tf.data.Options.experimental_optimization.autotune_buffers`.
     *   Add support for user-defined names of tf.data core Python API, which can be used to disambiguate tf.data events in TF Profiler Trace Viewer.
     *   Promote `tf.data.experimental.sample_from_datasets` API to `tf.data.Dataset.sample_from_datasets` and deprecate the experimental endpoint.
+    *   Added `TF_GPU_ALLOCATOR=cuda_malloc_async` that use cudaMallocAsync from CUDA 11.2. This could become the default in the future.
 *   TF SavedModel:
     *   Custom gradients are now saved by default. See `tf.saved_model.SaveOptions` to disable this.
     *   The saved_model_cli's `--input_examples` inputs are now restricted to
@@ -308,8 +309,6 @@ This release contains contributions from many people at Google, as well as:
 
     *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
         peak memory returned by `tf.config.experimental.get_memory_info`.
-    *   Added `TF_GPU_ALLOCATOR=cuda_malloc_async` that use cudaMallocAsync
-        from CUDA 11.2. This could become the default in the future.
 
 *   `tf.data`:
 
