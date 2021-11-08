@@ -27,12 +27,13 @@ limitations under the License.
 namespace tflite {
 namespace optimized_integer_ops {
 
+template <typename InputScalar, typename DstScalar>
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
-    const int8* input_data, const RuntimeShape& filter_shape,
+    const InputScalar* input_data, const RuntimeShape& filter_shape,
     const int8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
-    CpuBackendContext* cpu_backend_context) {
+    const int32* bias_data, const RuntimeShape& output_shape,
+    DstScalar* output_data, CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("FullyConnectedInt8/8bit");
 
   const int32 input_offset = params.input_offset;
@@ -71,7 +72,7 @@ inline void FullyConnected(
   lhs_params.cache_policy =
       use_caching ? cpu_backend_gemm::DefaultCachePolicy(params.lhs_cacheable)
                   : cpu_backend_gemm::CachePolicy::kNeverCache;
-  cpu_backend_gemm::MatrixParams<int8> rhs_params;
+  cpu_backend_gemm::MatrixParams<InputScalar> rhs_params;
   rhs_params.rows = filter_cols;
   rhs_params.cols = batches;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
@@ -79,12 +80,12 @@ inline void FullyConnected(
   rhs_params.cache_policy =
       use_caching ? cpu_backend_gemm::DefaultCachePolicy(params.rhs_cacheable)
                   : cpu_backend_gemm::CachePolicy::kNeverCache;
-  cpu_backend_gemm::MatrixParams<int8> dst_params;
+  cpu_backend_gemm::MatrixParams<DstScalar> dst_params;
   dst_params.rows = filter_rows;
   dst_params.cols = batches;
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.zero_point = output_offset;
-  cpu_backend_gemm::GemmParams<int32, int8> gemm_params;
+  cpu_backend_gemm::GemmParams<int32, DstScalar> gemm_params;
   gemm_params.bias = bias_data;
   gemm_params.clamp_min = output_activation_min;
   gemm_params.clamp_max = output_activation_max;
