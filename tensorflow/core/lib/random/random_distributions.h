@@ -32,8 +32,6 @@ namespace random {
 PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x);
 // Helper function to convert a 16-bit integer to a bfloat16 between [0..1).
 PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x);
-// Helper function to convert two 32-bit integers to a double between [0..1).
-PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1);
 
 // Computes a + b. Requires that the result is representable in the destination
 // type and that b is not maximal (i.e. b + 1 is not 0). Notably, the addend b
@@ -750,25 +748,6 @@ PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x) {
   // in [1, 2). The minus will not cause a rounding that makes the result 1.
   // Instead it will just be close to 1.
   return result - bfloat16(1.0);
-}
-
-// Helper function to convert two 32-bit integers to a double between [0..1).
-PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1) {
-  // IEEE754 doubles are formatted as follows (MSB first):
-  //    sign(1) exponent(11) mantissa(52)
-  // Conceptually construct the following:
-  //    sign == 0
-  //    exponent == 1023  -- an excess 1023 representation of a zero exponent
-  //    mantissa == 52 random bits
-  const uint32 mhi = x0 & 0xfffffu;  // upper 20 bits of mantissa
-  const uint32 mlo = x1;             // lower 32 bits of mantissa
-  const uint64 man = (static_cast<uint64>(mhi) << 32) | mlo;  // mantissa
-  const uint64 exp = static_cast<uint64>(1023);
-  const uint64 val = (exp << 52) | man;
-  // Assumes that endian-ness is same for double and uint64.
-  double result;
-  memcpy(&result, &val, sizeof(val));
-  return result - 1.0;
 }
 
 }  // namespace random

@@ -75,7 +75,7 @@ def mlir_convert(
     converter.experimental_new_quantizer = options.mlir_quantizer
 
     if options.run_with_flex:
-      converter.supported_ops = set(
+      converter.target_spec.supported_ops = set(
           [tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS])
 
     if test_params.get("dynamic_range_quantize", False):

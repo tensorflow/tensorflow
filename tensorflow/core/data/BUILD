@@ -428,6 +428,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "finalization_utils",
+    srcs = ["finalization_utils.cc"],
+    hdrs = ["finalization_utils.h"],
+    deps = [
+        ":root_dataset",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:refcount",
+    ],
+)
+
 tf_cc_test(
     name = "unbounded_thread_pool_test",
     size = "small",

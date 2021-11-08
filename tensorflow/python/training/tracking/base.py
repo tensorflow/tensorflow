@@ -1388,11 +1388,19 @@ def _queue_children_for_restoration(checkpoint_position, visit_queue):
     child_position = CheckpointPosition(
         checkpoint=checkpoint, proto_id=child.node_id)
     local_object = trackable._lookup_dependency(child.local_name)
+    child_proto = child_position.object_proto
     if local_object is None:
       # We don't yet have a dependency registered with this name. Save it
       # in case we do.
-      trackable._deferred_dependencies.setdefault(child.local_name,
-                                                  []).append(child_position)
+      if child_proto.HasField("has_checkpoint_values"):
+        has_value = child_proto.has_checkpoint_values.value
+      else:
+        # If the field is not set, do a simple check to see if the dependency
+        # has children and/or checkpointed values.
+        has_value = bool(child_proto.children or child_proto.attributes)
+      if has_value:
+        trackable._deferred_dependencies.setdefault(child.local_name,
+                                                    []).append(child_position)
     else:
       if child_position.bind_object(trackable=local_object):
         # This object's correspondence is new, so dependencies need to be

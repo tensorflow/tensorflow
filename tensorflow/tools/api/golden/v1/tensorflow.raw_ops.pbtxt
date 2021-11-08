@@ -1381,6 +1381,10 @@ tf_module {
     argspec: "args=[\'audio\', \'sample_rate\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "EnqueueTPUEmbeddingArbitraryTensorBatch"
+    argspec: "args=[\'sample_indices_or_row_lengths\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'None\'], "
+  }
+  member_method {
     name: "EnqueueTPUEmbeddingIntegerBatch"
     argspec: "args=[\'batch\', \'mode_override\', \'device_ordinal\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
@@ -3474,7 +3478,7 @@ tf_module {
   }
   member_method {
     name: "RegisterDataset"
-    argspec: "args=[\'dataset\', \'address\', \'protocol\', \'external_state_policy\', \'element_spec\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+    argspec: "args=[\'dataset\', \'address\', \'protocol\', \'external_state_policy\', \'element_spec\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'None\'], "
   }
   member_method {
     name: "Relu"

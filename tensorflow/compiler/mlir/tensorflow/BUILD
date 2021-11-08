@@ -5,44 +5,11 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
 
 package(
-    default_visibility = [":friends"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
-)
-
-package_group(
-    name = "friends",
-    packages = [
-        "//platforms/darwinn/tools/mlir_fuzzer/...",
-        "//third_party/auroraml/...",
-        "//tensorflow/compiler/...",
-        "//tensorflow/core/runtime_fallback/test/...",
-        "//tensorflow/core/tfrt/saved_model/...",
-        "//tensorflow/core/tfrt/utils/...",
-        "//tensorflow/cc/...",
-        "//tensorflow/python/...",
-        "//tensorflow/tools/pip_package/...",
-        "//tensorflow/tools/...",
-    ] + if_google([
-        "//learning/brain/experimental/mlir/tflite/tfmrt/...",
-        "//learning/brain/experimental/dtensor/...",
-        "//learning/brain/experimental/tfrt/...",
-        "//learning/brain/mlir/bridge/...",
-        # Allow visibility from the mlir language server.
-        "//learning/brain/mlir/mlir_lsp_server/...",
-        "//learning/brain/mobile/lite/tf_runtime/...",
-        "//learning/brain/tfrt/tpu_runner/...",
-        "//learning/brain/tfrt/tpu/compiler/...",
-        "//learning/pathways/data_parallel/serving/...",
-        "//learning/pathways/data_parallel/tf2xla/...",
-        "//learning/serving/contrib/tfrt/mlir/...",
-        "//platforms/darwinn/contrib/waymo/...",
-        "//platforms/xla/sparse_core/...",
-        "//waymo/ml/compiler/...",
-        "//research/language_modeling/sentence_explorer/ondevice/...",
-    ]),
 )
 
 exports_files([
@@ -407,6 +374,28 @@ cc_library(
 )
 
 cc_library(
+    name = "tfe_legalize_tfg",
+    srcs = [
+        "transforms/passes.h",
+        "transforms/passes_detail.h",
+        "transforms/tfg-to-tfe.cc",
+    ],
+    deps = [
+        ":tensorflow",
+        ":tf_device_pass_inc_gen",
+        ":tf_pass_inc_gen",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/ir:Dialect",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "tensorflow_attributes",
     hdrs = [
         "ir/tf_attributes.h",
@@ -714,6 +703,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -1262,6 +1252,7 @@ cc_library(
         ":tf_legalize_hlo",
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
+        ":tfe_legalize_tfg",
         ":tpu_rewrite_device_util",
         ":translate_utils",
         ":unroll_batch_matmul_pass",
@@ -1762,10 +1753,7 @@ cc_library(
     name = "error_util",
     srcs = ["utils/error_util.cc"],
     hdrs = ["utils/error_util.h"],
-    visibility = [
-        ":friends",
-        "//tensorflow:__subpackages__",
-    ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",

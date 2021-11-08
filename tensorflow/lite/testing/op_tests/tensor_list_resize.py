@@ -53,12 +53,6 @@ def make_tensor_list_resize_tests(options):
                               parameters["element_shape"])
     return [data], sess.run(outputs, feed_dict=dict(zip(inputs, [data])))
 
-  # The cond_true and cond_false functions are not exported so they have to be
-  # marked as private. Otherwise, an error will be thrown when importing the
-  # saved model. Currently, there is no easy way to set the visibility of a
-  # function so this test is fell back to convert from GraphDef.
-  # TODO(b/203013020): Converts from SavedModel when the bug is fixed.
   extra_toco_options = ExtraTocoOptions()
-  extra_toco_options.convert_from_graphdef = True
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs,
                     extra_toco_options)

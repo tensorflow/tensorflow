@@ -47,7 +47,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
@@ -1032,10 +1032,14 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
       dim->set_window_reversal(window_reversal.getValue<bool>(index));
     }
     descriptor.feature_group_count = op.feature_group_count();
-    descriptor.backend_config.set_algorithm(
-        op.backend_config().algorithm().getInt());
-    descriptor.backend_config.set_tensor_ops_enabled(
-        op.backend_config().tensor_ops_enabled().getValue());
+    {
+      auto* algorithm = descriptor.backend_config.mutable_algorithm();
+      algorithm->set_algo_id(op.backend_config().algorithm().getInt());
+      algorithm->set_math_type(
+          op.backend_config().tensor_ops_enabled().getValue()
+              ? se::dnn::AlgorithmProto::TENSOR_OP_MATH
+              : se::dnn::AlgorithmProto::DEFAULT_MATH);
+    }
     descriptor.backend_config.set_conv_result_scale(
         op.result_scale().convertToDouble());
   };
@@ -4934,7 +4938,6 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
   }();
 
   se::CudaComputeCapability cc = ir_emitter_context_->cuda_compute_capability();
-
 
   int smallest_input_dtype_bits = std::numeric_limits<int>::max();
   for (mlir::Value operand : fusion.getInputBuffers()) {

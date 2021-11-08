@@ -253,8 +253,8 @@ Status XlaOpKernelContext::ConstantInputAsFloatScalar(
 static Status LiteralToPredVector(const xla::LiteralSlice& literal,
                                   std::vector<bool>* out) {
   if (literal.shape().rank() != 1) {
-    return errors::InvalidArgument("value is not 1D, rank: ",
-                                   literal.shape().rank());
+    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
+                                   literal.shape().DebugString());
   }
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() != xla::PRED) {
@@ -354,8 +354,8 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
 static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
                                    std::vector<int64_t>* out) {
   if (literal.shape().rank() != 1) {
-    return errors::InvalidArgument("value is not 1D, rank: ",
-                                   literal.shape().rank());
+    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
+                                   literal.shape().DebugString());
   }
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() == xla::S32) {

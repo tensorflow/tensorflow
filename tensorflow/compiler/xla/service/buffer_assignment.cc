@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_live_range.h"
+#include "tensorflow/compiler/xla/service/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -775,18 +777,69 @@ string BufferAssignment::ToString() const {
   return output;
 }
 
+// Returns the largest k buffers present at the point of peak memory usage
+// across allocations as a vector of pairs with their corresponding sizes.
+std::vector<std::pair<int64_t, const HloValue*>> TopKPeakBuffers(
+    uint64_t k, const std::vector<BufferAllocation> allocations) {
+  absl::btree_multimap<int64_t, const HloValue*> topk;
+  for (const BufferAllocation& allocation : allocations) {
+    for (const HloValue* value : allocation.PeakMemoryLogicalBuffers()) {
+      int64_t size = allocation.assigned_buffers().at(value).size;
+      if (topk.size() < k) {
+        topk.insert({size, value});
+      } else {
+        auto it = topk.begin();
+        if (size > it->first) {
+          topk.erase(it);
+          topk.insert({size, value});
+        }
+      }
+    }
+  }
+
+  // map will iterate smallest first, so reverse it.
+  std::vector<std::pair<int64_t, const HloValue*>> topk_descending;
+  topk_descending.reserve(topk.size());
+  absl::c_reverse_copy(topk, std::back_inserter(topk_descending));
+  return topk_descending;
+}
+
 string BufferAssignment::ToVerboseString() const {
+  // TODO(loreno): make this tunable via flag.
+  const size_t kMaxBuffersToShow = 15;
   string output =
       absl::StrCat("BufferAssignment OOM Debugging.\n", stats_.ToString());
-  for (const BufferAllocation& allocation : allocations_) {
-    std::vector<string> buf_strs;
-    buf_strs.reserve(allocation.assigned_buffers().size());
-    for (const auto& instruction_and_offset : allocation.assigned_buffers()) {
-      buf_strs.push_back(instruction_and_offset.first->ToString());
+
+  std::vector<std::pair<int64_t, const HloValue*>> peak_buffers =
+      TopKPeakBuffers(kMaxBuffersToShow, allocations_);
+  std::vector<string> buf_strs;
+  for (size_t i = 0; i < std::min(kMaxBuffersToShow, peak_buffers.size());
+       ++i) {
+    const HloValue* value = peak_buffers[i].second;
+    const HloInstruction* instr = value->instruction();
+    int64_t size = peak_buffers[i].first;
+    buf_strs.push_back(absl::StrCat("\n\tBuffer ", i + 1, ":\n\t\tSize: ",
+                                    xla::HumanReadableNumBytes(size)));
+    if (!instr->metadata().op_name().empty()) {
+      buf_strs.push_back(absl::StrCat(
+          "\n\t\tOperator: ", xla::OpMetadataToString(instr->metadata())));
     }
-    absl::StrAppend(&output, "\n", allocation.ToString(),
-                    "contains:", absl::StrJoin(buf_strs, ","));
+    if (instr->opcode() == HloOpcode::kParameter &&
+        (instr->parent() == instr->parent()->parent()->entry_computation())) {
+      // Special case on entry parameters as they sometimes have hundreds of
+      // indices in their shapes, and overwhelm the output.
+      buf_strs.push_back(absl::StrCat(
+          "\n\t\tEntry Parameter Subshape: ",
+          ShapeUtil::GetSubshape(instr->shape(), value->index()).ToString()));
+    } else {
+      // TODO(loreno): change this to a truncated string of the instruction.
+      buf_strs.push_back(
+          absl::StrCat("\n\t\tXLA Label: ", HloOpcodeString(instr->opcode()),
+                       "\n\t\tShape: ", value->shape().ToString()));
+    }
+    buf_strs.push_back("\n\t\t==========================\n");
   }
+  absl::StrAppend(&output, "Peak buffers:", absl::StrJoin(buf_strs, ""));
   return output;
 }
 

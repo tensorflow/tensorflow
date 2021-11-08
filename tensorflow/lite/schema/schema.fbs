@@ -1088,8 +1088,8 @@ table AssignVariableOptions {
 }
 
 table RandomOptions {
-  seed: int;
-  seed2: int;
+  seed: long;
+  seed2: long;
 }
 
 table BucketizeOptions {

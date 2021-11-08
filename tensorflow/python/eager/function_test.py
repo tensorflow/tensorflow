@@ -38,6 +38,7 @@ from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.eager import function_cache
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -667,7 +668,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return 1.0
 
     # TODO(b/201533914): Remove this flag.
-    if function.USE_FULL_TRACE_TYPE:
+    if function_cache.USE_FULL_TRACE_TYPE:
       expected_error = errors.InvalidArgumentError
       expected_message = r'could not be represented through the generic tracing'
     else:

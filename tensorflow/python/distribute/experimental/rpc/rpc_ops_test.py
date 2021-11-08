@@ -396,8 +396,8 @@ class RpcOpsTest(test.TestCase):
         "add", [constant_op.constant(20),
                 constant_op.constant(30)])
     self.assertAllEqual(result_or.is_ok(), False)
-    error_code, _ = result_or.get_error()
-    self.assertAllEqual(error_code, errors.DEADLINE_EXCEEDED)
+    error_code, error_message = result_or.get_error()
+    self.assertAllEqual(error_code, errors.DEADLINE_EXCEEDED, error_message)
 
     # Specifying reasonable timeout for call should succeed.
     result_or = client.call(

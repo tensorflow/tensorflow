@@ -3265,7 +3265,9 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
   trace_instruction_ = trace_instruction;
 }
 
-bool HloInstruction::IsFused() const { return parent_->IsFusionComputation(); }
+bool HloInstruction::IsFused() const {
+  return parent_ != nullptr && parent_->IsFusionComputation();
+}
 
 bool HloInstruction::IsCustomCall(absl::string_view target) const {
   return opcode() == HloOpcode::kCustomCall && custom_call_target() == target;

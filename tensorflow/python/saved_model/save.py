@@ -408,8 +408,8 @@ class _SaveableView(object):
     """
     # Only makes sense when adding to the export Graph
     assert not context.executing_eagerly()
-    # TODO(allenl): Handle MirroredVariables and other types of variables which
-    # may need special casing.
+    # TODO(b/205007558): Handle MirroredVariables and other types of variables
+    # which may need special casing.
     object_map = object_identity.ObjectIdentityDictionary()
     resource_map = {}
     asset_info = _AssetInfo(
@@ -781,7 +781,7 @@ def _process_asset(trackable_asset, asset_info, resource_map):
   path = builder_impl.get_asset_filename_to_add(
       asset_filepath=original_path,
       asset_filename_map=asset_info.asset_filename_map)
-  # TODO(andresp): Instead of mapping 1-1 between trackable asset
+  # TODO(b/205008097): Instead of mapping 1-1 between trackable asset
   # and asset in the graph def consider deduping the assets that
   # point to the same file.
   asset_path_initializer = array_ops.placeholder(
@@ -1408,7 +1408,7 @@ def save_and_return_nodes(obj,
       the root node to the key node)
   """
   options = options or save_options.SaveOptions()
-  # TODO(allenl): Factor out some subset of SavedModelBuilder which is 2.x
+  # TODO(b/205008509): Factor out some subset of SavedModelBuilder which is 2.x
   # compatible (no sessions) and share it with this export API rather than
   # making a SavedModel proto and writing it directly.
   saved_model = saved_model_pb2.SavedModel()

@@ -66,9 +66,8 @@ class WorkerClientTest : public ::testing::Test {
   StatusOr<int64_t> RegisterDataset(const int64_t range) {
     const auto dataset_def = RangeSquareDataset(range);
     int64_t dataset_id = 0;
-    absl::optional<std::string> element_spec;
     TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
-        dataset_def, element_spec, dataset_id));
+        dataset_def, DataServiceMetadata(), dataset_id));
     return dataset_id;
   }
 
