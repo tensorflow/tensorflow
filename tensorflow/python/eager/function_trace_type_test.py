@@ -490,29 +490,19 @@ class TraceTypeEncodingTest(test.TestCase):
     dict_type = function_trace_type.DictType
     dict_a = dict_type({
         'a': MockSubtypeOf2(1),
-        'b': MockSubtypeOf2(2),
-        'c': MockSubtypeOf2(3)
+        'b': MockSubtypeOf2(1),
+        'c': MockSubtypeOf2(1)
     })
     dict_b = dict_type({
         'a': MockSubtypeOf2(2),
         'b': MockSubtypeOf2(2),
         'c': MockSubtypeOf2(2)
     })
-    dict_c = dict_type({
-        'a': MockSubtypeOf2(2),
-        'b': MockSubtypeOf2(2),
-        'c': MockSubtypeOf2(2),
-        'd': MockSubtypeOf2(2)
-    })
+    dict_c = dict_type({'a': MockSubtypeOf2(1), 'b': MockSubtypeOf2(1)})
 
     self.assertTrue(dict_a.is_subtype_of(dict_b))
-    self.assertFalse(dict_b.is_subtype_of(dict_a))
-
-    self.assertFalse(dict_a.is_subtype_of(dict_c))
+    self.assertFalse(dict_c.is_subtype_of(dict_b))
     self.assertFalse(dict_c.is_subtype_of(dict_a))
-
-    self.assertTrue(dict_c.is_subtype_of(dict_b))
-    self.assertFalse(dict_b.is_subtype_of(dict_c))
 
   def testDictTypeSupertype(self):
 
@@ -529,25 +519,23 @@ class TraceTypeEncodingTest(test.TestCase):
 
     dict_type = function_trace_type.DictType
     dict_a = dict_type({
-        1: MockSupertypes2With3(1),
-        2: MockSupertypes2With3(2),
-        3: MockSupertypes2With3(3),
-        4: MockSupertypes2With3(4)
+        'a': MockSupertypes2With3(1),
+        'b': MockSupertypes2With3(2),
+        'c': MockSupertypes2With3(3)
     })
     dict_b = dict_type({
-        1: MockSupertypes2With3(2),
-        2: MockSupertypes2With3(2),
-        3: MockSupertypes2With3(2),
-        5: MockSupertypes2With3(5)
+        'a': MockSupertypes2With3(2),
+        'b': MockSupertypes2With3(2),
+        'c': MockSupertypes2With3(2)
     })
 
     self.assertIsNone(dict_a.most_specific_common_supertype([dict_b]))
     self.assertEqual(
         dict_b.most_specific_common_supertype([dict_a]),
         dict_type({
-            1: MockSupertypes2With3(3),
-            2: MockSupertypes2With3(3),
-            3: MockSupertypes2With3(3),
+            'a': MockSupertypes2With3(3),
+            'b': MockSupertypes2With3(3),
+            'c': MockSupertypes2With3(3)
         }))
 
   def testListTupleInequality(self):

@@ -281,15 +281,24 @@ class DictType(trace.TraceType):
   def __init__(self, mapping: Dict[Hashable, trace.TraceType]):
     self.mapping = mapping
 
-  def is_subtype_of(self, other: trace.TraceType) -> bool:
-    """See base class."""
-
+  def _has_same_structure(self, other):
     if not isinstance(other, DictType):
       return False
 
-    return all(key in self.mapping and
-               self.mapping[key].is_subtype_of(other.mapping[key])
-               for key in other.mapping)
+    return self.mapping.keys() == other.mapping.keys()
+
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    """See base class."""
+    if not self._has_same_structure(other):
+      return False
+
+    # We need all keys to be present because there can be logic relying on
+    # their existence or lack thereof and hence can not guarantee subtype based
+    # on a subset or superset of keys.
+    # Only the tracing code can explicitly check for key dependencies and inform
+    # that decision.
+    return all(self.mapping[key].is_subtype_of(other.mapping[key])
+               for key in self.mapping)
 
   def most_specific_common_supertype(self, others: Sequence[trace.TraceType]):
     """See base class."""
@@ -299,18 +308,17 @@ class DictType(trace.TraceType):
           "Argument `others` to function `most_specific_common_supertype` must be a non-empty Sequence."
       )
 
-    if not all(isinstance(other, DictType) for other in others):
+    if not all(self._has_same_structure(other) for other in others):
       return None
 
     new_mapping = {}
     for key in self.mapping.keys():
-      if all(key in other.mapping for other in others):
-        common = self.mapping[key].most_specific_common_supertype(
-            [other.mapping[key] for other in others])
-        if common is None:
-          return None
-        else:
-          new_mapping[key] = common
+      common = self.mapping[key].most_specific_common_supertype(
+          [other.mapping[key] for other in others])
+      if common is None:
+        return None
+      else:
+        new_mapping[key] = common
 
     return DictType(new_mapping)
 
@@ -318,7 +326,7 @@ class DictType(trace.TraceType):
     if not isinstance(other, trace.TraceType):
       return NotImplemented
 
-    if not isinstance(other, DictType):
+    if not self._has_same_structure(other):
       return False
 
     return self.mapping == other.mapping
