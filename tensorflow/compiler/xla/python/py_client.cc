@@ -222,7 +222,8 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
     context.loadDialect<mlir::mhlo::MhloDialect>();
     context.loadDialect<mlir::chlo::HloClientDialect>();
     mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-    module = mlir::parseSourceString(mlir_module, &context);
+    module = mlir::parseSourceString(
+        llvm::StringRef(mlir_module.data(), mlir_module.size()), &context);
     if (!module) {
       return diagnostic_handler.ConsumeStatus();
     }

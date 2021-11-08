@@ -14,11 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/raw_ostream.h"
-#include "mlir-c/IR.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "third_party/llvm/llvm-project/mlir/lib/Bindings/Python/IRModule.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
