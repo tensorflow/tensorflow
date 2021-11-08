@@ -54,6 +54,9 @@ bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs) {
     }
     return is_better;
   }
+  if (lhs.IsManual() || rhs.IsManual()) {
+    return false;
+  }
   if (!rhs.IsTileMaximal()) {
     return lhs.NumTiles() > rhs.NumTiles();
   } else if (!rhs.IsReplicated()) {
@@ -1309,6 +1312,9 @@ HloSharding PartiallyReplicateTiledShardingOnAllDimsExcept(
 
 HloSharding ReplicateAllDataDims(const HloSharding& sharding,
                                  int64_t data_rank) {
+  if (sharding.IsManual()) {
+    return sharding;
+  }
   if (sharding.subgroup_types().empty()) {
     return HloSharding::Replicate(sharding.metadata());
   }

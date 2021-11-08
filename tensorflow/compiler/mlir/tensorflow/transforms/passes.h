@@ -200,6 +200,9 @@ CreateTensorArrayOpsDecompositionPass();
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
 
+// Create a pass that legalize TFG to TF dialect.
+std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
+
 // Addds the HLO to TF rewrite patterns to the specified pattern list.
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList* patterns,
                                      MLIRContext* context);

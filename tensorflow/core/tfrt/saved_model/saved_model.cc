@@ -1253,11 +1253,11 @@ tensorflow::Status SavedModelImpl::RunInternal(
       })};
 
   // Wait for the function execution before checking chain and results.
-  host->Await(executed);
+  exec_ctx.work_queue().Await(executed);
 
   // Wait for all results including the side-effect chain. This ensures that all
   // side-effects are visible when SavedModel::Run() returns.
-  host->Await(chain_and_results);
+  exec_ctx.work_queue().Await(chain_and_results);
 
   DCHECK(!chain_and_results.empty());
 

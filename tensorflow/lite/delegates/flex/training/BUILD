@@ -20,7 +20,10 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 # This is a TF Lite delegate that is used for on-device training exclusively.
 #
 package(
-    default_visibility = ["//visibility:private"],
+    default_visibility = [
+        "//tensorflow/lite/delegates/flex:__subpackages__",
+        "//third_party/fcp/client:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 
@@ -33,12 +36,9 @@ cc_library(
         "training_delegate.h",
     ],
     copts = tflite_copts(),
-    visibility = [
-        "//tensorflow/lite/delegates/flex/training:__subpackages__",
-    ],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/lite/delegates/flex:delegate_without_symbol",
+        "//tensorflow/lite/delegates/flex:delegate_only_runtime",
     ],
     alwayslink = 1,
 )
@@ -46,12 +46,15 @@ cc_library(
 tf_cc_test(
     name = "training_delegate_test",
     size = "small",
-    srcs = ["training_delegate_test.cc"],
+    srcs = [
+        "training_delegate_test.cc",
+    ],
     tags = [
         "no_gpu",  # GPU + flex is not supported.
     ],
     deps = [
         ":training_delegate",
+        "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/lite:shared_library",
         "//tensorflow/lite/delegates/flex:test_util",
         "//tensorflow/lite/kernels:test_util",

@@ -97,7 +97,7 @@ mlir::Value ConvertFallbackTensorToCoreRTTensorHandle(
 }
 
 mlir::LogicalResult ConvertCoreRTOperands(
-    mlir::Operation *op, llvm::ArrayRef<mlir::Value> operands,
+    mlir::Operation *op, mlir::ValueRange operands,
     llvm::SmallVectorImpl<mlir::Value> *new_operands,
     mlir::ConversionPatternRewriter &rewriter) {
   mlir::OpBuilder::InsertionGuard guard(rewriter);
@@ -118,8 +118,7 @@ mlir::LogicalResult ConvertCoreRTOperands(
 }
 
 mlir::LogicalResult ConvertFallbackOperands(
-    mlir::Operation *op, llvm::StringRef device,
-    llvm::ArrayRef<mlir::Value> operands,
+    mlir::Operation *op, llvm::StringRef device, mlir::ValueRange operands,
     llvm::SmallVectorImpl<mlir::Value> *new_operands,
     mlir::ConversionPatternRewriter &rewriter) {
   for (auto operand : operands) {

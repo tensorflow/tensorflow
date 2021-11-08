@@ -194,6 +194,7 @@ cc_test(
     size = "small",
     srcs = ["common_test.cc"],
     deps = [
+        ":c_api_types",
         ":common",
         "@com_google_googletest//:gtest_main",
     ],

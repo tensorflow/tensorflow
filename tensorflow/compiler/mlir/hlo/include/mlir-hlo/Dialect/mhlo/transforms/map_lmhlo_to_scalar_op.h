@@ -196,8 +196,7 @@ using ScalarCOp = typename LhloToScalarOp<LhloOp>::COp;
 template <typename... Args>
 struct MapLhloOpToScalarOpImpl {
   Value operator()(Location loc, ArrayRef<Type> result_types,
-                   ArrayRef<Type> arg_types, ArrayRef<Value> args,
-                   OpBuilder* b) {
+                   ArrayRef<Type> arg_types, ValueRange args, OpBuilder* b) {
     return nullptr;
   }
 };
@@ -205,8 +204,7 @@ struct MapLhloOpToScalarOpImpl {
 template <typename StdScalarOp>
 struct MapLhloOpToScalarOpImpl<StdScalarOp> {
   Value operator()(Location loc, ArrayRef<Type> result_types,
-                   ArrayRef<Type> arg_types, ArrayRef<Value> args,
-                   OpBuilder* b) {
+                   ArrayRef<Type> arg_types, ValueRange args, OpBuilder* b) {
     return b->template create<StdScalarOp>(loc, result_types, args, mlir::None);
   }
 };
@@ -214,8 +212,7 @@ struct MapLhloOpToScalarOpImpl<StdScalarOp> {
 template <typename SupportedType, typename StdScalarOp, typename... Args>
 struct MapLhloOpToScalarOpImpl<SupportedType, StdScalarOp, Args...> {
   Value operator()(Location loc, ArrayRef<Type> result_types,
-                   ArrayRef<Type> arg_types, ArrayRef<Value> args,
-                   OpBuilder* b) {
+                   ArrayRef<Type> arg_types, ValueRange args, OpBuilder* b) {
     Type element_type = getElementTypeOrSelf(arg_types.front());
     if (SupportedType{}(element_type)) {
       return b->template create<StdScalarOp>(loc, result_types, args,
@@ -229,8 +226,7 @@ struct MapLhloOpToScalarOpImpl<SupportedType, StdScalarOp, Args...> {
 template <typename SupportedType, typename... Args>
 struct MapLhloOpToScalarOpImpl<SupportedType, void, Args...> {
   Value operator()(Location loc, ArrayRef<Type> result_types,
-                   ArrayRef<Type> arg_types, ArrayRef<Value> args,
-                   OpBuilder* b) {
+                   ArrayRef<Type> arg_types, ValueRange args, OpBuilder* b) {
     return MapLhloOpToScalarOpImpl<Args...>{}(loc, result_types, arg_types,
                                               args, b);
   }
@@ -273,8 +269,8 @@ struct MapableIf<MapTy, OpTy, std::true_type> {
 // LHLO unary/binary op. Returns the value for the result.
 template <typename LhloOpTy>
 inline Value MapLhloOpToStdScalarOp(Location loc, ArrayRef<Type> result_types,
-                                    ArrayRef<Type> arg_types,
-                                    ArrayRef<Value> args, OpBuilder* b) {
+                                    ArrayRef<Type> arg_types, ValueRange args,
+                                    OpBuilder* b) {
   using ScalarIOpOrVoid = typename MapableIf<ScalarIOp, LhloOpTy>::type;
   using ScalarUOpOrVoid = typename MapableIf<ScalarUOp, LhloOpTy>::type;
   using ScalarFOpOrVoid = typename MapableIf<ScalarFOp, LhloOpTy>::type;
@@ -290,7 +286,7 @@ template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::AbsOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Type> arg_types,
-                                                  ArrayRef<Value> args,
+                                                  ValueRange args,
                                                   OpBuilder* b) {
   Type element_type = getElementTypeOrSelf(arg_types.front());
   if (element_type.isa<FloatType>()) {
@@ -362,7 +358,7 @@ inline Value MapCompareOpToStdScalarOp(Location loc,
                                        StringRef comparison_direction,
                                        ArrayRef<Type> result_types,
                                        ArrayRef<Type> arg_types,
-                                       ArrayRef<Value> args, OpBuilder* b) {
+                                       ValueRange args, OpBuilder* b) {
   const auto& lhs = args[0];
   const auto& rhs = args[1];
   Type element_type = getElementTypeOrSelf(arg_types.front());
@@ -399,7 +395,7 @@ template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::CopyOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Type> arg_types,
-                                                   ArrayRef<Value> args,
+                                                   ValueRange args,
                                                    OpBuilder* b) {
   return args.front();
 }
@@ -407,7 +403,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::CopyOp>(Location loc,
 template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::ComplexOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Type> arg_types,
-    ArrayRef<Value> args, OpBuilder* b) {
+    ValueRange args, OpBuilder* b) {
   return MapLhloOpToScalarOpImpl<complex::CreateOp>{}(loc, result_types,
                                                       arg_types, args, b);
 }
@@ -416,7 +412,7 @@ template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::RealOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Type> arg_types,
-                                                   ArrayRef<Value> args,
+                                                   ValueRange args,
                                                    OpBuilder* b) {
   return MapLhloOpToScalarOpImpl<complex::ReOp>{}(loc, result_types, arg_types,
                                                   args, b);
@@ -426,7 +422,7 @@ template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::ImagOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Type> arg_types,
-                                                   ArrayRef<Value> args,
+                                                   ValueRange args,
                                                    OpBuilder* b) {
   return MapLhloOpToScalarOpImpl<complex::ImOp>{}(loc, result_types, arg_types,
                                                   args, b);
@@ -435,7 +431,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ImagOp>(Location loc,
 template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Type> arg_types,
-    ArrayRef<Value> args, OpBuilder* b) {
+    ValueRange args, OpBuilder* b) {
   Type sourceType = getElementTypeOrSelf(arg_types.front());
   Type targetType = getElementTypeOrSelf(result_types.front());
   Type convertedSourceType = getElementTypeOrSelf(args.front());
@@ -513,8 +509,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
 
 template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::BitcastConvertOp>(
-    Location loc, ArrayRef<Type> result_types, ArrayRef<Type>,
-    ArrayRef<Value> args, OpBuilder* b) {
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Type>, ValueRange args,
+    OpBuilder* b) {
   return b->create<mlir::arith::BitcastOp>(loc, result_types, args);
 }
 
@@ -522,7 +518,7 @@ template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::DotOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Type> arg_types,
-                                                  ArrayRef<Value> args,
+                                                  ValueRange args,
                                                   OpBuilder* b) {
   // Dot Op converter from lhlo to affine only accepts float and integer types.
   const auto& lhs = args[0];
@@ -549,7 +545,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::DotOp>(Location loc,
 template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::IsFiniteOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Type> arg_types,
-    ArrayRef<Value> args, OpBuilder* b) {
+    ValueRange args, OpBuilder* b) {
   if (args[0].getType().isa<FloatType>()) {
     auto pos_inf = APFloat::getInf(
         args[0].getType().cast<FloatType>().getFloatSemantics());
@@ -568,7 +564,7 @@ template <typename... Args>
 struct CompareSelectOpToStdScalarOp {
   static Value map(Location loc, StringRef comparison_direction,
                    ArrayRef<Type> result_types, ArrayRef<Type> arg_types,
-                   ArrayRef<Value> args, OpBuilder* b) {
+                   ValueRange args, OpBuilder* b) {
     return nullptr;
   }
 };
@@ -581,7 +577,7 @@ struct CompareSelectOpToStdScalarOp<SupportedType, StdCompareOp, Predicate,
                                     Args...> {
   static Value map(Location loc, StringRef comparison_direction,
                    ArrayRef<Type> result_types, ArrayRef<Type> arg_types,
-                   ArrayRef<Value> args, OpBuilder* b) {
+                   ValueRange args, OpBuilder* b) {
     Type element_type = getElementTypeOrSelf(arg_types.front());
     if (element_type.isa<SupportedType>()) {
       auto predicate = getCmpPredicate<Predicate>(
@@ -596,7 +592,7 @@ struct CompareSelectOpToStdScalarOp<SupportedType, StdCompareOp, Predicate,
   }
 };
 
-inline Value LhloAlwaysPropagateNaN(Value v, ArrayRef<Value> args, Location loc,
+inline Value LhloAlwaysPropagateNaN(Value v, ValueRange args, Location loc,
                                     OpBuilder* b) {
   Type element_type = getElementTypeOrSelf(args.front().getType());
   if (auto float_type = element_type.dyn_cast<FloatType>()) {
@@ -617,7 +613,7 @@ inline Value LhloAlwaysPropagateNaN(Value v, ArrayRef<Value> args, Location loc,
 template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::LogisticOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Type> arg_types,
-    ArrayRef<Value> args, OpBuilder* b) {
+    ValueRange args, OpBuilder* b) {
   auto ty = result_types.front().cast<FloatType>();
   Value one = b->create<arith::ConstantOp>(loc, b->getFloatAttr(ty, 1.0));
   Value x = args.front();
@@ -631,7 +627,7 @@ template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::ClampOp>(Location loc,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Type> arg_types,
-                                                    ArrayRef<Value> args,
+                                                    ValueRange args,
                                                     OpBuilder* b) {
   assert(args.size() == 3 && "expected 3 arguments");
   Value lb = args[0];
@@ -649,7 +645,7 @@ template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::NegOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Type> arg_types,
-                                                  ArrayRef<Value> args,
+                                                  ValueRange args,
                                                   OpBuilder* b) {
   Type element_type = getElementTypeOrSelf(args.front().getType());
   if (element_type.isa<ComplexType, FloatType>()) {
@@ -676,7 +672,7 @@ template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::NotOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Type> arg_types,
-                                                  ArrayRef<Value> args,
+                                                  ValueRange args,
                                                   OpBuilder* b) {
   Type element_type = getElementTypeOrSelf(args.front().getType());
   if (auto integer_type = element_type.dyn_cast<IntegerType>()) {
@@ -695,7 +691,7 @@ template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::PowOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Type> arg_types,
-                                                  ArrayRef<Value> args,
+                                                  ValueRange args,
                                                   OpBuilder* b) {
   lmhlo::PowOp::Adaptor adaptor(args);
   auto lb = ImplicitLocOpBuilder(loc, *b);
@@ -776,7 +772,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::PowOp>(Location loc,
 template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::SelectOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Type> arg_types,
-    ArrayRef<Value> args, OpBuilder* b) {
+    ValueRange args, OpBuilder* b) {
   return MapLhloOpToScalarOpImpl<::mlir::SelectOp>{}(loc, result_types,
                                                      arg_types, args, b);
 }
@@ -785,7 +781,7 @@ template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::SignOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Type> arg_types,
-                                                   ArrayRef<Value> args,
+                                                   ValueRange args,
                                                    OpBuilder* b) {
   Type element_type = getElementTypeOrSelf(args.front().getType());
   if (auto float_type = element_type.dyn_cast<FloatType>()) {
@@ -842,8 +838,8 @@ struct HloOpToStdScalarOp {
                 !std::is_same<LhloOpTy, lmhlo::CompareOp>::value &&
                 std::is_same<typename mhlo::HloToLhloOp<LhloOpTy>,
                              std::false_type>::value>>
-  static Value map(HloOpTy op, ArrayRef<Type> result_types,
-                   ArrayRef<Value> args, OpBuilder* b, unsigned i = 0) {
+  static Value map(HloOpTy op, ArrayRef<Type> result_types, ValueRange args,
+                   OpBuilder* b, unsigned i = 0) {
     return impl::MapLhloOpToStdScalarOp<LhloOpTy>(
         op.getLoc(), result_types, llvm::to_vector<4>(op->getOperandTypes()),
         args, b);
@@ -854,8 +850,8 @@ struct HloOpToStdScalarOp {
             typename = std::enable_if_t<
                 !std::is_same<LhloOpTy, lmhlo::CompareOp>::value &&
                 !std::is_same<LhloOpTy, std::false_type>::value>>
-  static Value map(HloOpTy op, ArrayRef<Type> result_types,
-                   ArrayRef<Value> args, OpBuilder* b, int i = 0) {
+  static Value map(HloOpTy op, ArrayRef<Type> result_types, ValueRange args,
+                   OpBuilder* b, int i = 0) {
     return impl::MapLhloOpToStdScalarOp<LhloOpTy>(
         op.getLoc(), result_types, llvm::to_vector<4>(op->getOperandTypes()),
         args, b);
@@ -865,7 +861,7 @@ struct HloOpToStdScalarOp {
   template <typename LhloOpTy, typename = std::enable_if_t<std::is_same<
                                    LhloOpTy, lmhlo::CompareOp>::value>>
   static Value map(lmhlo::CompareOp op, ArrayRef<Type> result_types,
-                   ArrayRef<Value> args, OpBuilder* b) {
+                   ValueRange args, OpBuilder* b) {
     auto comparison_direction = op.comparison_direction();
     return impl::MapCompareOpToStdScalarOp<lmhlo::CompareOp>(
         op.getLoc(), comparison_direction, result_types,
@@ -877,7 +873,7 @@ struct HloOpToStdScalarOp {
             typename =
                 std::enable_if_t<std::is_same<HloOpTy, mhlo::CompareOp>::value>>
   static Value map(mhlo::CompareOp op, ArrayRef<Type> result_types,
-                   ArrayRef<Value> args, OpBuilder* b) {
+                   ValueRange args, OpBuilder* b) {
     auto comparison_direction = op.comparison_direction();
     return impl::MapCompareOpToStdScalarOp<lmhlo::CompareOp>(
         op.getLoc(), comparison_direction, result_types,
@@ -891,7 +887,7 @@ struct HloOpToStdScalarOp {
                 std::is_same<typename mhlo::HloToLhloOp<LhloOpTy>,
                              std::false_type>::value>>
   static Value map(Location loc, ArrayRef<Type> result_types,
-                   ArrayRef<Type> arg_types, ArrayRef<Value> args, OpBuilder* b,
+                   ArrayRef<Type> arg_types, ValueRange args, OpBuilder* b,
                    unsigned i = 0) {
     return impl::MapLhloOpToStdScalarOp<LhloOpTy>(loc, result_types, arg_types,
                                                   args, b);
@@ -902,7 +898,7 @@ struct HloOpToStdScalarOp {
                                    LhloOpTy, lmhlo::CompareOp>::value>>
   static Value map(Location loc, StringRef comparison_direction,
                    ArrayRef<Type> result_types, ArrayRef<Type> arg_types,
-                   ArrayRef<Value> args, OpBuilder* b) {
+                   ValueRange args, OpBuilder* b) {
     return impl::MapCompareOpToStdScalarOp<lmhlo::CompareOp>(
         loc, comparison_direction, result_types, arg_types, args, b);
   }

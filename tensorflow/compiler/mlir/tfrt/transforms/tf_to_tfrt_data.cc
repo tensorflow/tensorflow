@@ -101,7 +101,7 @@ struct ConstOpConversion : public mlir::OpConversionPattern<TF::ConstOp> {
       : OpConversionPattern<TF::ConstOp>(context) {}
 
   LogicalResult matchAndRewrite(
-      TF::ConstOp op, ArrayRef<Value> operands,
+      TF::ConstOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     if (isIntScalar(op.getType(), 64)) {
       return ReplaceConst<tfrt::compiler::ConstantI64Op>(op, rewriter,
@@ -121,9 +121,10 @@ struct ReturnOpConversion : public mlir::OpConversionPattern<mlir::ReturnOp> {
       : OpConversionPattern<mlir::ReturnOp>(context) {}
 
   LogicalResult matchAndRewrite(
-      mlir::ReturnOp op, ArrayRef<Value> operands,
+      mlir::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<tfrt::compiler::ReturnOp>(op, operands);
+    rewriter.replaceOpWithNewOp<tfrt::compiler::ReturnOp>(
+        op, adaptor.getOperands());
     return success();
   }
 };

@@ -119,6 +119,7 @@ SKIPPED_ORDER_INSENSITIVE_STATEFUL_OPS = frozenset((
     "EnqueueTPUEmbeddingIntegerBatch",
     "EnqueueTPUEmbeddingSparseTensorBatch",
     "EnqueueTPUEmbeddingRaggedTensorBatch",
+    "EnqueueTPUEmbeddingArbitraryTensorBatch",
     "RestoreV2",
     "SaveV2",
     "InfeedEnqueue",
@@ -204,6 +205,7 @@ class AutomaticControlDependencies(object):
     self.ops_which_must_run = set()
     self.record_initial_resource_uses = record_initial_resource_uses
     self.record_uses_of_resource_ids = record_uses_of_resource_ids
+    self._independent_ops = []
 
   def mark_as_return(self, tensor):
     """Acts like identity but marks the `Tensor` as a return value.
@@ -249,6 +251,21 @@ class AutomaticControlDependencies(object):
     self._returned_tensors.add(tensor)
     return tensor
 
+  def run_independently(self, op):
+    """Marks the given op as independent.
+
+    Overrides any other rule for the op.
+
+    Independent ops are guaranteed to execute before the return values, but
+    are allowed to run in parallel with everything else. Use in programs which
+    can guarantee that an op has side effects that don't affect any other op.
+
+    Args:
+      op: An operation
+    """
+    self._independent_ops.append(op)
+    op._set_attr("_independent_side_effects", attr_value_pb2.AttrValue(b=True))  # pylint: disable=protected-access
+
   def __enter__(self):
     if context.executing_eagerly():
       return self
@@ -257,9 +274,11 @@ class AutomaticControlDependencies(object):
     # TODO(apassos): Fix this by locking the graph or using a temporary
     # graph (but that would mess up devices and collections at least,
     # probably other things as well).
-    self._graph = ops.get_default_graph()
-    self._graph._add_control_dependencies = True  # pylint: disable=protected-access
-    self._n_operations = len(self._graph.get_operations())
+    g = ops.get_default_graph()
+    self._graph = g
+    g._add_control_dependencies = True  # pylint: disable=protected-access
+    g.experimental_acd_manager = self
+    self._n_operations = len(g.get_operations())
     return self
 
   def _process_switch(self, switch_op, ops_which_must_run,
@@ -336,11 +355,12 @@ class AutomaticControlDependencies(object):
           f" cannot change. Upon entry it was {self._graph}, but on exit it"
           f" changed to {ops.get_default_graph()}")
 
-    if hasattr(self._graph, "outer_graph"):
-      outer_val = self._graph.outer_graph._add_control_dependencies
-      self._graph._add_control_dependencies = outer_val
+    outer_graph = getattr(self._graph, "outer_graph", None)
+    if outer_graph is not None:
+      self._graph._add_control_dependencies = outer_graph._add_control_dependencies
     else:
       self._graph._add_control_dependencies = False
+    self._graph.experimental_acd_manager = None
 
     # map from resource tensor to the last op which wrote to it
     last_write_to_resource = {}
@@ -397,6 +417,15 @@ class AutomaticControlDependencies(object):
         continue
       control_inputs = set()
 
+      if op.type in MUST_RUN_ORDER_INSENSITIVE_STATEFUL_OPS:
+        # This will add it to self._independent_ops, but also mark it with an
+        # attribute.
+        self.run_independently(op)
+
+      if op in self._independent_ops:
+        ops_which_must_run.add(op)
+        continue
+
       # Ensure stateful ops run.
       # Read-only ops are added to control outputs if the read value is
       # consumed. This covers the case when the read value is returned from
@@ -404,8 +433,7 @@ class AutomaticControlDependencies(object):
       if ((op_def_registry.get(op.type) is None) or
           (op_is_stateful(op) and
            (op.type not in utils.RESOURCE_READ_OPS or
-            any(output.consumers() for output in op.outputs))) or
-          (op.type in MUST_RUN_ORDER_INSENSITIVE_STATEFUL_OPS)):
+            any(output.consumers() for output in op.outputs)))):
         ops_which_must_run.add(op)
 
       # Make a note of all opened manager_ids.

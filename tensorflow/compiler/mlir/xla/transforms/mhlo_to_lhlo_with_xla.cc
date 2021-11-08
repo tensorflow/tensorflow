@@ -44,9 +44,9 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
@@ -902,9 +902,14 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
         &custom_call->precision_config(), &builder_));
     op.result_scaleAttr(
         builder_.getF64FloatAttr(backend_config.conv_result_scale()));
+
+    const auto& algorithm = backend_config.algorithm();
+
     auto config = mlir::lmhlo_gpu::ConvolutionBackendConfig::get(
-        builder_.getI64IntegerAttr(backend_config.algorithm()),
-        builder_.getBoolAttr(backend_config.tensor_ops_enabled()),
+        builder_.getI64IntegerAttr(algorithm.algo_id()),
+        builder_.getBoolAttr(
+            algorithm.math_type() ==
+            stream_executor::dnn::AlgorithmProto::TENSOR_OP_MATH),
         get_layout_attribute(custom_call->operand(0)->shape().layout()),
         get_layout_attribute(custom_call->operand(1)->shape().layout()),
         get_layout_attribute(custom_call->shape().tuple_shapes(0).layout()),

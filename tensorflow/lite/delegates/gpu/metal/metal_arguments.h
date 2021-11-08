@@ -72,10 +72,9 @@ class MetalArguments : public ArgumentsBinder {
                                                     std::string* code);
 
   absl::Status AllocateObjects(const Arguments& args, id<MTLDevice> device);
-  absl::Status AddObjectArgs(const GpuInfo& gpu_info, Arguments* args);
+  absl::Status AddObjectArgs(const GpuInfo& gpu_info, const Arguments& args);
 
-  void AddGPUResources(const std::string& name, const GPUResources& resources,
-                       Arguments* args);
+  void AddGPUResources(const std::string& name, const GPUResources& resources);
 
   std::string GetListOfArgs(int buffer_offset, int textures_offset = 0);
 
@@ -97,23 +96,6 @@ class MetalArguments : public ArgumentsBinder {
   absl::Status SetImageBuffer(const std::string& name, id<MTLTexture> handle);
 
   absl::Status SetObjectsResources(const Arguments& args);
-
-  absl::Status ResolveSelectorsPass(
-      const GpuInfo& gpu_info, const Arguments& args,
-      const std::map<std::string, std::string>& linkables, std::string* code);
-
-  absl::Status ResolveSelector(
-      const GpuInfo& gpu_info, const Arguments& args,
-      const std::map<std::string, std::string>& linkables,
-      const std::string& object_name, const std::string& selector,
-      const std::vector<std::string>& function_args,
-      const std::vector<std::string>& template_args, std::string* result);
-
-  void ResolveObjectNames(const std::string& object_name,
-                          const std::vector<std::string>& member_names,
-                          std::string* code);
-
-  void ResolveArgsPass(std::string* code);
 
   static constexpr char kArgsPrefix[] = "args.";
   struct IntValue {

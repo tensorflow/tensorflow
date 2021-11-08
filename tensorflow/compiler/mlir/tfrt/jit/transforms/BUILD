@@ -49,6 +49,7 @@ cc_library(
         "tf_cpurt_detensorize_linalg.cc",
         "tf_cpurt_fission.cc",
         "tf_cpurt_fusion.cc",
+        "tf_cpurt_math_approximation.cc",
         "tf_cpurt_matmul_specialization.cc",
         "tf_cpurt_pad_tiled_ops.cc",
         "tf_cpurt_passes.cc",
@@ -73,6 +74,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
@@ -80,6 +82,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorOps",
     ],
     alwayslink = 1,
 )

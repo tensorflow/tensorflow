@@ -20,6 +20,7 @@ import six
 
 from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import compression_ops
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils
@@ -99,7 +100,6 @@ class ShardingPolicy(enum.IntEnum):
   DATA = 3
   FILE_OR_DATA = 4
   HINT = 5
-
   # LINT.ThenChange()
 
   def _to_proto(self):
@@ -152,6 +152,15 @@ def _validate_compression(compression):
   if compression not in valid_compressions:
     raise ValueError(f"Invalid `compression` argument: {compression}. "
                      f"Must be one of {valid_compressions}.")
+
+
+def _get_compression_proto(compression):
+  if compression == COMPRESSION_AUTO:
+    return data_service_pb2.DataServiceMetadata.SNAPPY
+  if compression == COMPRESSION_NONE:
+    return data_service_pb2.DataServiceMetadata.OFF
+  raise ValueError(f"Invalid `compression` argument: {compression}. "
+                   f"Must be one of {[COMPRESSION_AUTO, COMPRESSION_NONE]}.")
 
 
 class _DataServiceDatasetV2(dataset_ops.DatasetSource):
@@ -712,7 +721,7 @@ def _register_dataset(service, dataset, compression):
   if external_state_policy is None:
     external_state_policy = ExternalStatePolicy.WARN
 
-  encoded_spec = ""
+  encoded_spec = None
   if context.executing_eagerly():
     encoded_spec = nested_structure_coder.encode_structure(
         dataset.element_spec).SerializeToString()
@@ -724,12 +733,23 @@ def _register_dataset(service, dataset, compression):
   dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
   dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
 
-  dataset_id = gen_experimental_dataset_ops.register_dataset(
-      dataset._variant_tensor,  # pylint: disable=protected-access
-      address=address,
-      protocol=protocol,
-      external_state_policy=external_state_policy.value,
-      element_spec=encoded_spec)
+  if compat.forward_compatible(2021, 12, 10):
+    metadata = data_service_pb2.DataServiceMetadata(
+        element_spec=encoded_spec,
+        compression=_get_compression_proto(compression))
+    dataset_id = gen_experimental_dataset_ops.register_dataset(
+        dataset._variant_tensor,  # pylint: disable=protected-access
+        address=address,
+        protocol=protocol,
+        external_state_policy=external_state_policy.value,
+        metadata=metadata.SerializeToString())
+  else:
+    dataset_id = gen_experimental_dataset_ops.register_dataset(
+        dataset._variant_tensor,  # pylint: disable=protected-access
+        address=address,
+        protocol=protocol,
+        external_state_policy=external_state_policy.value,
+        element_spec=encoded_spec)
 
   return dataset_id
 

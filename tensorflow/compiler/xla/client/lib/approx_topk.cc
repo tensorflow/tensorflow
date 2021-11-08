@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -103,7 +104,8 @@ XlaOp SortAndSliceBuilder(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                  absl::Span<const XlaOp> init_values, int64_t top_k,
                  int64_t reduction_dim, const XlaComputation& comparator,
-                 float recall_target, bool aggregate_to_topk) {
+                 float recall_target, bool aggregate_to_topk,
+                 int64_t reduction_input_size_override) {
   // Validates shapes and ranks
   if (operands.size() != init_values.size()) {
     return builder->ReportError(
@@ -169,30 +171,28 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
     }
     return Tuple(builder, operands);
   }
-
-  // Given number of data points N, K for top-k elements, and W for the size of
-  // the reduce window, let M = Ceil(N / W) be the number of windows. The
-  // expected number of top-k elements that doesn't collide in windows is
-  //
-  //   K * ((M - 1) / M)^{K - 1}
-  //
-  // The recall of is the expected number of top-k elements divided by K
-  //
-  //   recall = ((M - 1) / M)^{K - 1}
-  //          = (1 - 1/M)^{K - 1}
-  //          = (1 - 1/M)^{-M * (K - 1)/(-M)}
-  //          ~= EXP((1 - K) / M)    for large M
-  //
-  //   => M = (1 - K)/LOG(recall)
-  if (recall_target <= 0. || recall_target > 1.0) {
-    return builder->ReportError(
-        InvalidArgument("recall_target should range in (0,1]"));
+  // Only override the input size when we really need to compute the ApproxTopK
+  // through the PartialReduce TPU Op.
+  if (reduction_input_size_override >= 0) {
+    if (n < reduction_input_size_override) {
+      return builder->ReportError(
+          InvalidArgument("reduction_input_size_override should be greater "
+                          "equals to opeands[reduction_dim], which is %d",
+                          n));
+    }
+    n = reduction_input_size_override;
   }
-  uint64_t m = std::min(
-      std::max(static_cast<uint64_t>((1.0 - top_k) / std::log(recall_target)),
-               tpu_tiling),
-      n);
-  uint32_t log2_reduction = absl::bit_width(n / m) - 1;  // floor(n / m)
+
+  auto status_or_approx_output_size = ApproxTopKReductionOutputSize(
+      n, rank, top_k, recall_target, /*aggregate_to_topk=*/false);
+  if (!status_or_approx_output_size.status().ok()) {
+    return builder->ReportError(status_or_approx_output_size.status());
+  }
+
+  int64_t approx_output_size, log2_reduction;
+  std::tie(approx_output_size, log2_reduction) =
+      status_or_approx_output_size.ValueOrDie();
+
   if (log2_reduction == 0) {
     if (aggregate_to_topk) {
       return SortAndSliceBuilder(builder, operands, top_k, reduction_dim,
@@ -209,13 +209,10 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   for (const auto& op : init_values) {
     partial_reduce_args.push_back(op);
   }
-  int64_t output_reduction_size =
-      CeilOfRatio<int64_t>(CeilOfRatio(n, tpu_tiling), (1 << log2_reduction)) *
-      tpu_tiling;
   std::vector<Shape> approx_output_shapes;
   approx_output_shapes.reserve(operands_shapes.size());
   for (auto op_shape : operands_shapes) {
-    op_shape.mutable_dimensions()[reduction_dim] = output_reduction_size;
+    op_shape.mutable_dimensions()[reduction_dim] = approx_output_size;
     approx_output_shapes.push_back(op_shape);
   }
   auto approx_output_shape = ShapeUtil::MakeTupleShape(approx_output_shapes);
@@ -239,6 +236,59 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                                reduction_dim, comparator);
   }
   return approx_topk;
+}
+
+StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
+    int64_t input_size, int64_t rank, int64_t top_k, float recall_target,
+    bool aggregate_to_topk) {
+  // Fallback to variadic reduce when top_k == 1.
+  // TODO(fchern): Approx-topk followed by variadic reduce might run faster
+  // than running variadic reduce directly.
+  if (top_k == 1) {
+    return std::pair<int64_t, int64_t>(1, -1);
+  }
+
+  if (aggregate_to_topk) {
+    return std::pair<int64_t, int64_t>(top_k, -1);
+  }
+
+  uint64_t tpu_tiling = rank == 1 ? kTpuChunkTiling : kTpuLaneTiling;
+  if (input_size <= tpu_tiling) {
+    return std::pair<int64_t, int64_t>(input_size, 0);
+  }
+
+  // Given number of data points N, K for top-k elements, and W for the size of
+  // the reduce window, let M = Ceil(N / W) be the number of windows. The
+  // expected number of top-k elements that doesn't collide in windows is
+  //
+  //   K * ((M - 1) / M)^{K - 1}
+  //
+  // The recall of is the expected number of top-k elements divided by K
+  //
+  //   recall = ((M - 1) / M)^{K - 1}
+  //          = (1 - 1/M)^{K - 1}
+  //          = (1 - 1/M)^{-M * (K - 1)/(-M)}
+  //          ~= EXP((1 - K) / M)    for large M
+  //
+  //   => M = (1 - K)/LOG(recall)
+  if (recall_target <= 0. || recall_target > 1.0) {
+    return InvalidArgument("recall_target should range in (0,1]");
+  }
+  uint64_t m = std::min<uint64_t>(
+      std::max(static_cast<uint64_t>((1.0 - top_k) / std::log(recall_target)),
+               tpu_tiling),
+      input_size);
+  uint32_t log2_reduction =
+      absl::bit_width(input_size / m) - 1;  // floor(n / m)
+  if (log2_reduction == 0) {
+    return std::pair<int64_t, int64_t>(input_size, 0);
+  }
+
+  int64_t approx_output_size =
+      CeilOfRatio<int64_t>(CeilOfRatio<int64_t>(input_size, tpu_tiling),
+                           (1 << log2_reduction)) *
+      tpu_tiling;
+  return std::pair<int64_t, int64_t>(approx_output_size, log2_reduction);
 }
 
 }  // namespace xla

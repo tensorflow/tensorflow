@@ -884,7 +884,7 @@ namespace {
 REGISTER_DATASET_EXPERIMENT("max_parallelism", 100);
 REGISTER_DATASET_EXPERIMENT("max_parallelism_v2", 5);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
-REGISTER_DATASET_EXPERIMENT("inject_prefetch", 0);
+REGISTER_DATASET_EXPERIMENT("inject_prefetch", 5);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

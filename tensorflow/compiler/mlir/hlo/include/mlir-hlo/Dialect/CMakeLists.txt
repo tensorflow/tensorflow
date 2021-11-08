@@ -13,4 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+add_subdirectory(disc-ral)
+add_subdirectory(lhlo_gpu)
 add_subdirectory(mhlo)

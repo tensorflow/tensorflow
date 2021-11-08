@@ -19,7 +19,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/core/data/finalization_utils.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -29,7 +31,10 @@ Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
-  int64_t cardinality = dataset->Cardinality();
+  DatasetBase* finalized_dataset;
+  TF_ASSIGN_OR_RETURN(finalized_dataset, GetFinalizedDataset(ctx, dataset));
+
+  int64_t cardinality = finalized_dataset->Cardinality();
   if (cardinality == kInfiniteCardinality ||
       cardinality == kUnknownCardinality) {
     return tensorflow::errors::FailedPrecondition(
@@ -40,7 +45,8 @@ Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
   TF_RETURN_IF_ERROR(ParseScalarArgument<int64_t>(ctx, "index", &index));
 
   std::vector<Tensor> components;
-  TF_RETURN_IF_ERROR(dataset->Get(ctx, index, &components));
+
+  TF_RETURN_IF_ERROR(finalized_dataset->Get(ctx, index, &components));
   TF_RETURN_IF_ERROR(VerifyTypesMatch(output_types_, components));
   TF_RETURN_IF_ERROR(VerifyShapesCompatible(output_shapes_, components));
 

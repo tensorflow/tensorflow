@@ -112,7 +112,7 @@ tensorflow::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
   // The life cycle of the pointer will be managed by the reference counting in
   // the TensorFlow world and the pointer will be freed when all the buffer
   // maps, who own it, are gone.
-  if (tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant) {
+  if (IsResourceOrVariant(tensor)) {
     const tensorflow::Tensor** tf_tensor_ptr =
         reinterpret_cast<const tensorflow::Tensor**>(tensor->data.raw);
     *tf_tensor = **tf_tensor_ptr;

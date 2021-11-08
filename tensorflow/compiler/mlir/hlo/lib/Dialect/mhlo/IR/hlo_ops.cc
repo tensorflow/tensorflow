@@ -2225,10 +2225,12 @@ struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
     auto stride_op = stride_val.getDefiningOp<mlir::arith::ConstantOp>();
     if (!start_op || !limit_op || !stride_op) return failure();
 
-    auto start_attr = start_op.value().dyn_cast_or_null<DenseIntElementsAttr>();
-    auto limit_attr = limit_op.value().dyn_cast_or_null<DenseIntElementsAttr>();
+    auto start_attr =
+        start_op.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
+    auto limit_attr =
+        limit_op.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
     auto stride_attr =
-        stride_op.value().dyn_cast_or_null<DenseIntElementsAttr>();
+        stride_op.getValue().dyn_cast_or_null<DenseIntElementsAttr>();
     if (!start_attr || !limit_attr || !stride_attr) return failure();
 
     SmallVector<int64_t, 4> temp_start_indices;
@@ -5241,56 +5243,57 @@ void ConvDimensionNumbersAttr::print(::mlir::DialectAsmPrinter& printer) const {
   printer << ">";
 }
 
+// If the attribute is written with `#mhlo.conv raw<`, we parse it as a struct
+// instead of the compressed format. This enables writing tests covering
+// impossible/invalid internal representation for the attribute.
+static ParseResult parseConvolutionDimensionsRaw(
+    AsmParser& parser, ConvDimensionNumbersAttr& dnums) {
+  int64_t input_batch_dimension = 0;
+  int64_t input_feature_dimension = 0;
+  SmallVector<int64_t> input_spatial_dimensions;
+  int64_t kernel_input_feature_dimension = 0;
+  int64_t kernel_output_feature_dimension = 0;
+  SmallVector<int64_t> kernel_spatial_dimensions;
+  int64_t output_batch_dimension = 0;
+  int64_t output_feature_dimension = 0;
+  SmallVector<int64_t> output_spatial_dimensions;
+  if (failed(parseStruct(
+          parser,
+          {"input_batch_dimension", "input_feature_dimension",
+           "input_spatial_dimensions", "kernel_input_feature_dimension",
+           "kernel_output_feature_dimension", "kernel_spatial_dimensions",
+           "output_batch_dimension", "output_feature_dimension",
+           "output_spatial_dimensions"},
+          {
+              [&]() { return parser.parseInteger(input_batch_dimension); },
+              [&]() { return parser.parseInteger(input_feature_dimension); },
+              [&]() { return parseDims(parser, input_spatial_dimensions); },
+              [&]() {
+                return parser.parseInteger(kernel_input_feature_dimension);
+              },
+              [&]() {
+                return parser.parseInteger(kernel_output_feature_dimension);
+              },
+              [&]() { return parseDims(parser, kernel_spatial_dimensions); },
+              [&]() { return parser.parseInteger(output_batch_dimension); },
+              [&]() { return parser.parseInteger(output_feature_dimension); },
+              [&]() { return parseDims(parser, output_spatial_dimensions); },
+          }))) {
+    parser.emitError(parser.getCurrentLocation())
+        << "failed parsing dot dimension numbers attribute";
+    return failure();
+  }
+  dnums = ConvDimensionNumbersAttr::get(
+      parser.getBuilder().getContext(), input_batch_dimension,
+      input_feature_dimension, input_spatial_dimensions,
+      kernel_input_feature_dimension, kernel_output_feature_dimension,
+      kernel_spatial_dimensions, output_batch_dimension,
+      output_feature_dimension, output_spatial_dimensions);
+  return success();
+}
+
 ParseResult parseConvolutionDimensions(AsmParser& parser,
                                        ConvDimensionNumbersAttr& dnums) {
-  // If the attribute is written with `#mhlo.conv raw<`, we parse it as a struct
-  // instead of the compressed format. This enables writing tests covering
-  // impossible/invalid internal representation for the attribute.
-  if (succeeded(parser.parseOptionalKeyword("raw"))) {
-    int64_t input_batch_dimension = 0;
-    int64_t input_feature_dimension = 0;
-    SmallVector<int64_t> input_spatial_dimensions;
-    int64_t kernel_input_feature_dimension = 0;
-    int64_t kernel_output_feature_dimension = 0;
-    SmallVector<int64_t> kernel_spatial_dimensions;
-    int64_t output_batch_dimension = 0;
-    int64_t output_feature_dimension = 0;
-    SmallVector<int64_t> output_spatial_dimensions;
-    if (failed(parseStruct(
-            parser,
-            {"input_batch_dimension", "input_feature_dimension",
-             "input_spatial_dimensions", "kernel_input_feature_dimension",
-             "kernel_output_feature_dimension", "kernel_spatial_dimensions",
-             "output_batch_dimension", "output_feature_dimension",
-             "output_spatial_dimensions"},
-            {
-                [&]() { return parser.parseInteger(input_batch_dimension); },
-                [&]() { return parser.parseInteger(input_feature_dimension); },
-                [&]() { return parseDims(parser, input_spatial_dimensions); },
-                [&]() {
-                  return parser.parseInteger(kernel_input_feature_dimension);
-                },
-                [&]() {
-                  return parser.parseInteger(kernel_output_feature_dimension);
-                },
-                [&]() { return parseDims(parser, kernel_spatial_dimensions); },
-                [&]() { return parser.parseInteger(output_batch_dimension); },
-                [&]() { return parser.parseInteger(output_feature_dimension); },
-                [&]() { return parseDims(parser, output_spatial_dimensions); },
-            }))) {
-      parser.emitError(parser.getCurrentLocation())
-          << "failed parsing dot dimension numbers attribute";
-      return failure();
-    }
-    dnums = ConvDimensionNumbersAttr::get(
-        parser.getBuilder().getContext(), input_batch_dimension,
-        input_feature_dimension, input_spatial_dimensions,
-        kernel_input_feature_dimension, kernel_output_feature_dimension,
-        kernel_spatial_dimensions, output_batch_dimension,
-        output_feature_dimension, output_spatial_dimensions);
-    return success();
-  }
-
   // Parsing a single set of dim numbers gives the spatial dimensions as a
   // single ArrayRef<int64_t> and a list of non-spatial dimensions as
   // IntegerAttrs (indexed by the NonSpatialDim enum).
@@ -5471,7 +5474,12 @@ ParseResult parseConvolutionDimensions(AsmParser& parser,
 Attribute ConvDimensionNumbersAttr::parse(DialectAsmParser& parser, Type type) {
   if (failed(parser.parseLess())) return {};
   ConvDimensionNumbersAttr dnums;
-  parseConvolutionDimensions(parser, dnums);
+  if (succeeded(parser.parseOptionalKeyword("raw"))) {
+    if (failed(parseConvolutionDimensionsRaw(parser, dnums))) return {};
+    return dnums;
+  }
+  if (failed(parseConvolutionDimensions(parser, dnums))) return {};
+  if (failed(parser.parseGreater())) return {};
   return dnums;
 }
 //===----------------------------------------------------------------------===//

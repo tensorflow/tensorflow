@@ -626,6 +626,16 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
                        const void* allocation, bool is_variable,
                        TfLiteTensor* tensor);
 
+// Copies the contents of 'src' in 'dst'.
+// Function does nothing if either 'src' or 'dst' is passed as nullptr and
+// return kTfLiteOk.
+// Returns kTfLiteError if 'src' and 'dst' doesn't have matching data size.
+// Note function copies contents, so it won't create new data pointer
+// or change allocation type.
+// All Tensor related properties will be copied from 'src' to 'dst' like
+// quantization, sparsity, ...
+TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst);
+
 // Resize the allocated data of a (dynamic) tensor. Tensors with allocation
 // types other than kTfLiteDynamic will be ignored.
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);

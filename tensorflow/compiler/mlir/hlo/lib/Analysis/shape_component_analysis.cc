@@ -204,12 +204,12 @@ struct ShapeVisitor {
   // ===
   void backwardShapeOf(shape::ShapeOfOp op) {
     forwards_worklist.push_back(ShapeOrValueOfTensor::getValueOf(op));
-    backwards_worklist.push_back(ShapeOrValueOfTensor::getShapeOf(op.arg()));
+    backwards_worklist.push_back(ShapeOrValueOfTensor::getShapeOf(op.getArg()));
   }
   void forwardShapeOf(shape::ShapeOfOp op) {
     auto &dims = insert(ShapeOrValueOfTensor::getValueOf(op));
-    auto type = op.arg().getType().cast<RankedTensorType>();
-    auto arg = lookup(ShapeOrValueOfTensor::getShapeOf(op.arg()));
+    auto type = op.getArg().getType().cast<RankedTensorType>();
+    auto arg = lookup(ShapeOrValueOfTensor::getShapeOf(op.getArg()));
     for (int64_t i = 0, e = type.getRank(); i != e; ++i) {
       dims.emplace_back();
       auto &dim = dims.back();
@@ -228,7 +228,7 @@ struct ShapeVisitor {
   void forwardDim(tensor::DimOp op) {
     auto &dims = insert(ShapeOrValueOfTensor::getValueOf(op));
     if (auto index = op.index().getDefiningOp<arith::ConstantOp>()) {
-      int64_t i = index.value().cast<IntegerAttr>().getInt();
+      int64_t i = index.getValue().cast<IntegerAttr>().getInt();
       auto in = lookup(ShapeOrValueOfTensor::getShapeOf(op.source()));
       dims.push_back({in[i].symbols, in[i].expr});
     } else {
@@ -258,11 +258,11 @@ struct ShapeVisitor {
   }
   void backwardIndexCast(arith::IndexCastOp op) {
     forwards_worklist.push_back(ShapeOrValueOfTensor::getValueOf(op));
-    backwards_worklist.push_back(ShapeOrValueOfTensor::getValueOf(op.in()));
+    backwards_worklist.push_back(ShapeOrValueOfTensor::getValueOf(op.getIn()));
   }
   void forwardIndexCast(arith::IndexCastOp op) {
     auto &dims = insert(ShapeOrValueOfTensor::getValueOf(op));
-    auto in = lookup(ShapeOrValueOfTensor::getValueOf(op.in()));
+    auto in = lookup(ShapeOrValueOfTensor::getValueOf(op.getIn()));
     for (int64_t i = 0, e = dim0size(op.getType()); i != e; ++i) {
       // This is intentionally not modelling the truncation/zero extension of
       // index_cast. While it's incorrect it doesn't really matter for shape
@@ -291,7 +291,7 @@ struct ShapeVisitor {
     auto &dims = insert(ShapeOrValueOfTensor::getValueOf(op));
     assert(op.indices().size() == 1);
     if (auto index = op.indices().front().getDefiningOp<arith::ConstantOp>()) {
-      int64_t i = index.value().cast<IntegerAttr>().getInt();
+      int64_t i = index.getValue().cast<IntegerAttr>().getInt();
       // We asssume this is in bounds.
       auto in = lookup(ShapeOrValueOfTensor::getValueOf(op.tensor()));
       dims.push_back({in[i].symbols, in[i].expr});
@@ -391,7 +391,7 @@ struct ShapeVisitor {
     forwards_worklist.push_back(ShapeOrValueOfTensor::getShapeOf(op));
     backwards_worklist.push_back(ShapeOrValueOfTensor::getShapeOf(
         cast<shape::AssumingYieldOp>(
-            assumingOp.doRegion().back().getTerminator())
+            assumingOp.getDoRegion().back().getTerminator())
             .getOperand(number)));
   }
   void forwardAssumingShape(Value op) {
@@ -400,7 +400,7 @@ struct ShapeVisitor {
     auto &dims = insert(ShapeOrValueOfTensor::getShapeOf(op));
     dims = lookup(ShapeOrValueOfTensor::getShapeOf(
         cast<shape::AssumingYieldOp>(
-            assumingOp.doRegion().back().getTerminator())
+            assumingOp.getDoRegion().back().getTerminator())
             .getOperand(number)));
   }
   void backwardDynamicBroadcastInDimShape(mhlo::DynamicBroadcastInDimOp op) {

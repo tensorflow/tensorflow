@@ -1328,7 +1328,7 @@ Status EncapsulateSubgraphsPass::Run(
     bool has_ref_vars = ref_related_nodes.contains(node);
     node->AddAttr(kXlaHasReferenceVarsAttr, has_ref_vars);
     VLOG(3) << "Has ref vars = " << has_ref_vars
-            << ", node: " << node->def().SerializeAsString();
+            << ", node: " << node->def().DebugString();
   }
   return Status::OK();
 }

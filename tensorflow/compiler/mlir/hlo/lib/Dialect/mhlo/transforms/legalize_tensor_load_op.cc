@@ -63,7 +63,7 @@ struct ForwardShapeOfOp : public OpRewritePattern<ShapeOfOp> {
 
   LogicalResult matchAndRewrite(ShapeOfOp shape_of,
                                 PatternRewriter& rewriter) const override {
-    auto tensor_load = shape_of.arg().getDefiningOp<memref::TensorLoadOp>();
+    auto tensor_load = shape_of.getArg().getDefiningOp<memref::TensorLoadOp>();
     if (!tensor_load) return failure();
 
     rewriter.replaceOpWithNewOp<ShapeOfOp>(shape_of, shape_of.getType(),

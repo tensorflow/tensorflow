@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 44.
+// Next ID to use: 45.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -274,4 +274,8 @@ message TocoFlags {
   // Disable per_channel quantization for dynamic range quantization.
   // Note: This is an experimental feature
   optional bool disable_per_channel_quantization = 43 [default = false];
+
+  // If false, the old TOCO dynamic range quantization is used.
+  // Note: This is an experimental feature
+  optional bool enable_mlir_dynamic_range_quantizer = 44 [default = false];
 }
