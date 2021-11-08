@@ -378,6 +378,9 @@ tf_kernel_library(
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "gpu_op_ones_like.cc",
     ]),
+    copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
@@ -1753,6 +1756,14 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_zeros_like_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
     op = "zeros_like",
     tile_size = "1024",
     types = [
