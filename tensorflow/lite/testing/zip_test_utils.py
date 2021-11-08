@@ -173,36 +173,6 @@ def format_result(t):
     return _pywrap_string_util.SerializeAsHexString(t.flatten()).decode("utf-8")
 
 
-def write_examples(fp, examples):
-  """Given a list `examples`, write a text format representation.
-
-  The file format is csv like with a simple repeated pattern. We would ike
-  to use proto here, but we can't yet due to interfacing with the Android
-  team using this format.
-
-  Args:
-    fp: File-like object to write to.
-    examples: Example dictionary consisting of keys "inputs" and "outputs"
-  """
-
-  def write_tensor(fp, name, x):
-    """Write tensor in file format supported by TFLITE example."""
-    fp.write("name,%s\n" % name)
-    fp.write("dtype,%s\n" % x.dtype)
-    fp.write("shape," + ",".join(map(str, x.shape)) + "\n")
-    fp.write("values," + format_result(x) + "\n")
-
-  fp.write("test_cases,%d\n" % len(examples))
-  for example in examples:
-    fp.write("inputs,%d\n" % len(example["inputs"]))
-    for name, value in example["inputs"].items():
-      if value is not None:
-        write_tensor(fp, name, value)
-    fp.write("outputs,%d\n" % len(example["outputs"]))
-    for name, value in example["outputs"].items():
-      write_tensor(fp, name, value)
-
-
 def write_test_cases(fp, model_name, examples):
   """Given a dictionary of `examples`, write a text format representation.
 
@@ -585,14 +555,9 @@ def make_zip_of_tests(options,
           }
 
           example_fp = StringIO()
-          write_examples(example_fp, [example])
-          zipinfo = zipfile.ZipInfo(zip_path_label + ".inputs")
-          archive.writestr(zipinfo, example_fp.getvalue(), zipfile.ZIP_DEFLATED)
-
-          example_fp2 = StringIO()
-          write_test_cases(example_fp2, zip_path_label + ".bin", [example])
+          write_test_cases(example_fp, zip_path_label + ".bin", [example])
           zipinfo = zipfile.ZipInfo(zip_path_label + "_tests.txt")
-          archive.writestr(zipinfo, example_fp2.getvalue(),
+          archive.writestr(zipinfo, example_fp.getvalue(),
                            zipfile.ZIP_DEFLATED)
 
           zip_manifest_label = zip_path_label + " " + label
