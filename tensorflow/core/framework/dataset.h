@@ -1012,8 +1012,7 @@ class DatasetBase : public core::RefCounted {
   // unowned and lives for as long as this dataset.
   virtual StatusOr<DatasetBase*> Finalize(
       OpKernelContext* ctx,
-      std::function<StatusOr<core::RefCountPtr<DatasetBase>>(
-          const core::RefCountPtr<DatasetBase>&)>
+      std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
           make_finalized_dataset);
 
   // Wrapper around a GraphDefBuilder which provides support for serializing
