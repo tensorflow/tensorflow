@@ -6617,9 +6617,11 @@ def fingerprint(data, method="farmhash64", name=None):
 
 def convert_to_int_tensor(tensor, name, dtype=dtypes.int32):
   """Converts the given value to an integer Tensor."""
-  tensor = ops.convert_to_tensor(tensor, name=name, preferred_dtype=dtype)
+  tensor = ops.convert_to_tensor(
+      tensor, name=name, preferred_dtype=dtype or dtypes.int32)
   if tensor.dtype.is_integer:
-    tensor = gen_math_ops.cast(tensor, dtype)
+    if dtype is not None:
+      tensor = gen_math_ops.cast(tensor, dtype)
   else:
     raise TypeError(f"Argument `tensor` (name: {name}) must be of type integer."
                     f" Received `tensor` = {tensor} of dtype: {tensor.dtype}")
@@ -6711,7 +6713,9 @@ def repeat_with_axis(data, repeats, axis, name=None):
 
   with ops.name_scope(name, "Repeat", [data, repeats]):
     data = ops.convert_to_tensor(data, name="data")
-    repeats = convert_to_int_tensor(repeats, name="repeats")
+    # Note: We pass dtype=None so that the existing type is maintained instead
+    # of force-casting to int32.
+    repeats = convert_to_int_tensor(repeats, name="repeats", dtype=None)
     repeats.shape.with_rank_at_most(1)
 
     # If `data` is a scalar, then upgrade it to a vector.
@@ -6726,8 +6730,9 @@ def repeat_with_axis(data, repeats, axis, name=None):
       repeats = reshape(repeats, [])
       expanded = expand_dims(data, axis + 1)
       tiled = tile_one_dimension(expanded, axis + 1, repeats)
+      axis_size = gen_math_ops.cast(data_shape[axis], repeats.dtype)
       result_shape = concat([
-          data_shape[:axis], [repeats * data_shape[axis]], data_shape[axis + 1:]
+          data_shape[:axis], [repeats * axis_size], data_shape[axis + 1:]
       ],
                             axis=0)
       return reshape(tiled, result_shape)
