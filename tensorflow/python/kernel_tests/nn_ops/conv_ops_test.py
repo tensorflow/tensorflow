@@ -19,7 +19,6 @@ import time
 
 import numpy as np
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session as session_lib
@@ -2951,7 +2950,7 @@ class Conv2DBenchmark(test.Benchmark):
 
       self.evaluate(variables.global_variables_initializer())
       num_iterations = 4
-      for iter_index in xrange(num_iterations):
+      for iter_index in range(num_iterations):
         start = time.time()
         session.run(outputs)
         wall_time = time.time() - start
