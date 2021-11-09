@@ -1403,8 +1403,7 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
     // value. TOSA requires bias to be an array of output_channel_count values,
     // so create a constant of the appropriate number and type of zeros.
     SmallVector<int64_t, 1> bias_shape({filter_type.getShape()[0]});
-    RankedTensorType new_bias_type =
-        RankedTensorType::get(bias_shape, input_type.getElementType());
+    RankedTensorType new_bias_type;
 
     DenseElementsAttr bias_attr;
     if (input_type.getElementType().isa<FloatType>()) {
@@ -1413,6 +1412,8 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
       for (int i = 0; i < bias_shape[0]; i++) {
         bias_arr[i] = 0.0;
       }
+      new_bias_type =
+          RankedTensorType::get(bias_shape, input_type.getElementType());
       bias_attr =
           DenseElementsAttr::get(new_bias_type, llvm::makeArrayRef(bias_arr));
     } else {
@@ -1421,6 +1422,17 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
       for (int i = 0; i < bias_shape[0]; i++) {
         bias_arr[i] = 0;
       }
+      if (!input_is_qtype) {
+        return op->emitOpError(
+            "ConvertTFLFullyConnectedOp: input must be quantized type if it's "
+            "not float type.");
+      }
+      auto input_qtype =
+          input_type.getElementType().cast<mlir::quant::QuantizedType>();
+      Type new_bias_ety = input_qtype.getStorageTypeIntegralWidth() == 16
+                              ? rewriter.getIntegerType(48)
+                              : rewriter.getI32Type();
+      new_bias_type = RankedTensorType::get(bias_shape, new_bias_ety);
       bias_attr =
           DenseElementsAttr::get(new_bias_type, llvm::makeArrayRef(bias_arr));
     }
