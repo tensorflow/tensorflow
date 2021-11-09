@@ -85,7 +85,7 @@ class DelegateProviders {
     // setting 'gl_backend' to true means using the GPU delegate.
     if (s.gl_backend) {
       if (!params_.HasParam("use_gpu")) {
-        LOG(WARN) << "GPU deleate execution provider isn't linked or GPU "
+        LOG(WARN) << "GPU delegate execution provider isn't linked or GPU "
                      "delegate isn't supported on the platform!";
       } else {
         params_.Set<bool>("use_gpu", true);
@@ -101,7 +101,7 @@ class DelegateProviders {
     // Parse settings related to NNAPI delegate.
     if (s.accel) {
       if (!params_.HasParam("use_nnapi")) {
-        LOG(WARN) << "NNAPI deleate execution provider isn't linked or NNAPI "
+        LOG(WARN) << "NNAPI delegate execution provider isn't linked or NNAPI "
                      "delegate isn't supported on the platform!";
       } else {
         params_.Set<bool>("use_nnapi", true);
@@ -112,7 +112,7 @@ class DelegateProviders {
     // Parse settings related to Hexagon delegate.
     if (s.hexagon_delegate) {
       if (!params_.HasParam("use_hexagon")) {
-        LOG(WARN) << "Hexagon deleate execution provider isn't linked or "
+        LOG(WARN) << "Hexagon delegate execution provider isn't linked or "
                      "Hexagon delegate isn't supported on the platform!";
       } else {
         params_.Set<bool>("use_hexagon", true);
@@ -123,7 +123,7 @@ class DelegateProviders {
     // Parse settings related to XNNPACK delegate.
     if (s.xnnpack_delegate) {
       if (!params_.HasParam("use_xnnpack")) {
-        LOG(WARN) << "XNNPACK deleate execution provider isn't linked or "
+        LOG(WARN) << "XNNPACK delegate execution provider isn't linked or "
                      "XNNPACK delegate isn't supported on the platform!";
       } else {
         params_.Set<bool>("use_xnnpack", true);
