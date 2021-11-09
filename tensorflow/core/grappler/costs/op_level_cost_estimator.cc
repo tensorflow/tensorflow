@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/op_context.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -1607,7 +1608,14 @@ int64_t OpLevelCostEstimator::CalculateOutputSize(const OpInfo& op_info,
     auto output_shape = MaybeGetMinimumShape(original_output_shape, num_dims,
                                              found_unknown_shapes);
     for (const auto& dim : output_shape.dim()) {
-      output_size *= dim.size();
+      int64_t new_output_size =
+          MultiplyWithoutOverflow(output_size, dim.size());
+      if (new_output_size < 0) {
+        VLOG(1) << "Overflow encountered when estimating cost, multiplying "
+                << output_size << " with " << dim.size();
+        return -1;
+      }
+      output_size = new_output_size;
     }
     total_output_size += output_size;
     VLOG(1) << "Output Size: " << output_size
