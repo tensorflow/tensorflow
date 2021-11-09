@@ -4158,7 +4158,7 @@ def sigmoid(x, name=None):
   >>> x = tf.constant([0.0, 1.0, 50.0, 100.0])
   >>> tf.math.sigmoid(x)
   <tf.Tensor: shape=(4,), dtype=float32,
-  numpy=array([0.5      , 0.7310586, 1.       , 1.       ], dtype=float32)>
+  numpy=array([0.5, 0.7310586, 1.0, 1.0], dtype=float32)>
 
   If a negative number is large, its sigmoid will approach to 0 since the
   formula will be `y = 1 / (1 + <large_num>)`
