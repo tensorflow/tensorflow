@@ -40,6 +40,18 @@ cublasComputeType_t MlirTypeToCublasComputeType(mlir::Type type) {
   llvm_unreachable("unsupported type");
 }
 
+cudnnDataType_t MlirTypeToCudnnDataType(mlir::Type type) {
+  if (type.isF16()) return CUDNN_DATA_HALF;
+  if (type.isBF16()) return CUDNN_DATA_BFLOAT16;
+  if (type.isF32()) return CUDNN_DATA_FLOAT;
+  if (type.isF64()) return CUDNN_DATA_DOUBLE;
+  if (type.isSignedInteger(/*width=*/8)) return CUDNN_DATA_INT8;
+  if (type.isSignedInteger(/*width=*/32)) return CUDNN_DATA_INT32;
+  if (type.isSignedInteger(/*width=*/64)) return CUDNN_DATA_INT64;
+  if (type.isUnsignedInteger(/*width=*/8)) return CUDNN_DATA_UINT8;
+  llvm_unreachable("unsupported type");
+}
+
 mlir::Value MakeScalingFactorConstant(mlir::OpBuilder& builder,
                                       mlir::Location loc, mlir::Type type,
                                       llvm::APFloat value_real,

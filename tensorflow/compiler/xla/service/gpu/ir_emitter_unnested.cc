@@ -991,6 +991,19 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto conv_result_slice, GetAllocationSlice(conv_result));
   TF_ASSIGN_OR_RETURN(auto scratch_slice, GetAllocationSlice(scratch_result));
 
+  if (IsBefThunkEnabled() &&
+      (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp>(op) ||
+       mlir::isa<mlir::lmhlo_gpu::ConvBackwardInputOp>(op) ||
+       mlir::isa<mlir::lmhlo_gpu::ConvBackwardFilterOp>(op))) {
+    operand_slices.push_back(conv_result_slice);
+    operand_slices.push_back(scratch_slice);
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Thunk> thunk,
+        CreateBefThunk(GetThunkInfo(op), op, std::move(operand_slices)));
+    AddThunkToThunkSequence(std::move(thunk));
+    return Status::OK();
+  }
+
   auto apply_layout = [](const Shape& shape, mlir::ArrayAttr layout_attrib) {
     mlir::SmallVector<int64_t, 4> minor_to_major = llvm::to_vector<4>(
         llvm::map_range(layout_attrib, [](mlir::Attribute a) -> int64_t {
