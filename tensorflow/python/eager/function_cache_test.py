@@ -14,8 +14,11 @@
 # ==============================================================================
 """Tests for function_cache."""
 
+import timeit
+
 from tensorflow.python.eager import function_cache
 from tensorflow.python.eager import function_trace_type
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -40,7 +43,7 @@ class FunctionCacheTest(test.TestCase):
     cache = function_cache.FunctionCache()
 
     key_1 = function_cache.make_cache_key(1)
-    self.assertIsNone(cache.lookup(key_1))
+    self.assertIsNone(cache.lookup(key_1, False))
 
     key_2 = function_cache.make_cache_key(2)
     key_3 = function_cache.make_cache_key(3)
@@ -48,9 +51,9 @@ class FunctionCacheTest(test.TestCase):
     cache.add(key_1, "test_1")
     cache.add(key_2, "test_2")
 
-    self.assertEqual(cache.lookup(key_1), "test_1")
-    self.assertEqual(cache.lookup(key_2), "test_2")
-    self.assertIsNone(cache.lookup(key_3))
+    self.assertEqual(cache.lookup(key_1, False), "test_1")
+    self.assertEqual(cache.lookup(key_2, False), "test_2")
+    self.assertIsNone(cache.lookup(key_3, False))
 
   def testExecutionContextSetRetainsInsertedElements(self):
     cache = function_cache.FunctionCache()
@@ -97,8 +100,50 @@ class FunctionCacheTest(test.TestCase):
     self.assertEqual(
         key_b.most_specific_common_subtype([key_a]),
         function_cache.FunctionCacheKey(MockSupertypes2With3(3), ctx))
-    self.assertIsNone(
-        key_a.most_specific_common_subtype([key_b]))
+    self.assertIsNone(key_a.most_specific_common_subtype([key_b]))
+
+
+class FunctionCacheBenchmark(test.Benchmark):
+
+  def benchmarkCacheHit50thKey(self):
+    # Since FunctionCache uses an OrderedDict, it will check them in the order
+    # of insertion.
+
+    cache = function_cache.FunctionCache()
+    args_per_call = 5
+    num_total_checks = 50
+
+    keys = []
+    for i in range(num_total_checks):
+      args = []
+      for j in range(args_per_call):
+        args.append(array_ops.zeros([i, j]))
+      keys.append(function_cache.make_cache_key(args))
+
+    for key in keys:
+      cache.add(key, "testing")
+
+    iterations = 10000
+    subtyping_time = timeit.timeit(
+        lambda: cache.lookup(keys[-1], True), number=iterations)
+    equality_time = timeit.timeit(
+        lambda: cache.lookup(keys[-1], False), number=iterations)
+
+    self.report_benchmark(
+        name="cache_hit_50th_key_subtype",
+        iters=iterations,
+        wall_time=subtyping_time + equality_time,
+        metrics=[{
+            "name": "cache_hit_50th_key_subtype_avg_ms",
+            "value": subtyping_time / iterations * 1000
+        }, {
+            "name": "cache_hit_50th_key_equality_avg_ms",
+            "value": equality_time / iterations * 1000
+        }, {
+            "name": "cache_hit_50th_key_subtype_over_equality_ratio",
+            "value": subtyping_time / equality_time
+        }])
+
 
 if __name__ == "__main__":
   test.main()

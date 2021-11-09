@@ -566,7 +566,9 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":function_cache",
-        "//tensorflow/python/framework:test_lib",
+        ":function_trace_type",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

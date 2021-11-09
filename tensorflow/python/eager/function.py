@@ -88,6 +88,8 @@ FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
+# TODO(b/202429845): Remove this flag and related args:
+USE_FUNCTION_SUBTYPING = False
 
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
@@ -3254,7 +3256,8 @@ class Function(object):
           "Arguments supplied to `defun`-generated functions must be "
           f"hashable.  Original error: {e}.")
 
-    graph_function = self._function_cache.lookup(cache_key)
+    graph_function = self._function_cache.lookup(cache_key,
+                                                 USE_FUNCTION_SUBTYPING)
     if graph_function is not None:
       return graph_function, filtered_flat_args
 

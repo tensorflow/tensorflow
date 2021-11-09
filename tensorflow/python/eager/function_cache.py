@@ -136,11 +136,18 @@ class FunctionCache:
         _FunctionGarbageCollector(self.arg_relaxed),
         _FunctionGarbageCollector(self.arg_relaxed_specs)]
 
-  def lookup(self, key: FunctionCacheKey):
+  def lookup(self, key: FunctionCacheKey, use_function_subtyping: bool):
     """Looks up a concrete function based on the key."""
-    return self._primary.get(key, None)
+    if not use_function_subtyping:
+      return self._primary.get(key, None)
 
-  def add(self, key: FunctionCacheKey, concrete) -> None:
+    for known_key in self._primary:
+      if known_key.is_subtype_of(key):
+        return self._primary[known_key]
+
+    return None
+
+  def add(self, key: FunctionCacheKey, concrete):
     """Adds a new concrete function alongside its key."""
     self._primary[key] = concrete
 
