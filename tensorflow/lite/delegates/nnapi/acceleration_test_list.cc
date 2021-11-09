@@ -99,6 +99,7 @@ RnnOpTest/BlackBoxTest
 # broadcasting is not supported
 -BatchMatMulOpTest/BatchMatMulOpTest/.+Broadcast.+
 BatchMatMulOpTest/BatchMatMulOpTest/.+,1000006
+QuantizedBatchMatMulOpTest/QuantizedBatchMatMulOpTest/SimpleTestQuantizedInt8/.+,1000006
 
 # batch_to_space_nd_test
 BatchToSpaceNDOpTest/SimpleConstTest.*
