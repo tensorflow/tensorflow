@@ -101,6 +101,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OneHotIoU"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Poisson"
     mtype: "<type \'type\'>"
   }
