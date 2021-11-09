@@ -99,7 +99,7 @@ StatusOr<FullTypeDef> SpecializeType(const AttrSlice& attrs,
     // verifications are needed, they should be done by separately, and in a
     // way that can be reused for type inference.
     for (int j = 0; j < t->args_size(); j++) {
-      auto* arg = t->mutable_args(i);
+      auto* arg = t->mutable_args(j);
       if (arg->type_id() == TFT_VAR) {
         const auto* attr = attrs.Find(arg->s());
         DCHECK(attr != nullptr);
