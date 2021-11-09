@@ -117,17 +117,20 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCond(self):
-
+    # Ideally, placer should avoid cross-device copies even when the cond op
+    # has no placement constraints.
     @def_function.function
     def f():
       dataset = dataset_ops.Dataset.range(8)
+
+      def fn():
+        return dataset.map(lambda x: x+1)
+
       c = constant_op.constant(2)
-      a = control_flow_ops.cond(
-          math_ops.equal(c, 2),
-          lambda: dataset.map(lambda x: x + 1),
-          lambda: dataset.map(lambda x: x + 2),
-      )
-      return next(iter(a))
+      a = control_flow_ops.cond(math_ops.equal(c, 2), fn, fn)
+      iterator = iter(a)
+      nxt = next(iterator)
+      return nxt
 
     self.assertEqual(f().numpy(), 1)
 

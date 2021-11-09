@@ -116,14 +116,8 @@ void LogDeviceAssignment(const Node* node, bool log_device_placement) {
               << "): " << node->assigned_device_name();
   }
   if (VLOG_IS_ON(1)) {
-    if (VLOG_IS_ON(4)) {
-      VLOG(4) << "\nNode:\n"
-              << node->def().DebugString()
-              << "placed on: " << node->assigned_device_name();
-    } else {
-      VLOG(1) << node->name() << "(" << node->type_string()
-              << ") placed on: " << node->assigned_device_name();
-    }
+    VLOG(1) << node->name() << "(" << node->type_string()
+            << ") placed on: " << node->assigned_device_name();
   }
 }
 
