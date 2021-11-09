@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/client/padding.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -51,6 +52,13 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       : cuda_compute_capability_(cuda_compute_capability) {}
 
   Status HandleReduce(HloInstruction *hlo) override {
+    if (IsMinMaxReduction(hlo)) {
+      // TODO(cheshire): Also enable for integers.
+      VLOG(1) << "Not performing tree expansion on min/max-reduction: "
+              << hlo->ToString() << " since min/max operations are associative";
+      return Status::OK();
+    }
+
     if (!IsReductionFromOrToContiguousDimensions(*hlo)) {
       return Status::OK();
     }
@@ -58,6 +66,16 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
+  bool IsMinMaxReduction(HloInstruction *hlo) {
+    HloComputation *called = hlo->called_computations()[0];
+    if (absl::optional<ReductionKind> reduction_kind =
+            MatchReductionComputation(called)) {
+      return reduction_kind == ReductionKind::MAX ||
+             reduction_kind == ReductionKind::MIN;
+    }
+    return false;
+  }
+
   Status RewriteReduction(HloInstruction *hlo) {
     ReductionDimensions reduction_dimensions =
         GetReductionKindAndContiguousComponents(*hlo);
