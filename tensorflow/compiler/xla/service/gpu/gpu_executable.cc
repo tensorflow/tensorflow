@@ -570,9 +570,6 @@ static Status ExecuteBef(const std::string& module_name,
   auto resource_ctx = std::make_unique<tfrt::ResourceContext>();
   tfrt::RequestContextBuilder request_context_builder(
       runtime_and_queue.core_runtime->GetHostContext(), resource_ctx.get());
-  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-  TF_RETURN_IF_ERROR(runtime_and_queue.work_queue->InitializeRequest(
-      &request_context_builder, &intra_op_threadpool));
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
     auto error = expected_req_ctx.takeError();
