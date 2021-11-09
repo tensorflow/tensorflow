@@ -83,7 +83,7 @@ void RunSoftmaxMlirBenchmark(::testing::benchmark::State& state,
   // Compile JIT executable.
   auto mlir_input = GetSoftMaxIR(input_shape, spec.element_type);
   TfCpuRtPipelineOptions tf_cpurt_opts;
-  tf_cpurt_opts.vectorize = false;
+  tf_cpurt_opts.vectorize = true;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, "main",
                           /*lower_from_tensorflow=*/true, tf_cpurt_opts);

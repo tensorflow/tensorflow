@@ -39,7 +39,7 @@ class TfSoftmaxTest(test.TestCase):
           return %0 : tensor<?x?xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test', vectorize=False)
+    compiled = cpurt.compile(mlir_function, 'test', vectorize=True)
 
     arg0 = np.random.uniform(1, 5, size=(8, 8)).astype(np.float32)
 
@@ -53,7 +53,7 @@ class TfSoftmaxTest(test.TestCase):
           return %0 : tensor<10x8xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test', vectorize=False)
+    compiled = cpurt.compile(mlir_function, 'test', vectorize=True)
 
     arg0 = np.random.uniform(1, 5, size=(10, 8)).astype(np.float32)
 
