@@ -133,8 +133,8 @@ DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
                                       Builder* builder) {
   SmallVector<int64_t, 4> slice_limits;
   for (int64_t i = 0; i < slice_sizes.getNumElements(); ++i) {
-    int64_t start_index = start_indices.getValue<IntegerAttr>(i).getInt();
-    int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+    int64_t start_index = start_indices.getValues<IntegerAttr>()[i].getInt();
+    int64_t slice_size = slice_sizes.getValues<IntegerAttr>()[i].getInt();
     slice_limits.push_back(start_index + slice_size);
   }
   return GetI64ElementsAttr(slice_limits, builder);
@@ -459,7 +459,7 @@ static LogicalResult verifyStaticGather(
     return failure();
 
   for (auto dim : dimensionNumbers.getCollapsedSliceDims()) {
-    int64_t sliceDimSize = sliceSizes.getValue<int64_t>(dim);
+    int64_t sliceDimSize = sliceSizes.getValues<int64_t>()[dim];
     if (sliceDimSize != 1) {
       return errorEmitter() << "slice_sizes collapsed dimension " << dim
                             << " != 1 (" << sliceDimSize << ")";
@@ -650,7 +650,7 @@ LogicalResult GatherOp::inferReturnTypeComponents(
     return failure();
 
   auto getSliceDim = [&sliceSizesAttr](int64_t index) -> int64_t {
-    return sliceSizesAttr.getValue<int64_t>(index);
+    return sliceSizesAttr.getValues<int64_t>()[index];
   };
 
   return inferGatherReturnTypeComponents(operandShape, startIndicesShape,
@@ -1327,7 +1327,7 @@ static LogicalResult Verify(BroadcastInDimOp op) {
   }
 
   for (int i = 0; i != dimensionsSize; ++i) {
-    auto dimIndex = dimensions.getValue<int64_t>(i);
+    auto dimIndex = dimensions.getValues<int64_t>()[i];
     if (dimIndex >= resultRank) {
       return op.emitOpError(
           llvm::formatv("broadcast_dimensions contains invalid value {0} for "
@@ -1368,7 +1368,8 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
   // MLIR core bug (https://bugs.llvm.org/show_bug.cgi?id=46588): dense element
   // attribute iterator not implemented for complex element types.
   if (type.getElementType().isa<ComplexType>()) return {};
-  return SplatElementsAttr::get(type, splatOperandAttr.getSplatValue());
+  return SplatElementsAttr::get(
+      type, splatOperandAttr.getSplatValue<mlir::Attribute>());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1416,7 +1417,7 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
   }
 
   for (int i = 0; i != bcastDimensionsSize; ++i) {
-    auto dimIndex = bcastDimensions.getValue<int64_t>(i);
+    auto dimIndex = bcastDimensions.getValues<int64_t>()[i];
     if (dimIndex >= resultRank) {
       return op.emitOpError(
           llvm::formatv("broadcast_dimensions contains invalid value {0} for "
@@ -1481,9 +1482,8 @@ class ChainedDynamicBroadcastInDimCanonicalization
     DenseIntElementsAttr bcast_dims = bcast.broadcast_dimensions();
     SmallVector<APInt, 4> composition;
     for (APInt preceding_dim : preceding_bcast_dims) {
-      auto composed_dim = bcast_dims.getValue({preceding_dim.getZExtValue()})
-                              .cast<IntegerAttr>();
-      composition.push_back(composed_dim.getValue());
+      composition.push_back(
+          bcast_dims.getValues<APInt>()[preceding_dim.getZExtValue()]);
     }
     auto composed_bcast_dims =
         DenseIntElementsAttr::get(preceding_bcast_dims.getType(), composition);
@@ -2237,11 +2237,11 @@ struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
     SmallVector<int64_t, 4> temp_limit_indices;
     SmallVector<int64_t, 4> temp_stride;
     for (int64_t dim_idx = 0; dim_idx < input_rank; dim_idx++) {
-      int64_t start = start_attr.getValue<IntegerAttr>(dim_idx).getInt();
+      int64_t start = start_attr.getValues<IntegerAttr>()[dim_idx].getInt();
       temp_start_indices.push_back(start);
-      int64_t limit = limit_attr.getValue<IntegerAttr>(dim_idx).getInt();
+      int64_t limit = limit_attr.getValues<IntegerAttr>()[dim_idx].getInt();
       temp_limit_indices.push_back(limit);
-      int64_t end = stride_attr.getValue<IntegerAttr>(dim_idx).getInt();
+      int64_t end = stride_attr.getValues<IntegerAttr>()[dim_idx].getInt();
       temp_stride.push_back(end);
     }
 
@@ -2341,27 +2341,21 @@ OpFoldResult AndOp::fold(ArrayRef<Attribute> operands) {
   auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
 
   if (lhsVal && lhsVal.isSplat()) {
-    if (lhsVal.getSplatValue()
-            .cast<IntegerAttr>()
-            .getValue()
-            .isAllOnesValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
       return rhs();
     }
 
-    if (lhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
       return lhsVal;
     }
   }
 
   if (rhsVal && rhsVal.isSplat()) {
-    if (rhsVal.getSplatValue()
-            .cast<IntegerAttr>()
-            .getValue()
-            .isAllOnesValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
       return lhs();
     }
 
-    if (rhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
       return rhsVal;
     }
   }
@@ -2386,27 +2380,21 @@ OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
   auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
 
   if (lhsVal && lhsVal.isSplat()) {
-    if (lhsVal.getSplatValue()
-            .cast<IntegerAttr>()
-            .getValue()
-            .isAllOnesValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
       return lhsVal;
     }
 
-    if (lhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
       return rhs();
     }
   }
 
   if (rhsVal && rhsVal.isSplat()) {
-    if (rhsVal.getSplatValue()
-            .cast<IntegerAttr>()
-            .getValue()
-            .isAllOnesValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isAllOnesValue()) {
       return rhsVal;
     }
 
-    if (rhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
       return lhs();
     }
   }
@@ -2435,13 +2423,13 @@ OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
   auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
 
   if (lhsVal && lhsVal.isSplat()) {
-    if (lhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+    if (lhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
       return rhs();
     }
   }
 
   if (rhsVal && rhsVal.isSplat()) {
-    if (rhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+    if (rhsVal.getSplatValue<IntegerAttr>().getValue().isNullValue()) {
       return lhs();
     }
   }
@@ -3049,8 +3037,8 @@ struct LowerBoolSplatConstantsIntoRegion : public OpRewritePattern<ReduceOp> {
       auto barg_shaped_type = barg.getType().dyn_cast<ShapedType>();
       if (!barg_shaped_type) return failure();
 
-      auto barg_cst_attr =
-          DenseElementsAttr::get(barg_shaped_type, cst_attr.getSplatValue());
+      auto barg_cst_attr = DenseElementsAttr::get(
+          barg_shaped_type, cst_attr.getSplatValue<mlir::Attribute>());
       barg_cst_attrs.push_back(barg_cst_attr);
     }
 
@@ -3296,8 +3284,7 @@ OpFoldResult SetDimensionSizeOp::fold(ArrayRef<Attribute> operands) {
   if (!ty) return {};
 
   int64_t dim_size = ty.getDimSize(dimension());
-  if (dim_size == size.getSplatValue().cast<IntegerAttr>().getInt())
-    return operand();
+  if (dim_size == size.getSplatValue<IntegerAttr>().getInt()) return operand();
   return {};
 }
 
@@ -3347,10 +3334,11 @@ static LogicalResult Verify(PadOp op) {
   }
 
   for (int i = 0, e = input_shape.size(); i < e; i++) {
-    int64_t padding_low_val = padding_low.getValue<IntegerAttr>(i).getInt();
-    int64_t padding_high_val = padding_high.getValue<IntegerAttr>(i).getInt();
+    int64_t padding_low_val = padding_low.getValues<APInt>()[i].getSExtValue();
+    int64_t padding_high_val =
+        padding_high.getValues<APInt>()[i].getSExtValue();
     int64_t padding_interior_val =
-        padding_interior.getValue<IntegerAttr>(i).getInt();
+        padding_interior.getValues<APInt>()[i].getSExtValue();
     int64_t expected_output =
         input_shape[i] + padding_low_val + padding_high_val +
         std::max<int64_t>(input_shape[i] - 1, 0LL) * padding_interior_val;
@@ -3388,7 +3376,7 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
 
   // Fill the full result tensor with the padding value.
   llvm::SmallVector<Attribute, 4> result(return_type.getNumElements(),
-                                         padding.getValue({}));
+                                         padding.getValues<Attribute>()[0]);
 
   auto next_index = [](llvm::SmallVector<uint64_t, 8>& index,
                        llvm::ArrayRef<int64_t> shape) {
@@ -3408,13 +3396,12 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
     uint64_t idx_multiplyer = 1;
     for (int64_t i = index.size() - 1; i >= 0; --i) {
       result_idx +=
-          (edge_padding_low().getValue<int64_t>({uint64_t(i)}) +
-           index[i] *
-               (interior_padding().getValue<int64_t>({uint64_t(i)}) + 1)) *
+          (edge_padding_low().getValues<int64_t>()[i] +
+           index[i] * (interior_padding().getValues<int64_t>()[i] + 1)) *
           idx_multiplyer;
       idx_multiplyer *= return_type.getDimSize(i);
     }
-    result[result_idx] = input.getValue(index);
+    result[result_idx] = input.getValues<Attribute>()[index];
     next_index(index, input.getType().getShape());
   }
   return DenseElementsAttr::get(return_type, result);
@@ -4412,7 +4399,7 @@ static LogicalResult Verify(TransposeOp op) {
   auto operandRank = operandType.getRank();
   SmallVector<int64_t, 4> expectedShape(operandRank);
   for (int i = 0; i != operandRank; ++i) {
-    auto permutedDim = op.permutation().getValue<IntegerAttr>(i).getInt();
+    auto permutedDim = op.permutation().getValues<IntegerAttr>()[i].getInt();
     expectedShape[i] = operandType.getDimSize(permutedDim);
   }
 
@@ -4816,7 +4803,7 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
           scatter_dimension_numbers().getScatterDimsToOperandDims()[i];
       index_index[index_vector_dim] = i;
       base_index[operand_dim] +=
-          index.getValue<APInt>(index_index).getSExtValue();
+          index.getValues<APInt>()[index_index].getSExtValue();
     }
     uint64_t update_window_dim_index = 0;
     auto inserted_window_dims =
@@ -4847,11 +4834,11 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
         results[linear_base_index]);
     auto rhs = DenseElementsAttr::get(
         RankedTensorType::get({}, base_type.getElementType()),
-        update.getValue<Attribute>(update_index));
+        update.getValues<Attribute>()[update_index]);
     auto new_value = evaluateMhloRegion(update_computation(), {lhs, rhs});
     if (new_value.size() != 1 || !new_value[0]) return {};
     results[linear_base_index] =
-        new_value[0].cast<DenseElementsAttr>().getValue<Attribute>({});
+        new_value[0].cast<DenseElementsAttr>().getValues<Attribute>()[0];
   } while (next_index(update_index, update_type.getShape()));
 
   return DenseElementsAttr::get(base_type, results);

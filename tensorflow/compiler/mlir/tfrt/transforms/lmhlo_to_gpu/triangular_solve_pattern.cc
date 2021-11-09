@@ -34,8 +34,8 @@ struct TriangularSolveRewritePattern
       ConversionPatternRewriter& rewriter) const override {
     auto has_fortran_layout = [](mlir::DenseIntElementsAttr layout_attr) {
       int64_t n = layout_attr.getNumElements();
-      return layout_attr.getValue<int64_t>(0) == n - 2 &&
-             layout_attr.getValue<int64_t>(1) == n - 1;
+      return layout_attr.getValues<int64_t>()[0] == n - 2 &&
+             layout_attr.getValues<int64_t>()[1] == n - 1;
     };
     if (!has_fortran_layout(op.layout_a()) ||
         !has_fortran_layout(op.layout_b()) ||

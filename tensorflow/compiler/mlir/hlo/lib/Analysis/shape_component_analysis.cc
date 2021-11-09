@@ -311,7 +311,7 @@ struct ShapeVisitor {
         dims.emplace_back();
         auto &dim = dims.back();
         dim.expr = getAffineConstantExpr(
-            denseAttr.getValue<IntegerAttr>({i}).getInt(), op.getContext());
+            denseAttr.getValues<APInt>()[i].getSExtValue(), op.getContext());
       }
     } else if (matchPattern(op, m_Constant(&intAttr))) {
       dims.emplace_back();

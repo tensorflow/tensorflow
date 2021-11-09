@@ -1024,12 +1024,12 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
       // the window size.
       int kernel_dim = descriptor.dnums.kernel_spatial_dimensions(index);
       dim->set_size(descriptor.operand0_shape.dimensions(kernel_dim));
-      dim->set_stride(window_strides.getValue<int64_t>(index));
-      dim->set_padding_low(padding.getValue<int64_t>(index));
-      dim->set_padding_high(padding.getValue<int64_t>(index));
-      dim->set_base_dilation(lhs_dilation.getValue<int64_t>(index));
-      dim->set_window_dilation(rhs_dilation.getValue<int64_t>(index));
-      dim->set_window_reversal(window_reversal.getValue<bool>(index));
+      dim->set_stride(window_strides.getValues<int64_t>()[index]);
+      dim->set_padding_low(padding.getValues<int64_t>()[index]);
+      dim->set_padding_high(padding.getValues<int64_t>()[index]);
+      dim->set_base_dilation(lhs_dilation.getValues<int64_t>()[index]);
+      dim->set_window_dilation(rhs_dilation.getValues<int64_t>()[index]);
+      dim->set_window_reversal(window_reversal.getValues<bool>()[index]);
     }
     descriptor.feature_group_count = op.feature_group_count();
     {
@@ -1646,8 +1646,8 @@ Status IrEmitterUnnested::EmitTriangularSolve(mlir::Operation* op) {
   auto triangular_solve_op = mlir::cast<mlir::lmhlo::TriangularSolveOp>(op);
   auto has_fortran_layout = [](mlir::DenseIntElementsAttr layout_attr) {
     int64_t n = layout_attr.getNumElements();
-    return layout_attr.getValue<int64_t>({0}) == n - 2 &&
-           layout_attr.getValue<int64_t>({1}) == n - 1;
+    return layout_attr.getValues<int64_t>()[0] == n - 2 &&
+           layout_attr.getValues<int64_t>()[1] == n - 1;
   };
   TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_a()));
   TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_b()));

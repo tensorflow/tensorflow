@@ -182,8 +182,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
         quant_type = DownCastScale(quant_type, mins, maxs, op->getLoc());
       }
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
-      double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
-      double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+      auto statValues = stats.getValues<APFloat>();
+      double rmin = FloatAttr::getValueAsDouble(statValues[0]);
+      double rmax = FloatAttr::getValueAsDouble(statValues[1]);
       // The default nudging implementation of mlir quant library might cause
       // clamping during inference if the calibration range isn't wide enough.
       // So here we adjust the range to include 0.0.

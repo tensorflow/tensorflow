@@ -54,7 +54,7 @@ void PrepareForExportPass::runOnFunction() {
     if (attr.getNumElements() < 32) return;
     ShapedType return_type = op->getResultTypes().front().cast<ShapedType>();
     ImplicitLocOpBuilder b(op->getLoc(), op);
-    auto cst = b.create<::mlir::mhlo::ConstOp>(attr.getSplatValue());
+    auto cst = b.create<::mlir::mhlo::ConstOp>(attr.getSplatValue<Attribute>());
     auto broadcast = b.create<::mlir::mhlo::BroadcastInDimOp>(
         return_type, cst, b.getI64TensorAttr({}));
     op->replaceAllUsesWith(broadcast);

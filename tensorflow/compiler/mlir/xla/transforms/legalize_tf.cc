@@ -150,7 +150,7 @@ static IntegerAttr GetHLOAxisFromTFAxis(Attribute attr, int64_t rank,
   IntegerAttr intAttr = attr.dyn_cast_or_null<IntegerAttr>();
   if (auto elementAttr = attr.dyn_cast_or_null<ElementsAttr>()) {
     SmallVector<uint64_t, 1> index(elementAttr.getType().getRank(), 0);
-    intAttr = elementAttr.getValue<IntegerAttr>(index);
+    intAttr = elementAttr.getValues<IntegerAttr>()[index];
   }
 
   assert(intAttr && "Invalid attribute passed to GetHLOAxisFromTFAxis");
@@ -173,7 +173,7 @@ static llvm::Optional<int64_t> GetIntegerHLOAxisFromTFAxis(Value value,
       attrs.getType().getRank() != 0) {
     return llvm::None;
   }
-  int64_t axis = attrs.getValue<IntegerAttr>({}).getInt();
+  int64_t axis = attrs.getValues<IntegerAttr>()[0].getInt();
   return axis < 0 ? axis + rank : axis;
 }
 
@@ -928,7 +928,7 @@ static bool CanBeTranslatedToDynamicSlice(Value input, Value start_indices,
 
   for (int64_t i = 0; i < input_rank; ++i) {
     int64_t input_size = input_shape[i];
-    int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+    int64_t slice_size = slice_sizes.getValues<IntegerAttr>()[i].getInt();
     // A slice_size of -1 means "all elements from start_index to the end".
     // In order to support these semantics, we need to know both the start index
     // and the shape of the input dimension.
@@ -957,8 +957,8 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
   for (int64_t i = 0; i < input_rank; ++i) {
     int64_t input_size = input_shape[i];
     int64_t start_index =
-        constant_start_indices.getValue<IntegerAttr>(i).getInt();
-    int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+        constant_start_indices.getValues<IntegerAttr>()[i].getInt();
+    int64_t slice_size = slice_sizes.getValues<IntegerAttr>()[i].getInt();
     normalized_sizes.push_back(slice_size == -1 ? input_size - start_index
                                                 : slice_size);
   }
@@ -2228,7 +2228,7 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
     }
     int64_t fft_length;
     if (fft_length_attr.getNumElements() != 0) {
-      fft_length = fft_length_attr.getValue<IntegerAttr>(0).getInt();
+      fft_length = fft_length_attr.getValues<IntegerAttr>()[0].getInt();
     } else {
       return failure();
     }
@@ -5287,7 +5287,7 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
       return failure();
     }
 
-    int64_t depth = depth_attr.getValue<APInt>({}).getSExtValue();
+    int64_t depth = depth_attr.getValues<APInt>()[0].getSExtValue();
     int64_t axis = op.axis();
     if (axis == -1) axis = indices_shape.size();
 

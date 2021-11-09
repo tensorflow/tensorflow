@@ -546,7 +546,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
       int64_t leading_dim_v = -1;
       ElementsAttr element_attr;
       if (matchPattern(leading_dim, m_Constant(&element_attr))) {
-        leading_dim_v = element_attr.getValue<IntegerAttr>(0).getInt();
+        leading_dim_v = element_attr.getValues<APInt>()[0].getSExtValue();
       }
       SmallVector<int64_t, 4> result_shape = {leading_dim_v};
       ArrayRef<int64_t> shape = element_type.getShape();

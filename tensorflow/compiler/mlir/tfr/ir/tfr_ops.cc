@@ -722,7 +722,7 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
         in_scale_attr.size() != 1) {
       return failure();
     }
-    const float in_scale = in_scale_attr.getValue<float>(0);
+    const float in_scale = in_scale_attr.getValues<float>()[0];
     auto filter_scale_op = in_scales_op.getOperand(1).getDefiningOp<CastOp>();
     if (!filter_scale_op) {
       return failure();
