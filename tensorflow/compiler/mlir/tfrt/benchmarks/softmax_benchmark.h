@@ -13,10 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_REDUCTION_BENCHMARK_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_REDUCTION_BENCHMARK_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_SOFTMAX_BENCHMARK_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_SOFTMAX_BENCHMARK_H_
 
+#include <string>
+#include <utility>
+
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
+#include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
 
@@ -26,7 +31,7 @@ using f32 = float;
 // This header is a part of the library with private visibility and will be
 // used only to build benchmarks for different functions in this folder, so
 // it is ok to put convenience using-declarations here.
-
+//
 using ::llvm::ArrayRef;
 using ::llvm::SmallVector;
 using ::llvm::StringRef;
@@ -47,26 +52,17 @@ using ::tfrt::cpu::jit::ReturnValueConverter;
 // -------------------------------------------------------------------------- //
 
 struct MlirSpec {
-  MlirSpec(StringRef op_name, StringRef element_type,
-           SmallVector<bool, 2> input_dynamic,
-           SmallVector<int32_t, 2> dims_to_reduce)
-      : op_name(op_name),
-        element_type(element_type),
-        input_dynamic(std::move(input_dynamic)),
-        dims_to_reduce(std::move(dims_to_reduce)) {}
-  StringRef op_name;
+  MlirSpec(StringRef element_type, SmallVector<bool, 2> input_dynamic)
+      : element_type(element_type), input_dynamic(std::move(input_dynamic)) {}
   StringRef element_type;
   SmallVector<bool, 2> input_dynamic;
-  SmallVector<int32, 2> dims_to_reduce;
 };
 
-std::string GetIR(StringRef op_name, ArrayRef<int64_t> input_shape,
-                  ArrayRef<int64_t> output_shape,
-                  ArrayRef<int32_t> dims_to_reduce, StringRef element_type);
+std::string GetSoftMaxIR(ArrayRef<int64_t> shape, StringRef element_type);
 
 template <typename T, int INPUT_RANK>
-void RunReductionMlirBenchmark(::testing::benchmark::State& state,
-                               size_t num_threads, const MlirSpec& spec) {
+void RunSoftmaxMlirBenchmark(::testing::benchmark::State& state,
+                             size_t num_threads, const MlirSpec& spec) {
   // Input and output shapes to generate IR.
   SmallVector<int64_t, 2> mlir_input_shape, mlir_output_shape;
 
@@ -78,8 +74,6 @@ void RunReductionMlirBenchmark(::testing::benchmark::State& state,
     num_elements *= state.range(i);
     mlir_input_shape.push_back(spec.input_dynamic[i] ? kDynSize
                                                      : state.range(i));
-    if (llvm::find(spec.dims_to_reduce, i) == spec.dims_to_reduce.end())
-      mlir_output_shape.push_back(mlir_input_shape[i]);
   }
 
   std::unique_ptr<HostContext> host =
@@ -87,10 +81,9 @@ void RunReductionMlirBenchmark(::testing::benchmark::State& state,
                       : CreateSingleThreadedHostContext();
 
   // Compile JIT executable.
-  auto mlir_input = GetIR(spec.op_name, mlir_input_shape, mlir_output_shape,
-                          spec.dims_to_reduce, spec.element_type);
+  auto mlir_input = GetSoftMaxIR(input_shape, spec.element_type);
   TfCpuRtPipelineOptions tf_cpurt_opts;
-  tf_cpurt_opts.vectorize = true;
+  tf_cpurt_opts.vectorize = false;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, "main",
                           /*lower_from_tensorflow=*/true, tf_cpurt_opts);
@@ -138,7 +131,7 @@ void RunReductionMlirBenchmark(::testing::benchmark::State& state,
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * 6 *
                           num_elements);
 }
 
@@ -146,58 +139,86 @@ void RunReductionMlirBenchmark(::testing::benchmark::State& state,
 // Run benchmark using Eigen expression evaluation.
 // -------------------------------------------------------------------------- //
 
-struct EigenSpec {
-  explicit EigenSpec(SmallVector<int32_t, 2> dims_to_reduce)
-      : dims_to_reduce(std::move(dims_to_reduce)) {}
-  SmallVector<int32_t, 2> dims_to_reduce;
-  size_t num_threads;
+// Eigen code implementing SoftmaxFunctor::operator() carefully taken from
+// tensorflow/core/kernels/softmax_op_functor.h
+template <typename Device, typename T>
+struct SoftmaxEigenImpl {
+  static void Compute(const Device& d, T logits, T softmax) {
+    const int kBatchDim = 0;
+    const int kClassDim = 1;
+
+    const int batch_size = logits.dimension(kBatchDim);
+    const int num_classes = logits.dimension(kClassDim);
+
+// These arrays are used to reduce along the class dimension, and broadcast
+// the resulting value to all classes.
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::DSizes<int, 1> along_class(kClassDim);
+    Eigen::DSizes<int, 2> batch_by_one(batch_size, 1);
+    Eigen::DSizes<int, 2> one_by_class(1, num_classes);
+#else
+    Eigen::IndexList<Eigen::type2index<kClassDim>> along_class;
+    Eigen::IndexList<int, Eigen::type2index<1>> batch_by_one;
+    batch_by_one.set(0, batch_size);
+    Eigen::IndexList<Eigen::type2index<1>, int> one_by_class;
+    one_by_class.set(1, num_classes);
+#endif
+    // shifted_logits = logits - max(logits along classes);
+    auto shifted_logits = (logits - logits.maximum(along_class)
+                                        .eval()
+                                        .reshape(batch_by_one)
+                                        .broadcast(one_by_class));
+    softmax.device(d) = shifted_logits.exp();
+    softmax.device(d) = (softmax * softmax.sum(along_class)
+                                       .inverse()
+                                       .eval()
+                                       .reshape(batch_by_one)
+                                       .broadcast(one_by_class));
+  }
 };
 
-template <typename T, int INPUT_RANK, int OUTPUT_RANK>
-void RunReductionEigenBenchmark(::testing::benchmark::State& state,
-                                size_t num_threads, const EigenSpec& spec) {
-  std::array<ssize_t, INPUT_RANK - OUTPUT_RANK> dims_to_reduce;
-  for (int i = 0; i < dims_to_reduce.size(); ++i) {
-    dims_to_reduce[i] = spec.dims_to_reduce[i];
+// Functor used by SoftmaxOp to do the computations.
+template <typename Device, typename T>
+struct SoftmaxFunctor {
+  // Computes Softmax or LogSoftmax activation.
+  //
+  // logits: dim: batch_size, num_classes.
+  // softmax: dims: batch_size, num_classes.
+  // log: boolean
+  void operator()(const Device& d, T logits, T softmax) {
+    SoftmaxEigenImpl<Device, T>::Compute(d, logits, softmax);
   }
-
+};
+template <typename T, int RANK>
+void RunSoftmaxEigenBenchmark(::testing::benchmark::State& state,
+                              size_t num_threads) {
   // Compute input/output shapes and the number of elements.
-  std::array<ssize_t, INPUT_RANK> input_shape;
-  std::array<ssize_t, OUTPUT_RANK> output_shape;
+  std::array<ssize_t, RANK> input_shape;
   int64_t num_elements = 1;
-  for (int i = 0, j = 0; i < INPUT_RANK; ++i) {
+  for (int i = 0; i < RANK; ++i) {
     input_shape[i] = state.range(i);
     num_elements *= state.range(i);
-    if (llvm::find(spec.dims_to_reduce, i) == spec.dims_to_reduce.end())
-      output_shape[j++] = input_shape[i];
   }
 
-  Eigen::Tensor<T, INPUT_RANK, Eigen::RowMajor> lhs =
-      GenRandomTensor<T, INPUT_RANK>(input_shape);
+  Eigen::Tensor<T, RANK, Eigen::RowMajor> input =
+      GenRandomTensor<T, RANK>(input_shape);
 
   Eigen::DefaultDevice single_threaded_device;
   Eigen::ThreadPool thread_pool(num_threads);
   llvm::Optional<Eigen::ThreadPoolDevice> multi_threaded_device;
   if (num_threads > 0) multi_threaded_device.emplace(&thread_pool, num_threads);
 
-  auto dst = InitEigenTensor<T, OUTPUT_RANK>::Get(output_shape);
+  auto dst = InitEigenTensor<T, RANK>::Get(input_shape);
   dst.setZero();
 
   for (auto s : state) {
-    auto expr = lhs.sum(dims_to_reduce);
-
     using Dst = decltype(dst);
-    using Expr = decltype(expr);
-    if (multi_threaded_device.hasValue()) {
-      ExecuteAssignOp</*vectorize=*/true, Eigen::ThreadPoolDevice, Dst,
-                      Expr>::run(*multi_threaded_device, dst, expr);
-    } else {
-      ExecuteAssignOp</*vectorize=*/true, Eigen::DefaultDevice, Dst, Expr>::run(
-          single_threaded_device, dst, expr);
-    }
+
+    SoftmaxFunctor<Eigen::DefaultDevice, Dst> functor;
+    functor(single_threaded_device, input, dst);
   }
 
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * 6 *
                           num_elements);
 }
 
@@ -206,47 +227,32 @@ void RunReductionEigenBenchmark(::testing::benchmark::State& state,
 // -------------------------------------------------------------------------- //
 
 // MLIR benchmarks
-#define BM_TFMlir(NAME, TYPE, NUM_THREADS, INPUT_RANK, SPEC)               \
-  static void BM_mlir__##INPUT_RANK##D_##NAME##_##TYPE##_##NUM_THREADS(    \
-      ::testing::benchmark::State& state) {                                \
-    RunReductionMlirBenchmark<TYPE, INPUT_RANK>(state, NUM_THREADS, SPEC); \
-  }                                                                        \
-  BENCHMARK(BM_mlir__##INPUT_RANK##D_##NAME##_##TYPE##_##NUM_THREADS)      \
+#define BM_TFMlir(NAME, TYPE, NUM_THREADS, INPUT_RANK, SPEC)             \
+  static void BM_mlir__##INPUT_RANK##D_##NAME##_##TYPE##_##NUM_THREADS(  \
+      ::testing::benchmark::State& state) {                              \
+    RunSoftmaxMlirBenchmark<TYPE, INPUT_RANK>(state, NUM_THREADS, SPEC); \
+  }                                                                      \
+  BENCHMARK(BM_mlir__##INPUT_RANK##D_##NAME##_##TYPE##_##NUM_THREADS)    \
       ->MeasureProcessCPUTime()
 
-#define ARGS_1D \
-  Args({3})->Args({8})->Args({80})->Args({800})->Args({8000})->Args({8131})
-
-#define BM_TFMlir1(NAME, TYPE, NUM_THREADS, SPEC) \
-  BM_TFMlir(NAME, TYPE, NUM_THREADS, 1, SPEC)->ARGS_1D
-
-#define ARGS_2D          \
-  Args({2, 80})          \
-      ->Args({8, 6})     \
-      ->Args({80, 1})    \
-      ->Args({80, 60})   \
-      ->Args({81, 61})   \
-      ->Args({800, 600}) \
-      ->Args({802, 602})
 #define BM_TFMlir2(NAME, TYPE, NUM_THREADS, SPEC) \
-  BM_TFMlir(NAME, TYPE, NUM_THREADS, 2, SPEC)->ARGS_2D
+  BM_TFMlir(NAME, TYPE, NUM_THREADS, 2, SPEC)
+#define BM_TFMlir2_SingleThread(NAME, TYPE, SPEC) \
+  BM_TFMlir(NAME, TYPE, 0, 2, SPEC)
 
 // Eigen benchmarks
-#define BM_Eigen(NAME, TYPE, NUM_THREADS, INPUT_RANK, OUTPUT_RANK, SPEC) \
-  static void BM_eigen_##INPUT_RANK##D_##NAME##_##TYPE##_##NUM_THREADS(  \
-      ::testing::benchmark::State& state) {                              \
-    RunReductionEigenBenchmark<TYPE, INPUT_RANK, OUTPUT_RANK>(           \
-        state, NUM_THREADS, SPEC);                                       \
-  }                                                                      \
-  BENCHMARK(BM_eigen_##INPUT_RANK##D_##NAME##_##TYPE##_##NUM_THREADS)    \
+#define BM_Eigen(NAME, TYPE, NUM_THREADS, RANK)                   \
+  static void BM_eigen_##RANK##D_##NAME##_##TYPE##_##NUM_THREADS( \
+      ::testing::benchmark::State& state) {                       \
+    RunSoftmaxEigenBenchmark<TYPE, RANK>(state, NUM_THREADS);     \
+  }                                                               \
+  BENCHMARK(BM_eigen_##RANK##D_##NAME##_##TYPE##_##NUM_THREADS)   \
       ->MeasureProcessCPUTime()
 
-#define BM_Eigen1(NAME, TYPE, NUM_THREADS) \
-  BM_Eigen(NAME, TYPE, NUM_THREADS, 1, 0, EigenSpec({0}))->ARGS_1D
+#define BM_Eigen2(NAME, TYPE, NUM_THREADS) BM_Eigen(NAME, TYPE, NUM_THREADS, 2)
 
-#define BM_Eigen2(NAME, TYPE, NUM_THREADS, OUTPUT_RANK, SPEC) \
-  BM_Eigen(NAME, TYPE, NUM_THREADS, 2, OUTPUT_RANK, SPEC)->ARGS_2D
+#define BM_Eigen2_SingleThread(NAME, TYPE) BM_Eigen2(NAME, TYPE, 0)
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_REDUCTION_BENCHMARK_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_SOFTMAX_BENCHMARK_H_

@@ -31,6 +31,9 @@ using ::tfrt::HostContext;
 using ::tfrt::cpu::jit::CompilationOptions;
 using ::tfrt::cpu::jit::MemrefType;
 
+const bool kStaticDim = false;
+const bool kDynamicDim = true;
+
 std::unique_ptr<HostContext> CreateSingleThreadedHostContext() {
   return std::make_unique<HostContext>(
       [](const tfrt::DecodedDiagnostic& diag) {
