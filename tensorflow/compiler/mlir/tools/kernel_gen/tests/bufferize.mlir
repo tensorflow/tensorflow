@@ -270,3 +270,9 @@ func @jit_execute(%f : !tf_framework.jit_callable, %arg : tensor<*xf32>)
   %0 = tf_framework.jit_execute %f(%arg) : tensor<*xf32> -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
+
+func @dynamic_broadcast_return(%t : tensor<?x?xf32>, %shape : tensor<2xi32>) -> tensor<?x?xf32> {
+  // CHECK: memref.copy
+  %bcast = "mhlo.dynamic_broadcast_in_dim"(%t, %shape) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+  return %bcast : tensor<?x?xf32>
+}
