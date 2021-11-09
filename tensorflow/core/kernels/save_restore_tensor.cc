@@ -93,6 +93,9 @@ void SaveTensors(
   // Process tensors in sorted name order.  This allows us to avoid seeking
   // during restoration in the common case where we are restoring a full
   // checkpoint.
+  // RestoreTensorsV2 was changed to sort by file offset, so this sorting isn't
+  // strictly necessary anymore. However, restores with TF version <= 2.7 will
+  // still benefit.
   std::vector<size_t> sorted_name_idx(tensor_names_flat.size());
   std::iota(sorted_name_idx.begin(), sorted_name_idx.end(), 0);
   std::sort(sorted_name_idx.begin(), sorted_name_idx.end(),
@@ -374,15 +377,11 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
                            shape_and_slices_flat(i), prefix_string, dtypes[i]});
   }
 
-  // Sort restore_ops by lookup key to improve locality when reading multiple
-  // tensors.
-  std::sort(restore_ops.begin(), restore_ops.end(),
-            [](const RestoreOp& a, const RestoreOp& b) {
-              return a.tensor_name < b.tensor_name;
-            });
-
   BundleReader default_reader(Env::Default(), prefix_string);
   TF_RETURN_IF_ERROR(default_reader.status());
+
+  TF_RETURN_IF_ERROR(default_reader.SortForSequentialAccess<RestoreOp>(
+      restore_ops, [](const RestoreOp& op) { return op.tensor_name; }));
 
   std::vector<string> mismatched_errors;
   for (const RestoreOp& restore_op : restore_ops) {
