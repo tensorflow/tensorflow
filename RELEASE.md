@@ -7620,6 +7620,12 @@ answered questions, and were part of inspiring discussions.
   attribute from 0.0 to 1.0. This was a bug in the original release
   that is now fixed.
 
+* added DeterministicRandomTestTool to migration_utils.py. This is useful when
+  you are migrating from TF 1.x to TF2 and need to make sure your computation
+  is still happening correctly along the way. See the [validating correctness 
+  migration guide](https://www.tensorflow.org/guide/migrate/validate_correctness) 
+  for more info.
+
 # Release 0.5.0
 
 Initial release of TensorFlow.
