@@ -583,10 +583,6 @@ void DatasetBase::Initialize(const Metadata& metadata) {
   if (!s.ok()) {
     LOG(ERROR) << s;
   }
-  s = ComputeCardinality();
-  if (!s.ok()) {
-    LOG(ERROR) << s;
-  }
   metadata_ = metadata;
   if (metadata_.name() == "") {
     static std::atomic<int64_t> id_counter(0);
@@ -624,20 +620,16 @@ Status DatasetBase::ComputeNumSources() {
   return Status::OK();
 }
 
-Status DatasetBase::ComputeCardinality() {
-  cardinality_ = this->CardinalityInternal();
-  return Status::OK();
-}
-
 Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
-  if (cardinality_ == kInfiniteCardinality ||
-      cardinality_ == kUnknownCardinality) {
+  int64 cardinality = Cardinality();
+  if (cardinality == kInfiniteCardinality ||
+      cardinality == kUnknownCardinality) {
     return tensorflow::errors::FailedPrecondition(
         "Dataset of type ", this->DebugString(), "has cardinality ",
-        cardinality_, "which does not support random access.");
+        cardinality, "which does not support random access.");
   }
-  if (index < 0 || index >= cardinality_) {
-    return errors::OutOfRange("Index out of range [0, ", cardinality_,
+  if (index < 0 || index >= cardinality) {
+    return errors::OutOfRange("Index out of range [0, ", cardinality,
                               "):", index);
   }
   return Status::OK();
@@ -729,6 +721,14 @@ Status DatasetBase::MakeSplitProviders(
         "), and no custom implementation of `MakeSplitProvider` is defined.");
   }
   return inputs[0]->MakeSplitProviders(split_providers);
+}
+
+int64_t DatasetBase::Cardinality() const {
+  mutex_lock l(cardinality_mu_);
+  if (cardinality_ == kUnknownCardinality) {
+    cardinality_ = CardinalityInternal();
+  }
+  return cardinality_;
 }
 
 Status DatasetBase::InputDatasets(
