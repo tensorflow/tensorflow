@@ -182,6 +182,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/util:overflow",
         "//tensorflow/core/grappler/clusters:utils",
     ] + tf_protos_grappler(),
 )
