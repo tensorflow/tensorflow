@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "BinaryIoU"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CategoricalAccuracy"
     mtype: "<type \'type\'>"
   }
