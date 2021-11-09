@@ -2054,6 +2054,7 @@ cc_library(
         ":cost_measurement_registry",
         ":request_cost_accessor",
         ":request_cost_accessor_registry",
+        "//tensorflow/core/platform:str_util",
     ],
 )
 
