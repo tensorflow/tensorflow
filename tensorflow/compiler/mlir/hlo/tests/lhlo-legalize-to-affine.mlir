@@ -440,6 +440,70 @@ func @gather_5(%arg0: memref<28996x512x256xf32>, %arg1: memref<10x3xi32>, %arg2:
 // CHECK: %[[and1:.*]] = arith.andi %{{.*}}, %{{.*}} : i1
 // CHECK-NEXT: arith.andi %[[and1]], %{{.*}} : i1
 
+// CHECK-LABEL: func @gather_6
+// CHECK-SAME: (%[[OPERAND:.*]]: memref<16x11x10x9xf32>, %[[START_INDICES:.*]]: memref<5x4xi32>, %[[OUTPUT:.*]]: memref<5x8x6x5x4xf32>)
+func @gather_6(%arg0: memref<16x11x10x9xf32>, %arg1: memref<5x4xi32>, %arg2: memref<5x8x6x5x4xf32>) {
+   %0 = memref.alloc() : memref<5x8x6x5x4xf32>
+   "lmhlo.gather"(%arg0, %arg1, %0) {dimension_numbers = #mhlo.gather<collapsed_slice_dims = [-1],
+                                                              index_vector_dim = 1,
+                                                              offset_dims = [1,2,3,4],
+                                                              start_index_map = [0,1,2,3],>,
+                                        indices_are_sorted = false, slice_sizes = dense<[8, 6, 5, 4]> : tensor<4xi64>} :
+   (memref<16x11x10x9xf32>, memref<5x4xi32>, memref<5x8x6x5x4xf32>) -> ()
+   "lmhlo.copy"(%0, %arg2) : (memref<5x8x6x5x4xf32>, memref<5x8x6x5x4xf32>) -> ()
+   "lmhlo.terminator"() : () -> ()
+}
+// CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-NEXT: %[[ZERO_IDX:.*]] = arith.constant 0 : index
+// CHECK-NEXT: %[[ONE_IDX:.*]] = arith.constant 1 : index
+// CHECK-NEXT: %[[TWO_IDX:.*]] = arith.constant 2 : index
+// CHECK-NEXT: %[[THREE_IDX:.*]] = arith.constant 3 : index
+// CHECK-NEXT: %[[RESULT:.*]] = memref.alloc() : memref<5x8x6x5x4xf32>
+// CHECK-NEXT: affine.for %{{.*}} = 0 to 5 {
+// CHECK-NEXT:  affine.for %{{.*}} = 0 to 8 {
+// CHECK-NEXT:    affine.for %{{.*}} = 0 to 6 {
+// CHECK-NEXT:      affine.for %{{.*}} = 0 to 5 {  
+// CHECK-NEXT:        affine.for %{{.*}} = 0 to 4 {
+// CHECK-NEXT:          affine.store %[[ZERO]], %[[RESULT]][%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}] : memref<5x8x6x5x4xf32>
+// CHECK-NEXT:        }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   }
+// CHECK-NEXT: } 
+// CHECK-NEXT: affine.for %[[BATCH0:.*]] = 0 to 5 {
+// CHECK-NEXT:  affine.for %[[OFFSET0:.*]] = 0 to 8 {
+// CHECK-NEXT:    affine.for %[[OFFSET1:.*]] = 0 to 6 {
+// CHECK-NEXT:      affine.for %[[OFFSET2:.*]] = 0 to 5 {
+// CHECK-NEXT:        affine.for %[[OFFSET3:.*]] = 0 to 4 {
+// CHECK-NEXT:          affine.for %[[iv0:.*]] = 0 to 16 {
+// CHECK-NEXT:            affine.for %[[iv1:.*]] = 0 to 11 {
+// CHECK-NEXT:              affine.for %[[iv2:.*]] = 0 to 10 {
+// CHECK-NEXT:                affine.for %[[iv3:.*]] = 0 to 9 {
+// CHECK-NEXT:                  %[[START0:.*]] = affine.load %[[START_INDICES]][%[[BATCH0]], %[[ZERO_IDX]]] : memref<5x4xi32> 
+// CHECK-NEXT:                  %[[START_IND0:.*]] = arith.index_cast %[[START0]] : i32 to index
+// CHECK-NEXT:                  %[[START1:.*]] = affine.load %[[START_INDICES]][%[[BATCH0]], %[[ONE_IDX]]] : memref<5x4xi32>
+// CHECK-NEXT:                  %[[START_IND1:.*]] = arith.index_cast %[[START1]] : i32 to index
+// CHECK-NEXT:                  %[[START2:.*]] = affine.load %[[START_INDICES]][%[[BATCH0]], %[[TWO_IDX]]] : memref<5x4xi32>
+// CHECK-NEXT:                  %[[START_IND2:.*]] = arith.index_cast %[[START2]] : i32 to index
+// CHECK-NEXT:                  %[[START3:.*]] = affine.load %[[START_INDICES]][%[[BATCH0]], %[[THREE_IDX]]] : memref<5x4xi32>
+// CHECK-NEXT:                  %[[START_IND3:.*]] = arith.index_cast %[[START3]] : i32 to index
+// CHECK-NEXT:                  %[[OPERANDVAL:.*]] = affine.load %[[OPERAND]][%[[iv0]], %[[iv1]], %[[iv2]], %[[iv3]]] : memref<16x11x10x9xf32>
+// CHECK-NEXT:                  %[[INDEX0:.*]] = arith.addi %[[START_IND0]], %[[OFFSET0]] : index
+// CHECK-NEXT:                  %[[PRED0:.*]] = arith.cmpi eq, %[[INDEX0]], %[[iv0]] : index
+// CHECK-NEXT:                  %[[INDEX1:.*]] = arith.addi %[[START_IND1]], %[[OFFSET1]] : index
+// CHECK-NEXT:                  %[[PRED1:.*]] = arith.cmpi eq, %[[INDEX1]], %[[iv1]] : index
+// CHECK-NEXT:                  %[[INDEX2:.*]] = arith.addi %[[START_IND2]], %[[OFFSET2]] : index
+// CHECK-NEXT:                  %[[PRED2:.*]] = arith.cmpi eq, %[[INDEX2]], %[[iv2]] : index
+// CHECK-NEXT:                  %[[INDEX3:.*]] = arith.addi %[[START_IND3]], %[[OFFSET3]] : index
+// CHECK-NEXT:                  %[[PRED3:.*]] = arith.cmpi eq, %[[INDEX3]], %[[iv3]] : index
+// CHECK-NEXT:                  %[[PRED0_AND_PRED1:.*]] = arith.andi %[[PRED0]], %[[PRED1]] : i1
+// CHECK-NEXT:                  %[[PRED2_AND_PRED3:.*]] = arith.andi %[[PRED2]], %[[PRED3]] : i1
+// CHECK-NEXT:                  %[[PRED:.*]] = arith.andi %[[PRED0_AND_PRED1]], %[[PRED2_AND_PRED3]] : i1
+// CHECK-NEXT:                  %[[OPERANDVAL_OR_ZERO:.*]] = select %[[PRED]], %[[OPERANDVAL]], %[[ZERO]] : f32
+// CHECK-NEXT:                  %[[OUTPUTVAL:.*]] = affine.load %[[RESULT]][%[[BATCH0]], %[[OFFSET0]], %[[OFFSET1]], %[[OFFSET2]], %[[OFFSET3]]] : memref<5x8x6x5x4xf32>
+// CHECK-NEXT:                  %[[FINALVAL:.*]] = arith.addf %[[OPERANDVAL_OR_ZERO]], %[[OUTPUTVAL]] : f32
+// CHECK-NEXT:                  affine.store %[[FINALVAL]], %[[RESULT]][%[[BATCH0]], %[[OFFSET0]], %[[OFFSET1]], %[[OFFSET2]], %[[OFFSET3]]] : memref<5x8x6x5x4xf32> 
+
 // CHECK-LABEL: func @log
 func @log(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>) {
 
