@@ -99,77 +99,59 @@ def toco_convert(options, saved_model_dir, input_tensors, output_tensors,
   fully_quantize = test_params.get("fully_quantize", False)
   dynamic_range_quantize = test_params.get("dynamic_range_quantize", False)
 
-  # Convert saved model to GraphDef. The GraphDef is still used in the TOCO
-  # converter and the fallback path when convert_from_graphdef option is set.
-  saved_model_tags = set([tf.saved_model.tag_constants.SERVING])
-  signature_keys = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-  result = freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
-                              output_tensors, saved_model_tags, signature_keys)
-  graph_def = result[0]
-  # Convert ophint ops if presented.
-  graph_def = tf.compat.v1.lite.experimental.convert_op_hints_to_stubs(
-      graph_def=graph_def)
-  graph_def_str = graph_def.SerializeToString()
-
   if dynamic_range_quantize or fully_quantize:
-    with tempfile.NamedTemporaryFile() as graphdef_file:
-      converter = tf.lite.TFLiteConverter.from_saved_model(
-          saved_model_dir, input_arrays, input_shapes, output_tensors)
-      if extra_toco_options.convert_from_graphdef:
-        graphdef_file.write(graph_def_str)
-        graphdef_file.flush()
-        converter = tf.lite.TFLiteConverter.from_frozen_graph(
-            graphdef_file.name, input_arrays, output_tensors, input_shapes)
-      converter.experimental_new_quantizer = options.mlir_quantizer
-      converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter = tf.lite.TFLiteConverter.from_saved_model(
+        saved_model_dir, input_arrays, input_shapes, output_tensors)
+    converter.experimental_new_quantizer = options.mlir_quantizer
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
-      if fully_quantize:
-        # Read the input range for the representative dataset from parameters.
-        min_value, max_value = test_params.get("input_range", (-1, 1))
+    if fully_quantize:
+      # Read the input range for the representative dataset from parameters.
+      min_value, max_value = test_params.get("input_range", (-1, 1))
 
-        def representative_dataset(input_tensors):
-          calibration_inputs = []
-          for _, shape, dtype in input_tensors:
-            if shape:
-              dims = [dim.value for dim in shape.dims]
-              calibration_inputs.append(
-                  np.random.uniform(min_value, max_value,
-                                    tuple(dims)).astype(dtype.as_numpy_dtype))
-          return calibration_inputs
+      def representative_dataset(input_tensors):
+        calibration_inputs = []
+        for _, shape, dtype in input_tensors:
+          if shape:
+            dims = [dim.value for dim in shape.dims]
+            calibration_inputs.append(
+                np.random.uniform(min_value, max_value,
+                                  tuple(dims)).astype(dtype.as_numpy_dtype))
+        return calibration_inputs
 
-        def representative_dataset_gen():
-          for _ in range(100):
-            yield representative_dataset(input_tensors)
+      def representative_dataset_gen():
+        for _ in range(100):
+          yield representative_dataset(input_tensors)
 
+      if test_params.get("quant_16x8", False):
+        converter.target_spec.supported_ops = [
+            tf.lite.OpsSet
+            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]
+      else:
+        converter.target_spec.supported_ops = [
+            tf.lite.OpsSet.TFLITE_BUILTINS_INT8
+        ]
+
+      converter.representative_dataset = representative_dataset_gen
+      if extra_toco_options.inference_input_type:
+        converter.inference_input_type = (
+            extra_toco_options.inference_input_type)
+      if extra_toco_options.inference_output_type:
+        converter.inference_output_type = (
+            extra_toco_options.inference_output_type)
+      else:
         if test_params.get("quant_16x8", False):
-          converter.target_spec.supported_ops = [
-              tf.lite.OpsSet
-              .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
-          ]
+          converter.inference_output_type = tf.int16
         else:
-          converter.target_spec.supported_ops = [
-              tf.lite.OpsSet.TFLITE_BUILTINS_INT8
-          ]
+          converter.inference_output_type = tf.int8
 
-        converter.representative_dataset = representative_dataset_gen
-        if extra_toco_options.inference_input_type:
-          converter.inference_input_type = (
-              extra_toco_options.inference_input_type)
-        if extra_toco_options.inference_output_type:
-          converter.inference_output_type = (
-              extra_toco_options.inference_output_type)
-        else:
-          if test_params.get("quant_16x8", False):
-            converter.inference_output_type = tf.int16
-          else:
-            converter.inference_output_type = tf.int8
-
-      try:
-        tflite_model = converter.convert()
-        return tflite_model, ""
-      except Exception as e:
-        log = "{0}\n{1}".format(str(e), traceback.format_exc())
-        return None, log
+    try:
+      tflite_model = converter.convert()
+      return tflite_model, ""
+    except Exception as e:
+      log = "{0}\n{1}".format(str(e), traceback.format_exc())
+      return None, log
 
   else:
     opts = toco_options(
@@ -178,6 +160,17 @@ def toco_convert(options, saved_model_dir, input_tensors, output_tensors,
         shapes=[x[1] for x in input_tensors],
         output_arrays=output_tensors,
         extra_toco_options=extra_toco_options)
+
+    # Convert saved model to GraphDef.
+    saved_model_tags = set([tf.saved_model.tag_constants.SERVING])
+    signature_keys = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    graph_def, _, _, _ = freeze_saved_model(saved_model_dir, input_arrays,
+                                            input_shapes, output_tensors,
+                                            saved_model_tags, signature_keys)
+    # Convert ophint ops if presented.
+    graph_def = tf.compat.v1.lite.experimental.convert_op_hints_to_stubs(
+        graph_def=graph_def)
+    graph_def_str = graph_def.SerializeToString()
 
     with tempfile.NamedTemporaryFile() as graphdef_file, \
          tempfile.NamedTemporaryFile() as output_file, \

@@ -20,11 +20,9 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.lite.python import test_util as tflite_test_util
-from tensorflow.lite.python.convert_saved_model import freeze_saved_model
 from tensorflow.lite.testing import zip_test_utils
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.saved_model import signature_constants
-from tensorflow.python.saved_model import tag_constants
 
 
 def mlir_convert(
@@ -54,83 +52,69 @@ def mlir_convert(
   tflite_model = None
   log = ""
 
-  with tempfile.NamedTemporaryFile() as graphdef_file:
-    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-    converter = tf.lite.TFLiteConverter.from_saved_model(
-        saved_model_dir, [signature_key])
-    if extra_toco_options.convert_from_graphdef:
-      saved_model_tags = set([tag_constants.SERVING])
-      input_arrays = [x[0] for x in input_tensors]
-      input_shapes = zip_test_utils.get_input_shapes_map(input_tensors)
-      result = freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
-                                  output_tensors, saved_model_tags,
-                                  signature_key)
-      graph_def = result[0]
-      graphdef_file.write(graph_def.SerializeToString())
-      graphdef_file.flush()
-      converter = tf.compat.v1.lite.TFLiteConverter.from_frozen_graph(
-          graphdef_file.name, input_arrays, output_tensors, input_shapes)
+  signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+  converter = tf.lite.TFLiteConverter.from_saved_model(
+      saved_model_dir, [signature_key])
+  converter.allow_custom_ops = extra_toco_options.allow_custom_ops
+  converter.experimental_new_quantizer = options.mlir_quantizer
 
-    converter.allow_custom_ops = extra_toco_options.allow_custom_ops
-    converter.experimental_new_quantizer = options.mlir_quantizer
+  if options.run_with_flex:
+    converter.target_spec.supported_ops = set(
+        [tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS])
 
-    if options.run_with_flex:
-      converter.target_spec.supported_ops = set(
-          [tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS])
+  if test_params.get("dynamic_range_quantize", False):
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
-    if test_params.get("dynamic_range_quantize", False):
-      converter.optimizations = [tf.lite.Optimize.DEFAULT]
+  if test_params.get("fully_quantize", False):
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
-    if test_params.get("fully_quantize", False):
-      converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    # Read the input range for the representative dataset from parameters.
+    min_value, max_value = test_params.get("input_range", (-1, 1))
 
-      # Read the input range for the representative dataset from parameters.
-      min_value, max_value = test_params.get("input_range", (-1, 1))
+    def representative_dataset(input_tensors):
+      calibration_inputs = {}
+      for name, shape, dtype in input_tensors:
+        if shape:
+          dims = [1 if dim.value is None else dim.value for dim in shape.dims]
+          calibration_inputs[name] = np.random.uniform(
+              min_value, max_value, tuple(dims)).astype(dtype.as_numpy_dtype)
+      return calibration_inputs
 
-      def representative_dataset(input_tensors):
-        calibration_inputs = {}
-        for name, shape, dtype in input_tensors:
-          if shape:
-            dims = [1 if dim.value is None else dim.value for dim in shape.dims]
-            calibration_inputs[name] = np.random.uniform(
-                min_value, max_value, tuple(dims)).astype(dtype.as_numpy_dtype)
-        return calibration_inputs
+    def representative_dataset_gen():
+      for _ in range(100):
+        yield representative_dataset(input_tensors)
 
-      def representative_dataset_gen():
-        for _ in range(100):
-          yield representative_dataset(input_tensors)
+    if test_params.get("quant_16x8", False):
+      converter.target_spec.supported_ops = [
+          tf.lite.OpsSet
+          .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+      ]
+    else:
+      converter.target_spec.supported_ops = [
+          tf.lite.OpsSet.TFLITE_BUILTINS_INT8
+      ]
 
-      if test_params.get("quant_16x8", False):
-        converter.target_spec.supported_ops = [
-            tf.lite.OpsSet
-            .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
-        ]
-      else:
-        converter.target_spec.supported_ops = [
-            tf.lite.OpsSet.TFLITE_BUILTINS_INT8
-        ]
+    converter.representative_dataset = representative_dataset_gen
+    if extra_toco_options.inference_input_type:
+      converter.inference_input_type = (
+          extra_toco_options.inference_input_type)
 
-      converter.representative_dataset = representative_dataset_gen
-      if extra_toco_options.inference_input_type:
-        converter.inference_input_type = (
-            extra_toco_options.inference_input_type)
+    if extra_toco_options.inference_output_type:
+      converter.inference_output_type = (
+          extra_toco_options.inference_output_type)
 
-      if extra_toco_options.inference_output_type:
-        converter.inference_output_type = (
-            extra_toco_options.inference_output_type)
-
-    try:
-      tflite_model = converter.convert()
-      if options.expected_ops_in_converted_model:
-        ops_list = tflite_test_util.get_ops_list(tflite_model)
-        for expected_op in options.expected_ops_in_converted_model:
-          if expected_op not in ops_list:
-            # Force the test to fail.
-            tflite_model = None
-            raise ValueError(
-                "{} op not found in the converted model".format(expected_op))
-    except Exception as e:  # pylint: disable=broad-except
-      log = str(e)
+  try:
+    tflite_model = converter.convert()
+    if options.expected_ops_in_converted_model:
+      ops_list = tflite_test_util.get_ops_list(tflite_model)
+      for expected_op in options.expected_ops_in_converted_model:
+        if expected_op not in ops_list:
+          # Force the test to fail.
+          tflite_model = None
+          raise ValueError(
+              "{} op not found in the converted model".format(expected_op))
+  except Exception as e:  # pylint: disable=broad-except
+    log = str(e)
 
   return tflite_model, log
 
