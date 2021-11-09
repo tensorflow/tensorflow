@@ -88,6 +88,8 @@ DEPENDENCY_DENYLIST = [
     "//tensorflow/python/framework:test_file_system.so",
     "//tensorflow/python/debug:grpc_tensorflow_server.par",
     "//tensorflow/python/feature_column:vocabulary_testdata",
+    # TODO(scotzhu): Remove this in followup cl/408108286
+    "//tensorflow/python/keras/legacy_tf_layers:normalization",
     "//tensorflow/python/util:nest_test_main_lib",
     # lite
     "//tensorflow/lite/experimental/examples/lstm:rnn_cell",
