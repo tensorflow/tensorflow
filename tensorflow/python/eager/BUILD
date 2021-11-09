@@ -559,6 +559,17 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "function_cache_test",
+    size = "medium",
+    srcs = ["function_cache_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":function_cache",
+        "//tensorflow/python/framework:test_lib",
+    ],
+)
+
 py_library(
     name = "test",
     srcs = ["test.py"],

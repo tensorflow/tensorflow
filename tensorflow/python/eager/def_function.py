@@ -1180,10 +1180,10 @@ class Function(core.GenericFunction):
     # pylint: disable=protected-access
     if self._stateful_fn:
       concrete_functions.extend(
-          self._stateful_fn._function_cache.all_values())
+          self._stateful_fn._list_all_concrete_functions())
     if self._stateless_fn:
       concrete_functions.extend(
-          self._stateless_fn._function_cache.all_values())
+          self._stateless_fn._list_all_concrete_functions())
     # pylint: enable=protected-access
     return concrete_functions
 

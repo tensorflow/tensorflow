@@ -1545,9 +1545,7 @@ def _build_meta_graph_impl(obj,
   if options.function_aliases:
     function_aliases = meta_graph_def.meta_info_def.function_aliases
     for alias, func in options.function_aliases.items():
-      for fdef in func._stateful_fn._function_cache.all_values():  # pylint: disable=protected-access
-        function_aliases[fdef.name] = alias
-      for fdef in func._stateless_fn._function_cache.all_values():  # pylint: disable=protected-access
+      for fdef in func._list_all_concrete_functions():  # pylint: disable=protected-access
         function_aliases[fdef.name] = alias
 
   object_graph_proto = _serialize_object_graph(
