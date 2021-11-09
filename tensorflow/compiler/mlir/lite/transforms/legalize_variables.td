@@ -34,6 +34,6 @@ def LegalizeReadVariable : Pat<
   [(HasSupportedElementType $result)]>;
 
 def LegalizeAssignVariable : Pat<
-  (TF_AssignVariableOp $resource, $value),
+  (TF_AssignVariableOp $resource, $value, $validate_shape),
   (TFL_AssignVariableOp $resource, $value),
   [(IsSupportedElementType $value)]>;

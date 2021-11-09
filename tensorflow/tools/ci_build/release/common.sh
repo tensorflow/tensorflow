@@ -156,13 +156,88 @@ function install_ubuntu_16_python_pip_deps {
   # LINT.ThenChange(:mac_pip_installations)
 }
 
-function install_ubuntu_pip_venv_deps {
+function install_ubuntu_pip_deps {
   # Install requirements in the python environment
   which python
   which pip
-  pip install --upgrade pip wheel
-  pip install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
-  pip list
+  PIP_CMD="python -m pip"
+  ${PIP_CMD} list
+  # auditwheel>=4 supports manylinux_2 and changes the output wheel filename
+  # when upgrading auditwheel modify upload_wheel_cpu_ubuntu and upload_wheel_gpu_ubuntu
+  # to match the filename generated.
+  ${PIP_CMD} install --upgrade pip wheel auditwheel~=3.3.1
+  ${PIP_CMD} install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
+  ${PIP_CMD} list
+}
+
+function setup_venv_ubuntu () {
+  # Create virtual env and install dependencies
+  # First argument needs to be the python executable.
+  ${1} -m venv ~/.venv/tf
+  source ~/.venv/tf/bin/activate
+  install_ubuntu_pip_deps
+}
+
+function remove_venv_ubuntu () {
+  # Deactivate virtual environment and clean up
+  deactivate
+  rm -rf ~/.venv/tf
+}
+
+function upload_wheel_cpu_ubuntu() {
+  # Upload the built packages to pypi.
+  for WHL_PATH in $(ls pip_pkg/tf_nightly_cpu-*dev*.whl); do
+
+    WHL_DIR=$(dirname "${WHL_PATH}")
+    WHL_BASE_NAME=$(basename "${WHL_PATH}")
+    AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/manylinux2010}")
+    auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
+
+    # test the whl pip package
+    chmod +x tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
+    ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${AUDITED_WHL_NAME}
+    RETVAL=$?
+
+    # Upload the PIP package if whl test passes.
+    if [ ${RETVAL} -eq 0 ]; then
+      echo "Basic PIP test PASSED, Uploading package: ${AUDITED_WHL_NAME}"
+      python -m pip install twine
+      python -m twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}"
+    else
+      echo "Basic PIP test FAILED, will not upload ${AUDITED_WHL_NAME} package"
+      return 1
+    fi
+  done
+}
+
+function upload_wheel_gpu_ubuntu() {
+  # Upload the built packages to pypi.
+  for WHL_PATH in $(ls pip_pkg/tf_nightly*dev*.whl); do
+
+    WHL_DIR=$(dirname "${WHL_PATH}")
+    WHL_BASE_NAME=$(basename "${WHL_PATH}")
+    AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/manylinux2010}")
+
+    # Copy and rename for gpu manylinux as we do not want auditwheel to package in libcudart.so
+    WHL_PATH=${AUDITED_WHL_NAME}
+    cp "${WHL_DIR}"/"${WHL_BASE_NAME}" "${WHL_PATH}"
+    echo "Copied manylinux2010 wheel file at: ${WHL_PATH}"
+
+    # test the whl pip package
+    chmod +x tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
+    ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${AUDITED_WHL_NAME}
+    RETVAL=$?
+
+    # Upload the PIP package if whl test passes.
+    if [ ${RETVAL} -eq 0 ]; then
+      echo "Basic PIP test PASSED, Uploading package: ${AUDITED_WHL_NAME}"
+      python -m pip install twine
+      python -m twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}"
+    else
+      echo "Basic PIP test FAILED, will not upload ${AUDITED_WHL_NAME} package"
+      return 1
+    fi
+  done
 }
 
 function install_macos_pip_deps {
@@ -337,7 +412,7 @@ MAC_CPU_MAX_WHL_SIZE=200M
 LINUX_CPU_MAX_WHL_SIZE=175M
 WIN_CPU_MAX_WHL_SIZE=170M
 # GPU size
-LINUX_GPU_MAX_WHL_SIZE=470M
+LINUX_GPU_MAX_WHL_SIZE=475M
 WIN_GPU_MAX_WHL_SIZE=345M
 
 function test_tf_whl_size() {

@@ -75,6 +75,10 @@ std::unique_ptr<mlir::FunctionPass> CreateTfCpurtClusteringPass();
 std::unique_ptr<mlir::FunctionPass> CreateTfCpurtClusteringPass(
     llvm::ArrayRef<std::string> oplist, int min_cluster_size);
 
+// Pass to replace math ops with approximations.
+std::unique_ptr<mlir::FunctionPass> CreateMathApproximationPass(
+    llvm::ArrayRef<std::string> oplist = {});
+
 // Returns true if the `value` type is a memref that is contiguous in memory.
 bool IsContiguousMemref(mlir::Value value);
 

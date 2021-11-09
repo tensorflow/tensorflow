@@ -51,7 +51,7 @@ class BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
 
     auto memref_type =
         MemRefType::get(result_type.getShape(), result_type.getElementType());
-    auto elements_attr = op.value().cast<DenseElementsAttr>();
+    auto elements_attr = op.getValue().cast<DenseElementsAttr>();
 
     if (result_rank == 0) {
       Value buffer = rewriter.create<memref::AllocOp>(loc, memref_type);
@@ -427,7 +427,7 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
   LogicalResult matchAndRewrite(
       RankOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<RankOp>(op, adaptor.memrefOrTensor());
+    rewriter.replaceOpWithNewOp<RankOp>(op, adaptor.getMemrefOrTensor());
     return success();
   }
 };

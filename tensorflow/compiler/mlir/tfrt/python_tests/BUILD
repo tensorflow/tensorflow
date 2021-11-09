@@ -237,22 +237,6 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
-    name = "tf_compile_test",
-    srcs = ["tf_compile_test.py"],
-    data = glob(
-        ["regression_tests/*"],
-        exclude = ["regression_tests/*.disabled.mlir"],
-    ),
-    python_version = "PY3",
-    tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
-    deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/platform",
-    ],
-)
-
 td_library(
     name = "python_test_attrs_td_files",
     srcs = ["python_test_attrs.td"],

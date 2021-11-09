@@ -68,6 +68,15 @@ class InferenceContext {
     ModelHints hints;
   };
 
+  struct GpuModel {
+    std::vector<std::pair<ValueId, ValueId>> input_ids_and_refs;
+    std::vector<std::pair<ValueId, ValueId>> variable_ids_and_refs;
+    std::vector<std::pair<ValueId, ValueId>> output_ids_and_refs;
+    std::vector<CLNode> nodes;
+    absl::flat_hash_map<ValueId, TensorDescriptor> tensors;
+    absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors;
+  };
+
   absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
                              const GraphFloat32& graph, Environment* env,
                              std::vector<uint8_t>* serialized_model = nullptr);
@@ -111,8 +120,6 @@ class InferenceContext {
                              ProgramCache* program_cache,
                              const data::InferenceContext* fb_inference,
                              InferenceContext* inference);
-
-  void CopyInAndOutIds(const GraphFloat32& graph);
 
   absl::Status AllocateMemory(const GpuInfo& gpu_info, CLContext* context);
 

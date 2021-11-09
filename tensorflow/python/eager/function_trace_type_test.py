@@ -19,6 +19,7 @@ import timeit
 from absl.testing import parameterized
 
 from tensorflow.python import keras
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import function
@@ -43,6 +44,7 @@ except ImportError:
   attr = None
 
 if attr is not None:
+
   @attr.s
   class TestAttrsClass(object):
     """Helps test memory leaks for attrs collection."""
@@ -246,7 +248,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         wall_time=t,
         metrics=[{
             'name': 'tensor_cache_key_generation_avg_ms',
-            'value': t/iterations * 1000
+            'value': t / iterations * 1000
         }])
 
   def benchmarkTensorSpec(self):
@@ -268,7 +270,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         wall_time=t,
         metrics=[{
             'name': 'tensor_spec_cache_key_generation_avg_ms',
-            'value': t/iterations * 1000
+            'value': t / iterations * 1000
         }])
 
   def benchmarkVariable(self):
@@ -290,7 +292,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         wall_time=t,
         metrics=[{
             'name': 'variable_cache_key_generation_avg_ms',
-            'value': t/iterations * 1000
+            'value': t / iterations * 1000
         }])
 
   def benchmarkKerasModel(self):
@@ -311,7 +313,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         wall_time=t,
         metrics=[{
             'name': 'keras_model_cache_key_generation_avg_ms',
-            'value': t/iterations * 1000
+            'value': t / iterations * 1000
         }])
 
   def benchmarkCacheKeyLookup(self):
@@ -341,7 +343,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         wall_time=t,
         metrics=[{
             'name': 'cache_key_lookup_avg_ms',
-            'value': t/iterations * 1000
+            'value': t / iterations * 1000
         }])
 
   def benchmarkNestedStruct(self):
@@ -359,7 +361,7 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         wall_time=t,
         metrics=[{
             'name': 'nested_struct_cache_key_generation_avg_ms',
-            'value': t/iterations * 1000
+            'value': t / iterations * 1000
         }])
 
   def benchmarkFunctionInvocation(self):
@@ -381,12 +383,42 @@ class CacheKeyGenerationBenchmark(test.Benchmark):
         iters=iterations,
         wall_time=t,
         metrics=[{
-            'name': 'function_invocation_time',
-            'value': t
+            'name': 'function_invocation_time_avg_ms',
+            'value': t / iterations * 1000
         }])
 
 
 class TraceTypeEncodingTest(test.TestCase):
+
+  def testCustomUnequableTypeSucceeds(self):
+
+    class CustomUnequable:
+
+      def __eq__(self, o):
+        raise ValueError
+
+      def __hash__(self):
+        return 0
+
+    object_a = CustomUnequable()
+    object_b = CustomUnequable()
+
+    trace_a_1 = function_trace_type.get_arg_spec(object_a, False, True, True)
+    trace_a_2 = function_trace_type.get_arg_spec(object_a, False, True, True)
+    trace_b = function_trace_type.get_arg_spec(object_b, False, True, True)
+
+    self.assertEqual(trace_a_1, trace_a_2)
+
+    with self.assertRaises(ValueError):
+      trace_a_1.__eq__(trace_b)
+
+    del object_a
+    self.assertNotEqual(trace_a_1, trace_a_2)
+    self.assertNotEqual(trace_a_2, trace_a_1)
+
+    del object_b
+    self.assertNotEqual(trace_a_1, trace_a_2)
+    self.assertNotEqual(trace_a_2, trace_a_1)
 
   def testCustomUnhashableTypeFailsGracefully(self):
 
@@ -545,4 +577,5 @@ class TraceTypeEncodingTest(test.TestCase):
 
 
 if __name__ == '__main__':
+  v2_compat.enable_v2_behavior()
   test.main()

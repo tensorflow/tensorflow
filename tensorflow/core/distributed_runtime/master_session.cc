@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -1256,7 +1257,7 @@ void MasterSession::UpdateLastAccessTime() {
 }
 
 Status MasterSession::Create(GraphDef&& graph_def,
-                             const WorkerCacheFactoryOptions& options) {
+                             const ClusterDef& cluster_def) {
   if (session_opts_.config.use_per_session_threads() ||
       session_opts_.config.session_inter_op_thread_pool_size() > 0) {
     return errors::InvalidArgument(
@@ -1278,11 +1279,10 @@ Status MasterSession::Create(GraphDef&& graph_def,
         std::move(graph_def), execution_options, &execution_state_));
   }
   should_delete_worker_sessions_ = true;
-  return CreateWorkerSessions(options);
+  return CreateWorkerSessions(cluster_def);
 }
 
-Status MasterSession::CreateWorkerSessions(
-    const WorkerCacheFactoryOptions& options) {
+Status MasterSession::CreateWorkerSessions(const ClusterDef& cluster_def) {
   const std::vector<string> worker_names = filtered_worker_list_;
   WorkerCacheInterface* worker_cache = get_worker_cache();
 
@@ -1356,10 +1356,9 @@ Status MasterSession::CreateWorkerSessions(
       return status;
     }
 
-    if (options.cluster_def) {
-      *workers[i].request.mutable_server_def()->mutable_cluster() =
-          *options.cluster_def;
-      workers[i].request.mutable_server_def()->set_protocol(*options.protocol);
+    if (!cluster_def.job().empty()) {
+      *workers[i].request.mutable_server_def()->mutable_cluster() = cluster_def;
+      workers[i].request.mutable_server_def()->set_protocol("grpc");
       workers[i].request.mutable_server_def()->set_job_name(name.job);
       workers[i].request.mutable_server_def()->set_task_index(name.task);
       // Session state is always isolated when ClusterSpec propagation
@@ -1371,6 +1370,8 @@ Status MasterSession::CreateWorkerSessions(
       workers[i].request.set_isolate_session_state(
           session_opts_.config.isolate_session_state());
     }
+    *workers[i].request.mutable_coordination_service_config() =
+        session_opts_.config.experimental().coordination_config();
     if (session_opts_.config.experimental()
             .share_session_state_in_clusterspec_propagation()) {
       // In a dynamic cluster, the ClusterSpec info is usually propagated by

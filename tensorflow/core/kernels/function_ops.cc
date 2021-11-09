@@ -99,13 +99,13 @@ REGISTER_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_TPU_SYSTEM), RetvalOp);
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
       Name(kArgOp).Device(DEVICE_DEFAULT).TypeConstraint<type>("T"), ArgOp);
-TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_QUANTIZED_TYPES(REGISTER)
-TF_CALL_bool(REGISTER)
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER);
+TF_CALL_QUANTIZED_TYPES(REGISTER);
+TF_CALL_bool(REGISTER);
 
-    REGISTER_KERNEL_BUILDER(
-        Name(kDeviceArgOp).Device(DEVICE_DEFAULT).TypeConstraint<int32>("T"),
-        ArgOp);
+REGISTER_KERNEL_BUILDER(
+    Name(kDeviceArgOp).Device(DEVICE_DEFAULT).TypeConstraint<int32>("T"),
+    ArgOp);
 
 REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .Device(DEVICE_DEFAULT)
@@ -134,16 +134,18 @@ REGISTER_KERNEL_BUILDER(
       Name(kRetOp).Device(DEVICE_DEFAULT).TypeConstraint<type>("T"), \
       RetvalOp);
 
-TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
-TF_CALL_QUANTIZED_TYPES(REGISTER)
-REGISTER(Variant)
-TF_CALL_bool(REGISTER)
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER);
+TF_CALL_QUANTIZED_TYPES(REGISTER);
+TF_CALL_qint16(REGISTER);
+TF_CALL_quint16(REGISTER);
+REGISTER(Variant);
+TF_CALL_bool(REGISTER);
 
-    REGISTER_KERNEL_BUILDER(Name(kRetOp)
-                                .Device(DEVICE_DEFAULT)
-                                .HostMemory("input")
-                                .TypeConstraint<int32>("T"),
-                            RetvalOp);
+REGISTER_KERNEL_BUILDER(Name(kRetOp)
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("input")
+                            .TypeConstraint<int32>("T"),
+                        RetvalOp);
 REGISTER_KERNEL_BUILDER(
     Name(kDeviceRetOp).Device(DEVICE_DEFAULT).TypeConstraint<int32>("T"),
     RetvalOp);

@@ -375,7 +375,7 @@ SmallVector<Value, 8> MaterializeFinalReshape(
     while (it != nullptr && it != last_op_before_shape_reification) {
       bool advanced = false;
       if (auto shape_of_op = llvm::dyn_cast<shape::ShapeOfOp>(it)) {
-        Operation *def = shape_of_op.arg().getDefiningOp();
+        Operation *def = shape_of_op.getArg().getDefiningOp();
         if (def && def->getBlock() == op.getBody()) {
           // Resolve `shape_of` op because it still depends on operation in the
           // original cluster.
@@ -419,7 +419,7 @@ Value MaterializeFlatShape(OpBuilder &b, Location loc, ValueRange same_shapes) {
                                              same_shapes);
   return b.create<tensor::FromElementsOp>(
       loc,
-      b.create<shape::NumElementsOp>(loc, b.getIndexType(), shape).result());
+      b.create<shape::NumElementsOp>(loc, b.getIndexType(), shape).getResult());
 }
 
 Value MaterializeScalarRankSpecializationCase(
@@ -444,7 +444,7 @@ Value MaterializeScalarRankSpecializationCase(
         all_others_are_scalar
             ? b.create<mlir::arith::AndIOp>(loc, all_others_are_scalar, literal)
                   .getResult()
-            : literal.result();
+            : literal.getResult();
   }
 
   auto if_op = b.create<scf::IfOp>(
@@ -514,7 +514,7 @@ Value MaterializeEqualShapesRankSpecializationCase(
     all_shapes_eq_or_scalar = all_shapes_eq_or_scalar
                                   ? b.create<mlir::arith::AndIOp>(
                                          loc, all_shapes_eq_or_scalar, literal)
-                                        .result()
+                                        .getResult()
                                   : literal;
   }
 
@@ -692,7 +692,7 @@ MaterializeRankSpecializationForSingleNonScalarShapeEquivalenceClass(
   // Compute flat operand shape.
   auto non_scalar_shapes = llvm::to_vector<4>(
       llvm::map_range(non_scalars_of_same_shape, [&](Value v) {
-        return rewriter.create<shape::ShapeOfOp>(loc, v).result();
+        return rewriter.create<shape::ShapeOfOp>(loc, v).getResult();
       }));
   Value flat_shape = MaterializeFlatShape(rewriter, loc, non_scalar_shapes);
 
@@ -732,7 +732,7 @@ Value MaterializeRankSpecializationForTwoNonScalarShapeEquivalenceClasses(
   assert(non_scalar_eqs.size() == 2 &&
          "Expect two non-scalar equivalence classes.");
   auto shapes = llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
-    return rewriter.create<shape::ShapeOfOp>(loc, v).result();
+    return rewriter.create<shape::ShapeOfOp>(loc, v).getResult();
   }));
   ValueRange lhs_non_scalar_eqs = non_scalar_eqs[0];
   ValueRange rhs_non_scalar_eqs = non_scalar_eqs[1];
@@ -761,7 +761,7 @@ Value MaterializeDefaultRankSpecialization(PatternRewriter &rewriter,
                                            chlo::RankSpecializationClusterOp op,
                                            int64_t max_target_rank) {
   auto shapes = llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
-    return rewriter.create<shape::ShapeOfOp>(loc, v).result();
+    return rewriter.create<shape::ShapeOfOp>(loc, v).getResult();
   }));
 
   // Materialize all the different cases.
@@ -802,21 +802,21 @@ SmallVector<SmallVector<Value, 4>, 4> FindNonScalarShapeEquivalences(
     auto append_if_not_null = [&](Operation *op) {
       if (op != nullptr) queue.push_back(op);
     };
-    append_if_not_null(assuming_op.witness().getDefiningOp());
+    append_if_not_null(assuming_op.getWitness().getDefiningOp());
     while (!queue.empty()) {
       Operation *it = queue.pop_back_val();
       if (auto assuming_all_op = llvm::dyn_cast<shape::AssumingAllOp>(it)) {
-        for (Value v : assuming_all_op.inputs())
+        for (Value v : assuming_all_op.getInputs())
           append_if_not_null(v.getDefiningOp());
       } else if (auto cstr_eq_op = llvm::dyn_cast<shape::CstrEqOp>(it)) {
         Value ref_arg;
-        for (Value v : cstr_eq_op.shapes()) {
+        for (Value v : cstr_eq_op.getShapes()) {
           if (auto shape_of_op =
                   dyn_cast_or_null<shape::ShapeOfOp>(v.getDefiningOp())) {
             if (!ref_arg) {
-              ref_arg = shape_of_op.arg();
+              ref_arg = shape_of_op.getArg();
             } else {
-              eqs.unionSets(ref_arg, shape_of_op.arg());
+              eqs.unionSets(ref_arg, shape_of_op.getArg());
             }
           }
         }

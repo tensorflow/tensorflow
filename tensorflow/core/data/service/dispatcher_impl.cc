@@ -481,9 +481,10 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   }
 
   int64_t id;
-  TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def, id));
-  if (!request->element_spec().empty()) {
-    TF_RETURN_IF_ERROR(SetElementSpec(id, request->element_spec()));
+  TF_RETURN_IF_ERROR(
+      RegisterDataset(fingerprint, dataset_def, request->metadata(), id));
+  if (!request->metadata().element_spec().empty()) {
+    TF_RETURN_IF_ERROR(SetElementSpec(id, request->metadata().element_spec()));
   }
 
   response->set_dataset_id(id);
@@ -491,15 +492,16 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
-                                                  const DatasetDef& dataset,
-                                                  int64_t& dataset_id)
+Status DataServiceDispatcherImpl::RegisterDataset(
+    uint64 fingerprint, const DatasetDef& dataset,
+    const DataServiceMetadata& metadata, int64_t& dataset_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   dataset_id = state_.NextAvailableDatasetId();
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
   register_dataset->set_fingerprint(fingerprint);
+  *register_dataset->mutable_metadata() = metadata;
   TF_RETURN_IF_ERROR(
       dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));
   return Apply(update);
@@ -528,6 +530,21 @@ Status DataServiceDispatcherImpl::GetElementSpec(
   VLOG(3) << "Get the `element_spec` for registered dataset with dataset id: "
           << dataset_id << ".";
   *response->mutable_element_spec() = element_spec;
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::GetDataServiceMetadata(
+    const GetDataServiceMetadataRequest* request,
+    GetDataServiceMetadataResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  int64_t dataset_id = request->dataset_id();
+  std::shared_ptr<const Dataset> dataset;
+
+  mutex_lock l(mu_);
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
+  VLOG(3) << "Get the data service metadata for dataset id: " << dataset_id
+          << ".";
+  *response->mutable_metadata() = dataset->metadata;
   return Status::OK();
 }
 

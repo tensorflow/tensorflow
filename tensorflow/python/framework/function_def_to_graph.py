@@ -192,7 +192,10 @@ def function_def_to_graph_def(fdef, input_shapes=None):
       # Only copy internal attributes. Normal attributes for nodes cannot be
       # applied to these Placeholder nodes.
       if k == "_output_shapes":
-        node_def.attr["shape"].shape.CopyFrom(arg_attrs[k].list.shape[0])
+        if arg_attrs[k].WhichOneof("value") == "list":
+          node_def.attr["shape"].shape.CopyFrom(arg_attrs[k].list.shape[0])
+        elif arg_attrs[k].WhichOneof("value") == "shape":
+          node_def.attr["shape"].shape.CopyFrom(arg_attrs[k].shape)
       elif k.startswith("_"):
         node_def.attr[k].CopyFrom(arg_attrs[k])
 

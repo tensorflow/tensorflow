@@ -46,6 +46,10 @@ def ConvertToQuantTypeFromAttrs : NativeCodeCall<
 def convertIntAttrTo32Bit : NativeCodeCall<
     "$_builder.getI32IntegerAttr($0.cast<IntegerAttr>().getInt())">;
 
+// Converts an integer attribute $0 to 64-bit with builder.
+def convertIntAttrTo64Bit : NativeCodeCall<
+    "$_builder.getI64IntegerAttr($0.cast<IntegerAttr>().getInt())">;
+
 // Extracts the single integer element from $_self.
 def ExtractSingleElementAsInteger : NativeCodeCall<
     "ExtractSingleElementAsInteger($_self.cast<ElementsAttr>())">;
@@ -520,3 +524,13 @@ def LegalizeImag : Pat<(TF_ImagOp $arg), (TFL_ImagOp $arg)>;
 def LegalizeBucketize : Pat<
   (TF_BucketizeOp $input, F32ArrayAttr:$boundaries),
   (TFL_BucketizeOp $input, $boundaries)>;
+
+def LegalizeRandomUniform : Pat<
+  (TF_RandomUniformOp $shape, $seed, $seed2),
+  (TFL_RandomUniformOp $shape, (convertIntAttrTo64Bit $seed),
+   (convertIntAttrTo64Bit $seed2))>;
+
+def LegalizeRandomStandardNormal : Pat<
+  (TF_RandomStandardNormalOp $shape, $seed, $seed2),
+  (TFL_RandomStandardNormalOp $shape, (convertIntAttrTo64Bit $seed),
+   (convertIntAttrTo64Bit $seed2))>;

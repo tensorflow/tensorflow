@@ -2234,6 +2234,9 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   std::vector<int64_t> increment(rank, 1);
   int64_t sort_dim = sort->dimensions(0);
   int64_t sort_dim_elements = key_shape.dimensions(sort_dim);
+  TF_RET_CHECK(sort_dim >= 0 && sort_dim < increment.size())
+      << "Unexpected out-of-bound sort dimension " << sort_dim
+      << " accessing increment of size " << increment.size();
   increment[sort_dim] = sort_dim_elements;
   HloEvaluator embedded_evaluator(max_loop_iterations_);
   // Iterate through each dimension except 'sort_dim'.

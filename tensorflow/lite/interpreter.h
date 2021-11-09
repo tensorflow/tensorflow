@@ -319,9 +319,9 @@ class Interpreter {
   SignatureRunner* GetSignatureRunner(const char* signature_key);
 
   /// WARNING: Experimental interface, subject to change
-  // Return the subgraph index that corresponds to a SignatureDef, defined by
-  // 'signature_key'.
-  // If invalid name passed, -1 will be returned.
+  /// Return the subgraph index that corresponds to a SignatureDef, defined by
+  /// 'signature_key'.
+  /// If invalid name passed, -1 will be returned.
   int GetSubgraphIndexFromSignature(const char* signature_key) const {
     for (const auto& signature : signature_defs_) {
       if (signature.signature_key == signature_key) {
@@ -443,19 +443,19 @@ class Interpreter {
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 
-  // Change the dimensionality of a given tensor. This is only acceptable for
-  // tensor indices that are inputs or variables. Only unknown dimensions can be
-  // resized with this function. Unknown dimensions are indicated as `-1` in the
-  // `dims_signature` attribute of a `TfLiteTensor`. Returns status of failure
-  // or success.  Note that this doesn't actually resize any existing buffers.
-  /// A call to AllocateTensors() is required to change the tensor input buffer.
+  /// Change the dimensionality of a given tensor. This is only acceptable for
+  /// tensor indices that are inputs or variables. Only unknown dimensions can
+  /// be resized with this function. Unknown dimensions are indicated as `-1` in
+  /// the `dims_signature` attribute of a `TfLiteTensor`. Returns status of
+  /// failure or success.  Note that this doesn't actually resize any existing
+  /// buffers. A call to AllocateTensors() is required to change the tensor
+  /// input buffer.
   TfLiteStatus ResizeInputTensorStrict(int tensor_index,
                                        const std::vector<int>& dims);
 
-  // This releases memory held by non-persistent tensors. It does NOT re-perform
-  // memory planning.
-  // AllocateTensors needs to be called before next invocation.
-  /// WARNING: Experimental interface, subject to change
+  /// This releases memory held by non-persistent tensors. It does NOT
+  /// re-perform memory planning. AllocateTensors needs to be called before next
+  /// invocation. WARNING: Experimental interface, subject to change
   TfLiteStatus ReleaseNonPersistentMemory();
 
   /// WARNING: This is an experimental API and subject to change.
@@ -466,14 +466,14 @@ class Interpreter {
   /// API.
   void EnsureDynamicTensorsAreReleased();
 
-  // Update allocations for all tensors. This will redim dependent tensors
-  // using the input tensor dimensionality as given. This is relatively
-  // expensive. This *must be* called after the interpreter has been created
-  // and before running inference (and accessing tensor buffers), and *must be*
-  // called again if (and only if) an input tensor is resized. Returns status of
-  // success or failure.  Will fail if any of the ops in the model (other than
-  // those which were rewritten by delegates, if any) are not supported by the
-  // Interpreter's OpResolver.
+  /// Update allocations for all tensors. This will redim dependent tensors
+  /// using the input tensor dimensionality as given. This is relatively
+  /// expensive. This *must be* called after the interpreter has been created
+  /// and before running inference (and accessing tensor buffers), and *must be*
+  /// called again if (and only if) an input tensor is resized. Returns status
+  /// of success or failure.  Will fail if any of the ops in the model (other
+  /// than those which were rewritten by delegates, if any) are not supported by
+  /// the Interpreter's OpResolver.
   TfLiteStatus AllocateTensors();
 
   /// Invoke the interpreter (run the whole graph in dependency order).
@@ -655,27 +655,28 @@ class Interpreter {
   void SetExternalContext(TfLiteExternalContextType type,
                           TfLiteExternalContext* ctx);
 
-  // Assigns (or reassigns) a custom memory allocation for the given tensor.
-  // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
-  // The runtime does NOT take ownership of the underlying memory.
-  //
-  // NOTE: User needs to call AllocateTensors() after this.
-  // Invalid/insufficient buffers will cause an error during AllocateTensors or
-  // Invoke (in case of dynamic shapes in the graph).
-  //
-  // Parameters should satisfy the following conditions:
-  // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
-  //    In general, this is true for I/O tensors & variable tensors.
-  // 2. allocation->data has the appropriate permissions for runtime access
-  //    (Read-only for inputs, Read-Write for others), and outlives Interpreter.
-  // 3. allocation->bytes >= tensor->bytes.
-  //    This condition is checked again if any tensors are resized.
-  // 4. allocation->data should be aligned to kDefaultTensorAlignment
-  //    defined in lite/util.h. (Currently 64 bytes)
-  //    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
-  //    set through `flags`.
-  //
-  // WARNING: This is an experimental interface that is subject to change.
+  /// Assigns (or reassigns) a custom memory allocation for the given tensor.
+  /// `flags` is a bitmask, see TfLiteCustomAllocationFlags.
+  /// The runtime does NOT take ownership of the underlying memory.
+  ///
+  /// NOTE: User needs to call AllocateTensors() after this.
+  /// Invalid/insufficient buffers will cause an error during AllocateTensors or
+  /// Invoke (in case of dynamic shapes in the graph).
+  ///
+  /// Parameters should satisfy the following conditions:
+  /// 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
+  ///    In general, this is true for I/O tensors & variable tensors.
+  /// 2. allocation->data has the appropriate permissions for runtime access
+  ///    (Read-only for inputs, Read-Write for others), and outlives
+  ///    Interpreter.
+  /// 3. allocation->bytes >= tensor->bytes.
+  ///    This condition is checked again if any tensors are resized.
+  /// 4. allocation->data should be aligned to kDefaultTensorAlignment
+  ///    defined in lite/util.h. (Currently 64 bytes)
+  ///    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
+  ///    set through `flags`.
+  ///
+  /// WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus SetCustomAllocationForTensor(
       int tensor_index, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);

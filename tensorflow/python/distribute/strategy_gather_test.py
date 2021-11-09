@@ -189,15 +189,10 @@ class GatherTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   r'Shape mismatch'):
         run()
-    elif isinstance(
-        strategy,
-        (mirrored_strategy.MirroredStrategy,
-         central_storage_strategy.CentralStorageStrategy)) and pure_eager:
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  r'Dimensions of inputs should match'):
-        run()
-    else:
-      with self.assertRaisesRegex(ValueError,
+    elif isinstance(strategy,
+                    (mirrored_strategy.MirroredStrategy,
+                     central_storage_strategy.CentralStorageStrategy)):
+      with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
                                   r'Dimension \d in both shapes must be equal'):
         run()
 
@@ -507,15 +502,10 @@ class GatherTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   r'Shape mismatch'):
         strategy.run(run, args=(per_replica_value,))
-    elif isinstance(
-        strategy,
-        (mirrored_strategy.MirroredStrategy,
-         central_storage_strategy.CentralStorageStrategy)) and pure_eager:
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  r'Dimensions of inputs should match'):
-        strategy.run(run, args=(per_replica_value,))
-    else:
-      with self.assertRaisesRegex(ValueError,
+    elif isinstance(strategy,
+                    (mirrored_strategy.MirroredStrategy,
+                     central_storage_strategy.CentralStorageStrategy)):
+      with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
                                   r'Dimension \d in both shapes must be equal'):
         strategy.run(run, args=(per_replica_value,))
 

@@ -1365,10 +1365,7 @@ void PrepareTFPass::runOnFunction() {
   // will be applied.
   TFL::populateWithGenerated(phase_2_patterns);
   if (unfold_batch_matmul_) {
-    phase_2_patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                            TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>,
-                            TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV3Op>>(
-        ctx);
+    TF::PopulateUnrollTfBatchMatMul(ctx, phase_2_patterns);
   }
   phase_2_patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
                           ConvertTFStridedSlice, ConvertRfftToRfft2d>(ctx);

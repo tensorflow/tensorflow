@@ -67,7 +67,7 @@ static bool ShouldBeFolded(Operation* inst) {
   int64_t operands_size = get_size(inst->getOperandTypes());
 
   constexpr int kSizeFactor = 2;
-  constexpr int64_t kResultsSizeThreshold = (1 << 21);   // 256 KB
+  constexpr int64_t kResultsSizeThreshold = (1 << 23);   // 1 MB
   constexpr int64_t kOperandsSizeThreshold = (1 << 30);  // 1 GB
 
   return (operands_size <= kOperandsSizeThreshold) &&

@@ -60,17 +60,25 @@ inline void FullyConnected(
   if (bias_data) {
     TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
   }
+  const bool use_caching =
+      (cpu_backend_context != nullptr) && cpu_backend_context->use_caching();
 
   cpu_backend_gemm::MatrixParams<int8> lhs_params;
   lhs_params.rows = filter_rows;
   lhs_params.cols = filter_cols;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.zero_point = -filter_offset;
+  lhs_params.cache_policy =
+      use_caching ? cpu_backend_gemm::DefaultCachePolicy(params.lhs_cacheable)
+                  : cpu_backend_gemm::CachePolicy::kNeverCache;
   cpu_backend_gemm::MatrixParams<int8> rhs_params;
   rhs_params.rows = filter_cols;
   rhs_params.cols = batches;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.zero_point = -input_offset;
+  rhs_params.cache_policy =
+      use_caching ? cpu_backend_gemm::DefaultCachePolicy(params.rhs_cacheable)
+                  : cpu_backend_gemm::CachePolicy::kNeverCache;
   cpu_backend_gemm::MatrixParams<int8> dst_params;
   dst_params.rows = filter_rows;
   dst_params.cols = batches;

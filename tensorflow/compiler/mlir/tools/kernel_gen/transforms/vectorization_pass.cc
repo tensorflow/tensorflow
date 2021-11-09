@@ -84,7 +84,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   if (!lower_bound_op) {
     return;
   }
-  auto lower_bound_value = lower_bound_op.value().dyn_cast<IntegerAttr>();
+  auto lower_bound_value = lower_bound_op.getValue().dyn_cast<IntegerAttr>();
   if (!lower_bound_value || lower_bound_value.getInt() != 0) {
     return;
   }
@@ -94,7 +94,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   if (!step_bound_op) {
     return;
   }
-  auto step_bound_value = step_bound_op.value().dyn_cast<IntegerAttr>();
+  auto step_bound_value = step_bound_op.getValue().dyn_cast<IntegerAttr>();
   if (!step_bound_value) {
     return;
   }
@@ -216,13 +216,13 @@ void SplitSCFForOp(scf::ForOp scf_for) {
         if (cmp.getOperand(0) == min_op.getResult() &&
             cmp.getOperand(1) == step_bound_op) {
           cmp.replaceAllUsesWith(b.create<arith::ConstantIntOp>(
-                                      is_true_cmp(cmp.predicate(), true), 1)
+                                      is_true_cmp(cmp.getPredicate(), true), 1)
                                      .getResult());
           cmp.erase();
         } else if (cmp.getOperand(0) == step_bound_op &&
                    cmp.getOperand(1) == min_op.getResult()) {
           cmp.replaceAllUsesWith(b.create<arith::ConstantIntOp>(
-                                      is_true_cmp(cmp.predicate(), false), 1)
+                                      is_true_cmp(cmp.getPredicate(), false), 1)
                                      .getResult());
         }
       }

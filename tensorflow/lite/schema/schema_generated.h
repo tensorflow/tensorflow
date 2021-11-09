@@ -10390,8 +10390,8 @@ flatbuffers::Offset<AssignVariableOptions> CreateAssignVariableOptions(flatbuffe
 
 struct RandomOptionsT : public flatbuffers::NativeTable {
   typedef RandomOptions TableType;
-  int32_t seed;
-  int32_t seed2;
+  int64_t seed;
+  int64_t seed2;
   RandomOptionsT()
       : seed(0),
         seed2(0) {
@@ -10404,16 +10404,16 @@ struct RandomOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_SEED = 4,
     VT_SEED2 = 6
   };
-  int32_t seed() const {
-    return GetField<int32_t>(VT_SEED, 0);
+  int64_t seed() const {
+    return GetField<int64_t>(VT_SEED, 0);
   }
-  int32_t seed2() const {
-    return GetField<int32_t>(VT_SEED2, 0);
+  int64_t seed2() const {
+    return GetField<int64_t>(VT_SEED2, 0);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_SEED) &&
-           VerifyField<int32_t>(verifier, VT_SEED2) &&
+           VerifyField<int64_t>(verifier, VT_SEED) &&
+           VerifyField<int64_t>(verifier, VT_SEED2) &&
            verifier.EndTable();
   }
   RandomOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -10424,11 +10424,11 @@ struct RandomOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 struct RandomOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_seed(int32_t seed) {
-    fbb_.AddElement<int32_t>(RandomOptions::VT_SEED, seed, 0);
+  void add_seed(int64_t seed) {
+    fbb_.AddElement<int64_t>(RandomOptions::VT_SEED, seed, 0);
   }
-  void add_seed2(int32_t seed2) {
-    fbb_.AddElement<int32_t>(RandomOptions::VT_SEED2, seed2, 0);
+  void add_seed2(int64_t seed2) {
+    fbb_.AddElement<int64_t>(RandomOptions::VT_SEED2, seed2, 0);
   }
   explicit RandomOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -10444,8 +10444,8 @@ struct RandomOptionsBuilder {
 
 inline flatbuffers::Offset<RandomOptions> CreateRandomOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    int32_t seed = 0,
-    int32_t seed2 = 0) {
+    int64_t seed = 0,
+    int64_t seed2 = 0) {
   RandomOptionsBuilder builder_(_fbb);
   builder_.add_seed2(seed2);
   builder_.add_seed(seed);

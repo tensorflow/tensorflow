@@ -5,39 +5,13 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_google",
     "tf_cc_binary",
     "tf_cc_test",
 )
 
 package(
-    default_visibility = [":friends"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
-)
-
-package_group(
-    name = "friends",
-    packages = [
-        "//tensorflow/compiler/jit/...",
-        "//tensorflow/compiler/mlir/...",
-        "//tensorflow/compiler/tf2xla/...",
-        "//tensorflow/compiler/xla/...",
-        "//tensorflow/tools/...",
-    ] + if_google([
-        "//learning/brain/experimental/dtensor/mlir/...",
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/experimental/tfrt/...",
-        "//learning/brain/google/xla/mlir/...",
-        "//learning/brain/mlir/...",
-        "//learning/pathways/data_parallel/serving/...",
-        "//learning/serving/contrib/tfrt/mlir/...",
-        "//platforms/darwinn/...",
-        "//platforms/xla/...",
-        "//smartass/brain/ops/...",
-        "//third_party/auroraml/...",
-        "//third_party/iree/...",
-        "//waymo/ml/compiler/mlir/...",
-    ]),
 )
 
 package_group(
@@ -156,10 +130,7 @@ cc_library(
     name = "init_mlir",
     srcs = ["init_mlir.cc"],
     hdrs = ["init_mlir.h"],
-    visibility = [
-        ":friends",
-        "//tensorflow/core:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",

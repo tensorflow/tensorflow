@@ -67,6 +67,19 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
 }
 
+void AddDynamicRangeQuantizationPasses(
+    const mlir::TFL::QuantizationSpecs& quant_specs,
+    mlir::OpPassManager& pass_manager) {
+  pass_manager.addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreatePrepareDynamicRangeQuantizePass(quant_specs));
+  pass_manager.addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateQuantizePass(quant_specs));
+  bool emit_quant_adaptor_ops =
+      quant_specs.inference_type != quant_specs.inference_input_type;
+  pass_manager.addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+}
+
 void AddConvertHloToTfPass(std::string entry_function_name,
                            mlir::OpPassManager* pass_manager) {
   // Legalize jax random to tflite custom op.
@@ -297,11 +310,14 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
 
     // Run quantization after all the floating point model conversion is
-    // completed.
+    // completed. Add either full integer quantization or dynamic range
+    // quantization passes based on quant_specs.
     if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
       AddQuantizationPasses(pass_config.quant_specs, pass_manager);
+    } else if (pass_config.quant_specs
+                   .RunAndRewriteDynamicRangeQuantizationPasses()) {
+      AddDynamicRangeQuantizationPasses(pass_config.quant_specs, *pass_manager);
     }
-
     pass_manager->addPass(mlir::createCanonicalizerPass());
 
     // This pass should be always at the end of the model
