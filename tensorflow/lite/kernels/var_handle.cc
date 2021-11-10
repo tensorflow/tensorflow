@@ -41,11 +41,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   VarParams* params = new VarParams;
   auto* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
   // Create a new entry if doesn't exist, return the existing one otherwise.
-  // TODO(b/205586827): Currently resource IDs are created in incremental order.
-  // This is correct since the same resource map isn't shared between different
-  // models. Consider improve the resource ID creation logic to avoid ID
-  // collision once we support running multiple models that shares the same
-  // resource map at the same time.
   auto it = subgraph->resource_ids().insert(std::make_pair(
       std::make_pair(
           std::string(var_params->container ? var_params->container : ""),
