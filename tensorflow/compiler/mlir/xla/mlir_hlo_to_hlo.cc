@@ -417,12 +417,15 @@ static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
 // location (converted). FileLineColLoc locations are populated by taking the
 // file name and line number, and populating `source_file` and `source_line`
 // respectively.
-static xla::OpMetadata CreateOpMetadataFromLocation(mlir::Operation* op) {
+static xla::OpMetadata CreateOpMetadataFromLocation(
+    mlir::Operation* op, mlir::MlirToHloConversionOptions options) {
   xla::OpMetadata metadata;
   if (op->getLoc().isa<mlir::UnknownLoc>()) return metadata;
 
   std::string name = mlir::GetNameFromLoc(op->getLoc());
-  mlir::LegalizeNodeName(name);
+  if (options.legalize_node_names) {
+    mlir::LegalizeNodeName(name);
+  }
   metadata.set_op_name(name);
 
   if (auto file_line_col_loc = op->getLoc().dyn_cast<mlir::FileLineColLoc>()) {
