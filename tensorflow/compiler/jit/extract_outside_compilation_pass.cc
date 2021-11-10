@@ -1241,9 +1241,8 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
     // This is an "top-level" outside compilation. Clear the graph, and copy
     // SendFromHost and all its predecessors from `host_graph`.
     std::vector<Node*> nodes;
-    const auto op_nodes = g->op_nodes();
-    nodes.reserve(std::distance(op_nodes.begin(), op_nodes.end()));
-    for (Node* n : op_nodes) {
+    nodes.reserve(g->num_op_nodes())
+    for (Node* n : g->op_nodes()) {
       nodes.push_back(n);
       g->RemoveNode(nodes.back());
     }
