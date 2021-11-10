@@ -3811,10 +3811,12 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     }
 
     auto slice_sizes_attr = GetI64ElementsAttr(slice_sizes, &rewriter);
+    auto sliced_type =
+        RankedTensorType::get(slice_sizes, op.getType().getElementType());
     // This must be an xla DynamicSlice op due to the inputs that aren't
     // constant.
     auto sliced = rewriter.create<DynamicSliceOp>(
-        loc, op.getType(), op.input(), slice_begin_indices, slice_sizes_attr);
+        loc, sliced_type, op.input(), slice_begin_indices, slice_sizes_attr);
 
     // Reshape slice result so that the shape is updated depending on
     // 'new_axis_mask' or 'shrink_axis_mask' attributes.
