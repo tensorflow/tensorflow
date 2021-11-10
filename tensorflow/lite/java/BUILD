@@ -215,7 +215,6 @@ android_library_with_tflite(
     tflite_deps = [
         ":tensorflowlite_native_stable",
     ],
-    visibility = ["//visibility:private"],
     deps = [
         "@org_checkerframework_qual",
     ],
@@ -336,6 +335,18 @@ java_library_with_tflite(
     javacopts = JAVACOPTS,
     tflite_jni_binaries = [
         ":libtensorflowlite_jni.so",
+    ],
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_library_with_tflite(
+    name = "tensorflowlitelib_stable",
+    srcs = [":java_stable_srcs"],
+    javacopts = JAVACOPTS,
+    tflite_jni_binaries = [
+        ":libtensorflowlite_jni_stable.so",
     ],
     deps = [
         "@org_checkerframework_qual",
