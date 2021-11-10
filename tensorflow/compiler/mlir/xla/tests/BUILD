@@ -39,6 +39,9 @@ glob_lit_tests(
         "legalize-tf-binary-elementwise.mlir": tf_cuda_tests_tags() + [
             "nomsan",  # TODO(b/181135145)
         ],
+        "legalize-tf-collective.mlir": tf_cuda_tests_tags() + [
+            "nomsan",  # TODO(b/181135145)
+        ],
         "legalize-tf-communication.mlir": tf_cuda_tests_tags() + [
             "nomsan",  # TODO(b/181135145)
         ],

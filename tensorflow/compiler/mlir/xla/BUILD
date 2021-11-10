@@ -114,6 +114,17 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_utils",
+    srcs = ["transforms/utils.cc"],
+    hdrs = ["transforms/utils.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "legalize_tf",
     srcs = [
         "transforms/generated_legalize_tf.inc",
@@ -125,6 +136,7 @@ cc_library(
     deps = [
         ":attribute_importer",
         ":legalize_tf_patterns_inc_gen",
+        ":legalize_utils",
         ":type_to_shape",
         ":xla_legalize_tf_passes_inc_gen",
         ":xla_passes_inc_gen",
@@ -195,6 +207,7 @@ cc_library(
 cc_library(
     name = "xla_legalize_tf",
     srcs = [
+        "transforms/legalize_tf_collective.cc",
         "transforms/legalize_tf_communication.cc",
         "transforms/legalize_tf_control_flow.cc",
         "transforms/legalize_tf_types.cc",
@@ -209,11 +222,13 @@ cc_library(
     ],
     deps = [
         ":legalize_tf",
+        ":legalize_utils",
         ":type_to_shape",
         ":xla_legalize_tf_passes_inc_gen",
         ":xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:chlo_legalize_to_hlo",
+        "//tensorflow/compiler/mlir/hlo:convert_op_folder",
         "//tensorflow/compiler/mlir/hlo:hlo_ops_base_structs",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",

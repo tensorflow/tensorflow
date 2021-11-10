@@ -99,6 +99,10 @@ LogicalResult legalizeTF(
 // ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
 
+// Legalizes TF/XLA collective ops (TF dialect) to HLO dialect collective
+// ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
+
 // Prepare module for export to XLA HLO protos/instruction.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareForExport();
 

@@ -336,6 +336,7 @@ void CreateConvertMlirToXlaHloPipeline(
   }
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::CreateAdjustLayoutPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
+  pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   // Run shape inference pass to propagate shapes through tensor_cast operations
   // from static to dynamic shapes. This could be generated if the shape

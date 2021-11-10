@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"
 #include "tensorflow/compiler/xla/client/padding.h"
@@ -84,22 +85,6 @@ void GetI64ArrayAttrValues(Attribute attr, SmallVectorImpl<int64_t> *values) {
   values->reserve(array_attr.getValue().size());
   for (Attribute val : array_attr.getValue())
     values->push_back(val.cast<IntegerAttr>().getValue().getSExtValue());
-}
-
-// Returns 1D 64-bit dense elements attribute with the given values.
-static DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
-                                               Builder *builder) {
-  RankedTensorType ty = RankedTensorType::get(
-      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
-  return DenseIntElementsAttr::get(ty, values);
-}
-
-// Converts an ArrayAttr to a 1D 64-bit dense elements attribute.
-static DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
-  RankedTensorType ty =
-      RankedTensorType::get(static_cast<int64_t>(attr.size()),
-                            IntegerType::get(attr.getContext(), 64));
-  return DenseIntElementsAttr::get(ty, attr.getValue());
 }
 
 // Returns 1D 32-bit dense elements attribute with the given values.
@@ -220,13 +205,6 @@ tensorflow::TensorShape ToTensorShape(
     llvm::iterator_range<DenseElementsAttr::ElementIterator<T>> sizes) {
   return tensorflow::TensorShape(
       llvm::SmallVector<int64_t, num_dims>(sizes.begin(), sizes.end()));
-}
-
-// Returns int, float, or complex scalar DenseElementsAttr attribute with the
-// given element type and the value.
-static ConstOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
-                                    OpBuilder *builder) {
-  return builder->create<ConstOp>(loc, hlo::GetScalarOfType(ty, raw_value));
 }
 
 // Returns a limit scalar const op for the given type.
@@ -488,24 +466,6 @@ Value BatchDot(Location loc, Value lhs, bool transpose_lhs, Value rhs,
   return builder->create<DotGeneralOp>(
       loc, RankedTensorType::get(shape, element_type), lhs, rhs,
       dimension_numbers, precision_config);
-}
-
-// Builds body for reduce op by using the template binary op as the
-// reducer op.
-template <typename Op>
-static void BuildReduceBody(Type element_type, Region *body,
-                            OpBuilder *builder) {
-  OpBuilder::InsertionGuard guard(*builder);
-  Block *block = builder->createBlock(body);
-
-  // Block arguments are scalars of the given element type.
-  Type type = RankedTensorType::get(/*shape=*/{}, element_type);
-  block->addArguments({type, type});
-
-  Location loc = body->getLoc();
-  auto reducer =
-      builder->create<Op>(loc, block->getArgument(0), block->getArgument(1));
-  builder->create<ReturnOp>(loc, reducer.getResult());
 }
 
 // Builds a set of operations for applying reduction on the input value. A
@@ -6180,62 +6140,6 @@ class ConvertXlaDynamicUpdateSliceOp
   }
 };
 
-// Converts a TF XlaAllReduce op to AllReduce HLO.
-class ConvertXlaAllReduceOp : public OpRewritePattern<TF::XlaAllReduceOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::XlaAllReduceOp op,
-                                PatternRewriter &rewriter) const override {
-    DenseIntElementsAttr group_assignment;
-    if (!matchPattern(op.group_assignment(), m_Constant(&group_assignment)))
-      return failure();
-    auto replica_groups =
-        hlo::ConvertElementsAttr(group_assignment, rewriter.getIntegerType(64))
-            .cast<DenseIntElementsAttr>();
-    if (replica_groups.getType().getRank() != 2) return failure();
-
-    Location loc = op.getLoc();
-    Type element_type = getElementTypeOrSelf(op.input().getType());
-
-    auto all_reduce = rewriter.create<AllReduceOp>(
-        loc, op.getType(), op.input(), replica_groups, ChannelHandle());
-    StringRef reduce_op = op.reduce_op();
-    if (reduce_op == "Add") {
-      BuildReduceBody<AddOp>(element_type, &all_reduce.computation(),
-                             &rewriter);
-    } else if (reduce_op == "Mul") {
-      BuildReduceBody<MulOp>(element_type, &all_reduce.computation(),
-                             &rewriter);
-    } else if (reduce_op == "Min") {
-      BuildReduceBody<MinOp>(element_type, &all_reduce.computation(),
-                             &rewriter);
-    } else if (reduce_op == "Max") {
-      BuildReduceBody<MaxOp>(element_type, &all_reduce.computation(),
-                             &rewriter);
-    } else {
-      // For mean, add replicas in the same group. Then divide the sum by the
-      // number of replicas in each group below.
-      assert(reduce_op == "Mean");
-      BuildReduceBody<AddOp>(element_type, &all_reduce.computation(),
-                             &rewriter);
-    }
-    Value result = all_reduce.getResult();
-
-    // For mean, divide the merge result by group size.
-    if (reduce_op == "Mean") {
-      int64_t replica_group_size = replica_groups.getType().getDimSize(1);
-      auto divisor = GetScalarConstOfType(element_type, loc, replica_group_size,
-                                          &rewriter);
-      auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
-      result = rewriter.create<chlo::BroadcastDivOp>(
-          loc, result, divisor.getResult(), broadcast_dims);
-    }
-
-    rewriter.replaceOp(op, {result});
-    return success();
-  }
-};
-
 // Converts a TF XlaReduceScatter op to ReduceScatter HLO.
 class ConvertXlaReduceScatterOp
     : public OpRewritePattern<TF::XlaReduceScatterOp> {
@@ -7214,7 +7118,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertRandomShuffleOp,
     ConvertXlaShardingOp,
     ConvertXlaDynamicUpdateSliceOp,
-    ConvertXlaAllReduceOp,
     ConvertXlaReduceScatterOp,
     ConvertXlaSortOp,
     ConvertRollOp,

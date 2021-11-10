@@ -19017,7 +19017,8 @@ documented at https://www.tensorflow.org/xla/operation_semantics#allreduce.
     Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>, [{Array or a non-empty tuple of arrays to reduce across replicas.}]>:$input,
     Arg<TF_Int32Tensor, [{Groups between which the reductions are performed.}]>:$group_assignment,
 
-    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean"]>:$reduce_op
+    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean"]>:$reduce_op,
+    TF_AnyStrAttrOf<["CrossReplica", "CrossReplicaAndPartition"]>:$mode
   );
 
   let results = (outs
