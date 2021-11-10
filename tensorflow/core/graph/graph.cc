@@ -183,6 +183,8 @@ void Node::ClearTypeInfo() {
 }
 
 void Node::RunForwardTypeInference() {
+  VLOG(4) << "Forward type inference: " << props_->node_def.DebugString();
+
   if (props_->fwd_type_fn == nullptr) {
     return;
   }
