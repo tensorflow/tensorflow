@@ -656,27 +656,6 @@ class MemorySpaceAssignment {
     HloInstruction* copy_done_;
   };
 
-  // An allocation in the default memory space that mirrors another Allocation
-  // object. This is useful to model an eviction that happens before a while op
-  // so that we don't need to redundantly evict the buffer after the while op as
-  // well.
-  class MirroredAllocation : public Allocation {
-   public:
-    MirroredAllocation(const Allocation& original_allocation, int64_t time)
-        : Allocation(original_allocation.defining_position(),
-                     MemorySpace::kDefault, original_allocation.chunk(),
-                     /*start_time=*/time,
-                     /*end_time=*/time, /*is_scoped_allocation=*/false),
-          original_allocation_(original_allocation) {}
-
-    Status Process() override;
-
-    std::string ToString() const override;
-
-   private:
-    const Allocation& original_allocation_;
-  };
-
   // An allocation in default memory space that is defined in the parent
   // computation. If a value has a copy in the default memory space in the
   // parent computation, we don't need to evict this buffer in a while loop.
