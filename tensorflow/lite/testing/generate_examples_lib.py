@@ -242,6 +242,8 @@ class Options(object):
     # - "AVERAGE_POOL_2D" for builtin op.
     # - "NumericVerify" for custom op.
     self.expected_ops_in_converted_model = []
+    # Whether to skip generating tests with high dimension input shape.
+    self.skip_high_dimension_inputs = False
 
 
 def _prepare_dir(options):
@@ -277,7 +279,7 @@ def generate_examples(options):
   else:
     # Remove suffixes to extract the test name from the output name.
     test_name = re.sub(
-        r"(_(|toco-flex|forward-compat|edgetpu|mlir-quant))?\.zip$",
+        r"(_(|toco-flex|forward-compat|edgetpu|mlir-quant))?(_xnnpack)?\.zip$",
         "",
         out,
         count=1)

@@ -154,6 +154,10 @@ parser.add_argument(
     "--mlir_quantizer",
     action="store_true",
     help=("Whether the new MLIR quantizer is being used."))
+parser.add_argument(
+    "--skip_high_dimension_inputs",
+    action="store_true",
+    help=("Whether to skip generating tests with high dimension input shape."))
 
 
 def main(unused_args):
@@ -173,6 +177,7 @@ def main(unused_args):
   options.no_tests_limit = FLAGS.no_tests_limit
   options.use_experimental_converter = True
   options.mlir_quantizer = FLAGS.mlir_quantizer
+  options.skip_high_dimension_inputs = FLAGS.skip_high_dimension_inputs
 
   if FLAGS.test_sets:
     test_sets = FLAGS.test_sets.split(",")

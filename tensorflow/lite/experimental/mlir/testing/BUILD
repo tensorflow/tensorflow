@@ -1,5 +1,6 @@
 load(
     ":build_def.bzl",
+    "delegate_suffix",
     "gen_zip_test",
     "generated_test_models_all",
     "merged_test_models",
@@ -32,23 +33,19 @@ py_library(
 )
 
 [gen_zip_test(
-    name = "zip_test_%s" % test_name,
+    name = "zip_test_%s%s" % (
+        test_name,
+        delegate_suffix(delegate),
+    ),
     size = "medium",
     srcs = ["generated_examples_zip_test.cc"],
-    additional_test_tags_args = {
-        "xnnpack": (
-            [
-                # TODO(b/162696268): remove 'notap' and 'no_oss' once the bug is fixed.
-                "notap",
-                "no_oss",
-            ],
-            ["--use_xnnpack=true"],
-        ),
-    },
     args = args + select({
         "//tensorflow:android": [],
         "//conditions:default": [
-            "--zip_file_path=$(location :zip_%s)" % test_name,
+            "--zip_file_path=$(location :zip_%s%s)" % (
+                test_name,
+                delegate_suffix(delegate),
+            ),
             # TODO(angerson) We may be able to add an external unzip binary instead
             # of relying on an existing one for OSS builds.
             #"--unzip_binary_path=$(location //third_party/unzip)",
@@ -59,13 +56,20 @@ py_library(
     # data = select({
     # "//tensorflow:android": [],
     # "//conditions:default": [
-    # ":zip_%s" % test_name,
+    # ":zip_%s%s" % (
+    # test_name,
+    # delegate_suffix(delegate),
+    # ),
     # "//third_party/unzip",
     # ],
     # }),
     # copybara:uncomment_end_and_comment_begin
-    data = [":zip_%s" % test_name],
+    data = [":zip_%s%s" % (
+        test_name,
+        delegate_suffix(delegate),
+    )],
     # copybara:comment_end
+    delegate = delegate,
     shard_count = 20,
     tags = tags + [
         "gen_zip_test",
@@ -93,7 +97,7 @@ py_library(
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, test_name, tags, args in generated_test_models_all() + merged_test_models()]
+) for conversion_mode, delegate, test_name, tags, args in generated_test_models_all() + merged_test_models()]
 
 py_library(
     name = "op_tests",

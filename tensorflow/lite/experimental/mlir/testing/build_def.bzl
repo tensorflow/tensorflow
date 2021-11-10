@@ -86,31 +86,97 @@ def no_oss_generated_test_models():
 # List of models that fail generated tests for the conversion mode.
 # If you have to disable a test, please add here with a link to the appropriate
 # bug or issue.
-def generated_test_models_failing(conversion_mode):
-    return []
+def generated_test_models_failing(conversion_mode, delegate):
+    if delegate == "xnnpack":
+        # TODO(b/179802976): Revisit this list after XNNPack Delegate supports
+        # dynamic tensors.
+        return [
+            "batch_to_space_nd",
+            "broadcast_gradient_args",
+            "broadcast_to",
+            "concat",
+            "cond",
+            "conv2d_transpose",
+            "conv3d_transpose",
+            "depthwiseconv",
+            "dynamic_rnn",
+            "expand_dims",
+            "eye",
+            "fill",
+            "fully_connected",
+            "fused_batch_norm",
+            "gather",
+            "gather_nd",
+            "global_batch_norm",
+            "leaky_relu",
+            "mean",
+            "mirror_pad",
+            "one_hot",
+            "pad",
+            "padv2",
+            "parse_example",
+            "pow",
+            "prelu",
+            "random_standard_normal",
+            "random_uniform",
+            "range",
+            "reduce_all",
+            "reduce_any",
+            "reduce_max",
+            "reduce_min",
+            "reduce_prod",
+            "reshape",
+            "roll",
+            "roll_with_constant",
+            "round",
+            "scatter_nd",
+            "segment_sum",
+            "shape",
+            "slice",
+            "space_to_batch_nd",
+            "squeeze",
+            "static_hashtable",
+            "stft",
+            "strided_slice_1d_exhaustive",
+            "strided_slice",
+            "sum",
+            "tensor_list_dynamic_shape",
+            "tensor_list_length",
+            "tensor_list_resize",
+            "tile",
+            "topk",
+            "transpose",
+            "unique",
+            "where",
+            "where_v2",
+            "while",
+        ]
+    else:
+        return []
 
 # The following test gen helpers are branched from tensorflow/lite/build_def.bzl
 # TODO(b/192473002): Clean up duplicated test fixtures once toco converter
 # zip tests are cleaned up.
-def generated_test_models_successful(conversion_mode):
+def generated_test_models_successful(conversion_mode, delegate):
     """Returns the list of successful test models.
 
     Args:
       conversion_mode: Conversion mode.
+      delegate: Delegate zip test runs with.
 
     Returns:
       List of successful test models for the conversion mode.
     """
-    return [test_model for test_model in generated_test_models() if test_model not in generated_test_models_failing(conversion_mode)]
+    return [test_model for test_model in generated_test_models() if test_model not in generated_test_models_failing(conversion_mode, delegate)]
 
-def number_of_merged_zip_file(conversion_mode):
+def number_of_merged_zip_file(conversion_mode, delegate):
     """Returns the number of merged zip file targets.
 
     Returns:
       Number of merged zip file targets.
     """
     m = max_number_of_test_models_in_merged_zip()
-    return (len(generated_test_models_successful(conversion_mode)) + m - 1) // m
+    return (len(generated_test_models_successful(conversion_mode, delegate)) + m - 1) // m
 
 def merged_test_models():
     """Generates a list of merged tests with the different converters.
@@ -128,28 +194,31 @@ def merged_test_models():
         test = merged_test_model_name()
         if conversion_mode:
             test += "_%s" % conversion_mode
-        successful_tests = generated_test_models_successful(conversion_mode)
-        if len(successful_tests) > 0:
-            tags = common_test_tags_for_generated_models(conversion_mode, False)
+        for delegate in generated_test_delegates():
+            test += delegate_suffix(delegate)
+            successful_tests = generated_test_models_successful(conversion_mode, delegate)
+            if len(successful_tests) > 0:
+                tags = common_test_tags_for_generated_models(conversion_mode, False)
 
-            # Only non-merged tests are executed on TAP.
-            # Merged test rules are only for running on the real device environment.
-            if "notap" not in tags:
-                tags.append("notap")
-            args = common_test_args_for_generated_models(conversion_mode, False)
-            n = number_of_merged_zip_file(conversion_mode)
-            for i in range(n):
-                test_i = "%s_%d" % (test, i)
-                options.append((conversion_mode, test_i, tags, args))
+                # Only non-merged tests are executed on TAP.
+                # Merged test rules are only for running on the real device environment.
+                if "notap" not in tags:
+                    tags.append("notap")
+                args = common_test_args_for_generated_models(conversion_mode, False)
+                n = number_of_merged_zip_file(conversion_mode, delegate)
+                for i in range(n):
+                    test_i = "%s_%d" % (test, i)
+                    options.append((conversion_mode, delegate, test_i, tags, args))
     return options
 
-def flags_for_merged_test_models(test_name, conversion_mode):
+def flags_for_merged_test_models(test_name, conversion_mode, delegate):
     """Returns flags for generating zipped-example data file for merged tests.
 
     Args:
       test_name: str. Test name in the form of "<merged_model_name>_[<conversion_mode>_]%d".
       conversion_mode: str. Which conversion mode to run with. Comes from the
         list above.
+      delegate: str. Delegate zip test runs with.
 
     Returns:
       Flags for generating zipped-example data file for merged tests.
@@ -164,6 +233,8 @@ def flags_for_merged_test_models(test_name, conversion_mode):
     index_string = test_name[len(prefix):]
     if conversion_mode:
         index_string = index_string.replace("%s_" % conversion_mode, "")
+    if delegate:
+        index_string = index_string.replace("%s_" % delegate, "")
 
     # If the maximum number of test models in a file is 15 and the number of
     # successful test models are 62, 5 zip files will be generated.
@@ -174,8 +245,8 @@ def flags_for_merged_test_models(test_name, conversion_mode):
     # So Zip file 0, 1, 2, 3, 4 and 5 will have model[0:13], model[13:26],
     # model[26,38], model[38,50] and model[50,62], respectively.
     zip_index = int(index_string)
-    num_merged_zips = number_of_merged_zip_file(conversion_mode)
-    test_models = generated_test_models_successful(conversion_mode)
+    num_merged_zips = number_of_merged_zip_file(conversion_mode, delegate)
+    test_models = generated_test_models_successful(conversion_mode, delegate)
 
     # Each zip file has (models_per_zip) or (models_per_zip+1) test models.
     models_per_zip = len(test_models) // num_merged_zips
@@ -216,37 +287,48 @@ def generated_test_conversion_modes():
     # TODO(b/146025965): Remove reference to toco.
     return ["toco-flex", "forward-compat", "", "mlir-quant"]
 
+def generated_test_delegates():
+    """Returns a list of possible delegate."""
+    return ["", "xnnpack"]
+
+def delegate_suffix(delegate):
+    """Returns the suffix for the delegate. Empty string for default (no delegate)."""
+    if delegate:
+        return "_%s" % delegate
+    return ""
+
 def generated_test_models_all():
     """Generates a list of all tests with the different converters.
 
     Returns:
       List of tuples representing:
-            (conversion mode, name of test, test tags, test args).
+            (conversion mode, delegate to use, name of test, test tags, test args).
     """
     conversion_modes = generated_test_conversion_modes()
     no_oss_tests = no_oss_generated_test_models()
     options = []
     for conversion_mode in conversion_modes:
-        failing_tests = generated_test_models_failing(conversion_mode)
-        for test in mlir_generated_test_models():
-            tags = []
-            args = []
+        for delegate in generated_test_delegates():
+            failing_tests = generated_test_models_failing(conversion_mode, delegate)
+            for test in mlir_generated_test_models():
+                tags = []
+                args = []
 
-            # TODO(b/187992093): Exclude tests that are failing in OSS for now.
-            if test in no_oss_tests:
-                tags.append("no_oss")
+                # TODO(b/187992093): Exclude tests that are failing in OSS for now.
+                if test in no_oss_tests:
+                    tags.append("no_oss")
 
-            # Forward-compat coverage testing is largely redundant, and
-            # contributes to coverage test bloat.
-            if conversion_mode == "forward-compat":
-                tags.append("nozapfhahn")
+                # Forward-compat coverage testing is largely redundant, and
+                # contributes to coverage test bloat.
+                if conversion_mode == "forward-compat":
+                    tags.append("nozapfhahn")
 
-            if test in failing_tests:
-                tags.append("notap")
-                tags.append("manual")
-            if conversion_mode:
-                test += "_%s" % conversion_mode
-            options.append((conversion_mode, test, tags, args))
+                if test in failing_tests:
+                    tags.append("notap")
+                    tags.append("manual")
+                if conversion_mode:
+                    test += "_%s" % conversion_mode
+                options.append((conversion_mode, delegate, test, tags, args))
 
     return options
 
@@ -256,7 +338,7 @@ def gen_zip_test(
         conversion_mode,
         tags,
         args,
-        additional_test_tags_args = {},
+        delegate,
         **kwargs):
     """Generate a zipped-example test and its dependent zip files.
 
@@ -267,11 +349,7 @@ def gen_zip_test(
         list above.
       tags: tags for the generated cc_test.
       args: the basic cc_test args to be used.
-      additional_test_tags_args: a dictionary of additional test tags and args
-        to be used together with test_tags and test_args. The key is an
-        identifier which can be in creating a test tag to identify a set of
-        tests. The value is a tuple of list of additional test tags and args to
-        be used.
+      delegate: str. Delegate to use in the zip test.
       **kwargs: tf_cc_test kwargs
     """
     flags = ""
@@ -285,23 +363,27 @@ def gen_zip_test(
     elif conversion_mode == "toco-flex":
         flags += " --ignore_converter_errors --run_with_flex"
     if test_name.startswith(merged_test_model_name() + "_"):
-        flags += flags_for_merged_test_models(test_name, conversion_mode)
+        flags += flags_for_merged_test_models(test_name, conversion_mode, delegate)
+
+    if delegate == "xnnpack":
+        # buildifier: disable=list-append
+        # Error: 'select' value has no field or method 'append'
+        args += ["--use_xnnpack=true"]
+
+        # TODO(b/204360746): XNNPack delegate don't support high dimension.
+        flags += " --skip_high_dimension_inputs"
+
+    zip_name = "zip_%s"
+    zip_file = "%s.zip"
+    if delegate:
+        zip_name = "zip_%s_" + delegate
+        zip_file = "%s_" + delegate + ".zip"
     gen_zipped_test_file(
-        name = "zip_%s" % test_name,
-        file = "%s.zip" % test_name,
+        name = zip_name % test_name,
+        file = zip_file % test_name,
         flags = flags,
     )
     tf_cc_test(name, tags = tags, args = args, **kwargs)
-
-    for key, value in additional_test_tags_args.items():
-        additional_tags, additional_args = value
-        additional_tags.append("gen_zip_test_%s" % key)
-        tf_cc_test(
-            name = "%s_%s" % (name, key),
-            args = args + additional_args,
-            tags = tags + additional_tags,
-            **kwargs
-        )
 
 def gen_zipped_test_file(name, file, flags = ""):
     """Generate a zip file of tests by using :generate_examples.
