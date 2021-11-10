@@ -4041,7 +4041,7 @@ Ba et al. 'Layer Normalization'
 
     // Types of the optional intermediate tensors, which exist for fully
     // quantized LSTM op and hold the ranges of the intermediate tensors.
-    // The type for intermediate tenssors are be quant.calibrated when imported
+    // The type for intermediate tensors are be quant.calibrated when imported
     // to only store calibrated min, max values. The proper quantization spec is
     // determined while going through quantization passes.
     OptionalAttr<TypeAttr>:$input_to_input_intermediate,
@@ -4164,7 +4164,7 @@ def TFL_UnidirectionalSequenceLSTMOp :
 
     // Types of the optional intermediate tensors, which exist for fully
     // quantized op and hold the ranges of the intermediate tensors.
-    // The type for intermediate tenssors are be quant.calibrated when imported
+    // The type for intermediate tensors are be quant.calibrated when imported
     // to only store calibrated min, max values. The proper quantization spec is
     // determined while going through quantization passes.
     OptionalAttr<TypeAttr>:$input_to_input_intermediate,
