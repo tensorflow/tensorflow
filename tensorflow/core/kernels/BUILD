@@ -6145,6 +6145,8 @@ filegroup(
         "slice_op_cpu_impl_8.cc",
         "softmax_op.cc",
         "softmax_op_functor.h",
+        "sparse_concat_op.h",
+        "sparse_concat_op.cc",
         "split_lib.h",
         "split_lib_cpu.cc",
         "split_op.cc",
