@@ -5018,7 +5018,7 @@ static void printField(AsmPrinter& printer, StringRef name, ArrayRef<T> field,
 template <typename... Ts>
 static void printStruct(AsmPrinter& printer, StringRef name,
                         Ts... printFields) {
-  printer << name << "<";
+  printer << "<";
   StringRef separator = "";
   // Fold expression to print each entry in the parameter pack.
   // TODO(mhlo-team): this can be simplified when TF moves to C++17.
@@ -5225,7 +5225,7 @@ void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
 
 // Custom printer and parser for ConvDimensionNumbersAttr.
 void ConvDimensionNumbersAttr::print(::mlir::DialectAsmPrinter& printer) const {
-  printer << "conv<";
+  printer << "<";
   printConvolutionDimensions(printer, *this);
   printer << ">";
 }

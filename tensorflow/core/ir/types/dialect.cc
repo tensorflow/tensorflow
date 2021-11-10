@@ -230,7 +230,6 @@ Attribute VersionAttr::parse(DialectAsmParser &parser, Type) {
 
 void VersionAttr::print(DialectAsmPrinter &printer) const {
   llvm::raw_ostream &os = printer.getStream();
-  os << getMnemonic();
   os << "<producer = " << getProducer()
      << ", min_consumer = " << getMinConsumer();
   ArrayRef<int32_t> badConsumers = getBadConsumers();
@@ -250,9 +249,9 @@ void VersionAttr::print(DialectAsmPrinter &printer) const {
 // in case of null symbol ref.
 void FuncAttr::print(DialectAsmPrinter &os) const {
   if (getName().getRootReference().getValue().empty())
-    os << "func<\"\", " << getAttrs() << ">";
+    os << "<\"\", " << getAttrs() << ">";
   else
-    os << "func<" << getName() << ", " << getAttrs() << ">";
+    os << "<" << getName() << ", " << getAttrs() << ">";
 }
 
 // Parses a #tf.func attribute of the following format:
@@ -295,7 +294,7 @@ Attribute FuncAttr::parse(DialectAsmParser &parser, Type type) {
 }
 
 void PlaceholderAttr::print(DialectAsmPrinter &os) const {
-  os << "placeholder<" << StringAttr::get(getContext(), getValue()) << ">";
+  os << "<" << StringAttr::get(getContext(), getValue()) << ">";
 }
 
 Attribute PlaceholderAttr::parse(DialectAsmParser &parser, Type type) {
@@ -311,7 +310,7 @@ Attribute PlaceholderAttr::parse(DialectAsmParser &parser, Type type) {
 }
 
 void ShapeAttr::print(DialectAsmPrinter &os) const {
-  os << "shape<";
+  os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
       if (dim > -1)
