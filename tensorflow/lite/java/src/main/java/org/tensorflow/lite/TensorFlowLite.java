@@ -19,18 +19,25 @@ package org.tensorflow.lite;
 public final class TensorFlowLite {
 
   private static final String LIBNAME = "tensorflowlite_jni";
+  private static final String ALTERNATE_LIBNAME = "tensorflowlite_jni_stable";
 
   private static final Throwable LOAD_LIBRARY_EXCEPTION;
   private static volatile boolean isInit = false;
 
   static {
-    // Attempt to load the default native libraries. If unavailable, cache the exception; the client
-    // may choose to link the native deps into their own custom native library.
+    // Attempt to load the default native libraries. If unavailable, cache the exceptions;
+    // the client may choose to link the native deps into their own custom native library.
     Throwable loadLibraryException = null;
     try {
       System.loadLibrary(LIBNAME);
-    } catch (UnsatisfiedLinkError e) {
-      loadLibraryException = e;
+    } catch (UnsatisfiedLinkError e1) {
+      try {
+        System.loadLibrary(ALTERNATE_LIBNAME);
+      } catch (UnsatisfiedLinkError e2) {
+        // Don't both saving the second UnsatisfiedLinkError e2;
+        // it will be almost identical to the first one (e1).
+        loadLibraryException = e1;
+      }
     }
     LOAD_LIBRARY_EXCEPTION = loadLibraryException;
   }
