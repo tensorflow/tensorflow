@@ -538,7 +538,7 @@ class OptionalXlaContext(object):
 
 # TODO(mdan): Consider expose this type for instance type checking.
 @tf_export("__internal__.function.Function", v1=[])
-class Function(core.GenericFunction, trackable.Trackable):
+class Function(core.GenericFunction):
   """A `tf.types.experimental.GenericFunction` created by `tf.function`.
 
   Currently, individual methods/attributes under this class are not guaranteed

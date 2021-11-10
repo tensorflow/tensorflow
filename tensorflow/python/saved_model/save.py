@@ -99,7 +99,7 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
   itself.
 
   Also tracks functions attached to objects in the graph, through the caching
-  `_list_functions` method. Enumerating functions only through this method
+  `list_functions` method. Enumerating functions only through this method
   ensures that we get a consistent view of functions, even if object attributes
   create new functions every time they are accessed.
   """
@@ -110,11 +110,9 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
     else:
       saveables_cache = None
     super(_AugmentedGraphView, self).__init__(root, saveables_cache)
-    # Dependencies that are added via `add_object`. Object -> (name -> dep)
+    # Object -> (name -> dep)
     self._extra_dependencies = object_identity.ObjectIdentityDictionary()
-    # Functions returned by `_list_functions_for_serialization`.
-    self._function_cache = object_identity.ObjectIdentityDictionary()
-
+    self._functions = object_identity.ObjectIdentityDictionary()
     # Cache shared between objects in the same object graph. This is passed to
     # each trackable object's `_list_extra_dependencies_for_serialization` and
     # `_list_functions_for_serialization` function.
@@ -127,26 +125,12 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
 
   def list_children(self, obj):
     """Overrides parent method to include extra children."""
-    # Retrieve children that are only included when exporting SavedModel.
-    extra_dependencies = obj._list_extra_dependencies_for_serialization(  # pylint: disable=protected-access
-        self._serialization_cache)
+    extra_dependencies = self.list_extra_children(obj)
     extra_dependencies.update(self._extra_dependencies.get(obj, {}))
 
-    # Retrieve and cache all functions attached to the object.
-    functions = self._function_cache.get(obj, None)
-    if functions is None:
-      functions = obj._list_functions_for_serialization(  # pylint: disable=protected-access
-          self._serialization_cache)
-      self._function_cache[obj] = functions
-
-    children = {}
-    for name, child in super(_AugmentedGraphView, self).list_children(obj):
-      if isinstance(child, (def_function.Function, defun.ConcreteFunction)):
-        # Skip "tracked" functions for now since there may be objects that
-        # automatically track functions that should not be saved.
-        # TODO(kathywu): remove once `_list_functions_for_serialization` has
-        # been fully deprecated.
-        continue
+    used_names = set()
+    for name, dep in super(_AugmentedGraphView, self).list_children(obj):
+      used_names.add(name)
       if name in extra_dependencies:
         # Extra dependencies (except for `.signatures`, which is always added
         # when saving) should not have naming conflicts with dependencies
@@ -158,25 +142,14 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
               f"'{obj_identifier}'. The object has an attribute named "
               f"'{name}', which is reserved. List of all reserved attributes: "
               f"{list(extra_dependencies.keys())}")
-        children[name] = extra_dependencies[name]
+
+        yield base.TrackableReference(name, extra_dependencies[name])
       else:
-        children[name] = child
-
-    for name, child in extra_dependencies.items():
-      if name in children:
+        yield base.TrackableReference(name, dep)
+    for name, dep in extra_dependencies.items():
+      if name in used_names:
         continue
-      children[name] = child
-
-    for name, fn in functions.items():
-      if name in children and fn is not children[name]:
-        raise ValueError(
-            "Can't save object because it has multiple children with the same "
-            f"name. Object: {obj}, attribute name: {name}, child 1: "
-            f"{children[name]}, child 2: {fn}")
-      children[name] = fn
-
-    for name, child in children.items():
-      yield base.TrackableReference(name, child)
+      yield base.TrackableReference(name, dep)
 
   def list_dependencies(self, obj):
     """Yields `Trackables` that must be loaded before `obj`.
@@ -203,6 +176,19 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
             "implementation of `_deserialization_dependencies` in the parent "
             f"object {obj}.")
       yield name, dep
+
+  def list_extra_children(self, obj):
+    """Returns children that are only added when exporting SavedModel."""
+    return obj._list_extra_dependencies_for_serialization(  # pylint: disable=protected-access
+        self._serialization_cache)
+
+  def list_functions(self, obj):
+    obj_functions = self._functions.get(obj, None)
+    if obj_functions is None:
+      obj_functions = obj._list_functions_for_serialization(  # pylint: disable=protected-access
+          self._serialization_cache)
+      self._functions[obj] = obj_functions
+    return obj_functions
 
 
 class _SaveableView(object):
@@ -291,9 +277,9 @@ class _SaveableView(object):
     self._seen_function_names = set()
     self._untraced_functions = []
 
-    for obj in self.nodes:
-      if isinstance(obj, (def_function.Function, defun.ConcreteFunction)):
-        self._add_function_to_graph(obj)
+    for obj in self._trackable_objects:
+      for function in self.checkpoint_view.list_functions(obj).values():
+        self._add_function_to_graph(function)
 
       if obj in self._saveable_objects_map:
         for save_fn, restore_fn in self._saveable_objects_map[obj].values():
@@ -357,8 +343,9 @@ class _SaveableView(object):
         variables on first run.
     """
     for obj in self.checkpoint_view.list_objects():
-      if isinstance(obj, def_function.Function):
-        obj._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+      for function in self.checkpoint_view.list_functions(obj).values():
+        if isinstance(function, def_function.Function):
+          function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
 
   @property
   def root(self):
@@ -383,6 +370,11 @@ class _SaveableView(object):
         child_proto = object_proto.dependencies.add()
         child_proto.node_id = self.node_ids[ref]
         child_proto.local_name = name
+      for local_name, ref_function in (
+          self.checkpoint_view.list_functions(node).items()):
+        child_proto = object_proto.children.add()
+        child_proto.node_id = self.node_ids[ref_function]
+        child_proto.local_name = local_name
 
       if node in self._saveable_objects_map:
         assert node not in self._obj_to_registered_saver, (

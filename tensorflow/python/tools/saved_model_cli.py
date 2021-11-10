@@ -191,20 +191,18 @@ def _show_defined_functions(saved_model_dir):
     trackable_object = load.load(saved_model_dir)
 
   print('\nDefined Functions:', end='')
-  children = list(
+  functions = (
       save._AugmentedGraphView(trackable_object)  # pylint: disable=protected-access
-      .list_children(trackable_object))
-  children = sorted(children, key=lambda x: x.name)
-  for name, child in children:
-    concrete_functions = []
-    if isinstance(child, defun.ConcreteFunction):
-      concrete_functions.append(child)
-    elif isinstance(child, def_function.Function):
-      concrete_functions.extend(
-          child._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
-    else:
-      continue
+      .list_functions(trackable_object))
+  functions = sorted(functions.items(), key=lambda x: x[0])
+  for name, function in functions:
     print('\n  Function Name: \'%s\'' % name)
+    concrete_functions = []
+    if isinstance(function, defun.ConcreteFunction):
+      concrete_functions.append(function)
+    if isinstance(function, def_function.Function):
+      concrete_functions.extend(
+          function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
     concrete_functions = sorted(concrete_functions, key=lambda x: x.name)
     for index, concrete_function in enumerate(concrete_functions, 1):
       args, kwargs = None, None

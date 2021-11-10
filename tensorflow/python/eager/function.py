@@ -61,7 +61,6 @@ from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
@@ -1417,7 +1416,7 @@ class _ForwardBackwardCall(object):
 _BOUND_VALUE = object()
 
 
-class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
+class ConcreteFunction(core.ConcreteFunction):
   """A `tf.types.experimental.ConcreteFunction` created from `tf.function`."""
 
   def __init__(self,
