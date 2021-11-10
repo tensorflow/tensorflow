@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
     triple_string = "x86_64-none-linux-gnu";
   } else if (target_cpu == "darwin") {
     triple_string = "x86_64-apple-macosx";
-  } else if (target_cpu == "arm") {
+  } else if ((target_cpu == "arm") || (target_cpu == "aarch64")) {
     triple_string = "aarch64-none-linux-gnu";
   } else if (target_cpu == "x64_windows") {
     triple_string = "x86_64-pc-windows-msvc19";
