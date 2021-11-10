@@ -103,11 +103,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
 // ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
 
-// Prepare module for export to XLA HLO protos/instruction.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareForExport();
-
 #define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"
+#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
 

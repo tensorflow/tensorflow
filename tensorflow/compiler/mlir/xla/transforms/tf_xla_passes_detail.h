@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-include "mlir/Pass/PassBase.td"
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_PASSES_DETAIL_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_PASSES_DETAIL_H_
 
-def PrepareForExportPass : FunctionPass<"xla-prepare-for-export"> {
-  let summary = "Prepare for XLA export";
+#include "mlir/IR/Dialect.h"
+#include "mlir/Pass/Pass.h"
 
-  let description = [{
-    This pass transforms functions in preparation for exporting to XLA. This
+namespace mlir {
+namespace mhlo {
+class MhloDialect;
 
-    * converts splat constants to constants and broadcasts to reduce size of
-      and speedup the creation of the generated proto during export.
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
 
-    Note: The result of this pass need not be a module in canonical form and
-    canonicalization may undo transformations.
-  }];
+}  // namespace mhlo
+}  // namespace mlir
 
-  let constructor = "::mlir::mhlo::CreatePrepareForExport()";
-}
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_PASSES_DETAIL_H_
