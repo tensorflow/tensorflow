@@ -205,37 +205,6 @@ class TimeDistributedTest(keras_parameterized.TestCase):
       y = model.predict(np.random.random((10, 3, 2)))
       self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
 
-  def test_TimeDistributed_batchnorm(self):
-    with self.cached_session():
-      # test that wrapped BN updates still work.
-      model = keras.models.Sequential()
-      model.add(keras.layers.TimeDistributed(
-          keras.layers.BatchNormalization(center=True, scale=True),
-          name='bn',
-          input_shape=(10, 2)))
-      model.compile(optimizer='rmsprop', loss='mse')
-      # Assert that mean and variance are 0 and 1.
-      td = model.layers[0]
-      self.assertAllClose(td.get_weights()[2], np.array([0, 0]))
-      assert np.array_equal(td.get_weights()[3], np.array([1, 1]))
-      # Train
-      model.train_on_batch(np.random.normal(loc=2, scale=2, size=(1, 10, 2)),
-                           np.broadcast_to(np.array([0, 1]), (1, 10, 2)))
-      # Assert that mean and variance changed.
-      assert not np.array_equal(td.get_weights()[2], np.array([0, 0]))
-      assert not np.array_equal(td.get_weights()[3], np.array([1, 1]))
-
-  def test_TimeDistributed_trainable(self):
-    # test layers that need learning_phase to be set
-    x = keras.layers.Input(shape=(3, 2))
-    layer = keras.layers.TimeDistributed(keras.layers.BatchNormalization())
-    _ = layer(x)
-    self.assertEqual(len(layer.trainable_weights), 2)
-    layer.trainable = False
-    assert not layer.trainable_weights
-    layer.trainable = True
-    assert len(layer.trainable_weights) == 2
-
   def test_TimeDistributed_with_masked_embedding_and_unspecified_shape(self):
     with self.cached_session():
       # test with unspecified shape and Embeddings with mask_zero

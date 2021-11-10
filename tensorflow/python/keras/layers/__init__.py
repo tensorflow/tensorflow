@@ -119,19 +119,6 @@ from tensorflow.python.keras.layers.noise import AlphaDropout
 from tensorflow.python.keras.layers.noise import GaussianNoise
 from tensorflow.python.keras.layers.noise import GaussianDropout
 
-# Normalization layers.
-from tensorflow.python.keras.layers.normalization.layer_normalization import LayerNormalization
-from tensorflow.python.keras.layers.normalization.batch_normalization import SyncBatchNormalization
-
-if tf2.enabled():
-  from tensorflow.python.keras.layers.normalization.batch_normalization import BatchNormalization
-  from tensorflow.python.keras.layers.normalization.batch_normalization_v1 import BatchNormalization as BatchNormalizationV1
-  BatchNormalizationV2 = BatchNormalization
-else:
-  from tensorflow.python.keras.layers.normalization.batch_normalization_v1 import BatchNormalization
-  from tensorflow.python.keras.layers.normalization.batch_normalization import BatchNormalization as BatchNormalizationV2
-  BatchNormalizationV1 = BatchNormalization
-
 # Kernelized layers.
 from tensorflow.python.keras.layers.kernelized import RandomFourierFeatures
 

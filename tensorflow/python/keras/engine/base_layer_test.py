@@ -1105,49 +1105,6 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class NestedTrackingTest(test.TestCase):
 
-  def test_nested_layer_variable_tracking(self):
-    # Test that variables from nested sublayers are
-    # being tracked by subclassed layers.
-
-    class MyLayer(base_layer.Layer):
-
-      def __init__(self):
-        super(MyLayer, self).__init__()
-        self.dense1 = layers.Dense(1)
-        self.dense2 = layers.BatchNormalization()
-
-      def build(self, input_shape):
-        self.v1 = self.add_weight('v1', shape=input_shape[1:].as_list())
-        self.v2 = variables.Variable(
-            name='v2',
-            initial_value=np.zeros(input_shape[1:].as_list(), dtype='float32'),
-            trainable=False)
-
-      def call(self, inputs):
-        x = self.dense1(inputs) + self.dense2(inputs)
-        return x + self.v1 + self.v2
-
-    layer = MyLayer()
-    inputs = input_layer.Input((1,))
-    _ = layer(inputs)
-
-    self.assertEqual(len(layer.weights), 8)
-    self.assertEqual(len(layer.trainable_weights), 5)
-    self.assertEqual(len(layer.non_trainable_weights), 3)
-
-    layer.dense1.trainable = False
-    self.assertEqual(len(layer.weights), 8)
-    self.assertEqual(len(layer.trainable_weights), 3)
-    self.assertEqual(len(layer.non_trainable_weights), 5)
-
-    layer.trainable = False
-    self.assertEqual(len(layer.weights), 8)
-    self.assertEqual(len(layer.trainable_weights), 0)
-    self.assertEqual(len(layer.non_trainable_weights), 8)
-    self.assertEqual(
-        {id(v) for v in [layer.dense1, layer.dense2, layer.v1, layer.v2]},
-        {id(v) for _, v in layer._checkpoint_dependencies})
-
   def test_nested_layer_updates_losses_tracking(self):
     # Test that updates and losses from nested sublayers are
     # being tracked by subclassed layers.

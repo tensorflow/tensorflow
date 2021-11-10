@@ -706,74 +706,6 @@ class TrainingTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
 
   @keras_parameterized.run_all_keras_modes
-  def test_that_trainable_disables_updates(self):
-    val_a = np.random.random((10, 4))
-    val_out = np.random.random((10, 4))
-
-    a = layers_module.Input(shape=(4,))
-    layer = layers_module.BatchNormalization(input_shape=(4,))
-    b = layer(a)
-    model = training_module.Model(a, b)
-
-    model.trainable = False
-    if not ops.executing_eagerly_outside_functions():
-      self.assertEmpty(model.updates)
-
-    model.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
-    if not ops.executing_eagerly_outside_functions():
-      self.assertEmpty(model.updates)
-
-    x1 = model.predict(val_a)
-    model.train_on_batch(val_a, val_out)
-    x2 = model.predict(val_a)
-    self.assertAllClose(x1, x2, atol=1e-7)
-
-    model.trainable = True
-    model.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
-    if not ops.executing_eagerly_outside_functions():
-      self.assertAllGreater(len(model.updates), 0)
-
-    model.train_on_batch(val_a, val_out)
-    x2 = model.predict(val_a)
-    assert np.abs(np.sum(x1 - x2)) > 1e-5
-
-    layer.trainable = False
-    model.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
-    if not ops.executing_eagerly_outside_functions():
-      self.assertEmpty(model.updates)
-
-    x1 = model.predict(val_a)
-    model.train_on_batch(val_a, val_out)
-    x2 = model.predict(val_a)
-    self.assertAllClose(x1, x2, atol=1e-7)
-
-  def test_weight_deduplication_in_methods(self):
-    inp = layers_module.Input(shape=(1,))
-    bn = layers_module.BatchNormalization()
-    d = layers_module.Dense(1)
-
-    m0 = training_module.Model(inp, d(bn(inp)))
-    m1 = training_module.Model(inp, d(bn(inp)))
-
-    x0 = m0(inp)
-    x1 = m1(inp)
-    x = layers_module.Add()([x0, x1])
-
-    model = training_module.Model(inp, x)
-    self.assertLen(model.trainable_weights, 4)
-    self.assertLen(model.non_trainable_weights, 2)
-    self.assertLen(model.weights, 6)
-
-  @keras_parameterized.run_all_keras_modes
   def test_weight_deduplication(self):
 
     class WatchingLayer(layers_module.Layer):
@@ -2236,39 +2168,6 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
     inner_model.layers[-1].trainable = False
     self.assertListEqual(outer_model.trainable_weights, [])
 
-  def test_gan_workflow(self):
-    shared_layer = layers_module.BatchNormalization()
-
-    inputs1 = input_layer.Input(10)
-    outputs1 = shared_layer(inputs1)
-    model1 = training_module.Model(inputs1, outputs1)
-    shared_layer.trainable = False
-    model1.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
-
-    inputs2 = input_layer.Input(10)
-    outputs2 = shared_layer(inputs2)
-    model2 = training_module.Model(inputs2, outputs2)
-    shared_layer.trainable = True
-    model2.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
-
-    x, y = np.ones((10, 10)), np.ones((10, 10))
-
-    out1_0 = model1.predict_on_batch(x)
-    model1.train_on_batch(x, y)
-    out1_1 = model1.predict_on_batch(x)
-    self.assertAllClose(out1_0, out1_1)
-
-    out2_0 = model2.predict_on_batch(x)
-    model2.train_on_batch(x, y)
-    out2_1 = model2.predict_on_batch(x)
-    self.assertNotAllClose(out2_0, out2_1)
-
   def test_toggle_value(self):
     input_0 = layers_module.Input(shape=(1,))
     dense_0 = layers_module.Dense(
@@ -3707,21 +3606,6 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     y = layer(np.ones((10, 10)))
     self.evaluate(y)
     self.assertEqual(self.evaluate(layer.counter), 1)
-
-  @keras_parameterized.run_with_all_model_types
-  def test_batchnorm_trainable_false(self):
-    bn = layers_module.BatchNormalization()
-    model = testing_utils.get_model_from_layers([bn, layers_module.Dense(1)],
-                                                input_shape=(10,))
-    bn.trainable = False
-    model.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
-    x, y = np.ones((10, 10)), np.ones((10, 1))
-    model.fit(x, y, batch_size=2, epochs=1)
-    self.assertAllEqual(self.evaluate(bn.moving_mean), np.zeros((10,)))
-    self.assertAllEqual(self.evaluate(bn.moving_variance), np.ones((10,)))
 
 
 class TestFunctionTracing(keras_parameterized.TestCase):

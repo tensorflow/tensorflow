@@ -64,18 +64,6 @@ py_library(
 )
 
 py_library(
-    name = "normalization",
-    srcs = ["normalization.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":layers_base",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/keras/layers/normalization",
-    ],
-)
-
-py_library(
     name = "pooling",
     srcs = ["pooling.py"],
     srcs_version = "PY3",
