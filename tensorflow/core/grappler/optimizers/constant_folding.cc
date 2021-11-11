@@ -1689,7 +1689,11 @@ Status ConstantFolding::IsSimplifiableReshape(
   if (!IsReshape(node)) {
     return errors::Internal("Node ", node.name(), " is not a Reshape node");
   }
-  CHECK_LE(2, node.input_size());
+  if (2 > node.input_size()) {
+    return errors::Internal("Node ", node.name(),
+                            " must have at most 2 inputs but has ",
+                            node.input_size());
+  }
   const NodeDef* new_shape = node_map_->GetNode(node.input(1));
   if (!IsReallyConstant(*new_shape)) {
     return errors::Internal("Node ", node.name(), " has shape ",
@@ -1707,7 +1711,11 @@ Status ConstantFolding::IsSimplifiableReshape(
   if (!s.ok()) {
     return errors::Internal("Could not evaluate node ", node.name());
   }
-  CHECK_EQ(1, outputs.size());
+  if (outputs.size() != 1) {
+    return errors::Internal("Node ", node.name(),
+                            " must have exactly 1 output but has ",
+                            outputs.size());
+  }
 
   const std::vector<OpInfo::TensorProperties>& props =
       properties.GetInputProperties(node.name());
