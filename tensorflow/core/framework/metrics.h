@@ -231,12 +231,8 @@ class ScopedCounter final {
 monitoring::Counter<2>* GetGraphOptimizationCounter();
 
 // Updates the metrics stored about graph optimizations.
-void UpdateGraphOptimizationPassTime(const string& pass_name,
-                                     const uint64 running_time_usecs);
 void UpdateGrapplerPassTime(const string& pass_name,
                             const uint64 running_time_usecs);
-void UpdateMlirGraphOptimizationPassTime(const string& pass_name,
-                                         const uint64 running_time_usecs);
 void UpdateTFDataPassTime(const string& pass_name,
                           const uint64 running_time_usecs);
 void UpdateGraphOptimizerPassTime(const string& pass_name,
