@@ -31,8 +31,6 @@ def CreateTFReadVariableOp : NativeCodeCall<
 
 def CheckHasResourceSubtype : Constraint<CPred<"HasResourceSubtype($0)">>;
 
-def CreateConstBoolAttrFalse : NativeCodeCall<"$_builder.getBoolAttr(false)">;
-
 def CreateTFReadVariableOpFromResourceHandle : NativeCodeCall<
     "$_builder.create<TF::ReadVariableOp>("
     "$0.getLoc(), GetResourceSubtype($1), $1)">;
@@ -59,7 +57,7 @@ def DecomposeAssignAddVariableOp :
         (CreateTFReadVariableOp $src_op, $value, $resource),
         $value
       ),
-      (CreateConstBoolAttrFalse)
+      ConstBoolAttrFalse
     )
   >;
 
@@ -72,7 +70,7 @@ def DecomposeAssignSubVariableOp :
         (CreateTFReadVariableOp $src_op, $value, $resource),
         $value
       ),
-      (CreateConstBoolAttrFalse)
+      ConstBoolAttrFalse
     )
   >;
 
@@ -87,7 +85,7 @@ def DecomposeResourceApplyGradientDescentOp :
         (CreateTFReadVariableOp $src_op, $alpha, $resource),
         (TF_MulOp $alpha, $delta)
       ),
-      (CreateConstBoolAttrFalse)
+      ConstBoolAttrFalse
     )
   >;
 
@@ -108,7 +106,7 @@ def DecomposeResourceApplyMomentumOpNonNesterov :
       ),
       $grad
      ),
-     (TF_AssignVariableOp $accum_resource, $accum_new, (CreateConstBoolAttrFalse)),
+     (TF_AssignVariableOp $accum_resource, $accum_new, ConstBoolAttrFalse),
      (TF_AssignSubVariableOp $var_resource, (TF_MulOp $accum_new, $lr))
     ]
   >;
@@ -130,7 +128,7 @@ def DecomposeResourceApplyMomentumOpNesterov :
        ),
        $grad
      ),
-     (TF_AssignVariableOp $accum_resource, $accum_new, (CreateConstBoolAttrFalse)),
+     (TF_AssignVariableOp $accum_resource, $accum_new, ConstBoolAttrFalse),
      (TF_AssignSubVariableOp
        $var_resource,
        (TF_AddV2Op
@@ -158,7 +156,7 @@ def DecomposeResourceApplyKerasMomentumOpNonNesterov :
        ),
        (TF_MulOp $grad, $lr)
      ),
-     (TF_AssignVariableOp $accum_resource, $accum_new, (CreateConstBoolAttrFalse)),
+     (TF_AssignVariableOp $accum_resource, $accum_new, ConstBoolAttrFalse),
      (TF_AssignAddVariableOp $var_resource, $accum_new)
     ]
   >;
@@ -180,7 +178,7 @@ def DecomposeResourceApplyKerasMomentumOpNesterov :
        ),
        (TF_MulOp:$grad_lr $grad, $lr)
      ),
-     (TF_AssignVariableOp $accum_resource, $accum_new, (CreateConstBoolAttrFalse)),
+     (TF_AssignVariableOp $accum_resource, $accum_new, ConstBoolAttrFalse),
      (TF_AssignAddVariableOp
        $var_resource,
        (TF_SubOp
@@ -213,7 +211,7 @@ def DecomposeResourceApplyAdagradV2 :
           (TF_AddV2Op (TF_SqrtOp $new_accum), $epsilon)
         )
       ),
-      (TF_AssignVariableOp $accum_resource, $new_accum, (CreateConstBoolAttrFalse)),
+      (TF_AssignVariableOp $accum_resource, $new_accum, ConstBoolAttrFalse),
     ]
   >;
 
@@ -272,8 +270,8 @@ def DecomposeResourceApplyAdamNonNesterov :
           (TF_AddV2Op (TF_SqrtOp $new_v), $epsilon)
         )
       ),
-      (TF_AssignVariableOp $m_resource, $new_m, (CreateConstBoolAttrFalse)),
-      (TF_AssignVariableOp $v_resource, $new_v, (CreateConstBoolAttrFalse))
+      (TF_AssignVariableOp $m_resource, $new_m, ConstBoolAttrFalse),
+      (TF_AssignVariableOp $v_resource, $new_v, ConstBoolAttrFalse)
     ]
   >;
 
@@ -324,8 +322,8 @@ def DecomposeResourceApplyAdamNesterov :
           (TF_AddV2Op (TF_SqrtOp $new_v), $epsilon)
         )
       ),
-      (TF_AssignVariableOp $m_resource, $new_m, (CreateConstBoolAttrFalse)),
-      (TF_AssignVariableOp $v_resource, $new_v, (CreateConstBoolAttrFalse))
+      (TF_AssignVariableOp $m_resource, $new_m, ConstBoolAttrFalse),
+      (TF_AssignVariableOp $v_resource, $new_v, ConstBoolAttrFalse)
     ]
   >;
 
@@ -353,7 +351,7 @@ def DecomposeResourceScatterAdd : Pat<
        (TF_ConstOp (GetScalarOfType<-1> $indices))),
       $updates
     ),
-    (CreateConstBoolAttrFalse)
+    ConstBoolAttrFalse
   )>;
 
 // Pattern to decompose tf.ResourceScatterUpdate into tf.ReadVariable,
@@ -370,7 +368,7 @@ def DecomposeResourceScatterUpdate : Pat<
        (TF_ConstOp (GetScalarOfType<-1> $indices))),
       $updates
     ),
-    (CreateConstBoolAttrFalse)
+    ConstBoolAttrFalse
   )>;
 
 // Pattern to decompose tf.VariableShape into tf.ReadVariable and tf.Shape.
@@ -403,7 +401,7 @@ def DecomposeResourceApplyCenteredRMSProp :
           $rho
        )
      ),
-     (TF_AssignVariableOp $ms_resource, $ms_new, (CreateConstBoolAttrFalse)),
+     (TF_AssignVariableOp $ms_resource, $ms_new, ConstBoolAttrFalse),
      // mg = grad * (one - rho) + mg * rho;
      (TF_AddV2Op:$mg_new
        (TF_MulOp
@@ -415,7 +413,7 @@ def DecomposeResourceApplyCenteredRMSProp :
           $rho
        )
      ),
-     (TF_AssignVariableOp $mg_resource, $mg_new, (CreateConstBoolAttrFalse)),
+     (TF_AssignVariableOp $mg_resource, $mg_new, ConstBoolAttrFalse),
      // mom <- momentum * mom_{t-1} + lr * grad / sqrt((ms - mg * mg) + epsilon)
      (TF_AddV2Op:$mom_new
       (TF_MulOp $momentum,
@@ -430,7 +428,7 @@ def DecomposeResourceApplyCenteredRMSProp :
         )
       )
      ),
-     (TF_AssignVariableOp $mom_resource, $mom_new, (CreateConstBoolAttrFalse)),
+     (TF_AssignVariableOp $mom_resource, $mom_new, ConstBoolAttrFalse),
      // var <- var - mom
      (TF_AssignSubVariableOp $var_resource, $mom_new)
    ]
@@ -534,10 +532,10 @@ def DecomposeResourceApplyFtrlV2: Pattern<
        $linear_clipped_minus_linear,
        $quadratic
      ),
-     (CreateConstBoolAttrFalse)
+     ConstBoolAttrFalse
    ),
    // accum = accum_new
-   (TF_AssignVariableOp $accum, $accum_new, (CreateConstBoolAttrFalse)),
+   (TF_AssignVariableOp $accum, $accum_new, ConstBoolAttrFalse),
   ]>;
 
 // This decomposition is only correct inside XLA as it ignores use_locking
@@ -564,7 +562,7 @@ def DecomposeResourceApplyRMSProp :
          (TF_SubOp $one, $rho)
        )
      ),
-     (TF_AssignVariableOp $ms_resource, $ms_new, (CreateConstBoolAttrFalse)),
+     (TF_AssignVariableOp $ms_resource, $ms_new, ConstBoolAttrFalse),
      // mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
      (TF_AddV2Op:$mom_new
       (TF_MulOp $momentum,
@@ -576,7 +574,7 @@ def DecomposeResourceApplyRMSProp :
          )
       )
      ),
-     (TF_AssignVariableOp $mom_resource, $mom_new, (CreateConstBoolAttrFalse)),
+     (TF_AssignVariableOp $mom_resource, $mom_new, ConstBoolAttrFalse),
      // var <- var - mom
      (TF_AssignSubVariableOp $var_resource, $mom_new)
    ]
@@ -604,7 +602,7 @@ def DecomposeResourceApplyProximalAdagrad :
        $l1_gt_zero, $prox_var),
      (TF_DivOp:$var_new
        $var_numerator, (TF_AddOp $one, (TF_MulOp $adagrad_lr, $l2))),
-     (TF_AssignVariableOp $var_resource, $var_new, (CreateConstBoolAttrFalse)),
-     (TF_AssignVariableOp $accum_resource, $accum_new, (CreateConstBoolAttrFalse))
+     (TF_AssignVariableOp $var_resource, $var_new, ConstBoolAttrFalse),
+     (TF_AssignVariableOp $accum_resource, $accum_new, ConstBoolAttrFalse)
    ]
    >;
