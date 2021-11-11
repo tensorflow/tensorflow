@@ -469,11 +469,12 @@ inline void Sub(const ArithmeticParams& params,
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
-  const int32_t int8_max_value = std::numeric_limits<int8_t>::max();
-  TFLITE_DCHECK_GE(params.input1_offset, -1 * int8_max_value);
-  TFLITE_DCHECK_GE(params.input2_offset, -1 * int8_max_value);
-  TFLITE_DCHECK_LE(params.input1_offset, int8_max_value);
-  TFLITE_DCHECK_LE(params.input2_offset, int8_max_value);
+  TFLITE_DCHECK_GE(params.input1_offset, -128);
+  TFLITE_DCHECK_GE(params.input2_offset, -128);
+  // offset = -quantization_params.zero_point in PrepareGeneralSubOp().
+  // So it's maximum can be 128 not 127.
+  TFLITE_DCHECK_LE(params.input1_offset, 128);
+  TFLITE_DCHECK_LE(params.input2_offset, 128);
   SubElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
