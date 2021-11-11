@@ -415,11 +415,10 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
 
     // Since the no. of predicates is equal to start_index_map.size() we
     // iterate over pairs of predicates and join them with arith::AndIOp.
-    unsigned num_equality_checks = start_index_map.size() / 2;
     // We store the final predicate formed by joining other predicates with
     // arith::AndIOp in result_predicate.
     Value result_predicate = nullptr;
-    for (unsigned i = 0; i < num_equality_checks; i += 2) {
+    for (unsigned i = 0; i < predicates.size() - 1; i += 2) {
       Value predicateA = predicates[i];
       Value predicateB = predicates[i + 1];
       Value and_predicate =
