@@ -374,7 +374,6 @@ java_test_with_tflite(
     srcs = ["src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java"],
     javacopts = JAVACOPTS,
     tags = [
-        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
         "v1only",
     ],
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
@@ -426,9 +425,6 @@ java_test_with_tflite(
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/DataTypeTest.java"],
     javacopts = JAVACOPTS,
-    tags = [
-        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
-    ],
     test_class = "org.tensorflow.lite.DataTypeTest",
     tflite_deps = [
         ":tensorflowlitelib",
@@ -460,9 +456,6 @@ java_test_with_tflite(
         "src/testdata/with_custom_op.lite",
     ],
     javacopts = JAVACOPTS,
-    tags = [
-        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
-    ],
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
@@ -496,9 +489,6 @@ java_test_with_tflite(
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     javacopts = JAVACOPTS,
-    tags = [
-        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
-    ],
     test_class = "org.tensorflow.lite.InterpreterTest",
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
@@ -530,9 +520,6 @@ java_test_with_tflite(
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     javacopts = JAVACOPTS,
-    tags = [
-        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
-    ],
     test_class = "org.tensorflow.lite.InterpreterApiTest",
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_stable_test_jni.so",
@@ -613,9 +600,6 @@ java_test_with_tflite(
         "src/testdata/string.bin",
     ],
     javacopts = JAVACOPTS,
-    tags = [
-        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
-    ],
     test_class = "org.tensorflow.lite.TensorTest",
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
@@ -643,7 +627,6 @@ java_test(
     # Add customized libtensorflowlite_jni.so to java_path
     jvm_flags = ["-Djava.library.path=third_party/tensorflow/lite/testing"],
     tags = [
-        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
         "v1only",
     ],
     test_class = "org.tensorflow.lite.InterpreterCustomizedAndroidBuildTest",
@@ -732,9 +715,6 @@ alias(
     actual = select({
         "//conditions:default": ":libtensorflowlite_jni.so",
     }),
-    tags = [
-        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
-    ],
 )
 
 cc_library_with_tflite(
