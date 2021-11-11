@@ -416,6 +416,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     AutotuneResult& result = profile_results.back();
     *result.mutable_algorithm() = alg.ToProto();
 
+    AlgorithmDesc alg_key(alg.algo_id(), alg.tensor_ops_enabled(),
+                          absl::nullopt);
     if (absl::c_linear_search(disabled_algos, alg)) {
       LOG(INFO) << "Omitted potentially buggy algorithm " << alg.ToString()
                 << " for conv " << instr->ToString();
@@ -748,6 +750,8 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());
   *backend_config.mutable_algorithm() = best_algo.algorithm();
+  backend_config.mutable_algorithm()->mutable_workspace_size()->set_value(
+      best_algo.scratch_bytes());
 
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));
