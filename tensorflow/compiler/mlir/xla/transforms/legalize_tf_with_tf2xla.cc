@@ -383,7 +383,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::XdivyOp>(),
     TypeID::get<TF::XlaAllReduceOp>(),
     TypeID::get<TF::XlaGatherOp>(),
-    TypeID::get<TF::XlaReplicaIdOp>(),
     TypeID::get<TF::Xlog1pyOp>(),
     TypeID::get<TF::ZerosLikeOp>(),
 
