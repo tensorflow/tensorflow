@@ -75,6 +75,11 @@ GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Float, float, float, baseline_add,
 GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Double, double, double,
                        baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int8, int8_t, int8_t, baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int16, int16_t, int16_t,
+                       baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int64, int64_t, int64_t,
                        baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
@@ -96,15 +101,6 @@ GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Complex64, std::complex<float>,
 GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Complex128, std::complex<double>,
                        std::complex<double>, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
-
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int8, int8_t, int8_t, baseline_add,
-                       test::OpsTestConfig().ExpectStrictlyEqual())
-GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int16, int16_t, int16_t,
-                       baseline_add,
-                       test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
 
 /// Test `tf.Atan2`.
 
@@ -797,11 +793,10 @@ GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/UInt8, uint8_t, uint8_t,
                        baseline_maximum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
-/// Test the experimental JIT-compiled kernels.
+/// Test the JIT-compiled kernels.
 GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Int8, int8_t, int8_t,
                        baseline_maximum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/UInt16, uint16_t, uint16_t,
                        baseline_maximum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
@@ -838,11 +833,10 @@ GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/UInt8, uint8_t, uint8_t,
                        baseline_minimum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
-/// Test the experimental JIT-compiled kernels.
+/// Test the JIT-compiled kernels.
 GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Int8, int8_t, int8_t,
                        baseline_minimum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/UInt16, uint16_t, uint16_t,
                        baseline_minimum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
@@ -1297,7 +1291,7 @@ GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/UInt64, uint64_t, uint64_t,
                        baseline_sub,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
-/// Test the experimental JIT-compiled kernel.
+/// Test the JIT-compiled kernel.
 GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/Int8, int8_t, int8_t, baseline_sub,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/Int16, int16_t, int16_t, baseline_sub,
