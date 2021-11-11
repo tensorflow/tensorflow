@@ -43,6 +43,7 @@ filegroup(
     testonly = True,
     data = [
         "//tensorflow/compiler/mlir:tf-mlir-translate",
+        "//tensorflow/compiler/mlir/xla:xla-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
     ],
