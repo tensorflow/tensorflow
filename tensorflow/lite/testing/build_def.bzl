@@ -1,18 +1,187 @@
+"""Build rule definitions for TFLite zip tests."""
+
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-load(
-    "//tensorflow/lite:build_def.bzl",
-    "common_test_args_for_generated_models",
-    "common_test_tags_for_generated_models",
-    "generated_test_models",
-    "max_number_of_test_models_in_merged_zip",
-    "merged_test_model_name",
-)
 
-# This is forked from `tensorflow/lite/build_def.bzl`.
-# TODO(b/136499575): Merge this back to TFLite codebase when open sourcing.
+# This is the master list of generated examples that will be made into tests. A
+# function called make_XXX_tests() must also appear in generate_examples.py.
+# Disable a test by adding it to the denylists specified in
+# generated_test_models_failing().
+def generated_test_models():
+    return [
+        # keep sorted
+        "abs",
+        "add",
+        "add_n",
+        "arg_min_max",
+        "avg_pool",
+        "avg_pool3d",
+        "batch_to_space_nd",
+        "broadcast_args",
+        "broadcast_gradient_args",
+        "broadcast_to",
+        "cast",
+        "ceil",
+        "complex_abs",
+        "concat",
+        "cond",
+        "constant",
+        "control_dep",
+        "conv",
+        "conv2d_transpose",
+        "conv3d",
+        "conv3d_transpose",
+        "conv_bias_relu6",
+        "conv_relu",
+        "conv_relu1",
+        "conv_relu6",
+        "conv_to_depthwiseconv_with_shared_weights",
+        "conv_with_shared_weights",
+        "cos",
+        "cumsum",
+        # copybara:uncomment(Exclude tests that depend on tensorflow_addons APIs) "dense_image_warp",
+        "depth_to_space",
+        "depthwiseconv",
+        "div",
+        "dynamic_rnn",
+        "einsum",
+        "elu",
+        "embedding_lookup",
+        "equal",
+        "exp",
+        "expand_dims",
+        "expm1",
+        "eye",
+        "fill",
+        "floor",
+        "floor_div",
+        "floor_mod",
+        "fully_connected",
+        "fused_batch_norm",
+        "gather",
+        "gather_nd",
+        "gather_with_constant",
+        "global_batch_norm",
+        "greater",
+        "greater_equal",
+        "hardswish",
+        "identify_dilated_conv",
+        "identify_dilated_conv1d",
+        "identity",
+        "imag",
+        "irfft2d",
+        "is_finite",
+        "l2_pool",
+        "l2norm",
+        "l2norm_shared_epsilon",
+        "leaky_relu",
+        "less",
+        "less_equal",
+        "local_response_norm",
+        "log",
+        "log_softmax",
+        "logical_and",
+        "logical_or",
+        "logical_xor",
+        "lstm",
+        "matrix_diag",
+        "matrix_set_diag",
+        "max_pool",
+        "max_pool3d",
+        "max_pool_with_argmax",
+        "maximum",
+        "mean",
+        "minimum",
+        "mirror_pad",
+        "mul",
+        "nearest_upsample",
+        "neg",
+        "not_equal",
+        "one_hot",
+        "pack",
+        "pad",
+        "padv2",
+        "parse_example",
+        "placeholder_with_default",
+        "pow",
+        "prelu",
+        "random_standard_normal",
+        "random_uniform",
+        "range",
+        "rank",
+        "real",
+        "reciprocal",
+        "reduce_all",
+        "reduce_any",
+        "reduce_max",
+        "reduce_min",
+        "reduce_prod",
+        "relu",
+        "relu1",
+        "relu6",
+        "reshape",
+        "resize_bilinear",
+        "resize_nearest_neighbor",
+        "resolve_constant_strided_slice",
+        "reverse_sequence",
+        "reverse_v2",
+        "rfft",
+        "rfft2d",
+        "roll",
+        "roll_with_constant",
+        "round",
+        "rsqrt",
+        "scatter_nd",
+        "segment_sum",
+        "shape",
+        "shape_to_strided_slice",
+        "sigmoid",
+        "sin",
+        "slice",
+        "softmax",
+        "softplus",
+        "space_to_batch_nd",
+        "space_to_depth",
+        "sparse_to_dense",
+        "split",
+        "splitv",
+        "sqrt",
+        "square",
+        "squared_difference",
+        "squeeze",
+        "static_hashtable",
+        "static_rnn_with_control_flow_v2",
+        "stft",
+        "strided_slice",
+        "strided_slice_1d_exhaustive",
+        "strided_slice_np_style",
+        "sub",
+        "sum",
+        "tanh",
+        "tensor_list_concat",
+        "tensor_list_dynamic_shape",
+        "tensor_list_get_item",
+        "tensor_list_length",
+        "tensor_list_resize",
+        "tensor_list_set_item",
+        "tensor_scatter_add",
+        "tensor_scatter_update",
+        "tile",
+        "topk",
+        "transpose",
+        "transpose_conv",
+        "unfused_gru",
+        "unique",
+        "unpack",
+        "unroll_batch_matmul",
+        "where",
+        "where_v2",
+        "while",
+        "zeros_like",
+    ]
+
 def mlir_generated_test_denylisted_models():
     return [
         # TODO(b/150647400): This test passes in TF2 with tf.compat.v1 but
@@ -20,61 +189,6 @@ def mlir_generated_test_denylisted_models():
         # changing on 3/3, this will only be disabled temporarily.
         "unidirectional_sequence_lstm",
         "unidirectional_sequence_rnn",
-    ]
-
-# Test cases which only work with MLIR-based conversion now.
-def mlir_only_generated_test_models():
-    return [
-        "avg_pool3d",
-        "broadcast_args",
-        "broadcast_to",
-        "broadcast_gradient_args",
-        "cond",
-        "complex_abs",
-        "control_dep",
-        "conv_bias_relu6",
-        "conv3d",
-        "conv3d_transpose",
-        "cumsum",
-        # copybara:uncomment_begin(Exclude tests that depend on tensorflow_addons APIs)
-        # "dense_image_warp",
-        # copybara:uncomment_end
-        "dynamic_rnn",
-        "einsum",
-        "expm1",
-        "identify_dilated_conv",
-        "identify_dilated_conv1d",
-        "imag",
-        "irfft2d",
-        "is_finite",
-        "max_pool3d",
-        "max_pool_with_argmax",
-        "parse_example",
-        "random_standard_normal",
-        "random_uniform",
-        "real",
-        "reciprocal",
-        "reduce_all",
-        "rfft",
-        "rfft2d",
-        "roll",
-        "roll_with_constant",
-        "segment_sum",
-        "shape_to_strided_slice",
-        "softplus",
-        "static_hashtable",
-        "static_rnn_with_control_flow_v2",
-        "stft",
-        "tensor_list_concat",
-        "tensor_list_get_item",
-        "tensor_list_length",
-        "tensor_list_resize",
-        "tensor_list_set_item",
-        "tensor_list_dynamic_shape",
-        "tensor_scatter_add",
-        "tensor_scatter_update",
-        "where_v2",
-        "while",
     ]
 
 # Test cases which only work internally now.
@@ -154,9 +268,6 @@ def generated_test_models_failing(conversion_mode, delegate):
     else:
         return []
 
-# The following test gen helpers are branched from tensorflow/lite/build_def.bzl
-# TODO(b/192473002): Clean up duplicated test fixtures once toco converter
-# zip tests are cleaned up.
 def generated_test_models_successful(conversion_mode, delegate):
     """Returns the list of successful test models.
 
@@ -168,6 +279,22 @@ def generated_test_models_successful(conversion_mode, delegate):
       List of successful test models for the conversion mode.
     """
     return [test_model for test_model in generated_test_models() if test_model not in generated_test_models_failing(conversion_mode, delegate)]
+
+def merged_test_model_name():
+    """Returns the name of merged test model.
+
+    Returns:
+      The name of merged test model.
+    """
+    return "merged_models"
+
+def max_number_of_test_models_in_merged_zip():
+    """Returns the maximum number of merged test models in a zip file.
+
+    Returns:
+      Maximum number of merged test models in a zip file.
+    """
+    return 15
 
 def number_of_merged_zip_file(conversion_mode, delegate):
     """Returns the number of merged zip file targets.
@@ -195,7 +322,6 @@ def merged_test_models():
         if conversion_mode:
             test += "_%s" % conversion_mode
         for delegate in generated_test_delegates():
-            test += delegate_suffix(delegate)
             successful_tests = generated_test_models_successful(conversion_mode, delegate)
             if len(successful_tests) > 0:
                 tags = common_test_tags_for_generated_models(conversion_mode, False)
@@ -276,7 +402,7 @@ def mlir_generated_test_models():
     """
     models = []
     denylisted_models = mlir_generated_test_denylisted_models()
-    for model in generated_test_models() + mlir_only_generated_test_models():
+    for model in generated_test_models():
         if model not in denylisted_models:
             models.append(model)
     return models
@@ -288,7 +414,7 @@ def generated_test_conversion_modes():
     return ["toco-flex", "forward-compat", "", "mlir-quant"]
 
 def generated_test_delegates():
-    """Returns a list of possible delegate."""
+    """Returns a list of delegates."""
     return ["", "xnnpack"]
 
 def delegate_suffix(delegate):
@@ -331,6 +457,47 @@ def generated_test_models_all():
                 options.append((conversion_mode, delegate, test, tags, args))
 
     return options
+
+def common_test_args_for_generated_models(conversion_mode, failing):
+    """Returns test args for generated model tests.
+
+    Args:
+      conversion_mode: Conversion mode.
+      failing: True if the generated model test is failing.
+
+    Returns:
+      test args of generated models.
+    """
+    args = []
+
+    # Flex conversion shouldn't suffer from the same conversion bugs
+    # listed for the default TFLite kernel backend.
+    if conversion_mode == "toco-flex":
+        args.append("--ignore_known_bugs=false")
+
+    return args
+
+def common_test_tags_for_generated_models(conversion_mode, failing):
+    """Returns test tags for generated model tests.
+
+    Args:
+      conversion_mode: Conversion mode.
+      failing: True if the generated model test is failing.
+
+    Returns:
+      tags for the failing generated model tests.
+    """
+    tags = []
+
+    # Forward-compat coverage testing is largely redundant, and contributes
+    # to coverage test bloat.
+    if conversion_mode == "forward-compat":
+        tags.append("nozapfhahn")
+
+    if failing:
+        return ["notap", "manual"]
+
+    return tags
 
 def gen_zip_test(
         name,
