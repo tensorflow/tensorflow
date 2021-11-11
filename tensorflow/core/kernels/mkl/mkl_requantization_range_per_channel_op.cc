@@ -78,7 +78,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     Eigen::array<int, 2> shuffling({1, 0});
     auto input_matrix = input.flat_inner_dims<qint32>();
 
-    // TODO(intel-tf): verify performance of not transposing and finding min max
+    // TODO(intel-tf): Verify performance of not transposing and finding min max
     // directly from input_matrix vs the one presented below of transposing and
     // using the transposed matrix as the transposing operation in itself might
     // be more costly.

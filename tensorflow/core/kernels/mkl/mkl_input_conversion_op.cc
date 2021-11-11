@@ -105,7 +105,7 @@ class MklInputConversionOp : public OpKernel {
                      "different, "
                   << "need to convert to same format";
           // TODO(intel-tf): For now, input0 is converted and input1 is
-          // unchanged. We should choose the optimal MKL format to convert to.
+          // unchanged. We should choose the optimal oneDNN format to convert to.
           Tensor* tensor_out;
           MklDnnShape mkl_output_mkl_shape;
           mkl_output_mkl_shape.SetMklTensor(true);

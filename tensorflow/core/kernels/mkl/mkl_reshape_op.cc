@@ -49,9 +49,9 @@ class MklReshapeOp : public OpKernel {
     // If Tensorflow's data format and the underlying format maintained by
     // oneDNN are equivalent (both are NHWC or both are NCHW), then we can
     // safely return true.
-    // TODO(intel-tf): Future do not force skip reorder for all blocked format.
-    // Use blocking_desc_is_equal() for checking all the stride arrays in
-    // mkl-dnn/blob/master/src/common/type_helpers.hpp
+    // TODO(intel-tf): In the future, do not force skip reorder for all blocked
+    // format. Use blocking_desc_is_equal() for checking all the stride arrays
+    // in mkl-dnn/blob/master/src/common/type_helpers.hpp
     return (mkl_shape_input.GetTfDataFormat() ==
             MklTensorFormat::FORMAT_BLOCKED);
   }

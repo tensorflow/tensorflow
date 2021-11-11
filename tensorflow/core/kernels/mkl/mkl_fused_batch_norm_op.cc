@@ -238,7 +238,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     // BatchNorm forward primitive.
     // TODO(intel-tf): Merge all the #ifdefs and simplify code
     if (!fwdParams.training && !(IS_SET(use_global_stats))) {
-      if ((IS_SET(use_scale_shift)) && dnnl_use_scaleshift) {
+      if (IS_SET(use_scale_shift)) {
         context_.net_args.push_back({{DNNL_ARG_SRC, *context_.src_mem},
                                      {DNNL_ARG_WEIGHTS, *context_.weights_mem},
                                      {DNNL_ARG_DST, *context_.dst_mem}});
@@ -1279,7 +1279,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
         }
       }
 
-      // weights -- oneDNN packs scales/ shifts as weights in order
+      // weights -- oneDNN packs scales/shifts as weights in order
       // of scale, ..., scale, shift, ...., shift
       weights.AllocateBuffer(2 * depth_ * sizeof(U));
       U* weights_data_tf = reinterpret_cast<U*>(weights.GetAllocatedBuffer());

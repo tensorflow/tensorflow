@@ -323,8 +323,7 @@ class MklSliceOp : public OpKernel {
 
     if (!context->status().ok() || done == true) return;
 
-    // Though oneDNN supports more than 8 dimension and
-    // less than 12 dimension tensor.
+    // oneDNN supports more than 8 dimension and less than 12 dimension tensor.
     // But we are mimicking functionality of Eigen Slice op for CPU.
     if (begin.size() >= 8) {
       OP_REQUIRES(

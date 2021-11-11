@@ -601,7 +601,7 @@ typedef std::vector<MklDnnShape> MklDnnShapeList;
 template <typename T>
 class MklDnnData;
 
-// TODO(intel-tf) merge with the execute_primitives.
+// TODO(intel-tf): Merge with the execute_primitives.
 inline void ExecutePrimitive(const std::vector<primitive>& net,
                              const std::vector<MemoryArgsMap>* net_args,
                              const engine& cpu_engine,

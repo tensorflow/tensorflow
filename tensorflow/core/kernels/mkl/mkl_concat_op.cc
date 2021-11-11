@@ -686,7 +686,7 @@ class MklConcatOp : public OpKernel {
         } else {
           TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
                              "Unsupported tensor dimension or"
-                             "ONEDNN memory format"));
+                             "oneDNN memory format"));
         }
       } else {
         // All inputs are TF tensors.

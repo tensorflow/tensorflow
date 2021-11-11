@@ -378,7 +378,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       } else if (std::is_same<Toutput, float>::value) {
         scale = scale_int32 / static_cast<float>(1u << 31);
       } else {
-        // TODO(intel-tf):keeping the default qint8 as before.
+        // TODO(intel-tf): Keep the default qint8 as before.
         // Change to error later.
         scale = scale_int32 / scale_eightbit / static_cast<float>(1u << 24);
       }
