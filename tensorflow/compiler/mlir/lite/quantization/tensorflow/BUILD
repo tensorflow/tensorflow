@@ -16,7 +16,7 @@ package_group(
 )
 
 cc_library(
-    name = "tf_to_quant",
+    name = "tf_quantization_passes",
     srcs = [
         "tf_to_quant.cc",
     ],
