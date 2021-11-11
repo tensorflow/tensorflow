@@ -38,8 +38,7 @@ namespace {
 //      value until an unknown op or function argument is found. That value
 //      becomes the initial symbol for a dimension from which others are
 //      derived.
-//
-//.  2. Propagate symbols downward. This builds an affine expression of the
+//   2. Propagate symbols downwards. This builds an affine expression of the
 //      symbols so users of the analysis can pattern match things like
 //      "two dimensions are multiplied"
 //
@@ -55,11 +54,11 @@ struct ShapeVisitor {
   void visit(ShapeOrValueOfTensor v) {
     backwards_worklist.push_back(v);
 
-    // First we climb uses so we get a list of all ops taking part in this
-    // shape computation. An alternative would be analyzing everything eagerly,
-    // this backwards pass allows us to be lazy.
+    // First we climb uses so we get a list of all ops taking part in this shape
+    // computation. An alternative would be analyzing everything eagerly, this
+    // backwards pass allows us to be lazy.
     while (!backwards_worklist.empty()) {
-      auto value = backwards_worklist.pop_back_val();
+      ShapeOrValueOfTensor value = backwards_worklist.pop_back_val();
       if (dimensions->count(value)) continue;
 
       Value instruction = value.value();
@@ -106,6 +105,9 @@ struct ShapeVisitor {
 
       if (auto shapeof = instruction.getDefiningOp<shape::ShapeOfOp>()) {
         backwardShapeOf(shapeof);
+      } else if (auto num_elements =
+                     instruction.getDefiningOp<shape::NumElementsOp>()) {
+        backwardNumElements(num_elements);
       } else if (auto dim = instruction.getDefiningOp<tensor::DimOp>()) {
         backwardDim(dim);
       } else if (auto cast = instruction.getDefiningOp<arith::IndexCastOp>()) {
@@ -140,6 +142,8 @@ struct ShapeVisitor {
       auto value = forwards_worklist.pop_back_val();
       if (dimensions->count(value)) continue;
       Value instruction = value.value();
+
+      // Handle shapes.
       if (!value.isShapeTensor()) {
         if (instruction.getDefiningOp<shape::AssumingOp>()) {
           forwardAssumingShape(instruction);
@@ -167,8 +171,12 @@ struct ShapeVisitor {
         continue;
       }
 
+      // Handle values.
       if (auto shapeof = instruction.getDefiningOp<shape::ShapeOfOp>()) {
         forwardShapeOf(shapeof);
+      } else if (auto num_elements =
+                     instruction.getDefiningOp<shape::NumElementsOp>()) {
+        forwardNumElements(num_elements);
       } else if (auto dim = instruction.getDefiningOp<tensor::DimOp>()) {
         forwardDim(dim);
       } else if (auto cast = instruction.getDefiningOp<arith::IndexCastOp>()) {
@@ -220,6 +228,49 @@ struct ShapeVisitor {
         dim.expr = arg[i].expr;
       }
     }
+  }
+  void backwardNumElements(shape::NumElementsOp op) {
+    forwards_worklist.push_back(ShapeOrValueOfTensor::getValueOf(op));
+    backwards_worklist.push_back(
+        ShapeOrValueOfTensor::getValueOf(op.getShape()));
+  }
+  void forwardNumElements(shape::NumElementsOp op) {
+    auto in = lookup(ShapeOrValueOfTensor::getValueOf(op.getShape()));
+
+    // Accumulate product symbolically and concrete where possible.
+    int64_t concrete_product = 1;
+    ShapeComponentAnalysis::SymbolicDimension dim;
+    for (auto &it : in) {
+      // For constant expressions, we can accumulate a concrete product.
+      if (auto cexpr = it.expr.dyn_cast<AffineConstantExpr>()) {
+        assert(cexpr.getValue() > 0 && "shape value must be positive");
+        concrete_product *= cexpr.getValue();
+        continue;
+      }
+
+      // Simply copy the first sybolic factor.
+      if (!dim.expr) {
+        dim = it;
+        continue;
+      }
+
+      // Multiply remaining symbolic factors.
+      dim.expr = dim.expr *
+                 it.expr.shiftSymbols(dim.symbols.size(), it.symbols.size());
+      dim.symbols.append(it.symbols);
+    }
+
+    // Combine concrete and symbolic product.
+    if (concrete_product != 1 || !dim.expr) {
+      auto cexpr = getAffineConstantExpr(concrete_product, op.getContext());
+      if (dim.expr)
+        dim.expr = cexpr * dim.expr;
+      else
+        dim.expr = cexpr;
+    }
+
+    auto &dims = insert(ShapeOrValueOfTensor::getValueOf(op));
+    dims.push_back(dim);
   }
   void backwardDim(tensor::DimOp op) {
     forwards_worklist.push_back(ShapeOrValueOfTensor::getValueOf(op));
@@ -459,15 +510,15 @@ struct ShapeVisitor {
     // Forward the `on_true` operand, it has the same shape as the output.
     dims = lookup(ShapeOrValueOfTensor::getShapeOf(op.on_true()));
   }
-  void backwardSameOperandsShape(Value op) {
-    forwards_worklist.push_back(ShapeOrValueOfTensor::getShapeOf(op));
+  void backwardSameOperandsShape(Value v) {
+    forwards_worklist.push_back(ShapeOrValueOfTensor::getShapeOf(v));
     backwards_worklist.push_back(
-        ShapeOrValueOfTensor::getShapeOf(op.getDefiningOp()->getOperand(0)));
+        ShapeOrValueOfTensor::getShapeOf(v.getDefiningOp()->getOperand(0)));
   }
-  void forwardSameOperandsShape(Value op) {
-    auto &dims = insert(ShapeOrValueOfTensor::getShapeOf(op));
+  void forwardSameOperandsShape(Value v) {
+    auto &dims = insert(ShapeOrValueOfTensor::getShapeOf(v));
     dims = lookup(
-        ShapeOrValueOfTensor::getShapeOf(op.getDefiningOp()->getOperand(0)));
+        ShapeOrValueOfTensor::getShapeOf(v.getDefiningOp()->getOperand(0)));
   }
   void backwardArgumentShape(BlockArgument argument) {
     // CPURT uses cpurt.symbolic_shape to describe identical dimensions. Make
@@ -512,20 +563,20 @@ struct ShapeVisitor {
     }
     forwardUnknownShape(argument);
   }
-  void backwardUnknownShape(Value op) {
-    forwards_worklist.push_back(ShapeOrValueOfTensor::getShapeOf(op));
+  void backwardUnknownShape(Value v) {
+    forwards_worklist.push_back(ShapeOrValueOfTensor::getShapeOf(v));
   }
-  void forwardUnknownShape(Value op) {
-    auto &dims = insert(ShapeOrValueOfTensor::getShapeOf(op));
-    auto type = op.getType().cast<RankedTensorType>();
-    auto id = getAffineSymbolExpr(0, op.getContext());
+  void forwardUnknownShape(Value v) {
+    auto &dims = insert(ShapeOrValueOfTensor::getShapeOf(v));
+    auto type = v.getType().cast<RankedTensorType>();
+    auto id = getAffineSymbolExpr(0, v.getContext());
     for (size_t i = 0, e = type.getRank(); i != e; ++i) {
       dims.emplace_back();
       auto &dim = dims.back();
       if (!type.isDynamicDim(i)) {
-        dim.expr = getAffineConstantExpr(type.getDimSize(i), op.getContext());
+        dim.expr = getAffineConstantExpr(type.getDimSize(i), v.getContext());
       } else {
-        dim.symbols.push_back({ShapeOrValueOfTensor::getShapeOf(op), i});
+        dim.symbols.push_back({ShapeOrValueOfTensor::getShapeOf(v), i});
         dim.expr = id;
       }
     }
@@ -641,13 +692,15 @@ ShapeComponentAnalysis::SymbolicDimension::singleton() const {
 void ShapeComponentAnalysis::SymbolicDimension::dump(
     llvm::raw_ostream &os) const {
   expr.print(os);
-  os << " with ";
-  for (auto sym : llvm::enumerate(symbols)) {
-    os << 's' << sym.index() << " = ";
-    if (!sym.value().source.isShapeTensor()) os << "shapeof(";
-    sym.value().source.value().print(os);
-    if (!sym.value().source.isShapeTensor()) os << ")";
-    os << '[' << sym.value().index << "]; ";
+  if (!symbols.empty()) {
+    os << " with ";
+    for (auto sym : llvm::enumerate(symbols)) {
+      os << 's' << sym.index() << " = ";
+      if (!sym.value().source.isShapeTensor()) os << "shapeof(";
+      sym.value().source.value().print(os);
+      if (!sym.value().source.isShapeTensor()) os << ")";
+      os << '[' << sym.value().index << "]; ";
+    }
   }
   os << '\n';
 }
