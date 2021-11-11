@@ -182,15 +182,9 @@ class LuOpGpu : public AsyncOpKernel {
       auto packed_triangular_factors_ptrs = solver->GetScratchSpace<uint8>(
           sizeof(Scalar*) * batch_size, "packed_triangular_factors_ptrs",
           /* on_host */ true);
-#if GOOGLE_CUDA
-      const Scalar** packed_triangular_factors_ptrs_base =
-          reinterpret_cast<const Scalar**>(
-              packed_triangular_factors_ptrs.mutable_data());
-#else //TENSORFLOW_USE_ROCM
-       Scalar** packed_triangular_factors_ptrs_base =
-          reinterpret_cast< Scalar**>(
-              packed_triangular_factors_ptrs.mutable_data());
-#endif
+
+      Scalar** packed_triangular_factors_ptrs_base = reinterpret_cast<Scalar**>(
+          packed_triangular_factors_ptrs.mutable_data());
 
       for (int batch = 0; batch < batch_size; ++batch) {
         packed_triangular_factors_ptrs_base[batch] =
