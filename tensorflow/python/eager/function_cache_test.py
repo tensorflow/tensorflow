@@ -55,6 +55,26 @@ class FunctionCacheTest(test.TestCase):
     self.assertEqual(cache.lookup(key_2, False), "test_2")
     self.assertIsNone(cache.lookup(key_3, False))
 
+  def testClearRemovesAllConcreteFunctions(self):
+    cache = function_cache.FunctionCache()
+
+    key_1 = function_cache.make_cache_key(1)
+    key_2 = function_cache.make_cache_key(2)
+    key_3 = function_cache.make_cache_key(3)
+
+    cache.add(key_1, "test_1")
+    cache.add(key_2, "test_2")
+
+    self.assertEqual(cache.lookup(key_1, False), "test_1")
+    self.assertEqual(cache.lookup(key_2, False), "test_2")
+    self.assertIsNone(cache.lookup(key_3, False))
+
+    cache.clear()
+
+    self.assertIsNone(cache.lookup(key_1, False))
+    self.assertIsNone(cache.lookup(key_2, False))
+    self.assertIsNone(cache.lookup(key_3, False))
+
   def testExecutionContextSetRetainsInsertedElements(self):
     cache = function_cache.FunctionCache()
 

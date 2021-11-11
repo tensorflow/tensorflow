@@ -151,6 +151,12 @@ class FunctionCache:
     """Adds a new concrete function alongside its key."""
     self._primary[key] = concrete
 
+  def clear(self):
+    """Removes all concrete functions from the cache."""
+    self._primary.clear()
+    self.arg_relaxed_specs.clear()
+    self.arg_relaxed.clear()
+
   def values(self):
     """Returns a list of all `ConcreteFunction` instances held by this cache."""
     # We need to simultaneously make sure our returned concrete functions are
