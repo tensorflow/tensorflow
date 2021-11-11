@@ -71,7 +71,7 @@ void dump_tensor_detail(std::stringstream& out_stream,
       }
     }
     out_stream << "]";
-  } else {
+  } else if (tensor->shape()) {
     out_stream << "shape:[";
     for (int i = 0; i < tensor->shape()->Length(); ++i) {
       const int j = tensor->shape()->Get(i);
@@ -81,6 +81,8 @@ void dump_tensor_detail(std::stringstream& out_stream,
       }
     }
     out_stream << "]";
+  } else {
+    out_stream << "shape:n/a";
   }
   out_stream << ", type:" << EnumNameTensorType(tensor->type());
 
