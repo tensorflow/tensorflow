@@ -1,6 +1,6 @@
 """Provides the repository macro to import absl."""
 
-load("//third_party:repo.bzl", "tf_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
     """Imports absl."""
@@ -18,8 +18,5 @@ def repo():
         # TODO(mihaimaruseac): Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved
         patch_file = "//third_party/absl:com_google_absl_fix_mac_and_nvcc_build.patch",
         strip_prefix = "abseil-cpp-{commit}".format(commit = ABSL_COMMIT),
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/{commit}.tar.gz".format(commit = ABSL_COMMIT),
-            "https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz".format(commit = ABSL_COMMIT),
-        ],
+        urls = tf_mirror_urls("https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz".format(commit = ABSL_COMMIT)),
     )
