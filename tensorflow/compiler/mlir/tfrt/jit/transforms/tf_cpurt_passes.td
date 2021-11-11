@@ -185,3 +185,32 @@ def VectorizeTiledOps : FunctionPass<"tf-cpurt-vectorize-tiled-ops"> {
   let constructor = "tensorflow::CreateVectorizeTiledOpsPass()";
   let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
+
+def DetensorizeLinalg : FunctionPass<"tf-cpurt-detensorize-linalg"> {
+  let summary = "Replace 0d tensor inputs to LinalgOp with extracted elements.";
+  let constructor = "tensorflow::CreateDetensorizeLinalgPass()";
+  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+}
+
+def MathApproximation : FunctionPass<"tf-cpurt-math-approximation"> {
+  let summary = "Approximate math operations with an implementation meant to "
+                "match Eigen's results. This is a useful property to have when "
+                "comparing results from compiled TF code vs TF1 and TFRT, "
+                "which use Eigen. "
+                "TODO: evaluate the accuracy of these math approximations vs. "
+                "those in upstream MLIR, and merge these upstream if they're "
+                "more accurate.";
+  let constructor = "tensorflow::CreateMathApproximationPass()";
+  let options = [
+   ListOption<"oplist", "oplist", "std::string",
+              "List of math operations to be approximated. Use 'all' to select "
+              "all supported math operations.",
+              "llvm::cl::MiscFlags::CommaSeparated">,
+  ];
+}
+
+def SinkUnusedOutputs : FunctionPass<"tf-cpurt-sink-unused-outputs"> {
+  let summary = "Sink unused output args of `tiled_loop` into the loop body.";
+  let constructor = "tensorflow::CreateSinkUnusedOutputs()";
+  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+}

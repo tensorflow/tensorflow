@@ -116,6 +116,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_libtpu([
         "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
+        "//tensorflow/core/tpu/graph_rewrite:configure_tpu_embedding_rewrite_registration",
         "//tensorflow/stream_executor/tpu:tpu_transfer_manager",
     ]),
     alwayslink = 1,
@@ -185,6 +186,7 @@ cc_library(
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_proto_parsing",

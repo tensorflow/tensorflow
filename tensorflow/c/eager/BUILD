@@ -102,6 +102,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_interface",
         "//tensorflow/core:gpu_runtime",
+        "@com_google_absl//absl/strings:str_format",
     ] + internal_tfrt_deps(),
     alwayslink = 1,
 )
@@ -681,6 +682,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         # copybara:uncomment_begin
         # "//tensorflow/core/tfrt/eager:c_api_tfrt",
         # "@tf_runtime//backends/cpu:tf_ops_alwayslink",

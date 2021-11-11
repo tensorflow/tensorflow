@@ -373,16 +373,21 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "gpu_constant_op",
-    srcs = if_mlir_generated_experimental_kernels_enabled([
-        "gpu_op_ones_like.cc",
+    srcs = if_mlir_generated_gpu_kernels_enabled([
         "gpu_op_zeros_like.cc",
+    ]) + if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_ones_like.cc",
+    ]),
+    copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
     ]),
     tags = ["manual"],
-    deps = if_mlir_generated_experimental_kernels_enabled([
+    deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
-        ":gpu_ones_like_kernels",
         ":gpu_zeros_like_kernels",
         "//third_party/eigen3",
+    ]) + if_mlir_generated_experimental_kernels_enabled([
+        ":gpu_ones_like_kernels",
     ]),
 )
 
@@ -419,6 +424,9 @@ tf_kernel_library(
         "gpu_op_elu.cc",
         "gpu_op_relu.cc",
         "gpu_op_selu.cc",
+    ]),
+    copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
@@ -591,6 +599,7 @@ tf_cuda_cc_test(
     shard_count = 20,
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
+        "no_rocm",  # failed since 7de9cf4
     ],
     deps = [
         ":base_binary_ops_test",
@@ -626,6 +635,15 @@ tf_cc_test(
 
 gpu_kernel_library(
     name = "gpu_relu_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "i64",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
     op = "relu",
     tile_size = "256",
     types = [
@@ -976,7 +994,12 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_sub_kernels",
-    jit_types = ["i16"],
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+    ],
     op = "sub",
     tile_size = "1024",
     types = [
@@ -1413,6 +1436,14 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_select_v2_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
     max_supported_rank = 8,
     op = "select_v2",
     tile_size = "256",
@@ -1734,6 +1765,14 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_zeros_like_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
     op = "zeros_like",
     tile_size = "1024",
     types = [

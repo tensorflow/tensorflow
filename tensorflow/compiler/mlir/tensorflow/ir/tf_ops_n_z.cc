@@ -136,7 +136,7 @@ static LogicalResult Verify(OneHotOp op) {
   if (matchPattern(op.depth(), m_Constant(&depth_attr))) {
     if (depth_attr.getType().getRank() != 0)
       return op.emitOpError() << "requires depth to be a scalar";
-    int64_t depth = depth_attr.getValue<APInt>({}).getSExtValue();
+    int64_t depth = depth_attr.getValues<APInt>()[0].getSExtValue();
     if (depth < 0) {
       return op.emitOpError() << "depth must be non-negative, got: " << depth;
     }
@@ -627,9 +627,9 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
          delta_tensor.getType().getRank() == 0);
   Type elem_type = getType().cast<ShapedType>().getElementType();
   if (elem_type.isSignlessInteger() || elem_type.isUnsignedInteger()) {
-    auto start_attr = start_tensor.getValue<IntegerAttr>({});
-    auto limit_attr = limit_tensor.getValue<IntegerAttr>({});
-    auto delta_attr = delta_tensor.getValue<IntegerAttr>({});
+    auto start_attr = start_tensor.getValues<IntegerAttr>()[0];
+    auto limit_attr = limit_tensor.getValues<IntegerAttr>()[0];
+    auto delta_attr = delta_tensor.getValues<IntegerAttr>()[0];
     int num_elements;
     if (elem_type.isUnsignedInteger()) {
       uint64_t start = start_attr.getUInt();
@@ -648,9 +648,9 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
     return BuildConstRangeTensor(elem_type, num_elements, start_attr,
                                  delta_attr);
   } else if (elem_type.isa<FloatType>()) {
-    auto start_attr = start_tensor.getValue<FloatAttr>({});
-    auto limit_attr = limit_tensor.getValue<FloatAttr>({});
-    auto delta_attr = delta_tensor.getValue<FloatAttr>({});
+    auto start_attr = start_tensor.getValues<FloatAttr>()[0];
+    auto limit_attr = limit_tensor.getValues<FloatAttr>()[0];
+    auto delta_attr = delta_tensor.getValues<FloatAttr>()[0];
     const int num_elements = GetLengthOfRange(start_attr.getValueAsDouble(),
                                               limit_attr.getValueAsDouble(),
                                               delta_attr.getValueAsDouble());
@@ -1233,9 +1233,10 @@ static LogicalResult Verify(SliceOp op) {
     for (const APInt &raw_begin_index : begin_indices.getValues<APInt>()) {
       int64_t begin_index = raw_begin_index.getSExtValue();
       int64_t input_size = input_ty ? input_ty.getShape()[dim] : -1;
-      int64_t slice_size = constant_slice_sizes
-                               ? slice_sizes.getValue<APInt>(dim).getSExtValue()
-                               : 0;
+      int64_t slice_size =
+          constant_slice_sizes
+              ? slice_sizes.getValues<APInt>()[dim].getSExtValue()
+              : 0;
       int64_t output_size = output_ty ? output_ty.getShape()[dim] : -1;
 
       if (slice_size == -1 && input_size != -1) {
@@ -1261,7 +1262,7 @@ static LogicalResult Verify(SliceOp op) {
     if (matchPattern(op.size(), m_Constant(&slice_sizes))) {
       auto input_shape = input_ty.getShape();
       for (int64_t i = 0; i < input_ty.getRank(); ++i) {
-        int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+        int64_t slice_size = slice_sizes.getValues<APInt>()[i].getSExtValue();
         int64_t input_size = input_shape[i];
         if (slice_size != -1 && input_size != -1 && slice_size > input_size) {
           return op.emitOpError() << "requires size[i] <= Di, even if begin[i] "
@@ -1384,9 +1385,9 @@ static LogicalResult Verify(SpaceToBatchNDOp op) {
   if (matchPattern(op.paddings(), m_Constant(&paddings_attr))) {
     for (uint64_t i = 0; i < block_rank; ++i) {
       const int64_t pad_start =
-          paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt();
+          paddings_attr.getValues<APInt>()[{i, 0}].getSExtValue();
       const int64_t pad_end =
-          paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
+          paddings_attr.getValues<APInt>()[{i, 1}].getSExtValue();
       if (pad_start < 0 || pad_end < 0) {
         return op.emitOpError()
                << "requires all values of paddings to be >= 0; "
@@ -1401,11 +1402,11 @@ static LogicalResult Verify(SpaceToBatchNDOp op) {
     for (uint64_t i = 0; i < block_rank; ++i) {
       const int64_t input_len = input_type.getShape()[1 + i];
       const int64_t pad_start =
-          paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt();
+          paddings_attr.getValues<APInt>()[{i, 0}].getSExtValue();
       const int64_t pad_end =
-          paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
+          paddings_attr.getValues<APInt>()[{i, 1}].getSExtValue();
       const int64_t block_len =
-          block_shape_attr.getValue({i}).cast<IntegerAttr>().getInt();
+          block_shape_attr.getValues<APInt>()[i].getSExtValue();
       if ((input_len + pad_start + pad_end) % block_len != 0) {
         return op.emitOpError()
                << "requires block_shape[i] divides "
@@ -1575,6 +1576,29 @@ static LogicalResult Verify(SplitVOp op) {
 void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
   results.insert<SquareOfSub>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// SqueezeOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SqueezeOp op) {
+  auto input_type = op.input().getType().dyn_cast<RankedTensorType>();
+
+  if (!input_type) return success();  // Can't verify squeeze dims.
+
+  int64_t input_rank = input_type.getRank();
+  for (const auto &squeeze_dim_apint :
+       op.squeeze_dims().getAsValueRange<IntegerAttr>()) {
+    int64_t squeeze_dim = squeeze_dim_apint.getSExtValue();
+    if (squeeze_dim < -input_rank || squeeze_dim >= input_rank) {
+      return op.emitOpError()
+             << "squeeze dimension " << squeeze_dim << " not in ["
+             << -input_rank << ", " << input_rank << ")";
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1987,9 +2011,9 @@ OpFoldResult StridedSliceOp::fold(ArrayRef<Attribute> operands) {
   if (!tensor_ty) return {};
 
   int64_t rank = tensor_ty.getRank();
-  int64_t begin_int = begin_attr.getValue<APInt>(0).getSExtValue();
-  int64_t end_int = end_attr.getValue<APInt>(0).getSExtValue();
-  int64_t strides_int = strides_attr.getValue<APInt>(0).getSExtValue();
+  int64_t begin_int = begin_attr.getValues<APInt>()[0].getSExtValue();
+  int64_t end_int = end_attr.getValues<APInt>()[0].getSExtValue();
+  int64_t strides_int = strides_attr.getValues<APInt>()[0].getSExtValue();
 
   // Canonicalize `begin` and `end` in case of negative index.
   if (begin_int < 0) begin_int += rank;
@@ -2347,7 +2371,7 @@ static LogicalResult Verify(TileOp op) {
       for (int32_t i = 0, e = input_type.getRank(); i < e; ++i) {
         const int64_t input_dim = input_type.getDimSize(i);
         const int64_t output_dim = output_type.getDimSize(i);
-        const int64_t m = multiples_attr.getValue<APInt>(i).getSExtValue();
+        const int64_t m = multiples_attr.getValues<APInt>()[i].getSExtValue();
 
         if (m < 0) {
           return op.emitOpError()
@@ -3265,7 +3289,7 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
 
     DenseIntElementsAttr dim_index_attr;
     if (matchPattern(op.dim_index(), m_Constant(&dim_index_attr))) {
-      int64_t dim_index = dim_index_attr.getValue<APInt>({}).getSExtValue();
+      int64_t dim_index = dim_index_attr.getValues<APInt>()[0].getSExtValue();
 
       int64_t rank = operand_ty.getRank();
       if (dim_index < 0 || dim_index >= rank) {

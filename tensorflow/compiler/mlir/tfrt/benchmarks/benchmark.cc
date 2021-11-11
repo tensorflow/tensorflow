@@ -31,6 +31,9 @@ using ::tfrt::HostContext;
 using ::tfrt::cpu::jit::CompilationOptions;
 using ::tfrt::cpu::jit::MemrefType;
 
+const bool kStaticDim = false;
+const bool kDynamicDim = true;
+
 std::unique_ptr<HostContext> CreateSingleThreadedHostContext() {
   return std::make_unique<HostContext>(
       [](const tfrt::DecodedDiagnostic& diag) {
@@ -81,7 +84,8 @@ JitExecutable& CreateJitExecutable(
   static auto* cache = new llvm::StringMap<std::unique_ptr<JitExecutable>>();
 
   std::string key =
-      llvm::formatv("{0}/{1}", mlir_input.data(), opts.num_worker_threads);
+      llvm::formatv("{0}/{1}/{2}", mlir_input.data(), opts.num_worker_threads,
+                    hash_value(tf_cpurt_opts));
 
   // Compile and cache MLIR function.
   auto it = cache->find(key);

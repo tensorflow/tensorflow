@@ -23,9 +23,13 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 
+void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
+void populateLegalizeTFLPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
+
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass();
 std::unique_ptr<OperationPass<FuncOp>> createFuseBiasTFPass();
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass();
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFTFLPass();
 std::unique_ptr<OperationPass<FuncOp>> createConvertTFLUint8Pass();
 std::unique_ptr<OperationPass<FuncOp>> createStripQuantTypesPass();
 

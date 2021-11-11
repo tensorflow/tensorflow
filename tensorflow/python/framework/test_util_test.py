@@ -47,6 +47,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
 
 
@@ -286,11 +287,18 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self._WeMustGoDeeper("name")
     self._WeMustGoDeeper("orig")
 
+  @parameterized.named_parameters(
+      dict(testcase_name="tensors", ragged_tensors=False),
+      dict(testcase_name="ragged_tensors", ragged_tensors=True))
   @test_util.run_in_graph_and_eager_modes
-  def testAllCloseTensors(self):
+  def testAllCloseTensors(self, ragged_tensors: bool):
     a_raw_data = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
     a = constant_op.constant(a_raw_data)
     b = math_ops.add(1, constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8]]))
+    if ragged_tensors:
+      a = ragged_tensor.RaggedTensor.from_tensor(a)
+      b = ragged_tensor.RaggedTensor.from_tensor(b)
+
     self.assertAllClose(a, b)
     self.assertAllClose(a, a_raw_data)
 

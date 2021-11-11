@@ -16,8 +16,8 @@
 
 import logging as _logging
 import os as _os
-import six as _six
 import sys as _sys
+import typing as _typing
 
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
@@ -57,10 +57,8 @@ setattr(_current_module, "keras", keras)
 
 # Explicitly import lazy-loaded modules to support autocompletion.
 # pylint: disable=g-import-not-at-top
-if not _six.PY2:
-  import typing as _typing
-  if _typing.TYPE_CHECKING:
-    from tensorflow_estimator.python.estimator.api._v2 import estimator
+if _typing.TYPE_CHECKING:
+  from tensorflow_estimator.python.estimator.api._v2 import estimator
 # pylint: enable=g-import-not-at-top
 
 # We would like the following to work for fully enabling 2.0 in a 1.0 install:

@@ -275,7 +275,7 @@ bool miscFuseHelper<ConstOp>(PatternRewriter& rewriter, Operation* user,
   rewriter.setInsertionPoint(load_op);
   Value inlined_result = rewriter.create<arith::ConstantOp>(
       loc, memref_type.getElementType(),
-      cast<ConstOp>(producer).value().getValue({}));
+      cast<ConstOp>(producer).value().getValues<Attribute>()[0]);
   for (LoadOp to_be_replaced : load_ops)
     to_be_replaced.replaceAllUsesWith(inlined_result);
   return true;

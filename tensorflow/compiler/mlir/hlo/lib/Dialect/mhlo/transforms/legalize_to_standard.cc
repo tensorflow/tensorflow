@@ -135,7 +135,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
     values.reserve(output_size);
 
     int64_t increase_stride = output_size;
-    for (int i = 0; i <= dimension; i++) {
+    for (uint64_t i = 0; i <= dimension; i++) {
       increase_stride /= output_type.getDimSize(i);
     }
 

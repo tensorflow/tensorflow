@@ -22,6 +22,7 @@ import numpy as np
 
 from . import ops
 from . import jax_jit
+from . import mlir
 from . import outfeed_receiver
 from . import pmap_lib
 from . import profiler
@@ -448,20 +449,20 @@ class DistributedRuntimeClient:
 def get_distributed_runtime_service(
     address: str,
     num_nodes: int,
-    heartbeat_interval: Optional[int],
-    max_missing_heartbeats: Optional[int],
-    enumerate_devices_timeout: Optional[int],
-    shutdown_timeout: Optional[int]) -> DistributedRuntimeService: ...
+    heartbeat_interval: Optional[int] = ...,
+    max_missing_heartbeats: Optional[int] = ...,
+    enumerate_devices_timeout: Optional[int] = ...,
+    shutdown_timeout: Optional[int] = ...) -> DistributedRuntimeService: ...
 def get_distributed_runtime_client(
     address: str,
     node_id: int,
-    rpc_timeout: Optional[int],
-    init_timeout: Optional[int],
-    shutdown_timeout: Optional[int],
-    heartbeat_interval: Optional[int],
-    max_missing_heartbeats: Optional[int],
-    missed_heartbeat_callback: Optional[Any],
-    shutdown_on_destruction: Optional[bool]) -> DistributedRuntimeClient: ...
+    rpc_timeout: Optional[int] = ...,
+    init_timeout: Optional[int] = ...,
+    shutdown_timeout: Optional[int] = ...,
+    heartbeat_interval: Optional[int] = ...,
+    max_missing_heartbeats: Optional[int] = ...,
+    missed_heartbeat_callback: Optional[Any] = ...,
+    shutdown_on_destruction: Optional[bool] = ...) -> DistributedRuntimeClient: ...
 
 def collect_garbage() -> None: ...
 

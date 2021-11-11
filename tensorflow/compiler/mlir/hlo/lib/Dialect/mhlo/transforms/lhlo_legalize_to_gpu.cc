@@ -53,7 +53,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      ReduceOp reduce_op, ArrayRef<Value> args,
+      ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = reduce_op.getLoc();
     // Only support 1d reductions for now.

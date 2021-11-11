@@ -63,7 +63,7 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
       {fallback_init_func.data(), fallback_init_func.size()});
   if (func == nullptr) return tensorflow::Status::OK();
 
-  auto ready_chain = GetReadyChain(host);
+  auto ready_chain = GetReadyChain();
 
   DCHECK_EQ(func->argument_types().size(), 1);
 

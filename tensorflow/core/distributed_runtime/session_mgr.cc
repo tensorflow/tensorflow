@@ -19,11 +19,16 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/remote_device.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/coordination_config.pb.h"
+#include "tensorflow/core/protobuf/distributed_runtime_payloads.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -62,17 +67,18 @@ Status SessionMgr::CreateSession(
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
     bool isolate_session_state) {
-  return CreateSession(session, server_def, cluster_device_attributes,
-                       isolate_session_state, /*master_task=*/"",
-                       /*master_incarnation=*/0);
+  return CreateSession(
+      session, server_def, cluster_device_attributes, isolate_session_state,
+      /*master_task=*/"",
+      /*master_incarnation=*/0, /*coordination_service_config=*/{});
 }
 
 Status SessionMgr::CreateSession(
     const string& session, const ServerDef& server_def,
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
-    bool isolate_session_state, string master_task,
-    int64_t master_incarnation) {
+    bool isolate_session_state, string master_task, int64_t master_incarnation,
+    const CoordinationServiceConfig& coordination_service_config) {
   mutex_lock l(mu_);
   if (session.empty()) {
     return errors::InvalidArgument("Session must be non-empty.");
@@ -181,6 +187,30 @@ Status SessionMgr::CreateSession(
     MasterAssociatedSession s{master_incarnation, session};
     master_to_associated_sessions_.emplace(master_task, s);
   }
+
+  // If configured, enable coordination service and agent in the first worker
+  // session.
+  if (!coordination_service_config.service_type().empty() &&
+      coordination_service_agent_ == nullptr) {
+    std::unique_ptr<CoordinationClientCache> client_cache;
+    TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&client_cache));
+    // Note: If this worker is not the leader, no service instance will be
+    // returned. Hence, only the worker leader in the cluster would hold the
+    // coordination service instance.
+    coordination_service_ =
+        CoordinationServiceInterface::EnableCoordinationService(
+            coordination_service_config.service_type(), worker_env_, server_def,
+            std::move(client_cache));
+
+    std::unique_ptr<CoordinationClientCache> agent_cache;
+    TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&agent_cache));
+    coordination_service_agent_ = CreateCoordinationServiceAgent();
+    TF_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
+        worker_env_, server_def, std::move(agent_cache),
+        /*error_fn=*/[](Status s) {
+          LOG(ERROR) << "Coordination agent is set to error: " << s;
+        }));
+  }
   return Status::OK();
 }
 
@@ -268,10 +298,14 @@ Status SessionMgr::WorkerSessionForSessionLocked(
   } else {
     auto it = sessions_.find(session_handle);
     if (it == sessions_.end()) {
-      return errors::Aborted("Session handle is not found: ", session_handle,
-                             ". Possibly this worker (\"",
-                             legacy_session_->worker_name(),
-                             "\") just restarted.");
+      return errors::AbortedWithPayloads(
+          strings::StrCat("Session handle is not found: ", session_handle,
+                          ". Possibly this worker (\"",
+                          legacy_session_->worker_name(),
+                          "\") just restarted."),
+          {{kWorkerPossiblyRestarted,
+            distributed_runtime::WorkerPossiblyRestarted()
+                .SerializeAsString()}});
     } else {
       *out_session = it->second;
     }
@@ -287,6 +321,10 @@ Status SessionMgr::WorkerSessionForSession(
 
 std::shared_ptr<WorkerSession> SessionMgr::LegacySession() {
   return legacy_session_;
+}
+
+CoordinationServiceAgent* SessionMgr::GetCoordinationServiceAgent() {
+  return coordination_service_agent_.get();
 }
 
 void SessionMgr::SetLogging(bool active) {

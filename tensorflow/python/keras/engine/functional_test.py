@@ -114,14 +114,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       network.add_update(state_ops.assign_add(layer.b, x4), inputs=True)
       self.assertEqual(len(network.updates), 7)
 
-  @combinations.generate(combinations.combine(mode=['graph']))
-  def test_get_updates_bn(self):
-    x1 = input_layer_lib.Input(shape=(1,))
-    layer = layers.BatchNormalization()
-    _ = layer(x1)
-
-    self.assertEqual(len(layer.updates), 2)
-
   def test_get_layer(self):
     # create a simple network
     x = input_layer_lib.Input(shape=(32,))
@@ -1875,18 +1867,6 @@ class NestedNetworkTest(keras_parameterized.TestCase):
 
     output_shape = network.compute_output_shape([(None, 1), (None, 1)])
     self.assertListEqual(output_shape.as_list(), [None, 1])
-
-  @combinations.generate(combinations.combine(mode=['graph']))
-  def test_updates_with_direct_call(self):
-    inputs = input_layer_lib.Input(shape=(10,))
-    x = layers.BatchNormalization()(inputs)
-    x = layers.Dense(10)(x)
-    model = training_lib.Model(inputs, x)
-
-    ph = backend.placeholder(shape=(10, 10))
-    model(ph)
-
-    self.assertLen(model.updates, 4)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_dict_mapping_input(self):

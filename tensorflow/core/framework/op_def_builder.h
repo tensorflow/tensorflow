@@ -34,6 +34,7 @@ namespace tensorflow {
 // TODO(b/62899350): Refactor without proto dependencies.
 typedef std::function<Status(OpDef* c)> OpTypeConstructor;
 
+// TODO(mdan): Consider a vector-in, vector-out contract.
 typedef std::function<StatusOr<FullTypeDef>(
     const std::vector<std::reference_wrapper<const FullTypeDef>>&)>
     ForwardTypeInferenceFn;

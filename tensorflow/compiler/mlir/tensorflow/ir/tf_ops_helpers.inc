@@ -479,14 +479,16 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
 
   // Fold: Op(Operand, Identity) -> Operand.
   if (rhs_attr && is_valid_broadcasting(lhs_type, rhs_type, result_type)) {
-    if (rhs_attr.isSplat() && rhs_attr.getSplatValue() == identity_attr)
+    if (rhs_attr.isSplat() &&
+        rhs_attr.getSplatValue<Attribute>() == identity_attr)
       return arithmetic_op.x();
   }
 
   // Fold: Op(Identity, Operand) -> Operand for commutative operations.
   if (lhs_attr && is_commutative &&
       is_valid_broadcasting(rhs_type, lhs_type, result_type)) {
-    if (lhs_attr.isSplat() && lhs_attr.getSplatValue() == identity_attr)
+    if (lhs_attr.isSplat() &&
+        lhs_attr.getSplatValue<Attribute>() == identity_attr)
       return arithmetic_op.y();
   }
 

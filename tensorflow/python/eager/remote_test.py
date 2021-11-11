@@ -21,7 +21,6 @@ import time
 from absl.testing import parameterized
 import numpy as np
 import portpicker
-import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
@@ -149,10 +148,7 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(ValueError) as cm:
         matmul_func(x, y)
 
-    if six.PY2:
-      self.assertIn('Dimensions must be equal', cm.exception.message)
-    else:
-      self.assertIn('Dimensions must be equal', cm.exception.args[0])
+    self.assertIn('Dimensions must be equal', cm.exception.args[0])
 
   def testClientVarible(self):
     var = variables.Variable(initial_value=0)

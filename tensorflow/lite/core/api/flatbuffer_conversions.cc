@@ -804,8 +804,31 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_BucketizeOptions()) {
         const flatbuffers::Vector<float>* boundaries =
             bucketize_params->boundaries();
+        if (boundaries == nullptr) {
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
+              "boundaries array not provided for operation 'bucketize'.\n");
+          return kTfLiteError;
+        }
         params->num_boundaries = boundaries->size();
+        if (boundaries->data() == nullptr) {
+          TF_LITE_REPORT_ERROR(error_reporter,
+                               "boundaries.data() returned nullptr for "
+                               "operation 'bucketize'.\n");
+          return kTfLiteError;
+        }
         params->boundaries = boundaries->data();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_RANDOM_UNIFORM: {
+      auto params = safe_allocator.Allocate<TfLiteRandomParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* random_uniform_params =
+              op->builtin_options_as_RandomOptions()) {
+        params->seed = random_uniform_params->seed();
+        params->seed2 = random_uniform_params->seed2();
       }
       *builtin_data = params.release();
       return kTfLiteOk;

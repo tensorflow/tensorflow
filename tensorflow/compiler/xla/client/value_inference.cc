@@ -1282,7 +1282,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
           auto accum = b.AddInstruction(HloInstruction::CreateConstant(
               LiteralUtil::CreateR0<bool>(false)));
 
-          for (int64_t i = 0; i < root_shape.tuple_shapes_size(); ++i) {
+          for (int i = 0; i < root_shape.tuple_shapes_size(); ++i) {
             auto lhs = b.AddInstruction(
                 HloInstruction::CreateParameter(i, scalar_shape, "lhs"));
             auto rhs = b.AddInstruction(HloInstruction::CreateParameter(

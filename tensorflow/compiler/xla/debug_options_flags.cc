@@ -73,7 +73,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
-  opts.set_xla_gpu_deterministic_reductions(true);
   opts.set_xla_gpu_all_reduce_combine_threshold_bytes(30 * 1024 * 1024);
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
@@ -596,11 +595,6 @@ static void AllocateFlags() {
       flag_values->xla_gpu_algorithm_denylist_path(),
       "An AlgorithmDenylist text proto file as a denylist of convolutions to "
       "avoid to use."));
-  flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_deterministic_reductions",
-      bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_reductions),
-      flag_values->xla_gpu_deterministic_reductions(),
-      "Always run deterministic reductions on GPU"));
   flag_objects->push_back(tensorflow::Flag(
       "xla_tpu_detect_nan",
       bool_setter_for(&DebugOptions::set_xla_tpu_detect_nan),

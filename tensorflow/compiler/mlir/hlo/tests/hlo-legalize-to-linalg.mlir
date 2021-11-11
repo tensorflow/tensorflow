@@ -2223,8 +2223,8 @@ func @dynamic_update_slice_unsigned(%target: tensor<3x3xui32>, %update: tensor<2
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
-// CHECK:         %[[SIGNLESS_TARGET:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : tensor<3x3xui32> to tensor<3x3xi32>
-// CHECK:         %[[SIGNLESS_UPDATE:.*]] = builtin.unrealized_conversion_cast %[[ARG1]] : tensor<2x2xui32> to tensor<2x2xi32>
+// CHECK-DAG:     %[[SIGNLESS_UPDATE:.*]] = builtin.unrealized_conversion_cast %[[ARG1]] : tensor<2x2xui32> to tensor<2x2xi32>
+// CHECK-DAG:     %[[SIGNLESS_TARGET:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : tensor<3x3xui32> to tensor<3x3xi32>
 // CHECK:         %[[C0:.*]] = arith.constant 0 : i32
 // CHECK:         %[[SCALAR1:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
 // CHECK:         %[[UB1:.*]] = arith.constant 1 : i32
@@ -3476,9 +3476,9 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
 // CHECK-SAME:   %[[VAL_0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[VAL_1:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[VAL_2:[a-zA-Z0-9_]*]]
-// CHECK:           %[[VAL_3:.*]] = builtin.unrealized_conversion_cast %[[VAL_0]] : tensor<?x?xui32> to tensor<?x?xi32>
-// CHECK:           %[[VAL_4:.*]] = builtin.unrealized_conversion_cast %[[VAL_1]] : tensor<?x?xui32> to tensor<?x?xi32>
-// CHECK:           %[[VAL_5:.*]] = builtin.unrealized_conversion_cast %[[VAL_2]] : tensor<?x?xui32> to tensor<?x?xi32>
+// CHECK-DAG:       %[[VAL_5:.*]] = builtin.unrealized_conversion_cast %[[VAL_2]] : tensor<?x?xui32> to tensor<?x?xi32>
+// CHECK-DAG:       %[[VAL_4:.*]] = builtin.unrealized_conversion_cast %[[VAL_1]] : tensor<?x?xui32> to tensor<?x?xi32>
+// CHECK-DAG:       %[[VAL_3:.*]] = builtin.unrealized_conversion_cast %[[VAL_0]] : tensor<?x?xui32> to tensor<?x?xi32>
 // CHECK:           %[[VAL_6:.*]] = arith.constant 0 : index
 // CHECK:           %[[VAL_7:.*]] = arith.constant 0 : index
 // CHECK:           %[[VAL_8:.*]] = tensor.dim %[[VAL_3]], %[[VAL_7]] : tensor<?x?xi32>

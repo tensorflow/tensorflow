@@ -91,6 +91,11 @@ def LegalizeHloToTfPass : FunctionPass<"tf-legalize-hlo"> {
   let constructor = "TF::CreateLegalizeHloToTfPass()";
 }
 
+def LegalizeTFGToTFPass : Pass<"tfe-legalize-tfg", "ModuleOp"> {
+  let summary = "Legalize from TFG to the TFE dialect";
+  let constructor = "TF::CreateLegalizeTFGToTFEPass()";
+}
+
 def ReplicateToIslandPass : FunctionPass<"tf-replicate-to-island"> {
   let summary = "Lowers device replicate to executor islands";
   let constructor = "TFDevice::CreateReplicateToIslandPass()";
@@ -112,6 +117,11 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
     Option<"max_iterations_", "max-iterations", "int64_t", /*default=*/"10",
            "Maximum shape inference iterations">
   ];
+}
+
+def StripNoinlineAttributePass : Pass<"tf-strip-noinline-attribute", "ModuleOp"> {
+  let summary = "Strip the tf._noinline attribute from top-level functions.";
+  let constructor = "TF::CreateStripNoinlineAttributePass()";
 }
 
 def ExecutorConvertControlToDataOutputsPass : Pass<"tf-executor-convert-control-to-data-outputs", "ModuleOp"> {
@@ -503,6 +513,19 @@ def ClusterOutliningPass : Pass<"tf-device-cluster-outlining", "ModuleOp"> {
   }];
 
   let constructor = "TFDevice::CreateClusterOutliningPass()";
+}
+
+def ConvertTfControlFlowToScfPass : Pass<"convert-tf-control-flow-to-scf", "ModuleOp"> {
+  let summary = "Convert TensorFlow control flow to SCF.";
+
+  let description = [{
+    This pass can be used for all direct control flow lowerings from the TensorFlow
+    dialect to the SCF dialect.
+  }];
+
+  let dependentDialects = ["scf::SCFDialect", "tensor::TensorDialect"];
+
+  let constructor = "TF::createConvertTfControlFlowToScfPass()";
 }
 
 def LaunchOutliningPass : Pass<"tf-device-launch-outlining", "ModuleOp"> {

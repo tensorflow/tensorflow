@@ -5,44 +5,11 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
 
 package(
-    default_visibility = [":friends"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
-)
-
-package_group(
-    name = "friends",
-    packages = [
-        "//platforms/darwinn/tools/mlir_fuzzer/...",
-        "//third_party/auroraml/...",
-        "//tensorflow/compiler/...",
-        "//tensorflow/core/runtime_fallback/test/...",
-        "//tensorflow/core/tfrt/saved_model/...",
-        "//tensorflow/core/tfrt/utils/...",
-        "//tensorflow/cc/...",
-        "//tensorflow/python/...",
-        "//tensorflow/tools/pip_package/...",
-        "//tensorflow/tools/...",
-    ] + if_google([
-        "//learning/brain/experimental/mlir/tflite/tfmrt/...",
-        "//learning/brain/experimental/dtensor/...",
-        "//learning/brain/experimental/tfrt/...",
-        "//learning/brain/mlir/bridge/...",
-        # Allow visibility from the mlir language server.
-        "//learning/brain/mlir/mlir_lsp_server/...",
-        "//learning/brain/mobile/lite/tf_runtime/...",
-        "//learning/brain/tfrt/tpu_runner/...",
-        "//learning/brain/tfrt/tpu/compiler/...",
-        "//learning/pathways/data_parallel/serving/...",
-        "//learning/pathways/data_parallel/tf2xla/...",
-        "//learning/serving/contrib/tfrt/mlir/...",
-        "//platforms/darwinn/contrib/waymo/...",
-        "//platforms/xla/sparse_core/...",
-        "//waymo/ml/compiler/...",
-        "//research/language_modeling/sentence_explorer/ondevice/...",
-    ]),
 )
 
 exports_files([
@@ -407,6 +374,28 @@ cc_library(
 )
 
 cc_library(
+    name = "tfe_legalize_tfg",
+    srcs = [
+        "transforms/passes.h",
+        "transforms/passes_detail.h",
+        "transforms/tfg-to-tfe.cc",
+    ],
+    deps = [
+        ":tensorflow",
+        ":tf_device_pass_inc_gen",
+        ":tf_pass_inc_gen",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/ir:Dialect",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "tensorflow_attributes",
     hdrs = [
         "ir/tf_attributes.h",
@@ -605,6 +594,7 @@ cc_library(
         ":tensorflow_types",
         ":tensorflow_remaining_ops",
         ":tensorflow_tfrt_ops",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
@@ -616,6 +606,7 @@ cc_library(
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "//tensorflow/core/common_runtime:inline_function_utils",
         "//tensorflow/core/common_runtime:lower_function_call_inline_policy",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -712,6 +703,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -933,36 +925,73 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_saved_model_freeze_variables",
+    srcs = [
+        "transforms/tf_saved_model_freeze_variables.cc",
+    ],
+    hdrs = [
+        "transforms/tf_saved_model_freeze_variables.h",
+    ],
+    deps = [
+        ":convert_tensor",
+        ":resource_value_typed_analyzer",
+        ":session_utils",
+        ":tensorflow",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:protos_all_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
+    name = "initialize_variables_in_session_init",
+    srcs = [
+        "transforms/initialize_variables_in_session_init.cc",
+    ],
+    hdrs = [
+        "transforms/initialize_variables_in_session_init.h",
+    ],
+    deps = [
+        ":convert_tensor",
+        ":session_utils",
+        ":tensorflow",
+        ":tensorflow_ops",
+        ":tensorflow_passes",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework_internal",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
     name = "tf_saved_model_passes",
     srcs = [
         "transforms/deduplicate_bound_input_bindings.cc",
         "transforms/freeze_global_tensors.cc",
         "transforms/freeze_saved_model_assets.cc",
-        "transforms/initialize_variables_in_session_init.cc",
-        "transforms/lift_variables_pass.cc",
-        "transforms/mark_initialized_variables_pass.cc",
         "transforms/optimize_global_tensors.cc",
         "transforms/remove_vars_in_session_initializer.cc",
-        "transforms/tf_saved_model_freeze_variables.cc",
     ],
     hdrs = [
         "transforms/tf_saved_model_passes.h",
     ],
     deps = [
-        ":convert_tensor",
         ":lift_variables_lib",
-        ":mark_initialized_variables_lib",
         ":resource_value_typed_analyzer",
-        ":session_utils",
         ":tensorflow",
         ":tensorflow_ops",
         ":tensorflow_passes",
         ":tensorflow_types",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -1103,6 +1132,7 @@ cc_library(
         "transforms/constant_op_device_assignment.cc",
         "transforms/convert_control_to_data_outputs.cc",
         "transforms/convert_launch_func_to_tf_call.cc",
+        "transforms/convert_tf_control_flow_to_scf.cc",
         "transforms/decompose_resource_ops_pass.cc",
         "transforms/device_attribute_to_launch.cc",
         "transforms/device_index_selector.cc",
@@ -1149,6 +1179,7 @@ cc_library(
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
         "transforms/stack_ops_decomposition.cc",
+        "transforms/strip_noinline_attribute.cc",
         "transforms/tensor_array_ops_decomposition.cc",
         "transforms/tensor_device_copy_conversion.cc",
         "transforms/tensor_list_ops_decomposition.cc",
@@ -1221,6 +1252,7 @@ cc_library(
         ":tf_legalize_hlo",
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
+        ":tfe_legalize_tfg",
         ":tpu_rewrite_device_util",
         ":translate_utils",
         ":unroll_batch_matmul_pass",
@@ -1259,6 +1291,7 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Rewrite",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
@@ -1304,12 +1337,14 @@ cc_library(
     deps = [
         ":error_util",
         ":fake_session",
+        ":initialize_variables_in_session_init",
         ":lift_variables_lib",
         ":lower_tf_lib",
         ":mark_initialized_variables_lib",
         ":tensorflow",
         ":tensorflow_analysis",
         ":tensorflow_passes",
+        ":tf_saved_model_freeze_variables",
         ":tf_saved_model_passes",
         ":tf_test_passes_inc_gen",
         ":visitor_util",
@@ -1395,7 +1430,10 @@ cc_library(
         ":error_util",
         ":export_tf_dialect_op",
         ":export_utils",
+        ":initialize_variables_in_session_init",
+        ":lift_variables_lib",
         ":mangling_util",
+        ":mark_initialized_variables_lib",
         ":mlir_import_options",
         ":mlir_roundtrip_flags",
         ":tensorflow",
@@ -1715,10 +1753,7 @@ cc_library(
     name = "error_util",
     srcs = ["utils/error_util.cc"],
     hdrs = ["utils/error_util.h"],
-    visibility = [
-        ":friends",
-        "//tensorflow:__subpackages__",
-    ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -1950,6 +1985,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
     "//tensorflow/compiler/mlir/hlo:sink_constants_to_control_flow",
     "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
+    "//tensorflow/compiler/mlir/xla:tf_xla_passes",
     "//tensorflow/compiler/mlir/xla:xla_passes",
     "//tensorflow/compiler/mlir/xla:type_to_shape",
     "//tensorflow/compiler/mlir/xla:adjust_layout",

@@ -32,7 +32,7 @@ namespace tfrt_stub {
 
 // This class defines a work queue based on the WorkQueueInterface that uses the
 // Tensorflow threadpools to execute inter-op and intra-op closures.
-class TfThreadPoolWorkQueue : public tensorflow::tfrt_stub::WorkQueueInterface {
+class TfThreadPoolWorkQueue : public WorkQueueInterface {
  public:
   TfThreadPoolWorkQueue(
       tensorflow::thread::ThreadPoolInterface* intra_op_threadpool,
@@ -40,7 +40,7 @@ class TfThreadPoolWorkQueue : public tensorflow::tfrt_stub::WorkQueueInterface {
       : intra_op_threadpool_(intra_op_threadpool),
         inter_op_threadpool_(inter_op_threadpool) {}
 
-  tensorflow::Status InitializeRequest(
+  StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
       ::tfrt::RequestContextBuilder* request_context_builder,
       tensorflow::thread::ThreadPoolInterface** intra_op_threadpool)
       const override;

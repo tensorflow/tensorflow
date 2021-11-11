@@ -491,7 +491,7 @@ class DecodeImageV2Op : public OpKernel {
                 errors::InvalidArgument("Invalid GIF data (size ", input.size(),
                                         "), ", error_string));
 
-    // For when desired data type is unit8, the output buffer is already
+    // For when desired data type is uint8, the output buffer is already
     // allocated during the `gif::Decode` call above; return.
     if (data_type_ == DataType::DT_UINT8) {
       return;

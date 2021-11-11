@@ -24,7 +24,6 @@ import string
 
 import numpy as np
 import opt_einsum
-import six
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -1239,9 +1238,8 @@ def _get_opt_einsum_contract_path(equation, shaped_inputs_tuple, optimize):
 
 # Cache the possibly expensive opt_einsum.contract_path call using lru_cache
 # from the Python3+ standard library.
-if not six.PY2:
-  _get_opt_einsum_contract_path = functools.lru_cache(maxsize=128)(
-      _get_opt_einsum_contract_path)
+_get_opt_einsum_contract_path = functools.lru_cache(maxsize=128)(
+    _get_opt_einsum_contract_path)
 
 
 def _einsum_v2_parse_and_resolve_equation(equation, input_shapes):

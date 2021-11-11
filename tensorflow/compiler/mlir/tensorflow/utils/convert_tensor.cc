@@ -226,11 +226,11 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
     TF_ASSIGN_OR_RETURN(ElementsAttr single_attr,
                         ConvertTensorProto(tensor_copy, builder));
 
-    std::vector<int64_t> original_dimensions;
+    llvm::SmallVector<int64_t> original_dimensions;
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
     return ElementsAttr(mlir::SplatElementsAttr::get(
         single_attr.getType().clone(original_dimensions),
-        single_attr.getValue({0})));
+        single_attr.getValues<mlir::Attribute>()[0]));
   }
 
   Tensor t;

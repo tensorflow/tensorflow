@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -100,13 +101,7 @@ XlaDeviceContext::XlaDeviceContext(
   CHECK(host_to_device_stream_ != nullptr);
   CHECK(stream_ != nullptr);
   if (!shape_representation_fn_) {
-    shape_representation_fn_ =
-        [](const TensorShape& shape, DataType dtype,
-           bool use_fast_memory) -> StatusOr<xla::Shape> {
-      xla::Shape xla_shape;
-      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
-      return xla_shape;
-    };
+    shape_representation_fn_ = tensorflow::IdentityShapeRepresentationFn();
   }
 }
 
@@ -141,10 +136,10 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   CHECK(xla_tensor);
 
   Status status = [&]() -> Status {
-    TF_ASSIGN_OR_RETURN(
-        xla::Shape shape,
-        shape_representation_fn_(device_tensor->shape(), device_tensor->dtype(),
-                                 use_fast_mem_));
+    TF_ASSIGN_OR_RETURN(xla::Shape shape,
+                        shape_representation_fn_(
+                            device_tensor->shape(), device_tensor->dtype(),
+                            use_fast_mem_, TpuLayoutPreference::kNoPreference));
 
     // The device tensor should always be fresh.
     TF_RET_CHECK(!xla_tensor->has_shaped_buffer());

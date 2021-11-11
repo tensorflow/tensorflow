@@ -111,6 +111,7 @@ DerivedXLineBuilder::DerivedXLineBuilder(
   line_.SetName(name);
   line_.SetTimestampNs(timestamp_ns);
   dependent_lines_ = std::move(dependent_lines);
+  level_stats_ = plane->GetOrCreateStatMetadata("l");
 }
 
 void DerivedXLineBuilder::ExpandOrAddLevelEvent(
@@ -150,6 +151,7 @@ void DerivedXLineBuilder::ExpandOrAddLevelEvent(
     ResetLastEvents(level);
     // And create a new event for the given level.
     last_event = line_.AddEvent(event);
+    last_event->AddStatValue(*level_stats_, level);
     // Also create a new XEventInfo for this level.
     last_eventinfo = XEventInfo(group_id, low_level_event_name);
   }

@@ -223,6 +223,14 @@ check_python_pip_version() {
   fi
 }
 
+# Write an entry to the sponge key-value store for this job.
+write_to_sponge() {
+  # The location of the key-value CSV file sponge imports.
+  TF_SPONGE_CSV="${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv"
+  echo "$1","$2" >> "${TF_SPONGE_CSV}"
+}
+
+
 ###########################################################################
 # Setup: directories, local/global variables
 ###########################################################################
@@ -312,6 +320,7 @@ bazel clean
 update_bazel_flags
 # Build. This outputs the file `build_pip_package`.
 bazel build \
+  --experimental_cc_shared_library \
   --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
   ${TF_BUILD_FLAGS} \
   ${PIP_BUILD_TARGET} \
@@ -654,8 +663,10 @@ fi
 
 WHL_DIR=$(dirname "${WHL_PATH}")
 
-# Print the size of the wheel file.
-echo "Size of the PIP wheel file built: $(ls -l ${WHL_PATH} | awk '{print $5}')"
+# Print the size of the wheel file and log to sponge.
+WHL_SIZE=$(ls -l ${WHL_PATH} | awk '{print $5}')
+echo "Size of the PIP wheel file built: ${WHL_SIZE}"
+write_to_sponge TF_INFO_WHL_SIZE ${WHL_SIZE}
 
 # Build the other GPU package.
 if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq "1" ]]; then

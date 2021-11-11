@@ -27,10 +27,11 @@ message Update {
   }
 }
 
-// Next tag: 3
+// Next tag: 4
 message RegisterDatasetUpdate {
   int64 dataset_id = 1;
   uint64 fingerprint = 2;
+  DataServiceMetadata metadata = 3;
 }
 
 // Next tag: 4
@@ -137,6 +138,7 @@ message FinishTaskUpdate {
   int64 task_id = 1;
 }
 
+// Next tag: 3
 message SetElementSpecUpdate {
   int64 dataset_id = 1;
   bytes element_spec = 2;

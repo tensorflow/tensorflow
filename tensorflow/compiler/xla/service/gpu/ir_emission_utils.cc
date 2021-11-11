@@ -148,7 +148,7 @@ std::array<int64_t, 3> GetReductionTiling(
   if (reduction_dimensions.is_row_reduction) {
     int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
                               kBatchedReductionRaceFreeBound);
-    return {tile_z, 1, 64};
+    return {tile_z, 1, 16};
   }
 
   // Column reduction.
@@ -385,7 +385,7 @@ bool IsReductionFromOrToContiguousDimensions(mlir::Operation* op) {
   mlir::Value first_input = reduce.inputs()[0];
   Shape operand_shape = GetShape(first_input);
 
-  std::vector<int64_t> dimensions_to_reduce;
+  llvm::SmallVector<int64_t> dimensions_to_reduce;
   for (const llvm::APInt& d : reduce.dimensions()) {
     dimensions_to_reduce.push_back(d.getZExtValue());
   }
@@ -429,7 +429,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
     mlir::Operation* reduce) {
   mlir::Value input = reduce->getOperand(0);
   Shape operand_shape = GetShape(input);
-  std::vector<int64_t> dimensions_to_reduce;
+  llvm::SmallVector<int64_t> dimensions_to_reduce;
   for (const llvm::APInt& d :
        mlir::cast<mlir::mhlo::ReduceOp>(reduce).dimensions()) {
     dimensions_to_reduce.push_back(d.getZExtValue());

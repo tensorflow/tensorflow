@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
@@ -103,23 +104,22 @@ class CoordinationServiceInterface {
   }
 
   // Register a worker to the service.
-  virtual void RegisterWorker(const std::string& job_name, const int task_id,
-                              const uint64 incarnation,
-                              std::vector<DeviceAttributes> devices,
-                              StatusCallback done) = 0;
+  virtual void RegisterWorker(const std::string& job_name, int task_id,
+                              uint64 incarnation, StatusCallback done) = 0;
 
   // Wait for all tasks to be up and running. The callback is invoked when all
   // tasks are up and registered, or some error occurs.
-  virtual void WaitForAllTasks(const std::string& job_name, const int task_id,
+  virtual void WaitForAllTasks(const std::string& job_name, int task_id,
+                               std::vector<DeviceAttributes> devices,
                                StatusCallback done) = 0;
 
   // Update the heartbeat timestamp of a task. This should only be invoked on
   // the leader of the cluster.
-  virtual Status RecordHeartbeat(const std::string& job_name, const int task_id,
-                                 const uint64 incarnation) = 0;
+  virtual Status RecordHeartbeat(const std::string& job_name, int task_id,
+                                 uint64 incarnation) = 0;
 
   // Set a task in error state permanently.
-  virtual Status ReportTaskError(const std::string& job_name, const int task_id,
+  virtual Status ReportTaskError(const std::string& job_name, int task_id,
                                  Status error) = 0;
 
   // Insert a configuration key-value in the coordination service.

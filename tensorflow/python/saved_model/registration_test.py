@@ -1,4 +1,4 @@
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ class SerializableRegistrationTest(test.TestCase, parameterized.TestCase):
   ])
   def test_registration(self, expected_cls, expected_name):
     obj = expected_cls()
-    self.assertEqual(registration.get_registered_name(obj), expected_name)
+    self.assertEqual(registration.get_registered_class_name(obj), expected_name)
     self.assertIs(
         registration.get_registered_class(expected_name), expected_cls)
 
@@ -67,7 +67,7 @@ class SerializableRegistrationTest(test.TestCase, parameterized.TestCase):
       pass
 
     no_register = NotRegistered
-    self.assertIsNone(registration.get_registered_name(no_register))
+    self.assertIsNone(registration.get_registered_class_name(no_register))
 
   def test_duplicate_registration(self):
 
@@ -76,12 +76,13 @@ class SerializableRegistrationTest(test.TestCase, parameterized.TestCase):
       pass
 
     dup = Duplicate()
-    self.assertEqual(registration.get_registered_name(dup), "Custom.Duplicate")
+    self.assertEqual(
+        registration.get_registered_class_name(dup), "Custom.Duplicate")
     # Registrations with different names are ok.
     registration.register_serializable(package="duplicate")(Duplicate)
     # Registrations are checked in reverse order.
     self.assertEqual(
-        registration.get_registered_name(dup), "duplicate.Duplicate")
+        registration.get_registered_class_name(dup), "duplicate.Duplicate")
     # Both names should resolve to the same class.
     self.assertIs(
         registration.get_registered_class("Custom.Duplicate"), Duplicate)
@@ -96,12 +97,12 @@ class SerializableRegistrationTest(test.TestCase, parameterized.TestCase):
 
   def test_register_non_class_fails(self):
     obj = RegisteredClass()
-    with self.assertRaisesRegex(ValueError, "must be a class"):
+    with self.assertRaisesRegex(TypeError, "must be a class"):
       registration.register_serializable()(obj)
 
   def test_register_bad_predicate_fails(self):
-    with self.assertRaisesRegex(ValueError, "must be callable"):
-      registration.register_serializable(predicate=0)
+    with self.assertRaisesRegex(TypeError, "must be callable"):
+      registration.register_serializable(predicate=0)(RegisteredClass)
 
   def test_predicate(self):
 
@@ -118,8 +119,9 @@ class SerializableRegistrationTest(test.TestCase, parameterized.TestCase):
     a = Predicate(True)
     b = Predicate(False)
     self.assertEqual(
-        registration.get_registered_name(a), "Custom.RegisterThisOnlyTrue")
-    self.assertIsNone(registration.get_registered_name(b))
+        registration.get_registered_class_name(a),
+        "Custom.RegisterThisOnlyTrue")
+    self.assertIsNone(registration.get_registered_class_name(b))
 
     registration.register_serializable(
         name="RegisterAllPredicate",
@@ -127,9 +129,90 @@ class SerializableRegistrationTest(test.TestCase, parameterized.TestCase):
             Predicate)
 
     self.assertEqual(
-        registration.get_registered_name(a), "Custom.RegisterAllPredicate")
+        registration.get_registered_class_name(a),
+        "Custom.RegisterAllPredicate")
     self.assertEqual(
-        registration.get_registered_name(b), "Custom.RegisterAllPredicate")
+        registration.get_registered_class_name(b),
+        "Custom.RegisterAllPredicate")
+
+
+class CheckpointSaverRegistrationTest(test.TestCase):
+
+  def test_invalid_registration(self):
+    with self.assertRaisesRegex(TypeError, "must be string"):
+      registration.register_checkpoint_saver(
+          package=None,
+          name="test",
+          predicate=lambda: None,
+          save_fn=lambda: None,
+          restore_fn=lambda: None)
+    with self.assertRaisesRegex(TypeError, "must be string"):
+      registration.register_checkpoint_saver(
+          name=None,
+          predicate=lambda: None,
+          save_fn=lambda: None,
+          restore_fn=lambda: None)
+    with self.assertRaisesRegex(ValueError,
+                                "Invalid registered checkpoint saver."):
+      registration.register_checkpoint_saver(
+          package="package",
+          name="t/est",
+          predicate=lambda: None,
+          save_fn=lambda: None,
+          restore_fn=lambda: None)
+    with self.assertRaisesRegex(ValueError,
+                                "Invalid registered checkpoint saver."):
+      registration.register_checkpoint_saver(
+          package="package",
+          name="t/est",
+          predicate=lambda: None,
+          save_fn=lambda: None,
+          restore_fn=lambda: None)
+    with self.assertRaisesRegex(
+        TypeError,
+        "The predicate registered to a checkpoint saver must be callable"
+    ):
+      registration.register_checkpoint_saver(
+          name="test",
+          predicate=None,
+          save_fn=lambda: None,
+          restore_fn=lambda: None)
+    with self.assertRaisesRegex(TypeError, "The save_fn must be callable"):
+      registration.register_checkpoint_saver(
+          name="test",
+          predicate=lambda: None,
+          save_fn=None,
+          restore_fn=lambda: None)
+    with self.assertRaisesRegex(TypeError, "The restore_fn must be callable"):
+      registration.register_checkpoint_saver(
+          name="test",
+          predicate=lambda: None,
+          save_fn=lambda: None,
+          restore_fn=None)
+
+  def test_registration(self):
+    registration.register_checkpoint_saver(
+        package="Testing",
+        name="test_predicate",
+        predicate=lambda x: hasattr(x, "check_attr"),
+        save_fn=lambda: "save",
+        restore_fn=lambda: "restore")
+    x = base.Trackable()
+    self.assertIsNone(registration.get_registered_saver_name(x))
+
+    x.check_attr = 1
+    saver_name = registration.get_registered_saver_name(x)
+    self.assertEqual(saver_name, "Testing.test_predicate")
+
+    self.assertEqual(registration.get_save_function(saver_name)(), "save")
+    self.assertEqual(registration.get_restore_function(saver_name)(), "restore")
+
+    registration.validate_restore_function(x, "Testing.test_predicate")
+    with self.assertRaisesRegex(ValueError, "saver cannot be found"):
+      registration.validate_restore_function(x, "Invalid.name")
+    x2 = base.Trackable()
+    with self.assertRaisesRegex(ValueError, "saver cannot be used"):
+      registration.validate_restore_function(x2, "Testing.test_predicate")
 
 
 if __name__ == "__main__":

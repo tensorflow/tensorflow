@@ -72,10 +72,12 @@ class DerivedXLineBuilder {
   void ExpandOrAddEvents(const std::vector<XEvent>& event_per_level,
                          int64_t group_id = kInvalidGroupId,
                          absl::string_view low_level_event_name = "") {
-    for (size_t level = 0; level < event_per_level.size(); ++level) {
+    size_t current_nested_level = event_per_level.size();
+    for (size_t level = 0; level < current_nested_level; ++level) {
       ExpandOrAddLevelEvent(event_per_level[level], group_id,
                             low_level_event_name, level);
     }
+    if (current_nested_level) ResetLastEvents(current_nested_level);
   }
 
   // Reset the last events lower than or equal to the given level.
@@ -97,6 +99,7 @@ class DerivedXLineBuilder {
     }
   }
 
+  const XStatMetadata* level_stats_ = nullptr;
   XLineBuilder line_;
   absl::flat_hash_map<int, absl::optional<XEventBuilder>> last_event_by_level_;
   absl::flat_hash_map<int, absl::optional<XEventInfo>> last_eventinfo_by_level_;

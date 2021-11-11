@@ -234,12 +234,13 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
 
   is_anonymous_ = name_ == ResourceHandle::ANONYMOUS_NAME;
 
+  // Use const_tensor_ if the variable is non-anonymous.
   if (!is_anonymous_) {
     AllocatorAttributes attr;
     attr.set_on_host(true);
     OP_REQUIRES_OK(context, context->allocate_temp(DT_RESOURCE, TensorShape({}),
-                                                   &resource_, attr));
-    resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
+                                                   &const_tensor_, attr));
+    const_tensor_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         context, container_, name_,
         std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
   }
@@ -247,18 +248,27 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
 
 void VarHandleOp::Compute(OpKernelContext* ctx) {
   if (is_anonymous_) {
+    Var* resource = new Var(dtype_and_shape_.dtype);
+    ResourceMgr* mgr = ctx->resource_manager();
+    ResourceHandle handle = ResourceHandle::MakeRefCountingHandle<Var>(
+        resource, ctx->device()->name(),
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+    // TODO(b/203901837): See if we can abolish all code paths that lookup
+    // anonymous variables and then stop publishing them to the manager.
+    OP_REQUIRES_OK(ctx, mgr->CreateUnowned<Var>(handle.container(),
+                                                handle.name(), resource));
+
     AllocatorAttributes attr;
     attr.set_on_host(true);
-    Tensor handle;
+    Tensor tensor;
     OP_REQUIRES_OK(
-        ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
-    handle.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
-        ctx, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
-        ctx->stack_trace());
-    ctx->set_output(0, handle);
+        ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &tensor, attr));
+
+    tensor.scalar<ResourceHandle>()() = std::move(handle);
+
+    ctx->set_output(0, tensor);
   } else {
-    ctx->set_output(0, resource_);
+    ctx->set_output(0, const_tensor_);
   }
 }
 
@@ -275,6 +285,7 @@ REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_CPU), VarHandleOp);
   }
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 TF_CALL_uint32(REGISTER_GPU_KERNELS);
@@ -289,6 +300,7 @@ TF_CALL_uint32(REGISTER_GPU_KERNELS);
                               .TypeConstraint<type>("dtype"), \
                           VarHandleOp)
 TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
+TF_CALL_bfloat16(REGISTER_DEFAULT_KERNELS);
 TF_CALL_int64(REGISTER_DEFAULT_KERNELS);
 TF_CALL_variant(REGISTER_DEFAULT_KERNELS);
 TF_CALL_uint32(REGISTER_DEFAULT_KERNELS);
@@ -355,6 +367,9 @@ class AssignVariableOp : public OpKernel {
              .ok()) {
       relax_constraints_ = false;
     }
+    if (c->HasAttr("validate_shape")) {
+      OP_REQUIRES_OK(c, c->GetAttr("validate_shape", &validate_shape_));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -397,6 +412,17 @@ class AssignVariableOp : public OpKernel {
                     "Trying to assign variable with wrong dtype. Expected ",
                     DataTypeString(variable->tensor()->dtype()), " got ",
                     DataTypeString(dtype_)));
+    if (validate_shape_) {
+      OP_REQUIRES(
+          context,
+          (!variable->is_initialized ||
+           variable->tensor()->shape().IsSameSize(value.shape())),
+          errors::InvalidArgument(
+              "Trying to assign to variable with tensor with wrong shape."
+              " Expected ",
+              variable->tensor()->shape().DebugString(), " got ",
+              value.shape().DebugString()));
+    }
     if (variable->copy_on_read_mode.load()) {
       AllocatorAttributes attr;
       attr.set_gpu_compatible(true);
@@ -416,6 +442,7 @@ class AssignVariableOp : public OpKernel {
  private:
   DataType dtype_;
   bool relax_constraints_;
+  bool validate_shape_ = false;
 };
 
 template <typename Device>
@@ -510,6 +537,7 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
                           AssignVariableOp<GPUDevice, type>);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 TF_CALL_uint32(REGISTER_GPU_KERNELS);
@@ -607,7 +635,7 @@ REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("is_initialized"),
-                        IsResourceInitialized<Var>);
+                        VarIsInitializedOp);
 
 template <typename Device, typename T, typename Index>
 class ResourceGatherOp : public OpKernel {

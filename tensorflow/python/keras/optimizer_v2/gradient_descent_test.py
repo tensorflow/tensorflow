@@ -22,6 +22,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
@@ -206,10 +207,10 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
         var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
         var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
-        grads0 = ops.IndexedSlices(
+        grads0 = indexed_slices.IndexedSlices(
             constant_op.constant([0.1], shape=[1, 1], dtype=dtype),
             constant_op.constant([0]), constant_op.constant([2, 1]))
-        grads1 = ops.IndexedSlices(
+        grads1 = indexed_slices.IndexedSlices(
             constant_op.constant([0.01], shape=[1, 1], dtype=dtype),
             constant_op.constant([1]), constant_op.constant([2, 1]))
         sgd_op = gradient_descent.SGD(3.0).apply_gradients(
@@ -229,10 +230,10 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
         var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
         var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
-        grads0 = ops.IndexedSlices(
+        grads0 = indexed_slices.IndexedSlices(
             constant_op.constant([0.1], shape=[1, 1], dtype=dtype),
             constant_op.constant([0]), constant_op.constant([2, 1]))
-        grads1 = ops.IndexedSlices(
+        grads1 = indexed_slices.IndexedSlices(
             constant_op.constant([0.01], shape=[1, 1], dtype=dtype),
             constant_op.constant([1]), constant_op.constant([2, 1]))
         sgd_op = gradient_descent.SGD(
@@ -408,8 +409,9 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
         mom_op = gradient_descent.SGD(
             learning_rate=2.0, momentum=0.9, nesterov=True)
         x_feed = array_ops.placeholder(dtype)
-        y_feed = ops.IndexedSlices(x_feed, constant_op.constant([0, 1]),
-                                   constant_op.constant([2]))
+        y_feed = indexed_slices.IndexedSlices(x_feed,
+                                              constant_op.constant([0, 1]),
+                                              constant_op.constant([2]))
         grads_and_vars = [(y_feed, var0),
                           (constant_op.constant([3.0, 3.0], dtype=dtype), var1)]
         opt_update = mom_op.apply_gradients(grads_and_vars)
@@ -523,10 +525,10 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
       for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
         var0 = variables.Variable(array_ops.zeros([4, 2], dtype=dtype))
         var1 = variables.Variable(constant_op.constant(1.0, dtype, [4, 2]))
-        grads0 = ops.IndexedSlices(
+        grads0 = indexed_slices.IndexedSlices(
             constant_op.constant([[.1, .1]], dtype=dtype),
             constant_op.constant([1]), constant_op.constant([4, 2]))
-        grads1 = ops.IndexedSlices(
+        grads1 = indexed_slices.IndexedSlices(
             constant_op.constant([[.01, .01], [.01, .01]], dtype=dtype),
             constant_op.constant([2, 3]), constant_op.constant([4, 2]))
         mom_opt = gradient_descent.SGD(learning_rate=2.0, momentum=0.9)

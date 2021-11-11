@@ -2020,6 +2020,14 @@ def _reset_context():
   _device_parsing_cache = {}
 
 
+def _reset_mlir_flags():
+  """Clears and re-initializes the flags used by MLIR.
+
+  Should only be used for testing.
+  """
+  pywrap_tfe.TF_ResetMlirFlags()
+
+
 def context():
   """Returns a singleton context object."""
   if _context is None:

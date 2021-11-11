@@ -21,6 +21,7 @@ import itertools
 import pprint
 import threading
 import types as types_lib
+from typing import List
 import weakref
 
 import numpy as np
@@ -36,24 +37,23 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager import function_trace_type
+from tensorflow.python.eager import function_cache
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_util
@@ -61,7 +61,6 @@ from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
-from tensorflow.python.saved_model import save_context
 from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
@@ -89,29 +88,12 @@ FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
-# A temporary flag. Turning this on will allow tf.function to aggressively avoid
-# retracing ResourceVariable inputs. This feature will change tf.function's
-# Variable tracing behavior, hence we want to limit the potential blockers that
-# are not detected by Global TAP.
-# TODO(jiaweix): remove this flag and related args (b/198782192)
-ENCODE_VARIABLES_BY_RESOURCE_ID = True
-# TODO(b/201533914): Remove this flag and related args
-USE_FULL_TRACE_TYPE = False
+# TODO(b/202429845): Remove this flag and related args:
+USE_FUNCTION_SUBTYPING = False
 
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
     "Time for tf.function to build a graph (us).")
-
-
-CacheKey = collections.namedtuple("CacheKey", [
-    "input_signature",
-    "parent_graph",
-    "device_functions",
-    "colocation_stack",
-    "in_cross_replica_context",
-    "variable_policy",
-    "xla_context_id",
-])
 
 
 def _type_spec_for(x):
@@ -317,23 +299,6 @@ def _backward_name(n):
 def _inference_name(n):
   """The name of a forward-but-no-gradient defun named n."""
   return "%s%s_%s" % (_INFERENCE_PREFIX, n, ops.uid())
-
-
-def _enclosing_xla_context():
-  """Returns the XLAControlFlowContext, which exists inside a tpu.rewrite()."""
-  graph = ops.get_default_graph()
-  while graph is not None:
-    # pylint: disable=protected-access
-    context_ = graph._get_control_flow_context()
-    # pylint: enable=protected-access
-    while context_ is not None:
-      if isinstance(context_, control_flow_ops.XLAControlFlowContext):
-        return context_
-      context_ = context_.outer_context
-    # This may be a FuncGraph due to defuns or v2 control flow. We need to
-    # find the original graph with the XLAControlFlowContext.
-    graph = getattr(graph, "outer_graph", None)
-  return None
 
 
 class _EagerDefinedFunctionDeleter(object):
@@ -728,7 +693,7 @@ class _DelayedRewriteGradientFunctions(object):
     cleaned_doutputs = []
     for doutput, placeholder in zip(doutputs, self._func_graph.outputs):
       if backprop_util.IsTrainable(placeholder):
-        if isinstance(doutput, ops.IndexedSlices):
+        if isinstance(doutput, indexed_slices.IndexedSlices):
           # Gradient passed to a backward ConcreteFunction must be tf.Tensor,
           # so we convert tf.IndexedSlices to tf.Tensor.
           cleaned_doutputs.append(ops.convert_to_tensor(doutput))
@@ -1219,7 +1184,7 @@ class _TapeGradientFunctions(object):
         # is only really effective when doing tf.gather(variable) as the
         # adjoint functions for most operations are unlikely to preserve the
         # sparsity in IndexedSlices.
-        if isinstance(arg, ops.IndexedSlices):
+        if isinstance(arg, indexed_slices.IndexedSlices):
           arg = ops.convert_to_tensor(arg)
         if output_index in skip_positions:
           continue
@@ -1537,14 +1502,7 @@ class ConcreteFunction(core.ConcreteFunction):
     """Enables the structured signature by supplying a function_spec."""
     self._function_spec = None
     self._pre_initialized_function_spec = function_spec
-
-    # Note: when ConcreteFunctions are built by recreate_function() in
-    # function_deserialization.py, they don't have a structured_input_signature
-    # yet.  In that case, _initialize_function_spec() gets called by
-    # _setup_functions_structures() in load.py.
-    if (function_spec is not None and
-        self.structured_input_signature is not None):
-      self._initialize_function_spec()
+    self._initialize_function_spec()
 
   def _initialize_function_spec(self):
     """Updates `self._function_spec` to include varargs and bound variables.
@@ -2323,7 +2281,7 @@ class ConcreteFunction(core.ConcreteFunction):
       """Returns a string describing the spec for a single argument."""
       if isinstance(spec, tensor_spec.TensorSpec):
         return "{} Tensor, shape={}".format(spec.dtype.name, spec.shape)
-      elif nest.is_sequence(spec):
+      elif nest.is_nested(spec):
         pieces = nest.flatten(spec, expand_composites=False)
         markers = [_Marker("<{}>".format(i + 1)) for i in range(len(pieces))]
         structure = nest.pack_sequence_as(spec, markers)
@@ -2395,7 +2353,7 @@ class ConcreteFunction(core.ConcreteFunction):
 
 _pywrap_utils.RegisterType("Tensor", ops.Tensor)
 _pywrap_utils.RegisterType("EagerTensor", ops.EagerTensor)
-_pywrap_utils.RegisterType("IndexedSlices", ops.IndexedSlices)
+_pywrap_utils.RegisterType("IndexedSlices", indexed_slices.IndexedSlices)
 
 
 def _deterministic_dict_values(dictionary):
@@ -2909,49 +2867,6 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   ])
 
 
-class FunctionCache(object):
-  """A lightweight container for cached functions.
-  """
-
-  __slots__ = [
-      "missed", "primary", "arg_relaxed_specs", "arg_relaxed",
-      "_garbage_collectors"
-  ]
-
-  def __init__(self):
-    # The set of functions that have been missed; entries are CacheKey with
-    # input_signature `None` (e.g. a "call context key")
-    self.missed = set()
-    # The primary cache, mapping a fully shaped CacheKey to a function.
-    self.primary = collections.OrderedDict()
-    # A cache key lookup, mapping a CacheKey generated without shape info to a
-    # flat list of `TypeSpec`s with relaxed shapes (one for each flattened
-    # argument). Arguments that are not Tensors or `CompositeTensor`s contain a
-    # `None` for the corresponding relaxed spec.
-    self.arg_relaxed_specs = collections.OrderedDict()
-    # The secondary cache, mapping a CacheKey generated without shape info to a
-    # function.
-    self.arg_relaxed = collections.OrderedDict()
-    # All OrderedDicts require manual garbage collection.
-    self._garbage_collectors = [
-        _FunctionGarbageCollector(self.primary),
-        _FunctionGarbageCollector(self.arg_relaxed),
-        _FunctionGarbageCollector(self.arg_relaxed_specs)]
-
-  def all_values(self):
-    """A list of all `ConcreteFunction` instances held by this cache."""
-    # We need to simultaneously make sure our returned concrete functions are
-    # unique *and* make sure they are returned in a deterministic order for
-    # serialization.
-    #
-    # TODO(b/174215821): It's likely that we ultimately would just prefer to
-    # choose the most specific concrete function shape given a set of
-    # arguments. If and when that is implemented, this logic can be revisited.
-    primary_functions = set(self.primary.values())
-    return list(self.primary.values()) + [
-        v for v in self.arg_relaxed.values() if v not in primary_functions]
-
-
 # TODO(mdan): Refactor this and clarify relationship with def_function.Function.
 # Right now, def_function.Function is the higher level implementation.
 class Function(object):
@@ -3019,12 +2934,10 @@ class Function(object):
     self._autograph = autograph
     self._autograph_options = autograph_options
     self._experimental_relax_shapes = experimental_relax_shapes
-    self._function_cache = FunctionCache()
+    self._function_cache = function_cache.FunctionCache()
     self._function_attributes = attributes or {}
     self._capture_by_value = capture_by_value
     self.tracing_count = 0
-    if self.input_signature is not None:
-      self._hashable_input_signature = hash(self.flat_input_signature)
 
     self._lock = threading.RLock()
     # _descriptor_cache is a of instance of a class to an instance-specific
@@ -3158,6 +3071,9 @@ class Function(object):
     graph_function._garbage_collector.release()  # pylint: disable=protected-access
     return graph_function
 
+  def _list_all_concrete_functions(self) -> List[ConcreteFunction]:
+    return self._function_cache.values()
+
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
     del owner
@@ -3191,97 +3107,6 @@ class Function(object):
 
     # Return the cached `Function` for the instance
     return self._descriptor_cache[instance]
-
-  def _cache_key(self,
-                 args,
-                 kwargs,
-                 cache_key_context,
-                 include_tensor_ranks_only=False):
-    """Computes the cache key given inputs and execution context."""
-    if self.input_signature is None:
-      # We always use both args and kwargs to form input even if one is empty.
-      # This reduces ambiguity, for example, when args contains a dict and
-      # kwargs is empty.
-      inputs = (args, kwargs)
-      hashable_input_signature = function_trace_type.get_arg_spec(
-          inputs, include_tensor_ranks_only, ENCODE_VARIABLES_BY_RESOURCE_ID,
-          USE_FULL_TRACE_TYPE)
-    else:
-      del args, kwargs
-      assert not include_tensor_ranks_only
-      hashable_input_signature = self._hashable_input_signature
-
-    (parent_graph, device_functions, colocation_stack, in_cross_replica_context,
-     variable_policy, xla_context_id) = cache_key_context
-
-    return CacheKey(hashable_input_signature, parent_graph, device_functions,
-                    colocation_stack, in_cross_replica_context, variable_policy,
-                    xla_context_id)
-
-  def _cache_key_context(self):
-    """Returns execution context."""
-    ctx = context.context()
-
-    # Don't need to open an init_scope if the _cache_key call is in eager mode
-    # already.
-    executing_eagerly = ctx.executing_eagerly()
-    parent_graph = None
-    xla_context_id = 0
-    if not executing_eagerly:
-      # We want to force function retracing for each different
-      # XLAControlFlowContext, so add `xla_context_id` to the cache key.
-      xla_context = _enclosing_xla_context()
-      if xla_context is not None and \
-            xla_context.RequiresUniqueFunctionRetracing():
-        xla_context_id = id(xla_context)
-
-      with ops.init_scope():
-        # The graph, or whether we're executing eagerly, should be a part of the
-        # cache key so we don't improperly capture tensors such as variables.
-        executing_eagerly = ctx.executing_eagerly()
-        parent_graph = None if executing_eagerly else ops.get_default_graph()
-
-    # pylint: disable=protected-access
-    default_graph = ops.get_default_graph()
-    # TODO(b/117617952): The current distribution strategy will affect graph
-    # building (e.g. accessing different variables from different devices) and
-    # so requires retracing for each device.
-    strategy_stack = default_graph._distribution_strategy_stack
-    uses_distribution_strategy = (
-        strategy_stack and
-        strategy_stack[-1].strategy.extended._retrace_functions_for_each_device
-    )
-    if executing_eagerly:
-      colocation_stack = ()
-      if uses_distribution_strategy:
-        device_functions = (pydev.merge_device(ctx.device_name),)
-      else:
-        device_functions = ()
-    else:
-      colocation_stack = tuple(default_graph._colocation_stack.peek_objs())
-      if (uses_distribution_strategy
-          or func_graph_module.device_stack_has_callable(
-              default_graph._device_function_stack)):
-        # Putting the device in the cache key ensures that call-site device
-        # annotations are respected.
-        device_functions = tuple(default_graph._device_functions_outer_to_inner)
-      else:
-        device_functions = ()
-
-    in_cross_replica_context = False
-    try:
-      in_cross_replica_context = (strategy_stack[-1].replica_context is None)  # pylint: disable=protected-access
-    except (AttributeError, IndexError):
-      pass
-
-    if save_context.in_save_context():
-      variable_policy = (
-          save_context.get_save_options().experimental_variable_policy)
-    else:
-      variable_policy = None
-
-    return (parent_graph, device_functions, colocation_stack,
-            in_cross_replica_context, variable_policy, xla_context_id)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -3322,8 +3147,7 @@ class Function(object):
     return graph_function
 
   def _define_function_with_shape_relaxation(self, args, kwargs, flat_args,
-                                             filtered_flat_args,
-                                             cache_key_context):
+                                             filtered_flat_args):
     """Define a function, relaxing arg shapes to avoid unnecessary retracing."""
     flat_no_comp = nest.flatten((args, kwargs), expand_composites=False)
 
@@ -3333,18 +3157,15 @@ class Function(object):
     # Build a cache key where TensorShapes include only rank information (and
     # not information about the size of each dimension).
     if not any_composite_args:
-      rank_only_cache_key = self._cache_key(
-          args, kwargs, cache_key_context, include_tensor_ranks_only=True)
+      rank_only_cache_key = function_cache.make_cache_key(
+          (args, kwargs), include_tensor_ranks_only=True)
     else:
       # For the rank-only cache key, replace any composite tensors with
       # shape-relaxed TypeSpecs.
-      (cache_key_args, cache_key_kwargs) = nest.map_structure(
+      relaxed_args = nest.map_structure(
           _shape_relaxed_type_for_composite_tensor, (args, kwargs))
-      rank_only_cache_key = self._cache_key(
-          cache_key_args,
-          cache_key_kwargs,
-          cache_key_context,
-          include_tensor_ranks_only=True)
+      rank_only_cache_key = function_cache.make_cache_key(
+          relaxed_args, include_tensor_ranks_only=True)
 
     arg_specs = [_type_spec_for(x) for x in flat_no_comp]
     relaxed_arg_specs = self._function_cache.arg_relaxed_specs.get(
@@ -3423,8 +3244,10 @@ class Function(object):
     else:
       flat_args, filtered_flat_args = [None], []
 
-    cache_key_context = self._cache_key_context()
-    cache_key = self._cache_key(args, kwargs, cache_key_context)
+    if self.input_signature is None:
+      cache_key = function_cache.make_cache_key((args, kwargs))
+    else:
+      cache_key = function_cache.make_cache_key(self.flat_input_signature)
 
     try:
       hash(cache_key)
@@ -3433,7 +3256,8 @@ class Function(object):
           "Arguments supplied to `defun`-generated functions must be "
           f"hashable.  Original error: {e}.")
 
-    graph_function = self._function_cache.primary.get(cache_key, None)
+    graph_function = self._function_cache.lookup(cache_key,
+                                                 USE_FUNCTION_SUBTYPING)
     if graph_function is not None:
       return graph_function, filtered_flat_args
 
@@ -3444,10 +3268,6 @@ class Function(object):
                      self._python_function, cache_key)
         logging.vlog(2, "Python function signature [args: %s] [kwargs: %s]",
                      args, kwargs)
-
-        # pylint: disable=protected-access
-        call_context_key = cache_key._replace(input_signature=None)
-        # pylint: disable=protected-access
 
         ag_status = (
             ag_ctx.Status.ENABLED
@@ -3461,13 +3281,13 @@ class Function(object):
           # and 3. there's been a cache miss for this calling context
           if (self._experimental_relax_shapes and
               self.input_signature is None and
-              call_context_key in self._function_cache.missed):
+              self._function_cache.has_call_context(cache_key.call_context)):
             return self._define_function_with_shape_relaxation(
-                args, kwargs, flat_args, filtered_flat_args, cache_key_context)
+                args, kwargs, flat_args, filtered_flat_args)
 
-          self._function_cache.missed.add(call_context_key)
+          self._function_cache.add_call_context(cache_key.call_context)
           graph_function = self._create_graph_function(args, kwargs)
-          self._function_cache.primary[cache_key] = graph_function
+          self._function_cache.add(cache_key, graph_function)
 
           return graph_function, filtered_flat_args
 
@@ -4024,25 +3844,6 @@ def class_method_to_instance_method(original_function, instance):
   wrapped_instance_func = tf_decorator.make_decorator(bound_method,
                                                       instance_func)
   return wrapped_instance_func
-
-
-class _FunctionGarbageCollector(object):
-  """Cleans up cycles when a defun goes out of scope."""
-
-  __slots__ = ["_cache"]
-
-  def __init__(self, cache):
-    self._cache = cache
-
-  def __del__(self):
-    if func_graph_module is None or memory is None:
-      return
-    try:
-      while self._cache:
-        self._cache.popitem()
-      memory.dismantle_ordered_dict(self._cache)
-    except:  # pylint: disable=bare-except
-      pass
 
 
 class ConcreteFunctionGarbageCollector(object):

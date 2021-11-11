@@ -270,8 +270,8 @@ bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
   // Checks if `begin` is all 0s, and `size[i]` is equal to either -1 or
   // `input.shape[i]`.
   for (uint64_t i = 0; i < rank; ++i) {
-    if (begin_attr.getValue<APInt>({i}).getSExtValue() != 0) return false;
-    int64_t si = size_attr.getValue<APInt>({i}).getSExtValue();
+    if (begin_attr.getValues<APInt>()[i].getSExtValue() != 0) return false;
+    int64_t si = size_attr.getValues<APInt>()[i].getSExtValue();
     if (si != -1 && si != input_ty.getDimSize(i)) return false;
   }
 
@@ -361,9 +361,9 @@ static bool ShapeMatchesReduceWithKeepAxes(Value input,
   auto type_shape = type.getShape();
   for (uint64_t i = 0; i < type.getRank(); ++i) {
     if (axes_set.contains(i)) {
-      if (shape_attr.getValue<APInt>({i}) != 1) return false;
+      if (shape_attr.getValues<APInt>()[i] != 1) return false;
     } else {
-      if (shape_attr.getValue<APInt>({i}) != type_shape[i]) return false;
+      if (shape_attr.getValues<APInt>()[i] != type_shape[i]) return false;
     }
   }
   return true;
@@ -1131,7 +1131,7 @@ struct ScalarizeSplatConstantForBroadcastableOps
     auto scalar_elements_attr = DenseElementsAttr::get(
         RankedTensorType::get({},
                               splat_elements_attr.getType().getElementType()),
-        splat_elements_attr.getSplatValue());
+        splat_elements_attr.getSplatValue<mlir::Attribute>());
 
     auto scalar_constant_op = rewriter.create<arith::ConstantOp>(
         splat_operand.getLoc(), scalar_elements_attr.getType(),

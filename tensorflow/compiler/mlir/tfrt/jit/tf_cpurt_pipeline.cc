@@ -110,14 +110,16 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
 
   // Perform tiling-padding-vectorization if vectorization is enabled.
   if (options.vectorize) {
+    pm.addNestedPass<mlir::FuncOp>(CreateDetensorizeLinalgPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
     pm.addNestedPass<mlir::FuncOp>(CreatePeelTiledLoopsPass());
-
     pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
     pm.addPass(mlir::createCanonicalizerPass());
 
-    pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
+    // TODO(b/205537489): Re-enable tiling after the padding function is fixed.
+    // pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
+    pm.addNestedPass<mlir::FuncOp>(CreateSinkUnusedOutputs());
     pm.addNestedPass<mlir::FuncOp>(CreateVectorizeTiledOpsPass());
   }
 
@@ -168,6 +170,8 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   vec_to_scf_options.unroll = true;
   pm.addNestedPass<mlir::FuncOp>(
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
+
+  pm.addNestedPass<mlir::FuncOp>(CreateMathApproximationPass({"all"}));
 }
 
 void CreateDefaultTfCpuRtPipeline(mlir::OpPassManager& pm) {

@@ -313,6 +313,17 @@ MlirCommonFlags* GetMlirCommonFlags() {
   return mlir_flags;
 }
 
+void ResetMlirCommonFlags() {
+  delete build_ops_flags;
+  delete mark_for_compilation_flags;
+  delete device_flags;
+  delete ops_flags;
+  delete jitter_flags;
+  delete mlir_flags;
+  delete flag_list;
+  AllocateAndParseFlags();
+}
+
 ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(
     absl::optional<const ConfigProto> config_proto) {
   // TF1 graphs that do not override Sessions's ConfigProto and TF2 graphs

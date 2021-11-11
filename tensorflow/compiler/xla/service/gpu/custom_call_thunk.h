@@ -64,15 +64,6 @@ class CustomCallThunk : public Thunk {
   const std::string opaque_;
 };
 
-// Resources needed to execute a CustomCall BefThunk.
-struct CustomCallContext {
-  explicit CustomCallContext(
-      const CustomCallThunk::CustomCallTarget& call_target)
-      : call_target(call_target) {}
-
-  const CustomCallThunk::CustomCallTarget& call_target;
-};
-
 }  // namespace gpu
 }  // namespace xla
 

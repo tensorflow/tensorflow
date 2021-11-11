@@ -191,6 +191,11 @@ class MLIROpKernel : public OpKernel {
   REGISTER_KERNEL(tf_op, platform, casted_input_type, casted_output_type, \
                   additional_cstrs)
 
+#define GENERATE_AND_REGISTER_UNARY_JIT_KERNEL(tf_op, platform, input_type, \
+                                               additional_cstrs)            \
+  GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, platform, input_type,           \
+                                     .Label(kJitKernelLabel) additional_cstrs)
+
 #define GENERATE_UNARY_KERNEL(tf_op, platform, input_type) \
   GENERATE_UNARY_KERNEL2(tf_op, platform, input_type, input_type)
 
@@ -241,6 +246,11 @@ class MLIROpKernel : public OpKernel {
                           casted_input_type, casted_output_type)          \
   REGISTER_KERNEL(tf_op, platform, casted_input_type, casted_output_type, \
                   additional_cstrs)
+
+#define GENERATE_AND_REGISTER_BINARY_JIT_KERNEL(tf_op, platform, input_type, \
+                                                additional_cstrs)            \
+  GENERATE_AND_REGISTER_BINARY_KERNEL(                                       \
+      tf_op, platform, input_type, .Label(kJitKernelLabel) additional_cstrs)
 
 #define GENERATE_BINARY_KERNEL(tf_op, platform, input_type) \
   GENERATE_BINARY_KERNEL2(tf_op, platform, input_type, input_type)
@@ -293,6 +303,11 @@ class MLIROpKernel : public OpKernel {
                            casted_input_type, casted_output_type)         \
   REGISTER_KERNEL(tf_op, platform, casted_input_type, casted_output_type, \
                   additional_cstrs)
+
+#define GENERATE_AND_REGISTER_TERNARY_JIT_KERNEL(tf_op, platform, input_type, \
+                                                 additional_cstrs)            \
+  GENERATE_AND_REGISTER_TERNARY_KERNEL(                                       \
+      tf_op, platform, input_type, .Label(kJitKernelLabel) additional_cstrs)
 
 #define GENERATE_TERNARY_KERNEL(tf_op, platform, input_type) \
   GENERATE_TERNARY_KERNEL2(tf_op, platform, input_type, input_type)

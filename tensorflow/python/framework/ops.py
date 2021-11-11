@@ -288,8 +288,15 @@ def disable_tensor_equality():
 class TensorType(trace.TraceType):
   """Represents Tensor and TensorSpec for function tracing purposes."""
 
-  def __init__(self, shape, dtype, name):
-    self._components = (tuple(shape.as_list()), dtype, name)
+  def __init__(self, signature_context, shape, dtype, name):
+    if signature_context.include_tensor_ranks_only:
+      shape_component = shape.rank
+    elif shape.rank is not None:
+      shape_component = tuple(shape.as_list())
+    else:
+      shape_component = None
+
+    self._components = (shape_component, dtype, name)
 
   def is_subtype_of(self, other):
     # TODO(b/202429845): Implement for subtyping.
@@ -1054,8 +1061,8 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     return object_identity.Reference(self)
 
   # TODO(b/202447704): Rename to __tf_tracing_type__ at protocol export.
-  def _tf_tracing_type(self, _):
-    return TensorType(self.shape, self.dtype, None)
+  def _tf_tracing_type(self, signature_context):
+    return TensorType(signature_context, self.shape, self.dtype, None)
 
 
 # TODO(agarwal): consider getting rid of this.
@@ -3118,9 +3125,14 @@ class Graph(object):
     # Estimator and optimizer V1 use cases.
     self._is_loss_scaled_by_optimizer = False
     self._container = ""
+
+    # The current AutomaticControlDependencies context manager.
+    self.experimental_acd_manager = None
     # Set to True if this graph is being built in an
     # AutomaticControlDependencies context.
+    # Deprecated: use acd_manager instead.
     self._add_control_dependencies = False
+
     # Cache for OpDef protobufs retrieved via the C API.
     self._op_def_cache = {}
     # Cache for constant results of `broadcast_gradient_args()`. The keys are
@@ -3421,7 +3433,7 @@ class Graph(object):
 
     The serialized `GraphDef` can be imported into another `Graph`
     (using `tf.import_graph_def`) or used with the
-    [C++ Session API](../../../../api_docs/cc/index.md).
+    [C++ Session API](https://chromium.googlesource.com/external/github.com/tensorflow/tensorflow/+/r0.10/tensorflow/g3doc/api_docs/cc/index.md).
 
     This method is thread-safe.
 

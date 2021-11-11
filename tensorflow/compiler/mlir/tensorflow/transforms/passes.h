@@ -113,6 +113,11 @@ CreateTensorDeviceCopyConversionPass();
 // have built in broadcasting support.
 std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass();
 
+void populateTfControlFlowToScfPatterns(MLIRContext* context,
+                                        OwningRewritePatternList* patterns);
+// Create a pass to convert TensorFlow control flow to SCF.
+std::unique_ptr<OperationPass<ModuleOp>> createConvertTfControlFlowToScfPass();
+
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
   Option<std::string> force_data_format{
@@ -178,6 +183,10 @@ LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function);
 // known element shapes of push ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateStackOpsDecompositionPass();
 
+// Creates a pass to strip the "tf._noinline" attribute from the functions in
+// the module.
+std::unique_ptr<OperationPass<ModuleOp>> CreateStripNoinlineAttributePass();
+
 // Converts tensor list operations into operations on buffers and sizes. Needs
 // static shapes and known max element count.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTensorListOpsDecompositionPass();
@@ -190,6 +199,9 @@ CreateTensorArrayOpsDecompositionPass();
 
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
+
+// Create a pass that legalize TFG to TF dialect.
+std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
 
 // Addds the HLO to TF rewrite patterns to the specified pattern list.
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList* patterns,

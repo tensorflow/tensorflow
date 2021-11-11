@@ -48,25 +48,18 @@ PYBIND11_MODULE(_pywrap_utils, m) {
       Check if an object is a Tensor.
     )pbdoc");
   m.def(
-      "IsSequence",
+      "IsNested",
       [](const py::handle& o) {
-        bool result = tensorflow::swig::IsSequence(o.ptr());
+        bool result = tensorflow::swig::IsNested(o.ptr());
         return result;
       },
       R"pbdoc(
-      Returns true if its input is a collections.Sequence (except strings).
-
-      Args:
-        seq: an input sequence.
-
-      Returns:
-        True if the sequence is a not a string and is a collections.Sequence or a
-        dict.
+      Refer to `tf.nest.is_nested`.
     )pbdoc");
   m.def(
-      "IsSequenceOrComposite",
+      "IsNestedOrComposite",
       [](const py::handle& o) {
-        bool result = tensorflow::swig::IsSequenceOrComposite(o.ptr());
+        bool result = tensorflow::swig::IsNestedOrComposite(o.ptr());
         if (PyErr_Occurred()) {
           throw py::error_already_set();
         }
@@ -229,34 +222,7 @@ PYBIND11_MODULE(_pywrap_utils, m) {
             tensorflow::swig::Flatten(o.ptr(), expand_composites));
       },
       R"pbdoc(
-      Returns a flat list from a given nested structure.
-
-      If `nest` is not a sequence, tuple, or dict, then returns a single-element
-      list: `[nest]`.
-
-      In the case of dict instances, the sequence consists of the values, sorted by
-      key to ensure deterministic behavior. This is true also for `OrderedDict`
-      instances: their sequence order is ignored, the sorting order of keys is
-      used instead. The same convention is followed in `pack_sequence_as`. This
-      correctly repacks dicts and `OrderedDict`s after they have been flattened,
-      and also allows flattening an `OrderedDict` and then repacking it back using
-      a corresponding plain dict, or vice-versa.
-      Dictionaries with non-sortable keys cannot be flattened.
-
-      Users must not modify any collections used in `nest` while this function is
-      running.
-
-      Args:
-        nest: an arbitrarily nested structure or a scalar object. Note, numpy
-            arrays are considered scalars.
-        expand_composites: If true, then composite tensors such as `tf.sparse.SparseTensor`
-            and `tf.RaggedTensor` are expanded into their component tensors.
-
-      Returns:
-        A Python list, the flattened version of the input.
-
-      Raises:
-        TypeError: The nest is or contains a dict with non-sortable keys.
+      Refer to `tf.nest.flatten`.
     )pbdoc");
   m.def(
       "IsSequenceForData",

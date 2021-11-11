@@ -47,7 +47,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
@@ -991,6 +991,19 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto conv_result_slice, GetAllocationSlice(conv_result));
   TF_ASSIGN_OR_RETURN(auto scratch_slice, GetAllocationSlice(scratch_result));
 
+  if (IsBefThunkEnabled() &&
+      (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp>(op) ||
+       mlir::isa<mlir::lmhlo_gpu::ConvBackwardInputOp>(op) ||
+       mlir::isa<mlir::lmhlo_gpu::ConvBackwardFilterOp>(op))) {
+    operand_slices.push_back(conv_result_slice);
+    operand_slices.push_back(scratch_slice);
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Thunk> thunk,
+        CreateBefThunk(GetThunkInfo(op), op, std::move(operand_slices)));
+    AddThunkToThunkSequence(std::move(thunk));
+    return Status::OK();
+  }
+
   auto apply_layout = [](const Shape& shape, mlir::ArrayAttr layout_attrib) {
     mlir::SmallVector<int64_t, 4> minor_to_major = llvm::to_vector<4>(
         llvm::map_range(layout_attrib, [](mlir::Attribute a) -> int64_t {
@@ -1024,18 +1037,22 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
       // the window size.
       int kernel_dim = descriptor.dnums.kernel_spatial_dimensions(index);
       dim->set_size(descriptor.operand0_shape.dimensions(kernel_dim));
-      dim->set_stride(window_strides.getValue<int64_t>(index));
-      dim->set_padding_low(padding.getValue<int64_t>(index));
-      dim->set_padding_high(padding.getValue<int64_t>(index));
-      dim->set_base_dilation(lhs_dilation.getValue<int64_t>(index));
-      dim->set_window_dilation(rhs_dilation.getValue<int64_t>(index));
-      dim->set_window_reversal(window_reversal.getValue<bool>(index));
+      dim->set_stride(window_strides.getValues<int64_t>()[index]);
+      dim->set_padding_low(padding.getValues<int64_t>()[index]);
+      dim->set_padding_high(padding.getValues<int64_t>()[index]);
+      dim->set_base_dilation(lhs_dilation.getValues<int64_t>()[index]);
+      dim->set_window_dilation(rhs_dilation.getValues<int64_t>()[index]);
+      dim->set_window_reversal(window_reversal.getValues<bool>()[index]);
     }
     descriptor.feature_group_count = op.feature_group_count();
-    descriptor.backend_config.set_algorithm(
-        op.backend_config().algorithm().getInt());
-    descriptor.backend_config.set_tensor_ops_enabled(
-        op.backend_config().tensor_ops_enabled().getValue());
+    {
+      auto* algorithm = descriptor.backend_config.mutable_algorithm();
+      algorithm->set_algo_id(op.backend_config().algorithm().getInt());
+      algorithm->set_math_type(
+          op.backend_config().tensor_ops_enabled().getValue()
+              ? se::dnn::AlgorithmProto::TENSOR_OP_MATH
+              : se::dnn::AlgorithmProto::DEFAULT_MATH);
+    }
     descriptor.backend_config.set_conv_result_scale(
         op.result_scale().convertToDouble());
   };
@@ -1266,10 +1283,13 @@ std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
     }
 
     if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
-      if (broadcast.broadcast_dimensions().size() == 0) {
+      const auto& broadcast_dimensions_size =
+          broadcast.broadcast_dimensions().size();
+      if (broadcast_dimensions_size == 0) {
         continue;
       }
-      std::vector<int64_t> broadcast_dimensions;
+      llvm::SmallVector<int64_t> broadcast_dimensions;
+      broadcast_dimensions.reserve(broadcast_dimensions_size);
       for (const llvm::APInt& int_value : broadcast.broadcast_dimensions()) {
         broadcast_dimensions.push_back(int_value.getSExtValue());
       }
@@ -1544,39 +1564,6 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(results, values_to_slices(custom_call.output()));
   }
 
-  CustomCallThunk::CustomCallTarget custom_call_target;
-
-  // TODO(hanbinyoon): Move this to a location that will serve both
-  // ir_emitter_unnested and BEF Executable.
-  // For information about this calling convention, see
-  // xla/g3doc/custom_call.md.
-  switch (custom_call.api_version()) {
-    case mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL:
-      using original_call_type =
-          void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
-                   const char* /*opaque*/, size_t /*opaque_len*/);
-      custom_call_target = [call_target](CustomCallThunk::Stream stream,
-                                         void** buffers, const char* opaque,
-                                         size_t opaque_len,
-                                         XlaCustomCallStatus*) {
-        auto typed_call_target =
-            reinterpret_cast<original_call_type>(call_target);
-        typed_call_target(stream, buffers, opaque, opaque_len);
-      };
-      break;
-    case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
-      using status_returning_call_type =
-          void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
-                   const char* /*opaque*/, size_t /*opaque_len*/,
-                   XlaCustomCallStatus* /*status*/);
-      custom_call_target =
-          reinterpret_cast<status_returning_call_type>(call_target);
-      break;
-    default:
-      return InternalError("Unknown custom-call API version enum value: %d",
-                           custom_call.api_version());
-  }
-
   std::unique_ptr<Thunk> thunk;
   if (IsBefThunkEnabled()) {
     auto values_to_non_optional_slices = [&](mlir::ValueRange values)
@@ -1602,10 +1589,40 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
     for (const auto& buffer : outputs) {
       buffers.push_back(buffer);
     }
-    TF_ASSIGN_OR_RETURN(thunk, CreateBefCustomCallThunk(
-                                   GetThunkInfo(op), op, std::move(buffers),
-                                   std::move(custom_call_target)));
+    TF_ASSIGN_OR_RETURN(
+        thunk, CreateBefThunk(GetThunkInfo(op), op, std::move(buffers)));
   } else {
+    CustomCallThunk::CustomCallTarget custom_call_target;
+
+    // For information about this calling convention, see
+    // xla/g3doc/custom_call.md.
+    switch (custom_call.api_version()) {
+      case mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL:
+        using original_call_type =
+            void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
+                     const char* /*opaque*/, size_t /*opaque_len*/);
+        custom_call_target = [call_target](CustomCallThunk::Stream stream,
+                                           void** buffers, const char* opaque,
+                                           size_t opaque_len,
+                                           XlaCustomCallStatus*) {
+          auto typed_call_target =
+              reinterpret_cast<original_call_type>(call_target);
+          typed_call_target(stream, buffers, opaque, opaque_len);
+        };
+        break;
+      case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+        using status_returning_call_type =
+            void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
+                     const char* /*opaque*/, size_t /*opaque_len*/,
+                     XlaCustomCallStatus* /*status*/);
+        custom_call_target =
+            reinterpret_cast<status_returning_call_type>(call_target);
+        break;
+      default:
+        return InternalError("Unknown custom-call API version enum value: %d",
+                             custom_call.api_version());
+    }
+
     thunk = absl::make_unique<CustomCallThunk>(
         GetThunkInfo(op), std::move(custom_call_target), std::move(operands),
         std::move(results), custom_call.backend_config().str());
@@ -1642,8 +1659,8 @@ Status IrEmitterUnnested::EmitTriangularSolve(mlir::Operation* op) {
   auto triangular_solve_op = mlir::cast<mlir::lmhlo::TriangularSolveOp>(op);
   auto has_fortran_layout = [](mlir::DenseIntElementsAttr layout_attr) {
     int64_t n = layout_attr.getNumElements();
-    return layout_attr.getValue<int64_t>({0}) == n - 2 &&
-           layout_attr.getValue<int64_t>({1}) == n - 1;
+    return layout_attr.getValues<int64_t>()[0] == n - 2 &&
+           layout_attr.getValues<int64_t>()[1] == n - 1;
   };
   TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_a()));
   TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_b()));
@@ -2573,10 +2590,13 @@ Status IrEmitterUnnested::EmitScatter(
 
     // Apply inserted_window_dims to the window dimensions.
     int64_t raw_window_multidim_idx = 0;
-    std::vector<llvm::Value*> input_window_multidim;
-    std::vector<int64_t> input_window_bounds;
+    llvm::SmallVector<llvm::Value*> input_window_multidim;
+    llvm::SmallVector<int64_t> input_window_bounds;
+    const int64_t rank = desc.operand_shape.rank();
+    input_window_bounds.reserve(rank);
+    input_window_multidim.reserve(rank);
 
-    for (int64_t i = 0, e = desc.operand_shape.rank(); i != e; ++i) {
+    for (int64_t i = 0; i != rank; ++i) {
       if (llvm::is_contained(desc.dim_numbers.getInsertedWindowDims(), i)) {
         input_window_bounds.push_back(1);  // Trivial dimension.
         input_window_multidim.push_back(index.GetConstantWithIndexType(0));
@@ -2695,6 +2715,7 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
     mlir::MlirToHloConversionOptions options;
     options.propagate_layouts = true;
     options.propagate_bitcast_layouts_to_backend_config = true;
+    options.legalize_node_names = false;
     TF_RETURN_IF_ERROR(
         ConvertRegionToComputation(region, &xla_computation, options));
 
@@ -3332,6 +3353,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
   TF_RET_CHECK(!mlir::isa<mlir::lmhlo::FusionOp>(op));
 
   std::vector<BufferSlice> slices;
+  slices.reserve(operands.size());
   for (mlir::Value operand : operands) {
     slices.emplace_back();
     auto& slice = slices.back();
@@ -3354,6 +3376,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
     auto outputs = GetHloOutputs(op);
 
     std::vector<BufferSlice> slices;
+    slices.reserve(operands.size() + outputs.size());
     for (mlir::Value operand : operands) {
       slices.emplace_back();
       BufferSlice& slice = slices.back();
@@ -4145,25 +4168,19 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
                                          tiling_scheme.GetNumThreadsPerBlock());
 
     ksl.If("reduction_write_output", is_zero(thread_id_info.thread_id_x), [&] {
-      if (reduction_codegen_state.IsRaceFree()) {
-        VLOG(10) << "Using deterministic reductions: writing out "
-                    "the value directly";
-        for (int oidx = 0; oidx < num_outputs; oidx++) {
-          llvm::Value* output_address = GetOutputAddressForReduction(
-              partial_result_idx, index_ty, reduction_codegen_state,
-              tiling_kernel_info, output_arrays, reduction, oidx);
-
-          b_.CreateStore(b_.CreateLoad(selected_values[oidx], "output"),
-                         output_address);
-        }
-      } else {
-        CHECK_EQ(selected_values.size(), 1)
-            << "Variadic non-atomic reductions not supported";
+      for (int oidx = 0; oidx < num_outputs; oidx++) {
         llvm::Value* output_address = GetOutputAddressForReduction(
             partial_result_idx, index_ty, reduction_codegen_state,
-            tiling_kernel_info, output_arrays, reduction, 0);
-        TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-            *reducer, output_address, selected_values[0]));
+            tiling_kernel_info, output_arrays, reduction, oidx);
+
+        if (reduction_codegen_state.IsRaceFree()) {
+          b_.CreateStore(b_.CreateLoad(selected_values[oidx], "output"),
+                         output_address);
+        } else {
+          CHECK_EQ(num_outputs, 1);
+          TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+              *reducer, output_address, selected_values[oidx]));
+        }
       }
     });
   });
@@ -4185,10 +4202,10 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
     return b_.CreateICmpEQ(value, constant(0));
   };
   const TilingScheme& tiling_scheme = reduction_codegen_state.GetTilingScheme();
+  int num_outputs = reducer->num_parameters() / 2;
 
   // Store the transpose in shared memory.
-  for (int output_idx = 0; output_idx < reducer->num_parameters() / 2;
-       output_idx++) {
+  for (int output_idx = 0; output_idx < num_outputs; output_idx++) {
     const ReductionCodegenState::ReductionCalculationState& state =
         reduction_codegen_state.GetCalculationStateFor(reduction, output_idx);
     llvm::GlobalVariable* shared_cache = state.shared_cache;
@@ -4210,8 +4227,7 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
   // Get transposed element from shared memory.
   absl::InlinedVector<llvm::Value*, 1> shmem_transposed_addrs;
 
-  for (int output_idx = 0; output_idx < reducer->num_parameters() / 2;
-       output_idx++) {
+  for (int output_idx = 0; output_idx < num_outputs; output_idx++) {
     const ReductionCodegenState::ReductionCalculationState& state =
         reduction_codegen_state.GetCalculationStateFor(reduction, output_idx);
     llvm::Value* shmem_transposed_addr = thread_id_info.GEPIntoSharedMemory(
@@ -4237,26 +4253,19 @@ void IrEmitterUnnested::EmitReductionOutputForColumnReduction(
 
   ksl.If("reduction_write_output",
          b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
-           if (reduction_codegen_state.IsRaceFree()) {
-             VLOG(10) << "Using deterministic reductions: writing out "
-                         "the value directly";
-             for (int output_idx = 0;
-                  output_idx < reducer->num_parameters() / 2; output_idx++) {
-               llvm::Value* output_address = GetOutputAddressForReduction(
-                   partial_result_idx, index_ty, reduction_codegen_state,
-                   tiling_kernel_info, output_arrays, reduction, output_idx);
-               b_.CreateStore(b_.CreateLoad(shmem_transposed_addrs[output_idx],
-                                            "output_value"),
-                              output_address);
-             }
-           } else {
-             CHECK_EQ(shmem_transposed_addrs.size(), 1)
-                 << "Variadic non-atomic reductions not supported";
+           for (int oidx = 0; oidx < num_outputs; oidx++) {
              llvm::Value* output_address = GetOutputAddressForReduction(
                  partial_result_idx, index_ty, reduction_codegen_state,
-                 tiling_kernel_info, output_arrays, reduction, 0);
-             TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-                 *reducer, output_address, shmem_transposed_addrs[0]));
+                 tiling_kernel_info, output_arrays, reduction, oidx);
+             if (reduction_codegen_state.IsRaceFree()) {
+               b_.CreateStore(
+                   b_.CreateLoad(shmem_transposed_addrs[oidx], "output_value"),
+                   output_address);
+             } else {
+               CHECK_EQ(num_outputs, 1);
+               TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+                   *reducer, output_address, shmem_transposed_addrs[oidx]));
+             }
            }
          });
 }
@@ -4983,7 +4992,7 @@ static bool CanVectorizeReduction(
   return false;
 }
 
-ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
+StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
     mlir::lmhlo::FusionOp fusion, mlir::mhlo::ReduceOp first_reduce) {
   Shape input_shape = GetShape(first_reduce->getOperand(0));
   ReductionDimensions reduction_dimensions =
@@ -5015,7 +5024,6 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   }();
 
   se::CudaComputeCapability cc = ir_emitter_context_->cuda_compute_capability();
-
 
   int smallest_input_dtype_bits = std::numeric_limits<int>::max();
   for (mlir::Value operand : fusion.getInputBuffers()) {
@@ -5340,8 +5348,8 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
   VLOG(2) << StrCat("Generate in ", instr_index_groups.size(), " groups for ",
                     MlirToString(fusion));
 
-  ReductionCodegenInfo reduction_info =
-      ComputeReductionCodegenInfo(fusion, first_reduce);
+  TF_ASSIGN_OR_RETURN(ReductionCodegenInfo reduction_info,
+                      ComputeReductionCodegenInfo(fusion, first_reduce));
   const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
 
   // block_y_count is set to instr_index_groups.size(), so that each reduction
@@ -5393,8 +5401,8 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
   // We always use the first reduce as representative to construct
   // ReductionCodegenInfo, since all the reductions are required to have the
   // same shape and layout as verified by `IsFusedReductionOutputConsistent()`.
-  ReductionCodegenInfo reduction_codegen_info =
-      ComputeReductionCodegenInfo(fusion, first_reduce);
+  TF_ASSIGN_OR_RETURN(ReductionCodegenInfo reduction_codegen_info,
+                      ComputeReductionCodegenInfo(fusion, first_reduce));
 
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
   for (size_t i = 0; i < instr_index_groups.size(); ++i) {
@@ -5416,16 +5424,8 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
            });
   }
 
-  if (hlo_module_config_.debug_options().xla_gpu_deterministic_reductions() &&
-      !reduction_codegen_info.IsRaceFree()) {
-    return InternalError(
-        "All reductions should be race-free if deterministic reductions are "
-        "enabled");
-  }
-
   ThunkSequence thunks;
 
-  // Build an initializer thunk to initialize each reduction output.
   if (!reduction_codegen_info.IsRaceFree()) {
     for (int i = 0; i < fusion_roots.size(); ++i) {
       mlir::Operation* output_instruction = fusion_roots[i];

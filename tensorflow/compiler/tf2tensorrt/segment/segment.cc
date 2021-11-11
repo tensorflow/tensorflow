@@ -785,23 +785,23 @@ Status SegmentGraph(const Graph* tf_graph,
   int total_unconverted_ops{0};
 
   // Copy key-value pair from unsupported_ops_map to vector of pairs
-  std::vector<std::pair<std::string, int>> _vect;
-  for (auto& _it : unsupported_ops_map) {
-    _vect.push_back(_it);
+  std::vector<std::pair<std::string, int>> vect;
+  for (auto& it : unsupported_ops_map) {
+    vect.push_back(it);
   }
 
   // Sort in descending order using the number of uses of the OP that are not
   // converted.
-  std::sort(_vect.begin(), _vect.end(),
-            [](const std::pair<std::string, int>& _a,
-               const std::pair<std::string, int>& _b) -> bool {
-              return _a.second > _b.second;
+  std::sort(vect.begin(), vect.end(),
+            [](const std::pair<std::string, int>& a,
+               const std::pair<std::string, int>& b) -> bool {
+              return a.second > b.second;
             });
 
-  for (auto& _it : _vect) {
-    unsupported_op_report = StrCat(unsupported_op_report, "\n\t- ", _it.first,
-                                   " -> ", _it.second, "x");
-    total_unconverted_ops += _it.second;
+  for (auto& it : vect) {
+    unsupported_op_report = StrCat(unsupported_op_report, "\n\t- ", it.first,
+                                   " -> ", it.second, "x");
+    total_unconverted_ops += it.second;
   }
 
   unsupported_op_report =
@@ -811,7 +811,7 @@ Status SegmentGraph(const Graph* tf_graph,
              "\nFor more information see https://docs.nvidia.com/deeplearning",
              "/frameworks/tf-trt-user-guide/index.html#supported-ops.", "\n",
              string(80, '#'));
-  LOG(INFO) << unsupported_op_report;
+  LOG(WARNING) << unsupported_op_report;
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs

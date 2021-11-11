@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import clip_ops
@@ -52,10 +53,10 @@ class ClipOpsTest(test.TestCase):
     indices = constant_op.constant(indices)
     shape = constant_op.constant(shape)
     # IndexedSlices mode
-    indexed_slices = ops.IndexedSlices(values, indices, shape)
+    indexed_slices = indexed_slices_lib.IndexedSlices(values, indices, shape)
     clipped = clip_ops.clip_by_norm(indexed_slices, max_norm, axes)
     # clipped should be IndexedSlices
-    self.assertIsInstance(clipped, ops.IndexedSlices)
+    self.assertIsInstance(clipped, indexed_slices_lib.IndexedSlices)
     clipped = ops.convert_to_tensor(clipped)
 
     # Tensor mode

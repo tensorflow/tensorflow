@@ -84,7 +84,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   if (!lower_bound_op) {
     return;
   }
-  auto lower_bound_value = lower_bound_op.value().dyn_cast<IntegerAttr>();
+  auto lower_bound_value = lower_bound_op.getValue().dyn_cast<IntegerAttr>();
   if (!lower_bound_value || lower_bound_value.getInt() != 0) {
     return;
   }
@@ -94,7 +94,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   if (!step_bound_op) {
     return;
   }
-  auto step_bound_value = step_bound_op.value().dyn_cast<IntegerAttr>();
+  auto step_bound_value = step_bound_op.getValue().dyn_cast<IntegerAttr>();
   if (!step_bound_value) {
     return;
   }
@@ -216,13 +216,13 @@ void SplitSCFForOp(scf::ForOp scf_for) {
         if (cmp.getOperand(0) == min_op.getResult() &&
             cmp.getOperand(1) == step_bound_op) {
           cmp.replaceAllUsesWith(b.create<arith::ConstantIntOp>(
-                                      is_true_cmp(cmp.predicate(), true), 1)
+                                      is_true_cmp(cmp.getPredicate(), true), 1)
                                      .getResult());
           cmp.erase();
         } else if (cmp.getOperand(0) == step_bound_op &&
                    cmp.getOperand(1) == min_op.getResult()) {
           cmp.replaceAllUsesWith(b.create<arith::ConstantIntOp>(
-                                      is_true_cmp(cmp.predicate(), false), 1)
+                                      is_true_cmp(cmp.getPredicate(), false), 1)
                                      .getResult());
         }
       }
@@ -311,28 +311,32 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
               return tiles;
             });
     auto alignment = 16;
-    if (failed(
-            mlir::linalg::CodegenStrategy()
-                .tile(mlir::linalg::GenericOp::getOperationName(),
-                      tiling_options)
-                .promote(mlir::linalg::GenericOp::getOperationName(),
-                         mlir::linalg::LinalgPromotionOptions()
-                             .setAlignment(alignment)
-                             .setUseFullTileBuffersByDefault(true)
-                             .setUseAlloca(true))
-                .vectorize(mlir::linalg::GenericOp::getOperationName())
-                .setEnableVectorTransferLowering(false)
-                .setEnableVectorTransferPartialRewrite(true)
+
+    mlir::linalg::CodegenStrategy strategy;
+    strategy.tile(mlir::linalg::GenericOp::getOperationName(), tiling_options)
+        .promote(mlir::linalg::GenericOp::getOperationName(),
+                 mlir::linalg::LinalgPromotionOptions()
+                     .setAlignment(alignment)
+                     .setUseFullTileBuffersByDefault(true)
+                     .setUseAlloca(true))
+        .vectorize(mlir::linalg::GenericOp::getOperationName())
+        .vectorLowering(
+            mlir::linalg::LinalgVectorLoweringOptions()
+                .enableTransferLowering(false)
+                .enableTransferPartialRewrite()
                 .setVectorTransformsOptions(
                     mlir::vector::VectorTransformsOptions()
                         .setVectorTransferSplit(
                             mlir::vector::VectorTransferSplit::VectorTransfer))
-                .setEnableVectorToSCFConversion(true)
+                .enableTransferToSCFConversion()
                 .setVectorTransferToSCFOptions(
-                    mlir::VectorTransferToSCFOptions().setUnroll(true))
-                .setEnableVectorContractLowering(true)
-                .transform(f)))
-      return signalPassFailure();
+                    mlir::VectorTransferToSCFOptions().enableFullUnroll())
+                .enableContractionLowering());
+
+    // Created a nested OpPassManager, populate the strategy and run.
+    OpPassManager dynamicPM("builtin.func");
+    strategy.configurePassPipeline(dynamicPM, f.getContext());
+    if (failed(runPipeline(dynamicPM, f))) return signalPassFailure();
 
     // Stage 2: Remove extent 1 dims to ensure correct 1-ranked vectorization
     auto ctx = f.getContext();

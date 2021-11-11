@@ -299,6 +299,7 @@ REGISTER_OP("ExperimentalDatasetCardinality")
 REGISTER_OP("DatasetFromGraph")
     .Input("graph_def: string")
     .Output("handle: variant")
+    .SetTypeConstructor(full_type::UnaryGeneric(TFT_DATASET))
     .SetShapeFn(shape_inference::ScalarShape);
 
 // TODO(b/124308596): Instead of conservatively marking this op as stateful,
@@ -967,6 +968,7 @@ REGISTER_OP("SlidingWindowDataset")
     .Input("window_shift: int64")
     .Input("window_stride: int64")
     .Output("handle: variant")
+    .Attr("drop_remainder: bool = true")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetTypeConstructor(full_type::Unary(TFT_DATASET, "output_types"))
@@ -1347,6 +1349,7 @@ REGISTER_OP("RegisterDataset")
     .Output("dataset_id: int64")
     .Attr("external_state_policy: int")
     .Attr("element_spec: string = ''")
+    .Attr("metadata: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("InitializeTableFromDataset")

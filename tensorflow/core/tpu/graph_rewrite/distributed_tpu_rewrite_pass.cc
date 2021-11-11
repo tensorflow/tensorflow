@@ -3541,6 +3541,15 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
     AddNodeAttr("Targs", core_arg_types, &def);
     AddNodeAttr("Tresults", core_retval_types, &def);
 
+    // If the producer name was set during inference, propagate the information
+    // to the TPUExecute op so it can be accessed during metric collection.
+    std::string producer_name;
+    Status status =
+        GetNodeAttr(replicate_node.attrs(), "_producer_name", &producer_name);
+    if (status.ok()) {
+      AddNodeAttr("_producer_name", producer_name, &def);
+    }
+
     for (int64_t replica = 0; replica < params_info.NumReplicas(); ++replica) {
       def.set_name(strings::StrCat(replicate_node.name(), "/_execute_", replica,
                                    "_", core));

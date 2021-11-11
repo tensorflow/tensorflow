@@ -1631,6 +1631,11 @@ def tf_kernel_library(
         deps = deps,
     )
 
+register_extension_info(
+    extension = tf_kernel_library,
+    label_regex_for_dep = "{extension_name}",
+)
+
 def tf_mkl_kernel_library(
         name,
         prefix = None,

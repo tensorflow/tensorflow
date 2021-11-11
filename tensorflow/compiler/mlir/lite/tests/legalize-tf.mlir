@@ -1627,41 +1627,6 @@ func @reciprocal_i32(%arg0: tensor<8xi32>) -> tensor<8xi32> {
 // CHECK:  return
 }
 
-func @random_uniform() -> tensor<2x5xf32> {
-  %0 = "tf.Const"() { value = dense<[2, 5]> : tensor<2xi32> } : () -> tensor<2xi32>
-  %1 = "tf.RandomUniform"(%0) { seed = 1, seed2 = 0} : (tensor<2xi32>) -> tensor<2x5xf32>
-  return %1 : tensor<2x5xf32>
-
-  // CHECK-LABEL: random_uniform
-  // CHECK: %[[CST:.*]] = arith.constant dense
-  // CHECK: return %[[CST:.*]] : tensor<2x5xf32>
-}
-
-func @random_uniform_no_fold(%arg0: tensor<2xi32>) -> tensor<2x5xf32> {
-  %1 = "tf.RandomUniform"(%arg0) { seed = 0, seed2 = 0} : (tensor<2xi32>) -> tensor<2x5xf32>
-  return %1 : tensor<2x5xf32>
-
-  // CHECK-LABEL: random_uniform_no_fold
-  // CHECK: %[[RANDOM:.*]] = "tf.RandomUniform"
-}
-
-func @random_uniform_no_fold2(%arg0: tensor<2xi32>) -> tensor<*xf32> {
-  %1 = "tf.RandomUniform"(%arg0) { seed = 1, seed2 = 2} : (tensor<2xi32>) -> tensor<*xf32>
-  return %1 : tensor<*xf32>
-
-  // CHECK-LABEL: random_uniform_no_fold2
-  // CHECK: %[[RANDOM:.*]] = "tf.RandomUniform"
-}
-
-func @random_uniform_no_fold3() -> tensor<2x5xf64> {
-  %0 = "tf.Const"() { value = dense<[2, 5]> : tensor<2xi32> } : () -> tensor<2xi32>
-  %1 = "tf.RandomUniform"(%0) { seed = 1, seed2 = 0} : (tensor<2xi32>) -> tensor<2x5xf64>
-  return %1 : tensor<2x5xf64>
-
-  // CHECK-LABEL: random_uniform_no_fold3
-  // CHECK: %[[RANDOM:.*]] = "tf.RandomUniform"
-}
-
 func @LstmWithoutProjection(%arg: tensor<28x1x28xf32>) -> (tensor<28x1x16xf32>) {
   %1 = "tf.Const"() {device = "", dtype = f32, value = dense<0.000000e+00>: tensor<16x28xf32>} : () -> tensor<16x28xf32>
   %2 = "tf.Const"() {device = "", dtype = f32, value = dense<0.000000e+00>: tensor<16x16xf32>} : () -> tensor<16x16xf32>
@@ -2185,6 +2150,15 @@ func @broadcast_args_i64(%arg0: tensor<3xi64>, %arg1: tensor<1xi64>) -> tensor<3
 // CHECK:  "tfl.broadcast_args"(%arg0, %arg1) : (tensor<3xi64>, tensor<1xi64>) -> tensor<3xi64>
 }
 
+func @mul_with_unranked_lhs(%arg0: tensor<*xf32>, %arg1: tensor<?x3x2x1xf32>) -> tensor<?x3x2x1xf32> {
+  %0 = "tf.Mul"(%arg0, %arg1): (tensor<*xf32>, tensor<?x3x2x1xf32>) -> tensor<?x3x2x1xf32>
+  return %0 : tensor<?x3x2x1xf32>
+
+  // CHECK-LABEL:mul_with_unranked_lhs
+  // CHECK: %0 = tfl.mul(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<*xf32>, tensor<?x3x2x1xf32>) -> tensor<?x3x2x1xf32>
+  // CHECK: return %0 : tensor<?x3x2x1xf32>
+}
+
 func @mul_with_high_dims_dynamic_shape(%arg0: tensor<8x7x6x5x4x3x2x1xf32>, %arg1: tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x4x3x2x1xf32> {
   %0 = "tf.Mul"(%arg0, %arg1): (tensor<8x7x6x5x4x3x2x1xf32>, tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x4x3x2x1xf32>
   return %0 : tensor<8x7x6x5x4x3x2x1xf32>
@@ -2210,6 +2184,15 @@ func @mul_with_high_dims_dynamic_shape_both_sides(%arg0: tensor<8x7x6x5x?x3x2x1x
   // CHECK: %[[BROADCAST_TO_1:.*]] = "tfl.broadcast_to"(%arg1, %[[BROADCAST_ARGS]]) : (tensor<?x3x2x1xf32>, tensor<8xi64>) -> tensor<8x7x6x5x?x3x2x1xf32>
   // CHECK: %[[MUL:.*]] = tfl.mul %[[BROADCAST_TO]], %[[BROADCAST_TO_1]] {fused_activation_function = "NONE"} : tensor<8x7x6x5x?x3x2x1xf32>
   // CHECK: return %[[MUL]] : tensor<8x7x6x5x?x3x2x1xf32>
+}
+
+func @select_v2_with_unranked_rhs(%arg0: tensor<8x7x6x5x?x3x2x1xf32>, %arg1: tensor<*xf32>, %arg2: tensor<8x7x6x5x?x3x2x1xi1>) -> tensor<8x7x6x5x?x3x2x1xf32> {
+  %0 = "tf.SelectV2"(%arg2, %arg0, %arg1) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8x7x6x5x?x3x2x1xf32>, tensor<*xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  return %0 : tensor<8x7x6x5x?x3x2x1xf32>
+
+  // CHECK-LABEL:select_v2_with_unranked_rhs
+  // CHECK: %0 = "tf.SelectV2"(%arg2, %arg0, %arg1) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8x7x6x5x?x3x2x1xf32>, tensor<*xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
+  // CHECK: return %0 : tensor<8x7x6x5x?x3x2x1xf32>
 }
 
 func @select_v2_with_high_dims_dynamic_shape_both_sides(%arg0: tensor<8x7x6x5x?x3x2x1xf32>, %arg1: tensor<?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32> {
@@ -2239,4 +2222,20 @@ func @Bucketize(%arg0: tensor<3x2xf32>) -> tensor<3x2xi32> {
 
 // CHECK-LABEL: Bucketize
 // CHECK:  "tfl.bucketize"(%arg0) {boundaries = [1.000000e+00 : f32, 1.000000e+01 : f32, 1.000000e+02 : f32]} : (tensor<3x2xf32>) -> tensor<3x2xi32>
+}
+
+func @random_uniform_f32(%arg0: tensor<3xi32>) -> tensor<?x?x?xf32> {
+  %0 = "tf.RandomUniform"(%arg0) {seed = 0 : i64, seed2 = 0: i64} : (tensor<3xi32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+
+// CHECK-LABEL:random_uniform_f32
+// CHECK:  "tfl.random_uniform"(%arg0) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<3xi32>) -> tensor<?x?x?xf32>
+}
+
+func @random_standard_normal_f32(%arg0: tensor<3xi32>) -> tensor<?x?x?xf32> {
+  %0 = "tf.RandomStandardNormal"(%arg0) {seed = 0 : i64, seed2 = 0: i64} : (tensor<3xi32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+
+// CHECK-LABEL:random_standard_normal_f32
+// CHECK:  "tfl.random_standard_normal"(%arg0) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<3xi32>) -> tensor<?x?x?xf32>
 }

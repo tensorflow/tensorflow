@@ -63,13 +63,8 @@ void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(index_type, &index_xla_type));
 
   xla::XlaOp input = ctx->Input(0);
-  xla::XlaOp output;
-  // One pass ArgMin/ArgMax is slow on GPUs.
-  if (is_min_) {
-    output = xla::ArgMin(input, index_xla_type, axis, /*stable=*/true);
-  } else {
-    output = xla::ArgMax(input, index_xla_type, axis, /*stable=*/true);
-  }
+  xla::XlaOp output =
+      xla::ArgMinMax(input, index_xla_type, axis, /*is_min=*/is_min_);
 
   ctx->SetOutput(0, output);
 }

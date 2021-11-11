@@ -41,6 +41,12 @@ llvm::cl::opt<bool> optimize_xla_hlo(
     "optimize-xla-hlo",
     llvm::cl::desc("Enable optimizations when translating XLA HLO -> LHLO"),
     llvm::cl::init(true));
+
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> legalize_node_names(
+    "legalize-node-names",
+    llvm::cl::desc("Legalize nodes names when translating MHLO->XLA HLO"),
+    llvm::cl::init(true));
 }  // namespace
 namespace xla {
 
@@ -115,6 +121,7 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunctionImpl(
   HloProto hloProto;
   mlir::MlirToHloConversionOptions options;
   options.propagate_layouts = with_layouts;
+  options.legalize_node_names = legalize_node_names;
   Status status =
       via_builder
           ? ConvertMlirHloToHloViaBuilder(module, &hloProto, options)

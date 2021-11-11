@@ -54,7 +54,7 @@ struct ShapeReificationPattern : public OpRewritePattern<shape::ShapeOfOp> {
   LogicalResult matchAndRewrite(shape::ShapeOfOp op,
                                 PatternRewriter &rewriter) const override {
     // Only reify shape computation if operand allows for it.
-    auto shape_origin = op.arg().getDefiningOp<InferShapedTypeOpInterface>();
+    auto shape_origin = op.getArg().getDefiningOp<InferShapedTypeOpInterface>();
     if (!shape_origin) return failure();
 
     llvm::SmallVector<Value, 1> reifications;
@@ -144,7 +144,8 @@ LogicalResult MoveIntoAssumingOpMatchAndRewrite(Operation *op,
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(assuming_op);
   auto new_assuming_op = rewriter.create<shape::AssumingOp>(
-      assuming_op.getLoc(), assuming_op.witness(), [&](OpBuilder &b, Location) {
+      assuming_op.getLoc(), assuming_op.getWitness(),
+      [&](OpBuilder &b, Location) {
         // Copy body.
         BlockAndValueMapping mapping;
         for (auto &nested : body->without_terminator())
@@ -250,7 +251,7 @@ struct MoveOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
     // rewritten accordingly.
     SmallVector<Value, 2> replacement_values;
     auto new_assuming_op = rewriter.create<shape::AssumingOp>(
-        assuming_op.getLoc(), assuming_op.witness(),
+        assuming_op.getLoc(), assuming_op.getWitness(),
         [&](OpBuilder &b, Location) {
           // Copy body.
           BlockAndValueMapping mapping;
@@ -294,14 +295,14 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
     auto preceding_op =
         llvm::dyn_cast_or_null<shape::AssumingOp>(op->getPrevNode());
     if (!preceding_op) return failure();
-    if (op.witness().getDefiningOp() == preceding_op) return failure();
+    if (op.getWitness().getDefiningOp() == preceding_op) return failure();
 
     // Merge witnesses.
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPoint(preceding_op);
     Value new_witness = rewriter.create<shape::AssumingAllOp>(
-        op.witness().getDefiningOp()->getLoc(),
-        ValueRange{preceding_op.witness(), op.witness()});
+        op.getWitness().getDefiningOp()->getLoc(),
+        ValueRange{preceding_op.getWitness(), op.getWitness()});
 
     // Merge assuming ops.
     Block *body_a = preceding_op.getBody();
@@ -360,8 +361,8 @@ struct EliminateDuplicateCstrBroadcastableOps
     Operation *it = op->getPrevNode();
     while (it != nullptr) {
       if (auto candidate = llvm::dyn_cast<shape::CstrBroadcastableOp>(it)) {
-        if (candidate.shapes() == op.shapes()) {
-          rewriter.replaceOp(op, candidate.result());
+        if (candidate.getShapes() == op.getShapes()) {
+          rewriter.replaceOp(op, candidate.getResult());
           return success();
         }
       }

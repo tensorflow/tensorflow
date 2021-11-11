@@ -125,9 +125,11 @@ OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
   auto result_ty = getType().dyn_cast<ShapedType>();
   if (!result_ty || !result_ty.hasStaticShape()) return {};
 
-  if (non_zero_index == -1)
+  if (non_zero_index == -1) {
     return SplatElementsAttr::get(
-        result_ty, operands.begin()->cast<DenseElementsAttr>().getSplatValue());
+        result_ty,
+        operands.begin()->cast<DenseElementsAttr>().getSplatValue<Attribute>());
+  }
 
   // Check the non-zero operand's shape matches the result shape.
   if (result_ty == inputs()[non_zero_index].getType())
@@ -180,7 +182,7 @@ struct AssertWithTrue : public OpRewritePattern<AssertOp> {
                                 PatternRewriter &rewriter) const override {
     ElementsAttr cst;
     if (matchPattern(op.condition(), m_Constant(&cst))) {
-      if (cst.getValue<BoolAttr>({}).getValue()) {
+      if (cst.getValues<bool>()[0]) {
         rewriter.eraseOp(op);
         return success();
       }
@@ -611,7 +613,7 @@ OpFoldResult BroadcastToOp::fold(ArrayRef<Attribute> operands) {
   if (!matchPattern(input, m_Constant(&cst_attr))) return {};
   if (!cst_attr.isSplat()) return {};
 
-  return DenseElementsAttr::get(result_ty, cst_attr.getSplatValue());
+  return DenseElementsAttr::get(result_ty, cst_attr.getSplatValue<Attribute>());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1471,7 +1473,7 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
       RankedTensorType::get({num_dims}, IntegerType::get(getContext(), 32));
   for (DenseIntElementsAttr shape : shapes) {
     results.push_back(DenseIntElementsAttr::get(offset_type, cumulative_sum));
-    cumulative_sum[concat_dim] += shape.getValue<int32_t>(concat_dim);
+    cumulative_sum[concat_dim] += shape.getValues<int32_t>()[concat_dim];
   }
 
   return success();
@@ -2556,7 +2558,7 @@ OpFoldResult FillOp::fold(ArrayRef<Attribute> operands) {
   if (!value) return {};
 
   if (type.hasStaticShape())
-    return DenseElementsAttr::get(type, value.getValue({}));
+    return DenseElementsAttr::get(type, value.getValues<Attribute>()[0]);
 
   auto dims = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
   if (!dims) return {};
@@ -2568,7 +2570,7 @@ OpFoldResult FillOp::fold(ArrayRef<Attribute> operands) {
   }
   type = RankedTensorType::get(shape, type.getElementType());
 
-  return DenseElementsAttr::get(type, value.getValue({}));
+  return DenseElementsAttr::get(type, value.getValues<Attribute>()[0]);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2909,7 +2911,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
   if (auto arg = operands[0].dyn_cast_or_null<FloatAttr>()) {
     return calculate(arg);
   } else if (auto arg = operands[0].dyn_cast_or_null<SplatElementsAttr>()) {
-    if (auto elementAttr = arg.getSplatValue().dyn_cast<FloatAttr>())
+    if (auto elementAttr = arg.getSplatValue<Attribute>().dyn_cast<FloatAttr>())
       return DenseElementsAttr::get(arg.getType(), calculate(elementAttr));
   }
   return {};

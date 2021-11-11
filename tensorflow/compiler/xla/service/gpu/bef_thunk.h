@@ -52,12 +52,6 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
     Thunk::ThunkInfo thunk_info, absl::Span<const BufferAllocation* const> args,
     const std::string& kernel_name, const LaunchDimensions& launch_dimensions);
 
-// Creates a Thunk that uses TFRT BEF execution to perform CustomCall.
-StatusOr<std::unique_ptr<Thunk>> CreateBefCustomCallThunk(
-    Thunk::ThunkInfo thunk_info, mlir::Operation* op,
-    std::vector<BufferAllocation::Slice> buffers,
-    CustomCallThunk::CustomCallTarget call_target);
-
 }  // namespace gpu
 }  // namespace xla
 

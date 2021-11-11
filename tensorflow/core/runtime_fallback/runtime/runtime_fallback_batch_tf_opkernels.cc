@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
-#include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
@@ -279,15 +278,6 @@ Status SetUpKernelFallbackCompatRequestContextForBatch(
   tfrt::ModelMetadata model_metadata(session_metadata.name(),
                                      session_metadata.version());
 
-  // TODO(b/190214521): Once the ContextData in the RequestContext can be
-  // copied, we can avoid manually copy the RunHandler here, and this breaks the
-  // encapsulation.
-  tfrt::tf::RunHandler** run_handler =
-      src_req_ctx.GetDataIfExists<tfrt::tf::RunHandler*>();
-  if (run_handler) {
-    builder->context_data().insert(*run_handler);
-  }
-
   const auto* device_manager = &src_fallback_request_state->device_manager();
 
   const auto* pflr =
@@ -327,7 +317,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   SmallVector<AsyncValue*, 8> arguments;
   arguments.reserve(inputs.size() + 1);
   // The first argument is a Chain.
-  arguments.push_back(GetReadyChain(host_ctx_).release());
+  arguments.push_back(tfrt::GetReadyChain().release());
   for (auto& input : inputs) {
     arguments.push_back(TFTensorToFallbackTensor(input).release());
   }

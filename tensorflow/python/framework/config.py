@@ -254,7 +254,7 @@ def get_soft_device_placement():
   An error is raised when an Op cannot be placed onto its intended device.
 
   Returns:
-    If soft placement is enabled.
+   A boolean indicating if soft placement is enabled.
   """
   return context.context().soft_device_placement
 
@@ -269,7 +269,7 @@ def set_soft_device_placement(enabled):
     3. need to co-locate with reftype input(s) which are from CPU
 
   Args:
-    enabled: Whether to enable soft placement.
+    enabled: A boolean indicating whether to enable soft placement.
   """
   context.context().soft_device_placement = enabled
 
@@ -297,6 +297,7 @@ def get_device_policy():
   elif device_policy == context.DEVICE_PLACEMENT_EXPLICIT:
     return 'explicit'
   else:
+    # pylint: disable-next=no-value-for-parameter
     raise errors.InternalError(
         f'Got an invalid device policy: {device_policy!r}.')
 

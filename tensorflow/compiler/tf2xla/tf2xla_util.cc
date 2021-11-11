@@ -852,6 +852,11 @@ Status RewriteAssociatedFunction(
       NameAttrList func;
       TF_RETURN_IF_ERROR(
           GetNodeAttr(node->attrs(), associated_function.attr_name(), &func));
+      // Save the original function name in case TFRT fallbacks to use
+      // TPUPartitionedCall op in the runtime.
+      if (node->type_string() == "TPUPartitionedCall") {
+        node->AddAttr("_orig_f", func.name());
+      }
       node->ClearAttr(associated_function.attr_name());
       func.set_name(rewritten_function_name);
       node->AddAttr(associated_function.attr_name(), func);

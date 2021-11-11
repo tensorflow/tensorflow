@@ -34,6 +34,7 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -66,7 +67,7 @@ def validate_destinations(destinations):
   """Validates the `destination` is one of expected types."""
   if not isinstance(
       destinations,
-      (value_lib.DistributedValues, ops.Tensor, ops.IndexedSlices,
+      (value_lib.DistributedValues, ops.Tensor, indexed_slices.IndexedSlices,
        ps_values.AggregatingVariable, six.string_types,
        tpu_values.TPUMirroredVariable
       )) and not resource_variable_ops.is_resource_variable(destinations):
@@ -340,7 +341,7 @@ class CrossDeviceOps(object):
         `tf.distribute.DistributedValues` or if destinations is not a string,
         `tf.Variable` or `tf.distribute.DistributedValues`.
     """
-    if isinstance(per_replica_value, ops.IndexedSlices):
+    if isinstance(per_replica_value, indexed_slices.IndexedSlices):
       raise NotImplementedError("gather/all_gather does not support "
                                 "IndexedSlices")
     if options is None:
@@ -1175,7 +1176,7 @@ class CollectiveAllReduce(CrossDeviceOps):
       if reduce_op == reduce_util.ReduceOp.MEAN:
         for i, v in enumerate(sparse_results):
           with ops.device(self._devices[replica_id]):
-            sparse_results[i] = ops.IndexedSlices(
+            sparse_results[i] = indexed_slices.IndexedSlices(
                 values=sparse_results[i].values / self._group_size,
                 indices=sparse_results[i].indices,
                 dense_shape=sparse_results[i].dense_shape)

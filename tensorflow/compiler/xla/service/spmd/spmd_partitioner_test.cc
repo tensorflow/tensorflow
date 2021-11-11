@@ -8559,6 +8559,37 @@ ENTRY entry {
                     op::Gather(op::Shape("f32[9,9]"), op::Shape("s32[1,3]"))));
 }
 
+TEST_F(SpmdPartitioningTest, GatherReplicatedCorrectOutput) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[64,2,250112] parameter(0), sharding={
+    devices=[16,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,
+                    23,24,25,26,27,28,29,30,31}
+  %indices = s32[10,1] parameter(1), sharding={replicated}
+  %input.copy = f32[64,2,250112] copy(%input), sharding={
+    devices=[16,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,
+                    23,24,25,26,27,28,29,30,31}
+  %indices.copy = s32[10,1] copy(%indices), sharding={replicated}
+  %gather = f32[64,2,10] gather(f32[64,2,250112] %input,
+    s32[10,1]{1,0} %indices.copy), offset_dims={0,1}, collapsed_slice_dims={2},
+    start_index_map={2}, index_vector_dim=1, slice_sizes={64,2,1},
+    sharding={devices=[16,1,1,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,
+                                19,20,21,22,23,24,25,26,27,28,29,30,
+                                31 last_tile_dim_replicate}
+  ROOT %copy = (f32[64,2,10]) tuple(gather), sharding={{devices=[16,1,1,2]0,1,2,
+    3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,
+    30,31 last_tile_dim_replicate}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/32));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Shape("(f32[4,2,10])"));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

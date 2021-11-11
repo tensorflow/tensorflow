@@ -556,13 +556,7 @@ class FlattenTest(parameterized.TestCase, test_util.TensorFlowTestCase):
                       ("decoder", "w", 0, 1, "k"): mod.decoder.w[0][1]["k"]},)
 
   def test_raises_error_with_path(self):
-    if six.PY2:
-      class NonOrderable(object):
-        __lt__ = None
-
-      non_orderable = NonOrderable
-    else:
-      non_orderable = object
+    non_orderable = object
 
     m = module.Module()
     m.layers = {non_orderable(): None, non_orderable(): None}
