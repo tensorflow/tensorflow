@@ -15,21 +15,6 @@ glob_lit_tests(
         "adjust-layout.mlir": tf_cuda_tests_tags() + [
             "nomsan",  # TODO(b/181135145)
         ],
-        "hlo_to_lhlo_with_xla/gpu_ops.mlir": tf_cuda_tests_tags() + [
-            "noasan",
-            "nomsan",
-            "noubsan",
-            "no_cuda_asan",
-        ],  # b/171751580
-        "hlo_to_lhlo_with_xla/ops.mlir": tf_cuda_tests_tags() + [
-            "nomsan",
-            "no_cuda_asan",
-        ],  # b/191025174, b/192521861
-        "hlo_to_lhlo_with_xla/passthrough.mlir": tf_cuda_tests_tags() + [
-            "nomsan",
-            "no_cuda_asan",
-            "no_cuda_asan",
-        ],  # b/191025174, b/192521861
         "legalize-tf.mlir": tf_cuda_tests_tags() + [
             "nomsan",  # TODO(b/181135145)
         ],
