@@ -236,7 +236,6 @@ class GpuSolver {
 
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
-
   template <typename Scalar>
   Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
                int* info);
@@ -291,8 +290,6 @@ class GpuSolver {
 
   // QR factorization.
   // Computes QR factorization A = Q * R.
-  // Returns Status::OK() if the kernel was launched successfully.
-  // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-geqrf
   template <typename Scalar>
   Status Geqrf(int m, int n, Scalar* dev_A, int lda, Scalar* dev_tau,
                int* dev_lapack_info);
@@ -300,10 +297,6 @@ class GpuSolver {
 
   // This function performs the matrix-matrix addition/transposition
   //   C = alpha * op(A) + beta * op(B).
-  // Returns Status::OK() if the kernel was launched successfully.  See:
-  // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-geam
-  // NOTE(ebrevdo): Does not support in-place transpose of non-square
-  // matrices.
   template <typename Scalar>
   Status Geam(rocblas_operation transa, rocblas_operation transb, int m, int n,
               const Scalar* alpha, /* host or device pointer */
@@ -315,7 +308,6 @@ class GpuSolver {
   // Overwrite matrix C by product of C and the unitary Householder matrix Q.
   // The Householder matrix Q is represented by the output from Geqrf in dev_a
   // and dev_tau.
-  // Returns Status::OK() if the kernel was launched successfully.
   template <typename Scalar>
   Status Unmqr(rocblas_side side, rocblas_operation trans, int m, int n,
                int k, const Scalar* dev_a, int lda, const Scalar* dev_tau,
@@ -325,7 +317,6 @@ class GpuSolver {
   // matrix Q. On input, the Householder matrix Q is represented by the output
   // from Geqrf in dev_a and dev_tau. On output, dev_a is overwritten with the
   // first n columns of Q. Requires m >= n >= 0.
-  // Returns Status::OK() if the kernel was launched successfully.
   template <typename Scalar>
   Status Ungqr(int m, int n, int k, Scalar* dev_a, int lda,
                const Scalar* dev_tau, int* dev_lapack_info);
