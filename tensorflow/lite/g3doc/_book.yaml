@@ -127,6 +127,9 @@ upper_tabs:
         status: experimental
       - title: "Select operators Allowlist"
         path: /lite/guide/op_select_allowlist
+      - title: "TensorFlow Text ops"
+        path: /text/guide/text_tf_lite
+        status: external
 
       - heading: "Run Inference with metadata"
       - title: "Overview"
