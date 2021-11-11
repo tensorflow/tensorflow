@@ -371,17 +371,21 @@ java_library(
 java_test_with_tflite(
     name = "TensorFlowLiteTest",
     size = "small",
-    srcs = ["src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java"],
+    srcs = [
+        "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
+        "src/test/java/org/tensorflow/lite/TestInit.java",
+    ],
     javacopts = JAVACOPTS,
     tags = [
         "v1only",
     ],
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
-    tflite_deps = [
-        ":tensorflowlitelib",
+    tflite_jni_binaries = [
+        "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":tensorflowlite_javalib",
         "@com_google_truth",
         "@junit",
     ],

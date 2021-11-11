@@ -77,9 +77,9 @@ public final class TensorFlowLite {
     }
 
     try {
-      // Try to invoke a native method (the method itself doesn't really matter) to ensure that
-      // native libs are available.
-      nativeRuntimeVersion();
+      // Try to invoke a native method (which itself does nothing) to ensure that native libs are
+      // available.
+      nativeDoNothing();
       isInit = true;
     } catch (UnsatisfiedLinkError e) {
       // Prefer logging the original library loading exception if native methods are unavailable.
@@ -91,6 +91,8 @@ public final class TensorFlowLite {
               + exceptionToLog);
     }
   }
+
+  private static native void nativeDoNothing();
 
   private static native String nativeRuntimeVersion();
 
