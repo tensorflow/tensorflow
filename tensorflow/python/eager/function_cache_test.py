@@ -75,6 +75,25 @@ class FunctionCacheTest(test.TestCase):
     self.assertIsNone(cache.lookup(key_2, False))
     self.assertIsNone(cache.lookup(key_3, False))
 
+  def testDeleteRemovesConcreteFunctions(self):
+    cache = function_cache.FunctionCache()
+    key_1 = function_cache.make_cache_key(1)
+    cache.add(key_1, "test_1")
+    self.assertEqual(cache.lookup(key_1, False), "test_1")
+    cache.delete(key_1)
+    self.assertIsNone(cache.lookup(key_1, False))
+
+    key_2 = MockSubtypeOf2(3)
+    cache.add(key_2, "test_2")
+    self.assertEqual(cache.lookup(key_2, False), "test_2")
+
+    key_3 = MockSubtypeOf2(2)
+    self.assertEqual(cache.lookup(key_3, True), "test_2")
+
+    cache.delete(key_2)
+    self.assertIsNone(cache.lookup(key_2, False))
+    self.assertIsNone(cache.lookup(key_3, True))
+
   def testExecutionContextSetRetainsInsertedElements(self):
     cache = function_cache.FunctionCache()
 
@@ -125,9 +144,48 @@ class FunctionCacheTest(test.TestCase):
 
 class FunctionCacheBenchmark(test.Benchmark):
 
-  def benchmarkCacheHit50thKey(self):
-    # Since FunctionCache uses an OrderedDict, it will check them in the order
-    # of insertion.
+  def benchmarkCacheHit50thKeyMiss(self):
+    # If there are 50 keys and we get a new key that the cache has no concrete
+    # functions for.
+
+    cache = function_cache.FunctionCache()
+    args_per_call = 5
+    num_total_checks = 50
+
+    keys = []
+    for i in range(num_total_checks):
+      args = []
+      for j in range(args_per_call):
+        args.append(array_ops.zeros([i, j]))
+      keys.append(function_cache.make_cache_key(args))
+
+    for key in keys[:-1]:
+      cache.add(key, "testing")
+
+    iterations = 10000
+    subtyping_time = timeit.timeit(
+        lambda: cache.lookup(keys[-1], True), number=iterations)
+    equality_time = timeit.timeit(
+        lambda: cache.lookup(keys[-1], False), number=iterations)
+
+    self.report_benchmark(
+        name="cache_hit_50th_key_miss",
+        iters=iterations,
+        wall_time=subtyping_time + equality_time,
+        metrics=[{
+            "name": "cache_hit_50th_key_miss_subtype_avg_ms",
+            "value": subtyping_time / iterations * 1000
+        }, {
+            "name": "cache_hit_50th_key_miss_equality_avg_ms",
+            "value": equality_time / iterations * 1000
+        }, {
+            "name": "cache_hit_50th_key_miss_subtype_over_equality_ratio",
+            "value": subtyping_time / equality_time
+        }])
+
+  def benchmarkCacheHit50thKeyEqual(self):
+    # If there are 50 keys and we get a new key that is equal to a key that is
+    # in the cache.
 
     cache = function_cache.FunctionCache()
     args_per_call = 5
@@ -150,20 +208,89 @@ class FunctionCacheBenchmark(test.Benchmark):
         lambda: cache.lookup(keys[-1], False), number=iterations)
 
     self.report_benchmark(
-        name="cache_hit_50th_key_subtype",
+        name="cache_hit_50th_key_equal",
         iters=iterations,
         wall_time=subtyping_time + equality_time,
         metrics=[{
-            "name": "cache_hit_50th_key_subtype_avg_ms",
+            "name": "cache_hit_50th_key_equal_subtype_avg_ms",
             "value": subtyping_time / iterations * 1000
         }, {
-            "name": "cache_hit_50th_key_equality_avg_ms",
+            "name": "cache_hit_50th_key_equal_equality_avg_ms",
             "value": equality_time / iterations * 1000
         }, {
             "name": "cache_hit_50th_key_subtype_over_equality_ratio",
             "value": subtyping_time / equality_time
         }])
 
+  def benchmarkCacheHit50thKeyKnownSubtype(self):
+    # If there are 50 keys and we get a key that has a subtype in cache and
+    # the cache has observed the key before (to memorize the subtype).
+
+    cache = function_cache.FunctionCache()
+    args_per_call = 5
+    num_total_checks = 50
+
+    keys = []
+    for i in range(num_total_checks-1):
+      args = []
+      for j in range(args_per_call):
+        args.append(array_ops.zeros([i, j]))
+      keys.append(function_cache.make_cache_key(args))
+
+    for key in keys:
+      cache.add(key, "testing")
+    cache.add(MockSubtypeOf2(3), "testing")
+    cache.lookup(MockSubtypeOf2(2), True)
+
+    iterations = 10000
+    subtyping_time = timeit.timeit(
+        lambda: cache.lookup(MockSubtypeOf2(2), True), number=iterations)
+
+    self.report_benchmark(
+        name="cache_hit_50th_key_known_subtype",
+        iters=iterations,
+        wall_time=subtyping_time,
+        metrics=[{
+            "name": "cache_hit_50th_key_known_subtype_avg_ms",
+            "value": subtyping_time / iterations * 1000
+        }])
+
+  def benchmarkCacheHit50thKeyUnknownSubtype(self):
+    # If there are 50 keys and we get a key that has a subtype in cache but
+    # the cache has never observed the key before (no memory for the subtype).
+
+    cache = function_cache.FunctionCache()
+    args_per_call = 5
+    num_total_checks = 50
+
+    keys = []
+    for i in range(num_total_checks-1):
+      args = []
+      for j in range(args_per_call):
+        args.append(array_ops.zeros([i, j]))
+      keys.append(function_cache.make_cache_key(args))
+
+    def setup():
+      cache.clear()
+      for key in keys:
+        cache.add(key, "testing")
+      cache.add(MockSubtypeOf2(3), "testing")
+
+    iterations = 10000
+    subtyping_time = sum(timeit.repeat(
+        stmt=lambda: cache.lookup(MockSubtypeOf2(2), True),
+        setup=setup,
+        repeat=iterations,
+        number=1))
+
+    self.report_benchmark(
+        name="cache_hit_50th_key_unknown_subtype",
+        iters=iterations,
+        wall_time=subtyping_time,
+        metrics=[{
+            "name": "cache_hit_50th_key_unknown_subtype_avg_ms",
+            "value": subtyping_time / iterations * 1000
+        }])
 
 if __name__ == "__main__":
   test.main()

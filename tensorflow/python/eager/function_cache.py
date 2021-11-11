@@ -110,8 +110,8 @@ class FunctionCache:
   """A container for managing concrete functions."""
 
   __slots__ = [
-      "_missed", "_primary", "arg_relaxed_specs", "arg_relaxed",
-      "_garbage_collectors"
+      "_missed", "_primary", "_dispatch_cache", "arg_relaxed_specs",
+      "arg_relaxed", "_garbage_collectors"
   ]
 
   def __init__(self):
@@ -119,6 +119,11 @@ class FunctionCache:
     self._missed = set()
     # The primary cache, mapping FunctionCacheKey to a concrete function.
     self._primary = collections.OrderedDict()
+
+    # Maps a FunctionCacheKey K to a FunctionCacheKey V such that it is safe
+    # to dispatch K to the concrete function of V that exists in _primary.
+    # Used to lookup posible concrete functions when K is not in _primary.
+    self._dispatch_cache = collections.OrderedDict()
 
     # TODO(b/202430155): Incorporate relaxation logic inside FunctionCache.
     # A cache key lookup, mapping a cache key generated without shape info to a
@@ -133,19 +138,40 @@ class FunctionCache:
 
     self._garbage_collectors = [
         _FunctionGarbageCollector(self._primary),
+        _FunctionGarbageCollector(self._dispatch_cache),
         _FunctionGarbageCollector(self.arg_relaxed),
         _FunctionGarbageCollector(self.arg_relaxed_specs)]
 
+  # Note: Instead of returning any viable function, we can return the most
+  # specfic one by maintaining trees of traces where children are more specific
+  # traces of their parents.
   def lookup(self, key: FunctionCacheKey, use_function_subtyping: bool):
     """Looks up a concrete function based on the key."""
     if not use_function_subtyping:
       return self._primary.get(key, None)
 
+    if key in self._primary:
+      return self._primary[key]
+
+    if key in self._dispatch_cache:
+      return self._primary[self._dispatch_cache[key]]
+
     for known_key in self._primary:
       if known_key.is_subtype_of(key):
+        self._dispatch_cache[key] = known_key
         return self._primary[known_key]
 
     return None
+
+  # NOTE: We can optimize deletion to O(1) by maintaining a reverse dict of
+  # self._dispatch_cache.
+  def delete(self, key: FunctionCacheKey):
+    """Deletes a concrete function given the key it was added with."""
+    del self._primary[key]
+
+    for dispatched_key in self._dispatch_cache:
+      if self._dispatch_cache[dispatched_key] == key:
+        del self._dispatch_cache[dispatched_key]
 
   def add(self, key: FunctionCacheKey, concrete):
     """Adds a new concrete function alongside its key."""
@@ -154,6 +180,7 @@ class FunctionCache:
   def clear(self):
     """Removes all concrete functions from the cache."""
     self._primary.clear()
+    self._dispatch_cache.clear()
     self.arg_relaxed_specs.clear()
     self.arg_relaxed.clear()
 
