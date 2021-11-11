@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/util/util.h"
 
 // TODO(benbarsdell): Improve the numerical checks in these tests. The tests
 // were originally written only to check the graph coloring, so the graphs do
@@ -1475,6 +1476,89 @@ TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
   }
 }
 
+TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamAllow) {
+  if (!IsMKLEnabled())
+    GTEST_SKIP() << "Test only applicable to MKL auto-mixed precision.";
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
+      "/job:localhost/replica:0/task:0/device:CPU:0");
+  Output input1 = ops::Const(s.WithOpName("input1"), 1.f / 32, {8, 56, 56, 16});
+  Output weight = ops::Const(s.WithOpName("weight"), 2.f, {3, 3, 16, 16});
+  Output allow =
+      ops::Conv2D(s.WithOpName("allow"), input1, weight, {1, 1, 1, 1}, "SAME",
+                  ops::Conv2D::DataFormat("NHWC"));
+  Output input2 = ops::Const(s.WithOpName("input2"), 1.f / 32, {16});
+  Output infer = ops::BiasAdd(s.WithOpName("infer"), allow, input2);
+  Output clr = ops::Relu(s.WithOpName("clr"), infer);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), clr);
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::MKL};
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  VLOG(1) << output.DebugString();
+
+  GraphView output_view(&output);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 4);
+  EXPECT_EQ(output_view.GetNode("input1")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("weight")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("input2")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("allow")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("infer")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("clr")->attr().at("T").type(), DT_BFLOAT16);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 1e-2);
+  }
+}
+
+TEST_F(AutoMixedPrecisionMklTest, InferFollowUpStreamDeny) {
+  if (!IsMKLEnabled())
+    GTEST_SKIP() << "Test only applicable to MKL auto-mixed precision.";
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
+      "/job:localhost/replica:0/task:0/device:CPU:0");
+  Output input1 = ops::Const(s.WithOpName("input1"), 1.f / 32, {8, 56, 56, 16});
+  Output input2 = ops::Const(s.WithOpName("input2"), 1.f, {16});
+  Output input3 = ops::Const(s.WithOpName("input3"), 1.f / 32, {16});
+  Output deny = ops::Pow(s.WithOpName("deny"), input1, input2);
+  Output infer = ops::BiasAdd(s.WithOpName("infer"), deny, input3);
+  Output clr = ops::Relu(s.WithOpName("clr"), infer);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), clr);
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::MKL};
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  VLOG(1) << output.DebugString();
+
+  GraphView output_view(&output);
+  EXPECT_EQ(output.node_size(), item.graph.node_size());
+  EXPECT_EQ(output_view.GetNode("input1")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("input2")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("input3")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("deny")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("infer")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr")->attr().at("T").type(), DT_FLOAT);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i]);
+  }
+}
 #endif  // INTEL_MKL
 
 }  // namespace
