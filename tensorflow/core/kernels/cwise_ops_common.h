@@ -87,15 +87,7 @@ class BinaryOp : public BinaryOpShared {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input_0 = ctx->input(0);
-    OP_REQUIRES(ctx, input_0.dtype() == DataTypeToEnum<Tin>::v(),
-                errors::InvalidArgument("Expected tensor of type ",
-                                        typeid(Tin).name(), " but got type ",
-                                        DataTypeString(input_0.dtype())));
     const Tensor& input_1 = ctx->input(1);
-    OP_REQUIRES(ctx, input_1.dtype() == DataTypeToEnum<Tin>::v(),
-                errors::InvalidArgument("Expected tensor of type ",
-                                        typeid(Tin).name(), " but got type ",
-                                        DataTypeString(input_1.dtype())));
     const Device& eigen_device = ctx->eigen_device<Device>();
     bool error = false;
     bool* const error_ptr = Functor::has_errors ? &error : nullptr;
