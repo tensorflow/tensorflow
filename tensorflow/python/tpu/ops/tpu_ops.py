@@ -564,11 +564,10 @@ def enqueue_tpu_embedding_arbitrary_tensor_batch(sample_indices_or_row_lengths,
       to int32 internally. When rank 1, the tensors specify the row lengths for
       splitting embedding_indices and aggregation_weights into rows. It
       corresponds to ids.row_lengths in embedding_lookup(), when ids is a
-      RaggedTensor. When enqueuing N-D ragged tensor, the row lengths will be a
-      (N-1)-D dense tensor and it needs to be flattened into 1D before being
-      passed to this op. When empty, we assume a dense tensor is passed to the
-      op. Both int32 and int64 are allowed and will be converted to int32
-      internally.
+      RaggedTensor. When enqueuing N-D ragged tensor, only the last dimension is
+      allowed to be ragged. the row lengths is 1-D dense tensor. When empty, we
+      assume a dense tensor is passed to the op. Both int32 and int64 are
+      allowed and will be converted to int32 internally.
     embedding_indices: A list of rank 1 Tensors, indices into the embedding
       tables. Both int32 and int64 are allowed and will be converted to int32
       internally.
