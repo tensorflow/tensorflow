@@ -29,6 +29,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -141,6 +142,27 @@ void ValidateWeights(const TRT_ShapedWeights& weights,
   for (int i = 0; i < expected_value.size(); ++i) {
     EXPECT_EQ(expected_value[i], actual_values[i]);
   }
+}
+
+// TRT >= 8.2 optimizes memory management in the builder. When all builders
+// are destroyed, it unloads many resources. This test fixture will create and
+// destroy hundreds of builders when run sequentially for parameterized
+// tests. We can hold open an IBuilder in order to prevent TRT from unloading
+// shared resources between engine builds when using TRT shared library. This
+// greatly speeds up unit tests and is safe to do.
+void PreventUnloadBuilderResources() {
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+  static thread_local absl::once_flag once;
+  static TrtUniquePtrType<nvinfer1::IBuilder> hold_builder = nullptr;
+  absl::call_once(
+      once,
+      [](std::unique_ptr<nvinfer1::IBuilder>& builder) {
+        if (!builder) {
+          builder.reset(nvinfer1::createInferBuilder(*Logger::GetLogger()));
+        }
+      },
+      hold_builder);
+#endif
 }
 
 TEST(TRT_ShapedWeights_Test, Basic) {
@@ -273,6 +295,7 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
 
 class ValidatorTest : public ::testing::Test {
  public:
+  ValidatorTest() { PreventUnloadBuilderResources(); }
   Status ConvertToTensorOrWeights(const Scope& scope, const Node* node,
                                   int output_port,
                                   TRT_TensorOrWeights* tensor_or_weights) {
@@ -487,7 +510,10 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
 
 class ConverterTest : public ::testing::Test {
  public:
-  ConverterTest() { Reset(); }
+  ConverterTest() {
+    PreventUnloadBuilderResources();
+    Reset();
+  }
 
   void Reset() {
     GetOpConverterRegistry()->Clear("MyOp");
@@ -1083,6 +1109,7 @@ std::vector<float> GetDataAsFloat(InputOutputData& data) {
 
   return {};
 }
+
 // Class to test various op converters, using both a TrtNodeValidator and
 // Converter.
 class OpConverterTest : public ::testing::Test {
@@ -1090,6 +1117,7 @@ class OpConverterTest : public ::testing::Test {
   OpConverterTest()
       : tensor_buffer_allocator_(new GpuManagedAllocator()),
         scope_(Scope::NewRootScope()) {
+    PreventUnloadBuilderResources();
     QCHECK_EQ(0, cudaStreamCreate(&stream_));
     Reset();
   }
