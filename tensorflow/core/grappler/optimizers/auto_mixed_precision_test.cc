@@ -1190,41 +1190,17 @@ TEST_F(AutoMixedPrecisionTest, TanhOp) {
 class AutoMixedPrecisionCpuTest : public GrapplerTest {
  protected:
   void SetUp() override {
-    // Use the same setup as GPUTest to emulate the same allowed f16 ops on GPU.
-    int num_gpus = GetNumAvailableGPUs();
-    // If GPUs are available, require that they all satisfy the min arch.
-    gpu_available_ = (num_gpus > 0);
-#if GOOGLE_CUDA
-    gpu_available_ =
-        gpu_available_ && (num_gpus == GetNumAvailableGPUs(kMinGPUArch));
-#else  // Here we force Tensorflow to use the virtual GFX906
-    gpu_available_ = false;
-#endif
-    if (gpu_available_) {
-      virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 1));
-    } else {
-      DeviceProperties device_properties;
-      device_properties.set_type("GPU");
-#if GOOGLE_CUDA
-      device_properties.mutable_environment()->insert({"architecture", "7"});
-      device_properties.mutable_environment()->insert({"cuda", "9010"});
-#else
-      device_properties.mutable_environment()->insert(
-          {"architecture", "gfx906"});
-#endif
-      virtual_cluster_.reset(
-          new VirtualCluster({{"/GPU:1", device_properties}}));
-    }
+    virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 0));
     TF_CHECK_OK(virtual_cluster_->Provision());
   }
   void TearDown() override { TF_CHECK_OK(virtual_cluster_->Shutdown()); }
 
   std::unique_ptr<Cluster> virtual_cluster_;
-  bool gpu_available_;
 };
 
 TEST_F(AutoMixedPrecisionCpuTest, Simple) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
+      "/job:localhost/replica:0/task:0/device:CPU:0");
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
   Output deny1 = ops::Exp(s.WithOpName("deny1"), input);
   Output clr1 = ops::Relu(s.WithOpName("clr1"), deny1);
@@ -1249,23 +1225,73 @@ TEST_F(AutoMixedPrecisionCpuTest, Simple) {
 
   VLOG(1) << output.DebugString();
 
-  GraphView output_view(&output);
+  const int expected_cast_ops = 9;
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + expected_cast_ops);
 
-  // with cast nodes inserted, now they are equal
-  EXPECT_EQ(output.node_size(), item.graph.node_size());
+  GraphView output_view(&output);
   // Matmul is a FP32 op now
-  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("deny1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("infer1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("clr3")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("infer2")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("clr4")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("deny2")->attr().at("Ta").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("deny2")->attr().at("Tb").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("clr5")->attr().at("T").type(), DT_FLOAT);
+  auto matmul_op = output_view.GetNode("allow1");
+  EXPECT_EQ(matmul_op->attr().at("T").type(), DT_FLOAT);
+  for (auto edge : output_view.GetFaninEdges(*matmul_op, false)) {
+    EXPECT_EQ(edge.src.node->op(), "Cast");
+    EXPECT_EQ(edge.src.node->attr().at("SrcT").type(), DT_HALF);
+    EXPECT_EQ(edge.src.node->attr().at("DstT").type(), DT_FLOAT);
+  }
+  for (auto edge : output_view.GetFanoutEdges(*matmul_op, false)) {
+    EXPECT_EQ(edge.dst.node->op(), "Cast");
+    EXPECT_EQ(edge.dst.node->attr().at("SrcT").type(), DT_FLOAT);
+    EXPECT_EQ(edge.dst.node->attr().at("DstT").type(), DT_HALF);
+  }
+}
+
+TEST_F(AutoMixedPrecisionCpuTest, MixedFanout) {
+  // Test when an FP16 allowed node has a mixed fanout of FP16 allowed node and
+  // FP32 node.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
+      "/job:localhost/replica:0/task:0/device:CPU:0");
+  Output input1 = ops::Const(s.WithOpName("input1"), 1.f / 32, {32, 32});
+  Output input2 = ops::Const(s.WithOpName("input2"), 2.f / 32, {32, 32});
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), input1, input2);
+  Output allow2 = ops::MatMul(s.WithOpName("allow2"), allow1, input2);
+  Output deny = ops::Exp(s.WithOpName("deny"), allow1);
+  Output infer = ops::Add(s.WithOpName("infer"), deny, allow2);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), infer);
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::CPU};
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  VLOG(1) << output.DebugString();
+
+  const int expected_cast_ops = 10;
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + expected_cast_ops);
+
+  GraphView output_view(&output);
+  auto allow1_op = output_view.GetNode("allow1");
+  for (auto edge : output_view.GetFaninEdges(*allow1_op, false)) {
+    EXPECT_EQ(edge.src.node->op(), "Cast");
+    EXPECT_EQ(edge.src.node->attr().at("SrcT").type(), DT_HALF);
+    EXPECT_EQ(edge.src.node->attr().at("DstT").type(), DT_FLOAT);
+  }
+  for (auto edge : output_view.GetFanoutEdges(*allow1_op, false)) {
+    EXPECT_EQ(edge.dst.node->op(), "Cast");
+    EXPECT_EQ(edge.dst.node->attr().at("SrcT").type(), DT_FLOAT);
+    EXPECT_EQ(edge.dst.node->attr().at("DstT").type(), DT_HALF);
+  }
+  auto deny_op = output_view.GetNode("deny");
+  for (auto edge : output_view.GetFaninEdges(*deny_op, false)) {
+    EXPECT_EQ(edge.src.node->op(), "Cast");
+    EXPECT_EQ(edge.src.node->attr().at("SrcT").type(), DT_HALF);
+    EXPECT_EQ(edge.src.node->attr().at("DstT").type(), DT_FLOAT);
+  }
+  for (auto edge : output_view.GetFanoutEdges(*deny_op, false)) {
+    EXPECT_NE(edge.dst.node->op(), "Cast");
+  }
 }
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
