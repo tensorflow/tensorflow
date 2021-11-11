@@ -199,7 +199,7 @@ void TFTypeDialect::printType(Type type, DialectAsmPrinter &printer) const {
 // Attributes
 //===----------------------------------------------------------------------===//
 
-Attribute VersionAttr::parse(DialectAsmParser &parser, Type) {
+Attribute VersionAttr::parse(AsmParser &parser, Type) {
   if (failed(parser.parseLess())) return {};
 
   int32_t producer, min_consumer;
@@ -228,7 +228,7 @@ Attribute VersionAttr::parse(DialectAsmParser &parser, Type) {
                           bad_consumers);
 }
 
-void VersionAttr::print(DialectAsmPrinter &printer) const {
+void VersionAttr::print(AsmPrinter &printer) const {
   llvm::raw_ostream &os = printer.getStream();
   os << "<producer = " << getProducer()
      << ", min_consumer = " << getMinConsumer();
@@ -247,7 +247,7 @@ void VersionAttr::print(DialectAsmPrinter &printer) const {
 // or
 //   #tf.func<"", {attr = "value"}>
 // in case of null symbol ref.
-void FuncAttr::print(DialectAsmPrinter &os) const {
+void FuncAttr::print(AsmPrinter &os) const {
   if (getName().getRootReference().getValue().empty())
     os << "<\"\", " << getAttrs() << ">";
   else
@@ -260,7 +260,7 @@ void FuncAttr::print(DialectAsmPrinter &os) const {
 //
 // where the first element is a SymbolRefAttr and the second element is a
 // DictionaryAttr.
-Attribute FuncAttr::parse(DialectAsmParser &parser, Type type) {
+Attribute FuncAttr::parse(AsmParser &parser, Type type) {
   if (failed(parser.parseLess())) return {};
   llvm::SMLoc loc = parser.getCurrentLocation();
   Attribute name, dict;
@@ -293,11 +293,11 @@ Attribute FuncAttr::parse(DialectAsmParser &parser, Type type) {
                        dict.cast<DictionaryAttr>());
 }
 
-void PlaceholderAttr::print(DialectAsmPrinter &os) const {
+void PlaceholderAttr::print(AsmPrinter &os) const {
   os << "<" << StringAttr::get(getContext(), getValue()) << ">";
 }
 
-Attribute PlaceholderAttr::parse(DialectAsmParser &parser, Type type) {
+Attribute PlaceholderAttr::parse(AsmParser &parser, Type type) {
   if (failed(parser.parseLess())) return {};
   std::string content;
   if (failed(parser.parseOptionalString(&content))) {
@@ -309,7 +309,7 @@ Attribute PlaceholderAttr::parse(DialectAsmParser &parser, Type type) {
   return PlaceholderAttr::get(parser.getContext(), content);
 }
 
-void ShapeAttr::print(DialectAsmPrinter &os) const {
+void ShapeAttr::print(AsmPrinter &os) const {
   os << "<";
   if (hasRank()) {
     auto print_dim = [&](int64_t dim) {
@@ -325,7 +325,7 @@ void ShapeAttr::print(DialectAsmPrinter &os) const {
   os << ">";
 }
 
-Attribute ShapeAttr::parse(DialectAsmParser &parser, Type type) {
+Attribute ShapeAttr::parse(AsmParser &parser, Type type) {
   if (failed(parser.parseLess())) return {};
 
   if (succeeded(parser.parseOptionalStar())) {

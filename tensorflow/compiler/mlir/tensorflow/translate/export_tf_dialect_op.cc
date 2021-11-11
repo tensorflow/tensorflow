@@ -106,9 +106,9 @@ Status GetUnregisteredAttrs(
   }
   // Attributes are not in the registered attributes set will be ignored.
   for (auto& attr : inst->getAttrs()) {
-    auto attr_name = attr.first.c_str();
-    if (registered_attrs.find(attr_name) == registered_attrs.end()) {
-      attrs_to_ignore->insert(attr_name);
+    if (registered_attrs.find(attr.first) == registered_attrs.end()) {
+      attrs_to_ignore->insert(
+          absl::string_view(attr.first.data(), attr.first.size()));
     }
   }
   return Status::OK();

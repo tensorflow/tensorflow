@@ -4104,10 +4104,8 @@ OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
     return FoldSlice<DenseElementsAttr::IntElementIterator, APInt>(
         this, elements.value_begin<APInt>());
   } else if (etype.isa<FloatType>()) {
-    return FoldSlice<
-        llvm::mapped_iterator<DenseElementsAttr::IntElementIterator,
-                              std::function<APFloat(const APInt&)>>,
-        APFloat>(this, elements.value_begin<APFloat>());
+    return FoldSlice<DenseElementsAttr::FloatElementIterator, APFloat>(
+        this, elements.value_begin<APFloat>());
   }
 
   return {};
@@ -5030,8 +5028,7 @@ static void printStruct(AsmPrinter& printer, StringRef name,
 }
 
 // Custom printer and parser for ScatterDimensionNumbersAttr.
-void ScatterDimensionNumbersAttr::print(
-    ::mlir::DialectAsmPrinter& printer) const {
+void ScatterDimensionNumbersAttr::print(AsmPrinter& printer) const {
   printStruct(printer, "scatter",
               std::make_pair("update_window_dims", getUpdateWindowDims()),
               std::make_pair("inserted_window_dims", getInsertedWindowDims()),
@@ -5039,8 +5036,7 @@ void ScatterDimensionNumbersAttr::print(
                              getScatterDimsToOperandDims()),
               std::make_pair("index_vector_dim", getIndexVectorDim()));
 }
-Attribute ScatterDimensionNumbersAttr::parse(DialectAsmParser& parser,
-                                             Type type) {
+Attribute ScatterDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
   if (failed(parser.parseLess())) return {};
   SmallVector<int64_t> update_window_dims;
   SmallVector<int64_t> inserted_window_dims;
@@ -5066,16 +5062,14 @@ Attribute ScatterDimensionNumbersAttr::parse(DialectAsmParser& parser,
 }
 
 // Custom printer and parser for GatherDimensionNumbersAttr.
-void GatherDimensionNumbersAttr::print(
-    ::mlir::DialectAsmPrinter& printer) const {
+void GatherDimensionNumbersAttr::print(AsmPrinter& printer) const {
   printStruct(printer, "gather", std::make_pair("offset_dims", getOffsetDims()),
               std::make_pair("collapsed_slice_dims", getCollapsedSliceDims()),
               std::make_pair("start_index_map", getStartIndexMap()),
               std::make_pair("index_vector_dim", getIndexVectorDim()));
 }
 
-Attribute GatherDimensionNumbersAttr::parse(DialectAsmParser& parser,
-                                            Type type) {
+Attribute GatherDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
   if (failed(parser.parseLess())) return {};
 
   SmallVector<int64_t> offset_dims;
@@ -5102,7 +5096,7 @@ Attribute GatherDimensionNumbersAttr::parse(DialectAsmParser& parser,
 }
 
 // Custom printer and parser for DotDimensionNumbersAttr.
-void DotDimensionNumbersAttr::print(::mlir::DialectAsmPrinter& printer) const {
+void DotDimensionNumbersAttr::print(AsmPrinter& printer) const {
   printStruct(
       printer, "dot",
       std::make_pair("lhs_batching_dimensions", getLhsBatchingDimensions()),
@@ -5113,7 +5107,7 @@ void DotDimensionNumbersAttr::print(::mlir::DialectAsmPrinter& printer) const {
                      getRhsContractingDimensions()));
 }
 
-Attribute DotDimensionNumbersAttr::parse(DialectAsmParser& parser, Type type) {
+Attribute DotDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
   if (failed(parser.parseLess())) return {};
 
   SmallVector<int64_t> lhs_batching_dimensions;
@@ -5224,7 +5218,7 @@ void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
 }
 
 // Custom printer and parser for ConvDimensionNumbersAttr.
-void ConvDimensionNumbersAttr::print(::mlir::DialectAsmPrinter& printer) const {
+void ConvDimensionNumbersAttr::print(AsmPrinter& printer) const {
   printer << "<";
   printConvolutionDimensions(printer, *this);
   printer << ">";
@@ -5458,7 +5452,7 @@ ParseResult parseConvolutionDimensions(AsmParser& parser,
   return success();
 }
 
-Attribute ConvDimensionNumbersAttr::parse(DialectAsmParser& parser, Type type) {
+Attribute ConvDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
   if (failed(parser.parseLess())) return {};
   ConvDimensionNumbersAttr dnums;
   if (succeeded(parser.parseOptionalKeyword("raw"))) {
