@@ -579,7 +579,6 @@ tf_xla_py_test(
     name = "dynamic_slice_ops_test",
     size = "small",
     srcs = ["dynamic_slice_ops_test.py"],
-    # TODO(b/205896350): fix Windows Kokoro to renable MLIR bridge
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
@@ -733,6 +732,7 @@ tf_xla_py_test(
     name = "slice_ops_test",
     size = "small",
     srcs = ["slice_ops_test.py"],
+    # TODO(b/205896350): fix Windows Kokoro to renable MLIR bridge
     enable_mlir_bridge = False,
     python_version = "PY3",
     tags = [
