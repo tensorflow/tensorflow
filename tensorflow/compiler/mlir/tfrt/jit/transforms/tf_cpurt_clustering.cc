@@ -749,34 +749,44 @@ void populateTfCpurtClusteringPolicies(ClusteringPolicySet& policies,
                                        CpurtClusteringTier tier) {
   // Returns true if the given cpurt compilation tier is enabled.
   auto is_enabled = [&](CpurtClusteringTier requested) -> bool {
-    return static_cast<uint8_t>(requested) <= static_cast<uint8_t>(tier);
+    return (static_cast<uint8_t>(tier) & static_cast<uint8_t>(requested)) ==
+           static_cast<uint8_t>(requested);
   };
 
-  if (is_enabled(CpurtClusteringTier::kTier1)) {
+  if (is_enabled(CpurtClusteringTier::kCwise)) {
     policies.Add<CwiseBinaryOpClusteringPolicy,   //
                  CwiseUnaryOpClusteringPolicy,    //
                  CwiseTernaryOpClusteringPolicy,  //
-                 StopGradientOpClusteringPolicy,  //
-                 TransposeOpClusteringPolicy>();
+                 StopGradientOpClusteringPolicy>();
+  }
+
+  if (is_enabled(CpurtClusteringTier::kTranspose)) {
+    policies.Add<TransposeOpClusteringPolicy>();
+  }
+
+  if (is_enabled(CpurtClusteringTier::kReductions)) {
+    policies.Add<ReductionOpClusteringPolicy>();
+  }
+
+  if (is_enabled(CpurtClusteringTier::kMetadata)) {
+    policies.Add<ExpandDimsOpClusteringPolicy,  //
+                 ReshapeOpClusteringPolicy,     //
+                 ShapeOpClusteringPolicy,       //
+                 SqueezeOpClusteringPolicy>();
   }
 
   if (is_enabled(CpurtClusteringTier::kAll)) {
     policies.Add<BatchMatMulV2OpClusteringPolicy,  //
                  BroadcastToOpClusteringPolicy,    //
                  ConcatV2OpClusteringPolicy,       //
-                 ExpandDimsOpClusteringPolicy,     //
                  FillOpClusteringPolicy,           //
                  FusedMatMulOpClusteringPolicy,    //
                  MatMulOpClusteringPolicy,         //
                  OneHotOpClusteringPolicy,         //
                  PackOpClusteringPolicy,           //
                  RangeOpClusteringPolicy,          //
-                 ReductionOpClusteringPolicy,      //
-                 ReshapeOpClusteringPolicy,        //
-                 ShapeOpClusteringPolicy,          //
                  SliceOpClusteringPolicy,          //
                  SoftmaxOpClusteringPolicy,        //
-                 SqueezeOpClusteringPolicy,        //
                  StridedSliceOpClusteringPolicy>();
   }
 }
