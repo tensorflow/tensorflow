@@ -1332,7 +1332,7 @@ struct RemoveReshapeBeforeFullyConnected
   }
 };
 
-// Remove Reshape after FullyConnected when `keep_num_dims=false`, the Reshaoe
+// Remove Reshape after FullyConnected when `keep_num_dims=false`, the Reshape
 // does not alter the last dimension and it restores the batch dimensions
 // collapsed by the FullyConnected op due to `keep_num_dims=false`. For example,
 //
