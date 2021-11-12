@@ -759,7 +759,37 @@ func @tpu_computation(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, t
 ```
 ### `-tf-tpu-colocate-composite-resource-ops`: Colocate resource with composite device assignment to TPU device.
 ### `-tf-tpu-device-propagation`: Propagates TPU devices from ops to users
-### `-tf-tpu-dynamic-layout-pass`: Adds ops that allow TPU program inputs to have layouts determined at JIT compile time.
+### `-tf-tpu-dynamic-layout-pass`: Inserts TPU layout ops to determine layout at run time.
+A pass that allows TPU input layout to be determined after JIT compilation.
+This is done by adding run-time ops that interpret compilation result and
+copy the input to device with that layout.
+
+Example: original program:
+
+```mlir
+  %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}
+  %compile:2 = "tf._TPUCompileMlir"(...)
+  %execute = "tf.TPUExecute"(%input, ..., %compile#1) {device = "/TPU:0"}
+```
+
+Without this pass, later TF graph partitioning passes will insert send/recv
+between %input and %execute and data will be copied to device in a fixed
+layout. With this pass, the program will be transformed into:
+
+```mlir
+  %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}
+  %compile:2 = "tf._TPUCompileMlir"(...)
+  %get_layout = "tf.TPUGetLayoutOp"(%compile#1) {...}
+  %copy_to_device = "tf.TPUCopyWithLayout"(%input, %get_layout)
+      {device = "/TPU:0"}
+  %execute = "tf.TPUExecute"(%copy_to_device, ..., %compile#1)
+      {device = "/TPU:0"}
+```
+
+This way, %compile will determine the layout, which will be respected by
+%copy_to_device. There will not be send/recv ops added by later passes,
+because tf.TPUCopyWithLayout accepts a host input and produces a device
+output.
 ### `-tf-tpu-extract-head-tail-outside-compilation`: Extracts TPU head or tail outside compilation to separate host launches before/after device cluster.
 This pass extracts a CPU computation cluster with `_xla_outside_compilation`
 annotation from the head or tail of a TPU cluster.
