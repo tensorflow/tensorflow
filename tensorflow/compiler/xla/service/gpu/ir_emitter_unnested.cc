@@ -4097,6 +4097,15 @@ void IrEmitterUnnested::EmitPrintfWithThreadId(
   });
 }
 
+llvm::Value* IrEmitterUnnested::CastSharedToGlobal(llvm::Value* input,
+                                                   llvm::Twine name) {
+  return b_.CreateAddrSpaceCast(
+      input,
+      llvm::PointerType::get(input->getType()->getPointerElementType(),
+                             /*AddressSpace=*/0),
+      name);
+}
+
 void IrEmitterUnnested::EmitReductionOutputForRowReduction(
     const TilingKernelInfo& tiling_kernel_info,
     const ReductionCodegenState& reduction_codegen_state, llvm::Type* index_ty,
@@ -4154,8 +4163,10 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
       llvm::Type* element_type =
           state.partial_result_address->getType()->getElementType();
 
-      llvm::Value* initial_value_addr = llvm_ir::EmitAllocaAtFunctionEntry(
-          element_type, "initial_value_addr", &b_);
+      /* Insure initial value address is in generic, not scratch. */
+      llvm::Value* initial_value_addr =
+          CastSharedToGlobal(llvm_ir::EmitAllocaAtFunctionEntry(
+              element_type, "initial_value_addr", &b_));
       b_.CreateStore(state.initial_value, initial_value_addr);
 
       llvm::Value* warp_exists = b_.CreateICmpULT(
