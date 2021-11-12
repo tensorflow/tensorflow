@@ -289,29 +289,72 @@ class TensorType(trace.TraceType):
   """Represents Tensor and TensorSpec for function tracing purposes."""
 
   def __init__(self, signature_context, shape, dtype, name):
-    if signature_context.include_tensor_ranks_only:
-      shape_component = shape.rank
-    elif shape.rank is not None:
-      shape_component = tuple(shape.as_list())
-    else:
-      shape_component = None
+    self.dtype = dtype
+    self.name = name
+    self.shape_rank = shape.rank
 
-    self._components = (shape_component, dtype, name)
+    if self.shape_rank is None or signature_context.include_tensor_ranks_only:
+      self.shape_dims = None
+    else:
+      self.shape_dims = tuple(shape.as_list())
 
   def is_subtype_of(self, other):
-    # TODO(b/202429845): Implement for subtyping.
-    return self == other
+    if not isinstance(other, TensorType):
+      return False
+
+    if self.dtype != other.dtype:
+      return False
+
+    # TODO(b/206014848): Name should not be considered.
+    if self.name != other.name:
+      return False
+
+    # All Tensors are subtypes of a Tensor with no shape.
+    if other.shape_rank is None:
+      return True
+
+    # A Tensor with no rank is never a subtype of a Tensor with rank.
+    if self.shape_rank is None:
+      return False
+
+    # Tensor with a defined shape can only be subtype of another with a defined
+    # shape if they have the same number of dimensions.
+    assert self.shape_rank == len(self.shape_dims)
+    assert other.shape_rank == len(other.shape_dims)
+    if self.shape_rank != other.shape_rank:
+      return False
+
+    # A Tensor is a subtype of other if for each corresponding dimension,
+    # other has the same value or None.
+    if any(o is not None and s != o
+           for s, o in zip(self.shape_dims, other.shape_dims)):
+      return False
+
+    return True
 
   def most_specific_common_supertype(self, others):
     # TODO(b/202430155) Implement for shape relaxation.
     return None
 
   def __hash__(self) -> int:
-    return hash(self._components)
+    return hash((self.dtype, self.name, self.shape_rank, self.shape_dims))
 
   def __eq__(self, other) -> bool:
-    return isinstance(other,
-                      TensorType) and self._components == other._components
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    if not isinstance(other, TensorType):
+      return False
+
+    if self.dtype != other.dtype:
+      return False
+
+    # TODO(b/206014848): Name should not be considered.
+    if self.name != other.name:
+      return False
+
+    return (self.shape_rank == other.shape_rank and
+            self.shape_dims == other.shape_dims)
 
 
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
