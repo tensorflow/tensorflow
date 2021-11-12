@@ -203,6 +203,23 @@ class ScopedCounter final {
   // Start the measurement with the existing set of labels.
   void Reset() { Init(); }
 
+  // Temporarily stop the timer, but keep accumulated time.
+  void AccumulateAndStop() {
+    if (started_) {
+      accumulated_time_ = tensorflow::Env::Default()->NowMicros() - start_time_;
+      started_ = false;
+    }
+  }
+
+  // Start previously stopped timer.
+  void Start() {
+    if (started_) return;
+
+    // Keep previously accumulated time if any.
+    start_time_ = tensorflow::Env::Default()->NowMicros();
+    started_ = true;
+  }
+
   ~ScopedCounter() { ReportAndStop(); }
 
  private:
@@ -210,6 +227,7 @@ class ScopedCounter final {
   void ReportInternal(std::index_sequence<S...>) {
     uint64 time_interval =
         tensorflow::Env::Default()->NowMicros() - start_time_;
+    time_interval += accumulated_time_;
     if (time_interval > 0) {
       counter_->GetCell(labels_[S]...)->IncrementBy(time_interval);
     }
@@ -218,25 +236,22 @@ class ScopedCounter final {
   void Init() {
     start_time_ = tensorflow::Env::Default()->NowMicros();
     started_ = true;
+    accumulated_time_ = 0;
   }
 
   monitoring::Counter<NumLabels>* counter_;
   std::array<std::string, NumLabels> labels_;
   bool started_{false};
   uint64 start_time_;
+  uint64 accumulated_time_;
 };
 
 // Returns a counter used to capture timing metrics for graph optimization
 // passes.
 monitoring::Counter<2>* GetGraphOptimizationCounter();
 
-// Updates the metrics stored about graph optimizations.
 void UpdateGrapplerPassTime(const string& pass_name,
                             const uint64 running_time_usecs);
-void UpdateTFDataPassTime(const string& pass_name,
-                          const uint64 running_time_usecs);
-void UpdateGraphOptimizerPassTime(const string& pass_name,
-                                  const uint64 running_time_usecs);
 
 // Updates metrics for time to distribute variables to all TPU hosts.
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);

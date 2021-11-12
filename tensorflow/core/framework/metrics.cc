@@ -408,24 +408,6 @@ void UpdateGrapplerPassTime(const string& pass_name,
   }
 }
 
-void UpdateTFDataPassTime(const string& pass_name,
-                          const uint64 running_time_usecs) {
-  if (running_time_usecs > 0) {
-    GetGraphOptimizationCounter()
-        ->GetCell("TFDataPass", pass_name)
-        ->IncrementBy(running_time_usecs);
-  }
-}
-
-void UpdateGraphOptimizerPassTime(const string& pass_name,
-                                  const uint64 running_time_usecs) {
-  if (running_time_usecs > 0) {
-    GetGraphOptimizationCounter()
-        ->GetCell("GraphOptimizerPass", pass_name)
-        ->IncrementBy(running_time_usecs);
-  }
-}
-
 void UpdateGraphBuildTime(const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
     static auto* build_graph_calls_cell = build_graph_calls->GetCell();

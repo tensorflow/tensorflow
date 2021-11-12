@@ -103,10 +103,11 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Perform optimizations in a meaningful order.
   for (const auto& optimization : kTFDataOptimizations) {
-    const uint64 pass_start_us = Env::Default()->NowMicros();
+    tensorflow::metrics::ScopedCounter<2> timings(
+        tensorflow::metrics::GetGraphOptimizationCounter(),
+        {"TFData", optimization});
     Status status = ApplyOptimization(optimization, cluster, &optimized_item);
-    const uint64 pass_end_us = Env::Default()->NowMicros();
-    metrics::UpdateTFDataPassTime(optimization, pass_end_us - pass_start_us);
+    timings.ReportAndStop();
     if (!status.ok()) return status;
   }
 
