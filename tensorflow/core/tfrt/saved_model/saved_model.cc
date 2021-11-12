@@ -133,9 +133,10 @@ tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
 struct RequestInfo {
   RCReference<RequestContext> tfrt_request_context;
   std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface> request_queue;
+  std::function<void(std::function<void()>)> runner;
 };
 
-StatusOr<RequestInfo> SetUpRequestContext(
+StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
     const SavedModel::RunOptions& run_options,
     const ModelMetadata& model_metadata, tfrt::HostContext* host,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
@@ -147,18 +148,31 @@ StatusOr<RequestInfo> SetUpRequestContext(
   RequestContextBuilder request_context_builder(host, resource_context,
                                                 GetNextStepId());
 
-  // TODO(b/198671794): `intra_op_threadpool` should be created from
-  // `request_queue`.
+  // TODO(b/198671794): `intra_op_threadpool` should be passed through Run()
+  // directly.
   tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
 
+  // TODO(b/198671794): The per-request queue should be passed through Run()
+  // directly.
   TF_ASSIGN_OR_RETURN(auto request_queue,
                       work_queue->InitializeRequest(&request_context_builder,
                                                     &intra_op_threadpool));
 
+  auto request_info = std::make_unique<RequestInfo>();
+
+  // If a per-request queue is not provided, use the original queue in the
+  // tensorflow::Executor::Args::Runner.
+  auto* inter_op_queue = request_queue ? request_queue.get() : work_queue;
+  request_info->runner = [inter_op_queue](std::function<void()> f) {
+    inter_op_queue->AddTask(std::move(f));
+  };
+
+  request_info->request_queue = std::move(request_queue);
+
   TF_RETURN_IF_ERROR(tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
       &request_context_builder, &fallback_state.device_manager(),
       &fallback_state.process_function_library_runtime(), intra_op_threadpool,
-      model_metadata));
+      model_metadata, &request_info->runner));
 
   TF_RETURN_IF_ERROR(
       tensorflow::SetUpTfCpuRtRequestContext(&request_context_builder));
@@ -171,9 +185,7 @@ StatusOr<RequestInfo> SetUpRequestContext(
     return tensorflow::errors::Internal(StrCat(expected_req_ctx.takeError()));
   }
 
-  RequestInfo request_info;
-  request_info.tfrt_request_context = std::move(expected_req_ctx.get());
-  request_info.request_queue = std::move(request_queue);
+  request_info->tfrt_request_context = std::move(expected_req_ctx.get());
 
   return request_info;
 }
@@ -260,7 +272,7 @@ tensorflow::Status RunInitializers(
                                           host, runtime.work_queue(),
                                           resource_context, fallback_state));
 
-  tfrt::ExecutionContext exec_ctx(request_info.tfrt_request_context);
+  tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
 
   // Run "_tfrt_fallback_init" first to initialize fallback-specific states. It
   // is the special function created by compiler, which calls a sequence of
@@ -1209,7 +1221,7 @@ tensorflow::Status SavedModelImpl::RunInternal(
 
   tensorflow::profiler::TraceMeProducer traceme(
       // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
-      [request_id = request_info.tfrt_request_context->id(), signature_name,
+      [request_id = request_info->tfrt_request_context->id(), signature_name,
        this] {
         return tensorflow::profiler::TraceMeEncode(
             "TfrtModelRun",
@@ -1220,7 +1232,7 @@ tensorflow::Status SavedModelImpl::RunInternal(
                                  options_.model_metadata.version)}});
       },
       tensorflow::profiler::ContextType::kTfrtExecutor,
-      request_info.tfrt_request_context->id());
+      request_info->tfrt_request_context->id());
 
   // Only configure timer when the deadline is set.
   if (run_options.deadline.has_value()) {
@@ -1229,16 +1241,16 @@ tensorflow::Status SavedModelImpl::RunInternal(
       return tensorflow::errors::DeadlineExceeded(kDeadlineExceededMessage);
     }
     req_deadline_tracker_.CancelRequestOnDeadline(
-        deadline, request_info.tfrt_request_context);
+        deadline, request_info->tfrt_request_context);
   }
 
-  ExecutionContext exec_ctx{request_info.tfrt_request_context};
+  ExecutionContext exec_ctx{request_info->tfrt_request_context};
   if (run_options.work_queue) {
     // TODO(b/198671794): Avoid creating `request_queue` when the `work_queue`
     // in `run_options` is specified.
     exec_ctx.set_work_queue(run_options.work_queue);
-  } else if (request_info.request_queue) {
-    exec_ctx.set_work_queue(request_info.request_queue.get());
+  } else if (request_info->request_queue) {
+    exec_ctx.set_work_queue(request_info->request_queue.get());
   } else {
     exec_ctx.set_work_queue(runtime().work_queue());
   }
@@ -1317,7 +1329,7 @@ tensorflow::Status SavedModelImpl::RunInternal(
 
   // Check if error is due to cancellation.
   // TODO(tfrt-devs): report cancellation reason from runtime.
-  if (request_info.tfrt_request_context->IsCancelled()) {
+  if (request_info->tfrt_request_context->IsCancelled()) {
     // Currently a request can only be cancelled by an expired timer.
     return tensorflow::errors::DeadlineExceeded(kDeadlineExceededMessage);
   }

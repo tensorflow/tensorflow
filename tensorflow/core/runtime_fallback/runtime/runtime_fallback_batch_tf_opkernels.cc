@@ -284,7 +284,8 @@ Status SetUpKernelFallbackCompatRequestContextForBatch(
       &src_fallback_request_state->process_function_library_runtime();
 
   return SetUpKernelFallbackCompatRequestContext(
-      builder, device_manager, pflr, intra_op_threadpool, model_metadata);
+      builder, device_manager, pflr, intra_op_threadpool, model_metadata,
+      /*runner=*/nullptr);
 }
 
 StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(

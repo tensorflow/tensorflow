@@ -42,13 +42,17 @@ class OpKernelRunner;
 
 ABSL_CONST_INIT extern const char kOpKernelRunnerCacheResourceName[];
 
-// `builder`, `eager_context`, and `pflr` can't be null.
+// Set up fallback context with common tensorflow states such as devices,
+// function library runtime. They will be forwarded to tensorflow::OpKernel as
+// in tensorflow::Executor. If `runner` is nullptr, internally it will use a
+// default runner that executes tasks in the caller thread.
 Status SetUpKernelFallbackCompatRequestContext(
     tfrt::RequestContextBuilder* builder,
     const tensorflow::DeviceMgr* device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata = absl::nullopt);
+    const absl::optional<tfrt::ModelMetadata>& model_metadata = absl::nullopt,
+    std::function<void(std::function<void()>)>* runner = nullptr);
 
 // Runner_table can be nullptr. In that case, kernel_fallback will use
 // the default runner_table.
