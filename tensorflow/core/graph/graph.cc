@@ -464,6 +464,23 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
                                    ? Node::NC_FUNCTION_OP
                                    : Node::GetNodeClassForOp(node_def.op());
 
+  if (op_reg_data->type_ctor != nullptr) {
+    VLOG(3) << "AddNode: found type constructor for " << node_def.name();
+    const auto ctor_type =
+        full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def);
+    if (!ctor_type.ok()) {
+      *status = errors::InvalidArgument("type error: ",
+                                        ctor_type.status().ToString());
+      return nullptr;
+    }
+    const FullTypeDef ctor_typedef = ctor_type.ValueOrDie();
+    if (ctor_typedef.type_id() != TFT_UNSET) {
+      *(node_def.mutable_experimental_type()) = ctor_typedef;
+    }
+  } else {
+    VLOG(3) << "AddNode: no type constructor for " << node_def.name();
+  }
+
   Node* node = AllocateNode(
       std::make_shared<NodeProperties>(&op_reg_data->op_def,
                                        std::move(node_def), inputs, outputs),
