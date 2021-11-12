@@ -102,6 +102,28 @@ class ArrayGradTest(test.TestCase):
 
     self._testGrad(f, x)
 
+  def test_broadcast_to(self):
+    x = constant_op.constant([1., 2., 3.], dtype=dtypes.float64)
+    y = constant_op.constant([2, 3], dtype=dtypes.int32)
+
+    def f(x):
+      return array_ops.broadcast_to(
+          x,
+          y)
+
+    self._testGrad(f, x)
+
+  def test_broadcast_to_int64(self):
+    x = constant_op.constant([1., 2., 3.], dtype=dtypes.float64)
+    y = constant_op.constant([2, 3], dtype=dtypes.int64)
+
+    def f(x):
+      return array_ops.broadcast_to(
+          x,
+          y)
+
+    self._testGrad(f, x)
+
 
 if __name__ == "__main__":
   test.main()
