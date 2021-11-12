@@ -1264,8 +1264,11 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
       return None, None, None
 
     # Without the provided trackable obj, it is not able to serialize the given
-    # concrete functions as a saved model format.
-    if not self._trackable_obj:
+    # concrete functions as a saved model format. Also when trackable obj is
+    # a function, use the original concrete function conversion pipline.
+    if (not self._trackable_obj or
+        isinstance(self._trackable_obj, (_function.ConcreteFunction,
+                                         _def_function.Function))):
       return None, None, None
 
     signatures = {}
