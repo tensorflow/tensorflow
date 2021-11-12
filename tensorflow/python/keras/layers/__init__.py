@@ -192,11 +192,6 @@ from tensorflow.python.keras.layers.convolutional_recurrent import ConvLSTM2D
 from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNLSTM
 from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNGRU
 
-# Wrapper functions
-from tensorflow.python.keras.layers.wrappers import Wrapper
-from tensorflow.python.keras.layers.wrappers import Bidirectional
-from tensorflow.python.keras.layers.wrappers import TimeDistributed
-
 # # RNN Cell wrappers.
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import DeviceWrapper
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import DropoutWrapper

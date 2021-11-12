@@ -1513,37 +1513,6 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
       with self.assertRaisesRegex(ValueError, 'ActivityRegularizer'):
         model.fit(x, y, epochs=2, batch_size=5)
 
-  def test_conditional_activity_regularizer_with_wrappers_in_call(self):
-
-    class TestModel(training_lib.Model):
-
-      def __init__(self):
-        super(TestModel, self).__init__(
-            name='test_model', dynamic=testing_utils.should_run_eagerly())
-        self.layer = layers.TimeDistributed(
-            layers.Dense(2, activity_regularizer='l2'), input_shape=(3, 4))
-
-      def call(self, x, training=None):
-        if math_ops.greater(math_ops.reduce_sum(x), 0.0):
-          return self.layer(x)
-        else:
-          return self.layer(x)
-
-    model = TestModel()
-    model.compile(
-        loss='mse',
-        optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly())
-
-    x = np.ones(shape=(10, 3, 4))
-    y = np.ones(shape=(10, 3, 2))
-
-    if testing_utils.should_run_eagerly():
-      model.fit(x, y, epochs=2, batch_size=5)
-    else:
-      with self.assertRaisesRegex(ValueError, 'ActivityRegularizer'):
-        model.fit(x, y, epochs=2, batch_size=5)
-
 
 class AddLayer(base_layer.Layer):
   """A layer which adds its input to a variable.
