@@ -65,12 +65,18 @@ class ValueMapManager {
         placeholder_ty_(placeholder_ty),
         control_ty_(control_ty) {}
 
-  void DefineOperation(Operation* op, StringRef node_name) {
+  Status DefineOperation(Operation* op, StringRef node_name) {
     llvm::StringMap<SmallVector<Value, 1>>& op_info = values_map_[node_name];
     SmallVector<Value, 1>& base_operation = op_info["^"];
     // Replace placeholders.
     if (!base_operation.empty()) {
       Operation* placeholder = base_operation[0].getDefiningOp();
+      if (!placeholder ||
+          placeholder->getName().getStringRef() != "tfg.__mlir_placeholder")
+        return InvalidArgument(absl::StrCat(
+            "Duplicated node (or function argument) with the same name: `",
+            node_name.str(), "`"));
+
       op->moveBefore(placeholder);
       placeholder->replaceAllUsesWith(op);
       placeholder->erase();
@@ -78,6 +84,7 @@ class ValueMapManager {
     }
     base_operation.push_back(op->getResult(1));
     base_operation.push_back(op->getResult(0));
+    return Status::OK();
   }
 
   Value GetValueOrCreatePlaceholder(StringRef full_name) {
@@ -186,7 +193,7 @@ Status ImportNodes(ValueMapManager value_manager,
       if (colon_sep != StringRef::npos)
         node_name = node_name.take_front(colon_sep);
     }
-    value_manager.DefineOperation(op, node_name);
+    TF_RETURN_IF_ERROR(value_manager.DefineOperation(op, node_name));
   }
   // We don't expect any placeholder left at this point, fail if any.
   for (Operation& op : *builder.getInsertionBlock()) {
@@ -403,7 +410,9 @@ Status ImportGenericFunction(
   // Import the function body here, after this we have a function with all
   // the nodes, and the nodes_map contains the mapping from node_name to actual
   // MLIR Operations.
-  TF_RETURN_IF_ERROR(ImportNodes(value_manager, func.node_def(), body_builder));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      ImportNodes(value_manager, func.node_def(), body_builder),
+      " when importing function ", func.signature().name());
 
   // After the body, the final part is to setup the return. It comes in two
   // parts: the `ret` field from the FunctionDef for the regular output and the
