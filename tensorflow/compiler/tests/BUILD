@@ -552,8 +552,7 @@ tf_xla_py_test(
     name = "depthwise_conv_op_test",
     size = "medium",
     srcs = ["depthwise_conv_op_test.py"],
-    # TODO(b/205896350): fix Windows Kokoro to renable MLIR bridge
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 5,
     tags = [
@@ -732,8 +731,7 @@ tf_xla_py_test(
     name = "slice_ops_test",
     size = "small",
     srcs = ["slice_ops_test.py"],
-    # TODO(b/205896350): fix Windows Kokoro to renable MLIR bridge
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_cuda_asan",  # times out
@@ -1268,8 +1266,7 @@ tf_xla_py_test(
     name = "spacetobatch_op_test",
     size = "medium",
     srcs = ["spacetobatch_op_test.py"],
-    # TODO(b/205896350): fix Windows Kokoro to renable MLIR bridge
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 3,
     tags = [
@@ -1419,8 +1416,7 @@ tf_xla_py_test(
     name = "ternary_ops_test",
     size = "medium",
     srcs = ["ternary_ops_test.py"],
-    # TODO(b/205896350): fix Windows Kokoro to renable MLIR bridge
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
