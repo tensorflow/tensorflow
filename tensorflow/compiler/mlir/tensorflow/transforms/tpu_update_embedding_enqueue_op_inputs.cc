@@ -76,7 +76,8 @@ LogicalResult FindTPUEmbeddingOps(
         return WalkResult::interrupt();
 
     if (llvm::isa<TF::EnqueueTPUEmbeddingSparseTensorBatchOp,
-                  TF::EnqueueTPUEmbeddingRaggedTensorBatchOp>(op))
+                  TF::EnqueueTPUEmbeddingRaggedTensorBatchOp,
+                  TF::EnqueueTPUEmbeddingArbitraryTensorBatchOp>(op))
       if (failed(ExtractEmbeddingAttribute(op, enqueue_op_map)))
         return WalkResult::interrupt();
 
