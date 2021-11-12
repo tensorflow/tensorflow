@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "tensorflow/core/lib/gtl/cleanup.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/strings/escaping.h"
@@ -325,6 +327,16 @@ class DecodeImageV2Op : public OpKernel {
     OP_REQUIRES(
         context, png::CommonInitDecode(input, channels_, channel_bits, &decode),
         errors::InvalidArgument("Invalid PNG. Failed to initialize decoder."));
+
+    // If we reach this point, then there is data in `decode` which must be
+    // freed by the time we end execution in this function. We cannot call
+    // `png::CommonFreeDecode()` before an `OP_REQUIRES` because if
+    // `OP_REQUIRES` constraint is satisfied then the data would be freed
+    // prematurely. Instead, let's use a `Cleanup` object.
+    auto cleanup = gtl::MakeCleanup([&decode]() {
+      std::cerr << "Cleanup called...\n";
+      png::CommonFreeDecode(&decode);
+    });
 
     // Verify that width and height are not too large:
     // - verify width and height don't overflow int.
