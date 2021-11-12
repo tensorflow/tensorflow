@@ -47,7 +47,7 @@ if attr is not None:
 
   @attr.s
   class TestAttrsClass(object):
-    """Helps test memory leaks for attrs collection."""
+    """Helps test attrs collections."""
     a = attr.ib()
     b = attr.ib()
 
@@ -149,6 +149,18 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
     spec_2 = tensor_spec.TensorSpec(
         None, dtype=dtypes.int32)._tf_tracing_type(context)
     self.assertEqual(spec_1, spec_2)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testAttrsClas(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+
+    trace_a = function_trace_type.get_arg_spec(
+        TestAttrsClass(1, 2), False, False, True)
+    expected = function_trace_type.AttrsType(
+        TestAttrsClass, (function_trace_type.GenericType(1),
+                         function_trace_type.GenericType(2)))
+    self.assertEqual(trace_a, expected)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testTupleEquality(self):
