@@ -733,20 +733,19 @@ func @test_pad(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
 // -----
 
 // CHECK-LABEL: test_pad_v2
-func @test_pad_v2(%arg0: tensor<1x256x8x25xf32>) -> (tensor<1x257x9x28xf32>) {
-  // CHECK-DAG: %[[PAD0:.+]] = "tosa.const"() {value = dense<-3.40282347E+38> : tensor<1x1x8x25xf32>}
-  // CHECK-DAG: %[[CONCAT0:.+]] = "tosa.concat"(%[[PAD0]], %arg0) {axis = 1 : i64}
-  // CHECK-DAG: %[[PAD1:.+]] = "tosa.const"() {value = dense<-3.40282347E+38> : tensor<1x257x1x25xf32>}
-  // CHECK-DAG: %[[CONCAT1:.+]] = "tosa.concat"(%[[CONCAT0]], %[[PAD1]]) {axis = 2 : i64}
-  // CHECK-DAG: %[[PAD2:.+]] = "tosa.const"() {value = dense<-3.40282347E+38> : tensor<1x257x9x1xf32>}
-  // CHECK-DAG: %[[PAD3:.+]] = "tosa.const"() {value = dense<-3.40282347E+38> : tensor<1x257x9x2xf32>}
-  // CHECK-DAG: %[[CONCAT2:.+]] = "tosa.concat"(%[[PAD2]], %[[CONCAT1]], %[[PAD3]]) {axis = 3 : i64}
+func @test_pad_v2(%arg0: tensor<1x256x8x25xf32>) -> (tensor<*xf32>) {
+  // CHECK-DAG: %[[PADDING:.+]] = "tosa.const"() {value = dense<{{\[\[}}0, 0], [1, 0], [0, 1], [1, 2]]> : tensor<4x2xi32>}
   %0 = "tfl.pseudo_const"() {value = dense<[[0, 0], [1, 0], [0, 1], [1, 2]]> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
-  %1 = "tfl.pseudo_const"() {value = dense<-3.40282347E+38> : tensor<f32>} : () -> tensor<f32>
-  %2 = "tfl.padv2"(%arg0, %0, %1) : (tensor<1x256x8x25xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<1x257x9x28xf32>
 
-  // CHECK: return %[[CONCAT2]]
-  return %2 : tensor<1x257x9x28xf32>
+  // CHECK-DAG: %[[VAL:.+]] = "tosa.const"() {value = dense<-3.40282347E+38> : tensor<f32>}
+  %1 = "tfl.pseudo_const"() {value = dense<-3.40282347E+38> : tensor<f32>} : () -> tensor<f32>
+
+  // CHECK-DAG: %[[PAD:.+]] = "tosa.pad"(%arg0, %[[PADDING]], %[[VAL]]) : (tensor<1x256x8x25xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<1x257x9x28xf32>
+  // CHECK-DAG: %[[CAST:.+]] = tensor.cast %[[PAD]]
+  %2 = "tfl.padv2"(%arg0, %0, %1) : (tensor<1x256x8x25xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<*xf32>
+
+  // CHECK: return %3 : tensor<*xf32>
+  return %2 : tensor<*xf32>
 }
 
 // -----
