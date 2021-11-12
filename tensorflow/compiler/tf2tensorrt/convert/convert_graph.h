@@ -35,7 +35,7 @@ namespace convert {
 
 struct ConversionParams {
   const grappler::GrapplerItem* grappler_item = nullptr;
-  const std::vector<string>* input_output_names = nullptr;
+  const std::vector<string>* output_names = nullptr;
   string trt_logger_name;
   size_t max_batch_size = 1;
   size_t max_workspace_size_bytes = 1 << 30;

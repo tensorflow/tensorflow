@@ -394,7 +394,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
 
   ConversionParams cp;
   cp.grappler_item = &item;
-  cp.input_output_names = &nodes_to_preserve;
+  cp.output_names = &nodes_to_preserve;
   cp.trt_logger_name = trt_logger_name_;
   cp.max_batch_size = maximum_batch_size_;
   cp.max_workspace_size_bytes = max_workspace_size_bytes_;

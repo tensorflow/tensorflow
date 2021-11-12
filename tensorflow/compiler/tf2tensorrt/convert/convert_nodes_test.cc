@@ -1984,28 +1984,30 @@ TEST_P(OpConverter_FP32_Test, ConvertFusedBatchNorm) {
     std::string op_name = tmp_node_def.op();
     std::vector<TestParam> test_param{
         {"NHWC", 0, false, 0,
-         errors::Unimplemented(
-             StrCat(op_name, " only supports data_format=NCHW"))},
+         errors::Unimplemented(StrCat(
+             op_name, " only supports data_format=NCHW, at my_batchnorm"))},
         {"NCHW", 0, true, 0,
-         errors::Unimplemented(
-             StrCat(op_name, " only supports is_training=false"))},
+         errors::Unimplemented(StrCat(
+             op_name, " only supports is_training=false, at my_batchnorm"))},
         {"NCHW", 1, false, 0,
          errors::Unimplemented(StrCat("The input \"scale\" for ", op_name,
-                                      " must be a constant"))},
+                                      " must be a constant, at my_batchnorm"))},
         {"NCHW", 2, false, 0,
          errors::Unimplemented(StrCat("The input \"offset\" for ", op_name,
-                                      " must be a constant"))},
+                                      " must be a constant, at my_batchnorm"))},
         {"NCHW", 3, false, 0,
          errors::Unimplemented(StrCat("The input \"mean\" for ", op_name,
-                                      " must be a constant"))},
+                                      " must be a constant, at my_batchnorm"))},
         {"NCHW", 4, false, 0,
          errors::Unimplemented(StrCat("The input \"variance\" for ", op_name,
-                                      " must be a constant"))},
+                                      " must be a constant, at my_batchnorm"))},
         {"NCHW", 0, false, 0.01}};  // The last one is the only test that runs.
     if (trt_mode_ == TrtTestMode::kDynamicShape) {
       test_param.push_back(
           {"NCHW", 0, false, 0.01,
-           errors::InvalidArgument("Channel dimension must be static"), true});
+           errors::InvalidArgument(
+               "Channel dimension must be static, at my_batchnorm"),
+           true});
     }
     for (auto p : test_param) {
       Reset();
@@ -2076,7 +2078,7 @@ TEST_P(OpConverter_FP32_Test, ConvertTranspose) {
                     {},
                     Status(error::UNIMPLEMENTED,
                            "The input \"perm\" for Transpose must be a "
-                           "constant")},
+                           "constant, at my_transpose")},
       TestParamBase{{1, 1, 2, 3},
                     {},
                     {},
@@ -2134,7 +2136,7 @@ TEST_P(OpConverter_FP32_Test, ConvertReshape) {
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
         "The input \"shape\" for Reshape must be a constant in implicit batch "
-        "mode");
+        "mode, at my_reshape");
   } else if (!IS_TRT_VERSION_GE(7, 1, 3, 0)) {
     // Shape is a tensor, should fail before TRT 7.1.3 even in explicit batch /
     // dynamic shape mode.
@@ -2161,11 +2163,13 @@ TEST_P(OpConverter_FP32_Test, ConvertReshape) {
           : Status::OK();
   Status reshape_to_scalar_status =
       trt_mode_ == TrtTestMode::kImplicitBatch
-          ? errors::Unimplemented("Reshape to shape=[] is not supported")
+          ? errors::Unimplemented(
+                "Reshape to shape=[] is not supported, at my_reshape")
           : Status::OK();
   Status reshape_batch_status =
       trt_mode_ == TrtTestMode::kImplicitBatch
-          ? errors::Unimplemented("Reshape on batch dimension is not supported")
+          ? errors::Unimplemented(
+                "Reshape on batch dimension is not supported, at my_reshape")
           : Status::OK();
 
   struct TestParams {
@@ -2234,7 +2238,8 @@ TEST_P(OpConverter_FP32_Test, ConvertReshape) {
       SCOPED_TRACE(StrCat(oss.str(), shape_as_weight ? " weight" : " tensor"));
       if (!shape_as_weight && p.shape.empty()) {
         p.conversion_status = errors::Unimplemented(
-            "Reshape with dynamic input requires 1D input tensor");
+            "Reshape with dynamic input requires 1D input tensor, at "
+            "my_reshape");
       }
       Reset();
       const int n_elements =
@@ -2345,7 +2350,7 @@ void TestMatMulHelper(
     test->RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         StrCat("Data type int32 is not supported for ", node_def.op(),
-               ", must be one of [float, half]"));
+               ", must be one of [float, half], at my_matmul"));
   }
 
   // FC conversion depends on whether the last dim of A is known or not. In
@@ -2911,7 +2916,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertBinary) {
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "Constant folding is falled back to TensorFlow, binary op received "
-        "both input as constant");
+        "both input as constant at: my_add");
   }
 
   using OpFunc = std::function<NodeDef(DataType)>;
@@ -3102,7 +3107,8 @@ TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
     AddTestTensor("input", {1, 2, 3});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Min or max attribute not found for FakeQuantWithMinMaxArgs");
+        "Min or max attribute not found for FakeQuantWithMinMaxArgs "
+        "at my_quantize");
   }
   {
     // FakeQuantWithMinMaxArgs ranges set via attributes, ok.
@@ -3177,9 +3183,10 @@ TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
     AddTestTensor("input", {1, 2, 3});
     AddTestTensor("weights_min", {1});
     AddTestTensor("weights_max", {1});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "The input \"input_min\" for "
-                               "QuantizeAndDequantizeV2 must be a constant");
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"input_min\" for QuantizeAndDequantizeV2 must be a constant"
+        ", at my_quantize");
   }
   {
     // QuantizeAndDequantizeV3 ranges set via inputs, ok.
@@ -3215,8 +3222,9 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
     auto square = ops::Square(s.WithOpName("my_square"), input);
     NodeDef node_def = square.operation.node()->def();
     AddTestWeights("input", {1, 2, 3}, {1, 2, 3, 4, -5, 6}, tf_type_);
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "The input \"x\" for Square must be a tensor");
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"x\" for Square must be a tensor, at my_square");
   }
 
   Reset();
@@ -3471,8 +3479,9 @@ TEST_P(OpConverter_FP32_Test, ConvertActivation) {
     Reset();
     const NodeDef& node_def = CreateUnaryOp<ops::Relu>(tf_type_);
     AddTestWeights<int32>("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "The input \"input\" for Relu must be a tensor");
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"input\" for Relu must be a tensor, at my_unary");
   }
 
   constexpr float kSeluAlpha = 1.7580993408473768599402175208123f;
@@ -3565,7 +3574,7 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
     AddTestWeights<int32>("weights", {1}, {1});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"input\" for ExpandDims must be a "
-                               "tensor");
+                               "tensor, at my_expanddims");
   }
   {
     // Axis is a tensor, should fail.
@@ -3574,7 +3583,7 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
     AddTestTensor("weights", {3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"axis\" for ExpandDims must be a "
-                               "constant");
+                               "constant, at my_expanddims");
   }
   std::vector<TestParamBase> test_params = {
       TestParamBase{{1, 1, 2, 3},
@@ -3584,7 +3593,7 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
                     trt_mode_ == TrtTestMode::kImplicitBatch
                         ? Status(error::UNIMPLEMENTED,
                                  "TensorRT does not allow manipulation of the "
-                                 "batch dimension")
+                                 "batch dimension, at my_expanddims")
                         : Status::OK()},
       TestParamBase{{1, 1, 2, 3},
                     {},
@@ -3593,7 +3602,7 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
                     trt_mode_ == TrtTestMode::kImplicitBatch
                         ? Status(error::UNIMPLEMENTED,
                                  "TensorRT does not allow manipulation of the "
-                                 "batch dimension")
+                                 "batch dimension, at my_expanddims")
                         : Status::OK()},
       TestParamBase{{1, 1, 2, 3},
                     {},
@@ -3601,14 +3610,14 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
                     {5},
                     Status(error::INVALID_ARGUMENT,
                            "Axis value of 5 is out of bounds, must be in range"
-                           " [-5, 5)")},
+                           " [-5, 5), at my_expanddims")},
       TestParamBase{{1, 1, 2, 3},
                     {},
                     {},
                     {-6},
                     Status(error::INVALID_ARGUMENT,
                            "Axis value of -6 is out of bounds, must be in range"
-                           " [-5, 5)")},
+                           " [-5, 5), at my_expanddims")},
       TestParamBase{{1, 2, 3}, {}, {1, 1, 2, 3}, {1}},
       TestParamBase{{1, 2, 3}, {}, {1, 1, 2, 3}, {-3}},
       TestParamBase{{1, 2, 3}, {}, {1, 2, 3, 1}, {3}},
@@ -3683,7 +3692,8 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
           trt_mode_ == TrtTestMode::kExplicitBatch
               ? Status::OK()
               : Status{error::UNIMPLEMENTED,
-                       "Squeeze is not implemented for empty squeeze_dims"}},
+                       "Squeeze is not implemented for empty squeeze_dims, at "
+                       "my_squeeze"}},
       TestParamBase{{1, 2, 1, 3},
                     {},
                     {2, 1, 3},
@@ -3691,7 +3701,7 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
                     use_implicit_batch
                         ? Status{error::UNIMPLEMENTED,
                                  "TensorRT does not allow manipulation of the "
-                                 "batch dimension"}
+                                 "batch dimension, at my_squeeze"}
                         : Status::OK()},
       TestParamBase{{1, 2, 1, 3},
                     {},
@@ -3700,7 +3710,7 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
                     use_implicit_batch
                         ? Status{error::UNIMPLEMENTED,
                                  "TensorRT does not allow manipulation of the "
-                                 "batch dimension"}
+                                 "batch dimension, at my_squeeze"}
                         : Status::OK()},
       TestParamBase{
           {1, 1, 2, 3},
@@ -3708,15 +3718,16 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
           {},
           {4},
           Status{error::INVALID_ARGUMENT,
-                 "Axis value of 4 is out of bounds, must be in range [-4, 4)"}},
+                 "Axis value of 4 is out of bounds, must be in range [-4, 4), "
+                 "at my_squeeze"}},
       TestParamBase{
           {1, 1, 2, 3},
           {},
           {},
           {-5},
-          Status{
-              error::INVALID_ARGUMENT,
-              "Axis value of -5 is out of bounds, must be in range [-4, 4)"}},
+          Status{error::INVALID_ARGUMENT,
+                 "Axis value of -5 is out of bounds, must be in range [-4, 4), "
+                 "at my_squeeze"}},
       TestParamBase{{1, 1, 2, 3}, {}, {1, 2, 3}, {1}},
       TestParamBase{{1, 1, 2, 3}, {}, {1, 2, 3}, {-3}},
       TestParamBase{{1, 2, 3, 1}, {}, {1, 2, 3}, {3}},
@@ -3735,7 +3746,7 @@ TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
       {2},
       Status{error::INVALID_ARGUMENT,
              "Dimension 2 with size 2 cannot be squeezed because it must be "
-             "size 1"}};
+             "size 1, at my_squeeze"}};
 
   if (trt_mode_ == TrtTestMode::kDynamicShape) {
     // In this test we try to squeeze axis=2 which has size > 1. In dynamic
@@ -3792,7 +3803,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
     AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"input\" for StridedSlice must "
-                               "be a tensor");
+                               "be a tensor, at my_strided_slice");
   }
   {
     // Begin, end, strides are tensors, should fail.
@@ -3804,7 +3815,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
     AddTestTensor("strides", {4});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"begin\" for StridedSlice must be a constant");
+        "The input \"begin\" for StridedSlice must be a constant, at "
+        "my_strided_slice");
   }
 
   struct TestParams {
@@ -3839,7 +3851,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
       (trt_mode_ == TrtTestMode::kImplicitBatch)
           ? errors::Unimplemented(
                 "TensorRT does not allow modifications to "
-                "the batch dimension")
+                "the batch dimension, at my_strided_slice")
           : Status::OK();
   std::vector<TestParams> params = {
       // Modify batch dim, should fail in implicit batch mode.
@@ -4508,7 +4520,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertStridedSlice) {
                  /*expected_output=*/{1, 1, 6},
                  /*conversion_status=*/
                  errors::Unimplemented(
-                     "new_axis_mask is not supported for StridedSlice"),
+                     "new_axis_mask is not supported for StridedSlice, at"),
                  /*runtime_status=*/Status::OK(),
                  /*partial_input_dims=*/{1, 6}},
   };
@@ -4592,7 +4604,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
                  /*expected_output=*/{},
                  /*conversion_status=*/
                  errors::InvalidArgument("\"begin\" in Slice "
-                                         "is out of range")},
+                                         "is out of range, at my_slice")},
       // In implicit batch mode, slicing the batch dimension is not allowed.
       TestParams{/*input_dims=*/{2, 1, 1, 3},
                  /*partial_input_dims=*/{-1, -1, -1, -1},
@@ -4657,7 +4669,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
           trt_mode_ == TrtTestMode::kDynamicShape
               ? Status::OK()
               : errors::InvalidArgument("\"begin\" + \"size\" for dimension "
-                                        "2 in Slice is out of range"),
+                                        "2 in Slice is out of range, at "
+                                        "my_slice"),
           errors::Internal("Internal: Failed to build TensorRT engine")},
       // The slice operation should expect that the "size[i]" values are not
       // less than -1.
@@ -4667,7 +4680,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
                  /*size=*/{1, 1, 2, -2},
                  {},
                  {},
-                 errors::InvalidArgument("\"size\" in Slice is out of range")},
+                 errors::InvalidArgument(
+                     "\"size\" in Slice is out of range, at my_slice")},
       TestParams{
           /*input_dims=*/{1, 1, 2, 3},
           /*partial_input_dims=*/{-1, -1, -1, -1},
@@ -4678,7 +4692,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
           /*conversion_status=*/trt_mode_ == TrtTestMode::kDynamicShape
               ? Status::OK()
               : errors::InvalidArgument("\"begin\" + \"size\" for dimension "
-                                        "2 in Slice is out of range"),
+                                        "2 in Slice is out of range, at "
+                                        "my_slice"),
           errors::Internal("Internal: Failed to build TensorRT engine")},
   };
 
@@ -4749,7 +4764,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"input\" for Conv2D must be a tensor");
+        "The input \"input\" for Conv2D must be a tensor, at my_conv2d");
   }
   {
     // Filter is tensor, should fail.
@@ -4759,7 +4774,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestTensor("weights", {3, 3, 1, 1});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"filter\" for Conv2D must be a constant");
+        "The input \"filter\" for Conv2D must be a constant, at my_conv2d");
   }
   {
     // Filter is not 4D, should fail.
@@ -4767,8 +4782,9 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     NodeDef node_def = get_conv2d_nodedef();
     AddTestTensor("input", {1, 1, 2, 3});
     AddTestWeights<float>("weights", {3, 3, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Conv2D expects kernel of dimension 4");
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Conv2D expects kernel of dimension 4, at my_conv2d");
   }
   {
     // Dilations is not 4D, should fail.
@@ -4779,7 +4795,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Convolution dilations field must specify 4 dimensions");
+        "Convolution dilations field must specify 4 dimensions, at my_conv2d");
   }
   {
     // Dilation value is not 1 for channel, should fail.
@@ -4790,7 +4806,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Dilation rate must be 1 for batch and channel "
-                               "dimensions");
+                               "dimensions, at my_conv2d");
   }
   {
     // Dilation value is not 1 for channel (NHWC), should fail.
@@ -4801,7 +4817,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Dilation rate must be 1 for batch and channel "
-                               "dimensions");
+                               "dimensions, at my_conv2d");
   }
   {
     // Strides is not 4D, should fail.
@@ -4812,7 +4828,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Convolution strides field must specify 4 dimensions");
+        "Convolution strides field must specify 4 dimensions, at my_conv2d");
   }
   {
     // Stride value is not 1 for channel, should fail.
@@ -4823,7 +4839,7 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "Stride must be 1 for batch and channel dimensions");
+        "Stride must be 1 for batch and channel dimensions, at my_conv2d");
   }
   if (trt_mode_ == TrtTestMode::kDynamicShape) {
     Reset();
@@ -4833,8 +4849,9 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
     TF_ASSERT_OK(TfTypeToTrtType(tf_type_, &trt_type));
     AddTestTensorWithTFDims("input", {-1, -1, -1, -1}, trt_type);
     AddTestWeights<float>("weights", {1, 2, 1, 1}, {-1, 1});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Channel dimension must be static");
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Channel dimension must be static, at my_conv2d");
   }
 
   struct TestParams {
@@ -5040,22 +5057,24 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
                  {1, 1, 2, 2},
                  {},
                  errors::Unimplemented("Dilation with Conv2DBackpropInput "
-                                       "(conv2d_transpose) is not supported")},
+                                       "(conv2d_transpose) is not supported, "
+                                       "at my_conv2d_backprop_input")},
   };
   if (trt_mode_ == TrtTestMode::kDynamicShape) {
-    params.push_back(
-        TestParams{/*input_dims=*/{1, 1, 2, 2},
-                   /*input=*/{0, 1, 2, 3},
-                   /*filter_dims=*/{1, 2, 1, 1},
-                   /*filter=*/{-1, 1},
-                   /*strides=*/{1, 1, 1, 2},
-                   /*padding=*/"SAME",
-                   /*data_format=*/"NCHW",
-                   /*dilations=*/{1, 1, 1, 1},
-                   /*expected_output_dims=*/{1, 1, 2, 4},
-                   /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3},
-                   errors::InvalidArgument("Channel dimension must be static"),
-                   /*partial input dims=*/{1, -1, 2, 2}});
+    params.push_back(TestParams{
+        /*input_dims=*/{1, 1, 2, 2},
+        /*input=*/{0, 1, 2, 3},
+        /*filter_dims=*/{1, 2, 1, 1},
+        /*filter=*/{-1, 1},
+        /*strides=*/{1, 1, 1, 2},
+        /*padding=*/"SAME",
+        /*data_format=*/"NCHW",
+        /*dilations=*/{1, 1, 1, 1},
+        /*expected_output_dims=*/{1, 1, 2, 4},
+        /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3},
+        errors::InvalidArgument(
+            "Channel dimension must be static, at my_conv2d_backprop_input"),
+        /*partial input dims=*/{1, -1, 2, 2}});
     // Test dynamic  batch dimension.
     params.push_back(
         TestParams{/*input_dims=*/{2, 1, 2, 2},
@@ -5234,7 +5253,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     AddTestWeights<float>("weights", {1, 3, 3, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"input\" for Conv3D must be a tensor");
+        "The input \"input\" for Conv3D must be a tensor, at my_conv3d");
   }
   {
     // Filter is tensor, should fail.
@@ -5245,7 +5264,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
                   CreateVectorIota<float>(9));
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"filter\" for Conv3D must be a constant");
+        "The input \"filter\" for Conv3D must be a constant, at my_conv3d");
   }
   {
     // Filter is not 5D, should fail.
@@ -5253,8 +5272,9 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     NodeDef node_def = GetConv3DNodeDef();
     AddTestTensor("input", {1, 1, 2, 3}, tf_type_, CreateVectorIota<float>(6));
     AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Conv3D expects kernel of dimension 5");
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Conv3D expects kernel of dimension 5, at my_conv3d");
   }
   {
     // Dilations is not 5D, should fail.
@@ -5267,7 +5287,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
         {1, 2, 3, 4, 5, 6, 7, 8, 9});  // Dimensions, then values
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Convolution dilations field must specify 5 dimensions");
+        "Convolution dilations field must specify 5 dimensions, at my_conv3d");
   }
   {
     // Dilation value is not 1 for channel, should fail.
@@ -5279,7 +5299,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Dilation rate must be 1 for batch and channel "
-                               "dimensions");
+                               "dimensions, at my_conv3d");
   }
   {
     // Dilation value is not 1 for channel (NDHWC), should fail.
@@ -5291,7 +5311,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Dilation rate must be 1 for batch and channel "
-                               "dimensions");
+                               "dimensions, at my_conv3d");
   }
   {
     // Dilation + Conv3DBackpropInputV2, should fail.
@@ -5304,7 +5324,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     AddTestWeights<int>("input_sizes", {4}, {1, 2, 3, 1});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Dilation with Conv3DBackpropInputV2 "
-                               "(conv3d_transpose) is not supported");
+                               "(conv3d_transpose) is not supported, "
+                               "at my_conv3d");
   }
   {
     // Asymmetric+ Conv3DBackpropInputV2, should fail.
@@ -5316,7 +5337,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     AddTestWeights<int>("input_sizes", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Asymmetric padding with Conv3DBackpropInputV2 "
-                               "(conv3d_transpose) is not supported");
+                               "(conv3d_transpose) is not supported, at "
+                               "my_conv3d");
   }
   {
     // Strides is not 5D, should fail.
@@ -5327,7 +5349,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     AddTestWeights<float>("weights", {1, 1, 2, 1, 1}, {1, 1});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Convolution strides field must specify 5 dimensions");
+        "Convolution strides field must specify 5 dimensions, at my_conv3d");
   }
   {
     // Stride value is not 1 for channel, should fail.
@@ -5339,7 +5361,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
                           {1, 2, 3, 4, 5, 6, 7, 8, 9});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "Stride must be 1 for batch and channel dimensions");
+        "Stride must be 1 for batch and channel dimensions, at my_conv3d");
   }
 
   // Start here
@@ -5492,7 +5514,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
         /*expected_output=*/{},       // ignore, will fail anyway
         /*allow_dynamic_channel_dim=*/true,
         /*validation_status=*/
-        Status{error::INVALID_ARGUMENT, "Channel dimension must be static"}});
+        Status{error::INVALID_ARGUMENT,
+               "Channel dimension must be static, at my_conv3d"}});
     // NDHWC - Dynamic Channel - Should fail in kDynamicShape
     ok_params.push_back(Conv3DTestParams{
         /*input_dims=*/{1, 3, 3, 3, 1},
@@ -5508,7 +5531,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
         /*expected_output=*/{},       // ignore, will fail anyway
         /*allow_dynamic_channel_dim=*/true,
         /*validation_status=*/
-        Status{error::INVALID_ARGUMENT, "Channel dimension must be static"}});
+        Status{error::INVALID_ARGUMENT,
+               "Channel dimension must be static, at my_conv3d"}});
   }
 
   for (auto p : ok_params) {
@@ -5572,9 +5596,9 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
     NodeDef node_def = get_pool_nodedef(tf_type_, nDim);
 
     AddTestWeights<float>("input", {1, 1, 1, 2, 3}, {1, 2, 3, 4, 5, 6});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        StrCat("The input \"input\" for ", node_def.op(), " must be a tensor"));
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               StrCat("The input \"input\" for ", node_def.op(),
+                                      " must be a tensor, at my_pool"));
   }
 
   struct TestParams {
@@ -5701,8 +5725,9 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertTopK) {
     Reset();
     AddTestTensor("input", {1, 1, 2, 3});
     AddTestTensor("weights", {1}, DT_INT32, {});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "The input \"k\" for TopKV2 must be a constant");
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"k\" for TopKV2 must be a constant, at my_topk");
   }
   {
     // Ok.
@@ -5734,7 +5759,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
     AddTestTensor("axis", {1}, DT_INT32, {});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"axis\" for GatherV2 must be a constant");
+        "The input \"axis\" for GatherV2 must be a constant, at my_gather");
   }
   {
     // Axis is out of bounds, should fail.
@@ -5744,7 +5769,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
     AddTestWeights<int32>("axis", {1}, {4});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Axis value of 4 is out of bounds, must be in "
-                               "range [-4, 4)");
+                               "range [-4, 4), at my_gather");
   }
 
   struct TestParams {
@@ -5769,19 +5794,20 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
 
   std::vector<TestParams> test_params = {
       // Axis is batch dimension, should fail in implicit batch mode.
-      TestParams{/*params_shape=*/{2, 1, 1, 3},
-                 /*indices_shape=*/{2},
-                 /*indices=*/{1, 0},
-                 /*axis=*/0,
-                 /*expected_output_shape=*/{2, 1, 1, 3},
-                 /*expected_output=*/{4, 5, 6, 1, 2, 3},
-                 /*params_is_tensor=*/true,
-                 /*indices_is_tensor=*/true,
-                 /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
-                     ? Status{error::UNIMPLEMENTED,
-                              "TensorRT does not allow "
-                              "manipulation of the batch dimension"}
-                     : Status::OK()},
+      TestParams{
+          /*params_shape=*/{2, 1, 1, 3},
+          /*indices_shape=*/{2},
+          /*indices=*/{1, 0},
+          /*axis=*/0,
+          /*expected_output_shape=*/{2, 1, 1, 3},
+          /*expected_output=*/{4, 5, 6, 1, 2, 3},
+          /*params_is_tensor=*/true,
+          /*indices_is_tensor=*/true,
+          /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
+              ? Status{error::UNIMPLEMENTED,
+                       "TensorRT does not allow "
+                       "manipulation of the batch dimension, at my_gather"}
+              : Status::OK()},
       // Batch size of indices is not 1 when params and indices are tensors.
       TestParams{/*params_shape=*/{2, 1, 3},
                  /*indices_shape=*/{2, 1},
@@ -5837,7 +5863,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
           /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
               ? Status{error::UNIMPLEMENTED,
                        "TensorRT does not allow "
-                       "manipulation of the batch dimension"}
+                       "manipulation of the batch dimension, at my_gather"}
               : Status::OK(),
           /*runtime_status=*/Status::OK(),
           /*add_index_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
@@ -6060,8 +6086,9 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertReduce) {
     const NodeDef node_def = CreateReduceOp<ops::Sum>(tf_type_, false);
     AddTestWeights<float>("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
     AddTestWeights<int32>("axis", {1}, {1});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "The input \"input\" for Sum must be a tensor");
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"input\" for Sum must be a tensor, at my_reduce");
   }
   {
     // Axis is weights, should fail.
@@ -6069,8 +6096,9 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertReduce) {
     const NodeDef node_def = CreateReduceOp<ops::Sum>(tf_type_, false);
     AddTestTensor("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
     AddTestTensor("axis", {1}, DT_INT32, {1});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "The input \"axis\" for Sum must be a constant");
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"axis\" for Sum must be a constant, at my_reduce");
   }
   using OpFunc = std::function<NodeDef(DataType, bool)>;
   using ValFunc = float (*)(float, float);
@@ -6141,7 +6169,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertReduce) {
                 errors::InvalidArgument("Axis value of ", ax,
                                         " is out of bounds, must be in "
                                         "range [",
-                                        -rank, ", ", rank, ")");
+                                        -rank, ", ", rank, "), at my_reduce");
           } else {
             int ax_positive = ax >= 0 ? ax : ax + rank;
             // Zero marks elements that we will remove later.
@@ -6150,7 +6178,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertReduce) {
                 (ax == 0 || ax == -rank)) {
               p.conversion_status = errors::Unimplemented(
                   "TensorRT does not allow manipulation of the batch "
-                  "dimension");
+                  "dimension, at my_reduce");
             }
           }
         }
@@ -6191,8 +6219,9 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
     Reset();
     const NodeDef node_def = CreateUnaryOp<ops::Neg>(tf_type_);
     AddTestWeights<float>("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "The input \"x\" for Neg must be a tensor");
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"x\" for Neg must be a tensor, at my_unary");
   }
   using OpFunc = std::function<NodeDef(DataType)>;
   using ValFunc = float (*)(float);
@@ -6291,7 +6320,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
     AddTestTensor("axis", {1});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"axis\" for ConcatV2 must be a constant");
+        "The input \"axis\" for ConcatV2 must be a constant, at my_concat");
   }
   {
     // Axis is out of bounds, should fail.
@@ -6302,7 +6331,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
     AddTestWeights<int32>("axis", {1}, {4});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Axis value of 4 is out of bounds, must be in "
-                               "range [-4, 4)");
+                               "range [-4, 4), at my_concat");
   }
   {
     // Inputs have inconsistent ranks, should fail.
@@ -6311,8 +6340,9 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
     AddTestTensor("values_0", {1, 1, 2, 3});
     AddTestTensor("values_1", {1, 1, 6});
     AddTestWeights<int32>("axis", {1}, {1});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Received inputs with inconsistent rank");
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Received inputs with inconsistent rank, at my_concat");
   }
 
   struct TestParams {
@@ -6375,7 +6405,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*expected_output=*/CreateVectorIota<int>(12),
           /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
               ? errors::Unimplemented(
-                    "The input \"values_1\" for ConcatV2 must be a tensor")
+                    "The input \"values_1\" for ConcatV2 must be a tensor, at "
+                    "my_concat")
               : Status::OK(),
           /*run_status=*/Status::OK(),
       },
@@ -6389,7 +6420,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*expected_output=*/CreateVectorIota<int>(12),
           /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
               ? errors::Unimplemented(
-                    "The input \"values_0\" for ConcatV2 must be a tensor")
+                    "The input \"values_0\" for ConcatV2 must be a tensor, at "
+                    "my_concat")
               : Status::OK(),
           /*run_status=*/Status::OK(),
       },
@@ -6404,7 +6436,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*conversion_status=*/trt_mode_ == TrtTestMode::kImplicitBatch
               ? errors::Unimplemented(
                     "TensorRT does not allow manipulation of the "
-                    "batch dimension")
+                    "batch dimension, at my_concat")
               : Status::OK(),
       },
       {
@@ -6417,7 +6449,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
           /*expected_output=*/CreateVectorIota<int>(12),
           trt_mode_ != TrtTestMode::kDynamicShape
               ? errors::InvalidArgument(
-                    "Received inputs with inconsistent shape")
+                    "Received inputs with inconsistent shape, at my_concat")
               : Status::OK(),
           errors::InvalidArgument(""),
       }};
@@ -6550,7 +6582,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"axis\" for Split must be a constant");
+        "The input \"axis\" for Split must be a constant, at my_split");
   }
   {
     // Axis is out of bounds, should fail.
@@ -6560,7 +6592,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Axis value of 4 is out of bounds, must be in "
-                               "range [-4, 4)");
+                               "range [-4, 4), at my_split");
   }
   {
     // Axis is out of bounds (negative), should fail.
@@ -6570,7 +6602,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                "Axis value of -5 is out of bounds, must be in "
-                               "range [-4, 4)");
+                               "range [-4, 4), at my_split");
   }
   {
     // Axis is batch dimension, should fail.
@@ -6580,7 +6612,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "TensorRT does not allow manipulation of the "
-                               "batch dimension");
+                               "batch dimension, at my_split");
   }
   {
     // Value is a weight, should fail.
@@ -6590,7 +6622,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestWeights<float>("value", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"value\" for Split must be a tensor");
+        "The input \"value\" for Split must be a tensor, at my_split");
   }
   {
     // Dim is not evenly divisibly by num_split, should fail.
@@ -6600,7 +6632,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Dimension 3 of size 3 is not evenly divisible by 2");
+        "Dimension 3 of size 3 is not evenly divisible by 2, at my_split");
   }
   {
     // num_split > dim size, should fail.
@@ -6610,7 +6642,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Dimension 3 of size 3 is not evenly divisible by 4");
+        "Dimension 3 of size 3 is not evenly divisible by 4, at my_split");
   }
 
   TestConvertSplit<DT_FLOAT>(this);
@@ -6677,7 +6709,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
       AddTestWeights<float>("value", {1, 1, 2, 3}, {1, 2, 3, 4, 5, 6});
       RunValidationAndConversion(
           node_def, error::UNIMPLEMENTED,
-          "The input \"value\" for Unpack must be a tensor");
+          "The input \"value\" for Unpack must be a tensor, at my_unpack");
     }
     {
       // Axis is out of bounds, should fail.
@@ -6686,7 +6718,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
       AddTestTensor("value", {1, 1, 2, 3});
       RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                  "Axis value of 4 is out of bounds, must be in "
-                                 "range [-4, 4)");
+                                 "range [-4, 4), at my_unpack");
     }
     {
       // Axis is out of bounds (negative), should fail.
@@ -6695,7 +6727,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
       AddTestTensor("value", {1, 1, 2, 3});
       RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                  "Axis value of -5 is out of bounds, must be "
-                                 "in range [-4, 4)");
+                                 "in range [-4, 4), at my_unpack");
     }
     {
       if (trt_mode_ != TrtTestMode::kExplicitBatch) {
@@ -6705,7 +6737,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
         AddTestTensor("value", {1, 2, 3});
         RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                    "TensorRT does not allow manipulation of "
-                                   "the batch dimension");
+                                   "the batch dimension, at my_unpack");
       }
     }
     {
@@ -6715,7 +6747,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
       AddTestTensor("value", {1, 1, 6});
       RunValidationAndConversion(
           node_def, error::INVALID_ARGUMENT,
-          "Dimension 2 has size 6 which is not equal to num of 5");
+          "Dimension 2 has size 6 which is not equal to num of 5, at "
+          "my_unpack");
     }
     {
       // Output would be TF scalar, should fail.
@@ -6737,7 +6770,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
       } else {
         RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                    "Input \"value\" for Unpack must be rank 2 "
-                                   "or greater");
+                                   "or greater, at my_unpack");
       }
     }
   }
@@ -6746,7 +6779,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
 
   Status run_status =
       trt_mode_ == TrtTestMode::kDynamicShape
-          ? errors::InvalidArgument("must have statically defined dimensions")
+          ? errors::InvalidArgument(
+                "must have statically defined dimensions, at my_unpack")
           : Status::OK();
 
   std::vector<UnpackTestParams> params = {
@@ -6833,7 +6867,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
        /*expected_output=*/CreateVectorIota<float>(12),
        trt_mode_ == TrtTestMode::kImplicitBatch
            ? Status{error::UNIMPLEMENTED,
-                    "The input \"values_1\" for Pack must be a tensor"}
+                    "The input \"values_1\" for Pack must be a tensor, at "
+                    "my_pack"}
            : Status::OK(),
        /*runtime_status*/ Status::OK(),
        /*weight_input*/ true},
@@ -6847,7 +6882,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
           /*expected_output=*/{},
           Status{error::INVALID_ARGUMENT,
                  "Axis value of -5 is out of bounds, must be in"
-                 " range [-4, 4)"},
+                 " range [-4, 4), at my_pack"},
       },
       // Axis is batch dimension, should fail in implicit batch mode.
       {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
@@ -6859,7 +6894,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
        trt_mode_ == TrtTestMode::kImplicitBatch
            ? Status{error::UNIMPLEMENTED,
                     "TensorRT does not allow manipulation of the batch "
-                    "dimension"}
+                    "dimension, at my_pack"}
            : Status::OK()},
       // Inconsistent rank, should fail.
       {
@@ -6870,7 +6905,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
           /*expected_output_dims=*/{},
           /*expected_output=*/{},
           Status{error::INVALID_ARGUMENT,
-                 "Received inputs with inconsistent rank"},
+                 "Received inputs with inconsistent rank, at my_pack"},
       },
       {
           /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
@@ -6917,15 +6952,15 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
   };
   // Inputs have inconsistent shapes, should fail.
   if (trt_mode_ != TrtTestMode::kDynamicShape) {
-    params.push_back(
-        TestParams{/*input_shapes=*/{{1, 2, 3}, {1, 3, 2}},
-                   /*partial_input_shapes=*/{{}, {}},
-                   /*input_values=*/common_input,
-                   /*axis=*/1,
-                   /*expected_output_dims=*/{},
-                   /*expected_output=*/CreateVectorIota<float>(12),
-                   Status{error::INVALID_ARGUMENT,
-                          "Received inputs with inconsistent shape"}});
+    params.push_back(TestParams{
+        /*input_shapes=*/{{1, 2, 3}, {1, 3, 2}},
+        /*partial_input_shapes=*/{{}, {}},
+        /*input_values=*/common_input,
+        /*axis=*/1,
+        /*expected_output_dims=*/{},
+        /*expected_output=*/CreateVectorIota<float>(12),
+        Status{error::INVALID_ARGUMENT,
+               "Received inputs with inconsistent shape, at my_pack"}});
   } else {
     // In dynamic shape mode we cannot catch inconsistent shapes at conversion
     // time, only during runtime. But TensorRT does not raise a proper runtime
@@ -7027,7 +7062,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertArgMinMax) {
     AddTestTensor("dimension", {1});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "The input \"dimension\" for ArgMax must be a constant");
+        "The input \"dimension\" for ArgMax must be a constant, at my_arg");
   }
   {
     // Output type is INT64, should fail.
@@ -7038,7 +7073,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertArgMinMax) {
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights("dimension", {1}, {3}, DT_INT32);
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "Output type int64 is not supported");
+                               "Output type int64 is not supported, at my_arg");
   }
 
   const std::vector<float> common_input = CreateVectorIota<float>(6);
@@ -7051,7 +7086,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertArgMinMax) {
        /*expected_argmin_output=*/{0, 0, 0},
        trt_mode_ == TrtTestMode::kImplicitBatch
            ? errors::Unimplemented("TensorRT does not allow manipulation of "
-                                   "the batch dimension")
+                                   "the batch dimension, at my_arg")
            : Status::OK()},
       {
           /*input_shape=*/{1, 6},
@@ -7170,7 +7205,8 @@ void TestConvertDepthSpaceShuffle(
     test->AddTestWeights<float>("input", {1, 4, 1, 1}, {1, 2, 3, 4});
     test->RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        StrCat("The input \"input\" for ", node_def.op(), " must be a tensor"));
+        StrCat("The input \"input\" for ", node_def.op(),
+               " must be a tensor, at my_shuffle"));
   }
   {
     // Input rank != 4
@@ -7178,9 +7214,10 @@ void TestConvertDepthSpaceShuffle(
     NodeDef node_def = GetDepthSpaceShuffleNodeDef<ops::DepthToSpace>(
         test->get_tf_type(), 2, "NCHW");
     test->AddTestTensor("input", {1, 16, 32});
-    test->RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        StrCat("The input to ", node_def.op(), " must be rank 4"));
+    test->RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                                     StrCat("The input to ", node_def.op(),
+                                            " must be rank 4, at "
+                                            "my_shuffle"));
   }
   {
     // Unsupported format, should fail.
@@ -7190,7 +7227,7 @@ void TestConvertDepthSpaceShuffle(
     test->AddTestTensor("input", {1, 16, 32, 32});
     test->RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "Data format NCHW_VECT_C is not supported");
+        "Data format NCHW_VECT_C is not supported, at my_shuffle");
   }
   if (test->get_trt_mode() != TrtTestMode::kDynamicShape) {
     // In dynamic shape mode, we cannot check input dimension values at
@@ -7205,7 +7242,7 @@ void TestConvertDepthSpaceShuffle(
       test->AddTestTensor("input", {1, 16, 32, 32});
       test->RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                        "Number of channels must be divisible by"
-                                       " block_size*block_size");
+                                       " block_size*block_size, at my_shuffle");
     } else {
       {  // Width not divisible by block_size, should fail.
         test->Reset();
@@ -7214,7 +7251,7 @@ void TestConvertDepthSpaceShuffle(
         test->AddTestTensor("input", {1, 16, 9, 32});
         test->RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                          "Width and height must be divisible by"
-                                         " block_size");
+                                         " block_size, at my_shuffle");
       }
       {
         // Height not divisible by block_size, should fail.
@@ -7224,7 +7261,7 @@ void TestConvertDepthSpaceShuffle(
         test->AddTestTensor("input", {1, 16, 32, 9});
         test->RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                          "Width and height must be divisible by"
-                                         " block_size");
+                                         " block_size, at my_shuffle");
       }
     }
   }
@@ -7348,7 +7385,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
     AddTestWeights("clip_value_max", {1}, {5}, tf_type_);
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"t\" for ClipByValue must be a "
-                               "tensor");
+                               "tensor, at my_clip");
   }
   {
     // Clip min is a tensor, should fail.
@@ -7358,7 +7395,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
     AddTestWeights("clip_value_max", {1}, {1}, tf_type_);
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"clip_value_min\" for ClipByValue "
-                               "must be a constant");
+                               "must be a constant, at my_clip");
   }
   {
     // Clip max is a tensor, should fail.
@@ -7368,7 +7405,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
     AddTestTensor("clip_value_max", {1});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"clip_value_max\" for ClipByValue "
-                               "must be a constant");
+                               "must be a constant, at my_clip");
   }
 
   struct TestParams {
@@ -7456,7 +7493,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquaredDifference) {
     AddTestTensor("y", {1, 1, 2, 3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"x\" for SquaredDifference must be "
-                               "a tensor");
+                               "a tensor, at my_squared_diff");
   }
 
   struct TestParams {
@@ -7583,7 +7620,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertResize) {
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "The input \"input\" for ResizeBilinear must be a "
-        "tensor");
+        "tensor, at my_resize");
   }
 
   std::vector<ResizeTestParams> params{
@@ -7791,7 +7828,8 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPad) {
           /*expected_output_dims=*/{1, 3, 3},  // N, H, W, C
           /*expected_output_values=*/
           {0., 0., 0., 2., -1., 0., 3., 4., 0.},
-          errors::InvalidArgument("Convertpad requires at least 4D input")}};
+          errors::InvalidArgument("Convertpad requires at least 4D input, at "
+                                  "my_pad")}};
 
   for (auto p : params) {
     Reset();
