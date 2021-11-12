@@ -259,6 +259,7 @@ InterpreterWrapper::~InterpreterWrapper() {}
 PyObject* InterpreterWrapper::AllocateTensors(int subgraph_index) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
+  TFLITE_PY_CHECK(interpreter_->ApplyLazyDelegateProviders());
   TFLITE_PY_CHECK(interpreter_->subgraph(subgraph_index)->AllocateTensors());
   Py_RETURN_NONE;
 }
