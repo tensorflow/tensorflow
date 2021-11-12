@@ -376,7 +376,7 @@ Status TpuNodeDeviceFactory::CreateDevices(
     // We set `use_global_compute_stream` to true for TPUs as TPUs can only
     // have one program running on each core at the same time.
     options.use_global_compute_stream = true;
-    options.shape_representation_fn = &TpuShapeRepresentation;
+    options.shape_representation_fns = {&TpuShapeRepresentation};
     options.padded_shape_fn = &TpuPaddedShapeFn;
     auto device = absl::make_unique<XlaDevice>(session_options, options);
 

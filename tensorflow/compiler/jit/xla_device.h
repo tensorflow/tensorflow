@@ -58,10 +58,11 @@ class XlaDevice : public LocalDevice {
   // retrieved e.g., when lazily creating the XlaCompilationCache device.
   class Metadata {
    public:
-    Metadata(int device_ordinal, se::Platform* platform,
-             const DeviceType& device_type,
-             XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-             PaddedShapeFn padded_shape_fn, bool use_multiple_streams);
+    Metadata(
+        int device_ordinal, se::Platform* platform,
+        const DeviceType& device_type,
+        std::vector<XlaHelpers::ShapeRepresentationFn> shape_representation_fns,
+        PaddedShapeFn padded_shape_fn, bool use_multiple_streams);
 
     // The index of the device on this host.
     int device_ordinal() const;
@@ -69,8 +70,9 @@ class XlaDevice : public LocalDevice {
     se::Platform* platform() const;
     xla::LocalClient* client() const;
     const DeviceType& jit_device_type() const;
-    const XlaHelpers::ShapeRepresentationFn& shape_representation_fn() const {
-      return shape_representation_fn_;
+    const XlaHelpers::ShapeRepresentationFn& default_shape_representation_fn()
+        const {
+      return shape_representation_fns_.at(0);
     }
     const PaddedShapeFn& padded_shape_fn() const { return padded_shape_fn_; }
 
@@ -80,7 +82,7 @@ class XlaDevice : public LocalDevice {
     const int device_ordinal_;
     const DeviceType device_type_;
     se::Platform* platform_;  // Not owned.
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
+    std::vector<XlaHelpers::ShapeRepresentationFn> shape_representation_fns_;
     PaddedShapeFn padded_shape_fn_;
     const bool use_multiple_streams_;
 
@@ -124,13 +126,13 @@ class XlaDevice : public LocalDevice {
     // streams.
     bool use_global_compute_stream = false;
 
-    // A function that describes how the on-host shapes of
-    // a) argument and return value, for entry computations
-    // b) variables, for all computations,
-    // should be represented in XLA. Parameters/return values will be shaped
-    // according to this function, and reshaped back to/from their declared
-    // shapes for computations. Must be non-null.
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn;
+    // A vector of ShapeRepresentationFn. Each function describes how the
+    // on-host shapes of a) argument and return value, for
+    // entry computations b) variables, for all computations, should be
+    // represented in XLA. Parameters/return values will be shaped according to
+    // this function, and reshaped back to/from their declared shapes for
+    // computations. Must be non-empty.
+    std::vector<XlaHelpers::ShapeRepresentationFn> shape_representation_fns;
 
     // If padded_shape_fn is empty, a default implementation that returns
     // the logical on-device shape without padding is used.
@@ -171,6 +173,13 @@ class XlaDevice : public LocalDevice {
   // from failures.
   Status EnsureDeviceContextOk() TF_LOCKS_EXCLUDED(mu_);
 
+  // Two convenient methods to get the underlying device context.
+  // Get the default device context, created by the first
+  // shape_representation_fn.
+  StatusOr<XlaDeviceContext*> GetDeviceContextDefault();
+  // Get the device context given the index.
+  StatusOr<XlaDeviceContext*> GetDeviceContextWithIndex(int index);
+
   // Instructs this XlaDevice to set a GpuDeviceInfo, which holds extra
   // information for GPU and TPU devices.
   Status UseGpuDeviceInfo() TF_LOCKS_EXCLUDED(mu_);
@@ -195,8 +204,9 @@ class XlaDevice : public LocalDevice {
                               bool* stream_was_changed)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Return a pair of device context, the second one is fast_mem device context.
-  StatusOr<XlaDeviceContext*> GetDeviceContextLocked()
+  // Return a vector of device context, ordered by the sequence in the given
+  // shape_representation_fns.
+  StatusOr<std::vector<XlaDeviceContext*>> GetDeviceContextLocked()
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Status MakeTensorFromProto(XlaDeviceContext* device_context,
@@ -239,12 +249,15 @@ class XlaDevice : public LocalDevice {
   std::vector<std::shared_ptr<se::Stream>> device_to_device_streams_
       TF_GUARDED_BY(mu_);
 
-  const XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
+  // See comments in options.
+  std::vector<XlaHelpers::ShapeRepresentationFn> shape_representation_fns_;
 
-  // The device context accessed by all users of the XlaDevice, set by calls to
-  // EnsureDeviceContextOk. If gpu_device_info_ is non-null, this pointer is
-  // also filled in to that struct. XlaDeviceContext is a ref-counted object.
-  XlaDeviceContext* device_context_ TF_GUARDED_BY(mu_) = nullptr;
+  // A list of the device context accessed by all users of the XlaDevice, set by
+  // calls to EnsureDeviceContextOk. The number of device conetexts is based on
+  // the number of shape representation functions in XlaDevice::Options. If
+  // gpu_device_info_ is non-null, this pointer is also filled in to that
+  // struct. XlaDeviceContext is a ref-counted object.
+  std::vector<XlaDeviceContext*> device_contexts_ TF_GUARDED_BY(mu_);
 
   // Holds extra information for GPU and TPU devices, e.g. the device context.
   bool use_gpu_device_info_ TF_GUARDED_BY(mu_) = false;
