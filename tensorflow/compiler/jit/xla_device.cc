@@ -240,9 +240,6 @@ XlaDevice::~XlaDevice() {
   if (device_context_) {
     device_context_->Unref();
   }
-  if (fast_mem_device_context_) {
-    fast_mem_device_context_->Unref();
-  }
 }
 
 StatusOr<xla::LocalClient*> XlaDevice::GetOrCreateClient() const {
@@ -298,8 +295,7 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
   return Status::OK();
 }
 
-StatusOr<std::pair<XlaDeviceContext*, XlaDeviceContext*>>
-XlaDevice::GetDeviceContextLocked() {
+StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
   TF_ASSIGN_OR_RETURN(xla::LocalClient * client, GetOrCreateClient());
   xla::Backend* backend = client->mutable_backend();
 
@@ -354,7 +350,7 @@ XlaDevice::GetDeviceContextLocked() {
   }
 
   if (!need_new_device_context) {
-    return std::make_pair(device_context_, fast_mem_device_context_);
+    return device_context_;
   }
 
   // At this point we know we need a new device context.
@@ -363,9 +359,6 @@ XlaDevice::GetDeviceContextLocked() {
   if (device_context_) {
     device_context_->Unref();
   }
-  if (fast_mem_device_context_) {
-    fast_mem_device_context_->Unref();
-  }
   // The XlaDeviceContext keeps a reference count to the streams, and the
   // XlaDeviceContext remains live for the duration of a Executor run. This
   // ensures that the streams remain live for the duration of a run, even if
@@ -373,16 +366,9 @@ XlaDevice::GetDeviceContextLocked() {
   device_context_ = new XlaDeviceContext(
       stream_, host_to_device_stream, device_to_host_stream,
       device_to_device_streams, client, shape_representation_fn_,
-      thread_pool_.get(), false);
+      thread_pool_.get());
   VLOG(1) << "XlaDevice " << this << " new XlaDeviceContext(fast_mem=false) "
           << device_context_;
-
-  fast_mem_device_context_ = new XlaDeviceContext(
-      stream_, std::move(host_to_device_stream),
-      std::move(device_to_host_stream), std::move(device_to_device_streams),
-      client, shape_representation_fn_, thread_pool_.get(), true);
-  VLOG(1) << "XlaDevice " << this << " new XlaDeviceContext(fast_mem=true) "
-          << fast_mem_device_context_;
 
   // Create and set a new GpuDeviceInfo, if necessary.
   //
@@ -401,7 +387,7 @@ XlaDevice::GetDeviceContextLocked() {
             << gpu_device_info_.get();
   }
 
-  return std::make_pair(device_context_, fast_mem_device_context_);
+  return device_context_;
 }
 
 Status XlaDevice::UseGpuDeviceInfo() {
@@ -414,8 +400,8 @@ Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
   mutex_lock lock(mu_);
 
   TF_ASSIGN_OR_RETURN(auto device_contexts, GetDeviceContextLocked());
-  device_contexts.first->Ref();
-  *out_context = device_contexts.first;
+  device_contexts->Ref();
+  *out_context = device_contexts;
   return Status::OK();
 }
 
@@ -530,25 +516,12 @@ Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                       const AllocatorAttributes alloc_attrs,
                                       Tensor* tensor) {
   VLOG(1) << "XlaDevice::MakeTensorFromProto";
-  std::pair<XlaDeviceContext*, XlaDeviceContext*> device_contexts;
+  XlaDeviceContext* device_contexts;
   {
     mutex_lock lock(mu_);
     TF_ASSIGN_OR_RETURN(device_contexts, GetDeviceContextLocked());
   }
-  return MakeTensorFromProto(device_contexts.first, tensor_proto, alloc_attrs,
-                             tensor);
-}
-
-Status XlaDevice::MakeFastMemTensorFromProto(
-    const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
-    Tensor* tensor) {
-  VLOG(1) << "XlaDevice::MakeFastMemTensorFromProto";
-  std::pair<XlaDeviceContext*, XlaDeviceContext*> device_contexts;
-  {
-    mutex_lock lock(mu_);
-    TF_ASSIGN_OR_RETURN(device_contexts, GetDeviceContextLocked());
-  }
-  return MakeTensorFromProto(device_contexts.second, tensor_proto, alloc_attrs,
+  return MakeTensorFromProto(device_contexts, tensor_proto, alloc_attrs,
                              tensor);
 }
 

@@ -161,13 +161,6 @@ class XlaDevice : public LocalDevice {
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override TF_LOCKS_EXCLUDED(mu_);
 
-  // Allocate tensor on fast memory space. This is only applied to the new TPU
-  // hardware which has faster read/write memory. If the hardware doesn't
-  // have such memory space, we fallback to the ordinary memory space.
-  Status MakeFastMemTensorFromProto(const TensorProto& tensor_proto,
-                                    const AllocatorAttributes alloc_attrs,
-                                    Tensor* tensor) TF_LOCKS_EXCLUDED(mu_);
-
   const Metadata& metadata() { return xla_metadata_; }
 
   // Ensures the DeviceContext associated with this XlaDevice is created and
@@ -203,8 +196,8 @@ class XlaDevice : public LocalDevice {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Return a pair of device context, the second one is fast_mem device context.
-  StatusOr<std::pair<XlaDeviceContext*, XlaDeviceContext*>>
-  GetDeviceContextLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  StatusOr<XlaDeviceContext*> GetDeviceContextLocked()
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Status MakeTensorFromProto(XlaDeviceContext* device_context,
                              const TensorProto& tensor_proto,
@@ -252,10 +245,6 @@ class XlaDevice : public LocalDevice {
   // EnsureDeviceContextOk. If gpu_device_info_ is non-null, this pointer is
   // also filled in to that struct. XlaDeviceContext is a ref-counted object.
   XlaDeviceContext* device_context_ TF_GUARDED_BY(mu_) = nullptr;
-
-  // The device context will allocate memory on fast memory space on TPU.
-  // XlaDeviceContext is a ref-counted object.
-  XlaDeviceContext* fast_mem_device_context_ TF_GUARDED_BY(mu_) = nullptr;
 
   // Holds extra information for GPU and TPU devices, e.g. the device context.
   bool use_gpu_device_info_ TF_GUARDED_BY(mu_) = false;
