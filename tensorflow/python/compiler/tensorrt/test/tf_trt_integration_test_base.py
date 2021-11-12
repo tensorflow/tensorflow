@@ -432,9 +432,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     if run_params.is_v2:
       converter_v2 = trt_convert.TrtGraphConverterV2(
           input_saved_model_dir=saved_model_dir,
-          conversion_params=conversion_params,
           use_dynamic_shape=run_params.dynamic_shape,
-          dynamic_shape_profile_strategy=self._profile_strategy)
+          dynamic_shape_profile_strategy=self._profile_strategy,
+          **conversion_params._asdict())
       if self._disable_non_trt_optimizers:
         converter_v2._test_only_disable_non_trt_optimizers = True  # pylint: disable=protected-access
       return converter_v2

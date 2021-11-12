@@ -798,7 +798,7 @@ def convert_with_tensorrt(args):
     converter = trt.TrtGraphConverterV2(
         input_saved_model_dir=args.dir,
         input_saved_model_tags=args.tag_set.split(','),
-        conversion_params=params)
+        **params._asdict())
     try:
       converter.convert()
     except Exception as e:

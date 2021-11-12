@@ -14,13 +14,21 @@
 * <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
 # Major Features and Improvements
-* `tf.lite`:
-  * Where operation support is added for these data types
-    'int32/uint32/int8/uint8/int64'
-  * Add builtin support for `Bucketize` op on CPU.
 
-* <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-* <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+*   `tf.lite`:
+    *   Where operation support is added for these data types
+        'int32/uint32/int8/uint8/int64'
+    *   Add builtin support for `Bucketize` op on CPU.
+*   `tensorflow.experimental.tensorrt`:
+
+    *   `conversion_params` is now deprecated inside `TrtGraphConverterV2` in
+        favor of direct arguments: `max_workspace_size_bytes`, `precision_mode`,
+        `minimum_segment_size`, `maximum_cached_engines`, `use_calibration` and
+        `allow_build_at_runtime`.
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 # Bug Fixes and Other Changes
 

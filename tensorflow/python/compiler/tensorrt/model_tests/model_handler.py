@@ -509,7 +509,7 @@ class TrtModelHandlerV2(_TrtModelHandlerBase, ModelHandlerV2):
         input_saved_model_tags=self.model_config.saved_model_tags,
         input_saved_model_signature_key=(
             self.model_config.saved_model_signature_key),
-        conversion_params=trt_convert_params)
+        **trt_convert_params._asdict())
 
   def _check_conversion(self, graph_func):
     graph_def = graph_func.graph.as_graph_def()
