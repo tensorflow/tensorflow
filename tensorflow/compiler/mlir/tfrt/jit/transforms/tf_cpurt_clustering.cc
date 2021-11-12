@@ -796,6 +796,14 @@ mlir::LogicalResult IsCompilableConstant(mlir::ElementsAttr value) {
                  value.getType().getElementType().isIntOrIndexOrFloat());
 }
 
+static bool IsI1Integer(Type type) {
+  return mlir::getElementTypeOrSelf(type).isInteger(1);
+}
+
+static bool IsUnsignedInteger(Type type) {
+  return mlir::getElementTypeOrSelf(type).isUnsignedInteger();
+}
+
 mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
   llvm::SmallDenseSet<Operation*> ops;
   for (Operation* op : cluster.operations) {
@@ -804,24 +812,21 @@ mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
     (void)inserted;
   }
 
-  // TODO(b/196192286): This is a temporary workaround to disable excessive
-  // recompilation for dynamic shapes in one particular model. Remove this once
-  // specialization will be done based on shape constraints.
+  // TODO(ezhulenev): This is a temporary workaround to disable forming clusters
+  // with known compilation problems.
   for (Operation* op : ops) {
-    for (Value value : op->getOperands()) {
-      Operation* defining_op = value.getDefiningOp();
-      if (!defining_op) continue;
+    // TODO(b/205714705): Memory layout of `i1` data type is not defined, and
+    // when vectorization is enabled it can lead to crashes.
+    bool has_i1_integers = llvm::any_of(op->getOperandTypes(), IsI1Integer) ||
+                           llvm::any_of(op->getResultTypes(), IsI1Integer);
+    if (has_i1_integers) return failure();
 
-      // Check if value will be sunk into the cluster body.
-      auto const_op = mlir::dyn_cast<mlir::TF::ConstOp>(defining_op);
-      if (const_op && succeeded(IsCompilableConstant(const_op.value())))
-        continue;
-
-      // Skip clusters with non-f32 inputs.
-      if (!ops.contains(defining_op) &&
-          !mlir::getElementTypeOrSelf(value.getType()).isF32())
-        return failure();
-    }
+    // TODO(b/205905286): Unsigned integers support has a lot of gaps, and
+    // similar to handling `i1` we need a type conversion to signless integers.
+    bool has_unsigned_integers =
+        llvm::any_of(op->getOperandTypes(), IsUnsignedInteger) ||
+        llvm::any_of(op->getResultTypes(), IsUnsignedInteger);
+    if (has_unsigned_integers) return failure();
   }
 
   for (auto& pair : cluster.constraints) {
