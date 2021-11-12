@@ -1855,22 +1855,47 @@ cc_library(
     ],
 )
 
+CAPI_HEADERS = [
+    "include/mlir-hlo-c/Attributes.h",
+    "include/mlir-hlo-c/Dialects.h",
+    "include/mlir-hlo-c/Types.h",
+]
+
+CAPI_SOURCES = [
+    "lib/CAPI/Attributes.cpp",
+    "lib/CAPI/Dialects.cpp",
+    "lib/CAPI/Types.cpp",
+]
+
 cc_library(
     name = "CAPI",
-    srcs = [
-        "lib/CAPI/Attributes.cpp",
-        "lib/CAPI/Dialects.cpp",
-        "lib/CAPI/Types.cpp",
-    ],
-    hdrs = [
-        "include/mlir-hlo-c/Attributes.h",
-        "include/mlir-hlo-c/Dialects.h",
-        "include/mlir-hlo-c/Types.h",
-    ],
+    srcs = CAPI_SOURCES,
+    hdrs = CAPI_HEADERS,
     deps = [
         ":hlo",
         "@llvm-project//mlir:CAPIIR",
     ],
+)
+
+# Header-only target, used when using the C API from a separate shared library.
+cc_library(
+    name = "CAPIHeaders",
+    hdrs = CAPI_HEADERS,
+    deps = [
+        "@llvm-project//mlir:CAPIIRHeaders",
+    ],
+)
+
+# Alwayslink target, used when exporting the C API from a shared library.
+cc_library(
+    name = "CAPIObjects",
+    srcs = CAPI_SOURCES,
+    hdrs = CAPI_HEADERS,
+    deps = [
+        ":hlo",
+        "@llvm-project//mlir:CAPIIR",
+    ],
+    alwayslink = True,
 )
 
 cc_binary(
