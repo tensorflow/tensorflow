@@ -118,14 +118,6 @@ auto* saved_model_init_time_seconds =
 
 constexpr char kDeadlineExceededMessage[] = "Deadline exceeded.";
 
-// Return a unique id within this process.
-//
-// TODO(tfrt-devs): Consider making it per-model to reduce contention.
-int64_t GetNextStepId() {
-  static std::atomic<int64_t> id(0);
-  return id.fetch_add(1, std::memory_order_relaxed);
-}
-
 tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
   return tensorflow::Tensor(tensorflow::tstring(str));
 }
@@ -145,8 +137,10 @@ StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
   DCHECK(host);
   DCHECK(work_queue);
   // Create request context and prepare deadline tracker.
+  // TODO(tfrt-devs): Consider using an ID unique within each model to reduce
+  // contention.
   RequestContextBuilder request_context_builder(host, resource_context,
-                                                GetNextStepId());
+                                                GetUniqueInt());
 
   // TODO(b/198671794): `intra_op_threadpool` should be passed through Run()
   // directly.
