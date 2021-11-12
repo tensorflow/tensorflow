@@ -203,6 +203,15 @@ class ScopedCounter final {
   // Start the measurement with the existing set of labels.
   void Reset() { Init(); }
 
+  // Returns duration of the current interval in case the timer has started.
+  // Returns nullopt otherwise.
+  absl::optional<uint64> DurationMicroSec() const {
+    return started_ ? absl::optional<uint64>(
+                          accumulated_time_ +
+                          tensorflow::Env::Default()->NowMicros() - start_time_)
+                    : absl::nullopt;
+  }
+
   // Temporarily stop the timer, but keep accumulated time.
   void AccumulateAndStop() {
     if (started_) {
@@ -250,8 +259,6 @@ class ScopedCounter final {
 // passes.
 monitoring::Counter<2>* GetGraphOptimizationCounter();
 
-void UpdateGrapplerPassTime(const string& pass_name,
-                            const uint64 running_time_usecs);
 
 // Updates metrics for time to distribute variables to all TPU hosts.
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);
