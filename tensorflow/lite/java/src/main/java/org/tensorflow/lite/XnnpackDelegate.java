@@ -35,6 +35,6 @@ class XnnpackDelegate implements Delegate, AutoCloseable {
   // Apply deleteFunction to nativeHandle.
   private static native void applyDeleteFunction(long deleteFunction, long nativeHandle);
 
-  private long nativeHandle; // C/C++ type: "TFLiteDelegate *", i.e. pointer to TFLiteDelegate.
-  private long deleteFunction; // C/C++ type: "void (*)(TFLiteDelegate*)": pointer to function.
+  private long nativeHandle; // C/C++ type: "TfLiteOpaqueDelegate *".
+  private long deleteFunction; // C/C++ type: "void (*)(TFLiteOpaqueDelegate *)": pointer to func.
 }
