@@ -8,7 +8,7 @@ def repo():
         urls = tf_mirror_urls("https://github.com/google/pasta/archive/v0.1.8.tar.gz"),
         strip_prefix = "pasta-0.1.8",
         sha256 = "c6dc1118250487d987a7b1a404425822def2e8fb2b765eeebc96887e982b6085",
-        build_file = "//third_party/pasta:BUILD.bazel",
+        build_file = "//third_party/pasta:pasta.BUILD",
         system_build_file = "//third_party/pasta:BUILD.system",
 
         # We want to add a bazel macro for use in the `@pasta` BUILD file.
