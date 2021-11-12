@@ -330,7 +330,7 @@ port::Status StreamExecutor::GetFusedConvolveRunners(
     const dnn::FilterDescriptor &filter_descriptor,
     const dnn::BatchDescriptor &bias_descriptor,
     const dnn::BatchDescriptor &output_descriptor,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::ConvolutionDescriptor &convolution_descriptor, bool use_fallback,
     dnn::ActivationMode activation_mode,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>> *out_exec_plans) {
   dnn::DnnSupport *dnn_support = AsDnn();
@@ -341,7 +341,7 @@ port::Status StreamExecutor::GetFusedConvolveRunners(
       use_cudnn_frontend, kind, input_type, bias_type, output_type,
       conv_input_scale, side_input_scale, stream, input_descriptor,
       filter_descriptor, bias_descriptor, output_descriptor,
-      convolution_descriptor, activation_mode, out_exec_plans);
+      convolution_descriptor, use_fallback, activation_mode, out_exec_plans);
 }
 
 port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>

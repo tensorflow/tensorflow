@@ -137,7 +137,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
         CudnnUseFrontend(), se::dnn::ConvolutionKind::FORWARD, element_type,
         element_type, element_type, conv_scale, side_input_scale, stream,
         input_desc, filter_desc, bias_desc, output_desc, conv_desc,
-        activation_mode, &runners));
+        /*use_fallback=*/false, activation_mode, &runners));
 
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
@@ -159,9 +159,47 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
         bias_ptr, side_input_ptr, input_desc, filter_desc, output_desc,
         conv_desc, conv_scale, side_input_scale, activation_mode,
         stream->parent(), results);
-    TF_ASSIGN_OR_RETURN(autotune_entry,
-                        BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
-                            results, std::move(runners)));
+
+    // Two-level autotuning: Cudnn frontend supports two engine lists:
+    // heuristics and fallback. Heuristics engines are normally faster.
+    // To reduce autotuning time, we evaluate the fallback engines only when
+    // none of the heuristics engines work.
+    bool found_working_engine = false;
+    for (auto& result : results) {
+      if (!result.has_failure()) {
+        found_working_engine = true;
+        break;
+      }
+    }
+
+    if (!CudnnUseFrontend() || found_working_engine) {
+      TF_ASSIGN_OR_RETURN(autotune_entry,
+                          BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
+                              results, std::move(runners)));
+    } else {
+      std::vector<std::unique_ptr<
+                      const se::dnn::FusedConvRunner>> fallback_runners;
+      SE_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
+          CudnnUseFrontend(), se::dnn::ConvolutionKind::FORWARD, element_type,
+          element_type, element_type, conv_scale, side_input_scale, stream,
+          input_desc, filter_desc, bias_desc, output_desc, conv_desc,
+          /*use_fallback=*/true, activation_mode, &fallback_runners));
+
+      SE_ASSIGN_OR_RETURN(
+          auto fallback_results,
+          AutotuneConvImpl(ctx, fallback_runners, cudnn_use_autotune,
+                           launch_func, scratch_size_limit, rz_allocator));
+
+      LogFusedConvForwardAutotuneResults(
+          se::dnn::ToDataType<T>::value, input_ptr, filter_ptr, output_ptr,
+          bias_ptr, side_input_ptr, input_desc, filter_desc, output_desc,
+          conv_desc, conv_scale, side_input_scale, activation_mode,
+          stream->parent(), fallback_results);
+
+      TF_ASSIGN_OR_RETURN(autotune_entry,
+                          BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
+                              fallback_results, std::move(fallback_runners)));
+    }
 
     autotune_map->Insert(params, autotune_entry);
   }

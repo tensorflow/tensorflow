@@ -241,7 +241,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& bias_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      dnn::ActivationMode activation_mode,
+      bool use_fallback, dnn::ActivationMode activation_mode,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans)
       override;
 

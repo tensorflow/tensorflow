@@ -5133,7 +5133,7 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
     const dnn::ActivationMode activation_mode,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   if (input_type == dnn::DataType::kInt8 &&
@@ -5204,32 +5204,6 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
   }
   auto op_graph = op_graph_status.ConsumeValueOrDie();
 
-  auto heur = cudnn_frontend::EngineHeuristicsBuilder()
-                  .setOperationGraph(*op_graph)
-                  .setHeurMode(GetCudnnFrontendHeurMode())
-                  .build();
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
-
-  auto fallback =
-      cudnn_frontend::EngineFallbackListBuilder()
-          .setOperationGraph(*op_graph)
-          .setOperation(GetCudnnConvolutionType(dnn::ConvolutionKind::FORWARD))
-          .build();
-  RETURN_MSG_IF_CUDNN_ERROR(fallback);
-
-  // cuDNN frontend sneakily puts error messages on the object and returns
-  // partially-initialized results when there's an error; make sure to check
-  // them.
-  int64_t engine_count = heur.getEngineConfigCount();
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
-  auto& heur_configs = heur.getEngineConfig(engine_count);
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
-
-  auto& fallback_configs = fallback.getFallbackList();
-
-  VLOG(4) << "\nHeuristics engine configs size: " << heur_configs.size()
-          << "\nFallback engine configs size: " << fallback_configs.size();
-
   cudnn_frontend::EngineConfigList filtered_configs;
   auto generic_filter_fn = [=](cudnnBackendDescriptor_t engine_config) -> bool {
     return GenericEngineFilter(
@@ -5239,14 +5213,45 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
         /*disable_tensor_core*/ !IsTensorMathEnabled(stream, input_type));
   };
 
-  cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
-  cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
+  if (!use_fallback) {
+    auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
+                          .setOperationGraph(*op_graph)
+                          .setHeurMode(GetCudnnFrontendHeurMode())
+                          .build();
+    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+
+    // cuDNN frontend sneakily puts error messages on the object and returns
+    // partially-initialized results when there's an error; make sure to check
+    // them.
+    int64_t engine_count = heuristics.getEngineConfigCount();
+    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+    auto& heuristics_configs = heuristics.getEngineConfig(engine_count);
+    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+    VLOG(4) << "\nHeuristics engine configs size: "
+            << heuristics_configs.size();
+
+    cudnn_frontend::filter(heuristics_configs, filtered_configs,
+                           generic_filter_fn);
+  } else {
+    auto fallback =
+        cudnn_frontend::EngineFallbackListBuilder()
+            .setOperationGraph(*op_graph)
+            .setOperation(GetCudnnConvolutionType(
+                              dnn::ConvolutionKind::FORWARD))
+            .build();
+    RETURN_MSG_IF_CUDNN_ERROR(fallback);
+
+    auto& fallback_configs = fallback.getFallbackList();
+    VLOG(4) << "\nFallback engine configs size: " << fallback_configs.size();
+
+    cudnn_frontend::filter(fallback_configs, filtered_configs,
+                           generic_filter_fn);
+  }
+  VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   auto fn = []() { return true; };
   auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
   auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
-
-  VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   out_exec_plans->clear();
   for (int i = 0; i < filtered_configs.size(); i++) {
