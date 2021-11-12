@@ -443,7 +443,6 @@ cc_library(
         textual_hdrs = [
             "ir/tf_types.def",
             "ir/tf_all_ops.h.inc",
-            "ir/tf_ops_helpers.inc",
             "ir/tfrt_ops.h.inc",
             "ir/tf_remaining_ops.h.inc",
         ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
@@ -458,6 +457,11 @@ cc_library(
             ":tensorflow_structs",
             ":tensorflow_traits",
             ":tensorflow_types",
+            ":tf_ops_canonicalization_helper",
+            ":tf_ops_device_helper",
+            ":tf_ops_layout_helper",
+            ":tf_ops_tensor_helper",
+            ":tf_arith_ops_folder",
             "@llvm-project//llvm:Support",
             "@llvm-project//mlir:ControlFlowInterfaces",
             "@llvm-project//mlir:DerivedAttributeOpInterface",
@@ -488,7 +492,6 @@ cc_library(
     ],
     textual_hdrs = [
         "ir/tf_all_ops.h.inc",
-        "ir/tf_ops_helpers.inc",
         "ir/tf_remaining_ops.h.inc",
         "ir/tfrt_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
@@ -534,7 +537,6 @@ cc_library(
     ],
     textual_hdrs = [
         "ir/tf_all_ops.h.inc",
-        "ir/tf_ops_helpers.inc",
         "ir/tfrt_ops.h.inc",
         "ir/tf_remaining_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
@@ -1220,7 +1222,6 @@ cc_library(
     ],
     includes = ["include"],
     textual_hdrs = [
-        "ir/tf_ops_helpers.inc",
         "transforms/passes_detail.h",
         "transforms/savedmodel_passes_detail.h",
         "transforms/tf_device_passes_detail.h",
@@ -1250,6 +1251,7 @@ cc_library(
         ":tensorflow_types",
         ":tf_data_optimization",
         ":tf_legalize_hlo",
+        ":tf_ops_layout_helper",
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
         ":tfe_legalize_tfg",
@@ -2407,5 +2409,59 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "tf_arith_ops_folder",
+    srcs = ["ir/tf_arith_ops_folder.cc"],
+    hdrs = ["ir/tf_arith_ops_folder.h"],
+    deps = [
+        ":tensorflow_types",
+        "//tensorflow/core/ir/types:Dialect",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tf_ops_canonicalization_helper",
+    hdrs = ["ir/tf_ops_canonicalization_helper.h"],
+    deps = [
+        ":attribute_utils",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tf_ops_device_helper",
+    srcs = ["ir/tf_ops_device_helper.cc"],
+    hdrs = ["ir/tf_ops_device_helper.h"],
+    deps = [
+        ":tensorflow_structs",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+    ],
+)
+
+cc_library(
+    name = "tf_ops_layout_helper",
+    srcs = ["ir/tf_ops_layout_helper.cc"],
+    hdrs = ["ir/tf_ops_layout_helper.h"],
+    deps = [
+        ":tensorflow_op_interfaces",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tf_ops_tensor_helper",
+    srcs = ["ir/tf_ops_tensor_helper.cc"],
+    hdrs = ["ir/tf_ops_tensor_helper.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:IR",
     ],
 )
