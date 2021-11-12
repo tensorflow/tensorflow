@@ -191,7 +191,11 @@ class FunctionInstantiationHelper {
     for (size_t i = 0; i < dtypes.size(); ++i) {
       TF_RETURN_IF_ERROR(AddItem(strings::StrCat(arg_def.name(), ":", i),
                                  {true, arg_index, 0, false, {dtypes[i]}}));
-      DCHECK_EQ(arg_index, result_.nodes.size());
+      if (arg_index != result_.nodes.size()) {
+        return errors::Internal(
+            "Expected arg_index to be equal to the number of nodes in result.",
+            " Got ", arg_index, " and ", result_.nodes.size());
+      }
       string name = arg_def.name();
       if (dtypes.size() > 1) {
         strings::StrAppend(&name, "_", i);
