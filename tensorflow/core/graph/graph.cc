@@ -464,6 +464,11 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
                                    ? Node::NC_FUNCTION_OP
                                    : Node::GetNodeClassForOp(node_def.op());
 
+  if (!ctor_type.ok()) {
+    *status = errors::InvalidArgument("type error: ",
+                                      ctor_type.status().ToString());
+    return nullptr;
+  } 
   Node* node = AllocateNode(
       std::make_shared<NodeProperties>(&op_reg_data->op_def,
                                        std::move(node_def), inputs, outputs),
