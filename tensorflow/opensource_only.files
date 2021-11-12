@@ -21,6 +21,7 @@ tensorflow/lite/core/shims/c/c_api.h
 tensorflow/lite/core/shims/c/c_api_experimental.h
 tensorflow/lite/core/shims/c/common.h
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h
+tensorflow/lite/core/shims/c/experimental/acceleration/configuration/nnapi_plugin.h
 tensorflow/lite/core/shims/c/shims_test_util.cc
 tensorflow/lite/core/shims/c/shims_test_util.h
 tensorflow/lite/core/shims/cc/create_op_resolver.h
@@ -34,6 +35,7 @@ tensorflow/lite/core/shims/cc/model_builder.h
 tensorflow/lite/core/shims/cc/shims_test_util.h
 tensorflow/lite/core/shims/cc/tools/verifier.h
 tensorflow/lite/core/shims/cc_library_with_tflite.bzl
+tensorflow/lite/core/shims/experimental/acceleration/configuration/c/nnapi_plugin.h
 tensorflow/lite/core/shims/jni/jni_utils.cc
 tensorflow/lite/core/shims/jni/jni_utils.h
 tensorflow/lite/delegates/coreml/builders/BUILD
