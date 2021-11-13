@@ -1363,6 +1363,11 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                           input_tensor.ToString(),
                           " has a dtype of DT_INVALID."));
     }
+    if (IsRefType(raw_val.dtype())) {
+      return errors::InvalidArgument(
+          "Not allowed to construct a tensor with reference dtype, got ",
+          DataTypeString(raw_val.dtype()));
+    }
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
     if (!value->FromProto(raw_val)) {
       delete (value);
