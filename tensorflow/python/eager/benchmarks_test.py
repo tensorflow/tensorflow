@@ -32,7 +32,6 @@ import time
 
 import numpy as np
 import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
@@ -92,7 +91,7 @@ def run_benchmark(func, num_iters, execution_mode=None):
     if execution_mode == context.ASYNC:
       ctx.executor.wait()
     start = time.time()
-    for _ in xrange(num_iters):
+    for _ in range(num_iters):
       func()
     if execution_mode == context.ASYNC:
       ctx.executor.wait()

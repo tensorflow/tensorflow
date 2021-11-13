@@ -68,8 +68,7 @@ tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
 """
 import numbers
 import numpy as np
-from six.moves import builtins
-from six.moves import xrange  # pylint: disable=redefined-builtin
+import builtins
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -5014,7 +5013,7 @@ def tensordot(a, b, axes, name=None):
     if a.get_shape().is_fully_defined() and isinstance(axes, (list, tuple)):
       shape_a = a.get_shape().as_list()
       axes = [i if i >= 0 else i + len(shape_a) for i in axes]
-      free = [i for i in xrange(len(shape_a)) if i not in axes]
+      free = [i for i in builtins.range(len(shape_a)) if i not in axes]
       free_dims = [shape_a[i] for i in free]
       prod_free = int(np.prod([shape_a[i] for i in free]))
       prod_axes = int(np.prod([shape_a[i] for i in axes]))
@@ -5033,7 +5032,7 @@ def tensordot(a, b, axes, name=None):
       if a.get_shape().ndims is not None and isinstance(axes, (list, tuple)):
         shape_a = a.get_shape().as_list()
         axes = [i if i >= 0 else i + len(shape_a) for i in axes]
-        free = [i for i in xrange(len(shape_a)) if i not in axes]
+        free = [i for i in builtins.range(len(shape_a)) if i not in axes]
         axes_dims = [shape_a[i] for i in axes]
         free_dims = [shape_a[i] for i in free]
         free_dims_static = free_dims
@@ -5071,8 +5070,8 @@ def tensordot(a, b, axes, name=None):
           raise ValueError(f"`axes` must not be larger than the number of "
                            f"dimensions of tensor {a}.  Received {axes}, vs "
                            f"tensor dimensions {a_shape.ndims}.")
-        return (list(xrange(a_shape.ndims - axes,
-                            a_shape.ndims)), list(xrange(axes)))
+        return (list(builtins.range(a_shape.ndims - axes,
+                                    a_shape.ndims)), list(builtins.range(axes)))
       else:
         rank = array_ops.rank(a)
         return (range(rank - axes, rank,

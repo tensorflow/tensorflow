@@ -20,7 +20,6 @@ from typing import NamedTuple
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1307,11 +1306,11 @@ class NestBenchmark(test.Benchmark):
   def run_and_report(self, s1, s2, name):
     burn_iter, test_iter = 100, 30000
 
-    for _ in xrange(burn_iter):
+    for _ in range(burn_iter):
       nest.assert_same_structure(s1, s2)
 
     t0 = time.time()
-    for _ in xrange(test_iter):
+    for _ in range(test_iter):
       nest.assert_same_structure(s1, s2)
     t1 = time.time()
 

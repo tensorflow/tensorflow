@@ -25,7 +25,6 @@ from absl import app
 import numpy as np
 import six
 from six.moves import map  # pylint: disable=redefined-builtin
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
@@ -2350,7 +2349,7 @@ class Operation(object):
     num_outputs = pywrap_tf_session.TF_OperationNumOutputs(self._c_op)
     output_types = [
         int(pywrap_tf_session.TF_OperationOutputType(self._tf_output(i)))
-        for i in xrange(num_outputs)
+        for i in range(num_outputs)
     ]
 
     return output_types
@@ -2530,7 +2529,7 @@ class Operation(object):
     input_types = [
         dtypes.as_dtype(
             pywrap_tf_session.TF_OperationInputType(self._tf_input(i)))
-        for i in xrange(num_inputs)
+        for i in range(num_inputs)
     ]
     return input_types
 
