@@ -744,7 +744,21 @@ Observe how the op inside the island obtains a `/TPU:0` device assignment:
   }
 ```
 ### `-tf-rewrite-tpu-embedding-ops`: Rewrites TPU embedding send/recv ops by adding TPU embedding deduplication data
-### `-tf-shape-inference`: Simple Shape Inference on TensorFlow Dialect
+### `-tf-shape-inference`: Shape inference on TF dialect and ops implementing InferTypeOpInterface
+Fixed point shape refinement pass that utilizes the shape functions
+registered on ops using the InferTypeOpInterface as well as by bridging to
+the TensorFlow op registry's shape functions. This is an interprocedural
+pass that propagates information across function calls/control flow
+operations where possible (the GuaranteeAllFuncsOneUsePass is often run
+before this pass to enable more propagation opportunities). It refines
+both the outermost element type of tensors as well as the nested component
+type (e.g., for tensor lists).
+
+During shape refinement this pass may insert additional cast operations as
+well as fold some constant shape computations to enable more exact shape
+inference. Therefore it does do some mutation of the graph. Constant folding
+required to produce more exact shapes is also performed but these values
+are only kept in the context rather than the ops folded/IR mutated.
 
 #### Options
 ```
