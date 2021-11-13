@@ -470,7 +470,7 @@ Status GetShardingInfo(
         auto xla_arg_shape,
         shape_representation_fn(arg_shapes[i], proto_arg.dtype(),
                                 /*use_fast_memory=*/false,
-                                TpuLayoutPreference::kNoPreference));
+                                XlaLayoutPreference::kNoPreference));
     TF_RETURN_IF_ERROR(
         RewriteLayoutWithShardedShape(arg_sharding, /*use_fast_memory=*/false,
                                       shape_representation_fn, &xla_arg_shape));

@@ -107,7 +107,7 @@ Status GetXlaInputShapes(
     TF_ASSIGN_OR_RETURN(
         xla_shape, shape_representation_fn(arg_shapes[i].shape, dtype,
                                            /*use_fast_memory=*/false,
-                                           TpuLayoutPreference::kNoPreference));
+                                           XlaLayoutPreference::kNoPreference));
 
     // Rewrite layout with sharding, if sharding is set.
     auto sharding =
@@ -145,7 +145,7 @@ Status GetOutputInfo(
   auto shape_representation_fn_no_fast_memory =
       [shape_representation_fn](const TensorShape& shape, DataType dtype) {
         return shape_representation_fn(shape, dtype, /*use_fast_memory=*/false,
-                                       TpuLayoutPreference::kNoPreference);
+                                       XlaLayoutPreference::kNoPreference);
       };
 
   mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");

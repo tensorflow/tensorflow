@@ -138,7 +138,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
         xla::Shape shape,
         shape_representation_fn_(device_tensor->shape(), device_tensor->dtype(),
                                  /*fast_mem=*/false,
-                                 TpuLayoutPreference::kNoPreference));
+                                 XlaLayoutPreference::kNoPreference));
 
     // The device tensor should always be fresh.
     TF_RET_CHECK(!xla_tensor->has_shaped_buffer());

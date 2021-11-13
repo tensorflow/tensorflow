@@ -53,7 +53,7 @@ static bool tpu_use_substreams_for_cross_tpu_device_transfers_flag = true;
 // tensors to rank 1, but leaves other tensor shapes alone.
 StatusOr<xla::Shape> TpuShapeRepresentation(
     const TensorShape& shape, DataType type, bool use_fast_memory,
-    TpuLayoutPreference layout_preference) {
+    XlaLayoutPreference layout_preference) {
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(
       tensorflow::TensorShapeToXLAShape(type, shape, &xla_shape));
@@ -202,7 +202,7 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
         xla::Shape shape,
         dst_xla_context->shape_representation_fn()(
             input->shape(), input->dtype(),
-            /*use_fast_memory=*/false, TpuLayoutPreference::kNoPreference));
+            /*use_fast_memory=*/false, XlaLayoutPreference::kNoPreference));
     TF_RETURN_IF_ERROR(xla_output->AllocateShapedBuffer(
         input->dtype(), shape, dst_xla_context->client(), dst_device_ordinal));
 

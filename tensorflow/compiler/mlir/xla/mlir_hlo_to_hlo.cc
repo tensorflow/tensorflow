@@ -1686,7 +1686,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
     auto arg_shape_status = shape_representation_fn_(
         arg_tensor_shape, dtype,
         /*use_fast_memory=*/false,
-        tensorflow::TpuLayoutPreference::kNoPreference);
+        tensorflow::XlaLayoutPreference::kNoPreference);
     if (!arg_shape_status.ok())
       return block->getParentOp()->emitError()
              << arg_shape_status.status().error_message();
