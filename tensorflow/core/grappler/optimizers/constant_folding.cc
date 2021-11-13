@@ -3505,6 +3505,9 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
 
   NodeDef* mul_left_child = node_map_->GetNode(node->input(0));
   NodeDef* mul_right_child = node_map_->GetNode(node->input(1));
+  if (mul_left_child == nullptr || mul_right_child == nullptr) {
+    return false;
+  }
   // One child must be constant, and the second must be Conv op.
   const bool left_child_is_constant = IsReallyConstant(*mul_left_child);
   const bool right_child_is_constant = IsReallyConstant(*mul_right_child);
