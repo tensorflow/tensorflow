@@ -151,7 +151,7 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(spec_1, spec_2)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-  def testAttrsClas(self):
+  def testAttrsCacheKeyGeneration(self):
     if attr is None:
       self.skipTest('attr module is unavailable.')
 
@@ -161,6 +161,7 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
         TestAttrsClass, (function_trace_type.GenericType(1),
                          function_trace_type.GenericType(2)))
     self.assertEqual(trace_a, expected)
+    self.assertTrue(trace_a.is_subtype_of(trace_a))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testTupleEquality(self):

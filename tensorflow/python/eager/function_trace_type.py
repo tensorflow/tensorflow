@@ -263,7 +263,7 @@ class AttrsType(OrderedCollectionType):
 
   def __init__(self, classtype: Type[object],
                attributes: Tuple[trace.TraceType]):
-    super().__init__((GenericType(classtype),) + attributes)
+    super().__init__(GenericType(classtype), *attributes)
 
 
 _pywrap_utils.RegisterType("ListType", ListType)
