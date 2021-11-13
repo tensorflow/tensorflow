@@ -13,7 +13,7 @@ package(
 )
 
 exports_files([
-    "tf_generated_ops.td",
+    "ir/tf_generated_ops.td",
     "ir/tf_op_base.td",
     "ir/tf_op_interfaces.td",
     "ir/tf_ops.td",
