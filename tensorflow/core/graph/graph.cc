@@ -222,10 +222,16 @@ void Node::RunForwardTypeInference() {
       const auto& node_t = node->def().experimental_type();
       if (node_t.type_id() != TFT_UNSET) {
         int ix = input_idx[i];
-        DCHECK(ix < node_t.args_size())
-            << "input " << i << " should have an output " << ix
-            << " but instead only has " << node_t.args_size()
-            << " outputs: " << node_t.DebugString();
+        if (ix >= node_t.args_size()) {
+          LOG(WARNING) << name() << " has bad type information: input " << i
+                       << " should have an output " << ix
+                       << " but instead only has " << node_t.args_size()
+                       << " outputs: " << node_t.DebugString()
+                       << "\nThis indicates either "
+                          "a bug in op registration or a corrupted graph.";
+          ClearTypeInfo();
+          return;
+        }
         input_types.emplace_back(node_t.args(ix));
       } else {
         input_types.emplace_back(*no_type);
