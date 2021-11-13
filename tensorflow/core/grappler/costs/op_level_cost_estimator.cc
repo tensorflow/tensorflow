@@ -2681,27 +2681,42 @@ Status OpLevelCostEstimator::PredictCropAndResize(const OpContext& op_context,
   // calculation differs from rough estimate in implementation, as it separates
   // out cost per box from cost per pixel and cost per element.
 
+  // Since crop arguments are user controlled, check for overflow.
+  int64_t crop_area = MultiplyWithoutOverflow(crop_height, crop_width);
+  if (crop_area < 0)
+    return errors::InvalidArgument("Cannot estimate cost, multiplying ",
+                                   crop_height, " with ", crop_width,
+                                   " would overflow");
+  int64_t crop_volume = MultiplyWithoutOverflow(crop_area, num_boxes);
+  if (crop_volume < 0)
+    return errors::InvalidArgument("Cannot estimate cost, multiplying ",
+                                   crop_area, " with ", num_boxes,
+                                   " would overflow");
+  int64_t crop_depth = MultiplyWithoutOverflow(crop_height, num_boxes);
+  if (crop_depth < 0)
+    return errors::InvalidArgument("Cannot estimate cost, multiplying ",
+                                   crop_height, " with ", num_boxes,
+                                   " would overflow");
+
   // Ops for variables height_scale and width_scale.
   int64_t ops = (sub_cost * 6 + mul_cost * 2 + div_cost * 2) * num_boxes;
   // Ops for variable in_y.
-  ops += (mul_cost * 2 + sub_cost + add_cost) * crop_height * num_boxes;
+  ops += (mul_cost * 2 + sub_cost + add_cost) * crop_depth;
   // Ops for variable in_x (same computation across both branches).
-  ops += (mul_cost * 2 + sub_cost + add_cost) * crop_height * crop_width *
-         num_boxes;
+  ops += (mul_cost * 2 + sub_cost + add_cost) * crop_volume;
   // Specify op_cost based on the method.
   if (use_bilinear_interp) {
     // Ops for variables top_y_index, bottom_y_index, y_lerp.
-    ops += (floor_cost + ceil_cost + sub_cost) * crop_height * num_boxes;
+    ops += (floor_cost + ceil_cost + sub_cost) * crop_depth;
     // Ops for variables left_x, right_x, x_lerp;
-    ops += (floor_cost + ceil_cost + sub_cost) * crop_height * crop_width *
-           num_boxes;
+    ops += (floor_cost + ceil_cost + sub_cost) * crop_volume;
     // Ops for innermost loop across depth.
     ops +=
         (cast_to_float_cost * 4 + add_cost * 3 + sub_cost * 3 + mul_cost * 3) *
         output_elements;
   } else /* method == "nearest" */ {
     // Ops for variables closest_x_index and closest_y_index.
-    ops += round_cost * 2 * crop_height * crop_width * num_boxes;
+    ops += round_cost * 2 * crop_volume;
     // Ops for innermost loop across depth.
     ops += cast_to_float_cost * output_elements;
   }
