@@ -479,10 +479,15 @@ Status XlaCompilationCache::CompileImpl(
   // protect the contents of the cache entry.
   Entry* entry;
   {
-    mutex_lock lock(compile_cache_mu_);
+    mutex_lock lock(compile_lru_cache_mu_);
     // Find or create a cache entry.
-    std::unique_ptr<Entry>& e = cache_[signature];
+    std::unique_ptr<Entry>& e = lru_cache_[signature];
     if (!e) {
+      constexpr uint32_t lru_cache_warning_size = 8192;
+      if (lru_cache_.size() > lru_cache_warning_size) {
+        // A warning will be output here to inform the user that it may be OOM. 
+        // only print once .
+      }
       e.reset(new Entry);
     }
     entry = e.get();

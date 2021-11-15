@@ -189,9 +189,9 @@ class XlaCompilationCache : public ResourceBase {
                                  const std::vector<XlaCompiler::Argument>& args,
                                  XlaCompiler::CompilationResult*)>& compile_fn);
 
-  mutex compile_cache_mu_;
-  absl::flat_hash_map<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
-      TF_GUARDED_BY(compile_cache_mu_);
+  mutex compile_lru_cache_mu_;
+  absl::flat_hash_map<Signature, std::unique_ptr<Entry>, Signature::Hash> lru_cache_
+      TF_GUARDED_BY(compile_lru_cache_mu_);
 
   struct ClusterCompileStats {
     // Number of times the cluster has been (re-)compiled.
