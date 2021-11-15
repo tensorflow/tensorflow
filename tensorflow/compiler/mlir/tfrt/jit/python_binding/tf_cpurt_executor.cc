@@ -304,10 +304,8 @@ std::vector<py::array> TfCpurtExecutor::Execute(
         StrCat("Failed to get Executable: ", executable->GetError()));
 
   // Prepare storage for returned values.
-  size_t num_results = (*executable)->signature().num_results();
-  std::vector<RCReference<AsyncValue>> result_storage;
-  result_storage.reserve(num_results);
-  for (int i = 0; i < num_results; ++i) result_storage.emplace_back();
+  unsigned num_results = (*executable)->num_results();
+  std::vector<RCReference<AsyncValue>> result_storage(num_results);
 
   RemainingResults results(result_storage);
 

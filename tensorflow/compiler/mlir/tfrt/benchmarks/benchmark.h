@@ -81,6 +81,7 @@ struct ResultConversionCtx {};
 mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
                                        RemainingResults results,
                                        unsigned result_index, const Type* type,
+                                       const Type* runtime_type,
                                        void* result_ptr);
 
 // Compile serialized mlir module and convert entrypoint function into TFRT JIT
