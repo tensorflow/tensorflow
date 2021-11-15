@@ -4038,6 +4038,9 @@ Ba et al. 'Layer Normalization'
     Confined<
       DefaultValuedStrAttr<TFL_LSTMKernelTypeAttr, "FULL">,
       [TFL_LSTM_KT_FULL]>:$kernel_type,
+    // Used in post-training dynamic range quantization. When imported/exported
+    // from/to flatbuffer, it is false by defaut unless the value is provided.
+    OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs,
 
     // Types of the optional intermediate tensors, which exist for fully
     // quantized LSTM op and hold the ranges of the intermediate tensors.
