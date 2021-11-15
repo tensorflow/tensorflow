@@ -7,6 +7,9 @@ glob_lit_tests(
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
     features = if_oss(["--path=org_tensorflow/tensorflow/compiler/mlir/tfrt"]),
+    tags_override = {
+        "compatibility_analysis.mlir": ["no_oss"],
+    },
     test_file_exts = ["mlir"],
 )
 
@@ -16,8 +19,6 @@ filegroup(
     testonly = True,
     data = [
         "//tensorflow/compiler/mlir:tf-mlir-translate",
-        "//tensorflow/compiler/mlir:tf-opt",
-        "//tensorflow/compiler/mlir/tfrt:lhlo-tfrt-opt",
         "//tensorflow/compiler/mlir/tfrt:tf-tfrt-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",

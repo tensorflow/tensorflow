@@ -15,9 +15,6 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/mlir:tf-mlir-translate",
-        "//tensorflow/compiler/mlir:tf-opt",
-        "//tensorflow/compiler/mlir/tfrt:lhlo-tfrt-opt",
         "//tensorflow/compiler/mlir/tfrt:tf-tfrt-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",

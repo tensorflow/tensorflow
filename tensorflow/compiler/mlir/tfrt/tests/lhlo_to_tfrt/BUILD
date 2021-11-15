@@ -7,6 +7,20 @@ glob_lit_tests(
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
     features = if_oss(["--path=org_tensorflow/tensorflow/compiler/mlir/tfrt"]),
+    tags_override = {
+        "async_conversion.mlir": ["nomsan"],
+        "blas.mlir": ["nomsan"],
+        "ccl.mlir": ["nomsan"],
+        "cholesky.mlir": ["nomsan"],
+        "common.mlir": ["nomsan"],
+        "custom_call.mlir": ["nomsan"],
+        "fusion.mlir": [
+            "nomsan",
+            "no_oss",
+        ],
+        "memcpy.mlir": ["nomsan"],
+        "memset.mlir": ["nomsan"],
+    },
     test_file_exts = ["mlir"],
 )
 
@@ -15,10 +29,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/mlir:tf-mlir-translate",
-        "//tensorflow/compiler/mlir:tf-opt",
         "//tensorflow/compiler/mlir/tfrt:lhlo-tfrt-opt",
-        "//tensorflow/compiler/mlir/tfrt:tf-tfrt-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
         "@llvm-project//mlir:run_lit.sh",
