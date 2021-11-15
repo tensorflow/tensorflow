@@ -98,10 +98,10 @@ upper_tabs:
         path: /lite/convert/api_updates
       - title: "Model Analyzer"
         path: /lite/guide/model_analyzer
-        status: nightly
+        status: experimental
       - title: "Authoring tool"
         path: /lite/guide/authoring
-        status: nightly
+        status: experimental
 
       - heading: "Create a model"
       - title: "TensorFlow Lite Model Maker"
@@ -113,7 +113,7 @@ upper_tabs:
         path: /lite/guide/inference
       - title: "Signatures"
         path: /lite/guide/signatures
-        status: nightly
+        status: experimental
       - title: "Operator compatibility"
         path: /lite/guide/ops_compatibility
       - title: "Select operators"
