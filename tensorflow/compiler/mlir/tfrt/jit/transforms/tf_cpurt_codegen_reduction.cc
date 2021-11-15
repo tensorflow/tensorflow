@@ -140,7 +140,8 @@ struct TileReductionAndFuseOutput : public OpInterfaceRewritePattern<LinalgOp> {
   //   %extract_output_slice = tensor.extract_slice %fill
   //
   //** %slice_of_cloned_output = tensor.extract_slice %init
-  //** %reduce = linalg.generic outs (%slice_of_cloned_input)
+  //** %fill_of_cloned_output = linalg.fill(%cst, %slice_of_cloned_output)
+  //** %reduce = linalg.generic outs (%fill_of_cloned_output)
   //** %update_cloned_output = tensor.insert_slice %reduce into %init_clone
   //
   //   %insert_output_slice = tensor.insert_slice %reduce into %fill
@@ -185,7 +186,8 @@ struct TileReductionAndFuseOutput : public OpInterfaceRewritePattern<LinalgOp> {
   //   %extract_output_slice = tensor.extract_slice %fill
   //
   //   %slice_of_cloned_output = tensor.extract_slice %init
-  //   %reduce = linalg.generic outs (%slice_of_cloned_input)
+  //   %fill_of_cloned_output = linalg.fill(%cst, %slice_of_cloned_output)
+  //   %reduce = linalg.generic outs (%fill_of_cloned_output)
   //   %update_cloned_output = tensor.insert_slice %reduce into %init_clone
   //
   //   %insert_output_slice = tensor.insert_slice %reduce into %fill
@@ -201,7 +203,8 @@ struct TileReductionAndFuseOutput : public OpInterfaceRewritePattern<LinalgOp> {
   //   %extract_output_slice = tensor.extract_slice %fill
   //
   //   %slice_of_cloned_output = tensor.extract_slice %init
-  //   %reduce = linalg.generic outs (%slice_of_cloned_input)
+  //   %fill_of_cloned_output = linalg.fill(%cst, %slice_of_cloned_output)
+  //   %reduce = linalg.generic outs (%fill_of_cloned_output)
   //   %update_cloned_output = tensor.insert_slice %reduce into %init_clone
   //
   //** %combine = linalg.generic ins (%reduce) outs (%extract_output_slice)
