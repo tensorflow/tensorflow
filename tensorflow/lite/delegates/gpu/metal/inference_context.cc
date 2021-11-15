@@ -810,6 +810,7 @@ void InferenceContext::UpdatePreallocatedTensors(
         task.SetDstTensor(&it->second, i);
       }
     }
+    task.Update();
   }
 }
 

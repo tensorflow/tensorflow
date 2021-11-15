@@ -40,10 +40,11 @@ namespace metal {
 class ComputeTask {
  public:
   ComputeTask() = default;
+  ~ComputeTask();
 
   // Move only
-  ComputeTask(ComputeTask&& args) = default;
-  ComputeTask& operator=(ComputeTask&& args) = default;
+  ComputeTask(ComputeTask&& task);
+  ComputeTask& operator=(ComputeTask&& task);
   ComputeTask(const ComputeTask&) = delete;
   ComputeTask& operator=(const ComputeTask&) = delete;
 
@@ -61,6 +62,11 @@ class ComputeTask {
 
   void Encode(id<MTLComputeCommandEncoder> encoder);
 
+  API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))
+  void AddResourcesToEncoder(id<MTLComputeCommandEncoder> encoder) const;
+
+  void Update();
+
   void SetSrcTensor(MetalSpatialTensor* tensor, int index);
 
   void SetDstTensor(MetalSpatialTensor* tensor, int index);
@@ -71,10 +77,15 @@ class ComputeTask {
   absl::Status CompileProgram(MetalDevice* device,
                               CalculationsPrecision precision,
                               const std::string& kernel_code);
+  void Release();
 
   std::unique_ptr<GPUOperation> operation_;
-  id<MTLComputePipelineState> program_;
+  id<MTLComputePipelineState> program_ = nullptr;
   MetalArguments metal_args_;
+
+  bool use_arguments_buffer_ = false;  // optional
+  id<MTLArgumentEncoder> arguments_encoder_ = nullptr;
+  id<MTLBuffer> arg_buffer_ = nullptr;
 };
 
 }  // namespace metal
