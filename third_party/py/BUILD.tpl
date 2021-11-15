@@ -44,11 +44,30 @@ cc_import(
     system_provided = 1,
 )
 
+# The debug version of the python import library
+cc_import(
+    name = "python_dbg_lib",
+    interface_library = select({
+        ":windows": ":python_dbg_import_lib",
+        # A placeholder for Unix platforms which makes --no_build happy.
+        "//conditions:default": "not-existing.lib",
+    }),
+    system_provided = 1,
+)
+
+cc_library(
+    name = "python_libs",
+    deps = select({
+        ":debug": [":python_lib", "python_dbg_lib"],
+        "//conditions:default": [":python_lib"],
+    }),
+)
+
 cc_library(
     name = "python_headers",
     hdrs = [":python_include"],
     deps = select({
-        ":windows": [":python_lib"],
+        ":windows": [":python_libs"],
         "//conditions:default": [],
     }),
     includes = ["python_include"],
@@ -75,6 +94,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "debug",
+    values = {
+        "compilation_mode": "dbg",
+    },
+    visibility = ["//visibility:public"],
+)
+
 %{PYTHON_INCLUDE_GENRULE}
 %{NUMPY_INCLUDE_GENRULE}
-%{PYTHON_IMPORT_LIB_GENRULE}
+%{PYTHON_IMPORT_LIB_GENRULES}

@@ -217,21 +217,31 @@ def _create_local_python_repository(repository_ctx):
         "python_include",
         "python_include",
     )
-    python_import_lib_genrule = ""
+    python_import_lib_genrules = ""
 
     # To build Python C/C++ extension on Windows, we need to link to python import library pythonXY.lib
     # See https://docs.python.org/3/extending/windows.html
     if is_windows(repository_ctx):
         python_include = _norm_path(python_include)
+        python_lib_dir = python_include.rsplit("/", 1)[0] + "/libs/"
         python_import_lib_name = _get_python_import_lib_name(repository_ctx, python_bin)
-        python_import_lib_src = python_include.rsplit("/", 1)[0] + "/libs/" + python_import_lib_name
-        python_import_lib_genrule = _symlink_genrule_for_dir(
+        python_import_lib_src = python_lib_dir + python_import_lib_name
+        python_dbg_import_lib_name = python_import_lib_name.replace(".lib", "_d.lib")
+        python_dbg_import_lib_src = python_lib_dir + python_dbg_import_lib_name
+        python_import_lib_genrules = _symlink_genrule_for_dir(
             repository_ctx,
             None,
             "",
             "python_import_lib",
             [python_import_lib_src],
             [python_import_lib_name],
+        ) + "\n" + _symlink_genrule_for_dir(
+            repository_ctx,
+            None,
+            "",
+            "python_dbg_import_lib",
+            [python_dbg_import_lib_src],
+            [python_dbg_import_lib_name],
         )
     numpy_include_rule = _symlink_genrule_for_dir(
         repository_ctx,
@@ -246,7 +256,7 @@ def _create_local_python_repository(repository_ctx):
     repository_ctx.template("BUILD", build_tpl, {
         "%{PYTHON_BIN_PATH}": python_bin,
         "%{PYTHON_INCLUDE_GENRULE}": python_include_rule,
-        "%{PYTHON_IMPORT_LIB_GENRULE}": python_import_lib_genrule,
+        "%{PYTHON_IMPORT_LIB_GENRULES}": python_import_lib_genrules,
         "%{NUMPY_INCLUDE_GENRULE}": numpy_include_rule,
         "%{PLATFORM_CONSTRAINT}": platform_constraint,
     })
