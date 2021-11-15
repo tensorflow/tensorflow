@@ -4,7 +4,6 @@
     "tensorflow/lite/delegates/gpu/metal/benchmarking/models",
   ],
   "buildTargets" : [
-    "//tensorflow/lite/delegates/gpu/metal/benchmarking:MacOSBenchmark",
     "//tensorflow/lite/delegates/gpu/metal/benchmarking:iOSBenchmark",
   ],
   "projectName" : "Benchmark",

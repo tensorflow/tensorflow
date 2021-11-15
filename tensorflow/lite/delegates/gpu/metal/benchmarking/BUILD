@@ -1,5 +1,4 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application")
-load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -34,7 +33,7 @@ objc_library(
     ],
 )
 
-# Applications for local benchmarking in XCode
+# Application for local benchmarking in XCode
 ios_application(
     name = "iOSBenchmark",
     testonly = 1,
@@ -46,19 +45,6 @@ ios_application(
     infoplists = ["Info.plist"],
     minimum_os_version = "12.0",
     provisioning_profile = "//tensorflow/lite/delegates/gpu/metal/benchmarking:provisioning_profile.mobileprovision",
-    tags = [
-        "local",
-        "notap",
-    ],
-    deps = [":benchmark_lib"],
-)
-
-macos_application(
-    name = "MacOSBenchmark",
-    testonly = 1,
-    bundle_id = "com.tensorflow.lite.delegates.gpu.metal.benchmarking",
-    infoplists = ["Info.plist"],
-    minimum_os_version = "10.13",
     tags = [
         "local",
         "notap",
