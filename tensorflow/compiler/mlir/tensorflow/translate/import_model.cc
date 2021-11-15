@@ -1800,12 +1800,23 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
                : mlir::CallSiteLoc::get(node_name_loc, callsite_locs);
   };
 
+  // Create a location for node `name` in function `function_name`.
+  auto create_op_type_and_name_locations = [&]() {
+    return mlir::FusedLoc::get(
+        context_,
+        // Add the type operation for the propagation of op_type metadata.
+        {mlir::NameLoc::get(
+             mlir::Identifier::get(node.type_string() + ":", context_)),
+         create_location(node.name(), function_name_for_debug_info_)});
+  };
+
   // For NextIteration nodes, location is used to pair source and sink nodes.
   // Hence, we use node name as location to keep it unique.
   // TODO(prakalps): In future the plan is to use tokens to pair source/sink
   // nodes. Then NextIteration nodes would not need to be handled separately.
-  if (node.type_string() == "NextIteration")
-    return create_location(node.name(), function_name_for_debug_info_);
+  if (node.type_string() == "NextIteration") {
+    return create_op_type_and_name_locations();
+  }
 
   const auto& node_def = node.def();
   auto original_nodes =
@@ -1814,21 +1825,23 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
       node_def.experimental_debug_info().original_func_names();
 
   if (original_nodes.empty()) {
-    return create_location(node.name(), function_name_for_debug_info_);
+    return create_op_type_and_name_locations();
   } else {
     // If the original nodes are defined, then we use them to get a list of
     // call sites, and then fuse them to a single fused location, with the name
     // of the node_def.
     llvm::SmallVector<mlir::Location, 4> node_locations;
-    node_locations.reserve(original_nodes.size() + 1);
-
-    // Retrieve the names from the experimental_debug_info
+    node_locations.reserve(original_nodes.size() + 2);
+    // Add the type operation for the propagation of op_type metadata.
+    node_locations.push_back(mlir::NameLoc::get(
+        mlir::Identifier::get(node.type_string() + ":", context_)));
+    // Retrieve the names from the experimental_debug_info.
     for (int i = 0, e = original_nodes.size(); i != e; ++i) {
       auto node_name = original_nodes[i];
       auto func_name = (i < original_funcs.size()) ? original_funcs[i] : "";
       node_locations.push_back(create_location(node_name, func_name));
     }
-    // Retrieve the name of the node_def
+    // Retrieve the name of the node_def.
     node_locations.push_back(
         create_location(node.name(), function_name_for_debug_info_));
     return mlir::FusedLoc::get(context_, node_locations);

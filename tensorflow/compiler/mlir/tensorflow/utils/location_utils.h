@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,25 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_UTILS_NAME_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_UTILS_NAME_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_LOCATION_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_LOCATION_UTILS_H_
 
-#include <string>
-
-#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Location.h"  // from @llvm-project
 
-namespace mlir {
+namespace tensorflow {
 
-// Converts characters in name that are considered illegal in TensorFlow Node
-// name to '.'.
-void LegalizeNodeName(std::string& name);
+mlir::Location GetLocationWithoutOpType(mlir::Location loc);
 
-// Returns the TensorFlow node name associated with a location.
-std::string GetNameFromLoc(Location loc);
+}  // namespace tensorflow
 
-// Returns the TensorFlow op type associated with a location.
-std::string GetOpTypeFromLoc(Location loc);
-}  // namespace mlir
-
-#endif  // TENSORFLOW_COMPILER_MLIR_UTILS_NAME_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_IMPORT_UTILS_H_
