@@ -68,6 +68,14 @@ class MatVecTest(test_lib.TestCase):
     self.assertAllEqual((2,), c.shape)
     self.assertAllEqual([5 + 2 * 6, 3 * 5 + 4 * 6], c)
 
+  def testEmpty(self):
+    full = np.array([[1., 2.], [3., 4.], [5., 6.]])
+    empty = np.empty([3, 0])
+    self.assertShapeEqual(
+        np.matmul(full.T, empty), math_ops.matmul(full, empty, adjoint_a=True))
+    self.assertShapeEqual(
+        np.matmul(empty.T, full), math_ops.matmul(empty, full, adjoint_a=True))
+
 
 def _AddTest(test, op_name, testcase_name, fn):
   test_name = "_".join(["test", op_name, testcase_name])
