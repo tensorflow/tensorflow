@@ -49,6 +49,16 @@ limitations under the License.
 
 namespace xla {
 
+// Converts the unsigned integer n into a mixed-radix representation with the
+// given bounds (radices). More precisely, if there are K radices, then the
+// returned vector digits has K entries and satisfies
+//
+//   0 <= digits[i] < bounds[i],  for i = 0, ..., K - 1
+//
+// and FromMixedRadix(digits) == n. The mixed radix representation is unique
+// modulo the product of the entries of bounds.
+std::vector<int64_t> ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds);
+
 // Logs the provided status message with a backtrace.
 //
 // For use by Status-factories, logs a backtrace at the point where the status
