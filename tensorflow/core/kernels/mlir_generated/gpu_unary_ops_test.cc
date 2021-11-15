@@ -781,6 +781,23 @@ GENERATE_DEFAULT_TEST(OnesLike, DT_DOUBLE, DT_DOUBLE, baseline_ones_like,
 GENERATE_DEFAULT_TEST(OnesLike, DT_INT64, DT_INT64, baseline_ones_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TEST(OnesLike, DT_INT8, DT_INT8, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_INT16, DT_INT16, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_UINT8, DT_UINT8, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_UINT16, DT_UINT16, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_UINT32, DT_UINT32, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_UINT64, DT_UINT64, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
+
 /// Test `tf.Real`.
 
 template <typename T>

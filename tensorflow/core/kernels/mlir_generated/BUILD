@@ -1789,6 +1789,14 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_ones_like_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
     op = "ones_like",
     tile_size = "1024",
     types = [
