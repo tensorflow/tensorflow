@@ -1171,6 +1171,7 @@ REGISTER_OP("XlaAllReduce")
     .Output("output: T")
     .Attr("T: {half, bfloat16, float, int32, uint32}")
     .Attr("reduce_op: {'Min', 'Max', 'Mul', 'Add', 'Mean'}")
+    .Attr("mode: {'CrossReplica', 'CrossReplicaAndPartition'}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Wraps the XLA AllReduce operator
@@ -1179,6 +1180,11 @@ Wraps the XLA AllReduce operator
 input: Array or a non-empty tuple of arrays to reduce across replicas.
 group_assignment: Groups between which the reductions are performed.
 reduce_op: Reduction computation.
+mode: group mode.
+  CrossReplica: group_assignment contains replica_id. Each group contains the
+    replicas for the current partition.
+  CrossReplicaAndPartition: group_assignment contains replica_id. Each group
+    contains the replicas for all partitions.
 )doc");
 
 REGISTER_OP("XlaReduceScatter")

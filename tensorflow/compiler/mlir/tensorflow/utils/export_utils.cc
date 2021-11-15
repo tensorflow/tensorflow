@@ -423,7 +423,7 @@ Status ConvertAttributes(
 Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shaped_type,
                          AttrValueMap* values) {
   AttrValue value;
-  SetTensorShapeProto(shaped_type, value.mutable_shape());
+  SetTensorShapeProto(shaped_type, value.mutable_list()->add_shape());
 
   auto result = values->insert({string(name), value});
   if (!result.second) {
@@ -433,7 +433,7 @@ Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shaped_type,
     TensorShapeProto actual_shape = result.first->second.shape();
     // Just check via string output as we shouldn't get here and if we do they
     // should be trivially the same, else fail.
-    std::string new_shape_string = value.shape().ShortDebugString();
+    std::string new_shape_string = value.list().shape(0).ShortDebugString();
     if (actual_shape.ShortDebugString() != new_shape_string) {
       return errors::InvalidArgument("Expected ", new_shape_string, " '", name,
                                      "' attribute but found ",

@@ -174,7 +174,7 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
                   it->getOpOperand(15).get().getDefiningOp())
                   .getValue()
                   .cast<ElementsAttr>()
-                  .getValue<FloatAttr>(0)
+                  .getValues<FloatAttr>()[0]
                   .getValue()
                   .isExactlyValue(0.0f));
 

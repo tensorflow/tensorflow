@@ -21,6 +21,7 @@ import itertools
 import pprint
 import threading
 import types as types_lib
+from typing import List
 import weakref
 
 import numpy as np
@@ -60,6 +61,7 @@ from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
@@ -87,6 +89,8 @@ FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
+# TODO(b/202429845): Remove this flag and related args:
+USE_FUNCTION_SUBTYPING = False
 
 _graph_building_time_counter = monitoring.Counter(
     "/tensorflow/core/tf_function/graph_building_time_usecs",
@@ -1413,7 +1417,7 @@ class _ForwardBackwardCall(object):
 _BOUND_VALUE = object()
 
 
-class ConcreteFunction(core.ConcreteFunction):
+class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
   """A `tf.types.experimental.ConcreteFunction` created from `tf.function`."""
 
   def __init__(self,
@@ -2935,8 +2939,6 @@ class Function(object):
     self._function_attributes = attributes or {}
     self._capture_by_value = capture_by_value
     self.tracing_count = 0
-    if self.input_signature is not None:
-      self._hashable_input_signature = hash(self.flat_input_signature)
 
     self._lock = threading.RLock()
     # _descriptor_cache is a of instance of a class to an instance-specific
@@ -3070,6 +3072,9 @@ class Function(object):
     graph_function._garbage_collector.release()  # pylint: disable=protected-access
     return graph_function
 
+  def _list_all_concrete_functions(self) -> List[ConcreteFunction]:
+    return self._function_cache.values()
+
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
     del owner
@@ -3153,17 +3158,15 @@ class Function(object):
     # Build a cache key where TensorShapes include only rank information (and
     # not information about the size of each dimension).
     if not any_composite_args:
-      rank_only_cache_key = function_cache.make_cache_key_from_args(
-          args, kwargs, include_tensor_ranks_only=True)
+      rank_only_cache_key = function_cache.make_cache_key(
+          (args, kwargs), include_tensor_ranks_only=True)
     else:
       # For the rank-only cache key, replace any composite tensors with
       # shape-relaxed TypeSpecs.
-      (cache_key_args, cache_key_kwargs) = nest.map_structure(
+      relaxed_args = nest.map_structure(
           _shape_relaxed_type_for_composite_tensor, (args, kwargs))
-      rank_only_cache_key = function_cache.make_cache_key_from_args(
-          cache_key_args,
-          cache_key_kwargs,
-          include_tensor_ranks_only=True)
+      rank_only_cache_key = function_cache.make_cache_key(
+          relaxed_args, include_tensor_ranks_only=True)
 
     arg_specs = [_type_spec_for(x) for x in flat_no_comp]
     relaxed_arg_specs = self._function_cache.arg_relaxed_specs.get(
@@ -3243,10 +3246,9 @@ class Function(object):
       flat_args, filtered_flat_args = [None], []
 
     if self.input_signature is None:
-      cache_key = function_cache.make_cache_key_from_args(args, kwargs)
+      cache_key = function_cache.make_cache_key((args, kwargs))
     else:
-      cache_key = function_cache.make_cache_key_from_signature(
-          self._hashable_input_signature)
+      cache_key = function_cache.make_cache_key(self.flat_input_signature)
 
     try:
       hash(cache_key)
@@ -3255,7 +3257,8 @@ class Function(object):
           "Arguments supplied to `defun`-generated functions must be "
           f"hashable.  Original error: {e}.")
 
-    graph_function = self._function_cache.primary.get(cache_key, None)
+    graph_function = self._function_cache.lookup(cache_key,
+                                                 USE_FUNCTION_SUBTYPING)
     if graph_function is not None:
       return graph_function, filtered_flat_args
 
@@ -3266,10 +3269,6 @@ class Function(object):
                      self._python_function, cache_key)
         logging.vlog(2, "Python function signature [args: %s] [kwargs: %s]",
                      args, kwargs)
-
-        # pylint: disable=protected-access
-        call_context_key = cache_key._replace(input_signature=None)
-        # pylint: disable=protected-access
 
         ag_status = (
             ag_ctx.Status.ENABLED
@@ -3283,13 +3282,13 @@ class Function(object):
           # and 3. there's been a cache miss for this calling context
           if (self._experimental_relax_shapes and
               self.input_signature is None and
-              call_context_key in self._function_cache.missed):
+              self._function_cache.has_call_context(cache_key.call_context)):
             return self._define_function_with_shape_relaxation(
                 args, kwargs, flat_args, filtered_flat_args)
 
-          self._function_cache.missed.add(call_context_key)
+          self._function_cache.add_call_context(cache_key.call_context)
           graph_function = self._create_graph_function(args, kwargs)
-          self._function_cache.primary[cache_key] = graph_function
+          self._function_cache.add(cache_key, graph_function)
 
           return graph_function, filtered_flat_args
 

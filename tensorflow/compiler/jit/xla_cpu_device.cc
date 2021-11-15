@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+using tensorflow::IdentityShapeRepresentationFn;
 
 class XlaCpuDeviceFactory : public DeviceFactory {
  public:
@@ -87,6 +88,7 @@ Status XlaCpuDeviceFactory::CreateDevices(
   options.device_ordinal = 0;
   options.compilation_device_name = DEVICE_CPU_XLA_JIT;
   options.use_multiple_streams = false;
+  options.shape_representation_fns = {IdentityShapeRepresentationFn()};
   auto device = absl::make_unique<XlaDevice>(session_options, options);
 
   // Setting GpuDeviceInfo because eager runtime relies on the device

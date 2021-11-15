@@ -32,6 +32,7 @@ from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 class LuOpTest(test.TestCase):
 
   @property
@@ -210,6 +211,7 @@ class LuOpTest(test.TestCase):
     data = np.random.rand(n, n) + 1j * np.random.rand(n, n)
     self._verifyLu(data)
 
+  @test_util.disable_xla("b/206106619")
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testEmpty(self):
     self._verifyLu(np.empty([0, 2, 2]))

@@ -15,7 +15,6 @@
 """Python API for executing a tf.data.Dataset using a tf.data service."""
 import enum
 import functools
-import typing
 import six
 
 from tensorflow.core.protobuf import data_service_pb2
@@ -120,8 +119,7 @@ class ShardingPolicy(enum.IntEnum):
     raise ValueError(f"Unable to convert sharding policy {self!r} to proto.")
 
 
-def _get_validated_sharding_policy(
-    processing_mode: typing.Union[ShardingPolicy, str]) -> ShardingPolicy:
+def _get_validated_sharding_policy(processing_mode):
   """Validates `processing_mode` and converts it to ShardingPolicy."""
 
   if isinstance(processing_mode, ShardingPolicy):

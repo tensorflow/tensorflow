@@ -1083,24 +1083,8 @@ class Trackable(object):
 
       _queue_children_for_restoration(current_position, visit_queue)
 
-    # Restore slot variables first.
-    #
-    # Order matters because tensor_saveables from above may contain "saveables"
-    # with side effects that expect the restored slot variable values.
-    #
-    # It is faster to restore slot variables separately because the file reader
-    # (BundleReader) assumes that variables are stored on disk in alphabetical
-    # order. However, slot variables are stored in their own groups after other
-    # variables, and while each group is alphabetically sorted, merging them
-    # into 1 read would cause lots of back and forth seeking, e.g.
-    #   variable/1 @ offset 0,
-    #   variable/1/slot/1 @ offset 100,
-    #   variable/1/slot/2 @ offset 200,
-    #   variable/2 @ offset 1,
-    #   variable/2/slot/1 @ offset 101, ...
-    restore_ops.extend(
-        current_position.checkpoint.restore_saveables(
-            current_position.checkpoint.slot_restoration_tensor_saveables, []))
+    tensor_saveables.update(
+        current_position.checkpoint.slot_restoration_tensor_saveables)
     current_position.checkpoint.slot_restoration_tensor_saveables.clear()
 
     restore_ops.extend(
@@ -1397,7 +1381,10 @@ def _queue_children_for_restoration(checkpoint_position, visit_queue):
       else:
         # If the field is not set, do a simple check to see if the dependency
         # has children and/or checkpointed values.
-        has_value = bool(child_proto.children or child_proto.attributes)
+        has_value = bool(child_proto.children or
+                         child_proto.attributes or
+                         child_proto.slot_variables or
+                         child_proto.HasField("registered_saver"))
       if has_value:
         trackable._deferred_dependencies.setdefault(child.local_name,
                                                     []).append(child_position)

@@ -538,7 +538,7 @@ class OptionalXlaContext(object):
 
 # TODO(mdan): Consider expose this type for instance type checking.
 @tf_export("__internal__.function.Function", v1=[])
-class Function(core.GenericFunction):
+class Function(core.GenericFunction, trackable.Trackable):
   """A `tf.types.experimental.GenericFunction` created by `tf.function`.
 
   Currently, individual methods/attributes under this class are not guaranteed
@@ -1180,10 +1180,10 @@ class Function(core.GenericFunction):
     # pylint: disable=protected-access
     if self._stateful_fn:
       concrete_functions.extend(
-          self._stateful_fn._function_cache.all_values())
+          self._stateful_fn._list_all_concrete_functions())
     if self._stateless_fn:
       concrete_functions.extend(
-          self._stateless_fn._function_cache.all_values())
+          self._stateless_fn._list_all_concrete_functions())
     # pylint: enable=protected-access
     return concrete_functions
 

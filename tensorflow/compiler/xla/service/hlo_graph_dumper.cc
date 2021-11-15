@@ -1177,13 +1177,14 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   for (const auto& line : instr->ExtraAttributesToString(
            HloPrintOptions().set_print_subcomputation_mode(
                HloPrintOptions::PrintSubcomputationMode::kOff))) {
-    // Some instructions have giant replica group fields, so truncate the
-    // replica group line length to 128.
-    constexpr int kMaxReplicaGroupLen = 128;
-    if (absl::StartsWith(line, "replica_groups=") &&
-        line.length() > kMaxReplicaGroupLen) {
+    // Some instructions have giant device identifier fields, so truncate their
+    // length to 128.
+    constexpr int kMaxDeviceIdFieldLen = 128;
+    if ((absl::StartsWith(line, "replica_groups=") ||
+         absl::StartsWith(line, "source_target_pairs=")) &&
+        line.length() > kMaxDeviceIdFieldLen) {
       lines.push_back(HtmlLikeStringSanitize(
-          StrCat(line.substr(0, kMaxReplicaGroupLen - 3), "...")));
+          StrCat(line.substr(0, kMaxDeviceIdFieldLen - 3), "...")));
     } else {
       lines.push_back(HtmlLikeStringSanitize(line));
     }

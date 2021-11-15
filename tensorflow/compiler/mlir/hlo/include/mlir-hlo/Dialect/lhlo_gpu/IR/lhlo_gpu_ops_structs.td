@@ -22,6 +22,9 @@ def ConvolutionBackendConfigAttr : StructAttr<"ConvolutionBackendConfig",
                                           LHLO_GPU_Dialect, [
    StructFieldAttr<"algorithm", I64Attr>,
    StructFieldAttr<"tensor_ops_enabled", BoolAttr>,
+
+   StructFieldAttr<"workspace_size", I64Attr>,
+
    // The following 3 attributes describe the layout as an array of integers
    // that list the dimensions in minor-to-major order similar to XLA's layout
    // representation. operand_0_layout and operand_0_layout described the layout

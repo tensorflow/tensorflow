@@ -116,4 +116,9 @@ StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
   return bef_file;
 }
 
+int64_t GetUniqueInt() {
+  static std::atomic<int64_t> id(0);
+  return id.fetch_add(1, std::memory_order_relaxed);
+}
+
 }  // namespace tfrt

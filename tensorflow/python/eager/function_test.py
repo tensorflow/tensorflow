@@ -97,10 +97,7 @@ except ImportError:
 
 
 def total_function_cache(defined):
-  # pylint: disable=protected-access
-  return (set(defined._function_cache.primary)
-          | set(defined._function_cache.arg_relaxed))
-  # pylint: enable=protected-access
+  return defined._list_all_concrete_functions()  # pylint: disable=protected-access
 
 
 def _example_indexed_slices_with_dense_shape():
@@ -3185,10 +3182,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(total_function_cache(defined), 1)
 
   def _total_function_cache_def_func(self, defined):
-    # pylint: disable=protected-access
-    return (set(defined._stateful_fn._function_cache.primary)
-            | set(defined._stateful_fn._function_cache.arg_relaxed))
-    # pylint: enable=protected-access
+    return defined._list_all_concrete_functions()  # pylint: disable=protected-access
 
   def testVariableRetracingOnDtypeChanges(self):
 

@@ -134,7 +134,7 @@ xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp& operand,
 
 XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn() {
   return [](const TensorShape& shape, DataType dtype, bool use_fast_memory,
-            TpuLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
+            XlaLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
     return xla_shape;
@@ -177,7 +177,7 @@ Status RewriteLayoutWithShardedShape(
     TF_ASSIGN_OR_RETURN(
         per_device_xla_shape,
         shape_representation_fn(per_device_tensor_shape, dtype, use_fast_memory,
-                                TpuLayoutPreference::kNoPreference));
+                                XlaLayoutPreference::kNoPreference));
     *xla_shape->mutable_layout() = per_device_xla_shape.layout();
   }
   return Status::OK();
@@ -209,7 +209,7 @@ StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
                                           original_shape.element_type()));
   TF_ASSIGN_OR_RETURN(auto to_shape, shape_representation_fn(
                                          shape, dtype, fast_mem,
-                                         TpuLayoutPreference::kNoPreference));
+                                         XlaLayoutPreference::kNoPreference));
   if (sharding) {
     TF_ASSIGN_OR_RETURN(auto hlo_sharding,
                         xla::HloSharding::FromProto(*sharding));

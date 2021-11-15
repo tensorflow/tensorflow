@@ -242,6 +242,11 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo::TriangularSolveOp>(op)) {
     return Thunk::Kind::kTriangularSolve;
   }
+  if (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp>(op) ||
+      mlir::isa<mlir::lmhlo_gpu::ConvBackwardInputOp>(op) ||
+      mlir::isa<mlir::lmhlo_gpu::ConvBackwardFilterOp>(op)) {
+    return Thunk::Kind::kConvolution;
+  }
   return tensorflow::errors::Unimplemented(
       "Operation is not supported by BefThunk.");
 }

@@ -17,11 +17,8 @@
 import collections
 import copy
 import os
-import pipes
 import re
 import shlex
-
-import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -61,10 +58,7 @@ _PASS_THROUGH_VARIABLE_OPS = ('Identity', 'IdentityN')
 
 
 def _shlex_quote(s):
-  if six.PY2:
-    return pipes.quote(s)
-  else:
-    return shlex.quote(s)
+  return shlex.quote(s)
 
 
 def _sysconfig_module():

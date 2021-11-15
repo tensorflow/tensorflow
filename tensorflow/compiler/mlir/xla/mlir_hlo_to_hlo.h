@@ -40,6 +40,9 @@ struct MlirToHloConversionOptions {
   // backend config for the bitcast. This is required for XLA:GPU backend to
   // use elemental IR emitters for fused bitcasts without propagating layouts.
   bool propagate_bitcast_layouts_to_backend_config = false;
+
+  // Legalize names to be compatible with TensorFlow.
+  bool legalize_node_names = true;
 };
 
 // Converts a MLIR module in HLO dialect into a HloModuleProto. If

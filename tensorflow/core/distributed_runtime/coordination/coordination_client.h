@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_CLIENT_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_CLIENT_H_
 
+#include <memory>
 #include <string>
 
 namespace tensorflow {
@@ -32,6 +33,11 @@ class CoordinationClientCache {
   // If the `target` names a remote task, returns a pointer of the
   // CoordinationClient object wrapping that channel to the remote task.
   virtual CoordinationClient* GetClient(const std::string& target) = 0;
+
+  // If the `target` names a remote task, returns an owned pointer of the
+  // CoordinationClient object wrapping that channel to the remote task.
+  virtual std::unique_ptr<CoordinationClient> GetOwnedClient(
+      const std::string& target) = 0;
 };
 
 }  // namespace tensorflow

@@ -131,6 +131,7 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
 
     Status s = params_.create_kernel(n->properties(), &item->kernel);
     if (!s.ok()) {
+      params_.delete_kernel(item->kernel);
       item->kernel = nullptr;
       s = AttachDef(s, *n);
       return s;

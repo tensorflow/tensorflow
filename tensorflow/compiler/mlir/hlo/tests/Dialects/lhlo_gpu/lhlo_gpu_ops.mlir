@@ -58,6 +58,7 @@ func @conv_forward_generic(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2
       batch_group_count = 1,
       result_scale = 1.0,
       backend_config = {algorithm=0,
+                        workspace_size = -1,
                         operand_0_layout = [3,2,1,0],
                         operand_1_layout = [3,2,1,0],
                         result_layout = [3,2,1,0],
@@ -79,6 +80,7 @@ func @conv_forward(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2xf16>, %
     window = {stride = [1, 1], pad = [[0, 0], [1, 0]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
     { feature_group_count = 1, batch_group_count = 1, result_scale = 1.0,
       backend_config = {algorithm=0,
+                        workspace_size = -1,
                         operand_0_layout = [3,2,1,0],
                         operand_1_layout = [3,2,1,0],
                         result_layout = [3,2,1,0],
@@ -97,6 +99,7 @@ func @conv_backfilter(%input : memref<3x56x56x16xf64>, %filter: memref<3x3x3x64x
     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
     window = {stride = [1, 1], pad = [[0, 0], [0, 0]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
     { backend_config = {algorithm = 1 : i64,
+                        workspace_size = -1,
                         operand_0_layout = [3,2,1,0],
                         operand_1_layout = [3,2,1,0],
                         result_layout = [3,2,1,0],
@@ -119,6 +122,7 @@ func @conv_backinput(%input : memref<4x5x16x16xf64>, %filter : memref<5x3x7x7xf6
     dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1],
     window = {stride = [1, 1], pad = [[3, 0], [1, 5]], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [1, 1]}
     { backend_config = {algorithm = 1 : i64,
+                        workspace_size = -1,
                         operand_0_layout = [3,2,1,0],
                         operand_1_layout = [3,2,1,0],
                         result_layout = [3,2,1,0],
@@ -142,6 +146,7 @@ func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32xf16>,
     window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
     {activation_mode = "Relu",
      backend_config = {algorithm = 1 : i64,
+                       workspace_size = -1,
                        operand_0_layout = [3,2,1,0],
                        operand_1_layout = [3,2,1,0],
                        result_layout = [3,2,1,0],
@@ -165,6 +170,7 @@ func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x
     window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
     {activation_mode = "Relu",
      backend_config = {algorithm = 1 : i64,
+                       workspace_size = -1,
                        operand_0_layout = [3,2,1,0],
                        operand_1_layout = [3,2,1,0],
                        result_layout = [3,2,1,0],

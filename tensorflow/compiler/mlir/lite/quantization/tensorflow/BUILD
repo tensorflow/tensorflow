@@ -16,16 +16,20 @@ package_group(
 )
 
 cc_library(
-    name = "tf_to_quant",
+    name = "tf_quantization_passes",
     srcs = [
+        "fallback_to_flex_ops.cc",
         "tf_to_quant.cc",
     ],
     hdrs = [
         "passes.h",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
+        "@flatbuffers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",

@@ -17,6 +17,8 @@
 import copy
 
 from absl.testing import parameterized
+from keras.feature_column import dense_features as df_lib
+from keras.feature_column import sequence_feature_column as sfc_lib
 
 from tensorflow.python.client import session
 from tensorflow.python.feature_column import feature_column_lib as fc_lib
@@ -187,8 +189,8 @@ class EmbeddingColumnTestV2(test.TestCase, parameterized.TestCase):
 
     # Provide sparse input and get dense result.
     features = {'aaa': sparse_input, 'bbb': sparse_input}
-    dense_features = fc_lib.DenseFeatures([embedding_column])
-    sequence_features = fc_lib.SequenceFeatures([sequence_embedding_column])
+    dense_features = df_lib.DenseFeatures([embedding_column])
+    sequence_features = sfc_lib.SequenceFeatures([sequence_embedding_column])
     embedding_lookup = dense_features(features)
     sequence_embedding_lookup = sequence_features(features)
 
@@ -431,8 +433,8 @@ class SharedEmbeddingColumnTestV2(test.TestCase, parameterized.TestCase):
         use_safe_embedding_lookup=use_safe_embedding_lookup)
 
     # Provide sparse input and get dense result.
-    dense_features = fc_lib.DenseFeatures([embedding_column_a])
-    sequence_features = fc_lib.SequenceFeatures([embedding_column_b])
+    dense_features = df_lib.DenseFeatures([embedding_column_a])
+    sequence_features = sfc_lib.SequenceFeatures([embedding_column_b])
     embedding_lookup_a = dense_features(input_features)
     embedding_lookup_b = sequence_features(input_features)
 
@@ -512,7 +514,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
           dimension=2,
           embedding_lookup_device='cpu',
           tensor_core_shape=[None, 3])
-    dense_features = fc_lib.DenseFeatures(embedding_column)
+    dense_features = df_lib.DenseFeatures(embedding_column)
     with self.assertRaisesRegex(
         ValueError,
         r'.*embedding_lookup_device=\"cpu\" during training is not'):
@@ -533,7 +535,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
           tensor_core_shape=[None, 3])
     context = tpu._TPUInferenceContext('tpu_inference')
     context.Enter()
-    dense_features = fc_lib.DenseFeatures(embedding_column)
+    dense_features = df_lib.DenseFeatures(embedding_column)
     with self.assertRaisesRegex(
         ValueError,
         r'Using embedding_lookup_device=tpu_embedding_core during inference is '
@@ -621,7 +623,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
     context = tpu._TPUInferenceContext('tpu_inference')
     context.Enter()
     with tpu_function.tpu_shard_context(1):
-      dense_features = fc_lib.DenseFeatures(embedding_column)
+      dense_features = df_lib.DenseFeatures(embedding_column)
       # Sqrtn combiner not supported for now.
       if combiner == 'sqrtn':
         with self.assertRaisesRegex(
@@ -708,7 +710,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
     context = tpu._TPUInferenceContext('tpu_inference')
     context.Enter()
     with tpu_function.tpu_shard_context(1):
-      dense_features = fc_lib.DenseFeatures(embedding_column)
+      dense_features = df_lib.DenseFeatures(embedding_column)
       expected_lookups = (
           # example 0:
           (0., 0.),  # ids [], embedding = [0, 0]

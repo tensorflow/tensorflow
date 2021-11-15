@@ -33,32 +33,11 @@ using mlir::OpRewritePattern;
 using mlir::PatternRewriter;
 using mlir::success;
 using mlir::Value;
-using mlir::linalg::FillOp;
 using mlir::linalg::LinalgOp;
 using mlir::linalg::LinalgTransformationFilter;
 using mlir::linalg::PadTensorOp;
 using mlir::linalg::TiledLoopOp;
 using mlir::tensor::ExtractSliceOp;
-
-// Replace FillOp(PadTensorOp) -> FillOp(InitTensorOp).
-struct FillOfPadTensor : public OpRewritePattern<FillOp> {
-  using OpRewritePattern<FillOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(FillOp fill,
-                                PatternRewriter &rewriter) const override {
-    if (auto pad = fill.output().getDefiningOp<PadTensorOp>()) {
-      if (!pad.getResultType().hasStaticShape()) {
-        return failure();
-      }
-      Value init = rewriter.create<mlir::linalg::InitTensorOp>(
-          fill.getLoc(), pad.getResultType().getShape(),
-          pad.getResultType().getElementType());
-      rewriter.replaceOpWithNewOp<FillOp>(fill, fill.value(), init);
-      return success();
-    }
-    return failure();
-  }
-};
 
 // Replace PadTensorOp(ExtractSliceOp(LinalgOp)) -> LinalgOp if
 // `pad_tensor(extract_slice(*))` is a no-op.
@@ -140,7 +119,7 @@ struct PadTiledOpsPass : public PadTiledOpsBase<PadTiledOpsPass> {
     auto *ctx = func.getContext();
     mlir::OwningRewritePatternList patterns(ctx);
     patterns.insert<PaddingPattern>(filter, ctx);
-    patterns.insert<FillOfPadTensor, PadOfExtractOfLinalg>(ctx);
+    patterns.insert<PadOfExtractOfLinalg>(ctx);
     mlir::memref::populateResolveRankedShapeTypeResultDimsPatterns(patterns);
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
 

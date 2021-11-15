@@ -107,7 +107,11 @@ LINALG_DEPS = [
     "//tensorflow/core/kernels:transpose_functor",
 ] + if_cuda_or_rocm([
     ":eye_functor",
+<<<<<<< HEAD
 ]) + if_cuda([    
+=======
+]) + if_cuda([
+>>>>>>> upstream/master
     "//tensorflow/core/util:cuda_solvers",
 ]) + if_rocm([
     "//tensorflow/core/util:rocm_solvers",

@@ -4065,6 +4065,58 @@ This operation creates a tensor of `shape` and `dtype`.
   let hasFolder = 1;
 }
 
+def TF_EnqueueTPUEmbeddingArbitraryTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingArbitraryTensorBatch", [SameVariadicOperandSize, TF_TPUEmbeddingSideEffect]> {
+  let summary = [{
+Eases the porting of code that uses tf.nn.embedding_lookup_sparse().
+  }];
+
+  let description = [{
+embedding_indices[i] and aggregation_weights[i] correspond
+to the ith feature.
+
+The tensors at corresponding positions in the three input lists (sample_indices,
+embedding_indices and aggregation_weights) must have the same shape, i.e. rank 1
+with dim_size() equal to the total number of lookups into the table described by
+the corresponding feature.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_I32OrI64Tensor>, [{A list of rank 2 Tensors specifying the training example to which the
+corresponding embedding_indices and aggregation_weights values belong.
+If the size of its first dimension is 0, we assume each embedding_indices
+belongs to a different sample. Both int32 and int64 are allowed and will
+be converted to int32 internally.
+
+Or a list of rank 1 Tensors specifying the row lengths for splitting
+embedding_indices and aggregation_weights into rows. It corresponds to
+ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. When
+enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
+the row lengths is 1-D dense tensor. When empty, we assume a dense tensor is
+passed to the op Both int32 and int64 are allowed and will be converted to
+int32 internally.}]>:$sample_indices_or_row_lengths,
+    Arg<Variadic<TF_I32OrI64Tensor>, [{A list of rank 1 Tensors, indices into the embedding
+tables. Both int32 and int64 are allowed and will be converted to
+int32 internally.}]>:$embedding_indices,
+    Arg<Variadic<TF_F32OrF64Tensor>, [{A list of rank 1 Tensors containing per training
+example aggregation weights. Both float32 and float64 are allowed and will
+be converted to float32 internally.}]>:$aggregation_weights,
+    Arg<TF_StrTensor, [{A string input that overrides the mode specified in the
+TPUEmbeddingConfiguration. Supported values are {'unspecified', 'inference',
+'training', 'backward_pass_only'}. When set to 'unspecified', the mode set
+in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_override,
+
+    DefaultValuedAttr<I64Attr, "-1">:$device_ordinal,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$combiners
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+  TF_DerivedOperandTypeAttr T1 = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr T2 = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T3 = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_EnqueueTPUEmbeddingBatchOp : TF_Op<"EnqueueTPUEmbeddingBatch", [TF_TPUEmbeddingSideEffect]> {
   let summary = [{
 An op that enqueues a list of input batch tensors to TPUEmbedding.
@@ -9892,11 +9944,11 @@ def TF_OnesLikeOp : TF_Op<"OnesLike", [Idempotent, NoSideEffect, SameOperandsAnd
   let summary = "Returns a tensor of ones with the same shape and type as x.";
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint8]>, [{a tensor of type T.}]>:$x
+    Arg<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{a tensor of type T.}]>:$x
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint8]>, [{a tensor of the same shape and type as x but filled with ones.}]>:$y
+    Res<TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{a tensor of the same shape and type as x but filled with ones.}]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -17282,8 +17334,8 @@ Given an input tensor, this function computes hyperbolic tangent of every
   >>> x = tf.constant([-float("inf"), -5, -0.5, 1, 1.2, 2, 3, float("inf")])
   >>> tf.math.tanh(x)
   <tf.Tensor: shape=(8,), dtype=float32, numpy=
-  array([-1.        , -0.99990916, -0.46211717,  0.7615942 ,  0.8336547 ,
-          0.9640276 ,  0.9950547 ,  1.        ], dtype=float32)>
+  array([-1.0       , -0.99990916, -0.46211717,  0.7615942 ,  0.8336547 ,
+          0.9640276 ,  0.9950547 ,  1.0       ], dtype=float32)>
   }];
 
   let arguments = (ins
@@ -19017,7 +19069,8 @@ documented at https://www.tensorflow.org/xla/operation_semantics#allreduce.
     Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32]>, [{Array or a non-empty tuple of arrays to reduce across replicas.}]>:$input,
     Arg<TF_Int32Tensor, [{Groups between which the reductions are performed.}]>:$group_assignment,
 
-    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean"]>:$reduce_op
+    TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean"]>:$reduce_op,
+    TF_AnyStrAttrOf<["CrossReplica", "CrossReplicaAndPartition"]>:$mode
   );
 
   let results = (outs

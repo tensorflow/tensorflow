@@ -131,6 +131,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
     options.compilation_device_name = DEVICE_GPU_XLA_JIT;
     options.use_multiple_streams = true;
     options.allowed_devices = gpu_ids;
+    options.shape_representation_fns = {IdentityShapeRepresentationFn()};
     auto device = absl::make_unique<XlaDevice>(session_options, options);
 
     Status status = device->UseGpuDeviceInfo();

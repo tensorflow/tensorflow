@@ -133,19 +133,18 @@ class TrtConversionParams(
   """Parameters that are used for TF-TRT conversion.
 
   Fields:
-    max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
+    max_workspace_size_bytes: the maximum GPU temporary memory that the TRT
       engine can use at execution time. This corresponds to the
       'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
-    precision_mode: one the strings in
+    precision_mode: one of the strings in
       TrtPrecisionMode.supported_precision_modes().
     minimum_segment_size: the minimum number of nodes required for a subgraph
       to be replaced by TRTEngineOp.
     maximum_cached_engines: max number of cached TRT engines for dynamic TRT
-      ops. Created TRT engines for a dynamic dimension are cached. This is the
-      maximum number of engines that can be cached. If the number of cached
-      engines is already at max but none of them supports the input shapes,
-      the TRTEngineOp will fall back to run the original TF subgraph that
-      corresponds to the TRTEngineOp.
+      ops. Created TRT engines for a dynamic dimension are cached. If the
+      number of cached engines is already at max but none of them supports the
+      input shapes, the TRTEngineOp will fall back to run the original TF
+      subgraph that corresponds to the TRTEngineOp.
     use_calibration: this argument is ignored if precision_mode is not INT8.
       If set to True, a calibration graph will be created to calibrate the
       missing ranges. The calibration graph must be converted to an inference
@@ -155,10 +154,10 @@ class TrtConversionParams(
       will occur. Please note that accuracy may be negatively affected if
       there is a mismatch between which tensors TRT quantizes and which
       tensors were trained with fake quantization.
-    allow_build_at_runtime: whether to build TensorRT engines during runtime.
-      If no TensorRT engine can be found in cache that can handle the given
-      inputs during runtime, then a new TensorRT engine is built at runtime if
-      allow_build_at_runtime=True, and otherwise native TF is used.
+    allow_build_at_runtime: whether to allow building TensorRT engines during
+      runtime if no prebuilt TensorRT engine can be found that can handle the
+      given inputs during runtime, then a new TensorRT engine is built at
+      runtime if allow_build_at_runtime=True, and otherwise native TF is used.
   """
 
   def __new__(cls,
@@ -973,12 +972,21 @@ class TrtGraphConverterV2(object):
           ("profile_strategy '{}' is not supported. It should be one of {}"
           ).format(strategy, supported_profile_strategies()))
 
+  @deprecation.deprecated_args(None,
+                               "Use individual converter parameters instead",
+                               "conversion_params")
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
                input_saved_model_signature_key=None,
                use_dynamic_shape=None,
                dynamic_shape_profile_strategy=None,
+               max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
+               precision_mode=TrtPrecisionMode.FP32,
+               minimum_segment_size=3,
+               maximum_cached_engines=1,
+               use_calibration=True,
+               allow_build_at_runtime=True,
                conversion_params=None):
     """Initialize the converter.
 
@@ -993,14 +1001,45 @@ class TrtGraphConverterV2(object):
       dynamic_shape_profile_strategy: one of the strings in
         supported_profile_strategies(). None is equivalent to Range in the
         current implementation.
-      conversion_params: a TrtConversionParams instance.
+      max_workspace_size_bytes: the maximum GPU temporary memory that the TRT
+        engine can use at execution time. This corresponds to the
+        'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
+      precision_mode: one of the strings in
+        TrtPrecisionMode.supported_precision_modes().
+      minimum_segment_size: the minimum number of nodes required for a subgraph
+        to be replaced by TRTEngineOp.
+      maximum_cached_engines: max number of cached TRT engines for dynamic TRT
+        ops. Created TRT engines for a dynamic dimension are cached. If the
+        number of cached engines is already at max but none of them supports the
+        input shapes, the TRTEngineOp will fall back to run the original TF
+        subgraph that corresponds to the TRTEngineOp.
+      use_calibration: this argument is ignored if precision_mode is not INT8.
+        If set to True, a calibration graph will be created to calibrate the
+        missing ranges. The calibration graph must be converted to an inference
+        graph by running calibration with calibrate(). If set to False,
+        quantization nodes will be expected for every tensor in the graph
+        (excluding those which will be fused). If a range is missing, an error
+        will occur. Please note that accuracy may be negatively affected if
+        there is a mismatch between which tensors TRT quantizes and which
+        tensors were trained with fake quantization.
+      allow_build_at_runtime: whether to allow building TensorRT engines during
+        runtime if no prebuilt TensorRT engine can be found that can handle the
+        given inputs during runtime, then a new TensorRT engine is built at
+        runtime if allow_build_at_runtime=True, and otherwise native TF is used.
+      conversion_params: a TrtConversionParams instance (deprecated).
 
     Raises:
       ValueError: if the combination of the parameters is invalid.
     """
     assert context.executing_eagerly()
     if conversion_params is None:
-      conversion_params = TrtConversionParams()
+      conversion_params = TrtConversionParams(
+          max_workspace_size_bytes=max_workspace_size_bytes,
+          precision_mode=precision_mode,
+          minimum_segment_size=minimum_segment_size,
+          maximum_cached_engines=maximum_cached_engines,
+          use_calibration=use_calibration,
+          allow_build_at_runtime=allow_build_at_runtime)
 
     _check_trt_version_compatibility()
     _check_conversion_params(conversion_params, is_v2=True)

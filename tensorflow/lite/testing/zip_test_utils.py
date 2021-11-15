@@ -102,8 +102,6 @@ class ExtraTocoOptions(object):
     self.inference_input_type = None
     # The inference output type passed to TFLiteConvert.
     self.inference_output_type = None
-    # Converts from GraphDef instead of SavedModel.
-    self.convert_from_graphdef = False
 
 
 def create_tensor_data(dtype, shape, min_value=-100, max_value=100):

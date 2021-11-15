@@ -13,9 +13,10 @@ be converted to int32 internally.
 Or a list of rank 1 Tensors specifying the row lengths for splitting
 embedding_indices and aggregation_weights into rows. It corresponds to
 ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. When
-enqueuing N-D ragged tensor, the row lengths will be a (N-1)-D Densed
-tensor and it needs to be flattened into 1D before passed to this op. Both
-int32 and int64 are allowed and will be converted to int32 internally.
+enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
+the row lengths is 1-D dense tensor. When empty, we assume a dense tensor is
+passed to the op Both int32 and int64 are allowed and will be converted to
+int32 internally.
 END
   }
   in_arg {

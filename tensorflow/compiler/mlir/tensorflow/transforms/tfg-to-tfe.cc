@@ -58,7 +58,7 @@ static mlir::LogicalResult FilterTfgSpecificArgResultAttributes(
     mlir::NamedAttrList list;
     for (mlir::NamedAttribute attr : dict_attr.getValue()) {
       // Skip if the attribute has "tfg" prefix.
-      if (absl::StartsWith(attr.first.c_str(), "tfg")) continue;
+      if (attr.first.getValue().startswith("tfg")) continue;
       list.append(attr);
     }
     output.push_back(list.getDictionary(context));

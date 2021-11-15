@@ -543,8 +543,7 @@ class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
       ConversionPatternRewriter &rewriter) const final {
     DenseIntElementsAttr strides = slice_op.strides();
     // Strides must be 1 otherwise we cannot legalize this `mhlo.slice` op.
-    if (!strides.isSplat() ||
-        strides.getSplatValue().cast<IntegerAttr>().getInt() != 1)
+    if (!strides.isSplat() || strides.getSplatValue<APInt>() != 1)
       return failure();
 
     rewriter.setInsertionPointAfter(slice_op.getOperation());
@@ -607,10 +606,10 @@ class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
           signed_start_indices_element_type);
       auto cast_op = rewriter.create<CastOp>(op.getLoc(), cast_type, start);
       Value clamp_max = rewriter.create<ConstOp>(
-          op.getLoc(),
-          rewriter.getIntegerAttr(signed_start_indices_element_type,
-                                  input_type.getShape()[i] -
-                                      op.slice_sizes().getValue<int64_t>({i})));
+          op.getLoc(), rewriter.getIntegerAttr(
+                           signed_start_indices_element_type,
+                           input_type.getShape()[i] -
+                               op.slice_sizes().getValues<int64_t>()[i]));
       Value clamped_index = rewriter.create<mhlo::ClampOp>(
           op.getLoc(), cast_type, clamp_min, cast_op, clamp_max);
       start_indices_vector.push_back(clamped_index);
@@ -1307,11 +1306,10 @@ class ConvertReduceOpToTfMin
   }
 };
 
-template <typename LogicalOp, typename TfReduceOp>
-class ConvertReduceOpToTfAllAny
-    : public ConvertReduceOpToTfOp<LogicalOp, TfReduceOp> {
+class ConvertReduceOpToTfAll
+    : public ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp> {
  public:
-  using ConvertReduceOpToTfOp<LogicalOp, TfReduceOp>::ConvertReduceOpToTfOp;
+  using ConvertReduceOpToTfOp<mhlo::AndOp, TF::AllOp>::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
     DenseIntElementsAttr init_attr;
@@ -1322,9 +1320,21 @@ class ConvertReduceOpToTfAllAny
     return success();
   }
 };
-using ConvertReduceOpToTfAll =
-    ConvertReduceOpToTfAllAny<mhlo::AndOp, TF::AllOp>;
-using ConvertReduceOpToTfAny = ConvertReduceOpToTfAllAny<mhlo::OrOp, TF::AnyOp>;
+
+class ConvertReduceOpToTfAny
+    : public ConvertReduceOpToTfOp<mhlo::OrOp, TF::AnyOp> {
+ public:
+  using ConvertReduceOpToTfOp<mhlo::OrOp, TF::AnyOp>::ConvertReduceOpToTfOp;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    DenseIntElementsAttr init_attr;
+    if (!matchPattern(init_value, m_Constant(&init_attr)) ||
+        !init_attr.getType().getElementType().isInteger(1) ||
+        !init_attr.isSplat() || init_attr.getSplatValue<BoolAttr>().getValue())
+      return failure();
+    return success();
+  }
+};
 
 template <typename TfReduce, typename TfArgReduce>
 class ConvertReduceOpToTfArgMinMax
@@ -1347,7 +1357,7 @@ class ConvertReduceOpToTfArgMinMax
     DenseElementsAttr iota_init;
     if (!matchPattern(reduce_op.init_values().back(), m_Constant(&iota_init)))
       return failure();
-    if (*iota_init.getValues<APInt>().begin() != 0) return failure();
+    if (iota_init.getValues<APInt>()[0] != 0) return failure();
 
     // Verify that the second argument is an Iota op along the same dimenion as
     // the reduction.
@@ -1360,7 +1370,7 @@ class ConvertReduceOpToTfArgMinMax
       return failure();
 
     Value input = reduce_op.inputs().front();
-    int64_t axis = reduce_op.dimensions().getValue<int64_t>({0});
+    int64_t axis = reduce_op.dimensions().getValues<int64_t>()[0];
 
     auto dim_type = RankedTensorType::get({1}, rewriter.getI64Type());
     auto reduction_indices = rewriter.create<ConstOp>(
@@ -1609,8 +1619,8 @@ bool IsSpatialPoolingWithoutDilation(
   // (last) dimensions.
   const uint64_t batch_dim = 0;
   const uint64_t channel_dim = rank - 1;
-  if (rw.window_dimensions().getValue<int64_t>({batch_dim}) != 1 ||
-      rw.window_dimensions().getValue<int64_t>({channel_dim}) != 1 ||
+  if (rw.window_dimensions().getValues<int64_t>()[batch_dim] != 1 ||
+      rw.window_dimensions().getValues<int64_t>()[channel_dim] != 1 ||
       (*window_strides)[batch_dim] != 1 ||
       (*window_strides)[channel_dim] != 1 || padding[2 * batch_dim] != 0 ||
       padding[2 * batch_dim + 1] != 0 || padding[2 * channel_dim] != 0 ||
@@ -1643,7 +1653,7 @@ bool IsSpatialPoolingWithoutDilation(
   for (uint64_t i = 1; i < rank - 1; ++i) {
     int64_t padding_size =
         (output_type.getShape()[i] - 1) * (*window_strides)[i] +
-        rw.window_dimensions().getValue<int64_t>({i}) -
+        rw.window_dimensions().getValues<int64_t>()[i] -
         input_type.getShape()[i];
     if (padding[2 * i] != tensorflow::MathUtil::FloorOfRatio(
                               padding_size, static_cast<int64_t>(2)) ||
@@ -1758,7 +1768,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
     DenseFPElementsAttr initial_value;
     return matchPattern(value, m_Constant(&initial_value)) &&
            initial_value.getNumElements() == 1 &&
-           initial_value.getValue<APFloat>({}).isZero();
+           initial_value.getValues<APFloat>()[0].isZero();
   }
 
   LogicalResult replaceWithAvgPool(mhlo::DivOp op, Value input,
@@ -1829,7 +1839,7 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
       return false;
     }
 
-    APFloat element = float_value.getValue<APFloat>({});
+    APFloat element = float_value.getValues<APFloat>()[0];
     if (!element.isInfinity()) {
       return false;
     }
@@ -1893,9 +1903,9 @@ bool FloatTensorIsSign(PatternRewriter &rewriter, ElementsAttr floatv,
     return IsSign(floatv_spl, sgn_cst_spl);
   } else if (floatv.isa<DenseElementsAttr>()) {
     auto floatv_dns = floatv.cast<DenseFPElementsAttr>();
-    return llvm::all_of(
-        floatv_dns.getValues<FloatAttr>(),
-        [&](FloatAttr value) { return IsSign(value.getValue(), sgn_cst_spl); });
+    return llvm::all_of(floatv_dns.getValues<APFloat>(), [&](APFloat value) {
+      return IsSign(value, sgn_cst_spl);
+    });
   }
   return false;
 }
@@ -2318,7 +2328,7 @@ bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
   int64_t input_rank = broadcast_dimensions.getNumElements();
   int64_t output_rank = output.getType().cast<ShapedType>().getRank();
   return input_rank == 0 ||
-         (broadcast_dimensions.getValue({0}).cast<IntegerAttr>().getInt() ==
+         (broadcast_dimensions.getValues<APInt>()[0].getSExtValue() ==
           output_rank - input_rank);
 }
 

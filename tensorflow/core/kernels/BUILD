@@ -5182,6 +5182,15 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "scatter_nd_util",
+    srcs = ["scatter_nd_util.cc"],
+    hdrs = ["scatter_nd_util.h"],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+)
+
 tf_kernel_library(
     name = "scatter_nd_op",
     srcs = [
@@ -5207,6 +5216,7 @@ tf_kernel_library(
         "scatter_nd_op_gpu.cu.cc",
     ],
     deps = STATE_DEPS + [
+        ":scatter_nd_util",
         ":dense_update_functor",
         ":training_op_helpers",
         ":variable_ops",
@@ -6156,6 +6166,8 @@ filegroup(
         "slice_op_cpu_impl_8.cc",
         "softmax_op.cc",
         "softmax_op_functor.h",
+        "sparse_concat_op.h",
+        "sparse_concat_op.cc",
         "split_lib.h",
         "split_lib_cpu.cc",
         "split_op.cc",
@@ -6250,6 +6262,7 @@ filegroup(
         "scan_ops.h",
         "scatter_functor.h",
         "scatter_nd_op.h",
+        "scatter_nd_util.h",
         "segment_reduction_ops.h",
         "segment_reduction_ops_impl.h",
         "softplus_op.h",
@@ -6531,6 +6544,7 @@ filegroup(
         "scatter_nd_op_cpu_impl_5.cc",
         "scatter_nd_op_cpu_impl_6.cc",
         "scatter_nd_op_cpu_impl_7.cc",
+        "scatter_nd_util.cc",
         "segment_reduction_ops_impl_1.cc",
         "segment_reduction_ops_impl_2.cc",
         "segment_reduction_ops_impl_3.cc",

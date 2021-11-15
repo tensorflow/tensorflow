@@ -451,9 +451,9 @@ LogicalResult Verify(ReplicateOp op) {
 
   auto operand_segment_sizes = op.operand_segment_sizes();
   const int32_t num_replicated_inputs =
-      operand_segment_sizes.getValue<IntegerAttr>({0}).getInt();
+      operand_segment_sizes.getValues<APInt>()[0].getSExtValue();
   const int32_t num_packed_inputs =
-      operand_segment_sizes.getValue<IntegerAttr>({1}).getInt();
+      operand_segment_sizes.getValues<APInt>()[1].getSExtValue();
 
   if (num_replicated_inputs % n != 0)
     return op.emitOpError()

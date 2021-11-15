@@ -320,6 +320,17 @@ cc_library(
 )
 
 cc_library(
+    name = "c_api_without_op_resolver",
+    hdrs = ["c/c_api.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = ["//tensorflow/lite/c:c_api_without_op_resolver"],
+)
+
+cc_library(
     name = "c_api_experimental",
     hdrs = ["c/c_api_experimental.h"],
     copts = tflite_copts_warnings(),
@@ -365,6 +376,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "nnapi_plugin",
+    hdrs = ["c/experimental/acceleration/configuration/nnapi_plugin.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/acceleration/configuration/c:nnapi_plugin",
+    ],
+)
+
 custom_c_library_with_tflite(
     name = "custom_c_api_example",
     testonly = True,
@@ -383,6 +407,8 @@ build_test(
         ":c_api_experimental",
         ":common",
         ":custom_c_api_example",
+        ":delegate_plugin",
+        ":nnapi_plugin",
     ],
 )
 

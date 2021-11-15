@@ -183,6 +183,8 @@ void Node::ClearTypeInfo() {
 }
 
 void Node::RunForwardTypeInference() {
+  VLOG(4) << "Forward type inference: " << props_->node_def.DebugString();
+
   if (props_->fwd_type_fn == nullptr) {
     return;
   }
@@ -220,10 +222,16 @@ void Node::RunForwardTypeInference() {
       const auto& node_t = node->def().experimental_type();
       if (node_t.type_id() != TFT_UNSET) {
         int ix = input_idx[i];
-        DCHECK(ix < node_t.args_size())
-            << "input " << i << " should have an output " << ix
-            << " but instead only has " << node_t.args_size()
-            << " outputs: " << node_t.DebugString();
+        if (ix >= node_t.args_size()) {
+          LOG(WARNING) << name() << " has bad type information: input " << i
+                       << " should have an output " << ix
+                       << " but instead only has " << node_t.args_size()
+                       << " outputs: " << node_t.DebugString()
+                       << "\nThis indicates either "
+                          "a bug in op registration or a corrupted graph.";
+          ClearTypeInfo();
+          return;
+        }
         input_types.emplace_back(node_t.args(ix));
       } else {
         input_types.emplace_back(*no_type);
@@ -559,6 +567,11 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
     VLOG(3) << "AddNode: found type constructor for " << node_def.name();
     const auto ctor_type =
         full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def);
+    if (!ctor_type.ok()) {
+      *status = errors::InvalidArgument("type error: ",
+                                        ctor_type.status().ToString());
+      return nullptr;
+    }
     const FullTypeDef ctor_typedef = ctor_type.ValueOrDie();
     if (ctor_typedef.type_id() != TFT_UNSET) {
       *(node_def.mutable_experimental_type()) = ctor_typedef;

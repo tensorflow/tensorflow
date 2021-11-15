@@ -155,10 +155,12 @@ class TilingScheme {
 class ReductionCodegenInfo {
  public:
   explicit ReductionCodegenInfo(TilingScheme mapping_scheme,
-                                int num_partial_results, bool is_row_reduction)
+                                int num_partial_results, bool is_row_reduction,
+                                bool is_race_free)
       : tiling_scheme_(mapping_scheme),
         num_partial_results_(num_partial_results),
-        is_row_reduction_(is_row_reduction) {
+        is_row_reduction_(is_row_reduction),
+        is_race_free_(is_race_free) {
     if (num_partial_results > 1) {
       CHECK_EQ(num_partial_results,
                mapping_scheme.GetTileSizeFor(TilingScheme::DimX));
@@ -168,6 +170,7 @@ class ReductionCodegenInfo {
   const TilingScheme& GetTilingScheme() const { return tiling_scheme_; }
 
   int GetNumPartialResults() const { return num_partial_results_; }
+  bool IsRaceFree() const { return is_race_free_; }
 
  private:
   friend class ReductionCodegenState;
@@ -175,6 +178,7 @@ class ReductionCodegenInfo {
   const TilingScheme tiling_scheme_;
   int num_partial_results_;
   bool is_row_reduction_;
+  bool is_race_free_;
 };
 
 class ReductionCodegenState {
@@ -202,6 +206,8 @@ class ReductionCodegenState {
   bool IsRowReduction() const {
     return reduction_codegen_info_.is_row_reduction_;
   }
+
+  bool IsRaceFree() const { return reduction_codegen_info_.IsRaceFree(); }
 
   const ReductionCalculationState& GetCalculationStateFor(
       const HloInstruction* instruction, int operand_idx) const {

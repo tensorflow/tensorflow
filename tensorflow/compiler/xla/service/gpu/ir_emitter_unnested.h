@@ -656,6 +656,8 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(mlir::Operation* op,
                                                          mlir::Value init_value,
                                                          mlir::Value dest);
+  StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
+      mlir::lmhlo::FusionOp fusion, int output_index);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
@@ -724,6 +726,10 @@ class IrEmitterUnnested : public IrEmitter {
   absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>
       scratch_nested_computations_;
   // End optional members for XLA HLO -> LMHLO.
+
+  // __shared__ memory uses a different address space, so we cast it to
+  // global address space before writing or reading.
+  llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Twine name = "");
 };
 
 }  // namespace gpu

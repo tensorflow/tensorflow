@@ -15,7 +15,6 @@
 """Functional tests for Unstack Op."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -111,7 +110,7 @@ class UnstackOpTest(test.TestCase):
       data = np.random.randn(*shape)
       x = constant_op.constant(data)
 
-      for i in xrange(shape[0]):
+      for i in range(shape[0]):
         def func(x, shape=shape, i=i):
           return array_ops.unstack(x, num=shape[0])[i]
 
@@ -125,7 +124,7 @@ class UnstackOpTest(test.TestCase):
       data = np.random.randn(*shape)
       x = constant_op.constant(data)
 
-      for i in xrange(shape[1]):
+      for i in range(shape[1]):
         def func(x, shape=shape, i=i):
           return array_ops.unstack(x, num=shape[1], axis=1)[i]
 

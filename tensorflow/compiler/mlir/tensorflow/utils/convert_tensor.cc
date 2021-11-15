@@ -230,7 +230,7 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
     return ElementsAttr(mlir::SplatElementsAttr::get(
         single_attr.getType().clone(original_dimensions),
-        single_attr.getValue({0})));
+        single_attr.getValues<mlir::Attribute>()[0]));
   }
 
   Tensor t;

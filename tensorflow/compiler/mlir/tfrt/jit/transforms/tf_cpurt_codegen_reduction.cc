@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
@@ -28,16 +31,22 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h.inc"
 
+using mlir::BlockAndValueMapping;
+using mlir::BlockArgument;
+using mlir::cast;
+using mlir::dyn_cast;
 using mlir::failure;
 using mlir::Identifier;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
 using mlir::Operation;
-using mlir::Optional;
+using mlir::OpInterfaceRewritePattern;
 using mlir::PatternRewriter;
 using mlir::success;
+using mlir::Value;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
+using mlir::linalg::InitTensorOp;
 using mlir::linalg::LinalgOp;
 using mlir::linalg::LinalgTilingOptions;
 using mlir::linalg::LinalgTransformationFilter;
@@ -49,12 +58,12 @@ using mlir::tensor::InsertSliceOp;
 // Tiles a GenericOp that models a reduction and then fuses its inputs and
 // outputs. Currently, only the FillOp that initializes the output is fused into
 // the TiledLoopOp.
-struct TileAndFusePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
-  TileAndFusePattern(const LinalgTilingOptions &options,
-                     const LinalgTransformationFilter &filter,
-                     mlir::MLIRContext *context,
-                     mlir::PatternBenefit benefit = 1)
-      : mlir::OpInterfaceRewritePattern<LinalgOp>(context, benefit),
+struct TileReductionAndFuseOutput : public OpInterfaceRewritePattern<LinalgOp> {
+  TileReductionAndFuseOutput(const LinalgTilingOptions &options,
+                             const LinalgTransformationFilter &filter,
+                             MLIRContext *context,
+                             mlir::PatternBenefit benefit = 1)
+      : OpInterfaceRewritePattern<LinalgOp>(context, benefit),
         filter(filter),
         options(options) {}
 
@@ -62,93 +71,227 @@ struct TileAndFusePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
                                 PatternRewriter &rewriter) const override {
     if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
 
+    if (linalg_op.getNumOutputs() != 1) return failure();
+
     auto tiled_op = tileLinalgOp(rewriter, linalg_op, options);
     if (failed(tiled_op)) return failure();
 
-    auto tiled_loop_op = mlir::dyn_cast<TiledLoopOp>(tiled_op->loops.front());
+    auto tiled_loop_op = dyn_cast<TiledLoopOp>(tiled_op->loops.front());
     if (!tiled_loop_op) return failure();
 
-    if (failed(FuseFillOp(rewriter, tiled_loop_op, tiled_op->op))) {
-      return failure();
-    }
-    rewriter.replaceOp(linalg_op, tiled_loop_op->getResults());
+    rewriter.replaceOp(linalg_op, tiled_loop_op.getResult(0));
 
-    tiled_loop_op->walk([&](LinalgOp tiledOp) {
-      filter.replaceLinalgTransformationFilter(rewriter, tiledOp);
-    });
-    return success();
+    return RewriteTiledReduction(rewriter, tiled_loop_op, tiled_op->op);
   }
 
  private:
-  // Replaces
+  // Add a new output argument to the `tiled_loop`. It will be produced by
+  // `init_tensor` op with the same shape as the first output argument.
   //
-  // %0 = linalg.fill(%cst, %out)
+  // Rewrite
   //
-  // with
+  //   %init = linalg.init_tensor
+  //   %fill = linalg.fill(%cst, %init)
+  //   linalg.tiled_loop outs(%fill)
   //
-  // %0 = linalg.fill(%cst, %out)
-  // %1 = linalg.fill(%cst, %0)
+  // into
   //
-  // The idea is to still initialize the output of the reduction even if the
-  // FillOp is fused into the TiledLoopOp. In that case %1 will be fused into
-  // the loop body and %0 will remain outside of the loop.
-  std::pair<FillOp, FillOp> ChainFillOp(PatternRewriter &rewriter,
-                                        FillOp fill_op) const {
-    mlir::OpBuilder::InsertionGuard g(rewriter);
-    rewriter.setInsertionPoint(fill_op);
+  //   %init = linalg.init_tensor
+  //** %init_clone = linalg.init_tensor
+  //   %fill = linalg.fill(%cst, %init)
+  //** linalg.tiled_loop outs(%fill, %init_clone)
+  BlockArgument CloneAndAppendInitTensorToTiledLoop(
+      PatternRewriter &rewriter, FillOp fill, TiledLoopOp tiled_loop) const {
+    mlir::OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPoint(fill);
 
-    auto first = rewriter.clone(*fill_op);
-    auto second = rewriter.replaceOpWithNewOp<FillOp>(fill_op, fill_op.value(),
-                                                      first->getResult(0));
-    return std::make_pair(mlir::cast<FillOp>(first), second);
+    auto init = fill.output().getDefiningOp<InitTensorOp>();
+    auto init_clone = cast<InitTensorOp>(rewriter.clone(*init));
+    mlir::OpOperand *init_clone_output_operand;
+    rewriter.updateRootInPlace(tiled_loop, [&]() {
+      init_clone_output_operand =
+          &tiled_loop.appendOutputOperand(rewriter, init_clone.result());
+    });
+    return tiled_loop.getTiedBlockArgument(*init_clone_output_operand);
   }
 
-  // Fuses FillOp producer of the output argument of the TiledLoopOp and inserts
-  // an operation that accumulates the partial result, i.e. reduced tile, and
-  // the current value of the output tile.
-  LogicalResult FuseFillOp(PatternRewriter &rewriter, TiledLoopOp tiled_loop,
-                           LinalgOp tiled_op) const {
-    mlir::OpBuilder::InsertionGuard guard(rewriter);
+  // Fuse `fill` operation into the `tiled_loop`, rewire the `linalg.generic` to
+  // use it as the output for the reduced tile. Also create an additional
+  // `insert_slice` that updates the new output.
+  //
+  // Rewrite
+  //
+  // %init = linalg.init_tensor
+  // %init_clone = linalg.init_tensor
+  // %fill = linalg.fill(%cst, %init)
+  // linalg.tiled_loop outs(%fill, %init_clone) {
+  //   %extract_output_slice = tensor.extract_slice %fill
+  //   %reduce = linalg.generic outs (%extract_output_slice)
+  //   %insert_output_slice = tensor.insert_slice %reduce into %fill
+  //   linalg.yield %insert_output_slice
+  // }
+  //
+  // into
+  //
+  // %init = linalg.init_tensor
+  // %init_clone = linalg.init_tensor
+  // %fill = linalg.fill(%cst, %init)
+  // linalg.tiled_loop outs(%fill, %init_clone) {
+  //   %extract_output_slice = tensor.extract_slice %fill
+  //
+  //** %slice_of_cloned_output = tensor.extract_slice %init
+  //** %reduce = linalg.generic outs (%slice_of_cloned_input)
+  //** %update_cloned_output = tensor.insert_slice %reduce into %init_clone
+  //
+  //   %insert_output_slice = tensor.insert_slice %reduce into %fill
+  //   linalg.yield %insert_output_slice, %update_cloned_output
+  // }
+  void FuseFill(PatternRewriter &rewriter, LinalgOp tiled_op, FillOp fill,
+                BlockArgument loop_output_bb_arg,
+                BlockArgument cloned_output_bb_arg,
+                ExtractSliceOp extract_output_slice,
+                InsertSliceOp insert_output_slice) const {
+    mlir::OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPoint(tiled_op);
+
+    BlockAndValueMapping bvm;
+    bvm.map(loop_output_bb_arg, cloned_output_bb_arg);
+    Value slice_of_cloned_output =
+        cast<ExtractSliceOp>(rewriter.clone(*extract_output_slice, bvm));
+
+    auto fused_fill = rewriter.create<FillOp>(tiled_op.getLoc(), fill.value(),
+                                              slice_of_cloned_output);
+    rewriter.updateRootInPlace(tiled_op, [&]() {
+      tiled_op.getOutputOperand(0)->set(fused_fill.result());
+    });
+
+    bvm.map(insert_output_slice.dest(), cloned_output_bb_arg);
     rewriter.setInsertionPointAfter(tiled_op);
+    Value cloned_insert =
+        cast<InsertSliceOp>(rewriter.clone(*insert_output_slice, bvm));
+    auto yield = tiled_op.getOperation()->getBlock()->getTerminator();
+    rewriter.updateRootInPlace(
+        yield, [&]() { yield->insertOperands(1, cloned_insert); });
+  }
 
-    auto fill_op = tiled_loop.outputs().front().getDefiningOp<FillOp>();
-    if (!fill_op) return failure();
-
-    auto fill_op_chain = ChainFillOp(rewriter, fill_op);
-
-    Optional<mlir::linalg::FusionInfo> fusion_info =
-        mlir::linalg::fuseProducerOfTensor(
-            rewriter, fill_op_chain.second->getResult(0),
-            *tiled_op.getOutputOperands().front());
-    if (!fusion_info.hasValue()) return failure();
-
-    auto fused_fill_op = mlir::cast<FillOp>(fusion_info->fusedProducer);
-
-    mlir::Value partial_result = tiled_op->getResult(0);
-
-    // Find insert_slice that inserts the result back to the output.
-    auto insert =
-        mlir::dyn_cast<InsertSliceOp>(*partial_result.getUsers().begin());
-    if (!insert) return failure();
-
-    // Create operation that accumulates the partial result into the output.
+  // Add an operation that combines the partial result with the output.
+  //
+  // Rewrite
+  //
+  // %init = linalg.init_tensor
+  // %init_clone = linalg.init_tensor
+  // %fill = linalg.fill(%cst, %init)
+  // linalg.tiled_loop outs(%fill, %init_clone) {
+  //   %extract_output_slice = tensor.extract_slice %fill
+  //
+  //   %slice_of_cloned_output = tensor.extract_slice %init
+  //   %reduce = linalg.generic outs (%slice_of_cloned_input)
+  //   %update_cloned_output = tensor.insert_slice %reduce into %init_clone
+  //
+  //   %insert_output_slice = tensor.insert_slice %reduce into %fill
+  //   linalg.yield %insert_output_slice, %update_cloned_output
+  // }
+  //
+  // into
+  //
+  // %init = linalg.init_tensor
+  // %init_clone = linalg.init_tensor
+  // %fill = linalg.fill(%cst, %init)
+  // linalg.tiled_loop outs(%fill, %init_clone) {
+  //   %extract_output_slice = tensor.extract_slice %fill
+  //
+  //   %slice_of_cloned_output = tensor.extract_slice %init
+  //   %reduce = linalg.generic outs (%slice_of_cloned_input)
+  //   %update_cloned_output = tensor.insert_slice %reduce into %init_clone
+  //
+  //** %combine = linalg.generic ins (%reduce) outs (%extract_output_slice)
+  //** %insert_output_slice = tensor.insert_slice %combine into %fill
+  //
+  //   linalg.yield %insert_output_slice, %update_cloned_output
+  // }
+  void CombineReducedTileWithOutput(PatternRewriter &rewriter,
+                                    LinalgOp tiled_op, Value partial_result,
+                                    ExtractSliceOp extract_output_slice,
+                                    InsertSliceOp insert_output_slice) const {
+    rewriter.setInsertionPointAfter(tiled_op);
     auto num_parallel_loops = tiled_op.getNumParallelLoops();
     mlir::SmallVector<mlir::StringRef, 3> parallel_iter_types(
         num_parallel_loops, mlir::getParallelIteratorTypeName());
     auto id_map = rewriter.getMultiDimIdentityMap(num_parallel_loops);
 
-    auto loc = tiled_op.getLoc();
     auto accumulator = rewriter.create<GenericOp>(
-        loc, partial_result.getType(), llvm::makeArrayRef(partial_result),
-        llvm::makeArrayRef(fused_fill_op.output()),
+        tiled_op.getLoc(), partial_result.getType(),
+        llvm::makeArrayRef(partial_result),
+        llvm::makeArrayRef(extract_output_slice.result()),
         llvm::makeArrayRef({id_map, id_map}), parallel_iter_types);
 
     auto reduce_tile = mlir::cast<GenericOp>(tiled_op);
-    mlir::BlockAndValueMapping bvm;
+    BlockAndValueMapping bvm;
     rewriter.cloneRegionBefore(reduce_tile.region(), accumulator.region(),
                                accumulator.region().end(), bvm);
-    rewriter.updateRootInPlace(insert, [&]() {
-      insert.sourceMutable().assign(accumulator.getResult(0));
+    rewriter.updateRootInPlace(insert_output_slice, [&]() {
+      insert_output_slice.sourceMutable().assign(accumulator.getResult(0));
+    });
+  }
+
+  // Unfortunaly, there is no way to modify the results of the loop inplace. So
+  // we have to replace it with a clone.
+  TiledLoopOp CreateLoopWithUpdatedResults(PatternRewriter &rewriter,
+                                           TiledLoopOp tiled_loop) const {
+    auto loc = tiled_loop.getLoc();
+    rewriter.setInsertionPoint(tiled_loop);
+    auto new_loop = rewriter.create<TiledLoopOp>(
+        loc, mlir::TypeRange(tiled_loop.outputs()), tiled_loop.getOperands(),
+        tiled_loop->getAttrs());
+    rewriter.inlineRegionBefore(tiled_loop.region(), new_loop.region(),
+                                new_loop.region().begin());
+
+    rewriter.replaceOp(tiled_loop, new_loop.getResult(0));
+    return new_loop;
+  }
+
+  // Fuses FillOp producer of the output argument of the TiledLoopOp and inserts
+  // an operation that accumulates the partial result, i.e. reduced tile, and
+  // the current value of the output tile.
+  LogicalResult RewriteTiledReduction(PatternRewriter &rewriter,
+                                      TiledLoopOp tiled_loop,
+                                      LinalgOp tiled_op) const {
+    mlir::OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPointAfter(tiled_op);
+
+    // Find tiled loop output operand and the corresponding block argument.
+    mlir::OpOperand *loop_output_operand =
+        tiled_loop.findOutputOperand(tiled_loop.outputs().front());
+    BlockArgument loop_output_bb_arg =
+        tiled_loop.getTiedBlockArgument(*loop_output_operand);
+
+    // Find `linalg.fill` producer of the output.
+    auto fill = loop_output_operand->get().getDefiningOp<FillOp>();
+    if (!fill) return failure();
+
+    // Find extract_slice/insert_slice pair used to RMW output.
+    auto extract_output_slice =
+        tiled_op.getOutputOperand(0)->get().getDefiningOp<ExtractSliceOp>();
+    if (!extract_output_slice) return failure();
+
+    Value tiled_op_result = tiled_op->getResult(0);
+    auto insert_output_slice =
+        dyn_cast<InsertSliceOp>(*tiled_op_result.getUsers().begin());
+    if (!insert_output_slice) return failure();
+
+    // Fuse the output.
+    BlockArgument cloned_output_bb_arg =
+        CloneAndAppendInitTensorToTiledLoop(rewriter, fill, tiled_loop);
+    FuseFill(rewriter, tiled_op, fill, loop_output_bb_arg, cloned_output_bb_arg,
+             extract_output_slice, insert_output_slice);
+    CombineReducedTileWithOutput(rewriter, tiled_op, tiled_op_result,
+                                 extract_output_slice, insert_output_slice);
+
+    // Update the results.
+    TiledLoopOp updated_loop =
+        CreateLoopWithUpdatedResults(rewriter, tiled_loop);
+    updated_loop->walk([&](LinalgOp tOp) {
+      filter.replaceLinalgTransformationFilter(rewriter, tOp);
     });
     return success();
   }
@@ -157,47 +300,11 @@ struct TileAndFusePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
   LinalgTilingOptions options;
 };
 
-// Rewrite linalg.fill(extract_slice) as linalg.fill(init_tensor). This rewrite
-// is required for correctness, because otherwise after bufferization the fused
-// output linalg.fill would still use the buffer for the reduction of the whole
-// output instead of allocating a local buffer only for the reduced tile.
-//
-// A better way to perform this transformation is to have it in MLIR Core as a
-// part of the fusion logic. To support this correctly, we would also modify
-// logic for padding, so that we could pad fill(init_tensor). Currently, only
-// fill(extract_slice) can be padded. All these changes will happen once we
-// converge on the pipeline design.
-struct FillOfExtractSlice : public mlir::OpRewritePattern<FillOp> {
-  using OpRewritePattern<FillOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(FillOp fill,
-                                PatternRewriter &rewriter) const override {
-    if (!fill.hasTensorSemantics()) return failure();
-
-    auto fill_tensor_type = fill.getOutputTensorTypes().back();
-    if (!fill_tensor_type.hasStaticShape()) return failure();
-
-    if (auto extract = fill.output().getDefiningOp<ExtractSliceOp>()) {
-      llvm::SmallVector<int64_t, 4> static_sizes = llvm::to_vector<4>(
-          llvm::map_range(extract.static_sizes().cast<mlir::ArrayAttr>(),
-                          [](mlir::Attribute a) -> int64_t {
-                            return a.cast<mlir::IntegerAttr>().getInt();
-                          }));
-      auto init = rewriter.create<mlir::linalg::InitTensorOp>(
-          fill.getLoc(), extract.getDynamicSizes(), static_sizes,
-          fill_tensor_type.getElementType());
-      rewriter.replaceOpWithNewOp<FillOp>(fill, fill.value(), init);
-      return success();
-    }
-    return failure();
-  }
-};
-
 // Match 2D row reduction. This is a starting point, we will relax this
 // condition further down the road, when we add support for more reduction
 // types.
-bool is2DRowOrColumnReduction(mlir::Operation *op) {
-  auto reduction = mlir::dyn_cast<GenericOp>(op);
+bool is2DRowOrColumnReduction(Operation *op) {
+  auto reduction = dyn_cast<GenericOp>(op);
   if (!reduction) return false;
 
   if (reduction.getNumOutputs() != 1 || reduction.getNumLoops() != 2)
@@ -223,9 +330,8 @@ struct CodegenReductionPass
                       .addFilter([](Operation *op) {
                         return success(is2DRowOrColumnReduction(op));
                       });
-    patterns.insert<FillOfExtractSlice>(context);
-    patterns.insert<TileAndFusePattern>(tiling_options, filter,
-                                        patterns.getContext());
+    patterns.insert<TileReductionAndFuseOutput>(tiling_options, filter,
+                                                patterns.getContext());
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
 
     // Ensure we drop the marker in the end.

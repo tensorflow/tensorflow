@@ -15,7 +15,11 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+#if GOOGLE_CUDA || TENSORLFOW_USE_ROCM
+>>>>>>> upstream/master
 #define EIGEN_USE_GPU
 #endif
 
@@ -227,9 +231,15 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
       functor::EyeFunctor<GPUDevice, Scalar> eye;
       eye(device, output_reshaped);
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA   
       cublasOperation_t trans = CUBLAS_OP_N;
 #elif TENSORFLOW_USE_ROCM    
+=======
+#if GOOGLE_CUDA
+      cublasOperation_t trans = CUBLAS_OP_N;
+#elif TENSORFLOW_USE_ROCM
+>>>>>>> upstream/master
       rocblas_operation trans = rocblas_operation_none;
 #endif
 
@@ -238,10 +248,16 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
+<<<<<<< HEAD
             solver->Getrs(trans, n, n, &input_copy_reshaped(batch, 0, 0),
                           n, &pivots_mat(batch, 0),
                           &output_reshaped(batch, 0, 0), n,
                           &dev_info.back()(batch)),
+=======
+            solver->Getrs(trans, n, n, &input_copy_reshaped(batch, 0, 0), n,
+                          &pivots_mat(batch, 0), &output_reshaped(batch, 0, 0),
+                          n, &dev_info.back()(batch)),
+>>>>>>> upstream/master
             done);
       }
     }
