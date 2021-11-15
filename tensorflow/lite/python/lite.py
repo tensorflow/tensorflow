@@ -480,6 +480,7 @@ class TFLiteConverterBase(object):
     self._experimental_lower_tensor_list_ops = True
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
+    self._experimental_tf_quantization_mode = None
 
     # When the value is true, the MLIR quantantizer triggers dynamic range
     # quantization in MLIR instead of the old TOCO quantizer. Used only if
@@ -589,6 +590,8 @@ class TFLiteConverterBase(object):
             self._experimental_unfold_large_splat_constant,
         "default_to_single_batch_in_tensor_list_ops":
             self._experimental_default_to_single_batch_in_tensor_list_ops,
+        "tf_quantization_mode":
+            self._experimental_tf_quantization_mode,
     }
 
     if self.saved_model_dir:
