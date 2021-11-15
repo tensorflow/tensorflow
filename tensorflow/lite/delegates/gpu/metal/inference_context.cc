@@ -47,7 +47,9 @@ namespace {
 // returns true if actual memory for this storage type is buffer
 bool IsBufferBased(const TensorStorageType& type) {
   return type == TensorStorageType::BUFFER ||
-         type == TensorStorageType::IMAGE_BUFFER;
+         type == TensorStorageType::IMAGE_BUFFER ||
+         type == TensorStorageType::TEXTURE_2D ||
+         type == TensorStorageType::SINGLE_TEXTURE_2D;
 }
 
 bool HasIntersection(const std::vector<ValueId>& vec_ids,
@@ -582,9 +584,27 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
   for (auto& usage : buffer_usages) {
     const auto& t = tensors_descs_[usage.first];
     const auto& shape = t.shape;
-    const size_t element_size = t.data_type == DataType::FLOAT32 ? 4 : 2;
-    const size_t buffer_size =
-        shape.b * shape.w * shape.h * AlignByN(shape.c, 4) * element_size;
+    const auto& descriptor = t;
+    const size_t element_size =
+        descriptor.data_type == DataType::FLOAT32 ? 4 : 2;
+    size_t buffer_size;
+    size_t row_bytes_alignment = [device->device()
+        minimumLinearTextureAlignmentForPixelFormat:DataTypeToRGBAPixelFormat(
+                                                        descriptor.data_type,
+                                                        false)];
+    if (descriptor.storage_type == TensorStorageType::TEXTURE_2D) {
+      const size_t bytes_per_row = element_size * shape.b * shape.w * 4;
+      const size_t height = shape.h * DivideRoundUp(shape.c, 4);
+      buffer_size = AlignByN(bytes_per_row, row_bytes_alignment) * height;
+    } else if (descriptor.storage_type ==
+               TensorStorageType::SINGLE_TEXTURE_2D) {
+      const size_t bytes_per_row = element_size * shape.b * shape.w * shape.c;
+      const size_t height = shape.h;
+      buffer_size = AlignByN(bytes_per_row, row_bytes_alignment) * height;
+    } else {
+      buffer_size =
+          shape.b * shape.w * shape.h * AlignByN(shape.c, 4) * element_size;
+    }
     graph_ids_to_shared_buffer_tensors_[usage.first] =
         buffer_usage_records.size();
     buffer_usage_records.push_back({buffer_size,
@@ -628,9 +648,19 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
       if (created_tensors[tensor_index]) continue;
       const auto& tensor_dummy = tensors_descs_[tensor_id];
       const int buffer_index = buffer_assignment.object_ids[tensor_index];
-      RETURN_IF_ERROR(CreateSharedBufferTensor(
-          shared_buffers_[buffer_index], tensor_dummy.shape, tensor_dummy,
-          &shared_buffer_tensors_[tensor_index]));
+      if (tensor_dummy.storage_type == TensorStorageType::TEXTURE_2D ||
+          tensor_dummy.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+        size_t row_bytes_alignment = [device->device()
+            minimumLinearTextureAlignmentForPixelFormat:
+                DataTypeToRGBAPixelFormat(tensor_dummy.data_type, false)];
+        RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
+            shared_buffers_[buffer_index], tensor_dummy.shape, tensor_dummy,
+            row_bytes_alignment, &shared_buffer_tensors_[tensor_index]));
+      } else {
+        RETURN_IF_ERROR(CreateSharedBufferTensor(
+            shared_buffers_[buffer_index], tensor_dummy.shape, tensor_dummy,
+            &shared_buffer_tensors_[tensor_index]));
+      }
       created_tensors[tensor_index] = true;
     }
   }
