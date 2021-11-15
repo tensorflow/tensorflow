@@ -169,10 +169,6 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo);
 // is a success/failure code per batch element.
 extern const char* const kCusolverCholeskyCallTarget;
 
-// Returns true if `hlo` will be implemented as a library call, e.g. cuBLAS gemm
-// or cuDNN convolution.
-bool ImplementedAsLibraryCall(const HloInstruction& hlo);
-
 // Layout analysis for fusion. The constructor will analyze the given LMHLO
 // fusion operation and store the inferred layouts of fusion internal values.
 // The default constructor will be used when dealing with LMHLO operations, in
