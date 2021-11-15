@@ -521,6 +521,7 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
         "//tensorflow/python/kernel_tests/v1_compat_tests:__pkg__",
         "//tensorflow/python/training:__pkg__",
+        "//tensorflow/security/fuzzing/google:__pkg__",
     ],
     deps = [
         "//tensorflow/c/kernels:bitcast_op_lib",
@@ -765,12 +766,16 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
         "//tensorflow/python/kernel_tests/sparse_ops:__pkg__",
         "//tensorflow/python/tools:__pkg__",
+        "//tensorflow/security/fuzzing/google:__pkg__",
     ],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "count_ops_gen",
-    visibility = ["//learning/brain/python/ops:__pkg__"],
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/security/fuzzing/google:__pkg__",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
