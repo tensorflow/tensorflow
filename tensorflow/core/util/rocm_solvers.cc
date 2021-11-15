@@ -449,43 +449,6 @@ TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
 
 TF_CALL_LAPACK_TYPES(GETRS_BATCHED_INSTANCE);
 
-#define GETRI_BATCHED_INSTANCE(Scalar, type_prefix)                           \
-  template <>                                                                 \
-  Status GpuSolver::GetriBatched<Scalar>(                                     \
-      int n, const Scalar* const host_a_dev_ptrs[], int lda,                  \
-      const int* dev_pivots, const Scalar* const host_a_inverse_dev_ptrs[],   \
-      int ldainv, DeviceLapackInfo* dev_lapack_info, int batch_size) {        \
-    mutex_lock lock(handle_map_mutex);                                        \
-    rocblas_stride stride = n;                                                \
-    using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
-    ScratchSpace<uint8> dev_a = this->GetScratchSpace<uint8>(                 \
-        sizeof(ROCmScalar*) * batch_size, "", /*on host */ false);            \
-    if (!CopyHostToDevice(context_, dev_a.mutable_data(), host_a_dev_ptrs,    \
-                          dev_a.bytes())) {                                   \
-      return errors::Internal("GetriBatched: Failed to copy ptrs to device"); \
-    }                                                                         \
-    ScratchSpace<uint8> dev_a_inverse = this->GetScratchSpace<uint8>(         \
-        sizeof(ROCmScalar*) * batch_size, "", /*on host */ false);            \
-    if (!CopyHostToDevice(context_, dev_a_inverse.mutable_data(),             \
-                          host_a_inverse_dev_ptrs, dev_a_inverse.bytes())) {  \
-      return errors::Internal("GetriBatched: Failed to copy ptrs to device"); \
-    }                                                                         \
-    ScratchSpace<uint8> pivots = this->GetScratchSpace<uint8>(                \
-        sizeof(ROCmScalar*) * batch_size, "", /*on host */ false);            \
-    if (!CopyHostToDevice(context_, pivots.mutable_data(), dev_pivots,        \
-                          pivots.bytes())) {                                  \
-      return errors::Internal("GetriBatched: Failed to copy ptrs to device"); \
-    }                                                                         \
-    TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getri_batched, type_prefix)(         \
-        rocm_blas_handle_, n,                                                 \
-        reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda,            \
-        reinterpret_cast<int*>(pivots.mutable_data()), stride,                \
-        dev_lapack_info->mutable_data(), batch_size));                        \
-    return Status::OK();                                                      \
-  }
-
-TF_CALL_LAPACK_TYPES(GETRI_BATCHED_INSTANCE);
-
 // Allocates a temporary tensor. The GpuSolver object maintains a
 // TensorReference to the underlying Tensor to prevent it from being deallocated
 // prematurely.
@@ -547,62 +510,6 @@ static inline Status TrsmImpl(GpuExecutor* gpu_executor, SolverFnT solver,
 
 TF_CALL_LAPACK_TYPES_NO_COMPLEX(TRSM_INSTANCE);
 
-<<<<<<< HEAD
-template <typename Scalar, typename SolverFnT>                                                           
-  Status GeamImpl(GpuExecutor* gpu_executor, SolverFnT solver, rocblas_handle rocm_blas_handle,
-                rocblas_operation transa, rocblas_operation transb, int m, int n,
-                const Scalar* alpha, /* host or device pointer */ const Scalar* A, int lda, 
-                const Scalar* beta, /* host or device pointer */ const Scalar* B, int ldb, 
-                Scalar* C, int ldc){
-      mutex_lock lock(handle_map_mutex);                                        
-      using ROCmScalar = typename ROCmComplexT<Scalar>::type;   
-      
-      ScopedActivateExecutorContext sac{gpu_executor};                
-      TF_RETURN_IF_ROCBLAS_ERROR(solver(                  
-          rocm_blas_handle, transa, transb, m, n, 
-          reinterpret_cast<const ROCmScalar*>(alpha), reinterpret_cast<const ROCmScalar*>(A), lda,    
-          reinterpret_cast<const ROCmScalar*>(beta), reinterpret_cast<const ROCmScalar*>(B), ldb,
-          reinterpret_cast<ROCmScalar*>(C), ldc ));            
-      return Status::OK(); 
-  }
-
-  #define GEAM_INSTANCE(Scalar, type_prefix)                                    \
-  template <>                                                                 \
-  Status GpuSolver::Geam<Scalar>(                                            \
-       rocblas_operation transa, rocblas_operation transb, int m, int n, \
-                const Scalar* alpha, const Scalar* A, int lda, \
-                const Scalar* beta, const Scalar* B, int ldb, \
-                Scalar* C, int ldc){ \
-    GpuExecutor* gpu_executor = static_cast<GpuExecutor*>(                    \
-        context_->op_device_context()->stream()->parent()->implementation()); \
-    return GeamImpl(gpu_executor, BLAS_SOLVER_FN(geam, type_prefix),          \
-                    rocm_blas_handle_, transa, transb, m, n, alpha,  \
-                    A, lda,beta, B, ldb,C,ldc);                                          \
-  } 
-
-  TF_CALL_LAPACK_TYPES_NO_COMPLEX(GEAM_INSTANCE);
-
-  template <typename Scalar, typename SolverFnT>
-  Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
-                           rocblas_handle rocm_blas_handle, int n,
-                           const Scalar* const host_a_dev_ptrs[], int lda,
-                           int* dev_pivots,
-                           const Scalar* const host_a_inverse_dev_ptrs[],
-                           int ldainv, DeviceLapackInfo* dev_lapack_info,
-                           int batch_size) {
-    mutex_lock lock(handle_map_mutex);
-    using ROCmScalar = typename ROCmComplexT<Scalar>::type;
-    ScopedActivateExecutorContext sac{gpu_executor};
-
-    GetrfBatched(n, host_a_dev_ptrs, lda, dev_pivots, dev_lapack_info,
-                 batch_size);
-
-    GetriBatched(n, host_a_dev_ptrs, lda, dev_pivots, host_a_inverse_dev_ptrs,
-                 ldainv, dev_lapack_info, batch_size);
-
-    return Status::OK();
-  }
-=======
 template <typename Scalar, typename SolverFnT>
 Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
                          rocblas_handle rocm_blas_handle, int n,
@@ -623,7 +530,6 @@ Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
 
   return Status::OK();
 }
->>>>>>> upstream/master
 
 #define GEAM_INSTANCE(Scalar, type_prefix)                                    \
   template <>                                                                 \

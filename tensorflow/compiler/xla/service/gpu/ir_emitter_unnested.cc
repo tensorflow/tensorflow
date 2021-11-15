@@ -4163,20 +4163,10 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
       llvm::Type* element_type =
           state.partial_result_address->getType()->getElementType();
 
-<<<<<<< HEAD
-/* AddressCast to generic address space instead of scratch for AMDGPU fix */ 
-      llvm::Value* initial_value_addr = b_.CreateAddrSpaceCast(
-		       llvm_ir::EmitAllocaAtFunctionEntry(
-          		element_type, "initial_value_addr", &b_),
-		      llvm::PointerType::get(element_type,
-			      /*AddressSpace=*/0),
-		      "initial_value_addr");
-=======
       /* Insure initial value address is in generic, not scratch. */
       llvm::Value* initial_value_addr =
           CastSharedToGlobal(llvm_ir::EmitAllocaAtFunctionEntry(
               element_type, "initial_value_addr", &b_));
->>>>>>> upstream/master
       b_.CreateStore(state.initial_value, initial_value_addr);
 
       llvm::Value* warp_exists = b_.CreateICmpULT(
