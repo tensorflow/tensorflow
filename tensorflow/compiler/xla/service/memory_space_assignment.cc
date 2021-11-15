@@ -1697,6 +1697,22 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
                     << body_allocation_value_it->allocation_sequence()
                            ->back()
                            ->ToString();
+
+            auto after_while_allocation_value_it = absl::c_find_if(
+                allocation_values, [&](const AllocationValue& value) {
+                  return value.defining_instruction() == hlo_use.instruction;
+                });
+            CHECK_NE(after_while_allocation_value_it, allocation_values.end());
+            VLOG(3) << "After while allocation value: "
+                    << after_while_allocation_value_it->ToShortString();
+            int64_t while_time = instruction_schedule.at(hlo_use.instruction);
+            after_while_allocation_value_it->allocation_sequence()->push_back(
+                absl::make_unique<MemorySpaceAssignment::MirroredAllocation>(
+                    **prev_allocation_in_default_mem_it, while_time));
+            VLOG(3) << "Created: "
+                    << after_while_allocation_value_it->allocation_sequence()
+                           ->back()
+                           ->ToString();
           }
         }
         // Special case for while loops since the root offset must agree with
@@ -2414,12 +2430,11 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   auto prev_allocation_it = allocation_sequence->rbegin();
   // Find a previous allocation that is in the default memory space (not
   // necessarily the very last allocation).
-  auto prev_allocation_in_default_mem_it = std::find_if(
-      allocation_sequence->rbegin(), allocation_sequence->rend(),
-      [&](const auto& allocation) {
-        return allocation->memory_space() == MemorySpace::kDefault &&
-               allocation->defining_position() == defining_position;
-      });
+  auto prev_allocation_in_default_mem_it =
+      std::find_if(allocation_sequence->rbegin(), allocation_sequence->rend(),
+                   [&](const auto& allocation) {
+                     return allocation->memory_space() == MemorySpace::kDefault;
+                   });
 
   if (prev_allocation_in_default_mem_it == allocation_sequence->rend() &&
       prev_allocation_it != allocation_sequence->rend() &&
@@ -3358,6 +3373,11 @@ std::string MemorySpaceAssignment::CopyAllocation::ToString() const {
                       prev_allocation_.ToString());
 }
 
+std::string MemorySpaceAssignment::MirroredAllocation::ToString() const {
+  return absl::StrCat("Mirrored Allocation for ",
+                      original_allocation_.ToString());
+}
+
 std::string MemorySpaceAssignment::ParentAllocation::ToString() const {
   return absl::StrCat("Parent Allocation mirrored at ",
                       defining_position_.ToString(), ", originally ",
@@ -3406,6 +3426,11 @@ Status MemorySpaceAssignment::CopyAllocation::Process() {
   }
 
   return Status::OK();
+}
+
+Status MemorySpaceAssignment::MirroredAllocation::Process() {
+  defining_position_ = original_allocation_.defining_position();
+  return Allocation::Process();
 }
 
 Status MemorySpaceAssignment::ParentAllocation::Process() {
@@ -3483,6 +3508,12 @@ void MemorySpaceAssignment::ParentAllocation::MarkIfNeeded(
 }
 
 void MemorySpaceAssignment::ParentAllocation::MarkNeeded(
+    absl::flat_hash_set<const Allocation*>& needed_allocations) const {
+  needed_allocations.insert(this);
+  original_allocation_.MarkNeeded(needed_allocations);
+}
+
+void MemorySpaceAssignment::MirroredAllocation::MarkNeeded(
     absl::flat_hash_set<const Allocation*>& needed_allocations) const {
   needed_allocations.insert(this);
   original_allocation_.MarkNeeded(needed_allocations);
