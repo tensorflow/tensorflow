@@ -47,3 +47,4 @@ bazel test \
       -//tensorflow/core/tpu/... \
       -//tensorflow/java/... \
       -//tensorflow/lite/... \
+      -//tensorflow/c/eager:c_api_distributed_test \
