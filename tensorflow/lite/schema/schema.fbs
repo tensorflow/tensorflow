@@ -382,6 +382,7 @@ enum BuiltinOperator : int32 {
   RANDOM_STANDARD_NORMAL = 146,
   BUCKETIZE = 147,
   RANDOM_UNIFORM = 148,
+  MULTINOMIAL = 149,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
