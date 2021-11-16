@@ -44,6 +44,12 @@ std::unique_ptr<mlir::FunctionPass> CreatePeelTiledLoopsPass();
 // Pass to tile and fuse linalg.generic on tensors that models reduction.
 std::unique_ptr<mlir::FunctionPass> CreateCodegenStrategyForReductionPass();
 
+// Pass to replace 'i1' tensor types with 'i8' tensor types. This pass is a
+// temporary workaround to avoid the problem of vectorizing 'i1' tensors (see
+// b/205714705).
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateCpuRtLegalizeI1TypesPass();
+
 // Pass to pad linalg ops.
 std::unique_ptr<mlir::FunctionPass> CreatePadTiledOpsPass();
 
