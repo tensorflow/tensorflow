@@ -40,7 +40,6 @@ from tensorflow.python.saved_model import registration
 from tensorflow.python.training.saver import BaseSaverBuilder
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable_base
-from tensorflow.python.training.tracking import resource
 from tensorflow.python.training.tracking import tracking as trackable
 from tensorflow.python.util import compat as compat_util
 from tensorflow.python.util.deprecation import deprecated
@@ -126,7 +125,7 @@ def check_table_dtypes(table, key_dtype, value_dtype):
                     f"{table.value_dtype} but got {value_dtype}.")
 
 
-class LookupInterface(resource.TrackableResource):
+class LookupInterface(trackable.TrackableResource):
   """Represent a lookup table that persists across different steps."""
 
   def __init__(self, key_dtype, value_dtype):
@@ -397,15 +396,22 @@ class StaticHashTable(InitializableLookupTableBase):
       self._track_trackable(value, name)  # pylint:disable=protected-access
 
   @classmethod
-  def _deserialize_from_proto(cls, **kwargs):
+  def _deserialize_from_proto(cls, proto, **unused_kwargs):
 
-    class _RestoredStaticHashTable(resource.RestoredResource):  # pylint: disable=protected-access
+    from tensorflow.python.saved_model import load  # pylint: disable=g-import-not-at-top
+
+    class _RestoredStaticHashTable(load._RestoredResource):  # pylint: disable=protected-access
 
       @classmethod
       def _resource_type(cls):
         return "RestoredStaticHashTable"
 
-    return _RestoredStaticHashTable._deserialize_from_proto(**kwargs)  # pylint: disable=protected-access
+      def _add_trackable_child(self, name, value):
+        setattr(self, name, value)
+        if isinstance(value, trackable_base.Trackable):
+          self._track_trackable(value, name)  # pylint:disable=protected-access
+
+    return _RestoredStaticHashTable()
 
 
 @tf_export(v1=["lookup.StaticHashTable"])
