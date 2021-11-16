@@ -3006,7 +3006,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_rocm",
-        "no_tsan",
+        "notsan",  # TODO(b/206640843): flaky in tsan.
     ],
     deps = [
         ":client_testlib",
