@@ -119,10 +119,10 @@ FindCrossProgramPrefetchCandidate(const HloAliasAnalysis& alias_analysis,
     }
   }
 
-  // The buffer_interval_compare ought to do a good job picking the most
-  // appropriate buffer to cross program prefetch, but empirically, it makes
-  // worse choices than just picking the largest buffer.
-  // TODO(b/152421603): Investigate.
+  // The BufferIntervalCompare function used to sort buffers implements the
+  // greater-than operator so that the most beneficial buffers are allocated
+  // first. The size_compare function below hence uses the greater-than operator
+  // to pick the largest buffer.
   auto size_compare = [](const auto& x, const auto& y) {
     if (x.size == y.size) {
       // When both buffers are of same size, we prefer the one that is used to
@@ -135,19 +135,21 @@ FindCrossProgramPrefetchCandidate(const HloAliasAnalysis& alias_analysis,
         }
         return use_size;
       };
-      return get_use_size(x) < get_use_size(y);
+      return get_use_size(x) > get_use_size(y);
     }
-    return x.size < y.size;
+    return x.size > y.size;
   };
   auto& compare = options.default_cross_program_prefetch_heuristic &&
                           options.buffer_interval_compare
                       ? *options.buffer_interval_compare
                       : size_compare;
 
-  auto best_candidate = absl::c_max_element(candidates, compare);
+  auto best_candidate = absl::c_min_element(candidates, compare);
   if (best_candidate == candidates.end()) {
     return absl::nullopt;
   }
+  VLOG(3) << "Cross-program prefetch candidate picked: "
+          << best_candidate->buffer->ToString();
   return *best_candidate;
 }
 
