@@ -2002,6 +2002,125 @@ func @custom_call_multiple_inputs_outputs(%x: tensor<2xf32>, %token: !mhlo.token
 
 // -----
 
+// CHECK: func @custom_call_multiple_inputs_outputs_with_layout
+func @custom_call_multiple_inputs_outputs_with_layout(%x: tensor<2xf32>, %token: !mhlo.token) -> tensor<f32> {
+  %0:3 = "mhlo.custom_call"(%x, %token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>],
+    result_layouts = [dense<> : tensor<0xindex>, dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>]
+  } : (tensor<2xf32>, !mhlo.token) -> (tensor<f32>, tensor<2xf32>, !mhlo.token)
+  return %0#0 : tensor<f32>
+}
+
+// -----
+
+// CHECK: func @custom_call_tuple_output_with_layout
+func @custom_call_tuple_output_with_layout(%x: tensor<2xf32>, %token: !mhlo.token) -> tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token> {
+  %0 = "mhlo.custom_call"(%x, %token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>],
+    result_layouts = [dense<[0]> : tensor<1xindex>, dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>]
+  } : (tensor<2xf32>, !mhlo.token) -> tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token>
+  return %0 : tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token>
+}
+
+// -----
+
+func @custom_call_only_operand_layout_constraints(%x: tensor<2xf32>, %token: !mhlo.token) -> tensor<2xf32> {
+  // expected-error@+1 {{Layout attributes should be specified for either both operands and results or none}}
+  %0:3 = "mhlo.custom_call"(%x, %token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>]
+  } : (tensor<2xf32>, !mhlo.token) -> (tensor<2xf32>, tensor<2xf32>, !mhlo.token)
+  return %0#0 : tensor<2xf32>
+}
+
+// -----
+
+func @custom_call_layout_mismatch_num_operands(%x: tensor<2xf32>, %token: !mhlo.token) -> tensor<2xf32> {
+  // expected-error@+1 {{Number of operands must match the number of operand layouts, 2 != 1}}
+  %0:3 = "mhlo.custom_call"(%x, %token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0]> : tensor<1xindex>],
+    result_layouts = [dense<[0]> : tensor<1xindex>, dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>]
+  } : (tensor<2xf32>, !mhlo.token) -> (tensor<2xf32>, tensor<2xf32>, !mhlo.token)
+  return %0#0 : tensor<2xf32>
+}
+
+// -----
+
+func @custom_call_layout_mismatch_num_results() -> tensor<2xf32> {
+  // expected-error@+1 {{Number of results must match the number of result layouts, 3 != 2}}
+  %0:3 = "mhlo.custom_call"() {
+    call_target_name = "foo",
+    operand_layouts = [],
+    result_layouts = [dense<[0]> : tensor<1xindex>, dense<[0]> : tensor<1xindex>]
+  } : () -> (tensor<2xf32>, tensor<2xf32>, !mhlo.token)
+  return %0#0 : tensor<2xf32>
+}
+
+// -----
+
+func @custom_call_layout_mismatch_num_results_tuple(%x: tensor<2xf32>, %token: !mhlo.token) -> tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token> {
+  // expected-error@+1 {{Number of results must match the number of result layouts, 3 != 2}}
+  %0 = "mhlo.custom_call"(%x, %token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>],
+    result_layouts = [dense<[0]> : tensor<1xindex>, dense<[0]> : tensor<1xindex>]
+  } : (tensor<2xf32>, !mhlo.token) -> tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token>
+  return %0 : tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token>
+}
+
+// -----
+
+func @custom_call_tuple_operand_input(%x: tuple<tensor<2xf32>>, %token: !mhlo.token) -> tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token> {
+  // expected-error@+1 {{Tuple types are not fully supported with layout constraints yet}}
+  %0 = "mhlo.custom_call"(%x, %token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>],
+    result_layouts = [dense<[0]> : tensor<1xindex>, dense<[0]> : tensor<1xindex>, dense<> : tensor<0xindex>]
+  } : (tuple<tensor<2xf32>>, !mhlo.token) -> tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token>
+  return %0 : tuple<tensor<2xf32>, tensor<2xf32>, !mhlo.token>
+}
+
+// -----
+
+func @custom_call_token_with_layout(%token: !mhlo.token) {
+  // expected-error@+1 {{Only tensor types can have non-empty layout: operand #0 of type '!mhlo.token' has layout dense<[0, 1]> : tensor<2xindex>}}
+  "mhlo.custom_call"(%token) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0, 1]> : tensor<2xindex>],
+    result_layouts = []
+  } : (!mhlo.token) -> ()
+  return
+}
+
+// -----
+
+func @custom_call_mismatch_tensor_and_layout_rank(%arg: tensor<2x3xf32>) {
+  // expected-error@+1 {{incorrect layout dense<[0, 1, 2]> : tensor<3xindex> for type 'tensor<2x3xf32>', layout must be a permutation of [0, 2)}}
+  "mhlo.custom_call"(%arg) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0, 1, 2]> : tensor<3xindex>],
+    result_layouts = []
+  } : (tensor<2x3xf32>) -> ()
+  return
+}
+
+// -----
+
+func @custom_call_mismatch_tensor_and_layout_permutation(%arg: tensor<1x2x3xf32>) {
+  // expected-error@+1 {{incorrect layout dense<[0, 1, 3]> : tensor<3xindex> for type 'tensor<1x2x3xf32>', layout must be a permutation of [0, 3)}}
+  "mhlo.custom_call"(%arg) {
+    call_target_name = "foo",
+    operand_layouts = [dense<[0, 1, 3]> : tensor<3xindex>],
+    result_layouts = []
+  } : (tensor<1x2x3xf32>) -> ()
+  return
+}
+
+// -----
+
 // CHECK: func @reduce_window
 func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
