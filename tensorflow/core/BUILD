@@ -830,7 +830,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
-    ],
+    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util"]),
 )
 
 # This is a link-only library to provide a DirectSession

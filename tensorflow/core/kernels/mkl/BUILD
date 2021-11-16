@@ -452,3 +452,17 @@ tf_mkl_kernel_library(
     ],
     deps = MKL_DEPS + ["//tensorflow/core/kernels:transpose_op"],
 )
+
+tf_cc_test_mkl(
+    name = "mkl_matmul_op_benchmark",
+    size = "small",
+    srcs = ["mkl_matmul_op_benchmark.cc"],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_matmul_op",
+        "@mkl_dnn_v1//:mkl_dnn",
+    ],
+)
