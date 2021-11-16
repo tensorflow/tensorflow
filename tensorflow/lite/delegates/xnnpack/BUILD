@@ -469,6 +469,7 @@ cc_library(
     srcs = ["transpose_conv_tester.cc"],
     hdrs = ["transpose_conv_tester.h"],
     deps = [
+        ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",

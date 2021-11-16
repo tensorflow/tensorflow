@@ -145,7 +145,7 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
   const std::vector<int32_t> bias_shape = {OutputChannels()};
   std::vector<float> filter_scales;
   std::vector<int64_t> filter_zero_points;
-  int32_t filter_quantized_dimension;
+  int32_t filter_quantized_dimension = 0;
   if (FP16Weights()) {
     operator_codes.emplace_back(
         CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
@@ -241,7 +241,6 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
 
       std::vector<int8_t> quantized_filter_data(filter_data.size());
       if (INT8Weights()) {
-        filter_quantized_dimension = 0;
         filter_zero_points.resize(1, 0);
         filter_scales.resize(1);
         filter_scales[0] = GetInt8QuantizationScale(filter_data);
@@ -254,12 +253,9 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
             static_cast<int32_t>(filter_shape.size()) - 1;
         const int32_t num_scales = filter_shape[filter_quantized_dimension];
         filter_zero_points.resize(num_scales, 0);
-        auto scale_rng = std::bind(
-            std::uniform_real_distribution<float>(0.25f, 1.25f), std::ref(rng));
-        filter_scales.reserve(num_scales);
-        std::generate_n(std::back_inserter(filter_scales), num_scales,
-                        std::ref(scale_rng));
-        PerChannelQuantizeInt8(filter_scales.data(), filter_zero_points.data(),
+        filter_scales = GetInt8QuantizationScalePerChannel(
+            filter_data.data(), filter_quantized_dimension, filter_shape);
+        QuantizeInt8PerChannel(filter_scales.data(), filter_zero_points.data(),
                                filter_quantized_dimension, filter_data.data(),
                                quantized_filter_data.data(), filter_shape);
       }

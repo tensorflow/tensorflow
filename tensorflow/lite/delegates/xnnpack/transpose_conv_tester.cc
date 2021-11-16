@@ -26,6 +26,7 @@ limitations under the License.
 #include "fp16.h"  // from @FP16
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -201,6 +202,128 @@ std::vector<char> TransposeConvTester::CreateTfLiteModel() const {
 
       const std::vector<int32_t> dequantize_bias_inputs = {
           tensor_index_float16_bias};
+      const std::vector<int32_t> dequantize_bias_outputs = {tensor_index_bias};
+      operators.emplace_back(CreateOperatorDirect(
+          builder, /*opcode_index=*/kOpCodeIndexDequantize,
+          &dequantize_bias_inputs, &dequantize_bias_outputs));
+
+      assert(tensor_index_bias + 1 == tensors.size());
+    }
+  } else if (INT8Weights() || INT8ChannelWiseWeights()) {
+    const int kOpCodeIndexDequantize = operator_codes.size();
+    operator_codes.emplace_back(
+        CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
+
+    std::vector<float> filter_data(OutputChannels() * KernelHeight() *
+                                   KernelWidth() * InputChannels());
+    std::generate(filter_data.begin(), filter_data.end(), f32rng);
+
+    std::vector<float> filter_scales;
+    std::vector<int64_t> filter_zero_points;
+    int32_t filter_quantized_dimension = 0;
+    std::vector<int8_t> quantized_filter_data(filter_data.size());
+    if (INT8Weights()) {
+      filter_zero_points.resize(1, 0);
+      filter_scales.resize(1);
+      filter_scales[0] = GetInt8QuantizationScale(filter_data);
+      std::transform(
+          filter_data.begin(), filter_data.end(), quantized_filter_data.begin(),
+          std::bind(QuantizeInt8, std::placeholders::_1, 0, filter_scales[0]));
+    } else {
+      filter_quantized_dimension =
+          static_cast<int32_t>(filter_shape.size()) - 1;
+      const int32_t num_scales = filter_shape[filter_quantized_dimension];
+      filter_zero_points.resize(num_scales, 0);
+      filter_scales = GetInt8QuantizationScalePerChannel(
+          filter_data.data(), filter_quantized_dimension, filter_shape);
+      QuantizeInt8PerChannel(filter_scales.data(), filter_zero_points.data(),
+                             filter_quantized_dimension, filter_data.data(),
+                             quantized_filter_data.data(), filter_shape);
+    }
+    const int buffer_index_filter = buffers.size();
+    buffers.emplace_back(CreateBuffer(
+        builder,
+        builder.CreateVector(
+            reinterpret_cast<const uint8_t*>(quantized_filter_data.data()),
+            sizeof(int8_t) * quantized_filter_data.size())));
+
+    const int tensor_index_int8_filter = tensors.size();
+    tensors.emplace_back(CreateTensorDirect(
+        builder, &filter_shape, TensorType_INT8,
+        /*buffer=*/buffer_index_filter, /*name=*/nullptr,
+        CreateQuantizationParameters(
+            builder, /*min=*/0, /*max=*/0,
+            builder.CreateVector<float>(filter_scales),
+            builder.CreateVector<int64_t>(filter_zero_points),
+            /*details_type=*/QuantizationDetails_NONE,
+            /*details=*/0, filter_quantized_dimension)));
+
+    const int kInvalidIndex = -1;
+    int tensor_index_int8_bias = kInvalidIndex;
+    if (UseBias()) {
+      std::vector<float> bias_data(OutputChannels());
+      std::generate(bias_data.begin(), bias_data.end(), f32rng);
+
+      std::vector<float> bias_scales;
+      std::vector<int64_t> bias_zero_points;
+      int32_t bias_quantized_dimension = 0;
+      std::vector<int8_t> quantized_bias_data(bias_data.size());
+      if (INT8Weights()) {
+        bias_zero_points.resize(1, 0);
+        bias_scales.resize(1);
+        bias_scales[0] = GetInt8QuantizationScale(bias_data);
+        std::transform(
+            bias_data.begin(), bias_data.end(), quantized_bias_data.begin(),
+            std::bind(QuantizeInt8, std::placeholders::_1, 0, bias_scales[0]));
+      } else {
+        bias_quantized_dimension = static_cast<int32_t>(bias_shape.size()) - 1;
+        const int32_t num_scales = bias_shape[bias_quantized_dimension];
+        bias_zero_points.resize(num_scales, 0);
+        bias_scales = GetInt8QuantizationScalePerChannel(
+            bias_data.data(), bias_quantized_dimension, bias_shape);
+        QuantizeInt8PerChannel(bias_scales.data(), bias_zero_points.data(),
+                               bias_quantized_dimension, bias_data.data(),
+                               quantized_bias_data.data(), bias_shape);
+      }
+
+      const int buffer_index_bias = buffers.size();
+      buffers.emplace_back(CreateBuffer(
+          builder,
+          builder.CreateVector(
+              reinterpret_cast<const uint8_t*>(quantized_bias_data.data()),
+              sizeof(int8_t) * quantized_bias_data.size())));
+      tensor_index_int8_bias = tensors.size();
+      tensors.emplace_back(CreateTensorDirect(
+          builder, &bias_shape, TensorType_INT8,
+          /*buffer=*/buffer_index_bias, /*name=*/nullptr,
+          CreateQuantizationParameters(
+              builder, /*min=*/0, /*max=*/0,
+              builder.CreateVector<float>(bias_scales),
+              builder.CreateVector<int64_t>(bias_zero_points),
+              /*details_type=*/QuantizationDetails_NONE,
+              /*details=*/0, bias_quantized_dimension)));
+    }
+
+    const int tensor_index_filter = tensors.size();
+    tensors.emplace_back(CreateTensorDirect(
+        builder, &filter_shape, TensorType_FLOAT32, /*buffer=*/kNoBuffer));
+
+    const std::vector<int32_t> dequantize_filter_inputs = {
+        tensor_index_int8_filter};
+    const std::vector<int32_t> dequantize_filter_outputs{tensor_index_filter};
+    operators.emplace_back(CreateOperatorDirect(
+        builder, /*opcode_index=*/kOpCodeIndexDequantize,
+        &dequantize_filter_inputs, &dequantize_filter_outputs));
+
+    assert(tensor_index_filter + 1 == tensors.size());
+
+    if (UseBias()) {
+      const int tensor_index_bias = tensors.size();
+      tensors.emplace_back(CreateTensorDirect(
+          builder, &bias_shape, TensorType_FLOAT32, /*buffer=*/kNoBuffer));
+
+      const std::vector<int32_t> dequantize_bias_inputs = {
+          tensor_index_int8_bias};
       const std::vector<int32_t> dequantize_bias_outputs = {tensor_index_bias};
       operators.emplace_back(CreateOperatorDirect(
           builder, /*opcode_index=*/kOpCodeIndexDequantize,
