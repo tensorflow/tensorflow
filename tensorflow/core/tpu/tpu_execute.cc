@@ -351,9 +351,11 @@ std::pair<CancellationToken, bool> RegisterCancellation(
   CancellationToken token = cancellation_manager->get_cancellation_token();
   // Don't rely on OpKernelContext being available when the callback runs.
   Env* env = ctx->env();
-  bool already_cancelled = !cancellation_manager->RegisterCallback(
-      token,
-      [device_ordinal, env]() { TPUCancelExecution(env, device_ordinal); });
+  bool already_cancelled =
+      !cancellation_manager->RegisterCallbackWithErrorLogging(
+          token,
+          [device_ordinal, env]() { TPUCancelExecution(env, device_ordinal); },
+          absl::StrCat("TPUCancellation on device ", device_ordinal));
   return std::pair<CancellationToken, bool>(token, already_cancelled);
 }
 
