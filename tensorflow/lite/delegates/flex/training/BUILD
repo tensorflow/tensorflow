@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_android")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 #
@@ -35,11 +35,21 @@ cc_library(
     hdrs = [
         "training_delegate.h",
     ],
-    copts = tflite_copts(),
+    copts = tflite_copts() + tf_opts_nortti_if_android(),
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/lite/delegates/flex:delegate_only_runtime",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+        ],
+    }),
     alwayslink = 1,
 )
 

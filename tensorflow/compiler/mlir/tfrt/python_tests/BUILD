@@ -24,8 +24,9 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "no_pip",
-    ],  # TODO(b/201803253): TFRT pybindings not in OSS.
+        "no_pip",  # TODO(b/201803253): TFRT pybindings not in OSS.
+        "nomsan",
+    ],
     deps = [
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
         "//tensorflow/python:client_testlib",
@@ -225,6 +226,21 @@ py_strict_test(
 py_strict_test(
     name = "tf_reduction_test",
     srcs = ["tf_reduction_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],  # TODO(b/201803253): TFRT pybindings not in OSS.
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "tf_softmax_test",
+    srcs = ["tf_softmax_test.py"],
     python_version = "PY3",
     tags = [
         "no_oss",

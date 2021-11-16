@@ -16,6 +16,7 @@
 # C API for delegate plugins.
 
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -71,6 +72,26 @@ cc_library(
     ],
 )
 
+# For non-Android platforms, this should be built with '--copt=-DCL_DELEGATE_NO_GL'.
+# On non-supported platforms (i.e. non-Android platforms if -DCL_DELEGATE_NO_GL wasn't specified),
+# the test srcs are set to the empty list, so the test will succeed without testing anything.
+cc_test(
+    name = "gpu_plugin_test",
+    srcs = select({
+        "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": ["gpu_plugin_test.cc"],
+        "//conditions:default": [],
+    }),
+    linkopts = gpu_delegate_linkopts(),
+    deps = select({
+        "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [":gpu_plugin"],
+        "//conditions:default": [],
+    }) + [
+        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+    ],
+)
+
 cc_library(
     name = "xnnpack_plugin",
     srcs = ["xnnpack_plugin.cc"],
@@ -90,7 +111,9 @@ cc_test(
     deps = [
         ":xnnpack_plugin",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_googletest//:gtest_main",
+        "@pthreadpool",
     ],
 )

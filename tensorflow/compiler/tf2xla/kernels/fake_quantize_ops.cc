@@ -83,37 +83,6 @@ xla::XlaOp Quantize(xla::XlaBuilder* b, const xla::XlaOp& input,
   return xla::Add(xla::Mul(rounded, input_scale), nudged_input_min);
 }
 
-// Builds a custom_call to a method named 'fake_quant_with_min_max_vars'.
-// The method will be provided the input, the min/max range from the original
-// TensorFlow op, and the num_bits and narrow_range attributes.
-StatusOr<xla::XlaOp> BuildFakeQuantCustomCall(xla::XlaBuilder* b,
-                                              xla::XlaOp input,
-                                              xla::XlaOp input_min,
-                                              xla::XlaOp input_max,
-                                              int num_bits, bool narrow_range) {
-  xla::XlaOp num_bits_arg =
-      XlaHelpers::IntegerLiteral(b, DataType::DT_INT32, num_bits);
-  xla::XlaOp narrow_range_arg = narrow_range
-                                    ? XlaHelpers::One(b, DataType::DT_BOOL)
-                                    : XlaHelpers::Zero(b, DataType::DT_BOOL);
-
-  std::vector<xla::XlaOp> args = {input, input_min, input_max, num_bits_arg,
-                                  narrow_range_arg};
-  std::vector<xla::Shape> arg_shapes;
-  for (const xla::XlaOp& arg : args) {
-    TF_ASSIGN_OR_RETURN(xla::Shape arg_shape, b->GetShape(arg));
-    *arg_shape.mutable_layout() =
-        xla::LayoutUtil::MakeDescendingLayout(arg_shape.rank());
-    arg_shapes.push_back(std::move(arg_shape));
-  }
-
-  // Input and output shapes match exactly.
-  TF_ASSIGN_OR_RETURN(xla::Shape output_shape, b->GetShape(input));
-
-  return xla::CustomCallWithLayout(b, "fake_quant_with_min_max_vars", args,
-                                   output_shape, arg_shapes);
-}
-
 REGISTER_XLA_OP(Name("FakeQuantWithMinMaxArgs"), MlirXlaOpKernel);
 
 class FakeQuantWithMinMaxArgsGradOp : public XlaOpKernel {
@@ -186,19 +155,6 @@ class FakeQuantWithMinMaxVarsOp : public XlaOpKernel {
     const DataType data_type = ctx->input_type(0);
     xla::XlaOp input_min = ctx->Input(1);
     xla::XlaOp input_max = ctx->Input(2);
-
-    OP_REQUIRES(ctx, ctx->compiler(),
-                errors::InvalidArgument("compiler options are required for "
-                                        "FakeQuantWithMinMaxVars compilation"));
-
-    if (ctx->compiler()->options().allow_cpu_custom_calls &&
-        ctx->compiler()->options().custom_fake_quant_op_calls) {
-      xla::XlaOp custom_call_output =
-          b->ReportErrorOrReturn(BuildFakeQuantCustomCall(
-              b, input, input_min, input_max, num_bits_, narrow_range_));
-      ctx->SetOutput(0, custom_call_output);
-      return;
-    }
 
     xla::XlaOp nudged_input_min, nudged_input_max, input_scale;
     XlaNudge(b, data_type, input_min, input_max, quant_min_, quant_max_,

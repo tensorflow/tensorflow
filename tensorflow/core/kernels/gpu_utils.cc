@@ -262,12 +262,22 @@ StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
           << ", workspace bytes " << results[idx].scratch_bytes();
 
   se::dnn::AlgorithmConfig result({results[idx].conv().algorithm(),
+#if TENSORFLOW_USE_ROCM
+                                   results[idx].conv().tensor_ops_enabled(),
+                                   results[idx].algorithm().workspace_size().value()},
+#else
                                    results[idx].conv().tensor_ops_enabled()},
+#endif
                                   results[idx].scratch_bytes());
   if (idx_no_scratch != -1) {
     result.set_algorithm_no_scratch(
         {results[idx_no_scratch].conv().algorithm(),
+#if TENSORFLOW_USE_ROCM
+         results[idx_no_scratch].conv().tensor_ops_enabled(),
+         results[idx_no_scratch].algorithm().workspace_size().value()});
+#else
          results[idx_no_scratch].conv().tensor_ops_enabled()});
+#endif
   }
   return result;
 }

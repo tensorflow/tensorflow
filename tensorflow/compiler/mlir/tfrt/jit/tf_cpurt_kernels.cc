@@ -57,11 +57,16 @@ namespace jit {
 namespace {
 
 using ::llvm::Expected;
+using ::llvm::None;
+using ::llvm::Optional;
+
+using ::mlir::OpPassManager;
 
 using ::tfrt::ArrayRef;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValuePtr;
 using ::tfrt::AsyncValueRef;
+using ::tfrt::Attribute;
 using ::tfrt::Chain;
 using ::tfrt::CompilationUnitAttribute;
 using ::tfrt::DType;
@@ -126,6 +131,13 @@ static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
 // Compile compilation unit attribute to an executable result.
 // -------------------------------------------------------------------------- //
 
+// Options for the `tf-cpurt-pipeline`. We do not use MLIR pass options directly
+// because they are not copyable or movable, and we need to pass them cheaply
+// across the async compilation tasks boundary.
+struct TfCpuRtPipelineOpts {
+  bool vectorize;
+};
+
 // Prints memref descriptor as a tensor type: tensor<NxMxf32>.
 static std::string AsTensorType(const MemrefDesc& desc) {
   std::string str;
@@ -187,7 +199,8 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
 }
 
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
-    CompilationUnitAttribute kernel, const ExecutionContext& exec_ctx) {
+    CompilationUnitAttribute kernel, const ExecutionContext& exec_ctx,
+    const Optional<TfCpuRtPipelineOpts>& opts = None) {
   // We only support functions nested in top level compiled module.
   if (kernel.nested_symbols().size() != 1)
     return MakeStringError(
@@ -207,6 +220,9 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // unloads a Bef file, and there is a 1-to-1 relationship between the
   // ResourceContext and the SavedModel, so the `id` is guaranteed to be a
   // unique key for the cache lookup.
+  //
+  // TODO(b/206081322): Different compilation options should create unique
+  // compiled kernel cache keys.
   intptr_t key = kernel.id();
 
   // Maybe return JitExecutable from the cache.
@@ -299,7 +315,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
   // Compile kernel asynchronously in the host context thread pool.
   EnqueueWork(exec_ctx, [kernel, request_id, runner, workers = *worker_threads,
-                         ptr = entry.ptr]() {
+                         ptr = entry.ptr, tf_cpurt_opts = opts]() {
     TraceMe trace_me([&] {
       absl::string_view name(kernel.root_symbol().data(),
                              kernel.root_symbol().size());
@@ -317,9 +333,19 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // All entry memrefs must have alignment compatible with Tensorflow.
     opts.alignment = EIGEN_MAX_ALIGN_BYTES;  // Eigen included by tensor.h
     opts.num_worker_threads = workers->NumThreads();
-    opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
-    opts.register_pass_pipeline = CreateDefaultTfCpuRtPipeline;
     opts.type_converter = mlir::BufferizeTypeConverter();
+    opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
+
+    // Register a custom pipeline for lowering from Tensorflow dialect.
+    if (tf_cpurt_opts) {
+      opts.register_pass_pipeline = [tf_cpurt_opts](OpPassManager& pm) {
+        TfCpuRtPipelineOptions opts;
+        opts.vectorize = tf_cpurt_opts->vectorize;
+        return CreateTfCpuRtPipeline(pm, opts);
+      };
+    } else {
+      opts.register_pass_pipeline = CreateDefaultTfCpuRtPipeline;
+    }
 
     auto entrypoint = kernel.nested_symbols()[0];
     auto module = kernel.serialized_operation();
@@ -337,6 +363,10 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
   return entry.ptr;
 }
+
+// -------------------------------------------------------------------------- //
+// TFRT kernel function definition for tf_cpurt.fallback.compile operation.
+// -------------------------------------------------------------------------- //
 
 // Compiles kernel into the JitExecutable and updates JitExecutableCache.
 static AsyncValueRef<Chain> Compile(StringAttribute device,
@@ -543,10 +573,11 @@ static void ExecuteImpl(JitExecutable& jit_executable,
 static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
                         RemainingResults results, StringAttribute device,
                         CompilationUnitAttribute kernel,
-                        const ExecutionContext& exec_ctx, bool debug) {
+                        const ExecutionContext& exec_ctx, bool debug = false,
+                        const Optional<TfCpuRtPipelineOpts>& opts = None) {
   // Compile kernel module into the JitExecutable.
   Expected<AsyncValuePtr<JitExecutable>> jit_executable =
-      CompileImpl(kernel, exec_ctx);
+      CompileImpl(kernel, exec_ctx, opts);
 
   if (auto err = jit_executable.takeError())
     return EmitErrors(results, std::move(err), exec_ctx);
@@ -595,13 +626,17 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
   });
 }
 
+// -------------------------------------------------------------------------- //
+// TFRT kernel function definitions for tf_cpurt.fallback.execute operations.
+// -------------------------------------------------------------------------- //
+
 // Compiles kernel into the JitExecutable and executes it with the fallback
 // tensors operands.
 static void Execute(RepeatedArguments<FallbackTensor> operands,
                     RemainingResults results, StringAttribute device,
                     CompilationUnitAttribute kernel,
                     const ExecutionContext& exec_ctx) {
-  ExecuteImpl(operands, results, device, kernel, exec_ctx, /*debug=*/false);
+  ExecuteImpl(operands, results, device, kernel, exec_ctx);
 }
 
 // Compiles kernel into the JitExecutable and executes it with the fallback
@@ -609,10 +644,16 @@ static void Execute(RepeatedArguments<FallbackTensor> operands,
 // standard output. Should be used only in tests for verifying compiler
 // internals.
 static void ExecuteDebug(RepeatedArguments<FallbackTensor> operands,
-                         RemainingResults results, StringAttribute device,
+                         RemainingResults results,
+                         Attribute<bool> debug_specializations,
+                         StringAttribute device,
                          CompilationUnitAttribute kernel,
+                         Attribute<bool> vectorize,
                          const ExecutionContext& exec_ctx) {
-  ExecuteImpl(operands, results, device, kernel, exec_ctx, /*debug=*/true);
+  TfCpuRtPipelineOpts opts;
+  opts.vectorize = *vectorize;
+  ExecuteImpl(operands, results, device, kernel, exec_ctx,
+              *debug_specializations, opts);
 }
 
 }  // namespace

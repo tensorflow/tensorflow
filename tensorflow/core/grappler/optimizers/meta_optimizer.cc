@@ -70,6 +70,7 @@ namespace {
 
 constexpr int kDefaultNumberOfIterations = 2;
 constexpr int kDefaultMinGraphNodes = 4;
+constexpr char kGrapplerCategory[] = "Grappler";
 
 int64_t NumEdges(const GraphDef& graph) {
   int64_t num_edges = 0;
@@ -634,7 +635,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
     return Status::OK();
   }
 
-  const uint64 start_us = Env::Default()->NowMicros();
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {kGrapplerCategory, "OptimizeMainGraph"});
 
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
   std::set<std::string> device_types;
@@ -773,17 +776,12 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
     DCHECK_EQ(optimized_graph->versions().producer(), original_producer);
   }
 
-  const uint64 end_us = Env::Default()->NowMicros();
-  metrics::UpdateGrapplerPassTime("OptimizeMainGraph", end_us - start_us);
-
   return Status::OK();
 }
 
 Status MetaOptimizer::RunOptimizer(
     GraphOptimizer* optimizer, Cluster* cluster, GrapplerItem* optimized_item,
     GraphDef* optimized_graph, GraphOptimizationResult* optimization_result) {
-  const uint64 start_us = Env::Default()->NowMicros();
-
   // If optimizer doesn't need a function library, we will replace it with a
   // stub before running optimization, and will put it back at the end.
   std::unique_ptr<FunctionDefLibrary> optimized_graph_function_library;
@@ -803,11 +801,13 @@ Status MetaOptimizer::RunOptimizer(
   optimized_item->graph = std::move(*optimized_graph);
   *optimized_graph = GraphDef();
   optimizer->set_deadline_usec(this->deadline_usec());
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {kGrapplerCategory, optimizer->name()});
   Status status =
       optimizer->Optimize(cluster, *optimized_item, optimized_graph);
-  const uint64 end_us = Env::Default()->NowMicros();
-  const float duration_ms = (end_us - start_us) / 1000.0f;
-  metrics::UpdateGrapplerPassTime(optimizer->name(), end_us - start_us);
+  auto duration_ms = timings.DurationMicroSec().value() / 1000.0f;
+  timings.ReportAndStop();
 
   string message;
   if (!status.ok()) {
@@ -907,7 +907,9 @@ void PropagateTFDataAttrs(const FunctionLibraryDefinition& flib,
 
 Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                                           GraphDef* optimized_graph) {
-  const uint64 start_us = Env::Default()->NowMicros();
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {kGrapplerCategory, "*"});
 
   VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
@@ -1141,9 +1143,6 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                         reinterpret_cast<uintptr_t>(optimized_graph)),
         *optimized_graph);
   }
-
-  const uint64 end_us = Env::Default()->NowMicros();
-  metrics::UpdateGrapplerPassTime("*", end_us - start_us);
 
   return Status::OK();
 }

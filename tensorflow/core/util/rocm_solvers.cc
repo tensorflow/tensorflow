@@ -510,60 +510,26 @@ static inline Status TrsmImpl(GpuExecutor* gpu_executor, SolverFnT solver,
 
 TF_CALL_LAPACK_TYPES_NO_COMPLEX(TRSM_INSTANCE);
 
-template <typename Scalar, typename SolverFnT>                                                           
-  Status GeamImpl(GpuExecutor* gpu_executor, SolverFnT solver, rocblas_handle rocm_blas_handle,
-                rocblas_operation transa, rocblas_operation transb, int m, int n,
-                const Scalar* alpha, /* host or device pointer */ const Scalar* A, int lda, 
-                const Scalar* beta, /* host or device pointer */ const Scalar* B, int ldb, 
-                Scalar* C, int ldc){
-      mutex_lock lock(handle_map_mutex);                                        
-      using ROCmScalar = typename ROCmComplexT<Scalar>::type;   
-      
-      ScopedActivateExecutorContext sac{gpu_executor};                
-      TF_RETURN_IF_ROCBLAS_ERROR(solver(                  
-          rocm_blas_handle, transa, transb, m, n, 
-          reinterpret_cast<const ROCmScalar*>(alpha), reinterpret_cast<const ROCmScalar*>(A), lda,    
-          reinterpret_cast<const ROCmScalar*>(beta), reinterpret_cast<const ROCmScalar*>(B), ldb,
-          reinterpret_cast<ROCmScalar*>(C), ldc ));            
-      return Status::OK(); 
-  }
+template <typename Scalar, typename SolverFnT>
+Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
+                         rocblas_handle rocm_blas_handle, int n,
+                         const Scalar* const host_a_dev_ptrs[], int lda,
+                         int* dev_pivots,
+                         const Scalar* const host_a_inverse_dev_ptrs[],
+                         int ldainv, DeviceLapackInfo* dev_lapack_info,
+                         int batch_size) {
+  mutex_lock lock(handle_map_mutex);
+  using ROCmScalar = typename ROCmComplexT<Scalar>::type;
+  ScopedActivateExecutorContext sac{gpu_executor};
 
-  #define GEAM_INSTANCE(Scalar, type_prefix)                                    \
-  template <>                                                                 \
-  Status GpuSolver::Geam<Scalar>(                                            \
-       rocblas_operation transa, rocblas_operation transb, int m, int n, \
-                const Scalar* alpha, const Scalar* A, int lda, \
-                const Scalar* beta, const Scalar* B, int ldb, \
-                Scalar* C, int ldc){ \
-    GpuExecutor* gpu_executor = static_cast<GpuExecutor*>(                    \
-        context_->op_device_context()->stream()->parent()->implementation()); \
-    return GeamImpl(gpu_executor, BLAS_SOLVER_FN(geam, type_prefix),          \
-                    rocm_blas_handle_, transa, transb, m, n, alpha,  \
-                    A, lda,beta, B, ldb,C,ldc);                                          \
-  } 
+  GetrfBatched(n, host_a_dev_ptrs, lda, dev_pivots, dev_lapack_info,
+               batch_size);
 
-  TF_CALL_LAPACK_TYPES_NO_COMPLEX(GEAM_INSTANCE);
+  GetriBatched(n, host_a_dev_ptrs, lda, dev_pivots, host_a_inverse_dev_ptrs,
+               ldainv, dev_lapack_info, batch_size);
 
-  template <typename Scalar, typename SolverFnT>
-  Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
-                           rocblas_handle rocm_blas_handle, int n,
-                           const Scalar* const host_a_dev_ptrs[], int lda,
-                           int* dev_pivots,
-                           const Scalar* const host_a_inverse_dev_ptrs[],
-                           int ldainv, DeviceLapackInfo* dev_lapack_info,
-                           int batch_size) {
-    mutex_lock lock(handle_map_mutex);
-    using ROCmScalar = typename ROCmComplexT<Scalar>::type;
-    ScopedActivateExecutorContext sac{gpu_executor};
-
-    GetrfBatched(n, host_a_dev_ptrs, lda, dev_pivots, dev_lapack_info,
-                 batch_size);
-
-    GetriBatched(n, host_a_dev_ptrs, lda, dev_pivots, host_a_inverse_dev_ptrs,
-                 ldainv, dev_lapack_info, batch_size);
-
-    return Status::OK();
-  }
+  return Status::OK();
+}
 
 #define GEAM_INSTANCE(Scalar, type_prefix)                                    \
   template <>                                                                 \

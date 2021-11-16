@@ -58,8 +58,8 @@ class Notification {
 
  private:
   friend bool WaitForNotificationWithTimeout(Notification* n,
-                                             int64 timeout_in_us);
-  bool WaitForNotificationWithTimeout(int64 timeout_in_us) {
+                                             int64_t timeout_in_us);
+  bool WaitForNotificationWithTimeout(int64_t timeout_in_us) {
     bool notified = HasBeenNotified();
     if (!notified) {
       mutex_lock l(mu_);
@@ -78,7 +78,7 @@ class Notification {
 };
 
 inline bool WaitForNotificationWithTimeout(Notification* n,
-                                           int64 timeout_in_us) {
+                                           int64_t timeout_in_us) {
   return n->WaitForNotificationWithTimeout(timeout_in_us);
 }
 

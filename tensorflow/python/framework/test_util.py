@@ -3509,16 +3509,15 @@ class TensorFlowTestCase(googletest.TestCase):
       self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
 
   # Fix Python 3+ compatibility issues
-  if not six.PY2:
-    # pylint: disable=invalid-name
+  # pylint: disable=invalid-name
 
-    # Silence a deprecation warning
-    assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
+  # Silence a deprecation warning
+  assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
 
-    # assertItemsEqual is assertCountEqual as of 3.2.
-    assertItemsEqual = googletest.TestCase.assertCountEqual
+  # assertItemsEqual is assertCountEqual as of 3.2.
+  assertItemsEqual = googletest.TestCase.assertCountEqual
 
-    # pylint: enable=invalid-name
+  # pylint: enable=invalid-name
 
   @contextlib.contextmanager
   def _constrain_devices_and_set_default(self, sess, use_gpu, force_gpu):

@@ -83,7 +83,7 @@ namespace wrap {
   __macro(rocsolver_dgetri_batched)         \
   __macro(rocsolver_sgetri_batched)         \
   __macro(rocsolver_zgetri_batched)         \
-  __macro(rocsolver_cpotrf)         	      \
+  __macro(rocsolver_cpotrf)         	    \
   __macro(rocsolver_dpotrf)                 \
   __macro(rocsolver_spotrf)                 \
   __macro(rocsolver_zpotrf)                 \

@@ -114,11 +114,12 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForReductionPass());
     pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForCWisePass());
     pm.addNestedPass<mlir::FuncOp>(CreatePeelTiledLoopsPass());
-
     pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
     pm.addPass(mlir::createCanonicalizerPass());
 
-    pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
+    // TODO(b/205537489): Re-enable tiling after the padding function is fixed.
+    // pm.addNestedPass<mlir::FuncOp>(CreatePadTiledOpsPass());
+    pm.addNestedPass<mlir::FuncOp>(CreateSinkUnusedOutputs());
     pm.addNestedPass<mlir::FuncOp>(CreateVectorizeTiledOpsPass());
   }
 

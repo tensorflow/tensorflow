@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/scatter_nd_util.h"
 
 namespace tensorflow {
 namespace {
@@ -164,6 +165,12 @@ class ResourceScatterOp : public XlaOpKernel {
     xla::XlaOp var_value;
     OP_REQUIRES_OK(
         context, context->ReadVariableInput(0, dtype, &var_shape, &var_value));
+    // This check is only required for ScatterNdOps.
+    if (indices_are_vectors_) {
+      OP_REQUIRES_OK(context, ValidateScatterNdUpdateShape(
+                                  var_shape, context->InputShape(1),
+                                  context->InputShape(2)));
+    }
 
     const xla::XlaOp indices = context->Input(1);
     const xla::XlaOp updates = context->Input(2);

@@ -103,13 +103,11 @@ class TfCompileAndRunTest(test.TestCase):
             static_type = ir.TypeAttr(
                 attr_dict[_STATIC_TYPE_ATTRIBUTE_NAME]).value
             shaped_type = ir.ShapedType(static_type)
-            dims = []
-            for i in range(shaped_type.rank):
-              dims.append(shaped_type.get_dim_size(i))
             np_element_type = TfCompileAndRunTest.mlir_type_to_np_type(
                 shaped_type.element_type)
             arg = np.random.uniform(
-                -10000.0, 10000.0, size=dims).astype(np_element_type)
+                -10000.0, 10000.0,
+                size=shaped_type.shape).astype(np_element_type)
             args.append(arg)
         if len(args) != len(arg_attrs):
           logging.error(

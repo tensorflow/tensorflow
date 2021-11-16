@@ -3352,7 +3352,8 @@ bool NNAPIDelegateKernel::Validate(
                                  kNNAPIRuntimeFeatureLevel6, &val_ctx);
       const auto& input0 = context->tensors[node->inputs->data[0]];
       const auto& input1 = context->tensors[node->inputs->data[1]];
-      EXPECT_INPUT_TYPE_IN(input0.type, kTfLiteFloat32, kTfLiteInt32);
+      EXPECT_INPUT_TYPE_IN(input0.type, kTfLiteFloat32, kTfLiteInt32,
+                           kTfLiteInt8);
       Expect(input0.type == input1.type,
              NNAPIValidationFailureType::kUnsupportedHybridOperator,
              "NNAPI does not support hybrid batch matmul", &val_ctx);

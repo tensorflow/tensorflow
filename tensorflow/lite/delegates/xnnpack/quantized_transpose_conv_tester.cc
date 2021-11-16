@@ -192,7 +192,9 @@ std::vector<char> QuantizedTransposeConvTester::CreateTfLiteModel() const {
       /*name=*/nullptr, quantization_parameters));
 
   if (UseBias()) {
-    auto int32rng = std::bind(std::uniform_int_distribution<int32_t>(), rng);
+    const int32_t kMaxAbsBias = 10000;
+    auto int32rng = std::bind(
+        std::uniform_int_distribution<int32_t>(-kMaxAbsBias, kMaxAbsBias), rng);
     std::vector<int32_t> bias_data(OutputChannels());
     std::generate(bias_data.begin(), bias_data.end(), int32rng);
 

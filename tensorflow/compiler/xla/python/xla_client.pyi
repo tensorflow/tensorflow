@@ -56,6 +56,7 @@ def execute_with_python_values_replicated(
     executable: Executable, arguments: Sequence[Sequence[Any]],
     backend: Client) -> Sequence[Sequence[numpy.ndarray]]: ...
 
+def shape_from_pyval(pyval: Any) -> Any: ...
 
 def heap_profile(client: Client) -> bytes:
   ...
@@ -108,6 +109,10 @@ def make_padding_config(
     padding_config: Union[PaddingConfig, Sequence[Tuple[int, int, int]]]
 ) -> PaddingConfig:
   ...
+
+class PaddingType(enum.Enum):
+  VALID = 1
+  SAME = 2
 
 
 class DotDimensionNumbers:

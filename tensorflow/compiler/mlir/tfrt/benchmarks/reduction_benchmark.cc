@@ -19,9 +19,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-const bool kStatic = false;
-const bool kDynamic = true;
-
 static const char* kReductionIR = R"(
   func @main(%input: {1}) -> {2} {
     %dim_to_reduce = "tf.Const"() {{value = {3} : {4}} : () -> {4}

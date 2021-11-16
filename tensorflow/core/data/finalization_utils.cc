@@ -25,9 +25,7 @@ namespace data {
 StatusOr<DatasetBase*> GetFinalizedDataset(OpKernelContext* ctx,
                                            DatasetBase* dataset) {
   return dataset->Finalize(
-      ctx,
-      [ctx, dataset](const core::RefCountPtr<DatasetBase>& finalize_dataset)
-          -> StatusOr<core::RefCountPtr<DatasetBase>> {
+      ctx, [ctx, dataset]() -> StatusOr<core::RefCountPtr<DatasetBase>> {
         core::RefCountPtr<DatasetBase> dataset_ref_ptr;
         DatasetBase* raw_ptr;
         TF_RETURN_IF_ERROR(data::FinalizeDataset(ctx, dataset, &raw_ptr));

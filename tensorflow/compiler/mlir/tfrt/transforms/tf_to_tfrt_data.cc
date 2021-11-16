@@ -56,7 +56,7 @@ T ConstAttrToTypeAttr(ElementsAttr value_attr) {
   if (T type_attr = value_attr.dyn_cast<T>()) {
     return type_attr;
   } else if (auto v = value_attr.dyn_cast<SplatElementsAttr>()) {
-    return v.getSplatValue().dyn_cast<T>();
+    return v.getSplatValue<Attribute>().dyn_cast<T>();
   }
   return T(nullptr);
 }

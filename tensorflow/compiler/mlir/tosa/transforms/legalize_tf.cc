@@ -479,7 +479,7 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
   if (!matchPattern(tf_argmax_op.dimension(), m_Constant(&axis_elems)))
     return failure();
 
-  int32_t axis = axis_elems.getValue<IntegerAttr>({}).getInt();
+  int32_t axis = axis_elems.getValues<IntegerAttr>()[0].getInt();
   if (axis < 0) {
     axis += input_type.getRank();
   }
@@ -644,7 +644,7 @@ LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
   if (!matchPattern(tf_concatv2_op.axis(), m_Constant(&axis_elems)))
     return failure();
 
-  int32_t axis = axis_elems.getValue<IntegerAttr>({}).getInt();
+  int32_t axis = axis_elems.getValues<IntegerAttr>()[0].getInt();
 
   llvm::Optional<Value> result =
       convertConcatV2Op(rewriter, op, tf_concatv2_op.getResult(), values, axis);
@@ -783,7 +783,7 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
   SmallVector<int64_t> dims_vals;
   uint32_t total_size = 1;
   for (int i = 0; i < dims_elems.getNumElements(); i++) {
-    dims_vals.push_back(dims_elems.getValue<IntegerAttr>(i).getInt());
+    dims_vals.push_back(dims_elems.getValues<IntegerAttr>()[i].getInt());
     total_size *= dims_vals[i];
   }
 
@@ -799,12 +799,12 @@ LogicalResult ConvertTFFillOp::matchAndRewrite(
   if (value_elem.getType().getElementType().isa<FloatType>()) {
     SmallVector<float> fill_arr(
         total_size,
-        value_elem.getValue<FloatAttr>(0).getValue().convertToFloat());
+        value_elem.getValues<FloatAttr>()[0].getValue().convertToFloat());
     fill_attr = DenseElementsAttr::get(fill_type, llvm::makeArrayRef(fill_arr));
   } else {
     SmallVector<int32_t> fill_arr(
         total_size,
-        value_elem.getValue<IntegerAttr>(0).getValue().getLimitedValue());
+        value_elem.getValues<IntegerAttr>()[0].getValue().getLimitedValue());
     fill_attr = DenseElementsAttr::get(fill_type, llvm::makeArrayRef(fill_arr));
   }
   auto fill_const_op = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
@@ -1013,7 +1013,7 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
       SmallVector<int64_t> shape_vec;
       for (int i = 0; i < output_shape_elems.getNumElements(); i++)
         shape_vec.push_back(
-            output_shape_elems.getValue<IntegerAttr>(i).getInt());
+            output_shape_elems.getValues<IntegerAttr>()[i].getInt());
       output_shape = rewriter.getI64ArrayAttr(shape_vec);
     } else {
       // Use output tensor's shape otherwise.
@@ -1438,13 +1438,13 @@ LogicalResult ConvertTFSliceOp::matchAndRewrite(
   }
 
   for (int i = 0; i < begin_elems.getNumElements(); i++)
-    begin_vals.push_back(begin_elems.getValue<IntegerAttr>(i).getInt());
+    begin_vals.push_back(begin_elems.getValues<IntegerAttr>()[i].getInt());
 
   // Try to match size as compile-time constant first,
   // if this fails, use the output tensor shape instead.
   if (matchPattern(tf_slice_op.size(), m_Constant(&size_elems))) {
     for (int i = 0; i < size_elems.getNumElements(); i++)
-      size_vals.push_back(size_elems.getValue<IntegerAttr>(i).getInt());
+      size_vals.push_back(size_elems.getValues<IntegerAttr>()[i].getInt());
   } else {
     size_vals.assign(output_type.getShape().begin(),
                      output_type.getShape().end());
@@ -1472,7 +1472,8 @@ LogicalResult ConvertTFTileOp::matchAndRewrite(
     return failure();
   SmallVector<int64_t> multiples_vals;
   for (int i = 0; i < multiples_elems.getNumElements(); i++)
-    multiples_vals.push_back(multiples_elems.getValue<IntegerAttr>(i).getInt());
+    multiples_vals.push_back(
+        multiples_elems.getValues<IntegerAttr>()[i].getInt());
 
   ArrayAttr multiples_attr = rewriter.getI64ArrayAttr(multiples_vals);
 
@@ -1559,7 +1560,7 @@ LogicalResult ConvertTFSplitOp::matchAndRewrite(
   int32_t axis = 0;
   ElementsAttr axisAttrElems;
   if (matchPattern(tf_split_op.split_dim(), m_Constant(&axisAttrElems))) {
-    axis = axisAttrElems.getValue<IntegerAttr>({}).getInt();
+    axis = axisAttrElems.getValues<IntegerAttr>()[0].getInt();
   }
 
   llvm::Optional<SmallVector<Value>> results =
@@ -1587,7 +1588,7 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
   }
 
   for (int i = 0; i < size_split_elems.getNumElements(); i++) {
-    size_split.push_back(size_split_elems.getValue<IntegerAttr>(i).getInt());
+    size_split.push_back(size_split_elems.getValues<IntegerAttr>()[i].getInt());
   }
 
   // Get the axis
@@ -1596,7 +1597,7 @@ LogicalResult ConvertTFSplitVOp::matchAndRewrite(
     return op->emitOpError("Cannot read split_dim elems");
   }
 
-  int32_t axis = axisAttrElems.getValue<IntegerAttr>(0).getInt();
+  int32_t axis = axisAttrElems.getValues<IntegerAttr>()[0].getInt();
 
   llvm::Optional<SmallVector<Value>> results =
       convertSplitVOp(rewriter, op, tf_splitv_op.getResult(0),
@@ -1800,7 +1801,7 @@ LogicalResult ConvertTFGatherV2Op::matchAndRewrite(
     return failure();
   assert(axis_elem.getNumElements() == 1);
 
-  int32_t axis = axis_elem.getValue<IntegerAttr>(0).getInt();
+  int32_t axis = axis_elem.getValues<IntegerAttr>()[0].getInt();
   int32_t batch_dims = tf_gather_op.batch_dimsAttr().getInt();
 
   llvm::Optional<Value> result = convertGatherOp(
@@ -2065,7 +2066,7 @@ LogicalResult ConvertTFReverseV2Op::matchAndRewrite(
     val = identity_op.getResult();
   } else {
     for (int i = 0; i < axis_elems.getNumElements(); i++) {
-      int64_t axis_val = axis_elems.getValue<IntegerAttr>(i).getInt();
+      int64_t axis_val = axis_elems.getValues<IntegerAttr>()[i].getInt();
       if (axis_val < 0) axis_val += input_rank;
       auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
       auto reverse_op = CreateOpAndInfer<tosa::ReverseOp>(
@@ -2123,8 +2124,8 @@ LogicalResult ConvertTFFakeQuantWithMinMaxVarsOp::matchAndRewrite(
   if (min_elems.getNumElements() != 1 && max_elems.getNumElements() != 1)
     return failure();
 
-  int64_t min_val = min_elems.getValue<IntegerAttr>(0).getInt();
-  int64_t max_val = max_elems.getValue<IntegerAttr>(0).getInt();
+  int64_t min_val = min_elems.getValues<IntegerAttr>()[0].getInt();
+  int64_t max_val = max_elems.getValues<IntegerAttr>()[0].getInt();
 
   llvm::Optional<Value> result = convertFakeQuantOp(
       rewriter, op, output_type, tf_fakequant_op.inputs(), min_val, max_val,
@@ -2187,7 +2188,7 @@ LogicalResult ConvertTFOneHotOp::matchAndRewrite(
   ElementsAttr depth_elems;
   if (!matchPattern(tf_one_hot_op.depth(), m_Constant(&depth_elems)))
     return failure();
-  int32_t depth = depth_elems.getValue<IntegerAttr>({}).getInt();
+  int32_t depth = depth_elems.getValues<IntegerAttr>()[0].getInt();
 
   IntegerAttr axisAttr = tf_one_hot_op.axisAttr();
   int32_t axis = axisAttr.getInt();

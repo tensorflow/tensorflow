@@ -153,7 +153,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
       )",
                      /*match_optimized_ir=*/true);
 }
-#endif 
+#endif
 
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
   HloModuleConfig config;

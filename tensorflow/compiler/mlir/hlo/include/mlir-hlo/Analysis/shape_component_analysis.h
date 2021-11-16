@@ -88,7 +88,7 @@ class ShapeComponentAnalysis {
     // Returns true if this dimension is known to be not `-1`. This is useful
     // for reshapes.
     bool isKnownNotNegativeOne() const;
-    // If this a reference to a singular symbol return it.
+    // If this is a reference to a singular symbol, return it.
     Optional<Symbol> singleton() const;
 
     bool operator==(const SymbolicDimension &rhs) const {

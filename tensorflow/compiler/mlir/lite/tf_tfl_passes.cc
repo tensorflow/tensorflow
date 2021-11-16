@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
+#include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
@@ -135,6 +136,13 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
   standard_pipeline_options.enable_inliner = false;
   standard_pipeline_options.form_clusters = pass_config.form_clusters;
   mlir::TF::CreateTFStandardPipeline(*pass_manager, standard_pipeline_options);
+  // For TF Quantization, converts unsupported ops to Flex ops before other
+  // conversion passes.
+  if (!toco_flags.tf_quantization_mode().empty()) {
+    pass_manager->addNestedPass<mlir::FuncOp>(
+        mlir::TF::CreateFallbackToFlexOpsPass(
+            toco_flags.tf_quantization_mode()));
+  }
   pass_manager->addNestedPass<mlir::FuncOp>(
       mlir::TF::CreateDeviceIndexSelectorPass());
 

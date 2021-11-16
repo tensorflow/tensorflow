@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
@@ -417,12 +417,15 @@ static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
 // location (converted). FileLineColLoc locations are populated by taking the
 // file name and line number, and populating `source_file` and `source_line`
 // respectively.
-static xla::OpMetadata CreateOpMetadataFromLocation(mlir::Operation* op) {
+static xla::OpMetadata CreateOpMetadataFromLocation(
+    mlir::Operation* op, mlir::MlirToHloConversionOptions options) {
   xla::OpMetadata metadata;
   if (op->getLoc().isa<mlir::UnknownLoc>()) return metadata;
 
   std::string name = mlir::GetNameFromLoc(op->getLoc());
-  mlir::LegalizeNodeName(name);
+  if (options.legalize_node_names) {
+    mlir::LegalizeNodeName(name);
+  }
   metadata.set_op_name(name);
 
   if (auto file_line_col_loc = op->getLoc().dyn_cast<mlir::FileLineColLoc>()) {
@@ -1683,7 +1686,7 @@ LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
     auto arg_shape_status = shape_representation_fn_(
         arg_tensor_shape, dtype,
         /*use_fast_memory=*/false,
-        tensorflow::TpuLayoutPreference::kNoPreference);
+        tensorflow::XlaLayoutPreference::kNoPreference);
     if (!arg_shape_status.ok())
       return block->getParentOp()->emitError()
              << arg_shape_status.status().error_message();

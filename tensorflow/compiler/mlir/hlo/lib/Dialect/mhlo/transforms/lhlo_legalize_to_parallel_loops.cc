@@ -116,8 +116,8 @@ MappedIvs MapWindowIvsToInput(OpTy op, Value operand, ValueRange ivs,
   mapped_ivs.in_bounds = b->create<mlir::arith::ConstantOp>(
       loc, b->getI1Type(), b->getIntegerAttr(b->getI1Type(), 1));
   for (unsigned i = 0, e = ivs.size(); i < e; ++i) {
-    auto stride = window_strides.template getValue<llvm::APInt>(i);
-    auto pad_low = padding.template getValue<llvm::APInt>({i, 0});
+    auto stride = window_strides.template getValues<llvm::APInt>()[i];
+    auto pad_low = padding.template getValues<llvm::APInt>()[{i, 0}];
 
     Value stride_val =
         b->create<arith::ConstantIndexOp>(loc, stride.getSExtValue());

@@ -165,6 +165,27 @@ pytype_strict_binary(
 )
 
 pytype_strict_binary(
+    name = "gen_data",
+    srcs = ["gen_data.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        # google-internal: use_pure_python
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/module",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:save_options",
+    ],
+)
+
+pytype_strict_binary(
     name = "gen_saved_model_v1",
     srcs = ["gen_saved_model_v1.py"],
     python_version = "PY3",
@@ -482,11 +503,22 @@ genrule(
     exec_tools = ["gen_pow_v2"],
 )
 
+genrule(
+    name = "saved_model_gen_data",
+    srcs = [],
+    outs = [
+        "data/saved_model.pb",
+    ],
+    cmd = "$(location gen_data) --saved_model_path=$(RULEDIR)/data",
+    exec_tools = ["gen_data"],
+)
+
 tf_cc_test(
     name = "saved_model_test",
     srcs = ["saved_model_test.cc"],
     data = [
         "control_flow_v1/saved_model.pb",
+        "data/saved_model.pb",
         "dtype_coverage_v1/saved_model.pb",
         "dtype_coverage_v1/variables/variables.data-00000-of-00001",
         "dtype_coverage_v1/variables/variables.index",

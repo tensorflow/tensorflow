@@ -733,20 +733,19 @@ func @test_pad(%arg0: tensor<2x3xf32>) -> tensor<*xf32> {
 // -----
 
 // CHECK-LABEL: test_pad_v2
-func @test_pad_v2(%arg0: tensor<1x256x8x25xf32>) -> (tensor<1x257x9x28xf32>) {
-  // CHECK-DAG: %[[PAD0:.+]] = "tosa.const"() {value = dense<-3.40282347E+38> : tensor<1x1x8x25xf32>}
-  // CHECK-DAG: %[[CONCAT0:.+]] = "tosa.concat"(%[[PAD0]], %arg0) {axis = 1 : i64}
-  // CHECK-DAG: %[[PAD1:.+]] = "tosa.const"() {value = dense<-3.40282347E+38> : tensor<1x257x1x25xf32>}
-  // CHECK-DAG: %[[CONCAT1:.+]] = "tosa.concat"(%[[CONCAT0]], %[[PAD1]]) {axis = 2 : i64}
-  // CHECK-DAG: %[[PAD2:.+]] = "tosa.const"() {value = dense<-3.40282347E+38> : tensor<1x257x9x1xf32>}
-  // CHECK-DAG: %[[PAD3:.+]] = "tosa.const"() {value = dense<-3.40282347E+38> : tensor<1x257x9x2xf32>}
-  // CHECK-DAG: %[[CONCAT2:.+]] = "tosa.concat"(%[[PAD2]], %[[CONCAT1]], %[[PAD3]]) {axis = 3 : i64}
+func @test_pad_v2(%arg0: tensor<1x256x8x25xf32>) -> (tensor<*xf32>) {
+  // CHECK-DAG: %[[PADDING:.+]] = "tosa.const"() {value = dense<{{\[\[}}0, 0], [1, 0], [0, 1], [1, 2]]> : tensor<4x2xi32>}
   %0 = "tfl.pseudo_const"() {value = dense<[[0, 0], [1, 0], [0, 1], [1, 2]]> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
-  %1 = "tfl.pseudo_const"() {value = dense<-3.40282347E+38> : tensor<f32>} : () -> tensor<f32>
-  %2 = "tfl.padv2"(%arg0, %0, %1) : (tensor<1x256x8x25xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<1x257x9x28xf32>
 
-  // CHECK: return %[[CONCAT2]]
-  return %2 : tensor<1x257x9x28xf32>
+  // CHECK-DAG: %[[VAL:.+]] = "tosa.const"() {value = dense<-3.40282347E+38> : tensor<f32>}
+  %1 = "tfl.pseudo_const"() {value = dense<-3.40282347E+38> : tensor<f32>} : () -> tensor<f32>
+
+  // CHECK-DAG: %[[PAD:.+]] = "tosa.pad"(%arg0, %[[PADDING]], %[[VAL]]) : (tensor<1x256x8x25xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<1x257x9x28xf32>
+  // CHECK-DAG: %[[CAST:.+]] = tensor.cast %[[PAD]]
+  %2 = "tfl.padv2"(%arg0, %0, %1) : (tensor<1x256x8x25xf32>, tensor<4x2xi32>, tensor<f32>) -> tensor<*xf32>
+
+  // CHECK: return %3 : tensor<*xf32>
+  return %2 : tensor<*xf32>
 }
 
 // -----
@@ -1379,6 +1378,22 @@ func @test_resize_bilinear_qi8(%arg0: tensor<1x80x80x2x!quant.uniform<i8:f32, 0.
   %0 = "tfl.pseudo_const"() {value = dense<640> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.resize_bilinear"(%arg0, %0) {align_corners = false, half_pixel_centers = true} : (tensor<1x80x80x2x!quant.uniform<i8:f32, 0.42546585202217102>>, tensor<2xi32>) -> tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
   return %1 : tensor<1x640x640x2x!quant.uniform<i8:f32, 0.42546585202217102>>
+}
+
+// -----
+
+// CHECK-LABEL: test_fullyconnected_qi8
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[1, 0]> : tensor<2xi32>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<0> : tensor<28xi32>}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.transpose"(%arg1, %[[VAR0]])
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.fully_connected"(%arg0, %[[VAR2]], %[[VAR1]]) {quantization_info = {input_zp = -1 : i32, weight_zp = -1 : i32}}
+// CHECK: %[[VAR4:.*]] = "tosa.rescale"(%[[VAR3]]) {double_round = true, input_zp = 0 : i32, multiplier = [1353377973 : i32], output_zp = 3 : i32, per_channel = false, scale32 = true, shift = [40 : i32]}
+func @test_fullyconnected_qi8(%arg0: tensor<14x19x!quant.uniform<i8:f32, 0.015685491263866425:-1>>, %arg1: tensor<19x28x!quant.uniform<i8:f32, 0.015685983002185822:-1>>) -> tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>> {
+  %0 = "tfl.pseudo_const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tfl.transpose"(%arg1, %0) : (tensor<19x28x!quant.uniform<i8:f32, 0.015685983002185822:-1>>, tensor<2xi32>) -> tensor<28x19x!quant.uniform<i8:f32, 0.015685983002185822:-1>>
+  %cst = constant unit
+  %2 = "tfl.fully_connected"(%arg0, %1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<14x19x!quant.uniform<i8:f32, 0.015685491263866425:-1>>, tensor<28x19x!quant.uniform<i8:f32, 0.015685983002185822:-1>>, none) -> tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>>
+  return %2 : tensor<14x28x!quant.uniform<i8:f32, 0.19988977909088135:3>>
 }
 
 // -----

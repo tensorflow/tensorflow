@@ -15,7 +15,6 @@
 """Tests for tensorflow.ops.random_ops."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
@@ -68,7 +67,7 @@ class RandomNormalTest(RandomOpTestCommon):
         rng = random_ops.random_normal(
             [num], mean=mu, stddev=sigma, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 
@@ -165,7 +164,7 @@ class TruncatedNormalTest(test.TestCase):
         rng = random_ops.truncated_normal(
             [num], mean=mu, stddev=sigma, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 
@@ -267,7 +266,7 @@ class RandomUniformTest(RandomOpTestCommon):
         rng = random_ops.random_uniform(
             [num], minval=minv, maxval=maxv, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 

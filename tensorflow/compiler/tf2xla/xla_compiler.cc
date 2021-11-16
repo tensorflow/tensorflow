@@ -861,7 +861,7 @@ Status XlaCompiler::XLAShapeForArgument(
             *xla_shape,
             options_.shape_representation_fn(
                 shape, arg.type,
-                /*use_fast_memory=*/false, TpuLayoutPreference::kNoPreference));
+                /*use_fast_memory=*/false, XlaLayoutPreference::kNoPreference));
         TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
             arg_sharding, /*use_fast_memory=*/false,
             options_.shape_representation_fn, xla_shape));
@@ -891,7 +891,7 @@ Status XlaCompiler::XLAShapeForArgument(
                               options_.shape_representation_fn(
                                   absl::get<TensorShape>(arg.shape), arg.type,
                                   /*use_fast_memory=*/arg.fast_mem,
-                                  TpuLayoutPreference::kNoPreference));
+                                  XlaLayoutPreference::kNoPreference));
           TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
               arg_sharding, arg.fast_mem, options_.shape_representation_fn,
               xla_shape));

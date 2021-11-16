@@ -101,7 +101,7 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
     }
 
     for (auto it : llvm::enumerate(result_ty.getShape())) {
-      if (gather.slice_sizes().getValue<int64_t>(it.index() + 1) !=
+      if (gather.slice_sizes().getValues<int64_t>()[it.index() + 1] !=
           it.value()) {
         return failure();
       }
