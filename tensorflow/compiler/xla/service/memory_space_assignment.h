@@ -344,23 +344,24 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
 // Forward Declaration of MemorySpaceAssignmentCostAnalysis
 class MemorySpaceAssignmentCostAnalysis;
 // Prefetch interval picker that uses cost analysis to overlap asynchronous
-// copies with independent computation. It uses min/max (asynchronous copy
-// duration) / (independent computation duration) ratios to guide whether the
-// prefetch is within those bounds. It starts with the preferred ratio in
-// Begin() and works its way for alternately earlier and later prefetches until
-// hitting min and max ratios. The value for buffer size for max async copy is a
-// mechanism to prevent copying small buffers between the two memories
-// unnecessarily. For calculating the max time that the buffer can reside in
-// alternate memory, we use the larger of this value and the actual size of the
-// buffer.
+// copies with independent computation. It uses min (independent computation
+// duration) / (asynchronous copy duration) ratio to guide whether the prefetch
+// is within the lower bound. For the upper bound, it restricts the maximum
+// duration that a buffer may occupy the alternate memory space as a multiple of
+// the time it would take to copy a buffer that is the size of the alternate
+// memory. It starts with the preferred ratio in Begin() and works its way for
+// alternately earlier and later prefetches until hitting min and max ratios.
+// The value for buffer size for max async copy is a mechanism to prevent
+// copying small buffers between the two memories unnecessarily. For calculating
+// the max time that the buffer can reside in alternate memory, we use the
+// larger of this value and the actual size of the buffer.
 class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
  public:
   CostAnalysisPrefetchIntervalPicker(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis,
-      float min_async_copy_to_overlap_ratio,
-      float max_async_copy_to_overlap_ratio,
-      float preferred_async_copy_to_overlap_ratio,
-      int64_t buffer_size_for_max_async_copy);
+      float min_overlap_to_async_copy_ratio,
+      float preferred_overlap_to_async_copy_ratio,
+      float max_overlap_to_mem_size_async_copy_ratio, int64_t mem_size_bytes);
 
   bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape,
                                           int64_t start_time,
@@ -421,10 +422,9 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   std::vector<int> while_nest_level_change_;
 
   const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
-  float min_async_copy_to_overlap_ratio_;
-  float max_async_copy_to_overlap_ratio_;
-  float preferred_async_copy_to_overlap_ratio_;
-  int64_t buffer_size_for_max_async_copy_;
+  float min_overlap_to_async_copy_ratio_;
+  float preferred_overlap_to_async_copy_ratio_;
+  float max_async_copy_elapsed_;
   float max_overlap_multiplier_ = 1.0;
 
   float async_copy_elapsed_;

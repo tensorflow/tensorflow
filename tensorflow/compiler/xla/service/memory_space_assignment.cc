@@ -452,20 +452,21 @@ std::string InstructionCountPrefetchIntervalPicker::ToNoCopyDebugString(
 
 CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     const MemorySpaceAssignmentCostAnalysis& cost_analysis,
-    float min_async_copy_to_overlap_ratio,
-    float max_async_copy_to_overlap_ratio,
-    float preferred_async_copy_to_overlap_ratio,
-    int64_t buffer_size_for_max_async_copy)
+    float min_overlap_to_async_copy_ratio,
+    float preferred_overlap_to_async_copy_ratio,
+    float max_overlap_to_mem_size_async_copy_ratio, int64_t mem_size_bytes)
     : while_nest_level_(
           cost_analysis.hlo_live_range().instruction_schedule().size() + 1, 0),
       computation_nest_level_(
           cost_analysis.hlo_live_range().instruction_schedule().size() + 1, 0),
       cost_analysis_(cost_analysis),
-      min_async_copy_to_overlap_ratio_(min_async_copy_to_overlap_ratio),
-      max_async_copy_to_overlap_ratio_(max_async_copy_to_overlap_ratio),
-      preferred_async_copy_to_overlap_ratio_(
-          preferred_async_copy_to_overlap_ratio),
-      buffer_size_for_max_async_copy_(buffer_size_for_max_async_copy) {
+      min_overlap_to_async_copy_ratio_(min_overlap_to_async_copy_ratio),
+      preferred_overlap_to_async_copy_ratio_(
+          preferred_overlap_to_async_copy_ratio),
+      max_async_copy_elapsed_(
+          cost_analysis_.GetAsyncCopyElapsed(
+              ShapeUtil::MakeShape(S32, {mem_size_bytes / 4})) *
+          max_overlap_to_mem_size_async_copy_ratio) {
   instruction_schedule_ =
       &cost_analysis_.hlo_live_range().instruction_schedule();
 
@@ -548,10 +549,7 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
 
 float CostAnalysisPrefetchIntervalPicker::GetMaxElapsedInAlternateMemory(
     float async_copy_elapsed) const {
-  return max_async_copy_to_overlap_ratio_ *
-         std::max(max_overlap_multiplier_ * async_copy_elapsed,
-                  cost_analysis_.GetAsyncCopyElapsed(ShapeUtil::MakeShape(
-                      S32, {buffer_size_for_max_async_copy_ / 4})));
+  return max_async_copy_elapsed_;
 }
 
 bool CostAnalysisPrefetchIntervalPicker::CanAllocateInAlternateMemoryNoCopy(
@@ -574,7 +572,7 @@ int64_t CostAnalysisPrefetchIntervalPicker::PreferredEvictionEndTime(
     float logical_interval_elapsed =
         GetLogicalIntervalElapsed(start_time, end_time);
     if (logical_interval_elapsed >=
-        min_async_copy_to_overlap_ratio_ * async_copy_elapsed) {
+        min_overlap_to_async_copy_ratio_ * async_copy_elapsed) {
       break;
     }
   }
@@ -584,7 +582,7 @@ int64_t CostAnalysisPrefetchIntervalPicker::PreferredEvictionEndTime(
 int64_t CostAnalysisPrefetchIntervalPicker::LatestPrefetchStartTime(
     const Shape& shape, int64_t start_time, int64_t end_time,
     const HloUse* use) const {
-  // Find the earliest time that satisfies max_async_copy_to_overlap_ratio_.
+  // Find the earliest time that satisfies max_overlap_to_async_copy_ratio_.
   float async_copy_elapsed = cost_analysis_.GetAsyncCopyElapsed(shape);
   // If there is a use, estimate the time we would save by having this op in
   // alternate memory.
@@ -603,7 +601,7 @@ int64_t CostAnalysisPrefetchIntervalPicker::LatestPrefetchStartTime(
   int end_nest_level = computation_nest_level_[end_time];
 
   // Find the latest time we're allowed to start prefetching.
-  float min_interval = min_async_copy_to_overlap_ratio_ * async_copy_elapsed;
+  float min_interval = min_overlap_to_async_copy_ratio_ * async_copy_elapsed;
   int latest_prefetch_time;
   for (latest_prefetch_time = end_time - 1;
        latest_prefetch_time >= start_time &&
@@ -625,7 +623,7 @@ int64_t CostAnalysisPrefetchIntervalPicker::PreferredPrefetchStartTime(
   float async_copy_elapsed = cost_analysis_.GetAsyncCopyElapsed(shape);
   int64_t preferred_prefetch_start_time = earliest_prefetch_start_time;
   float preferred_interval =
-      preferred_async_copy_to_overlap_ratio_ * async_copy_elapsed;
+      preferred_overlap_to_async_copy_ratio_ * async_copy_elapsed;
   float best_interval = GetLogicalIntervalElapsed(earliest_prefetch_start_time,
                                                   prefetch_end_time);
   int end_nest_level = computation_nest_level_[prefetch_end_time];
@@ -678,7 +676,7 @@ void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
                                                int64_t end_time) {
   const Shape& shape = ShapeUtil::GetSubshape(
       use.instruction->operand(use.operand_number)->shape(), use.operand_index);
-  // Find the earliest time that satisfies max_async_copy_to_overlap_ratio_.
+  // Find the earliest time that satisfies max_overlap_to_async_copy_ratio_.
   async_copy_elapsed_ = cost_analysis_.GetAsyncCopyElapsed(shape);
   // Estimate the time we would save by having this op in alternate memory.
   float elapsed_time = cost_analysis_.GetInstructionElapsed(*use.instruction);
@@ -692,7 +690,7 @@ void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
   int end_nest_level = computation_nest_level_[end_logical_time_];
 
   // Find the latest time we're allowed to start prefetching.
-  float min_interval = min_async_copy_to_overlap_ratio_ * async_copy_elapsed_;
+  float min_interval = min_overlap_to_async_copy_ratio_ * async_copy_elapsed_;
   latest_prefetch_time_ =
       LatestPrefetchStartTime(shape, start_time, end_time, &use);
 
@@ -717,7 +715,7 @@ void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
   int64_t starting_prefetch_time = PreferredPrefetchStartTime(
       shape, earliest_prefetch_time_, latest_prefetch_time_, end_logical_time_);
   float preferred_interval =
-      preferred_async_copy_to_overlap_ratio_ * async_copy_elapsed_;
+      preferred_overlap_to_async_copy_ratio_ * async_copy_elapsed_;
   VLOG(4) << "Interval min/max/preferred = " << min_interval << " "
           << max_interval << " " << preferred_interval
           << " prefetch time earliest/latest/starting = "
