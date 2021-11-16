@@ -24,7 +24,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
-#include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
@@ -200,11 +199,6 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo) {
   }
   const auto& target = hlo.custom_call_target();
   return target == kCusolverCholeskyCallTarget;
-}
-
-bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
-  return IsCublasGemm(hlo) || IsCustomCallToDnnBatchNorm(hlo) ||
-         IsCustomCallToDnnConvolution(hlo);
 }
 
 static ReductionDimensions GetReductionKindAndContiguousComponentsImpl(
@@ -385,7 +379,7 @@ bool IsReductionFromOrToContiguousDimensions(mlir::Operation* op) {
   mlir::Value first_input = reduce.inputs()[0];
   Shape operand_shape = GetShape(first_input);
 
-  std::vector<int64_t> dimensions_to_reduce;
+  llvm::SmallVector<int64_t> dimensions_to_reduce;
   for (const llvm::APInt& d : reduce.dimensions()) {
     dimensions_to_reduce.push_back(d.getZExtValue());
   }
@@ -429,7 +423,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
     mlir::Operation* reduce) {
   mlir::Value input = reduce->getOperand(0);
   Shape operand_shape = GetShape(input);
-  std::vector<int64_t> dimensions_to_reduce;
+  llvm::SmallVector<int64_t> dimensions_to_reduce;
   for (const llvm::APInt& d :
        mlir::cast<mlir::mhlo::ReduceOp>(reduce).dimensions()) {
     dimensions_to_reduce.push_back(d.getZExtValue());

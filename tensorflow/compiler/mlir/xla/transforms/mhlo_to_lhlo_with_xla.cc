@@ -904,12 +904,24 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
         builder_.getF64FloatAttr(backend_config.conv_result_scale()));
 
     const auto& algorithm = backend_config.algorithm();
+    std::vector<int64_t> knob_ids;
+    std::vector<int64_t> knob_values;
+    for (const auto& entry : algorithm.tuning_knobs()) {
+      knob_ids.push_back(entry.first);
+      knob_values.push_back(entry.second);
+    }
 
     auto config = mlir::lmhlo_gpu::ConvolutionBackendConfig::get(
         builder_.getI64IntegerAttr(algorithm.algo_id()),
         builder_.getBoolAttr(
             algorithm.math_type() ==
             stream_executor::dnn::AlgorithmProto::TENSOR_OP_MATH),
+        builder_.getI64ArrayAttr(knob_ids),
+        builder_.getI64ArrayAttr(knob_values),
+        builder_.getBoolAttr(algorithm.is_cudnn_frontend()),
+        builder_.getI64IntegerAttr(algorithm.has_workspace_size()
+                                       ? algorithm.workspace_size().value()
+                                       : -1),
         get_layout_attribute(custom_call->operand(0)->shape().layout()),
         get_layout_attribute(custom_call->operand(1)->shape().layout()),
         get_layout_attribute(custom_call->shape().tuple_shapes(0).layout()),

@@ -67,54 +67,6 @@ std::string GetRandomStateVariableName() {
   return absl::StrCat("VariablesFormatState_", tensorflow::random::New64());
 }
 
-// A pass that takes advantage of a loop to add ops that allow the execution to
-// avoid repeatedly formatting variables back and forth. The desired formatting
-// is determined by TPU program compilation, so this pass does not include how
-// to reformat the variables, but only inserts general TPUReshardVariablesOps in
-// proper places, and TPUReshardVariablesOps interpret the compilation.
-//
-// The core idea of this optimization is to keep track of the formatting state
-// of variables, and when the next desired state does not change, it can avoid
-// reformatting. We associate a set of variables on a device with a formatting
-// state, and TPUReshardVariablesOps compares the current state with a desired
-// state (which can be the compilation result). If they mismatch,
-// TPUReshardVariablesOp reformats the variables to the desired state; if they
-// match, TPUReshardVariablesOp is a no-op.
-//
-// A major use of this pass is weight-update sharding in data parallelism, so we
-// require there is a tf_device.replicate in the loop.
-//
-// For example, suppose we have a training loop (for simplicity we write the
-// loop body inine):
-//
-//  %var0 = ...
-//  %var1 = ...
-//  tf.while (..., %var0, %var1) {
-//    tf_device.replicate ([%var0, %var1] as %rvar) {
-//      %compile:2 = "tf._TPUCompileMlir"()
-//      tf.TPUExecuteAndUpdateVariablesOp(%rvar, compile#1)
-//    }
-//  }
-//
-// This pass will transform it into
-//
-//  %var0 = ...
-//  %var1 = ...
-//  %state_var0 = ...
-//  %state_var1 = ...
-//  tf.while (..., %var0, %var1, %state_var0, %state_var1) {
-//    tf_device.replicate ([%var0, %var1] as %rvar,
-//                         [%state_var0, %state_var1] as %rstate) {
-//      %compile:2 = "tf._TPUCompileMlir"()
-//      tf.TPUReshardVariablesOp(%rvar, %compile#1, %rstate)
-//      tf.TPUExecuteAndUpdateVariablesOp(%rvar, compile#1)
-//    }
-//  }
-//  %default_format = tf.constant()
-//  tf_device.replicate ([%var0, %var1] as %rvar,
-//                       [%state_var0, %state_var1] as %rstate) {
-//    tf.TPUReshardVariablesOp(%rvar, %default_format, %rstate)
-//  }
 struct TPUVariableRuntimeReformattingPass
     : public TF::TPUVariableRuntimeReformattingPassBase<
           TPUVariableRuntimeReformattingPass> {
@@ -543,7 +495,8 @@ void TPUVariableRuntimeReformattingPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUVariableRuntimeReformattingPass() {
   return std::make_unique<TPUVariableRuntimeReformattingPass>();
 }
 

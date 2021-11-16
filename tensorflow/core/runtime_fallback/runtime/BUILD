@@ -83,7 +83,6 @@ tf_cuda_library(
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/runtime_fallback/util:type_util",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
-        "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler",
         "//tensorflow/core/tfrt/utils:error_util",
         "//tensorflow/core/tfrt/utils:tensor_util",
         "@tf_runtime//:core_runtime",

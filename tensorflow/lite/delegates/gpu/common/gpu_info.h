@@ -164,6 +164,8 @@ struct AppleInfo {
   explicit AppleInfo(const std::string& gpu_description);
   AppleGpu gpu_type;
 
+  bool IsA7GenerationGpu() const;
+  bool IsA8GenerationGpu() const;
   bool IsLocalMemoryPreferredOverGlobal() const;
 
   bool IsBionic() const;
@@ -352,6 +354,13 @@ struct MetalInfo {
   int max_work_group_size_z;
 
   uint64_t buffer_max_size;
+
+  uint64_t image2d_max_width;
+  uint64_t image2d_max_height;
+  uint64_t image_array_max_layers;
+  uint64_t image3d_max_width;
+  uint64_t image3d_max_height;
+  uint64_t image3d_max_depth;
 };
 
 struct GpuInfo {

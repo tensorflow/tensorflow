@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/core/tfrt/utils/statusor.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 
@@ -33,13 +34,18 @@ class WorkQueueInterface : public tfrt::ConcurrentWorkQueue {
  public:
   ~WorkQueueInterface() override = 0;
 
-  // TODO(tfrt-devs): Use StatusOr to return error or result once StatusOr is
-  // allowed generally in tensorflow.
-  virtual tensorflow::Status InitializeRequest(
+  // Returns per-request work queue if possible. A nullptr should be returned if
+  // the implementation does not implement the per-request work queue.
+  //
+  // TODO(b/198671794): Remove per-request concepts from the work queue
+  // interface so that the interface is more composable. Per-request logic
+  // should be handled separately.
+  ABSL_DEPRECATED("Create the instance directly instead.")
+  virtual StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
       tfrt::RequestContextBuilder* request_context_builder,
       thread::ThreadPoolInterface** intra_op_threadpool) const {
     *intra_op_threadpool = nullptr;
-    return tensorflow::Status::OK();
+    return {nullptr};
   }
 };
 

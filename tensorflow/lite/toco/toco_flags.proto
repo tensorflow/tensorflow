@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 45.
+// Next ID to use: 46.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -278,4 +278,8 @@ message TocoFlags {
   // If false, the old TOCO dynamic range quantization is used.
   // Note: This is an experimental feature
   optional bool enable_mlir_dynamic_range_quantizer = 44 [default = false];
+
+  // When the output model is used for TF Quantization, this flag indicates the
+  // mode of TF Quantization. Ex: DEFAULT, LEGACY_INTEGER,...
+  optional string tf_quantization_mode = 45;
 }

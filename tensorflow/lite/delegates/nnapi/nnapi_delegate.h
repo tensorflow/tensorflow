@@ -384,8 +384,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
 //
 // Returns a singleton delegate that can be used to use the NN API.
 // e.g.
-//   NnApiDelegate* delegate = NnApiDelegate();
-//   interpreter->ModifyGraphWithDelegate(&delegate);
+//   TfLiteDelegate* delegate = NnApiDelegate();
+//   interpreter->ModifyGraphWithDelegate(delegate);
 // NnApiDelegate() returns a singleton, so you should not free this
 // pointer or worry about its lifetime.
 TfLiteDelegate* NnApiDelegate();

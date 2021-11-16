@@ -25,7 +25,6 @@ import tempfile
 import warnings
 
 import numpy as np
-import six
 
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
@@ -124,34 +123,19 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   # str is bytes in py2, but unicode in py3.
   def _ToUnicode(self, s):
-    if six.PY2:
-      if isinstance(s, unicode):
-        return s
-      return s.decode("utf-8")
-    else:
-      if isinstance(s, str):
-        return s
-      return s.decode("utf-8")
+    if isinstance(s, str):
+      return s
+    return s.decode("utf-8")
 
   def _ToBytes(self, s):
-    if six.PY2:
-      if isinstance(s, unicode):
-        return s.encode("utf-8")
-      return s
-    else:
-      if isinstance(s, str):
-        return s.encode("utf-8")
-      return s
+    if isinstance(s, str):
+      return s.encode("utf-8")
+    return s
 
   def _ToString(self, s):
-    if six.PY2:
-      if isinstance(s, unicode):
-        return s.encode("utf-8")
+    if isinstance(s, str):
       return s
-    else:
-      if isinstance(s, str):
-        return s
-      return s.decode("utf-8")
+    return s.decode("utf-8")
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TfTrtIntegrationTestBase, self).__init__(methodName)
@@ -448,9 +432,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     if run_params.is_v2:
       converter_v2 = trt_convert.TrtGraphConverterV2(
           input_saved_model_dir=saved_model_dir,
-          conversion_params=conversion_params,
           use_dynamic_shape=run_params.dynamic_shape,
-          dynamic_shape_profile_strategy=self._profile_strategy)
+          dynamic_shape_profile_strategy=self._profile_strategy,
+          **conversion_params._asdict())
       if self._disable_non_trt_optimizers:
         converter_v2._test_only_disable_non_trt_optimizers = True  # pylint: disable=protected-access
       return converter_v2

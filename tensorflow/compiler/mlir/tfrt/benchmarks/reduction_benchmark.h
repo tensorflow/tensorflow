@@ -23,13 +23,10 @@ namespace tensorflow {
 // Use type aliases compatible with MLIR type names.
 using f32 = float;
 
-ABSL_CONST_INIT extern const bool kStatic;
-ABSL_CONST_INIT extern const bool kDynamic;
-
 // This header is a part of the library with private visibility and will be
 // used only to build benchmarks for different functions in this folder, so
 // it is ok to put convenience using-declarations here.
-//
+
 using ::llvm::ArrayRef;
 using ::llvm::SmallVector;
 using ::llvm::StringRef;
@@ -149,34 +146,6 @@ void RunReductionMlirBenchmark(::testing::benchmark::State& state,
 // Run benchmark using Eigen expression evaluation.
 // -------------------------------------------------------------------------- //
 
-template <typename T, int RANK>
-struct InitTensor {
-  static Eigen::Tensor<T, RANK, Eigen::RowMajor> Get(
-      const std::array<ssize_t, RANK>&);
-};
-
-#define INIT_TENSOR(RANK, UNROLL)                         \
-  template <typename T>                                   \
-  struct InitTensor<T, RANK> {                            \
-    static Eigen::Tensor<T, RANK, Eigen::RowMajor> Get(   \
-        const std::array<ssize_t, RANK>& shape) {         \
-      Eigen::Tensor<T, RANK, Eigen::RowMajor> dst UNROLL; \
-      return dst;                                         \
-    }                                                     \
-  };
-
-template <typename T>
-struct InitTensor<T, 0> {
-  static Eigen::Tensor<T, 0, Eigen::RowMajor> Get(
-      const std::array<ssize_t, 0>&) {
-    return Eigen::Tensor<T, 0, Eigen::RowMajor>();
-  }
-};
-
-INIT_TENSOR(1, (shape[0]));
-INIT_TENSOR(2, (shape[0], shape[1]));
-INIT_TENSOR(3, (shape[0], shape[1], shape[2]));
-
 struct EigenSpec {
   explicit EigenSpec(SmallVector<int32_t, 2> dims_to_reduce)
       : dims_to_reduce(std::move(dims_to_reduce)) {}
@@ -206,12 +175,12 @@ void RunReductionEigenBenchmark(::testing::benchmark::State& state,
   Eigen::Tensor<T, INPUT_RANK, Eigen::RowMajor> lhs =
       GenRandomTensor<T, INPUT_RANK>(input_shape);
 
-  Eigen::DefaultDevice singleThreadedDevice;
+  Eigen::DefaultDevice single_threaded_device;
   Eigen::ThreadPool thread_pool(num_threads);
-  llvm::Optional<Eigen::ThreadPoolDevice> multiThreadedDevice;
-  if (num_threads > 0) multiThreadedDevice.emplace(&thread_pool, num_threads);
+  llvm::Optional<Eigen::ThreadPoolDevice> multi_threaded_device;
+  if (num_threads > 0) multi_threaded_device.emplace(&thread_pool, num_threads);
 
-  auto dst = InitTensor<T, OUTPUT_RANK>::Get(output_shape);
+  auto dst = InitEigenTensor<T, OUTPUT_RANK>::Get(output_shape);
   dst.setZero();
 
   for (auto s : state) {
@@ -219,12 +188,12 @@ void RunReductionEigenBenchmark(::testing::benchmark::State& state,
 
     using Dst = decltype(dst);
     using Expr = decltype(expr);
-    if (multiThreadedDevice.hasValue()) {
+    if (multi_threaded_device.hasValue()) {
       ExecuteAssignOp</*vectorize=*/true, Eigen::ThreadPoolDevice, Dst,
-                      Expr>::run(*multiThreadedDevice, dst, expr);
+                      Expr>::run(*multi_threaded_device, dst, expr);
     } else {
       ExecuteAssignOp</*vectorize=*/true, Eigen::DefaultDevice, Dst, Expr>::run(
-          singleThreadedDevice, dst, expr);
+          single_threaded_device, dst, expr);
     }
   }
 

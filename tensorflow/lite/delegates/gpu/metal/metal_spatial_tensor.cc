@@ -465,6 +465,51 @@ absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
   return absl::OkStatus();
 }
 
+absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer,
+                                             const BHWC& shape,
+                                             const TensorDescriptor& descriptor,
+                                             int row_bytes_alignment,
+                                             MetalSpatialTensor* result) {
+  const BHWDC shape5D = BHWDC(shape.b, shape.h, shape.w, 1, shape.c);
+  return CreateSharedImage2DBufferTensor(buffer, shape5D, descriptor,
+                                         row_bytes_alignment, result);
+}
+
+absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer,
+                                             const BHWDC& shape,
+                                             const TensorDescriptor& descriptor,
+                                             int row_bytes_alignment,
+                                             MetalSpatialTensor* result) {
+  const int width = shape.b * shape.w * shape.d;
+  const int height = shape.h * DivideRoundUp(shape.c, 4);
+  const int channels =
+      descriptor.storage_type == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c
+                                                                      : 4;
+  MTLTextureDescriptor* texture_desc = [[MTLTextureDescriptor alloc] init];
+  texture_desc.width = width;
+  texture_desc.height = height;
+  texture_desc.depth = 1;
+  texture_desc.textureType = MTLTextureType2D;
+  texture_desc.arrayLength = 1;
+  texture_desc.mipmapLevelCount = 1;
+  texture_desc.sampleCount = 1;
+  texture_desc.pixelFormat =
+      DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+  texture_desc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+  texture_desc.storageMode = buffer.storageMode;
+  const size_t bytes_per_row = width * channels * SizeOf(descriptor.data_type);
+  id<MTLTexture> texture_buffer = [buffer
+      newTextureWithDescriptor:texture_desc
+                        offset:0
+                   bytesPerRow:AlignByN(bytes_per_row, row_bytes_alignment)];
+  if (!texture_buffer) {
+    return absl::UnknownError("Failed to allocate id<MTLTexture>");
+  }
+  *result = MetalSpatialTensor(buffer, texture_buffer, false, true, shape,
+                               descriptor);
+  return absl::OkStatus();
+}
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite

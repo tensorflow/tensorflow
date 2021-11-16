@@ -52,6 +52,8 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
   CancellationManager* cm = cancellation_manager_;
   CancellationToken token = 0;
   auto call_opts = std::make_shared<CallOptions>();
+  call_opts->SetTimeout(
+      eager_context_->session_options().config.operation_timeout_in_ms());
   if (cm != nullptr) {
     token = cm->get_cancellation_token();
     const bool already_cancelled = !cm->RegisterCallback(

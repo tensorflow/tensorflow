@@ -20,8 +20,16 @@ include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_base.td"
 
 def ConvolutionBackendConfigAttr : StructAttr<"ConvolutionBackendConfig",
                                           LHLO_GPU_Dialect, [
+   // These six fields are a TableGen transliteration of AlgorithmProto.
    StructFieldAttr<"algorithm", I64Attr>,
    StructFieldAttr<"tensor_ops_enabled", BoolAttr>,
+   // The next two fields are aligned arrays of knob IDs and values to
+   // represent the knob_id -> knob_value map.
+   StructFieldAttr<"knob_ids", I64ArrayAttr>,
+   StructFieldAttr<"knob_values", I64ArrayAttr>,
+   StructFieldAttr<"is_cudnn_frontend", BoolAttr>,
+   StructFieldAttr<"workspace_size", I64Attr>,
+
    // The following 3 attributes describe the layout as an array of integers
    // that list the dimensions in minor-to-major order similar to XLA's layout
    // representation. operand_0_layout and operand_0_layout described the layout

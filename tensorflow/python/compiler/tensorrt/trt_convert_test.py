@@ -379,11 +379,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     return trt_convert.TrtGraphConverterV2(
         input_saved_model_dir=input_saved_model_dir,
         input_saved_model_signature_key=input_saved_model_signature_key,
-        conversion_params=trt_convert.DEFAULT_TRT_CONVERSION_PARAMS._replace(
-            max_workspace_size_bytes=max_workspace_size_bytes,
-            precision_mode=precision_mode,
-            maximum_cached_engines=maximum_cached_engines,
-            allow_build_at_runtime=allow_build_at_runtime))
+        max_workspace_size_bytes=max_workspace_size_bytes,
+        precision_mode=precision_mode,
+        maximum_cached_engines=maximum_cached_engines,
+        allow_build_at_runtime=allow_build_at_runtime)
 
   def _CheckTrtOps(self, concrete_func, check_fn=None, num_engines=1):
     graph_def = concrete_func.graph.as_graph_def()
@@ -518,8 +517,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     conv_params = trt_convert.TrtConversionParams(minimum_segment_size=2)
     converter = trt_convert.TrtGraphConverterV2(
         input_saved_model_dir=input_saved_model_dir,
-        conversion_params=conv_params,
-        use_dynamic_shape=True)
+        use_dynamic_shape=True,
+        **conv_params._asdict())
     converter.convert()
 
     # Build the graph with the input generator. This runs the TRTEngineOp native

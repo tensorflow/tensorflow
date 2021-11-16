@@ -55,8 +55,8 @@ class BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
 
     if (result_rank == 0) {
       Value buffer = rewriter.create<memref::AllocOp>(loc, memref_type);
-      Value constant =
-          rewriter.create<arith::ConstantOp>(loc, elements_attr.getValue({}));
+      Value constant = rewriter.create<arith::ConstantOp>(
+          loc, elements_attr.getValues<Attribute>()[0]);
       rewriter.create<memref::StoreOp>(loc, constant, buffer);
       rewriter.replaceOp(op, {buffer});
       return success();
@@ -67,8 +67,8 @@ class BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
     bool all_same_elems = elements_attr.isSplat();
     Value value;
     if (all_same_elems)
-      value = rewriter.create<arith::ConstantOp>(loc,
-                                                 elements_attr.getSplatValue());
+      value = rewriter.create<arith::ConstantOp>(
+          loc, elements_attr.getSplatValue<mlir::Attribute>());
     for (auto en : llvm::enumerate(elements_attr.getValues<Attribute>())) {
       if (!all_same_elems)
         value = rewriter.create<arith::ConstantOp>(loc, en.value());

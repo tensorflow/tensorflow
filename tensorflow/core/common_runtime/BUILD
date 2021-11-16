@@ -654,6 +654,22 @@ cc_library(
 )
 
 cc_library(
+    name = "forward_type_inference",
+    srcs = ["forward_type_inference.cc"],
+    hdrs = ["forward_type_inference.h"],
+    copts = tf_copts(),
+    visibility = default_package_visibility,
+    deps = [
+        ":optimization_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
+cc_library(
     name = "single_threaded_executor",
     srcs = ["single_threaded_executor.cc"],
     hdrs = ["single_threaded_executor.h"],
@@ -665,6 +681,31 @@ cc_library(
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "forward_type_inference_test",
+    size = "small",
+    srcs = ["forward_type_inference_test.cc"],
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":forward_type_inference",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_cc_test(
@@ -734,6 +775,7 @@ cc_library(
         ":device_set",
         ":executor",
         ":executor_factory",
+        ":forward_type_inference",
         ":function_body",
         ":function_def_utils",
         ":function_optimization_registry",
@@ -2012,6 +2054,7 @@ cc_library(
         ":cost_measurement_registry",
         ":request_cost_accessor",
         ":request_cost_accessor_registry",
+        "//tensorflow/core/platform:str_util",
     ],
 )
 

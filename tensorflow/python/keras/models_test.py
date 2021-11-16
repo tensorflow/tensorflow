@@ -60,7 +60,6 @@ def _get_layers(input_shape=(4,), add_input_layer=False):
     model_layers = [keras.layers.Dense(4)]
 
   model_layers += [
-      keras.layers.BatchNormalization(),
       keras.layers.Dropout(0.5),
       keras.layers.Dense(4)]
 
@@ -122,9 +121,6 @@ class TestModelCloning(keras_parameterized.TestCase):
                                           recursive=False))[0],
             keras.layers.InputLayer), add_input_layer)
     self.assertEqual(new_model._is_graph_network, model._is_graph_network)
-    if input_shape and not ops.executing_eagerly_outside_functions():
-      # update ops from batch norm needs to be included
-      self.assertGreaterEqual(len(new_model.updates), 2)
 
     # On top of new tensor  -- clone model should always have an InputLayer.
     input_a = keras.Input(shape=(4,))
@@ -170,7 +166,6 @@ class TestModelCloning(keras_parameterized.TestCase):
 
     x_a = dense_1(input_a)
     x_a = keras.layers.Dropout(0.5)(x_a)
-    x_a = keras.layers.BatchNormalization()(x_a)
     x_b = dense_1(input_b)
     x_a = dense_2(x_a)
     outputs = keras.layers.add([x_a, x_b])
@@ -178,8 +173,6 @@ class TestModelCloning(keras_parameterized.TestCase):
 
     # With placeholder creation
     new_model = clone_fn(model)
-    if not ops.executing_eagerly_outside_functions():
-      self.assertGreaterEqual(len(new_model.updates), 2)
     new_model.compile(
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',
@@ -191,8 +184,6 @@ class TestModelCloning(keras_parameterized.TestCase):
     input_b = keras.Input(shape=(4,), name='b')
     new_model = keras.models.clone_model(
         model, input_tensors=[input_a, input_b])
-    if not ops.executing_eagerly_outside_functions():
-      self.assertLen(new_model.updates, 2)
     new_model.compile(
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',
@@ -206,62 +197,11 @@ class TestModelCloning(keras_parameterized.TestCase):
       input_a = keras.backend.variable(val_a)
       input_b = keras.backend.variable(val_b)
       new_model = clone_fn(model, input_tensors=[input_a, input_b])
-      self.assertGreaterEqual(len(new_model.updates), 2)
       new_model.compile(
           testing_utils.get_v2_optimizer('rmsprop'),
           'mse',
           run_eagerly=testing_utils.should_run_eagerly())
       new_model.train_on_batch(None, val_out)
-
-  @keras_parameterized.run_all_keras_modes
-  @parameterized.named_parameters([
-      {'testcase_name': 'clone_weights', 'share_weights': False},
-      {'testcase_name': 'share_weights', 'share_weights': True},
-  ])
-  def test_clone_functional_with_masking(self, share_weights):
-    if share_weights:
-      clone_fn = functools.partial(
-          keras.models._clone_functional_model, layer_fn=models.share_weights)
-    else:
-      clone_fn = keras.models.clone_model
-
-    x = np.array([[[1.], [1.]], [[0.], [0.]]])
-    inputs = keras.Input((2, 1))
-    outputs = keras.layers.Masking(mask_value=0)(inputs)
-    outputs = keras.layers.TimeDistributed(
-        keras.layers.Dense(1, kernel_initializer='one'))(outputs)
-    model = keras.Model(inputs, outputs)
-
-    model = clone_fn(model)
-    model.compile(
-        loss='mse',
-        optimizer=testing_utils.get_v2_optimizer('adam'),
-        run_eagerly=testing_utils.should_run_eagerly())
-    y = np.array([[[1], [1]], [[1], [1]]])
-    loss = model.train_on_batch(x, y)
-    self.assertEqual(float(loss), 0.)
-
-  def test_clone_rnn(self):
-    # Test cloning a model with multiple cells in an RNN.  This exercises a
-    # few "fancier" features such as the `Bidrectional` wrapper and
-    # `StackedRNNCells` under the hood.
-    inputs = keras.Input(shape=(3, 3))
-    cells = [
-        keras.layers.LSTMCell(
-            units=32,
-            enable_caching_device=True,
-            implementation=2,
-            activation='relu')]
-    rnn = keras.layers.RNN(cells, return_sequences=True)
-    outputs = keras.layers.Bidirectional(rnn)(inputs)
-    outputs = keras.layers.Dense(
-        12, activation='softmax', name='scores')(outputs)
-    model = keras.Model(inputs=inputs, outputs=outputs)
-    model.compile(
-        loss=keras.losses.CategoricalCrossentropy(),
-        optimizer=keras.optimizer_v2.rmsprop.RMSprop(lr=0.01),
-        metrics=['accuracy'])
-    keras.models.clone_model(model)
 
   def test_model_cloning_invalid_use_cases(self):
     seq_model = keras.models.Sequential()

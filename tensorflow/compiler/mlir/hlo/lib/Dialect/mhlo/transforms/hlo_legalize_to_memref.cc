@@ -233,7 +233,11 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
         result_dim_size = b->create<arith::IndexCastOp>(loc, result_dim_size,
                                                         b->getIndexType());
       }
-      sizes.push_back(result_dim_size);
+      if (result_type.isDynamicDim(i)) {
+        sizes.push_back(result_dim_size);
+      } else {
+        sizes.push_back(b->getIndexAttr(result_type.getDimSize(i)));
+      }
 
       auto it = output_to_input_dim.find(i);
       // If the rank of the output is greater than the rank of the input, i.e.
@@ -257,13 +261,11 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
       strides.push_back(select);
     }
 
-    // Type-erased memref type with static rank, dynamic sizes and strides.
+    // Type-erased memref type with static rank and dynamic strides.
     SmallVector<int64_t, 2> dynamic_layout(result_rank,
                                            MemRefType::kDynamicStrideOrOffset);
-    SmallVector<int64_t, 2> dynamic_shape(result_rank,
-                                          MemRefType::kDynamicSize);
     auto type_erased_memref_type = MemRefType::get(
-        dynamic_shape, operand_type.getElementType(),
+        result_type.getShape(), operand_type.getElementType(),
         makeStridedLinearLayoutMap(dynamic_layout,
                                    /*offset=*/0, b->getContext()));
 
@@ -279,6 +281,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     auto loc = op.getLoc();
     SmallVector<Value, 4> dynamic_operands;
     for (int i = 0; i < result_type.getRank(); ++i) {
+      if (!result_type.isDynamicDim(i)) continue;
       auto index = b->createOrFold<arith::ConstantIndexOp>(loc, i);
       Value size =
           b->create<tensor::ExtractOp>(loc, op.output_dimensions(), index);

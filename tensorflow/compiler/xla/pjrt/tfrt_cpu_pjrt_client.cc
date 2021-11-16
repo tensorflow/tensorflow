@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
@@ -370,6 +371,16 @@ StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
       executable->SetUpDonation(options.parameter_is_tupled_arguments));
 
   return std::unique_ptr<PjRtExecutable>(std::move(executable));
+}
+
+StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
+    mlir::ModuleOp module, CompileOptions options) {
+  XlaComputation xla_computation;
+  TF_RETURN_IF_ERROR(MlirToXlaComputation(
+      module, xla_computation,
+      /*use_tuple_args=*/options.parameter_is_tupled_arguments,
+      /*return_tuple=*/false));
+  return Compile(xla_computation, options);
 }
 
 StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBuffer(

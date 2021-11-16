@@ -253,8 +253,7 @@ static std::string GetOpDescriptionForDebug(Operation* inst) {
     for (auto& named_attr : inst->getAttrDictionary()) {
       os << (!first ? ", " : "");
       first = false;
-      named_attr.first.print(os);
-      os << " = ";
+      os << named_attr.first.getValue() << " = ";
       if (auto element_attr = named_attr.second.dyn_cast<ElementsAttr>()) {
         if (element_attr.getNumElements() <= kLargeElementsAttr) {
           element_attr.print(os);

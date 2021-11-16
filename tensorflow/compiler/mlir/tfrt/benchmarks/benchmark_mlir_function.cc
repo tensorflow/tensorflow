@@ -97,9 +97,8 @@ void RunMlirBenchmark(::testing::benchmark::State& state,
   CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
   // Placeholders for returned values.
-  llvm::SmallVector<RCReference<AsyncValue>> result_values;
-  for (int i = 0; i < (*executable)->signature().num_results(); ++i)
-    result_values.emplace_back();
+  unsigned num_results = (*executable)->num_results();
+  llvm::SmallVector<RCReference<AsyncValue>> result_values(num_results);
   RemainingResults results(result_values);
 
   // Free memory owned by the returned memrefs.

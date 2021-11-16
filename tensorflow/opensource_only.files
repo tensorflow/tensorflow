@@ -8,6 +8,7 @@ tensorflow/compiler/mlir/glob_lit_test.bzl
 tensorflow/compiler/mlir/hlo/WORKSPACE
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h
 tensorflow/core/platform/default/build_config/BUILD
+tensorflow/core/platform/default/experimental_cc_shared_library.bzl
 tensorflow/core/tfrt/tpu/tpu_resources.h
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h
 tensorflow/go/BUILD
@@ -21,6 +22,7 @@ tensorflow/lite/core/shims/c/c_api.h
 tensorflow/lite/core/shims/c/c_api_experimental.h
 tensorflow/lite/core/shims/c/common.h
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h
+tensorflow/lite/core/shims/c/experimental/acceleration/configuration/nnapi_plugin.h
 tensorflow/lite/core/shims/c/shims_test_util.cc
 tensorflow/lite/core/shims/c/shims_test_util.h
 tensorflow/lite/core/shims/cc/create_op_resolver.h
@@ -34,6 +36,7 @@ tensorflow/lite/core/shims/cc/model_builder.h
 tensorflow/lite/core/shims/cc/shims_test_util.h
 tensorflow/lite/core/shims/cc/tools/verifier.h
 tensorflow/lite/core/shims/cc_library_with_tflite.bzl
+tensorflow/lite/core/shims/experimental/acceleration/configuration/c/nnapi_plugin.h
 tensorflow/lite/core/shims/jni/jni_utils.cc
 tensorflow/lite/core/shims/jni/jni_utils.h
 tensorflow/lite/delegates/coreml/builders/BUILD
@@ -194,7 +197,6 @@ third_party/icu/udata.patch
 third_party/jsoncpp.BUILD
 third_party/libxsmm.BUILD
 third_party/linenoise.BUILD
-third_party/llvm/BUILD
 third_party/llvm_openmp/BUILD
 third_party/llvm_openmp/cmake_vars.bzl
 third_party/llvm_openmp/expand_cmake_vars.py

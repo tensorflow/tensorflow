@@ -267,9 +267,12 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   auto no_input = rewriter.create<ConstantOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
   auto fc_op = rewriter.create<FullyConnectedOp>(
-      op->getLoc(), ArrayRef<Type>{output_type}, lhs, rhs, no_input,
-      rewriter.getStringAttr("NONE"), rewriter.getStringAttr("DEFAULT"),
-      rewriter.getBoolAttr(false));
+      op->getLoc(), ArrayRef<Type>{output_type},
+      /*input=*/lhs, /*filter=*/rhs, /*bias=*/no_input,
+      /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
+      /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+      /*keep_num_dims=*/rewriter.getBoolAttr(false),
+      /*asymmetric_quantize_inputs=*/mlir::BoolAttr());
   rewriter.replaceOp(op, {fc_op.getResult(0)});
   return success();
 }

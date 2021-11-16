@@ -148,7 +148,7 @@ Attribute GetInitValueAsConst(Value init) {
   if (!matchPattern(init, m_Constant(&attr))) return {};
   auto type = attr.getType().dyn_cast<ShapedType>();
   if (!type || type.getRank() != 0) return {};
-  return attr.getValue({});
+  return attr.getValues<Attribute>()[0];
 }
 
 /// Returns a permutation AffineMap that puts all reduction dimensions to the
@@ -1383,8 +1383,8 @@ class ConstConverterBuffer : public OpConversionPattern<lmhlo::ConstOp> {
     Location loc = const_op.getLoc();
     auto value_attr = const_op.value().cast<DenseElementsAttr>();
     if (value_attr.getType().getRank() != 0) return failure();
-    Value std_scalar_const =
-        rewriter.create<mlir::arith::ConstantOp>(loc, value_attr.getValue({}));
+    Value std_scalar_const = rewriter.create<mlir::arith::ConstantOp>(
+        loc, value_attr.getValues<Attribute>()[0]);
     rewriter.create<mlir::AffineStoreOp>(loc, std_scalar_const,
                                          const_op.getOperand(), llvm::None);
     rewriter.eraseOp(const_op);
@@ -1565,9 +1565,9 @@ class SliceConverter : public OpConversionPattern<OpTy> {
 
     SmallVector<OpFoldResult, 3> offsets, sizes, strides;
     for (int i = 0, e = arg_type.getRank(); i < e; ++i) {
-      auto start = slice_op.start_indices().template getValue<int64_t>(i);
-      auto limit = slice_op.limit_indices().template getValue<int64_t>(i);
-      auto stride = slice_op.strides().template getValue<int64_t>(i);
+      auto start = slice_op.start_indices().template getValues<int64_t>()[i];
+      auto limit = slice_op.limit_indices().template getValues<int64_t>()[i];
+      auto stride = slice_op.strides().template getValues<int64_t>()[i];
       offsets.push_back(rewriter.getI64IntegerAttr(start));
       // Say that there are k elements in total, we have condition:
       //   start + (k - 1) * strides <= limit - 1
@@ -2336,18 +2336,19 @@ struct ReduceWindowOpOnTensorsConversion
     int last_dim = rank - 1;
     SmallVector<int64_t, 2> fake_window_shapes;
     for (int i = 1; i < last_dim; ++i) {
-      fake_window_shapes.push_back(op.window_dimensions().getValue<int64_t>(i));
+      fake_window_shapes.push_back(
+          op.window_dimensions().getValues<int64_t>()[i]);
     }
 
     if (op.window_strides() &&
-        (op.window_strides().getValue().getValue<int64_t>(0) != 1 ||
-         op.window_strides().getValue().getValue<int64_t>(last_dim) != 1)) {
+        (op.window_strides().getValue().getValues<int64_t>()[0] != 1 ||
+         op.window_strides().getValue().getValues<int64_t>()[last_dim] != 1)) {
       return rewriter.notifyMatchFailure(
           op, "expected window_strides to be [1,x,y,(z),1]");
     }
     if (op.window_dimensions() &&
-        (op.window_dimensions().getValue<int64_t>(0) != 1 ||
-         op.window_dimensions().getValue<int64_t>(last_dim) != 1)) {
+        (op.window_dimensions().getValues<int64_t>()[0] != 1 ||
+         op.window_dimensions().getValues<int64_t>()[last_dim] != 1)) {
       return rewriter.notifyMatchFailure(
           op, "expected window_dimensions to be [1,x,y,(z),1]");
     }
@@ -2356,7 +2357,7 @@ struct ReduceWindowOpOnTensorsConversion
     SmallVector<int64_t> vec;
     if (op.window_stridesAttr()) {
       for (int i = 1; i < last_dim; ++i) {
-        vec.push_back(op.window_strides().getValue().getValue<int64_t>(i));
+        vec.push_back(op.window_strides().getValue().getValues<int64_t>()[i]);
       }
     } else {
       vec.assign(rank - 2, 1);
@@ -2367,7 +2368,7 @@ struct ReduceWindowOpOnTensorsConversion
     vec.clear();
     if (op.window_dilations()) {
       for (int i = 1; i < last_dim; ++i) {
-        vec.push_back(op.window_dilations().getValue().getValue<int64_t>(i));
+        vec.push_back(op.window_dilations().getValue().getValues<int64_t>()[i]);
       }
     } else {
       vec.assign(rank - 2, 1);
@@ -2403,9 +2404,9 @@ struct ReduceWindowOpOnTensorsConversion
         } else {
           auto i = en.index() - 1;
           auto stride =
-              strides.cast<DenseIntElementsAttr>().getValue<int64_t>(i);
+              strides.cast<DenseIntElementsAttr>().getValues<int64_t>()[i];
           auto dilation =
-              dilations.cast<DenseIntElementsAttr>().getValue<int64_t>(i);
+              dilations.cast<DenseIntElementsAttr>().getValues<int64_t>()[i];
           // let j = i * stride
           // output[i] = reduce( input[j, j + window_size * dilation) )
           Value offset = rewriter.create<arith::ConstantIndexOp>(

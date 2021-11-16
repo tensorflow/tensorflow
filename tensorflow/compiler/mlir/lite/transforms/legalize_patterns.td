@@ -469,8 +469,8 @@ def IsRankZeroAttr
   : CPred<"$_self.cast<DenseElementsAttr>().getType().getRank() == 0">;
 
 def HasValueZero
-  : CPred<"$_self.cast<DenseElementsAttr>().getSplatValue()."
-          "cast<::mlir::IntegerAttr>().getInt() == 0">;
+  : CPred<"$_self.cast<DenseElementsAttr>()."
+          "getSplatValue<::mlir::IntegerAttr>().getInt() == 0">;
 
 // TFLite only supports MatrixSetDiag ops with scalar zero k attribute.
 def IsSupportedByTFLiteMatrixSetDiag

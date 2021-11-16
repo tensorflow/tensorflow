@@ -2239,6 +2239,11 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
     pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   }
 
+  // The optimization since the last device assignment may remove device
+  // information, so we assign default devices again.
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::TF::CreateSimpleTFDeviceAssignmentPass(options.default_device));
+
   pm.addPass(CreateLowerTFSavedModelPass(options.hoist_invariant_ops));
 }
 

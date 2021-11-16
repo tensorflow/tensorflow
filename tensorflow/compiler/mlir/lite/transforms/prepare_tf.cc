@@ -574,9 +574,10 @@ struct ConvertTFStridedSlice : public RewritePattern {
     int index = 0;
     int new_index = 0;
     while (((ellipsis_mask >> index) & 1) == 0) {
-      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
-      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
-      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
+      padded_begin.push_back(begin_dense_elem_attr.getValues<int32_t>()[index]);
+      padded_end.push_back(end_dense_elem_attr.getValues<int32_t>()[index]);
+      padded_stride.push_back(
+          stride_dense_elem_attr.getValues<int32_t>()[index]);
       if ((begin_mask >> index) & 1) revised_begin_mask |= (1 << new_index);
       if ((end_mask >> index) & 1) revised_end_mask |= (1 << new_index);
       if ((shrink_axis_mask >> index) & 1)
@@ -605,9 +606,10 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     // After the ellipsis.
     for (; index < begin_shape[0];) {
-      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
-      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
-      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
+      padded_begin.push_back(begin_dense_elem_attr.getValues<int32_t>()[index]);
+      padded_end.push_back(end_dense_elem_attr.getValues<int32_t>()[index]);
+      padded_stride.push_back(
+          stride_dense_elem_attr.getValues<int32_t>()[index]);
 
       if ((begin_mask >> index) & 1) revised_begin_mask |= (1 << new_index);
       if ((end_mask >> index) & 1) revised_end_mask |= (1 << new_index);

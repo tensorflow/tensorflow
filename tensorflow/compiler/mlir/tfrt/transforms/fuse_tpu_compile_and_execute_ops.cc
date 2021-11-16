@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -61,27 +63,26 @@ class FuseTpuCompileAndExecutePass
         return;
       }
 
-      builder.setInsertionPointAfter(exec_op);
+      builder.setInsertionPointAfter(compile_op);
+      llvm::SmallVector<mlir::Type, 4> output_types;
+      output_types.push_back(mlir::RankedTensorType::get(
+          {3}, builder.getType<mlir::TF::StringType>()));
+      output_types.insert(output_types.end(), exec_op.getResultTypes().begin(),
+                          exec_op.getResultTypes().end());
       auto compile_and_execute_op =
           builder.create<mlir::TF::TPUCompileMlirAndExecuteOp>(
-              exec_op.getLoc(), exec_op.getResultTypes(), exec_op.args(),
+              exec_op.getLoc(), output_types, exec_op.args(),
               compile_op.mlir_module(), compile_op.metadata());
 
-      exec_op.replaceAllUsesWith(compile_and_execute_op);
+      exec_op.replaceAllUsesWith(compile_and_execute_op.results());
+      for (auto program_result : compile_op.program()) {
+        program_result.replaceAllUsesWith(
+            compile_and_execute_op.rendezvous_key_base());
+      }
 
       assert(exec_op.use_empty());
       exec_op.erase();
-      // TODO(b/199536923): Once outside compilation is supported for
-      // TPUCompileMlirAndExecuteOp, this should never happen, and we can change
-      // this check into an assert.
-      if (!compile_op.use_empty()) {
-        compile_op.emitOpError(
-            "Some op other than TPUExecuteOp is taking _TPUCompileMlirOp as "
-            "input. This is probably due to outside compilation being used in "
-            "the model.");
-        signalPassFailure();
-        return;
-      }
+      assert(compile_op.use_empty());
       compile_op.erase();
     }
   }

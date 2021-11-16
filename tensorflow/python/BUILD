@@ -521,6 +521,7 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
         "//tensorflow/python/kernel_tests/v1_compat_tests:__pkg__",
         "//tensorflow/python/training:__pkg__",
+        "//tensorflow/security/fuzzing/google:__pkg__",
     ],
     deps = [
         "//tensorflow/c/kernels:bitcast_op_lib",
@@ -765,12 +766,16 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
         "//tensorflow/python/kernel_tests/sparse_ops:__pkg__",
         "//tensorflow/python/tools:__pkg__",
+        "//tensorflow/security/fuzzing/google:__pkg__",
     ],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "count_ops_gen",
-    visibility = ["//learning/brain/python/ops:__pkg__"],
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/security/fuzzing/google:__pkg__",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -2864,7 +2869,6 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "no_cuda_asan",  # TODO(b/171511582): re-enable.
-        "noasan",  # TODO(b/199895990):re-enable
     ],
     deps = [
         ":array_ops",
@@ -3231,7 +3235,6 @@ pywrap_tensorflow_macro(
         ":safe_ptr",
         ":py_exception_registry",
         "//tensorflow/python/lib/core:py_func_lib",
-        "//tensorflow/python/lib/io:py_record_reader_lib",
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
@@ -3990,11 +3993,13 @@ tf_python_pybind_extension(
         "//tensorflow/core/lib/llvm_rtti",
     ] + if_static(
         extra_deps = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
@@ -4099,11 +4104,6 @@ alias(
 alias(
     name = "py_util",
     actual = "//tensorflow/python/lib/core:py_util",
-)
-
-alias(
-    name = "py_record_reader_lib",
-    actual = "//tensorflow/python/lib/io:py_record_reader_lib",
 )
 
 alias(

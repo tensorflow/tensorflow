@@ -128,7 +128,7 @@ class FromConstructor(TestModels):
             sess, sess.graph_def, ['add']))
 
     # Convert model and ensure model is not None.
-    log = io.BytesIO() if six.PY2 else io.StringIO()
+    log = io.StringIO()
     handler = logging.StreamHandler(log)
     logging.root.addHandler(handler)
     converter = lite.TFLiteConverter(frozen_graph_def, [in_tensor],
@@ -2106,7 +2106,7 @@ class FromSavedModelTest(TestModels):
   def testOldConverterWarning(self):
     """Test if the warning message when using TOCO is logged."""
     saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
-    log = io.BytesIO() if six.PY2 else io.StringIO()
+    log = io.StringIO()
     handler = logging.StreamHandler(log)
     logging.root.addHandler(handler)
     warning_message = 'Please consider switching to the new converter'

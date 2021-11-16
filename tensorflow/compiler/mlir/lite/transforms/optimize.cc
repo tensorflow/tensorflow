@@ -270,8 +270,8 @@ bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
   // Checks if `begin` is all 0s, and `size[i]` is equal to either -1 or
   // `input.shape[i]`.
   for (uint64_t i = 0; i < rank; ++i) {
-    if (begin_attr.getValue<APInt>({i}).getSExtValue() != 0) return false;
-    int64_t si = size_attr.getValue<APInt>({i}).getSExtValue();
+    if (begin_attr.getValues<APInt>()[i].getSExtValue() != 0) return false;
+    int64_t si = size_attr.getValues<APInt>()[i].getSExtValue();
     if (si != -1 && si != input_ty.getDimSize(i)) return false;
   }
 
@@ -361,9 +361,9 @@ static bool ShapeMatchesReduceWithKeepAxes(Value input,
   auto type_shape = type.getShape();
   for (uint64_t i = 0; i < type.getRank(); ++i) {
     if (axes_set.contains(i)) {
-      if (shape_attr.getValue<APInt>({i}) != 1) return false;
+      if (shape_attr.getValues<APInt>()[i] != 1) return false;
     } else {
-      if (shape_attr.getValue<APInt>({i}) != type_shape[i]) return false;
+      if (shape_attr.getValues<APInt>()[i] != type_shape[i]) return false;
     }
   }
   return true;
@@ -587,7 +587,8 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         /*fused_activation_function=*/
         rewriter.getStringAttr(add_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr(fc_op.weights_format()),
-        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()),
+        /*asymmetric_quantize_inputs=*/fc_op.asymmetric_quantize_inputsAttr());
     rewriter.replaceOp(add_op, fc.output());
 
     return success();
@@ -644,7 +645,8 @@ struct FuseAddAndFullyConnected
         /*bias=*/old_bias,
         /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
         /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
-        /*keep_num_dims=*/rewriter.getBoolAttr(true));
+        /*keep_num_dims=*/rewriter.getBoolAttr(true),
+        /*asymmetric_quantize_inputs=*/fc_op.asymmetric_quantize_inputsAttr());
 
     // Create the updated FC.
     auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
@@ -656,7 +658,8 @@ struct FuseAddAndFullyConnected
         /*fused_activation_function=*/
         rewriter.getStringAttr(fc_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
-        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()),
+        /*asymmetric_quantize_inputs=*/fc_op.asymmetric_quantize_inputsAttr());
     rewriter.replaceOp(fc_op.getOperation(), new_fc.output());
 
     return success();
@@ -712,7 +715,8 @@ struct FuseMulAndFullyConnected
         /*fused_activation_function=*/
         rewriter.getStringAttr(fc_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
-        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()),
+        /*asymmetric_quantize_inputs=*/fc_op.asymmetric_quantize_inputsAttr());
     rewriter.replaceOp(fc_op.getOperation(), new_fc.output());
 
     return success();
@@ -740,9 +744,14 @@ struct FuseFullyConnectedAndReluX : public OpRewritePattern<ReluXOp> {
     auto fc = rewriter.create<FullyConnectedOp>(
         FusedLoc::get(relu_op.getContext(),
                       {fully_connected_op.getLoc(), relu_op.getLoc()}),
-        relu_op.getType(), fully_connected_op.input(),
-        fully_connected_op.filter(), fully_connected_op.bias(),
-        new_activation_func, new_weights_format, new_keep_num_dims);
+        relu_op.getType(), /*input=*/fully_connected_op.input(),
+        /*filter=*/fully_connected_op.filter(),
+        /*bias=*/fully_connected_op.bias(),
+        /*fused_activation_function=*/new_activation_func,
+        /*weights_format=*/new_weights_format,
+        /*keep_num_dims=*/new_keep_num_dims,
+        /*asymmetric_quantize_inputs=*/
+        fully_connected_op.asymmetric_quantize_inputsAttr());
     rewriter.replaceOp(relu_op, fc.output());
 
     return success();
@@ -820,7 +829,8 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
         /*fused_activation_function=*/
         rewriter.getStringAttr(mul_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr(fc_op.weights_format()),
-        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()),
+        /*asymmetric_quantize_inputs=*/fc_op.asymmetric_quantize_inputsAttr());
     rewriter.replaceOp(mul_op, fc.output());
 
     return success();
@@ -1131,7 +1141,7 @@ struct ScalarizeSplatConstantForBroadcastableOps
     auto scalar_elements_attr = DenseElementsAttr::get(
         RankedTensorType::get({},
                               splat_elements_attr.getType().getElementType()),
-        splat_elements_attr.getSplatValue());
+        splat_elements_attr.getSplatValue<mlir::Attribute>());
 
     auto scalar_constant_op = rewriter.create<arith::ConstantOp>(
         splat_operand.getLoc(), scalar_elements_attr.getType(),
@@ -1332,7 +1342,7 @@ struct RemoveReshapeBeforeFullyConnected
   }
 };
 
-// Remove Reshape after FullyConnected when `keep_num_dims=false`, the Reshaoe
+// Remove Reshape after FullyConnected when `keep_num_dims=false`, the Reshape
 // does not alter the last dimension and it restores the batch dimensions
 // collapsed by the FullyConnected op due to `keep_num_dims=false`. For example,
 //
@@ -1378,10 +1388,15 @@ struct RemoveReshapeAfterFullyConnected
 
     llvm::SmallVector<Type, 1> output_type{reshape_op.getType()};
     rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
-        reshape_op, output_type, fully_connected_op.input(),
-        fully_connected_op.filter(), fully_connected_op.bias(),
+        reshape_op, output_type, /*input=*/fully_connected_op.input(),
+        /*filter=*/fully_connected_op.filter(),
+        /*bias=*/fully_connected_op.bias(),
+        /*fused_activation_function=*/
         fully_connected_op.fused_activation_function(),
-        fully_connected_op.weights_format(), /*keep_num_dims=*/true);
+        /*weights_format=*/fully_connected_op.weights_format(),
+        /*keep_num_dims=*/true,
+        /*asymmetric_quantize_inputs=*/
+        fully_connected_op.asymmetric_quantize_inputsAttr());
     return success();
   }
 };

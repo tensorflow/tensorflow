@@ -378,6 +378,9 @@ tf_kernel_library(
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "gpu_op_ones_like.cc",
     ]),
+    copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
@@ -596,6 +599,7 @@ tf_cuda_cc_test(
     shard_count = 20,
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
+        "no_rocm",  # failed since 7de9cf4
     ],
     deps = [
         ":base_binary_ops_test",
@@ -1432,6 +1436,14 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_select_v2_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
     max_supported_rank = 8,
     op = "select_v2",
     tile_size = "256",
@@ -1753,6 +1765,14 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_zeros_like_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
     op = "zeros_like",
     tile_size = "1024",
     types = [
@@ -1769,6 +1789,14 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_ones_like_kernels",
+    jit_types = [
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
     op = "ones_like",
     tile_size = "1024",
     types = [

@@ -15,7 +15,6 @@
 """Tests for summary V1 image op."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import dtypes
@@ -43,7 +42,7 @@ class SummaryV1ImageOpTest(test.TestCase):
         value {
           tag: "img/image/%d"
           image { height: %d width: %d colorspace: %d }
-        }""" % ((i,) + shape[1:]) for i in xrange(3))
+        }""" % ((i,) + shape[1:]) for i in range(3))
     self.assertProtoEquals(expected, image_summ)
 
   @test_util.run_deprecated_v1

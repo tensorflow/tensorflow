@@ -52,6 +52,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
       equality_fn(result, expected, rtol=1e-3)
 
   def testAdd(self):
+    if xla_test.test.is_built_with_rocm():
+      self.skipTest('Broken with rocm')
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
           xla.add,

@@ -196,8 +196,8 @@ class TfLiteDriver::DataExpectation {
       if (CompareTwoValues(computed, reference)) {
         good_output = false;
         if (verbose) {
-          std::cerr << "  index " << i << ": got " << computed
-                    << ", but expected " << reference << std::endl;
+          std::cerr << "  Tensor[" << tensor.name << "] index " << i << ": got "
+                    << computed << ", but expected " << reference << std::endl;
         }
       }
     }
@@ -713,8 +713,9 @@ bool TfLiteDriver::CheckResults() {
       // Do not invalidate anything here. Instead, simply output the
       // differences and return false. Invalidating would prevent all
       // subsequent invocations from running..
-      std::cerr << "There were errors in invocation '" << GetInvocationId()
-                << "', output tensor '" << id << "':" << std::endl;
+      std::cerr << "TfLiteDriver: There were errors in invocation '"
+                << GetInvocationId() << "', validating output tensor '" << id
+                << "':" << std::endl;
       p.second->Check(/*verbose=*/true, *tensor);
       success = false;
       SetOverallSuccess(false);
@@ -727,8 +728,10 @@ bool TfLiteDriver::CheckResults() {
       // Do not invalidate anything here. Instead, simply output the
       // differences and return false. Invalidating would prevent all
       // subsequent invocations from running..
-      std::cerr << "There were errors in invocation '" << GetInvocationId()
-                << "', output tensor '" << id << "':" << std::endl;
+      std::cerr << "TfLiteDriver: There were errors in invocation '"
+                << GetInvocationId()
+                << "', validating the shape of output tensor '" << id
+                << "':" << std::endl;
       p.second->CheckShape(/*verbose=*/true, *tensor);
       success = false;
       SetOverallSuccess(false);

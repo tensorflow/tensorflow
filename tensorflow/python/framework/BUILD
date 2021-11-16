@@ -646,11 +646,13 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:span",
     ] + if_static(
         extra_deps = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
@@ -728,11 +730,13 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:span",
     ] + if_static(
         extra_deps = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
@@ -850,11 +854,13 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:span",
     ] + if_static(
         extra_deps = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
         ],
         otherwise = [
+            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
@@ -1872,21 +1878,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "tensor_shape_div_test",
-    size = "small",
-    srcs = ["tensor_shape_div_test.py"],
-    main = "tensor_shape_div_test.py",
-    python_version = "PY3",
-    deps = [
-        ":for_generated_wrappers",
-        ":test_lib",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform_test",
-        "@six_archive//:six",
-    ],
-)
-
-tf_py_test(
     name = "tensor_util_test",
     size = "small",
     srcs = ["tensor_util_test.py"],
@@ -1945,6 +1936,7 @@ tf_py_test(
         "no_windows",
         "noasan",  # TODO(b/149948895): Re-enable.
         "nomsan",  # TODO(b/149948895): Re-enable.
+        "notap",  # TODO(b/206443120): Re-enable after flakiness resolved
         "notsan",  # TODO(b/149948895): Re-enable.
     ],
     deps = [

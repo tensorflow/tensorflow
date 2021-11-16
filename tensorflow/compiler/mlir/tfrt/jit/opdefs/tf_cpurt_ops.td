@@ -128,14 +128,21 @@ def FallbackExecuteOp : TF_CPURT_Op<"fallback.execute",
 def FallbackDebugExecuteOp : TF_CPURT_Op<"fallback.debug.execute"> {
   let summary = "cpurt debug-execute operation with a fallback runtime interop";
   let description = [{
-    Same as `tf_cpurt.fallback.execute`, except that this prints debug
-    information to standard output.
+    Same as `tf_cpurt.fallback.execute`, except that this kernel allows to pass
+    compilation options to the tf-cpurt-pipeline and optionally print
+    specialization-related debug information to standard output.
   }];
 
   let arguments = (ins
     SymbolRefAttr:$kernel,
     Variadic<TFTensorType>:$operands,
-    StrAttr:$device
+    StrAttr:$device,
+    // Print to standard output whenever compiled kernel specialized for the
+    // operands shapes or values.
+    BoolAttr:$debug_specializations,
+    // Compiler options for lowering from Tensorflow dialect to the dialects
+    // supported by the CPURT (see the `tf-cpurt-pipeline` options).
+    BoolAttr:$vectorize
   );
 
   let results = (outs

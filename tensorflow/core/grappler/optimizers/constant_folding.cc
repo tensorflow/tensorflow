@@ -1017,7 +1017,12 @@ bool ConstantFolding::IsFoldableUncached(
       }
     }
     for (const auto& output_prop : output_props) {
-      const PartialTensorShape output_shape(output_prop.shape());
+      PartialTensorShape output_shape;
+      if (!PartialTensorShape::BuildPartialTensorShape(output_prop.shape(),
+                                                       &output_shape)
+               .ok()) {
+        return false;
+      }
       if (output_shape.IsFullyDefined()) {
         const int64_t num_bytes =
             output_shape.num_elements() * DataTypeSize(output_prop.dtype());
@@ -1363,6 +1368,11 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                           input_tensor.ToString(),
                           " has a dtype of DT_INVALID."));
     }
+    if (IsRefType(raw_val.dtype())) {
+      return errors::InvalidArgument(
+          "Not allowed to construct a tensor with reference dtype, got ",
+          DataTypeString(raw_val.dtype()));
+    }
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
     if (!value->FromProto(raw_val)) {
       delete (value);
@@ -1684,15 +1694,21 @@ Status ConstantFolding::FoldGraph(
   return Status::OK();
 }
 
-bool ConstantFolding::IsSimplifiableReshape(
+Status ConstantFolding::IsSimplifiableReshape(
     const NodeDef& node, const GraphProperties& properties) const {
   if (!IsReshape(node)) {
-    return false;
+    return errors::Internal("Node ", node.name(), " is not a Reshape node");
   }
-  CHECK_LE(2, node.input_size());
+  if (2 > node.input_size()) {
+    return errors::Internal("Node ", node.name(),
+                            " must have at most 2 inputs but has ",
+                            node.input_size());
+  }
   const NodeDef* new_shape = node_map_->GetNode(node.input(1));
   if (!IsReallyConstant(*new_shape)) {
-    return false;
+    return errors::Internal("Node ", node.name(), " has shape ",
+                            new_shape->DebugString(),
+                            " which is not a constant");
   }
   TensorVector outputs;
   auto outputs_cleanup = gtl::MakeCleanup([&outputs] {
@@ -1703,22 +1719,29 @@ bool ConstantFolding::IsSimplifiableReshape(
 
   Status s = EvaluateNode(*new_shape, TensorVector(), &outputs);
   if (!s.ok()) {
-    return false;
+    return errors::Internal("Could not evaluate node ", node.name());
   }
-  CHECK_EQ(1, outputs.size());
+  if (outputs.size() != 1) {
+    return errors::Internal("Node ", node.name(),
+                            " must have exactly 1 output but has ",
+                            outputs.size());
+  }
 
   const std::vector<OpInfo::TensorProperties>& props =
       properties.GetInputProperties(node.name());
   if (props.empty()) {
-    return false;
+    return errors::Internal("Node ", node.name(), " has no properties");
   }
   const OpInfo::TensorProperties& prop = props[0];
   if (prop.dtype() == DT_INVALID) {
-    return false;
+    return errors::Internal("Node ", node.name(), " has property ",
+                            prop.DebugString(), " with invalid dtype");
   }
   const PartialTensorShape shape(prop.shape());
   if (!shape.IsFullyDefined()) {
-    return false;
+    return errors::Internal("Node ", node.name(), " has property ",
+                            prop.DebugString(), " with shape ",
+                            shape.DebugString(), " which is not fully defined");
   }
 
   PartialTensorShape new_dims;
@@ -1728,17 +1751,24 @@ bool ConstantFolding::IsSimplifiableReshape(
       int32_t dim = outputs[0]->flat<int32>()(i);
       shp.push_back(dim);
     }
-    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+    s = TensorShapeUtils::MakeShape(shp, &new_dims);
+    if (!s.ok()) return s;
   } else {
     std::vector<int64_t> shp;
     for (int i = 0; i < outputs[0]->NumElements(); ++i) {
       int64_t dim = outputs[0]->flat<int64_t>()(i);
       shp.push_back(dim);
     }
-    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+    s = TensorShapeUtils::MakeShape(shp, &new_dims);
+    if (!s.ok()) return s;
   }
 
-  return shape.IsCompatibleWith(new_dims);
+  if (!shape.IsCompatibleWith(new_dims)) {
+    return errors::Internal("Expected shape ", shape.DebugString(),
+                            "to be compatible with ", new_dims.DebugString());
+  }
+
+  return Status::OK();
 }
 
 #define IS_VALUE_CASE(DTYPE, VALUE)                   \
@@ -2925,7 +2955,7 @@ bool ConstantFolding::SimplifyReduction(GraphDef* optimized_graph,
 bool ConstantFolding::SimplifyReshape(const GraphProperties& properties,
                                       bool use_shape_info, NodeDef* node) {
   if (!use_shape_info || node->attr().count("T") == 0 ||
-      !IsSimplifiableReshape(*node, properties)) {
+      !IsSimplifiableReshape(*node, properties).ok()) {
     return false;
   }
   DataType output_type = node->attr().at("T").type();
@@ -3480,6 +3510,9 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
 
   NodeDef* mul_left_child = node_map_->GetNode(node->input(0));
   NodeDef* mul_right_child = node_map_->GetNode(node->input(1));
+  if (mul_left_child == nullptr || mul_right_child == nullptr) {
+    return false;
+  }
   // One child must be constant, and the second must be Conv op.
   const bool left_child_is_constant = IsReallyConstant(*mul_left_child);
   const bool right_child_is_constant = IsReallyConstant(*mul_right_child);

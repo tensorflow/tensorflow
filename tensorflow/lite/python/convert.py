@@ -449,6 +449,7 @@ def build_toco_flags(inference_type=dtypes.float32,
                      supported_backends=None,
                      disable_per_channel_quantization=False,
                      enable_mlir_dynamic_range_quantizer=False,
+                     tf_quantization_mode=None,
                      **_):
   """Build the TOCO flags object from params."""
   toco = _toco_flags_pb2.TocoFlags()
@@ -495,6 +496,8 @@ def build_toco_flags(inference_type=dtypes.float32,
     toco.supported_backends.extend(supported_backends)
   toco.disable_per_channel_quantization = disable_per_channel_quantization
   toco.enable_mlir_dynamic_range_quantizer = enable_mlir_dynamic_range_quantizer
+  if tf_quantization_mode:
+    toco.tf_quantization_mode = tf_quantization_mode
   return toco
 
 
@@ -533,7 +536,8 @@ def build_toco_convert_protos(input_tensors,
                               unfold_large_splat_constant=False,
                               supported_backends=None,
                               disable_per_channel_quantization=False,
-                              enable_mlir_dynamic_range_quantizer=False):
+                              enable_mlir_dynamic_range_quantizer=False,
+                              tf_quantization_mode=None):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -631,6 +635,8 @@ def build_toco_convert_protos(input_tensors,
       dynamic range quantization. Only per-tensor quantization will be used.
     enable_mlir_dynamic_range_quantizer: Enable MLIR dynamic range quantization.
       If false, the old TOCO dynamic range quantizer is used.
+    tf_quantization_mode: Indicates the mode of TF Quantization when the
+      output model is used for TF Quantization.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -668,7 +674,8 @@ def build_toco_convert_protos(input_tensors,
       unfold_large_splat_constant=unfold_large_splat_constant,
       supported_backends=supported_backends,
       disable_per_channel_quantization=disable_per_channel_quantization,
-      enable_mlir_dynamic_range_quantizer=enable_mlir_dynamic_range_quantizer)
+      enable_mlir_dynamic_range_quantizer=enable_mlir_dynamic_range_quantizer,
+      tf_quantization_mode=tf_quantization_mode)
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):

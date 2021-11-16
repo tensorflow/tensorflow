@@ -338,9 +338,13 @@ AppleInfo::AppleInfo(const std::string& gpu_description) {
   }
 }
 
+bool AppleInfo::IsA7GenerationGpu() const { return gpu_type == AppleGpu::kA7; }
+bool AppleInfo::IsA8GenerationGpu() const {
+  return gpu_type == AppleGpu::kA8 || gpu_type == AppleGpu::kA8X;
+}
+
 bool AppleInfo::IsLocalMemoryPreferredOverGlobal() const {
-  return gpu_type == AppleGpu::kA7 || gpu_type == AppleGpu::kA8 ||
-         gpu_type == AppleGpu::kA8X;
+  return IsA7GenerationGpu() || IsA8GenerationGpu();
 }
 
 bool AppleInfo::IsBionic() const {
@@ -730,6 +734,9 @@ uint64_t GpuInfo::GetMaxImage2DWidth() const {
   if (IsApiOpenCl()) {
     return opencl_info.image2d_max_width;
   }
+  if (IsApiMetal()) {
+    return metal_info.image2d_max_width;
+  }
   return 2048;
 }
 
@@ -742,6 +749,9 @@ uint64_t GpuInfo::GetMaxImage2DHeight() const {
   }
   if (IsApiOpenCl()) {
     return opencl_info.image2d_max_height;
+  }
+  if (IsApiMetal()) {
+    return metal_info.image2d_max_height;
   }
   return 2048;
 }
@@ -756,12 +766,18 @@ uint64_t GpuInfo::GetMaxImage2DArrayLayers() const {
   if (IsApiOpenCl()) {
     return opencl_info.image_array_max_layers;
   }
+  if (IsApiMetal()) {
+    return metal_info.image_array_max_layers;
+  }
   return 256;
 }
 
 uint64_t GpuInfo::GetMaxImage3DWidth() const {
   if (IsApiOpenCl()) {
     return opencl_info.image3d_max_width;
+  }
+  if (IsApiMetal()) {
+    return metal_info.image3d_max_width;
   }
   return 256;
 }
@@ -770,12 +786,18 @@ uint64_t GpuInfo::GetMaxImage3DHeight() const {
   if (IsApiOpenCl()) {
     return opencl_info.image3d_max_height;
   }
+  if (IsApiMetal()) {
+    return metal_info.image3d_max_height;
+  }
   return 256;
 }
 
 uint64_t GpuInfo::GetMaxImage3DDepth() const {
   if (IsApiOpenCl()) {
     return opencl_info.image3d_max_depth;
+  }
+  if (IsApiMetal()) {
+    return metal_info.image3d_max_depth;
   }
   return 256;
 }

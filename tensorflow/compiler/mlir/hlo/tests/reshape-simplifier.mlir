@@ -64,6 +64,25 @@ func @compute_reshape_shape(%arg0: tensor<2xi32>, %arg1: index) -> tensor<2xi32>
 
 // -----
 
+// CHECK-LABEL: @redundant_cstr_reshapable
+func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>) -> !shape.witness {
+  // CHECK: %[[WITNESS:.*]] = shape.const_witness true
+  // CHECK: return %[[WITNESS]] : !shape.witness
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c512 = arith.constant 512 : index
+  %s0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>
+  %n0 = shape.num_elements %s0 : tensor<4xindex> -> index
+  %dim00 = tensor.dim %arg0, %c0 : tensor<?x8x?x64xf32>
+  %dim02 = tensor.dim %arg0, %c2 : tensor<?x8x?x64xf32>
+  %s1_ = tensor.from_elements %dim02, %dim00, %c512 : tensor<3xindex>
+  %s1 = arith.index_cast %s1_ : tensor<3xindex> to tensor<3xi32>
+  %w = mhlo.cstr_reshapable %n0, %s1 : index, tensor<3xi32>
+  return %w : !shape.witness
+}
+
+// -----
+
 // CHECK-LABEL: func @reshape_integration
 func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32>, %arg2: tensor<4xi32>, %arg3: tensor<512xf32>, %arg4: tensor<?x?x512xf32>, %arg5: tensor<512xf32>, %arg6: tensor<512xf32>, %arg7: tensor<512x2048xf32>, %arg8: tensor<2048xf32>, %arg9: tensor<2048x512xf32>, %arg10: tensor<512xf32>, %arg11: tensor<512xf32>, %arg12: tensor<512xf32>) -> tensor<?x512xf32> {
   %0 = mhlo.constant dense<512> : tensor<1xi32>

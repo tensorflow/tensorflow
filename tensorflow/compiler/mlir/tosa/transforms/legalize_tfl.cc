@@ -1078,7 +1078,7 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
       SmallVector<int64_t> shape_vec;
       for (int i = 0; i < output_shape_elems.getNumElements(); i++)
         shape_vec.push_back(
-            output_shape_elems.getValue<IntegerAttr>(i).getInt());
+            output_shape_elems.getValues<APInt>()[i].getSExtValue());
       output_shape = rewriter.getI64ArrayAttr(shape_vec);
     } else if (output_type.hasRank()) {
       // Use output tensor's shape otherwise
@@ -1403,8 +1403,7 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
     // value. TOSA requires bias to be an array of output_channel_count values,
     // so create a constant of the appropriate number and type of zeros.
     SmallVector<int64_t, 1> bias_shape({filter_type.getShape()[0]});
-    RankedTensorType new_bias_type =
-        RankedTensorType::get(bias_shape, input_type.getElementType());
+    RankedTensorType new_bias_type;
 
     DenseElementsAttr bias_attr;
     if (input_type.getElementType().isa<FloatType>()) {
@@ -1413,6 +1412,8 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
       for (int i = 0; i < bias_shape[0]; i++) {
         bias_arr[i] = 0.0;
       }
+      new_bias_type =
+          RankedTensorType::get(bias_shape, input_type.getElementType());
       bias_attr =
           DenseElementsAttr::get(new_bias_type, llvm::makeArrayRef(bias_arr));
     } else {
@@ -1421,6 +1422,17 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
       for (int i = 0; i < bias_shape[0]; i++) {
         bias_arr[i] = 0;
       }
+      if (!input_is_qtype) {
+        return op->emitOpError(
+            "ConvertTFLFullyConnectedOp: input must be quantized type if it's "
+            "not float type.");
+      }
+      auto input_qtype =
+          input_type.getElementType().cast<mlir::quant::QuantizedType>();
+      Type new_bias_ety = input_qtype.getStorageTypeIntegralWidth() == 16
+                              ? rewriter.getIntegerType(48)
+                              : rewriter.getI32Type();
+      new_bias_type = RankedTensorType::get(bias_shape, new_bias_ety);
       bias_attr =
           DenseElementsAttr::get(new_bias_type, llvm::makeArrayRef(bias_arr));
     }
@@ -1646,7 +1658,7 @@ LogicalResult ConvertTFLFillOp::matchAndRewrite(
   SmallVector<int64_t> dims_vals;
   uint32_t total_size = 1;
   for (int i = 0; i < dims_elems.getNumElements(); i++) {
-    dims_vals.push_back(dims_elems.getValue<IntegerAttr>(i).getInt());
+    dims_vals.push_back(dims_elems.getValues<APInt>()[i].getSExtValue());
     total_size *= dims_vals[i];
   }
 
@@ -1661,13 +1673,11 @@ LogicalResult ConvertTFLFillOp::matchAndRewrite(
   // Convert to a compatible zero type.
   if (value_elem.getType().getElementType().isa<FloatType>()) {
     SmallVector<float> fill_arr(
-        total_size,
-        value_elem.getValue<FloatAttr>(0).getValue().convertToFloat());
+        total_size, value_elem.getValues<APFloat>()[0].convertToFloat());
     fill_attr = DenseElementsAttr::get(fill_type, llvm::makeArrayRef(fill_arr));
   } else {
     SmallVector<int32_t> fill_arr(
-        total_size,
-        value_elem.getValue<IntegerAttr>(0).getValue().getLimitedValue());
+        total_size, value_elem.getValues<APInt>()[0].getLimitedValue());
     fill_attr = DenseElementsAttr::get(fill_type, llvm::makeArrayRef(fill_arr));
   }
   auto fill_const_op = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(),
@@ -1951,10 +1961,10 @@ LogicalResult ConvertTFLSliceOp::matchAndRewrite(
   }
 
   for (int i = 0; i < begin_elems.getNumElements(); i++)
-    begin_vals.push_back(begin_elems.getValue<IntegerAttr>(i).getInt());
+    begin_vals.push_back(begin_elems.getValues<APInt>()[i].getSExtValue());
 
   for (int i = 0; i < size_elems.getNumElements(); i++)
-    size_vals.push_back(size_elems.getValue<IntegerAttr>(i).getInt());
+    size_vals.push_back(size_elems.getValues<APInt>()[i].getSExtValue());
 
   ArrayAttr begin = rewriter.getI64ArrayAttr(begin_vals);
   ArrayAttr size = rewriter.getI64ArrayAttr(size_vals);
@@ -1978,7 +1988,8 @@ LogicalResult ConvertTFLTileOp::matchAndRewrite(
     return failure();
   SmallVector<int64_t> multiples_vals;
   for (int i = 0; i < multiples_elems.getNumElements(); i++)
-    multiples_vals.push_back(multiples_elems.getValue<IntegerAttr>(i).getInt());
+    multiples_vals.push_back(
+        multiples_elems.getValues<APInt>()[i].getSExtValue());
 
   ArrayAttr multiples_attr = rewriter.getI64ArrayAttr(multiples_vals);
   CreateReplaceOpAndInfer<tosa::TileOp>(rewriter, op, output_type,
@@ -2068,7 +2079,7 @@ LogicalResult ConvertTFLSplitOp::matchAndRewrite(
 
   // The axis/split_dim parameter is stored as a 0D tensor instead of
   // an integer attribute in TFLite MLIR.
-  int32_t axis = axisAttrElems.getValue<IntegerAttr>({}).getInt();
+  int32_t axis = axisAttrElems.getValues<APInt>()[0].getSExtValue();
 
   llvm::Optional<SmallVector<Value>> results =
       convertSplitOp(rewriter, op, tfl_split_op.getResult(0),
@@ -2095,7 +2106,7 @@ LogicalResult ConvertTFLSplitVOp::matchAndRewrite(
   }
 
   for (int i = 0; i < size_split_elems.getNumElements(); i++) {
-    size_split.push_back(size_split_elems.getValue<IntegerAttr>(i).getInt());
+    size_split.push_back(size_split_elems.getValues<APInt>()[i].getSExtValue());
   }
 
   // Get the axis
@@ -2106,7 +2117,7 @@ LogicalResult ConvertTFLSplitVOp::matchAndRewrite(
 
   // The axis/split_dim parameter is stored as a 0D tensor instead of
   // an integer attribute in TFLite MLIR.
-  int32_t axis = axisAttrElems.getValue<IntegerAttr>(0).getInt();
+  int32_t axis = axisAttrElems.getValues<APInt>()[0].getSExtValue();
 
   llvm::Optional<SmallVector<Value>> results =
       convertSplitVOp(rewriter, op, tfl_splitv_op.getResult(0),
@@ -2141,73 +2152,11 @@ LogicalResult ConvertTFLPadV2Op::matchAndRewrite(
   auto tfl_pad_op = cast<TFL::PadV2Op>(op);
 
   Value input = tfl_pad_op.input();
-  auto input_ty = input.getType().cast<ShapedType>();
+  Value padding = tfl_pad_op.padding();
+  Value constant_value = tfl_pad_op.constant_values();
 
-  if (!input_ty.hasRank()) return failure();
-
-  ElementsAttr constant_values_attr;
-  if (!matchPattern(tfl_pad_op.constant_values(),
-                    m_Constant(&constant_values_attr)))
-    return failure();
-
-  ElementsAttr padding_values_attr;
-  if (!matchPattern(tfl_pad_op.padding(), m_Constant(&padding_values_attr)))
-    return failure();
-
-  Attribute constant_attr = constant_values_attr.getValue<Attribute>(0);
-  llvm::SmallVector<int32_t> padding;
-  for (auto pad : padding_values_attr.getValues<int32_t>())
-    padding.push_back(pad);
-
-  for (int i = 0, s = padding.size(); i < s; i += 2) {
-    int64_t axis = i / 2;
-    int32_t pad_up = padding[i];
-    int32_t pad_down = padding[i + 1];
-    input_ty = input.getType().cast<ShapedType>();
-
-    if (pad_up == 0 && pad_down == 0) continue;
-
-    llvm::SmallVector<Value> concat_inputs;
-    if (pad_up != 0) {
-      llvm::SmallVector<int64_t> pad_shape(input_ty.getShape().begin(),
-                                           input_ty.getShape().end());
-      pad_shape[axis] = pad_up;
-      auto pad_type =
-          RankedTensorType::get(pad_shape, input_ty.getElementType());
-      // Change this for dynamic shapes.
-      if (!pad_type.hasStaticShape()) return failure();
-
-      auto pad_attr = DenseElementsAttr::get(pad_type, constant_attr);
-      concat_inputs.push_back(
-          rewriter.create<tosa::ConstOp>(op->getLoc(), pad_type, pad_attr)
-              .getResult());
-    }
-
-    concat_inputs.push_back(input);
-
-    if (pad_down != 0) {
-      llvm::SmallVector<int64_t> pad_shape(input_ty.getShape().begin(),
-                                           input_ty.getShape().end());
-      pad_shape[axis] = pad_down;
-      auto pad_type =
-          RankedTensorType::get(pad_shape, input_ty.getElementType());
-      // Change this for dynamic shapes.
-      if (!pad_type.hasStaticShape()) return failure();
-
-      auto pad_attr = DenseElementsAttr::get(pad_type, constant_attr);
-      concat_inputs.push_back(
-          rewriter.create<tosa::ConstOp>(op->getLoc(), pad_type, pad_attr)
-              .getResult());
-    }
-
-    auto concat_ty = UnrankedTensorType::get(input_ty.getElementType());
-    input = CreateOpAndInfer<tosa::ConcatOp>(rewriter, op->getLoc(), concat_ty,
-                                             concat_inputs,
-                                             rewriter.getI64IntegerAttr(axis))
-                .getResult();
-  }
-
-  rewriter.replaceOp(op, input);
+  CreateReplaceOpAndInfer<tosa::PadOp>(rewriter, op, tfl_pad_op.getType(),
+                                       input, padding, constant_value);
 
   return success();
 }
@@ -2763,7 +2712,7 @@ LogicalResult ConvertTFLReverseV2Op::matchAndRewrite(
     val = identity_op.getResult();
   } else {
     for (int i = 0; i < axis_elems.getNumElements(); i++) {
-      int64_t axis_val = axis_elems.getValue<IntegerAttr>(i).getInt();
+      int64_t axis_val = axis_elems.getValues<APInt>()[i].getSExtValue();
       if (axis_val < 0) axis_val += input_rank;
       auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
       auto reverse_op = CreateOpAndInfer<tosa::ReverseOp>(
@@ -3090,7 +3039,7 @@ LogicalResult ConvertTFLOneHotOp::matchAndRewrite(
   ElementsAttr depth_elems;
   if (!matchPattern(tfl_one_hot_op.depth(), m_Constant(&depth_elems)))
     return failure();
-  int32_t depth = depth_elems.getValue<IntegerAttr>({}).getInt();
+  int32_t depth = depth_elems.getValues<APInt>()[0].getSExtValue();
 
   IntegerAttr axisAttr = tfl_one_hot_op.axisAttr();
   int32_t axis = axisAttr.getInt();
@@ -3113,7 +3062,7 @@ LogicalResult ConvertTFLArgMaxOp::matchAndRewrite(
   ElementsAttr dim_elems;
   if (!matchPattern(arg_max_op.dim(), m_Constant(&dim_elems))) return failure();
 
-  int32_t dim = dim_elems.getValue<IntegerAttr>({}).getInt();
+  int32_t dim = dim_elems.getValues<APInt>()[0].getSExtValue();
   CreateReplaceOpAndInfer<tosa::ArgMaxOp>(
       rewriter, op, arg_max_op.getType(), arg_max_op.input(),
       rewriter.getIntegerAttr(rewriter.getI64Type(), dim));

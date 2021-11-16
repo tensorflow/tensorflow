@@ -1584,6 +1584,7 @@ topology.
   );
 
   let results = (outs
+    TF_Tensor:$rendezvous_key_base,
     Variadic<TF_Tensor>:$results
   );
 

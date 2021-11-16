@@ -37,7 +37,8 @@ ConvolutionThunk::ConvolutionThunk(
       operand_buffers_(std::move(operand_slices)),
       result_buffer_(result_slice),
       scratch_buffer_(scratch_slice),
-      config_(std::move(config)) {}
+      config_(std::move(config)),
+      runner_cache_(config_) {}
 
 Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
@@ -53,8 +54,11 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase scratch =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
+  RunConvOptions opts;
+  opts.runner_cache = &runner_cache_;
+
   TF_RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
-                                result_buffer, scratch, params.stream));
+                                result_buffer, scratch, params.stream, opts));
 
   // Note: Convolution has a tuple buffer as an output, but we don't need to
   // populate it as no one should be reading from the tuple directly.

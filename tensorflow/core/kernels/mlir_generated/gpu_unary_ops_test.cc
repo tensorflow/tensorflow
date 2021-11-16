@@ -47,28 +47,22 @@ T baseline_abs(T x) {
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_FLOAT, DT_FLOAT, test::NearZeroAndExtremeInput<float>(), std::abs,
     test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_DOUBLE, DT_DOUBLE, test::NearZeroAndExtremeInput<double>(),
     std::abs, test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     Abs, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
     test::NearZeroAndExtremeInput<Eigen::half>(), std::abs,
     test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64_t>(),
     baseline_abs, test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Abs, DT_INT8, DT_INT8, baseline_abs,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Abs, DT_INT16, DT_INT16, baseline_abs,
                       test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
 
 /// Test `tf.Acos`.
 
@@ -787,6 +781,23 @@ GENERATE_DEFAULT_TEST(OnesLike, DT_DOUBLE, DT_DOUBLE, baseline_ones_like,
 GENERATE_DEFAULT_TEST(OnesLike, DT_INT64, DT_INT64, baseline_ones_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
+// These kernels are JIT-compiled.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
+    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TEST(OnesLike, DT_INT8, DT_INT8, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_INT16, DT_INT16, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_UINT8, DT_UINT8, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_UINT16, DT_UINT16, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_UINT32, DT_UINT32, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_UINT64, DT_UINT64, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
+
 /// Test `tf.Real`.
 
 template <typename T>
@@ -840,7 +851,7 @@ GENERATE_DEFAULT_TEST(Relu, DT_DOUBLE, DT_DOUBLE, baseline_relu,
 GENERATE_DEFAULT_TEST_2(Relu, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_relu, test::OpsTestConfig())
 
-#if defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+// Test the JIT-compiled kernels.
 GENERATE_DEFAULT_TEST(Relu, DT_INT8, DT_INT8, baseline_relu,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Relu, DT_INT16, DT_INT16, baseline_relu,
@@ -855,7 +866,6 @@ GENERATE_DEFAULT_TEST(Relu, DT_UINT32, DT_UINT32, baseline_relu,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Relu, DT_UINT64, DT_UINT64, baseline_relu,
                       test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
 
 /// Test `tf.Rint`.
 
@@ -865,10 +875,11 @@ T baseline_rint(T x) {
   return y == T(0) ? T(0) : y;
 }
 
-#if defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+// Test the JIT-compiled kernel.
 GENERATE_DEFAULT_TEST_2(Rint, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_rint,
                         test::OpsTestConfig().ExpectStrictlyEqual())
+
 TEST_F(UnaryOpsTest, RintWithCache) {
   constexpr auto kTFJitCacheDirEnvVar = "TF_JIT_CACHE_DIR";
   // First try to setup a unique directory for the file cache
@@ -893,11 +904,9 @@ TEST_F(UnaryOpsTest, RintWithCache) {
 
   if (original_env != nullptr) setenv(kTFJitCacheDirEnvVar, original_env, 1);
 }
-#endif
 
 GENERATE_DEFAULT_TEST(Rint, DT_FLOAT, DT_FLOAT, baseline_rint,
                       test::OpsTestConfig().ExpectStrictlyEqual())
-
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Rint, DT_DOUBLE, DT_DOUBLE,
     test::InputAsVector<double>({-1.7, -1.5, -0.2, -0.0, 0.0, 0.2, 0.5000001,
@@ -1019,13 +1028,10 @@ GENERATE_DEFAULT_TEST(Sign, DT_COMPLEX128, DT_COMPLEX128, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Sign, DT_INT8, DT_INT8, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Sign, DT_INT16, DT_INT16, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
 
 /// Test `tf.Sin`.
 
@@ -1173,6 +1179,20 @@ GENERATE_DEFAULT_TEST(ZerosLike, DT_FLOAT, DT_FLOAT, baseline_zeros_like,
 GENERATE_DEFAULT_TEST(ZerosLike, DT_DOUBLE, DT_DOUBLE, baseline_zeros_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(ZerosLike, DT_INT64, DT_INT64, baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
+// These kernels are JIT-compiled.
+GENERATE_DEFAULT_TEST(ZerosLike, DT_INT8, DT_INT8, baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(ZerosLike, DT_INT16, DT_INT16, baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(ZerosLike, DT_UINT8, DT_UINT8, baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(ZerosLike, DT_UINT16, DT_UINT16, baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(ZerosLike, DT_UINT32, DT_UINT32, baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(ZerosLike, DT_UINT64, DT_UINT64, baseline_zeros_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 }  // namespace

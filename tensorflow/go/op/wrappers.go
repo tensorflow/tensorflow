@@ -22074,8 +22074,8 @@ func TanhGrad(scope *Scope, y tf.Output, dy tf.Output) (z tf.Output) {
 //   >>> x = tf.constant([-float("inf"), -5, -0.5, 1, 1.2, 2, 3, float("inf")])
 //   >>> tf.math.tanh(x)
 //   <tf.Tensor: shape=(8,), dtype=float32, numpy=
-//   array([-1.        , -0.99990916, -0.46211717,  0.7615942 ,  0.8336547 ,
-//           0.9640276 ,  0.9950547 ,  1.        ], dtype=float32)>
+//   array([-1.0, -0.99990916, -0.46211717,  0.7615942 ,  0.8336547 ,
+//           0.9640276 ,  0.9950547 ,  1.0], dtype=float32)>
 //
 func Tanh(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
@@ -23601,11 +23601,16 @@ func QuantizedConv2DPerChannel(scope *Scope, input tf.Output, filter tf.Output, 
 //	input: Array or a non-empty tuple of arrays to reduce across replicas.
 //	group_assignment: Groups between which the reductions are performed.
 //	reduce_op: Reduction computation.
-func XlaAllReduce(scope *Scope, input tf.Output, group_assignment tf.Output, reduce_op string) (output tf.Output) {
+//	mode: group mode.
+// CrossReplica: group_assignment contains replica_id. Each group contains the
+//   replicas for the current partition.
+// CrossReplicaAndPartition: group_assignment contains replica_id. Each group
+//   contains the replicas for all partitions.
+func XlaAllReduce(scope *Scope, input tf.Output, group_assignment tf.Output, reduce_op string, mode string) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	attrs := map[string]interface{}{"reduce_op": reduce_op}
+	attrs := map[string]interface{}{"reduce_op": reduce_op, "mode": mode}
 	opspec := tf.OpSpec{
 		Type: "XlaAllReduce",
 		Input: []tf.Input{
@@ -49485,9 +49490,10 @@ func EnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) EnqueueTPU
 // Or a list of rank 1 Tensors specifying the row lengths for splitting
 // embedding_indices and aggregation_weights into rows. It corresponds to
 // ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. When
-// enqueuing N-D ragged tensor, the row lengths will be a (N-1)-D Densed
-// tensor and it needs to be flattened into 1D before passed to this op. Both
-// int32 and int64 are allowed and will be converted to int32 internally.
+// enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
+// the row lengths is 1-D dense tensor. When empty, we assume a dense tensor is
+// passed to the op Both int32 and int64 are allowed and will be converted to
+// int32 internally.
 //	embedding_indices: A list of rank 1 Tensors, indices into the embedding
 // tables. Both int32 and int64 are allowed and will be converted to
 // int32 internally.

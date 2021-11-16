@@ -86,6 +86,15 @@ class LazyOpRunner {
     return runner_.get();
   }
 
+  // Get the contained runner with the invariant that it's already initialized.
+  port::StatusOr<const OpRunner<typename Op::Signature>*> GetRunner() {
+    absl::MutexLock lock(&mu_);
+    if (!runner_) {
+      return port::InternalError("LazyOpRunner::GetRunner: not initialized");
+    }
+    return runner_.get();
+  }
+
   bool operator==(const LazyOpRunner& other) const {
     return desc_ == other.desc_;
   }

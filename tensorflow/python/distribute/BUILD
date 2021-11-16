@@ -1842,11 +1842,13 @@ distribute_py_test(
     srcs = ["zero_batch_test.py"],
     disable_mlir_bridge = False,
     main = "zero_batch_test.py",
+    tags = [
+        "no_oss",  # Keras is not available in OSS test
+    ],
     deps = [
         ":combinations",
         ":multi_worker_test_base",
         ":strategy_combinations",
-        "//tensorflow/python:layers",
     ],
 )
 

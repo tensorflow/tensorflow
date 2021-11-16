@@ -133,26 +133,18 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
 
     std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
     auto element_type = se::dnn::ToDataType<T>::value;
-    if (!stream->parent()
-             ->GetFusedConvolveRunners(
-                 CudnnUseFrontend(), se::dnn::ConvolutionKind::FORWARD,
-                 element_type, element_type, element_type, conv_scale,
-                 side_input_scale, stream, input_desc, filter_desc, bias_desc,
-                 output_desc, conv_desc, activation_mode, &runners)
-             .ok()) {
-      return errors::Unknown(
-          "Failed to get convolution runners. This is probably because cuDNN "
-          "failed to initialize, so try looking to see if a warning log "
-          "message was printed above.");
-    }
+    SE_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
+        CudnnUseFrontend(), se::dnn::ConvolutionKind::FORWARD, element_type,
+        element_type, element_type, conv_scale, side_input_scale, stream,
+        input_desc, filter_desc, bias_desc, output_desc, conv_desc,
+        activation_mode, &runners));
 
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
             const std::unique_ptr<const se::dnn::FusedConvRunner>& runner,
             se::dnn::ProfileResult* profile_result) -> Status {
-      TF_ASSIGN_OR_RETURN(auto workspace_size, runner->GetWorkspaceSize());
-      TF_ASSIGN_OR_RETURN(auto scratch,
-                          allocator_used->AllocateBytes(workspace_size));
+      TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
+                                            runner->GetWorkspaceSize()));
       return (*runner)(stream, input_ptr, filter_ptr, side_input_ptr, bias_ptr,
                        output_ptr_rz, scratch, profile_result);
     };
@@ -262,14 +254,14 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
     TF_RETURN_IF_ERROR(stream->parent()->GetConvolveRunners(
         CudnnUseFrontend(), kind, element_type, element_type, stream,
-        input_desc, filter_desc, output_desc, conv_desc, &runners));
+        input_desc, input_ptr, filter_desc, filter_ptr, output_desc, output_ptr,
+        conv_desc, &rz_allocator, &runners));
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
             const std::unique_ptr<const se::dnn::ConvRunner>& runner,
             se::dnn::ProfileResult* profile_result) -> Status {
-      TF_ASSIGN_OR_RETURN(auto workspace_size, runner->GetWorkspaceSize());
-      TF_ASSIGN_OR_RETURN(auto scratch,
-                          allocator_used->AllocateBytes(workspace_size));
+      TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
+                                            runner->GetWorkspaceSize()));
       return (*runner)(stream, input_ptr, filter_ptr, output_ptr, scratch,
                        profile_result);
     };

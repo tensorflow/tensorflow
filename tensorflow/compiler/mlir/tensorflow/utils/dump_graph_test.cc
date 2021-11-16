@@ -88,7 +88,7 @@ TEST(Dump, TexualIrWithOptions) {
   TF_ASSERT_OK(DumpTextualIRToFile(MlirDumpConfig().emit_location_information(),
                                    graph, /*flib_def=*/nullptr, &file));
 
-  string expected_substr = R"(loc("A"))";
+  string expected_substr = R"(loc(fused["Placeholder:", "A"]))";
   ExpectHasSubstr(actual, expected_substr);
 }
 

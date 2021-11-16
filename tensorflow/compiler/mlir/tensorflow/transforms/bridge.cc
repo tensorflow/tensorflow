@@ -169,7 +169,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(
       TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
-  pm.addPass(CreateTPUVariableReformattingPass());
+  pm.addPass(CreateTPUVariableRuntimeReformattingPass());
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 

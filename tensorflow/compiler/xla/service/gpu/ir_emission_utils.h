@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
@@ -168,10 +167,6 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo);
 // Cholesky decomposition, workspace is scratch space for cuSolver, and info
 // is a success/failure code per batch element.
 extern const char* const kCusolverCholeskyCallTarget;
-
-// Returns true if `hlo` will be implemented as a library call, e.g. cuBLAS gemm
-// or cuDNN convolution.
-bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 
 // Layout analysis for fusion. The constructor will analyze the given LMHLO
 // fusion operation and store the inferred layouts of fusion internal values.

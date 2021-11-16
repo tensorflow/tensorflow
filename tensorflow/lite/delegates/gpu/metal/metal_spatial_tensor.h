@@ -126,6 +126,14 @@ absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
                                       const TensorDescriptor& descriptor,
                                       MetalSpatialTensor* result);
 
+absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWC& shape,
+                                             const TensorDescriptor& descriptor,
+                                             int row_bytes_alignment, MetalSpatialTensor* result);
+
+absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
+                                             const TensorDescriptor& descriptor,
+                                             int row_bytes_alignment, MetalSpatialTensor* result);
+
 template <DataType T>
 absl::Status MetalSpatialTensor::WriteData(id<MTLDevice> device,
                                            const tflite::gpu::Tensor<BHWC, T>& src) {

@@ -8,12 +8,13 @@ func @reduce(%in: tensor<?x?xf32>) -> tensor<?xf32> {
 
   %0 = tensor.dim %in, %c0 : tensor<?x?xf32>
   %undef = linalg.init_tensor [%0] : tensor<?xf32>
+  %clone = linalg.init_tensor [%0] : tensor<?xf32>
   %out = linalg.fill(%cst, %undef) : f32, tensor<?xf32> -> tensor<?xf32>
   %3 = tensor.dim %in, %c0 : tensor<?x?xf32>
   %4 = tensor.dim %in, %c1 : tensor<?x?xf32>
-  %result = linalg.tiled_loop (%i, %j) = (%c0, %c0) to (%3, %4) step (%c4, %c4)
-           ins (%in_ = %in: tensor<?x?xf32>, %cst_ = %cst: f32)
-           outs (%out_ = %out: tensor<?xf32>)
+  %result:2 = linalg.tiled_loop (%i, %j) = (%c0, %c0) to (%3, %4) step (%c4, %c4)
+           ins (%in_ = %in: tensor<?x?xf32>)
+           outs (%out_ = %out: tensor<?xf32>, %clone_ = %clone: tensor<?xf32>)
            iterators["parallel", "reduction"] {
     %6 = tensor.dim %in_, %c0 : tensor<?x?xf32>
     %7 = affine.min affine_map<(d0)[s0] -> (4, -d0 + s0)>(%i)[%6]
@@ -29,7 +30,9 @@ func @reduce(%in: tensor<?x?xf32>) -> tensor<?xf32> {
             : tensor<?x?xf32> to tensor<?x?xf32>
     %out_sub = tensor.extract_slice %out_[%i] [%14] [1]
             : tensor<?xf32> to tensor<?xf32>
-    %init_tmp_result = linalg.fill(%cst_, %out_sub)
+    %clone_sub = tensor.extract_slice %clone_[%i] [%14] [1]
+            : tensor<?xf32> to tensor<?xf32>
+    %init_tmp_result = linalg.fill(%cst, %clone_sub)
             : f32, tensor<?xf32> -> tensor<?xf32>
     %tmp_result = linalg.generic {
             indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
@@ -53,24 +56,29 @@ func @reduce(%in: tensor<?x?xf32>) -> tensor<?xf32> {
     } -> tensor<?xf32>
     %insert_out = tensor.insert_slice %updated_out_sub into %out_[%i] [%12] [1]
         : tensor<?xf32> into tensor<?xf32>
-    linalg.yield %insert_out : tensor<?xf32>
+    %insert_clone = tensor.insert_slice %tmp_result into %clone_[%i] [%12] [1]
+        : tensor<?xf32> into tensor<?xf32>
+    linalg.yield %insert_out, %insert_clone : tensor<?xf32>, tensor<?xf32>
   }
-  return %result : tensor<?xf32>
+  return %result#0 : tensor<?xf32>
 }
 
 // CHECK-LABEL: reduce
 
 // CHECK: linalg.tiled_loop
-// CHECK-SAME: ins (%[[IN:arg[0-9]]] = %{{.*}}: tensor<?x?xf32>,
-// CHECK-SAME: outs (%[[OUT:arg[0-9]]] = %{{.*}}: tensor<?xf32>)
+// CHECK-SAME: ins (%[[IN:arg[0-9]]] = %{{.*}}: tensor<?x?xf32>)
+// CHECK-SAME: outs (%[[OUT:arg[0-9]]] = %{{.*}}: tensor<?xf32>,
+// CHECK-SAME:       %[[CLONE:arg[0-9]]] = %{{.*}}: tensor<?xf32>)
 
 // CHECK: %[[IN_SUB:.*]] = tensor.extract_slice %[[IN]]
 // CHECK: %[[OUT_SUB:.*]] = tensor.extract_slice %[[OUT]]
+// CHECK: %[[CLONE_SUB:.*]] = tensor.extract_slice %[[CLONE]]
 
-// CHECK: %[[UNDEF:.*]] = linalg.init_tensor [4] : tensor<4xf32>
-// CHECK: %[[INIT:.*]] = linalg.fill(%{{.*}}, %[[UNDEF]]) : f32, tensor<4xf32>
+// CHECK: %[[CLONE_PAD:.*]] = linalg.pad_tensor %[[CLONE_SUB]]
+// CHECK: %[[INIT:.*]] = linalg.fill(%{{.*}}, %[[CLONE_PAD]])
 
 // CHECK: %[[IN_PAD:.*]] = linalg.pad_tensor %[[IN_SUB]]
+
 // CHECK: %[[TMP:.*]] = linalg.generic
 // CHECK-SAME: ins(%[[IN_PAD]] : tensor<4x4xf32>) outs(%[[INIT]] : tensor<4xf32>)
 

@@ -1137,7 +1137,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     [1.0, 3.0]
 
     Args:
-      *args: follows the same semantics as python's xrange.
+      *args: follows the same semantics as python's range.
         len(args) == 1 -> start = 0, stop = args[0], step = 1.
         len(args) == 2 -> start = args[0], stop = args[1], step = 1.
         len(args) == 3 -> start = args[0], stop = args[1], step = args[2].

@@ -229,7 +229,7 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
     return ElementsAttr(
         SplatElementsAttr::get(single_attr.getType().clone(original_dimensions),
-                               single_attr.getValue({0})));
+                               single_attr.getValues<Attribute>()[0]));
   }
 
   Tensor t;
