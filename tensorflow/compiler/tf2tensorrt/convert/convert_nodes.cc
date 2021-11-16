@@ -6232,7 +6232,161 @@ Status ConvertSquaredDifference(OpConverterParams* params) {
   return Status::OK();
 }
 
-#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+#if IS_TRT_VERSION_GE(8, 2, 1, 6) || defined(TF_TRT_USE_EFFICIENT_NMS_PLUGIN)
+
+Status ConvertCombinedNMS(OpConverterParams* params) {
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"boxes", TrtInputArg::kTensor},
+                                   {"scores", TrtInputArg::kTensor},
+                                   {"max_output_size_per_class",
+                                       TrtInputArg::kWeight},
+                                   {"max_total_size", TrtInputArg::kWeight},
+                                   {"iou_threshold", TrtInputArg::kWeight},
+                                   {"score_threshold", TrtInputArg::kWeight}}));
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  ITensorProxyPtr boxes_tensor = inputs.at(0).tensor();
+  ITensorProxyPtr scores_tensor = inputs.at(1).tensor();
+  if (params->use_implicit_batch) {
+    return errors::Unimplemented(
+        "Implict batch mode not supported with CombinedNMS",
+        node_def.name());
+  }
+
+  TRT_ShapedWeights output_size_per_class = inputs.at(2).weights();
+  TRT_ShapedWeights total_size = inputs.at(3).weights();
+  TRT_ShapedWeights iou_threshold = inputs.at(4).weights();
+  TRT_ShapedWeights score_threshold = inputs.at(5).weights();
+  const int max_size_per_class = *(output_size_per_class.GetPointer<int>());
+  int max_total_size = *(total_size.GetPointer<int>());
+  const float iou_thresh = *(iou_threshold.GetPointer<float>());
+  const float score_thresh = *(score_threshold.GetPointer<float>());
+
+  TFAttrs attrs(node_def);
+  const int clip_boxes = static_cast<int>(attrs.get<bool>("clip_boxes"));
+  const int pad_per_class = static_cast<int>(attrs.get<bool>("pad_per_class"));
+
+  // Validate tensors and weights
+  const auto boxes_dims = boxes_tensor->getDimensions();
+  const auto scores_dims = scores_tensor->getDimensions();
+  if (boxes_dims.nbDims != 4) {
+    return errors::InvalidArgument(
+        "NMS TRT Plugin input boxes must be 4-D including batch ",
+        node_def.name());
+  }
+  const int num_classes = scores_dims.d[2];
+  const int num_boxes = boxes_dims.d[1];
+  bool box_check = boxes_dims.d[2] == 1 || boxes_dims.d[2] == num_classes;
+  if (!box_check) {
+    return errors::InvalidArgument(
+        "NMS TRT Plugin third dimension of boxes must be either 1 "
+        "or match the num_classes dimension of scores ",
+        node_def.name());
+  }
+
+  if (output_size_per_class.count() != 1) {
+    return errors::InvalidArgument(
+        "NMS TRT Plugin max_output_size_per_class must be scalar ",
+        node_def.name());
+  }
+  if (max_size_per_class <= 0) {
+    return errors::InvalidArgument(
+        "NMS TRT Plugin max_output_size_per_class should be > 0",
+        node_def.name());
+  }
+  if (total_size.count() != 1) {
+    return errors::InvalidArgument(
+        "NMS TRT Plugin max_total_size must be scalar ",
+        node_def.name());
+  }
+  if (max_total_size <= 0) {
+    return errors::InvalidArgument(
+        "NMS TRT Plugin max_total_size should be > 0",
+        node_def.name());
+  }
+  if (iou_threshold.count() != 1) {
+    return errors::InvalidArgument(
+        "NMS TRT Plugin iou_threshold must be scalar ",
+        node_def.name());
+  }
+  if (iou_thresh < 0.0 || iou_thresh > 1.0) {
+    return errors::InvalidArgument(
+        "NMS TRT Plugin iou_threshold must be in [0, 1]",
+        node_def.name());
+  }
+  if (score_threshold.count() != 1) {
+    return errors::InvalidArgument(
+        "NMS TRT Plugin score_threshold must be scalar ",
+        node_def.name());
+  }
+
+  if (params->validation_only) return Status::OK();
+
+  // Create plugin
+  nvinfer1::PluginField fields[6] = {
+      nvinfer1::PluginField{"max_output_size_per_class", &max_size_per_class,
+                            nvinfer1::PluginFieldType::kINT32, 1},
+      nvinfer1::PluginField{"max_total_size", &max_total_size,
+                            nvinfer1::PluginFieldType::kINT32, 1},
+      nvinfer1::PluginField{"iou_threshold", &iou_thresh,
+                            nvinfer1::PluginFieldType::kFLOAT32, 1},
+      nvinfer1::PluginField{"score_threshold", &score_thresh,
+                            nvinfer1::PluginFieldType::kFLOAT32, 1},
+      nvinfer1::PluginField{"pad_per_class", &pad_per_class,
+                            nvinfer1::PluginFieldType::kINT32, 1},
+      nvinfer1::PluginField{"clip_boxes", &clip_boxes,
+                            nvinfer1::PluginFieldType::kINT32, 1},
+  };
+  nvinfer1::PluginFieldCollection fc{6, fields};
+
+  auto creator =
+      getPluginRegistry()->getPluginCreator("EfficientNMS_TFTRT_TRT", "1", "");
+  TFTRT_RETURN_ERROR_IF_NULLPTR(creator, node_def.name());
+
+  TrtUniquePtrType<nvinfer1::IPluginV2> plugin(
+      creator->createPlugin(node_def.name().c_str(), &fc));
+  TFTRT_RETURN_ERROR_IF_NULLPTR(plugin, node_def.name());
+
+  // Set plugin inputs
+  std::vector<nvinfer1::ITensor*> trt_plugin_inputs;
+  trt_plugin_inputs.push_back(boxes_tensor->trt_tensor());
+  trt_plugin_inputs.push_back(scores_tensor->trt_tensor());
+
+  // Add plugin to network
+  nvinfer1::IPluginV2Layer* layer = params->converter->network()->addPluginV2(
+      &trt_plugin_inputs[0], static_cast<int>(trt_plugin_inputs.size()),
+      *plugin);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def, "plugin");
+
+  // Set plugin outputs
+  ITensorProxyPtr output_num_detections = layer->getOutput(0);
+  ITensorProxyPtr output_detection_boxes = layer->getOutput(1);
+  ITensorProxyPtr output_detection_scores = layer->getOutput(2);
+  ITensorProxyPtr output_detection_classes = layer->getOutput(3);
+
+  // Cast the classes output from int32 to float32
+  nvinfer1::IIdentityLayer* layer_detection_classes =
+      params->converter->network()->addIdentity(
+              *output_detection_classes->trt_tensor());
+  layer_detection_classes->setOutputType(0, nvinfer1::DataType::kFLOAT);
+  output_detection_classes = layer_detection_classes->getOutput(0);
+
+  // The plugin produces a [N, 1] tensor for the num output, squeeze it to [N]
+  std::vector<int> input_dims{output_num_detections->getDimensions().d[0], 0};
+  TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
+      output_num_detections, &input_dims, params, &output_num_detections));
+
+  // Final outputs
+  params->outputs->push_back(TRT_TensorOrWeights(output_detection_boxes));
+  params->outputs->push_back(TRT_TensorOrWeights(output_detection_scores));
+  params->outputs->push_back(TRT_TensorOrWeights(output_detection_classes));
+  params->outputs->push_back(TRT_TensorOrWeights(output_num_detections));
+
+  return Status::OK();
+}
+
+#elif IS_TRT_VERSION_GE(7, 1, 3, 0)
 
 bool AllowNmsTopkOverride() {
   static bool result = [] {
@@ -6433,6 +6587,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
   return Status::OK();
 }
+
 #endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
 
 Status ConvertResize(OpConverterParams* params) {
@@ -6643,8 +6798,10 @@ Status ConvertAddN(OpConverterParams* params) {
 
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBiasAdd, "BiasAdd");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertClipByValue, "ClipByValue");
+#if IS_TRT_VERSION_GE(7, 1, 3, 0) || defined(TF_TRT_USE_EFFICIENT_NMS_PLUGIN)
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertCombinedNMS,
                                   "CombinedNonMaxSuppression");
+#endif
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertAddN, "AddN");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertCast, "Cast");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertConcat, "ConcatV2");
