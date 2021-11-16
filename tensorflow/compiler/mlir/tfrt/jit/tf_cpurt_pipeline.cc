@@ -73,6 +73,11 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
   // Transform TF operation to HLO.
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass());
 
+  if (options.legalize_i1_tensors) {
+    // Convert 'i1' tensors into 'i8' tensors.
+    pm.addPass(CreateCpuRtLegalizeI1TypesPass());
+  }
+
   // Resolve all shape constraints (e.g. broadcast constraints that can be
   // proved statically and changed to const witness) early to allow more
   // efficient broadcast operations moving.
