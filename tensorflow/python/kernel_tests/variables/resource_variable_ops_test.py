@@ -821,7 +821,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.assertEqual(4.0, self.evaluate(v.value()))
 
   def testAssignRuntimeShapeCheck(self):
-    with forward_compat.forward_compatibility_horizon(2021, 11, 20):
+    with forward_compat.forward_compatibility_horizon(2022, 1, 20):
       v = resource_variable_ops.ResourceVariable([1.0, 1.0], name="var0")
 
       @def_function.function
