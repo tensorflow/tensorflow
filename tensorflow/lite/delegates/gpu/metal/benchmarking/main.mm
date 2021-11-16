@@ -59,7 +59,7 @@ absl::Status GPUBenchmark(GraphFloat32* graph, int num_tests, int iterations,
 
   InferenceContext::CreateInferenceInfo create_info;
   create_info.precision = precision;
-  create_info.storage_type = TensorStorageType::BUFFER;
+  create_info.storage_type = GetFastestStorageType(gpu_info);
   create_info.hints.Add(ModelHints::kAllowSpecialKernels);
   InferenceContext inference_context;
   RETURN_IF_ERROR(inference_context.InitFromGraphWithTransforms(create_info, graph, device));

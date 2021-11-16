@@ -510,6 +510,17 @@ absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer,
   return absl::OkStatus();
 }
 
+TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info) {
+  const bool a7_or_a8 =
+      gpu_info.IsApple() && (gpu_info.apple_info.IsA7GenerationGpu() ||
+                             gpu_info.apple_info.IsA8GenerationGpu());
+  if (a7_or_a8) {
+    return TensorStorageType::TEXTURE_2D;
+  } else {
+    return TensorStorageType::BUFFER;
+  }
+}
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite

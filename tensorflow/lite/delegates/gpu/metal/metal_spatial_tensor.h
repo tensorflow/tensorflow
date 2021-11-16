@@ -134,6 +134,8 @@ absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWDC& 
                                              const TensorDescriptor& descriptor,
                                              int row_bytes_alignment, MetalSpatialTensor* result);
 
+TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info);
+
 template <DataType T>
 absl::Status MetalSpatialTensor::WriteData(id<MTLDevice> device,
                                            const tflite::gpu::Tensor<BHWC, T>& src) {
