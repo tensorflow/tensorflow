@@ -111,20 +111,6 @@ test_suite(
 )
 
 py_library(
-    name = "toco_convert",
-    srcs = ["toco_convert.py"],
-    data = [
-        "//tensorflow/lite/toco",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":zip_test_utils",
-        "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
     name = "mlir_convert",
     srcs = ["mlir_convert.py"],
     data = [
