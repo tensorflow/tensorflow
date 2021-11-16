@@ -4296,7 +4296,6 @@ cc_library(
         ":tuple_util",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core/lib/math:math_util",
-        "@com_google_absl//absl/container:btree",
     ],
 )
 
