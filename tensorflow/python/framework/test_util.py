@@ -1207,6 +1207,13 @@ def disable_eager_op_as_function(unused_msg):
     func._disable_eager_op_as_function = True
     return func
 
+  # Once the environment flag is flipped and `run_eager_op_as_function_enabled`
+  # is True by default, the `with_eager_op_as_function` wrapper will not add a
+  # separate test for eager_op_as_function execution. In that case the test with
+  # the original name needs to be disabled.
+  if context.run_eager_op_as_function_enabled():
+    return _disable_test(execute_func=False)
+
   return wrapper
 
 
