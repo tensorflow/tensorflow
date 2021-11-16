@@ -48,6 +48,13 @@ load(
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
+# copybara:comment_begin(oss only)
+load(
+    "//tensorflow/core/platform/default:experimental_cc_shared_library.bzl",
+    "cc_shared_library",
+)
+# copybara:comment_end
+
 def register_extension_info(**kwargs):
     pass
 
@@ -531,6 +538,29 @@ def _rpath_linkopts(name):
         ],
     })
 
+# copybara:comment_begin(oss only)
+def _rpath_user_link_flags(name):
+    # Search parent directories up to the TensorFlow root directory for shared
+    # object dependencies, even if this op shared object is deeply nested
+    # (e.g. tensorflow/contrib/package:python/ops/_op_lib.so). tensorflow/ is then
+    # the root and tensorflow/libtensorflow_framework.so should exist when
+    # deployed. Other shared object dependencies (e.g. shared between contrib/
+    # ops) are picked up as long as they are in either the same or a parent
+    # directory in the tensorflow/ tree.
+    levels_to_root = native.package_name().count("/") + name.count("/")
+    return select({
+        clean_dep("//tensorflow:macos"): [
+            "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
+            "-Wl,-rename_section,__TEXT,text_env,__TEXT,__text",
+        ],
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "-Wl,%s" % (_make_search_paths("$ORIGIN", levels_to_root),),
+        ],
+    })
+
+# copybara:comment_end
+
 # Bazel-generated shared objects which must be linked into TensorFlow binaries
 # to define symbols from //tensorflow/core:framework and //tensorflow/core:lib.
 def tf_binary_additional_srcs(fullversion = False):
@@ -817,6 +847,54 @@ def tf_native_cc_binary(
         }) + linkopts + _rpath_linkopts(name) + lrt_if_needed(),
         **kwargs
     )
+
+# copybara:comment_begin(oss only)
+# buildozer: disable=function-docstring-args
+def tf_native_cc_shared_library(
+        name,
+        srcs = [],
+        data = [],
+        static_deps = [],
+        deps = [],
+        copts = tf_copts(),
+        linkopts = [],
+        defines = [],
+        visibility = None):
+    """ A simple wrap around cc_shared_library rule."""
+    cc_library_name = name + "_cclib"
+    cc_library(
+        name = cc_library_name,
+        srcs = srcs,
+        deps = deps,
+        copts = copts,
+        defines = defines,
+    )
+    cc_shared_library_name = name + "_ccsharedlib"
+    cc_shared_library(
+        name = cc_shared_library_name,
+        roots = [cc_library_name],
+        static_deps = static_deps,
+        data = data,
+        shared_lib_name = name,
+        user_link_flags = select({
+            clean_dep("//tensorflow:windows"): [],
+            clean_dep("//tensorflow:macos"): [
+                "-lm",
+            ],
+            "//conditions:default": [
+                "-lpthread",
+                "-lm",
+            ],
+        }) + linkopts + _rpath_user_link_flags(name) + lrt_if_needed(),
+        visibility = visibility,
+    )
+    native.alias(
+        name = name,
+        actual = cc_shared_library_name,
+        visibility = visibility,
+    )
+
+# copybara:comment_end
 
 def tf_gen_op_wrapper_cc(
         name,
