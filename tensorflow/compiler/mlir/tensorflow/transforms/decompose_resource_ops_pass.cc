@@ -31,8 +31,9 @@ namespace {
 
 constexpr char kBadDecompositionMessage[] =
     "Resource ops decomposition did not converge";
-// TODO(prakalps): This can probably be reduced to much smaller number.
-constexpr int kMaxIterations = 100;
+// TODO(205877739): Reduce kMaxIterations. Should be smaller than 100. Each
+//                  iteration dead-code-eliminates leaves only.
+constexpr int kMaxIterations = 1000;
 
 // Populates `reachable_functions` with all functions that can be reached from
 // device cluster ops.
@@ -189,4 +190,3 @@ CreateDecomposeResourceOpsInClusterPass() {
 
 }  // namespace TFDevice
 }  // namespace mlir
-
