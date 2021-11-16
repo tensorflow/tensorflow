@@ -114,7 +114,7 @@ static const char* ToPythonStructFormat(DType dtype_kind) {
     case DType::Unsupported:
       throw std::runtime_error("Unsupported dtype.");
     case DType::UI8:
-      throw std::runtime_error("Unimplemented.");
+      return "B";
     case DType::UI16:
       return "H";
     case DType::UI32:
@@ -154,6 +154,8 @@ static const char* ToPythonStructFormat(DType dtype_kind) {
 static DType FromPythonStructFormat(char dtype) {
   // Reference: https://docs.python.org/3/library/struct.html
   switch (dtype) {
+    case 'B':
+      return DType::UI8;
     case 'H':
       return DType::UI16;
     case 'I':

@@ -137,6 +137,10 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateTiledLoopBufferizePass());
+  // Now that all compute operations are converted to standard (as a sideeffect
+  // of bufferizing to memref dialect) we can remove the remaining references
+  // to unsigned types.
+  pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
   pm.addPass(mlir::createTensorConstantBufferizePass(/*alignment=*/64));
