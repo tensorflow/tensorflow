@@ -3235,7 +3235,6 @@ pywrap_tensorflow_macro(
         ":safe_ptr",
         ":py_exception_registry",
         "//tensorflow/python/lib/core:py_func_lib",
-        "//tensorflow/python/lib/io:py_record_reader_lib",
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
@@ -4105,11 +4104,6 @@ alias(
 alias(
     name = "py_util",
     actual = "//tensorflow/python/lib/core:py_util",
-)
-
-alias(
-    name = "py_record_reader_lib",
-    actual = "//tensorflow/python/lib/io:py_record_reader_lib",
 )
 
 alias(
