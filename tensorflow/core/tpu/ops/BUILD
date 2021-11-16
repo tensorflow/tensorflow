@@ -12,6 +12,7 @@ cc_library(
         ":host_compute_ops",
         ":topk_ops",
         ":tpu_compile_op",
+        ":tpu_embedding_config_ops",
         ":tpu_execute_op",
         ":tpu_partitioned_ops",
         ":tpu_reshard_variables_op",
@@ -99,6 +100,21 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_embedding_config_ops",
+    srcs = [
+        "tpu_embedding_config_ops.cc",
+    ],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
     ],
     alwayslink = 1,
 )
