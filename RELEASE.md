@@ -146,6 +146,16 @@ This release contains contributions from many people at Google, as well as:
   * Add experimental API `experimental_from_jax` to support conversion from Jax models to TensorFlow Lite.
   * Support uint32 data type for cast op.
   * Add experimental quantization debugger `tf.lite.QuantizationDebugger`
+  * Add lite.experimental.authoring.compatible API
+      *   A Python decorator to provide a way to check TFLite compatibility
+          issue of `tf.function`. This returns a callable object which
+          validates TFLite compatibility. If an incompatible operation is
+          encountered during execution, an exception will be raised with
+          information about the incompatible ops.
+  * Add lite.experimental.Analyzer API
+      *   An experimental tool to analyze TFLite flatbuffer models. This API
+          can be used to investigate TFLite model structure and check
+          compatibility with GPU delegate.
 
 * Extension Types
   * Add experimental API to define new Python classes that can be handled by TensorFlow APIs. To create an extension type, simply define a Python class with `tf.experimental.ExtensionType` as its base, and use type annotations to specify the type for each field.  E.g.:
@@ -460,16 +470,6 @@ This release introduces several vulnerability fixes:
             coming soon.
         *   Old Converter (TOCO) is getting removed from next release. It's been
             deprecated for few releases already.
-    *   lite.experimental.authoring.compatible API:
-        *   A Python decorator to provide a way to check TFLite compatibility
-            issue of `tf.function`. This returns a callable object which
-            validates TFLite compatibility. If an incompatible operation is
-            encountered during execution, an exception will be raised with
-            information about the incompatible ops.
-    *   lite.experimental.Analyzer API:
-        *   An experimental tool to analyze TFLite flatbuffer models. This API
-            can be used to investigate TFLite model structure and check
-            compatibility with GPU delegate.
 
 *   `tf.saved_model`:
 
