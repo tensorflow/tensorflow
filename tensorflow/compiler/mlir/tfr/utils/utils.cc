@@ -31,6 +31,14 @@ const llvm::StringSet<>& GetAllowedAttributes() {
   return *ops;
 }
 
+// Some TFL optional attributes may not appear in their corresponding TF op
+// attributes.
+const llvm::StringSet<>& GetOptionalAttributes() {
+  static auto* const ops =
+      new llvm::StringSet<>({"asymmetric_quantize_inputs"});
+  return *ops;
+}
+
 void CollectAllowedAttrs(CallOp src, NamedAttrList* attrs) {
   for (auto& attr : src->getAttrs()) {
     if (GetAllowedAttributes().contains(attr.first.strref())) {
@@ -124,8 +132,10 @@ std::string GetTFOpName(StringRef compose_func_name) {
 LogicalResult ValidateAttrs(Operation* src, const StringSet<>& registered) {
   for (auto& attr : src->getAttrs()) {
     StringRef attr_name = attr.first.strref();
+
     if (!registered.contains(attr_name) &&
-        !GetAllowedAttributes().contains(attr_name)) {
+        !(GetAllowedAttributes().contains(attr_name) ||
+          GetOptionalAttributes().contains(attr_name))) {
       src->emitError("Denied unregistered attribute was found: " + attr_name);
       return failure();
     }
@@ -137,8 +147,10 @@ LogicalResult CopyAllowedUnregisteredAttrs(Operation* src, CallOp dst,
                                            const StringSet<>& registered) {
   for (auto& attr : src->getAttrs()) {
     StringRef attr_name = attr.first.strref();
-    // Skip the registered attribute.
-    if (registered.contains(attr_name)) continue;
+    // Skip the registered or optional attribute.
+    if (registered.contains(attr_name) ||
+        GetOptionalAttributes().contains(attr_name))
+      continue;
 
     // Unregistered attribute.
     if (GetAllowedAttributes().contains(attr_name)) {
