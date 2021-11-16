@@ -19,6 +19,7 @@ import numpy
 
 from . import xla_extension as _xla
 from .xla_extension import Shape as Shape
+from .xla_extension import Layout as Layout
 from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
