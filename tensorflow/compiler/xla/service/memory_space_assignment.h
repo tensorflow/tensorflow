@@ -121,6 +121,14 @@ class MemorySpaceAssignmentCostAnalysis {
   float GetAlternateMemoryBenefit(const HloInstruction& instruction,
                                   float elapsed_time_due_to_alternate_mem,
                                   Cache* cache = nullptr) const;
+  // Like above, return the benefit of putting the output tensor in the
+  // alternate memory.
+  float GetAlternateMemoryBenefit(const HloPosition& position,
+                                  Cache* cache = nullptr) const;
+  // Like above, return the benefit of putting the input tensor in the alternate
+  // memory.
+  float GetAlternateMemoryBenefit(const HloUse& use,
+                                  Cache* cache = nullptr) const;
 
   // Returns a heuristic value of memory boundedness for the given
   // BufferInterval.  The larger this number, the higher priority it will be

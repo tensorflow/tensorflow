@@ -250,15 +250,9 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
 float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
     const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
     MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
-  const HloInstruction& defining_instruction =
-      *interval.buffer->defining_instruction();
-  float alternate_mem_benefit = GetAlternateMemoryBenefit(
-      defining_instruction,
-      GetInstructionElapsedDueToMemory(
-          defining_instruction,
-          /*operands_in_alternate_mem=*/{},
-          /*outputs_in_alternate_mem=*/{interval.buffer->defining_index()}),
-      cache);
+  float alternate_mem_benefit =
+      GetAlternateMemoryBenefit(interval.buffer->defining_position(), cache);
+
   for (const HloBuffer* buffer : alias_analysis_->ComputeBuffersAt(
            interval.buffer->defining_position().instruction,
            interval.buffer->defining_position().index)) {
@@ -270,13 +264,7 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
             use.instruction->opcode() == HloOpcode::kConditional) {
           continue;
         }
-        float use_alternate_mem_benefit = GetAlternateMemoryBenefit(
-            *use.instruction,
-            GetInstructionElapsedDueToMemory(
-                *use.instruction,
-                /*operands_in_alternate_mem=*/{std::make_pair(
-                    use.operand_number, use.operand_index)}),
-            cache);
+        float use_alternate_mem_benefit = GetAlternateMemoryBenefit(use, cache);
         // If the benefit is positive (memory bound), add it to this buffer's
         // benefit. If the benefit is negative (compute bound), calculate the
         // maximum.
@@ -294,6 +282,29 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
   // size. Empirically, we observed this resulted in better performance compared
   // to dividing by the size.
   return alternate_mem_benefit / std::sqrt(interval.size);
+}
+
+float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
+    const HloPosition& position,
+    MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
+  return GetAlternateMemoryBenefit(
+      *position.instruction,
+      GetInstructionElapsedDueToMemory(
+          *position.instruction,
+          /*operands_in_alternate_mem=*/{},
+          /*outputs_in_alternate_mem=*/{position.index}),
+      cache);
+}
+
+float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
+    const HloUse& use, MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
+  return GetAlternateMemoryBenefit(
+      *use.instruction,
+      GetInstructionElapsedDueToMemory(
+          *use.instruction,
+          /*operands_in_alternate_mem=*/{std::make_pair(use.operand_number,
+                                                        use.operand_index)}),
+      cache);
 }
 
 int MemorySpaceAssignmentCostAnalysis::CalculateComputationNestLevel(
@@ -2351,6 +2362,14 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
           << ". Size = " << request.size
           << ", def pos = " << defining_position.ToString();
   CHECK_LE(request.start_time, request.end_time);
+  if (VLOG_IS_ON(3) && options_.cost_analysis) {
+    VLOG(3) << "Definition benefit = "
+            << options_.cost_analysis->GetAlternateMemoryBenefit(
+                   request.allocation_value->defining_position())
+            << " use benefit = "
+            << options_.cost_analysis->GetAlternateMemoryBenefit(
+                   request.use->hlo_use);
+  }
 
   // There could be a requirement to pin this buffer to default memory either
   // because it is a parameter or an output.  If the buffer is a parameter, then
