@@ -4298,22 +4298,14 @@ std::string GetStringPyObjectRepr(PyObject* object) {
 }
 
 bool SupportsProtocol(PyObject* object) {
-  // TODO(b/202447704): Drop _tf_tracing_type at protocol export.
-  return PyObject_HasAttrString(object, "_tf_tracing_type") ||
-         PyObject_HasAttrString(object, "__tf_tracing_type__");
+  return PyObject_HasAttrString(object, "__tf_tracing_type__");
 }
 
 tensorflow::StatusOr<PyObject*> GetProtocolTraceType(PyObject* object,
                                                      PyObject* context) {
-  // TODO(b/202447704): Drop _tf_tracing_type at protocol export.
   tensorflow::Safe_PyObjectPtr protocol(
-      PyObject_GetAttrString(object, "_tf_tracing_type"));
-
-  if (protocol == nullptr) {
-    PyErr_Clear();
-    protocol.reset(PyObject_GetAttrString(object, "__tf_tracing_type__"));
-    DCHECK(protocol != nullptr);
-  }
+      PyObject_GetAttrString(object, "__tf_tracing_type__"));
+  DCHECK(protocol != nullptr);
 
   tensorflow::Safe_PyObjectPtr call_args(Py_BuildValue("(O)", context));
   tensorflow::Safe_PyObjectPtr tracetype(

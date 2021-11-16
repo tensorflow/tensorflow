@@ -1102,8 +1102,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     """
     return object_identity.Reference(self)
 
-  # TODO(b/202447704): Rename to __tf_tracing_type__ at protocol export.
-  def _tf_tracing_type(self, signature_context):
+  def __tf_tracing_type__(self, signature_context):
     return TensorType(signature_context, self.shape, self.dtype, None)
 
 
