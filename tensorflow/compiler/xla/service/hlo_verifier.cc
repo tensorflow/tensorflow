@@ -2286,6 +2286,10 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 }  // namespace
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
+  auto disabled = module->config().debug_options().xla_disable_hlo_passes();
+  if (std::find(disabled.begin(), disabled.end(), name()) != disabled.end()) {
+    return false;
+  }
   auto status_or_changed = [&]() -> StatusOr<bool> {
     TF_RET_CHECK(!module->name().empty());
 
