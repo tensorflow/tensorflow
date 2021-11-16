@@ -101,7 +101,7 @@ void GenerateMultinomialNumbers(Generator& rng, const float* logits,
   // Compute the maximum logit.
   float max = std::numeric_limits<float>::lowest();
   for (size_t i = 0; i < logits_size; i++) {
-    if (isfinite(logits[i])) {
+    if (std::isfinite(logits[i])) {
       max = std::max(max, logits[i]);
     }
   }
@@ -114,7 +114,7 @@ void GenerateMultinomialNumbers(Generator& rng, const float* logits,
   std::vector<double> cdf(logits_size);
   double cumulative_total = 0.0f;
   for (size_t i = 0; i < logits_size; i++) {
-    if (isfinite(logits[i])) {
+    if (std::isfinite(logits[i])) {
       cumulative_total += exp(logits[i] - max_logit);
     }
     cdf[i] = cumulative_total;
