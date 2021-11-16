@@ -1076,6 +1076,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:dnn",
+        "//tensorflow/stream_executor:lazy_op_runner",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

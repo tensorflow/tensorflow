@@ -58,6 +58,7 @@ class ConvolutionThunk : public Thunk {
 
   // Convolution config
   const GpuConvConfig config_;
+  MaybeFusedConvRunner runner_cache_;
 };
 
 }  // namespace gpu
