@@ -96,6 +96,7 @@ cc_library(
     srcs = ["jit/tf_cpurt_pipeline.cc"],
     hdrs = ["jit/tf_cpurt_pipeline.h"],
     deps = [
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",

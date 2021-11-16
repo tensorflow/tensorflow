@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
@@ -185,6 +186,7 @@ void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
 
 void CreateDefaultTfCpuRtPipeline(mlir::OpPassManager& pm) {
   TfCpuRtPipelineOptions options;
+  options.vectorize = tensorflow::GetCpuRtFlags().vectorize;
   CreateTfCpuRtPipeline(pm, options);
 }
 
