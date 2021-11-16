@@ -3594,7 +3594,7 @@ GetCudnnFusedOperationGraph(
                       .setStrides(output_dims.size(), &output_strides[0])
                       .setId('z')
                       .setAlignment(32)
-                      .setDataType(cudnn_input_type)
+                      .setDataType(cudnn_output_type)
                       .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_z);
