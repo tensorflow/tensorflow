@@ -4749,7 +4749,7 @@ CudnnSupport::ConvolveRunnerFromDesc(
             /* output_nd = */
             CudnnTensorDescriptor(
                 output_descriptor,
-                ToCudnnDataType(input_type, output_descriptor.layout())),
+                ToCudnnDataType(output_type, output_descriptor.layout())),
             /* filter = */
             CudnnFilterDescriptor(
                 filter_descriptor,
