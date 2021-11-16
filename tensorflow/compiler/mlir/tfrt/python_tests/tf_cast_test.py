@@ -24,31 +24,65 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 class TfCastTest(test.TestCase):
 
-  def test_cast_unsigned_signed(self):
+  def test_cast_unsigned_signed_i32(self):
     mlir_function = """
-      func @test(%arg0: tensor<?xui32>)
-           -> (tensor<?xi32>, tensor<?xui32>, tensor<?xi64>, tensor<?xui8>) {
+      func @test(%arg0: tensor<?xui32>) -> tensor<?xi32> {
         %0 = "tf.Cast"(%arg0) : (tensor<?xui32>) -> tensor<?xi32>
-        %1 = "tf.Cast"(%0) : (tensor<?xi32>) -> tensor<?xui32>
-        %2 = "tf.Cast"(%1) : (tensor<?xui32>) -> tensor<?xi64>
-        %3 = "tf.Cast"(%2) : (tensor<?xi64>) -> tensor<?xui8>
-        return %0, %1, %2, %3
-          : tensor<?xi32>, tensor<?xui32>, tensor<?xi64>, tensor<?xui8>
+        return %0 : tensor<?xi32>
       }"""
 
     compiled = cpurt.compile(mlir_function, 'test')
 
     arg0 = np.random.uniform(300, 3000, size=10).astype(np.uint32)
 
-    [res0, res1, res2, res3] = cpurt.execute(compiled, [arg0])
-    np.testing.assert_equal(res0, arg0)
-    np.testing.assert_equal(res0.dtype, np.int32)
-    np.testing.assert_equal(res1, arg0)
-    np.testing.assert_equal(res1.dtype, np.uint32)
-    np.testing.assert_equal(res2, arg0)
-    np.testing.assert_equal(res2.dtype, np.int64)
-    np.testing.assert_equal(res3, arg0.astype(np.uint8))
-    np.testing.assert_equal(res3.dtype, np.uint8)
+    [res] = cpurt.execute(compiled, [arg0])
+    np.testing.assert_equal(res, arg0)
+    np.testing.assert_equal(res.dtype, np.int32)
+
+  def test_cast_signed_unsigned_i32(self):
+    mlir_function = """
+      func @test(%arg0: tensor<?xi32>) -> tensor<?xui32> {
+        %0 = "tf.Cast"(%arg0) : (tensor<?xi32>) -> tensor<?xui32>
+        return %0 : tensor<?xui32>
+      }"""
+
+    compiled = cpurt.compile(mlir_function, 'test')
+
+    arg0 = np.random.uniform(300, 3000, size=10).astype(np.int32)
+
+    [res] = cpurt.execute(compiled, [arg0])
+    np.testing.assert_equal(res, arg0)
+    np.testing.assert_equal(res.dtype, np.uint32)
+
+  def test_cast_unsigned_signed_i32_i64(self):
+    mlir_function = """
+      func @test(%arg0: tensor<?xui32>) ->  tensor<?xi64> {
+        %0 = "tf.Cast"(%arg0) : (tensor<?xui32>) -> tensor<?xi64>
+        return %0 : tensor<?xi64>
+      }"""
+
+    compiled = cpurt.compile(mlir_function, 'test')
+
+    arg0 = np.random.uniform(300, 3000, size=10).astype(np.uint32)
+
+    [res] = cpurt.execute(compiled, [arg0])
+    np.testing.assert_equal(res, arg0)
+    np.testing.assert_equal(res.dtype, np.int64)
+
+  def test_cast_signed_unsigned_i64_i8(self):
+    mlir_function = """
+      func @test(%arg0: tensor<?xi64>) -> tensor<?xui8> {
+        %0 = "tf.Cast"(%arg0) : (tensor<?xi64>) -> tensor<?xui8>
+        return %0 : tensor<?xui8>
+      }"""
+
+    compiled = cpurt.compile(mlir_function, 'test')
+
+    arg0 = np.random.uniform(300, 3000, size=10).astype(np.int64)
+
+    [res] = cpurt.execute(compiled, [arg0])
+    np.testing.assert_equal(res, arg0.astype(np.uint8))
+    np.testing.assert_equal(res.dtype, np.uint8)
 
 
 if __name__ == '__main__':
