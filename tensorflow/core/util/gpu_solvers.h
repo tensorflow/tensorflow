@@ -460,7 +460,7 @@ class GpuSolver {
   cudaStream_t cuda_stream_;
   cusolverDnHandle_t cusolver_dn_handle_;
   cublasHandle_t cublas_handle_;
-#else  // TENSORLFOW_USE_ROCM
+#else  // TENSORFLOW_USE_ROCM
   hipStream_t hip_stream_;
   rocblas_handle rocm_blas_handle_;
 #endif
