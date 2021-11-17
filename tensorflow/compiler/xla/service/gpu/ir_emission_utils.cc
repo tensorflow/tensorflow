@@ -20,26 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
-#include "llvm/IR/Module.h"
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -136,11 +122,6 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
   return true;
 }
 
-bool IsCublasGemm(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kCustomCall &&
-         hlo.custom_call_target() == kGemmCallTarget;
-}
-
 std::array<int64_t, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     se::CudaComputeCapability cuda_compute_capability) {
@@ -152,43 +133,6 @@ std::array<int64_t, 3> GetReductionTiling(
 
   // Column reduction.
   return {1, 128, 1};
-}
-
-const char* const kCudnnBatchNormForwardInferenceCallTarget =
-    "__cudnn$batchNormalizationForwardInference";
-const char* const kCudnnBatchNormForwardTrainingCallTarget =
-    "__cudnn$batchNormalizationForwardTraining";
-const char* const kCudnnBatchNormBackwardCallTarget =
-    "__cudnn$batchNormalizationBackward";
-
-bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo) {
-  if (hlo.opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-  const auto& target = hlo.custom_call_target();
-  return target == kCudnnBatchNormForwardInferenceCallTarget ||
-         target == kCudnnBatchNormForwardTrainingCallTarget ||
-         target == kCudnnBatchNormBackwardCallTarget;
-}
-
-const char* const kGemmCallTarget = "__cublas$gemm";
-const char* const kCudnnConvForwardCallTarget = "__cudnn$convForward";
-const char* const kCudnnConvBackwardInputCallTarget =
-    "__cudnn$convBackwardInput";
-const char* const kCudnnConvBackwardFilterCallTarget =
-    "__cudnn$convBackwardFilter";
-const char* const kCudnnConvBiasActivationForwardCallTarget =
-    "__cudnn$convBiasActivationForward";
-
-bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
-  if (hlo.opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-  const auto& target = hlo.custom_call_target();
-  return target == kCudnnConvForwardCallTarget ||
-         target == kCudnnConvBackwardInputCallTarget ||
-         target == kCudnnConvBackwardFilterCallTarget ||
-         target == kCudnnConvBiasActivationForwardCallTarget;
 }
 
 const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
@@ -564,37 +508,6 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
           builder->CreateBitCast(x, builder->getIntNTy(32 * num_segments)),
           builder->getIntNTy(bit_width)),
       value->getType());
-}
-
-StatusOr<CudnnConvKind> GetCudnnConvKind(
-    const HloCustomCallInstruction* instr) {
-  absl::string_view target = instr->custom_call_target();
-  if (target == kCudnnConvForwardCallTarget) {
-    return CudnnConvKind::kForward;
-  }
-  if (target == kCudnnConvBackwardInputCallTarget) {
-    return CudnnConvKind::kBackwardInput;
-  }
-  if (target == kCudnnConvBackwardFilterCallTarget) {
-    return CudnnConvKind::kBackwardFilter;
-  }
-  if (target == kCudnnConvBiasActivationForwardCallTarget) {
-    return CudnnConvKind::kForwardActivation;
-  }
-  return InternalError("Unexpected call target: %s", target);
-}
-
-string CudnnConvKindToString(CudnnConvKind kind) {
-  switch (kind) {
-    case CudnnConvKind::kForward:
-      return "forward";
-    case CudnnConvKind::kBackwardFilter:
-      return "backward_filter";
-    case CudnnConvKind::kBackwardInput:
-      return "backward_input";
-    case CudnnConvKind::kForwardActivation:
-      return "forward with activation";
-  }
 }
 
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
