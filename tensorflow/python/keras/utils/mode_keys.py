@@ -15,5 +15,8 @@
 """Keras model mode constants."""
 
 # pylint: disable=unused-import
-from tensorflow.python.saved_model.model_utils.mode_keys import KerasModeKeys as ModeKeys
+from tensorflow.python.saved_model.model_utils.mode_keys import (
+    KerasModeKeys as ModeKeys,
+)
+
 # pylint: enable=unused-import

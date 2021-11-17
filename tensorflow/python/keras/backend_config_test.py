@@ -20,33 +20,32 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.platform import test
 
 
-@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
 class BackendConfigTest(test.TestCase):
+    def test_backend(self):
+        self.assertEqual(backend.backend(), "tensorflow")
 
-  def test_backend(self):
-    self.assertEqual(backend.backend(), 'tensorflow')
+    def test_epsilon(self):
+        epsilon = 1e-2
+        backend_config.set_epsilon(epsilon)
+        self.assertEqual(backend_config.epsilon(), epsilon)
+        backend_config.set_epsilon(1e-7)
+        self.assertEqual(backend_config.epsilon(), 1e-7)
 
-  def test_epsilon(self):
-    epsilon = 1e-2
-    backend_config.set_epsilon(epsilon)
-    self.assertEqual(backend_config.epsilon(), epsilon)
-    backend_config.set_epsilon(1e-7)
-    self.assertEqual(backend_config.epsilon(), 1e-7)
+    def test_floatx(self):
+        floatx = "float64"
+        backend_config.set_floatx(floatx)
+        self.assertEqual(backend_config.floatx(), floatx)
+        backend_config.set_floatx("float32")
+        self.assertEqual(backend_config.floatx(), "float32")
 
-  def test_floatx(self):
-    floatx = 'float64'
-    backend_config.set_floatx(floatx)
-    self.assertEqual(backend_config.floatx(), floatx)
-    backend_config.set_floatx('float32')
-    self.assertEqual(backend_config.floatx(), 'float32')
-
-  def test_image_data_format(self):
-    image_data_format = 'channels_first'
-    backend_config.set_image_data_format(image_data_format)
-    self.assertEqual(backend_config.image_data_format(), image_data_format)
-    backend_config.set_image_data_format('channels_last')
-    self.assertEqual(backend_config.image_data_format(), 'channels_last')
+    def test_image_data_format(self):
+        image_data_format = "channels_first"
+        backend_config.set_image_data_format(image_data_format)
+        self.assertEqual(backend_config.image_data_format(), image_data_format)
+        backend_config.set_image_data_format("channels_last")
+        self.assertEqual(backend_config.image_data_format(), "channels_last")
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

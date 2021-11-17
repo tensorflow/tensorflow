@@ -18,38 +18,38 @@ from tensorflow.python.training.tracking import base
 
 
 class SaveableHook(base.NoRestoreSaveable):
-  """Base class for running callbacks at Save/Restore time.
+    """Base class for running callbacks at Save/Restore time.
 
-  Subclasses should override one or both methods to modify or read variables
-  during the saving process. No guarantees are made regarding the precedence
-  of execution between multiple `SaveableHook` objects, but execution is
-  guaranteed to occur before or after the respective event.
+    Subclasses should override one or both methods to modify or read variables
+    during the saving process. No guarantees are made regarding the precedence
+    of execution between multiple `SaveableHook` objects, but execution is
+    guaranteed to occur before or after the respective event.
 
-  Users should emit the SaveableHook alongside other SaveableObjects, such as
-  in Trackable._gather_saveables_for_checkpoint().
+    Users should emit the SaveableHook alongside other SaveableObjects, such as
+    in Trackable._gather_saveables_for_checkpoint().
 
-  Saves a single constant in order to be compliant with the SaveableObject API.
-  """
-
-  def __init__(self, name):
-    """Creates a `SaveableHook` object.
-
-    Args:
-      name: the name to save the object under.
+    Saves a single constant in order to be compliant with the SaveableObject API.
     """
-    super(SaveableHook, self).__init__(
-        tensor=constant_op.constant(0),
-        name=name,
-    )
 
-  @property
-  def device(self):
-    return self.op.device
+    def __init__(self, name):
+        """Creates a `SaveableHook` object.
 
-  def before_save(self):
-    """This method will be called before iterating devices for saving."""
-    pass
+        Args:
+          name: the name to save the object under.
+        """
+        super(SaveableHook, self).__init__(
+            tensor=constant_op.constant(0),
+            name=name,
+        )
 
-  def after_restore(self):
-    """This method will be called after each device is restored."""
-    pass
+    @property
+    def device(self):
+        return self.op.device
+
+    def before_save(self):
+        """This method will be called before iterating devices for saving."""
+        pass
+
+    def after_restore(self):
+        """This method will be called after each device is restored."""
+        pass

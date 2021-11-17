@@ -24,21 +24,21 @@ from tensorflow.python.util.tf_export import tf_export
 @deprecation.deprecated(None, "Use `tf.data.Dataset.random(...)`.")
 @tf_export("data.experimental.RandomDataset", v1=[])
 class RandomDatasetV2(dataset_ops.RandomDataset):
-  """A `Dataset` of pseudorandom values."""
+    """A `Dataset` of pseudorandom values."""
 
 
 @deprecation.deprecated(None, "Use `tf.data.Dataset.random(...)`.")
 @tf_export(v1=["data.experimental.RandomDataset"])
 class RandomDatasetV1(dataset_ops.DatasetV1Adapter):
-  """A `Dataset` of pseudorandom values."""
+    """A `Dataset` of pseudorandom values."""
 
-  @functools.wraps(RandomDatasetV2.__init__)
-  def __init__(self, seed=None):
-    wrapped = RandomDatasetV2(seed)
-    super(RandomDatasetV1, self).__init__(wrapped)
+    @functools.wraps(RandomDatasetV2.__init__)
+    def __init__(self, seed=None):
+        wrapped = RandomDatasetV2(seed)
+        super(RandomDatasetV1, self).__init__(wrapped)
 
 
 if tf2.enabled():
-  RandomDataset = RandomDatasetV2
+    RandomDataset = RandomDatasetV2
 else:
-  RandomDataset = RandomDatasetV1
+    RandomDataset = RandomDatasetV1

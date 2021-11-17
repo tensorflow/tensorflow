@@ -20,4 +20,5 @@ Note: All the losses are added to the `GraphKeys.LOSSES` collection by default.
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.losses.losses_impl import *
 from tensorflow.python.ops.losses.util import *
+
 # pylint: enable=wildcard-import

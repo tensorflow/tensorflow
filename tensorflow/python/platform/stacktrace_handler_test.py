@@ -28,50 +28,54 @@ from tensorflow.python.platform import tf_logging as logging
 # child (bool) set to true if we are running in the child process.
 FLAGS = None
 
-_CHILD_FLAG_HELP = 'Boolean. Set to true if this is the child process.'
+_CHILD_FLAG_HELP = "Boolean. Set to true if this is the child process."
 
 
 class StacktraceHandlerTest(test.TestCase):
+    def testChildProcessKillsItself(self):
+        if FLAGS.child:
+            os.kill(os.getpid(), signal.SIGABRT)
 
-  def testChildProcessKillsItself(self):
-    if FLAGS.child:
-      os.kill(os.getpid(), signal.SIGABRT)
+    def testGeneratesStacktrace(self):
+        if FLAGS.child:
+            return
 
-  def testGeneratesStacktrace(self):
-    if FLAGS.child:
-      return
+        # Subprocess sys.argv[0] with --child=True
+        if sys.executable:
+            child_process = subprocess.Popen(
+                [sys.executable, sys.argv[0], "--child=True"],
+                cwd=os.getcwd(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        else:
+            child_process = subprocess.Popen(
+                [sys.argv[0], "--child=True"],
+                cwd=os.getcwd(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
 
-    # Subprocess sys.argv[0] with --child=True
-    if sys.executable:
-      child_process = subprocess.Popen(
-          [sys.executable, sys.argv[0], '--child=True'], cwd=os.getcwd(),
-          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    else:
-      child_process = subprocess.Popen(
-          [sys.argv[0], '--child=True'], cwd=os.getcwd(),
-          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # Capture its output. capture both stdout and stderr and append them.
+        # We are not worried about timing or order of messages in this test.
+        child_stdout, child_stderr = child_process.communicate()
+        child_output = child_stdout + child_stderr
 
-    # Capture its output. capture both stdout and stderr and append them.
-    # We are not worried about timing or order of messages in this test.
-    child_stdout, child_stderr = child_process.communicate()
-    child_output = child_stdout + child_stderr
+        # Make sure the child process is dead before we proceed.
+        child_process.wait()
 
-    # Make sure the child process is dead before we proceed.
-    child_process.wait()
+        logging.info("Output from the child process:")
+        logging.info(child_output)
 
-    logging.info('Output from the child process:')
-    logging.info(child_output)
-
-    # Verify a stack trace is printed.
-    self.assertIn(b'PyEval_EvalFrame', child_output)
+        # Verify a stack trace is printed.
+        self.assertIn(b"PyEval_EvalFrame", child_output)
 
 
-if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
-  parser.add_argument(
-      '--child', type=bool, default=False, help=_CHILD_FLAG_HELP)
-  FLAGS, unparsed = parser.parse_known_args()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--child", type=bool, default=False, help=_CHILD_FLAG_HELP)
+    FLAGS, unparsed = parser.parse_known_args()
 
-  # Now update argv, so that unittest library does not get confused.
-  sys.argv = [sys.argv[0]] + unparsed
-  test.main()
+    # Now update argv, so that unittest library does not get confused.
+    sys.argv = [sys.argv[0]] + unparsed
+    test.main()

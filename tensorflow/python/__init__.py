@@ -41,8 +41,10 @@ from tensorflow.python.eager import context
 # Bring in subpackages.
 from tensorflow.python import data
 from tensorflow.python import distribute
+
 # from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
+
 # from tensorflow.python.layers import layers
 from tensorflow.python.module import module
 from tensorflow.python.ops import bincount_ops
@@ -117,8 +119,10 @@ from tensorflow.python.framework.ops import enable_eager_execution
 # Check whether TF2_BEHAVIOR is turned on.
 from tensorflow.python.eager import monitoring as _monitoring
 from tensorflow.python import tf2 as _tf2
+
 _tf2_gauge = _monitoring.BoolGauge(
-    '/tensorflow/api/tf2_enable', 'Environment variable TF2_BEHAVIOR is set".')
+    "/tensorflow/api/tf2_enable", 'Environment variable TF2_BEHAVIOR is set".'
+)
 _tf2_gauge.get_cell().set(_tf2.enabled())
 
 # Necessary for the symbols in this module to be taken into account by
@@ -157,17 +161,20 @@ nn.rnn_cell = rnn_cell
 # Update dispatch decorator docstrings to contain lists of registered APIs.
 # (This should come after any imports that register APIs.)
 from tensorflow.python.util import dispatch
+
 dispatch.update_docstrings_with_api_lists()
 
 # Special dunders that we choose to export:
-_exported_dunders = set([
-    '__version__',
-    '__git_version__',
-    '__compiler_version__',
-    '__cxx11_abi_flag__',
-    '__monolithic_build__',
-])
+_exported_dunders = set(
+    [
+        "__version__",
+        "__git_version__",
+        "__compiler_version__",
+        "__cxx11_abi_flag__",
+        "__monolithic_build__",
+    ]
+)
 
 # Expose symbols minus dunders, unless they are allowlisted above.
 # This is necessary to export our dunders.
-__all__ = [s for s in dir() if s in _exported_dunders or not s.startswith('_')]
+__all__ = [s for s in dir() if s in _exported_dunders or not s.startswith("_")]

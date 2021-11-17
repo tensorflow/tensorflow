@@ -22,19 +22,18 @@ from tensorflow.python.platform import test
 
 
 class DisableV2BehaviorTest(test.TestCase):
+    def test_basic(self):
+        t = constant_op.constant([1, 2, 3])  # creates a hidden context
+        self.assertTrue(isinstance(t, ops.EagerTensor))
+        t = _pywrap_tf2.is_enabled()
+        self.assertTrue(t)
+        v2_compat.disable_v2_behavior()
+        t = constant_op.constant([1, 2, 3])
+        self.assertFalse(isinstance(t, ops.EagerTensor))
+        t = _pywrap_tf2.is_enabled()
+        self.assertFalse(t)
 
-  def test_basic(self):
-    t = constant_op.constant([1, 2, 3])  # creates a hidden context
-    self.assertTrue(isinstance(t, ops.EagerTensor))
-    t = _pywrap_tf2.is_enabled()
-    self.assertTrue(t)
-    v2_compat.disable_v2_behavior()
-    t = constant_op.constant([1, 2, 3])
-    self.assertFalse(isinstance(t, ops.EagerTensor))
-    t = _pywrap_tf2.is_enabled()
-    self.assertFalse(t)
 
-
-if __name__ == '__main__':
-  v2_compat.enable_v2_behavior()
-  test.main()
+if __name__ == "__main__":
+    v2_compat.enable_v2_behavior()
+    test.main()

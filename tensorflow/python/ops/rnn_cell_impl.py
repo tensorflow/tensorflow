@@ -32,7 +32,9 @@ _zero_state_tensors = rnn_cell_impl._zero_state_tensors
 
 
 assert_like_rnncell = rnn_cell_impl.assert_like_rnncell
-ASSERT_LIKE_RNNCELL_ERROR_REGEXP = rnn_cell_impl.ASSERT_LIKE_RNNCELL_ERROR_REGEXP  # pylint: disable=line-too-long
+ASSERT_LIKE_RNNCELL_ERROR_REGEXP = (
+    rnn_cell_impl.ASSERT_LIKE_RNNCELL_ERROR_REGEXP
+)  # pylint: disable=line-too-long
 BasicLSTMCell = rnn_cell_impl.BasicLSTMCell
 BasicRNNCell = rnn_cell_impl.BasicRNNCell
 DeviceWrapper = rnn_cell_impl.DeviceWrapper

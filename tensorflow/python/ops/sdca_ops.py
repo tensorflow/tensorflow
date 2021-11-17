@@ -21,6 +21,7 @@ from tensorflow.python.framework import ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sdca_ops import *
+
 # pylint: enable=wildcard-import
 
 ops.NotDifferentiable("SdcaFprint")

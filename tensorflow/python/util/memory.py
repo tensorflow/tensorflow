@@ -18,24 +18,26 @@
 
 # TODO(b/115366440): Delete this function when a custom OrderedDict is added
 def dismantle_ordered_dict(ordered_dict):
-  """Remove reference cycle in OrderedDict `ordered_dict`.
+    """Remove reference cycle in OrderedDict `ordered_dict`.
 
-  Helpful for making sure the garbage collector doesn't need to run after
-  using an OrderedDict.
+    Helpful for making sure the garbage collector doesn't need to run after
+    using an OrderedDict.
 
-  Args:
-    ordered_dict: A `OrderedDict` object to destroy. This object is unusable
-      after this function runs.
-  """
-  # OrderedDict, makes a simple reference loop
-  # and hides it in an __attribute in some Python versions. We don't need to
-  # throw an error if we can't find it, but if we do find it we can break the
-  # loop to avoid creating work for the garbage collector.
-  problematic_cycle = ordered_dict.__dict__.get("_OrderedDict__root", None)  # pylint: disable=protected-access
-  if problematic_cycle:
-    try:
-      del problematic_cycle[0][:]
-    except TypeError:
-      # This is probably not one of the problematic Python versions. Continue
-      # with the rest of our cleanup.
-      pass
+    Args:
+      ordered_dict: A `OrderedDict` object to destroy. This object is unusable
+        after this function runs.
+    """
+    # OrderedDict, makes a simple reference loop
+    # and hides it in an __attribute in some Python versions. We don't need to
+    # throw an error if we can't find it, but if we do find it we can break the
+    # loop to avoid creating work for the garbage collector.
+    problematic_cycle = ordered_dict.__dict__.get(
+        "_OrderedDict__root", None
+    )  # pylint: disable=protected-access
+    if problematic_cycle:
+        try:
+            del problematic_cycle[0][:]
+        except TypeError:
+            # This is probably not one of the problematic Python versions. Continue
+            # with the rest of our cleanup.
+            pass

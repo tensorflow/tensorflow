@@ -21,51 +21,50 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 
 
 def disable_non_trt_optimizers_in_rewriter_config(rewriter_config):
-  """Modifies rewriter_config to disable all non-TRT optimizations."""
-  off = rewriter_config_pb2.RewriterConfig.OFF
+    """Modifies rewriter_config to disable all non-TRT optimizations."""
+    off = rewriter_config_pb2.RewriterConfig.OFF
 
-  rewriter_config.arithmetic_optimization = off
-  rewriter_config.auto_mixed_precision = off
-  rewriter_config.auto_parallel.enable = False
-  rewriter_config.constant_folding = off
-  rewriter_config.debug_stripper = off
-  rewriter_config.dependency_optimization = off
-  # This one needs to be ON to allow TF-TRT
-  rewriter_config.disable_meta_optimizer = False
-  rewriter_config.disable_model_pruning = True
-  rewriter_config.function_optimization = off
-  rewriter_config.implementation_selector = off
-  rewriter_config.layout_optimizer = off
-  rewriter_config.loop_optimization = off
-  rewriter_config.memory_optimization = (
-      rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
-  rewriter_config.min_graph_nodes = -1
-  rewriter_config.pin_to_host_optimization = off
-  rewriter_config.remapping = off
-  rewriter_config.scoped_allocator_optimization = off
-  rewriter_config.shape_optimization = off
+    rewriter_config.arithmetic_optimization = off
+    rewriter_config.auto_mixed_precision = off
+    rewriter_config.auto_parallel.enable = False
+    rewriter_config.constant_folding = off
+    rewriter_config.debug_stripper = off
+    rewriter_config.dependency_optimization = off
+    # This one needs to be ON to allow TF-TRT
+    rewriter_config.disable_meta_optimizer = False
+    rewriter_config.disable_model_pruning = True
+    rewriter_config.function_optimization = off
+    rewriter_config.implementation_selector = off
+    rewriter_config.layout_optimizer = off
+    rewriter_config.loop_optimization = off
+    rewriter_config.memory_optimization = rewriter_config_pb2.RewriterConfig.NO_MEM_OPT
+    rewriter_config.min_graph_nodes = -1
+    rewriter_config.pin_to_host_optimization = off
+    rewriter_config.remapping = off
+    rewriter_config.scoped_allocator_optimization = off
+    rewriter_config.shape_optimization = off
 
 
 def version_tuple_to_string(ver_tuple):
-  assert isinstance(ver_tuple, tuple)
-  assert len(ver_tuple) == 3
+    assert isinstance(ver_tuple, tuple)
+    assert len(ver_tuple) == 3
 
-  ver_tuple = [str(x) for x in ver_tuple]
-  return ".".join(ver_tuple)
+    ver_tuple = [str(x) for x in ver_tuple]
+    return ".".join(ver_tuple)
 
 
 def _is_tensorrt_version_greater_equal(trt_ver, target_ver):
-  trt_ver = version.LooseVersion(version_tuple_to_string(trt_ver))
-  target_ver = version.LooseVersion(version_tuple_to_string(target_ver))
+    trt_ver = version.LooseVersion(version_tuple_to_string(trt_ver))
+    target_ver = version.LooseVersion(version_tuple_to_string(target_ver))
 
-  return trt_ver >= target_ver
+    return trt_ver >= target_ver
 
 
 def is_linked_tensorrt_version_greater_equal(major, minor=0, patch=0):
-  ver = _pywrap_py_utils.get_linked_tensorrt_version()
-  return _is_tensorrt_version_greater_equal(ver, (major, minor, patch))
+    ver = _pywrap_py_utils.get_linked_tensorrt_version()
+    return _is_tensorrt_version_greater_equal(ver, (major, minor, patch))
 
 
 def is_loaded_tensorrt_version_greater_equal(major, minor=0, patch=0):
-  ver = _pywrap_py_utils.get_loaded_tensorrt_version()
-  return _is_tensorrt_version_greater_equal(ver, (major, minor, patch))
+    ver = _pywrap_py_utils.get_loaded_tensorrt_version()
+    return _is_tensorrt_version_greater_equal(ver, (major, minor, patch))

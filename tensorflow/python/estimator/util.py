@@ -23,6 +23,6 @@ from tensorflow_estimator.python.estimator import util
 
 # Include attrs that start with single underscore.
 _HAS_DYNAMIC_ATTRIBUTES = True
-util.__all__ = [s for s in dir(util) if not s.startswith('__')]
+util.__all__ = [s for s in dir(util) if not s.startswith("__")]
 
 from tensorflow_estimator.python.estimator.util import *

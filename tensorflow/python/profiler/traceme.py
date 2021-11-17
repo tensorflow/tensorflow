@@ -18,11 +18,12 @@ from tensorflow.python.profiler.trace import Trace as TraceMe
 
 
 def traceme_wrapper(func):
-  name = getattr(func, '__qualname__', None)
-  if not name:
-    name = func.__name__
+    name = getattr(func, "__qualname__", None)
+    if not name:
+        name = func.__name__
 
-  def wrapper(*args, **kwargs):
-    with TraceMe(name):
-      return func(*args, **kwargs)
-  return wrapper
+    def wrapper(*args, **kwargs):
+        with TraceMe(name):
+            return func(*args, **kwargs)
+
+    return wrapper

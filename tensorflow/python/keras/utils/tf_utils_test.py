@@ -30,210 +30,242 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 try:
-  import attr  # pylint:disable=g-import-not-at-top
+    import attr  # pylint:disable=g-import-not-at-top
 except ImportError:
-  attr = None
+    attr = None
 
 
-@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
 class TestIsSymbolicTensor(test.TestCase, parameterized.TestCase):
+    def test_default_behavior(self):
+        if context.executing_eagerly():
+            self.assertFalse(
+                tf_utils.is_symbolic_tensor(
+                    variables.Variable(name="blah", initial_value=0.0)
+                )
+            )
+            self.assertFalse(
+                tf_utils.is_symbolic_tensor(ops.convert_to_tensor_v2_with_dispatch(0.0))
+            )
+            self.assertFalse(
+                tf_utils.is_symbolic_tensor(
+                    sparse_tensor.SparseTensor(
+                        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4]
+                    )
+                )
+            )
+        else:
+            self.assertTrue(
+                tf_utils.is_symbolic_tensor(
+                    variables.Variable(name="blah", initial_value=0.0)
+                )
+            )
+            self.assertTrue(
+                tf_utils.is_symbolic_tensor(ops.convert_to_tensor_v2_with_dispatch(0.0))
+            )
+            self.assertTrue(
+                tf_utils.is_symbolic_tensor(
+                    sparse_tensor.SparseTensor(
+                        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4]
+                    )
+                )
+            )
 
-  def test_default_behavior(self):
-    if context.executing_eagerly():
-      self.assertFalse(tf_utils.is_symbolic_tensor(
-          variables.Variable(name='blah', initial_value=0.)))
-      self.assertFalse(
-          tf_utils.is_symbolic_tensor(
-              ops.convert_to_tensor_v2_with_dispatch(0.)))
-      self.assertFalse(tf_utils.is_symbolic_tensor(
-          sparse_tensor.SparseTensor(
-              indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])))
-    else:
-      self.assertTrue(tf_utils.is_symbolic_tensor(
-          variables.Variable(name='blah', initial_value=0.)))
-      self.assertTrue(
-          tf_utils.is_symbolic_tensor(
-              ops.convert_to_tensor_v2_with_dispatch(0.)))
-      self.assertTrue(tf_utils.is_symbolic_tensor(
-          sparse_tensor.SparseTensor(
-              indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])))
+    def test_works_with_registered(self):
+        class CustomClass(object):
+            def value(self):
+                return ops.convert_to_tensor_v2_with_dispatch(42.0)
 
-  def test_works_with_registered(self):
+        ops.register_tensor_conversion_function(
+            CustomClass, lambda value, **_: value.value()
+        )
 
-    class CustomClass(object):
+        tf_utils.register_symbolic_tensor_type(CustomClass)
 
-      def value(self):
-        return ops.convert_to_tensor_v2_with_dispatch(42.)
+        if context.executing_eagerly():
+            self.assertFalse(
+                tf_utils.is_symbolic_tensor(
+                    variables.Variable(name="blah", initial_value=0.0)
+                )
+            )
+            self.assertFalse(
+                tf_utils.is_symbolic_tensor(ops.convert_to_tensor_v2_with_dispatch(0.0))
+            )
+            self.assertFalse(
+                tf_utils.is_symbolic_tensor(
+                    sparse_tensor.SparseTensor(
+                        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4]
+                    )
+                )
+            )
+            self.assertFalse(tf_utils.is_symbolic_tensor(CustomClass()))
+        else:
+            self.assertTrue(
+                tf_utils.is_symbolic_tensor(
+                    variables.Variable(name="blah", initial_value=0.0)
+                )
+            )
+            self.assertTrue(
+                tf_utils.is_symbolic_tensor(ops.convert_to_tensor_v2_with_dispatch(0.0))
+            )
+            self.assertTrue(
+                tf_utils.is_symbolic_tensor(
+                    sparse_tensor.SparseTensor(
+                        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4]
+                    )
+                )
+            )
+            self.assertTrue(tf_utils.is_symbolic_tensor(CustomClass()))
 
-    ops.register_tensor_conversion_function(
-        CustomClass, lambda value, **_: value.value())
+    def test_enables_nontensor_plumbing(self):
+        if context.executing_eagerly():
+            self.skipTest("`compile` functionality changed.")
+        # Setup.
 
-    tf_utils.register_symbolic_tensor_type(CustomClass)
+        class Foo(object):
+            def __init__(self, input_):
+                self._input = input_
+                self.value = ops.convert_to_tensor_v2_with_dispatch([[42.0]])
 
-    if context.executing_eagerly():
-      self.assertFalse(tf_utils.is_symbolic_tensor(
-          variables.Variable(name='blah', initial_value=0.)))
-      self.assertFalse(
-          tf_utils.is_symbolic_tensor(
-              ops.convert_to_tensor_v2_with_dispatch(0.)))
-      self.assertFalse(tf_utils.is_symbolic_tensor(
-          sparse_tensor.SparseTensor(
-              indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])))
-      self.assertFalse(tf_utils.is_symbolic_tensor(CustomClass()))
-    else:
-      self.assertTrue(tf_utils.is_symbolic_tensor(
-          variables.Variable(name='blah', initial_value=0.)))
-      self.assertTrue(
-          tf_utils.is_symbolic_tensor(
-              ops.convert_to_tensor_v2_with_dispatch(0.)))
-      self.assertTrue(tf_utils.is_symbolic_tensor(
-          sparse_tensor.SparseTensor(
-              indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])))
-      self.assertTrue(tf_utils.is_symbolic_tensor(CustomClass()))
+            @property
+            def dtype(self):
+                return self.value.dtype
 
-  def test_enables_nontensor_plumbing(self):
-    if context.executing_eagerly():
-      self.skipTest('`compile` functionality changed.')
-    # Setup.
+        ops.register_tensor_conversion_function(Foo, lambda x, *args, **kwargs: x.value)
+        tf_utils.register_symbolic_tensor_type(Foo)
 
-    class Foo(object):
+        class PlumbingLayer(keras.layers.Lambda):
+            def __init__(self, fn, **kwargs):
+                def _fn(*fargs, **fkwargs):
+                    d = fn(*fargs, **fkwargs)
+                    x = ops.convert_to_tensor_v2_with_dispatch(d)
+                    d.shape = x.shape
+                    d.get_shape = x.get_shape
+                    return d, x
 
-      def __init__(self, input_):
-        self._input = input_
-        self.value = ops.convert_to_tensor_v2_with_dispatch([[42.]])
+                super(PlumbingLayer, self).__init__(_fn, **kwargs)
+                self._enter_dunder_call = False
 
-      @property
-      def dtype(self):
-        return self.value.dtype
+            def __call__(self, inputs, *args, **kwargs):
+                self._enter_dunder_call = True
+                d, _ = super(PlumbingLayer, self).__call__(inputs, *args, **kwargs)
+                self._enter_dunder_call = False
+                return d
 
-    ops.register_tensor_conversion_function(
-        Foo, lambda x, *args, **kwargs: x.value)
-    tf_utils.register_symbolic_tensor_type(Foo)
+            def call(self, inputs, *args, **kwargs):
+                d, v = super(PlumbingLayer, self).call(inputs, *args, **kwargs)
+                if self._enter_dunder_call:
+                    return d, v
+                return d
 
-    class PlumbingLayer(keras.layers.Lambda):
+        # User-land.
+        model = keras.Sequential(
+            [
+                keras.layers.InputLayer((1,)),
+                PlumbingLayer(Foo),  # Makes a `Foo` object.
+            ]
+        )
+        # Let's ensure Keras graph history is preserved by composing the models.
+        model = keras.Model(model.inputs, model(model.outputs))
+        # Now we instantiate the model and verify we have a `Foo` object, not a
+        # `Tensor`.
+        y = model(ops.convert_to_tensor_v2_with_dispatch([[7.0]]))
+        self.assertIsInstance(y, Foo)
+        # Confirm that (custom) loss sees `Foo` instance, not Tensor.
+        obtained_prediction_box = [None]
 
-      def __init__(self, fn, **kwargs):
-        def _fn(*fargs, **fkwargs):
-          d = fn(*fargs, **fkwargs)
-          x = ops.convert_to_tensor_v2_with_dispatch(d)
-          d.shape = x.shape
-          d.get_shape = x.get_shape
-          return d, x
-        super(PlumbingLayer, self).__init__(_fn, **kwargs)
-        self._enter_dunder_call = False
+        def custom_loss(y_obs, y_pred):
+            del y_obs
+            obtained_prediction_box[0] = y_pred
+            return y_pred
 
-      def __call__(self, inputs, *args, **kwargs):
-        self._enter_dunder_call = True
-        d, _ = super(PlumbingLayer, self).__call__(inputs, *args, **kwargs)
-        self._enter_dunder_call = False
-        return d
-
-      def call(self, inputs, *args, **kwargs):
-        d, v = super(PlumbingLayer, self).call(inputs, *args, **kwargs)
-        if self._enter_dunder_call:
-          return d, v
-        return d
-
-    # User-land.
-    model = keras.Sequential([
-        keras.layers.InputLayer((1,)),
-        PlumbingLayer(Foo),  # Makes a `Foo` object.
-    ])
-    # Let's ensure Keras graph history is preserved by composing the models.
-    model = keras.Model(model.inputs, model(model.outputs))
-    # Now we instantiate the model and verify we have a `Foo` object, not a
-    # `Tensor`.
-    y = model(ops.convert_to_tensor_v2_with_dispatch([[7.]]))
-    self.assertIsInstance(y, Foo)
-    # Confirm that (custom) loss sees `Foo` instance, not Tensor.
-    obtained_prediction_box = [None]
-    def custom_loss(y_obs, y_pred):
-      del y_obs
-      obtained_prediction_box[0] = y_pred
-      return y_pred
-    # Apparently `compile` calls the loss function enough to trigger the
-    # side-effect.
-    model.compile('SGD', loss=custom_loss)
-    self.assertIsInstance(obtained_prediction_box[0], Foo)
+        # Apparently `compile` calls the loss function enough to trigger the
+        # side-effect.
+        model.compile("SGD", loss=custom_loss)
+        self.assertIsInstance(obtained_prediction_box[0], Foo)
 
 
 class ConvertInnerNodeDataTest(test.TestCase):
+    def test_convert_inner_node_data(self):
+        data = tf_utils.convert_inner_node_data(
+            (tf_utils.ListWrapper(["l", 2, 3]), tf_utils.ListWrapper(["l", 5, 6]))
+        )
+        self.assertEqual(data, (["l", 2, 3], ["l", 5, 6]))
 
-  def test_convert_inner_node_data(self):
-    data = tf_utils.convert_inner_node_data((tf_utils.ListWrapper(['l', 2, 3]),
-                                             tf_utils.ListWrapper(['l', 5, 6])))
-    self.assertEqual(data, (['l', 2, 3], ['l', 5, 6]))
-
-    data = tf_utils.convert_inner_node_data(((['l', 2, 3], ['l', 5, 6])),
-                                            wrap=True)
-    self.assertTrue(all(isinstance(ele, tf_utils.ListWrapper) for ele in data))
+        data = tf_utils.convert_inner_node_data(((["l", 2, 3], ["l", 5, 6])), wrap=True)
+        self.assertTrue(all(isinstance(ele, tf_utils.ListWrapper) for ele in data))
 
 
 class AttrsTest(test.TestCase):
+    def test_map_structure_with_atomic_accept_attr(self):
+        if attr is None:
+            self.skipTest("attr module is unavailable.")
 
-  def test_map_structure_with_atomic_accept_attr(self):
-    if attr is None:
-      self.skipTest('attr module is unavailable.')
+        @attr.s(frozen=True)
+        class Foo(object):
 
-    @attr.s(frozen=True)
-    class Foo(object):
+            bar = attr.ib()
 
-      bar = attr.ib()
-
-    self.assertEqual(
-        Foo(2),
-        tf_utils.map_structure_with_atomic(
-            is_atomic_fn=lambda x: isinstance(x, int),
-            map_fn=lambda x: x + 1,
-            nested=Foo(1)))
+        self.assertEqual(
+            Foo(2),
+            tf_utils.map_structure_with_atomic(
+                is_atomic_fn=lambda x: isinstance(x, int),
+                map_fn=lambda x: x + 1,
+                nested=Foo(1),
+            ),
+        )
 
 
 class TestIsRagged(test.TestCase):
+    def test_is_ragged_return_true_for_ragged_tensor(self):
+        tensor = ragged_tensor.RaggedTensor.from_row_splits(
+            values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8]
+        )
+        self.assertTrue(tf_utils.is_ragged(tensor))
 
-  def test_is_ragged_return_true_for_ragged_tensor(self):
-    tensor = ragged_tensor.RaggedTensor.from_row_splits(
-        values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
-    self.assertTrue(tf_utils.is_ragged(tensor))
-
-  def test_is_ragged_return_false_for_list(self):
-    tensor = [1., 2., 3.]
-    self.assertFalse(tf_utils.is_ragged(tensor))
+    def test_is_ragged_return_false_for_list(self):
+        tensor = [1.0, 2.0, 3.0]
+        self.assertFalse(tf_utils.is_ragged(tensor))
 
 
 class TestIsSparse(test.TestCase):
+    def test_is_sparse_return_true_for_sparse_tensor(self):
+        tensor = sparse_tensor.SparseTensor(
+            indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4]
+        )
+        self.assertTrue(tf_utils.is_sparse(tensor))
 
-  def test_is_sparse_return_true_for_sparse_tensor(self):
-    tensor = sparse_tensor.SparseTensor(
-        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
-    self.assertTrue(tf_utils.is_sparse(tensor))
+    def test_is_sparse_return_true_for_sparse_tensor_value(self):
+        tensor = sparse_tensor.SparseTensorValue(
+            indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4]
+        )
+        self.assertTrue(tf_utils.is_sparse(tensor))
 
-  def test_is_sparse_return_true_for_sparse_tensor_value(self):
-    tensor = sparse_tensor.SparseTensorValue(
-        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
-    self.assertTrue(tf_utils.is_sparse(tensor))
-
-  def test_is_sparse_return_false_for_list(self):
-    tensor = [1., 2., 3.]
-    self.assertFalse(tf_utils.is_sparse(tensor))
+    def test_is_sparse_return_false_for_list(self):
+        tensor = [1.0, 2.0, 3.0]
+        self.assertFalse(tf_utils.is_sparse(tensor))
 
 
 class TestIsExtensionType(test.TestCase):
+    def test_is_extension_type_return_true_for_ragged_tensor(self):
+        self.assertTrue(
+            tf_utils.is_extension_type(ragged_factory_ops.constant([[1, 2], [3]]))
+        )
 
-  def test_is_extension_type_return_true_for_ragged_tensor(self):
-    self.assertTrue(tf_utils.is_extension_type(
-        ragged_factory_ops.constant([[1, 2], [3]])))
+    def test_is_extension_type_return_true_for_sparse_tensor(self):
+        self.assertTrue(
+            tf_utils.is_extension_type(sparse_ops.from_dense([[1, 2], [3, 4]]))
+        )
 
-  def test_is_extension_type_return_true_for_sparse_tensor(self):
-    self.assertTrue(tf_utils.is_extension_type(
-        sparse_ops.from_dense([[1, 2], [3, 4]])))
+    def test_is_extension_type_return_false_for_dense_tensor(self):
+        self.assertFalse(
+            tf_utils.is_extension_type(constant_op.constant([[1, 2], [3, 4]]))
+        )
 
-  def test_is_extension_type_return_false_for_dense_tensor(self):
-    self.assertFalse(tf_utils.is_extension_type(
-        constant_op.constant([[1, 2], [3, 4]])))
+    def test_is_extension_type_return_false_for_list(self):
+        tensor = [1.0, 2.0, 3.0]
+        self.assertFalse(tf_utils.is_extension_type(tensor))
 
-  def test_is_extension_type_return_false_for_list(self):
-    tensor = [1., 2., 3.]
-    self.assertFalse(tf_utils.is_extension_type(tensor))
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

@@ -30,155 +30,145 @@ from tensorflow.python.platform import test
 
 @keras_parameterized.run_all_keras_modes
 class SplitUtilsTest(keras_parameterized.TestCase):
+    def _check_model_class(self, model_class):
+        if ops.executing_eagerly_outside_functions():
+            self.assertEqual(model_class, training.Model)
+        else:
+            self.assertEqual(model_class, training_v1.Model)
 
-  def _check_model_class(self, model_class):
-    if ops.executing_eagerly_outside_functions():
-      self.assertEqual(model_class, training.Model)
-    else:
-      self.assertEqual(model_class, training_v1.Model)
+    def _check_layer_class(self, layer):
+        if ops.executing_eagerly_outside_functions():
+            self.assertIsInstance(layer, base_layer.Layer)
+            self.assertNotIsInstance(layer, base_layer_v1.Layer)
+        else:
+            self.assertIsInstance(layer, base_layer_v1.Layer)
 
-  def _check_layer_class(self, layer):
-    if ops.executing_eagerly_outside_functions():
-      self.assertIsInstance(layer, base_layer.Layer)
-      self.assertNotIsInstance(layer, base_layer_v1.Layer)
-    else:
-      self.assertIsInstance(layer, base_layer_v1.Layer)
+    def test_functional_model(self):
+        inputs = keras.Input(10)
+        outputs = keras.layers.Dense(1)(inputs)
+        model = keras.Model(inputs, outputs)
+        self._check_model_class(model.__class__.__bases__[0])
+        self._check_layer_class(model)
 
-  def test_functional_model(self):
-    inputs = keras.Input(10)
-    outputs = keras.layers.Dense(1)(inputs)
-    model = keras.Model(inputs, outputs)
-    self._check_model_class(model.__class__.__bases__[0])
-    self._check_layer_class(model)
+    def test_subclass_model_with_functional_init(self):
+        inputs = keras.Input(10)
+        outputs = keras.layers.Dense(1)(inputs)
 
-  def test_subclass_model_with_functional_init(self):
-    inputs = keras.Input(10)
-    outputs = keras.layers.Dense(1)(inputs)
+        class MyModel(keras.Model):
+            pass
 
-    class MyModel(keras.Model):
-      pass
+        model = MyModel(inputs, outputs)
+        model_class = model.__class__.__bases__[0].__bases__[0]
+        self._check_model_class(model_class)
+        self._check_layer_class(model)
 
-    model = MyModel(inputs, outputs)
-    model_class = model.__class__.__bases__[0].__bases__[0]
-    self._check_model_class(model_class)
-    self._check_layer_class(model)
+    def test_subclass_model_with_functional_init_interleaved_v1_functional(self):
+        with ops.Graph().as_default():
+            inputs = keras.Input(10)
+            outputs = keras.layers.Dense(1)(inputs)
+            _ = keras.Model(inputs, outputs)
 
-  def test_subclass_model_with_functional_init_interleaved_v1_functional(self):
-    with ops.Graph().as_default():
-      inputs = keras.Input(10)
-      outputs = keras.layers.Dense(1)(inputs)
-      _ = keras.Model(inputs, outputs)
+        inputs = keras.Input(10)
+        outputs = keras.layers.Dense(1)(inputs)
 
-    inputs = keras.Input(10)
-    outputs = keras.layers.Dense(1)(inputs)
+        class MyModel(keras.Model):
+            pass
 
-    class MyModel(keras.Model):
-      pass
+        model = MyModel(inputs, outputs)
+        model_class = model.__class__.__bases__[0].__bases__[0]
+        self._check_model_class(model_class)
+        self._check_layer_class(model)
 
-    model = MyModel(inputs, outputs)
-    model_class = model.__class__.__bases__[0].__bases__[0]
-    self._check_model_class(model_class)
-    self._check_layer_class(model)
+    def test_sequential_model(self):
+        model = keras.Sequential([keras.layers.Dense(1)])
+        model_class = model.__class__.__bases__[0].__bases__[0]
+        self._check_model_class(model_class)
+        self._check_layer_class(model)
 
-  def test_sequential_model(self):
-    model = keras.Sequential([keras.layers.Dense(1)])
-    model_class = model.__class__.__bases__[0].__bases__[0]
-    self._check_model_class(model_class)
-    self._check_layer_class(model)
+    def test_subclass_model(self):
+        class MyModel(keras.Model):
+            def call(self, x):
+                return 2 * x
 
-  def test_subclass_model(self):
+        model = MyModel()
+        model_class = model.__class__.__bases__[0]
+        self._check_model_class(model_class)
+        self._check_layer_class(model)
 
-    class MyModel(keras.Model):
+    def test_layer(self):
+        class IdentityLayer(base_layer.Layer):
+            """A layer that returns it's input.
 
-      def call(self, x):
-        return 2 * x
+            Useful for testing a layer without a variable.
+            """
 
-    model = MyModel()
-    model_class = model.__class__.__bases__[0]
-    self._check_model_class(model_class)
-    self._check_layer_class(model)
+            def call(self, inputs):
+                return inputs
 
-  def test_layer(self):
-    class IdentityLayer(base_layer.Layer):
-      """A layer that returns it's input.
+        layer = IdentityLayer()
+        self._check_layer_class(layer)
 
-      Useful for testing a layer without a variable.
-      """
+    def test_multiple_subclass_model(self):
+        class Model1(keras.Model):
+            pass
 
-      def call(self, inputs):
-        return inputs
+        class Model2(Model1):
+            def call(self, x):
+                return 2 * x
 
-    layer = IdentityLayer()
-    self._check_layer_class(layer)
+        model = Model2()
+        model_class = model.__class__.__bases__[0].__bases__[0]
+        self._check_model_class(model_class)
+        self._check_layer_class(model)
 
-  def test_multiple_subclass_model(self):
+    def test_user_provided_metaclass(self):
+        class AbstractModel(keras.Model, metaclass=abc.ABCMeta):
+            @abc.abstractmethod
+            def call(self, inputs):
+                """Calls the model."""
 
-    class Model1(keras.Model):
-      pass
+        class MyModel(AbstractModel):
+            def call(self, inputs):
+                return 2 * inputs
 
-    class Model2(Model1):
+        with self.assertRaisesRegex(TypeError, "instantiate abstract class"):
+            AbstractModel()  # pylint: disable=abstract-class-instantiated
 
-      def call(self, x):
-        return 2 * x
+        model = MyModel()
+        model_class = model.__class__.__bases__[0].__bases__[0]
+        self._check_model_class(model_class)
+        self._check_layer_class(model)
 
-    model = Model2()
-    model_class = model.__class__.__bases__[0].__bases__[0]
-    self._check_model_class(model_class)
-    self._check_layer_class(model)
+    def test_multiple_inheritance(self):
+        class Return2(object):
+            def return_2(self):
+                return 2
 
-  def test_user_provided_metaclass(self):
+        class MyModel(keras.Model, Return2):
+            def call(self, x):
+                return self.return_2() * x
 
-    class AbstractModel(keras.Model, metaclass=abc.ABCMeta):
+        model = MyModel()
+        bases = model.__class__.__bases__
+        self._check_model_class(bases[0])
+        self.assertEqual(bases[1], Return2)
+        self.assertEqual(model.return_2(), 2)
+        self._check_layer_class(model)
 
-      @abc.abstractmethod
-      def call(self, inputs):
-        """Calls the model."""
+    def test_fit_error(self):
+        if not ops.executing_eagerly_outside_functions():
+            # Error only appears on the v2 class.
+            return
 
-    class MyModel(AbstractModel):
-
-      def call(self, inputs):
-        return 2 * inputs
-
-    with self.assertRaisesRegex(TypeError, 'instantiate abstract class'):
-      AbstractModel()  # pylint: disable=abstract-class-instantiated
-
-    model = MyModel()
-    model_class = model.__class__.__bases__[0].__bases__[0]
-    self._check_model_class(model_class)
-    self._check_layer_class(model)
-
-  def test_multiple_inheritance(self):
-
-    class Return2(object):
-
-      def return_2(self):
-        return 2
-
-    class MyModel(keras.Model, Return2):
-
-      def call(self, x):
-        return self.return_2() * x
-
-    model = MyModel()
-    bases = model.__class__.__bases__
-    self._check_model_class(bases[0])
-    self.assertEqual(bases[1], Return2)
-    self.assertEqual(model.return_2(), 2)
-    self._check_layer_class(model)
-
-  def test_fit_error(self):
-    if not ops.executing_eagerly_outside_functions():
-      # Error only appears on the v2 class.
-      return
-
-    model = keras.Sequential([keras.layers.Dense(1)])
-    model.compile('sgd', 'mse')
-    x, y = np.ones((10, 10)), np.ones((10, 1))
-    with ops.get_default_graph().as_default():
-      with self.assertRaisesRegex(
-          ValueError, 'instance was constructed with eager mode enabled'):
-        model.fit(x, y, batch_size=2)
+        model = keras.Sequential([keras.layers.Dense(1)])
+        model.compile("sgd", "mse")
+        x, y = np.ones((10, 10)), np.ones((10, 1))
+        with ops.get_default_graph().as_default():
+            with self.assertRaisesRegex(
+                ValueError, "instance was constructed with eager mode enabled"
+            ):
+                model.fit(x, y, batch_size=2)
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

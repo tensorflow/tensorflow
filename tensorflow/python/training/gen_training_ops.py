@@ -22,4 +22,5 @@
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_training_ops import *
+
 # pylint: enable=wildcard-import

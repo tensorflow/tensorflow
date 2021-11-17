@@ -28,105 +28,123 @@ from tensorflow.python.platform import test
 
 
 class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
+    @combinations.generate(
+        combinations.times(
+            test_base.default_test_combinations(),
+            combinations.combine(buffer_size=[-1, None, 0, 42]),
+        )
+    )
+    def testBufferSize(self, buffer_size):
+        dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
+        self.assertDatasetProduces(dataset, expected_output=range(10))
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(buffer_size=[-1, None, 0, 42])))
-  def testBufferSize(self, buffer_size):
-    dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
-    self.assertDatasetProduces(dataset, expected_output=range(10))
+    @combinations.generate(
+        combinations.times(
+            test_base.default_test_combinations(),
+            combinations.combine(buffer_size=[-2, -42]),
+        )
+    )
+    def testInvalidBufferSize(self, buffer_size):
+        with self.assertRaises(errors.InvalidArgumentError):
+            dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
+            self.evaluate(dataset._variant_tensor)
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(buffer_size=[-2, -42])))
-  def testInvalidBufferSize(self, buffer_size):
-    with self.assertRaises(errors.InvalidArgumentError):
-      dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
-      self.evaluate(dataset._variant_tensor)
+    @combinations.generate(
+        combinations.times(
+            test_base.default_test_combinations(),
+            combinations.combine(buffer_size=[-1, None, 0, 42], slack_period=[1, 8]),
+        )
+    )
+    def testPrefetchWithSlack(self, buffer_size, slack_period):
+        dataset = dataset_ops.Dataset.range(100)
+        dataset = dataset_ops.PrefetchDataset(
+            dataset, buffer_size, slack_period=slack_period
+        )
+        self.assertDatasetProduces(dataset, expected_output=range(100))
 
-  @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(),
-          combinations.combine(
-              buffer_size=[-1, None, 0, 42], slack_period=[1, 8])))
-  def testPrefetchWithSlack(self, buffer_size, slack_period):
-    dataset = dataset_ops.Dataset.range(100)
-    dataset = dataset_ops.PrefetchDataset(
-        dataset, buffer_size, slack_period=slack_period)
-    self.assertDatasetProduces(dataset, expected_output=range(100))
+    @combinations.generate(combinations.combine(tf_api_version=1, mode="graph"))
+    def testPrefetchCancellation(self):
+        def map_py_fn(x):
+            while x > -1:
+                x = x * 1
+            return x
 
-  @combinations.generate(combinations.combine(tf_api_version=1, mode="graph"))
-  def testPrefetchCancellation(self):
+        dataset = dataset_ops.Dataset.range(10).map(map_py_fn).prefetch(3)
+        get_next = self.getNext(dataset)
 
-    def map_py_fn(x):
-      while x > -1:
-        x = x * 1
-      return x
+        with self.cached_session() as sess:
+            thread = self.checkedThread(self.assert_op_cancelled, args=(get_next(),))
+            thread.start()
+            time.sleep(0.5)
+            sess.close()
+            thread.join()
 
-    dataset = dataset_ops.Dataset.range(10).map(map_py_fn).prefetch(3)
-    get_next = self.getNext(dataset)
-
-    with self.cached_session() as sess:
-      thread = self.checkedThread(self.assert_op_cancelled, args=(get_next(),))
-      thread.start()
-      time.sleep(0.5)
-      sess.close()
-      thread.join()
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testName(self):
-    dataset = dataset_ops.Dataset.from_tensors(42).prefetch(1, name="prefetch")
-    self.assertDatasetProduces(dataset, [42])
-
-
-class PrefetchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                             parameterized.TestCase):
-
-  def build_dataset(self, seed=10):
-    return dataset_ops.Dataset.range(100).prefetch(10).shuffle(
-        buffer_size=10, seed=seed, reshuffle_each_iteration=False)
-
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
-    verify_fn(self, self.build_dataset, num_outputs=100)
+    @combinations.generate(test_base.default_test_combinations())
+    def testName(self):
+        dataset = dataset_ops.Dataset.from_tensors(42).prefetch(1, name="prefetch")
+        self.assertDatasetProduces(dataset, [42])
 
 
-class PrefetchRandomAccessTest(test_base.DatasetTestBase,
-                               parameterized.TestCase):
+class PrefetchCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
+):
+    def build_dataset(self, seed=10):
+        return (
+            dataset_ops.Dataset.range(100)
+            .prefetch(10)
+            .shuffle(buffer_size=10, seed=seed, reshuffle_each_iteration=False)
+        )
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(index=[-1, 10, 11])))
-  def testInvalidIndex(self, index):
-    dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=5)
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(random_access.at(dataset, index=index))
+    @combinations.generate(
+        combinations.times(
+            test_base.default_test_combinations(),
+            checkpoint_test_base.default_test_combinations(),
+        )
+    )
+    def test(self, verify_fn):
+        verify_fn(self, self.build_dataset, num_outputs=100)
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(index=[-2, 0, 1])))
-  def testEmptyDataset(self, index):
-    dataset = dataset_ops.Dataset.from_tensor_slices([]).prefetch(buffer_size=5)
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(random_access.at(dataset, index=index))
 
-  @combinations.generate(
-      combinations.times(
-          test_base.default_test_combinations(),
-          combinations.combine(elements=[10, 50, 100], buffer_size=[0, 5, 10])))
-  def testMultipleCombinations(self, elements, buffer_size):
-    dataset = dataset_ops.Dataset.range(elements).prefetch(
-        buffer_size=buffer_size)
-    len_dataset = self.evaluate(dataset.cardinality())
-    expected_output = np.arange(elements)
-    for i in range(len_dataset):
-      self.assertEqual(
-          self.evaluate(random_access.at(dataset, index=i)), expected_output[i])
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(random_access.at(dataset, index=len_dataset))
+class PrefetchRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
+    @combinations.generate(
+        combinations.times(
+            test_base.default_test_combinations(),
+            combinations.combine(index=[-1, 10, 11]),
+        )
+    )
+    def testInvalidIndex(self, index):
+        dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=5)
+        with self.assertRaises(errors.OutOfRangeError):
+            self.evaluate(random_access.at(dataset, index=index))
+
+    @combinations.generate(
+        combinations.times(
+            test_base.default_test_combinations(),
+            combinations.combine(index=[-2, 0, 1]),
+        )
+    )
+    def testEmptyDataset(self, index):
+        dataset = dataset_ops.Dataset.from_tensor_slices([]).prefetch(buffer_size=5)
+        with self.assertRaises(errors.OutOfRangeError):
+            self.evaluate(random_access.at(dataset, index=index))
+
+    @combinations.generate(
+        combinations.times(
+            test_base.default_test_combinations(),
+            combinations.combine(elements=[10, 50, 100], buffer_size=[0, 5, 10]),
+        )
+    )
+    def testMultipleCombinations(self, elements, buffer_size):
+        dataset = dataset_ops.Dataset.range(elements).prefetch(buffer_size=buffer_size)
+        len_dataset = self.evaluate(dataset.cardinality())
+        expected_output = np.arange(elements)
+        for i in range(len_dataset):
+            self.assertEqual(
+                self.evaluate(random_access.at(dataset, index=i)), expected_output[i]
+            )
+        with self.assertRaises(errors.OutOfRangeError):
+            self.evaluate(random_access.at(dataset, index=len_dataset))
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

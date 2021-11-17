@@ -23,4 +23,3 @@ different lengths.  For example, the inner (column) dimension of
 description of ragged tensors, see the `tf.RaggedTensor` class documentation
 and the [Ragged Tensor Guide](/guide/ragged_tensor).
 """
-

@@ -16,9 +16,10 @@
 
 # pylint: disable=unused-import
 from tensorflow.python.framework import errors_impl as _impl
+
 # pylint: enable=unused-import
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.framework.errors_impl import *
-# pylint: enable=wildcard-import
 
+# pylint: enable=wildcard-import

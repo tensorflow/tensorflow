@@ -18,13 +18,12 @@ from tensorflow.python.platform import test
 
 
 class CancellationTest(test.TestCase):
+    def testStartCancel(self):
+        manager = cancellation.CancellationManager()
+        self.assertFalse(manager.is_cancelled)
+        manager.start_cancel()
+        self.assertTrue(manager.is_cancelled)
 
-  def testStartCancel(self):
-    manager = cancellation.CancellationManager()
-    self.assertFalse(manager.is_cancelled)
-    manager.start_cancel()
-    self.assertTrue(manager.is_cancelled)
 
-
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

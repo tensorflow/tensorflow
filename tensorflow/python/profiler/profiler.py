@@ -30,22 +30,24 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 _allowed_symbols = [
-    'Profiler',
-    'profile',
-    'ProfileOptionBuilder',
-    'advise',
-    'write_op_log',
+    "Profiler",
+    "profile",
+    "ProfileOptionBuilder",
+    "advise",
+    "write_op_log",
 ]
 
-_allowed_symbols.extend([
-    'GraphNodeProto',
-    'MultiGraphNodeProto',
-    'AdviceProto',
-    'OpLogProto',
-])
+_allowed_symbols.extend(
+    [
+        "GraphNodeProto",
+        "MultiGraphNodeProto",
+        "AdviceProto",
+        "OpLogProto",
+    ]
+)
 
 # Export protos
-tf_export(v1=['profiler.GraphNodeProto'])(GraphNodeProto)
-tf_export(v1=['profiler.MultiGraphNodeProto'])(MultiGraphNodeProto)
-tf_export(v1=['profiler.AdviceProto'])(AdviceProto)
-tf_export(v1=['profiler.OpLogProto'])(OpLogProto)
+tf_export(v1=["profiler.GraphNodeProto"])(GraphNodeProto)
+tf_export(v1=["profiler.MultiGraphNodeProto"])(MultiGraphNodeProto)
+tf_export(v1=["profiler.AdviceProto"])(AdviceProto)
+tf_export(v1=["profiler.OpLogProto"])(OpLogProto)

@@ -21,20 +21,19 @@ from tensorflow.python.platform import test
 
 
 class TFProfLoggerTest(test.TestCase):
+    def _BuildSmallPlaceholderlModel(self):
+        a = array_ops.placeholder(dtypes.int32, [2, 2])
+        b = array_ops.placeholder(dtypes.int32, [2, 2])
+        y = math_ops.matmul(a, b)
+        return a, b, y
 
-  def _BuildSmallPlaceholderlModel(self):
-    a = array_ops.placeholder(dtypes.int32, [2, 2])
-    b = array_ops.placeholder(dtypes.int32, [2, 2])
-    y = math_ops.matmul(a, b)
-    return a, b, y
+    def _BuildSmallModel(self):
+        a = constant_op.constant([[1, 2], [3, 4]])
+        b = constant_op.constant([[1, 2], [3, 4]])
+        return math_ops.matmul(a, b)
 
-  def _BuildSmallModel(self):
-    a = constant_op.constant([[1, 2], [3, 4]])
-    b = constant_op.constant([[1, 2], [3, 4]])
-    return math_ops.matmul(a, b)
-
-  # pylint: disable=pointless-string-statement
-  """# TODO(xpan): This out of core so it doesn't depend on contrib.
+    # pylint: disable=pointless-string-statement
+    """# TODO(xpan): This out of core so it doesn't depend on contrib.
   def testFillMissingShape(self):
     a, b, y = self._BuildSmallPlaceholderlModel()
     run_options = config_pb2.RunOptions(
@@ -72,5 +71,5 @@ class TFProfLoggerTest(test.TestCase):
   """
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

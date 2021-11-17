@@ -25,78 +25,82 @@ from tensorflow.python.util.tf_export import tf_export
 # TODO(b/205183809): Remove once nested_structure_coder no longer adds
 # dependency cycles.
 saved_model_utils = lazy_loader.LazyLoader(
-    "saved_model_utils", globals(),
-    "tensorflow.python.saved_model.utils_impl")
+    "saved_model_utils", globals(), "tensorflow.python.saved_model.utils_impl"
+)
 
 
 @tf_export("saved_model.Asset")
 class Asset(base.Trackable):
-  """Represents a file asset to hermetically include in a SavedModel.
+    """Represents a file asset to hermetically include in a SavedModel.
 
-  A SavedModel can include arbitrary files, called assets, that are needed
-  for its use. For example a vocabulary file used initialize a lookup table.
+    A SavedModel can include arbitrary files, called assets, that are needed
+    for its use. For example a vocabulary file used initialize a lookup table.
 
-  When a trackable object is exported via `tf.saved_model.save()`, all the
-  `Asset`s reachable from it are copied into the SavedModel assets directory.
-  Upon loading, the assets and the serialized functions that depend on them
-  will refer to the correct filepaths inside the SavedModel directory.
+    When a trackable object is exported via `tf.saved_model.save()`, all the
+    `Asset`s reachable from it are copied into the SavedModel assets directory.
+    Upon loading, the assets and the serialized functions that depend on them
+    will refer to the correct filepaths inside the SavedModel directory.
 
-  Example:
+    Example:
 
-  ```
-  filename = tf.saved_model.Asset("file.txt")
+    ```
+    filename = tf.saved_model.Asset("file.txt")
 
-  @tf.function(input_signature=[])
-  def func():
-    return tf.io.read_file(filename)
+    @tf.function(input_signature=[])
+    def func():
+      return tf.io.read_file(filename)
 
-  trackable_obj = tf.train.Checkpoint()
-  trackable_obj.func = func
-  trackable_obj.filename = filename
-  tf.saved_model.save(trackable_obj, "/tmp/saved_model")
+    trackable_obj = tf.train.Checkpoint()
+    trackable_obj.func = func
+    trackable_obj.filename = filename
+    tf.saved_model.save(trackable_obj, "/tmp/saved_model")
 
-  # The created SavedModel is hermetic, it does not depend on
-  # the original file and can be moved to another path.
-  tf.io.gfile.remove("file.txt")
-  tf.io.gfile.rename("/tmp/saved_model", "/tmp/new_location")
+    # The created SavedModel is hermetic, it does not depend on
+    # the original file and can be moved to another path.
+    tf.io.gfile.remove("file.txt")
+    tf.io.gfile.rename("/tmp/saved_model", "/tmp/new_location")
 
-  reloaded_obj = tf.saved_model.load("/tmp/new_location")
-  print(reloaded_obj.func())
-  ```
+    reloaded_obj = tf.saved_model.load("/tmp/new_location")
+    print(reloaded_obj.func())
+    ```
 
-  Attributes:
-    asset_path: A 0-D `tf.string` tensor with path to the asset.
-  """
+    Attributes:
+      asset_path: A 0-D `tf.string` tensor with path to the asset.
+    """
 
-  def __init__(self, path):
-    """Record the full path to the asset."""
-    # The init_scope prevents functions from capturing `path` in an
-    # initialization graph, since it is transient and should not end up in a
-    # serialized function body.
-    with ops.init_scope(), ops.device("CPU"):
-      self._path = ops.convert_to_tensor(
-          path, dtype=dtypes.string, name="asset_path")
+    def __init__(self, path):
+        """Record the full path to the asset."""
+        # The init_scope prevents functions from capturing `path` in an
+        # initialization graph, since it is transient and should not end up in a
+        # serialized function body.
+        with ops.init_scope(), ops.device("CPU"):
+            self._path = ops.convert_to_tensor(
+                path, dtype=dtypes.string, name="asset_path"
+            )
 
-  @property
-  def asset_path(self):
-    """Fetch the current asset path."""
-    return self._path
+    @property
+    def asset_path(self):
+        """Fetch the current asset path."""
+        return self._path
 
-  @classmethod
-  def _deserialize_from_proto(cls, proto, export_dir, asset_file_def,
-                              **unused_kwargs):
-    proto = proto.asset
-    filename = file_io.join(
-        saved_model_utils.get_assets_dir(export_dir),
-        asset_file_def[proto.asset_file_def_index].filename)
-    asset = cls(filename)
-    if not context.executing_eagerly():
-      ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, asset.asset_path)
-    return asset
+    @classmethod
+    def _deserialize_from_proto(
+        cls, proto, export_dir, asset_file_def, **unused_kwargs
+    ):
+        proto = proto.asset
+        filename = file_io.join(
+            saved_model_utils.get_assets_dir(export_dir),
+            asset_file_def[proto.asset_file_def_index].filename,
+        )
+        asset = cls(filename)
+        if not context.executing_eagerly():
+            ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, asset.asset_path)
+        return asset
 
-  def _add_trackable_child(self, name, value):
-    setattr(self, name, value)
+    def _add_trackable_child(self, name, value):
+        setattr(self, name, value)
 
 
 ops.register_tensor_conversion_function(
-    Asset, lambda asset, **kw: ops.convert_to_tensor(asset.asset_path, **kw))
+    Asset, lambda asset, **kw: ops.convert_to_tensor(asset.asset_path, **kw)
+)

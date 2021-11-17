@@ -29,96 +29,98 @@ from tensorflow.python.ops.numpy_ops import np_utils
 DEFAULT_RANDN_DTYPE = onp.float32
 
 
-@np_utils.np_doc('random.seed')
+@np_utils.np_doc("random.seed")
 def seed(s):
-  """Sets the seed for the random number generator.
+    """Sets the seed for the random number generator.
 
-  Uses `tf.set_random_seed`.
+    Uses `tf.set_random_seed`.
 
-  Args:
-    s: an integer.
-  """
-  try:
-    s = int(s)
-  except TypeError:
-    # TODO(wangpeng): support this?
-    raise ValueError(
-        f'Argument `s` got an invalid value {s}. Only integers are supported.')
-  random_seed.set_seed(s)
+    Args:
+      s: an integer.
+    """
+    try:
+        s = int(s)
+    except TypeError:
+        # TODO(wangpeng): support this?
+        raise ValueError(
+            f"Argument `s` got an invalid value {s}. Only integers are supported."
+        )
+    random_seed.set_seed(s)
 
 
-@np_utils.np_doc('random.randn')
+@np_utils.np_doc("random.randn")
 def randn(*args):
-  """Returns samples from a normal distribution.
+    """Returns samples from a normal distribution.
 
-  Uses `tf.random_normal`.
+    Uses `tf.random_normal`.
 
-  Args:
-    *args: The shape of the output array.
+    Args:
+      *args: The shape of the output array.
 
-  Returns:
-    An ndarray with shape `args` and dtype `float64`.
-  """
-  return standard_normal(size=args)
+    Returns:
+      An ndarray with shape `args` and dtype `float64`.
+    """
+    return standard_normal(size=args)
 
 
-@np_utils.np_doc('random.standard_normal')
+@np_utils.np_doc("random.standard_normal")
 def standard_normal(size=None):
-  # TODO(wangpeng): Use new stateful RNG
-  if size is None:
-    size = ()
-  elif np_utils.isscalar(size):
-    size = (size,)
-  dtype = np_dtypes.default_float_type()
-  return random_ops.random_normal(size, dtype=dtype)
+    # TODO(wangpeng): Use new stateful RNG
+    if size is None:
+        size = ()
+    elif np_utils.isscalar(size):
+        size = (size,)
+    dtype = np_dtypes.default_float_type()
+    return random_ops.random_normal(size, dtype=dtype)
 
 
-@np_utils.np_doc('random.uniform')
+@np_utils.np_doc("random.uniform")
 def uniform(low=0.0, high=1.0, size=None):
-  dtype = np_dtypes.default_float_type()
-  low = np_array_ops.asarray(low, dtype=dtype)
-  high = np_array_ops.asarray(high, dtype=dtype)
-  if size is None:
-    size = array_ops.broadcast_dynamic_shape(low.shape, high.shape)
-  return random_ops.random_uniform(
-      shape=size, minval=low, maxval=high, dtype=dtype)
+    dtype = np_dtypes.default_float_type()
+    low = np_array_ops.asarray(low, dtype=dtype)
+    high = np_array_ops.asarray(high, dtype=dtype)
+    if size is None:
+        size = array_ops.broadcast_dynamic_shape(low.shape, high.shape)
+    return random_ops.random_uniform(shape=size, minval=low, maxval=high, dtype=dtype)
 
 
-@np_utils.np_doc('random.poisson')
+@np_utils.np_doc("random.poisson")
 def poisson(lam=1.0, size=None):
-  if size is None:
-    size = ()
-  elif np_utils.isscalar(size):
-    size = (size,)
-  return random_ops.random_poisson(shape=size, lam=lam, dtype=np_dtypes.int_)
+    if size is None:
+        size = ()
+    elif np_utils.isscalar(size):
+        size = (size,)
+    return random_ops.random_poisson(shape=size, lam=lam, dtype=np_dtypes.int_)
 
 
-@np_utils.np_doc('random.random')
+@np_utils.np_doc("random.random")
 def random(size=None):
-  return uniform(0., 1., size)
+    return uniform(0.0, 1.0, size)
 
 
-@np_utils.np_doc('random.rand')
+@np_utils.np_doc("random.rand")
 def rand(*size):
-  return uniform(0., 1., size)
+    return uniform(0.0, 1.0, size)
 
 
-@np_utils.np_doc('random.randint')
-def randint(low, high=None, size=None, dtype=onp.int64):  # pylint: disable=missing-function-docstring
-  low = int(low)
-  if high is None:
-    high = low
-    low = 0
-  if size is None:
-    size = ()
-  elif isinstance(size, int):
-    size = (size,)
-  dtype_orig = dtype
-  dtype = np_utils.result_type(dtype)
-  accepted_dtypes = (onp.int32, onp.int64)
-  if dtype not in accepted_dtypes:
-    raise ValueError(
-        f'Argument `dtype` got an invalid value {dtype_orig}. Only those '
-        f'convertible to {accepted_dtypes} are supported.')
-  return random_ops.random_uniform(
-      shape=size, minval=low, maxval=high, dtype=dtype)
+@np_utils.np_doc("random.randint")
+def randint(
+    low, high=None, size=None, dtype=onp.int64
+):  # pylint: disable=missing-function-docstring
+    low = int(low)
+    if high is None:
+        high = low
+        low = 0
+    if size is None:
+        size = ()
+    elif isinstance(size, int):
+        size = (size,)
+    dtype_orig = dtype
+    dtype = np_utils.result_type(dtype)
+    accepted_dtypes = (onp.int32, onp.int64)
+    if dtype not in accepted_dtypes:
+        raise ValueError(
+            f"Argument `dtype` got an invalid value {dtype_orig}. Only those "
+            f"convertible to {accepted_dtypes} are supported."
+        )
+    return random_ops.random_uniform(shape=size, minval=low, maxval=high, dtype=dtype)

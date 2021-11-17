@@ -14,5 +14,6 @@
 # ==============================================================================
 """Helpers to get device context."""
 
+
 def enclosing_tpu_context():
-  pass
+    pass

@@ -22,17 +22,15 @@ from tensorflow.python.platform import test
 
 
 class NumpyFunctionTest(test.TestCase):
+    @test_util.run_in_graph_and_eager_modes
+    def test_numpy_arguments(self):
+        def plus(a, b):
+            return a + b
 
-  @test_util.run_in_graph_and_eager_modes
-  def test_numpy_arguments(self):
-
-    def plus(a, b):
-      return a + b
-
-    actual_result = script_ops.numpy_function(plus, [1, 2], dtypes.int32)
-    expect_result = constant_op.constant(3, dtypes.int32)
-    self.assertAllEqual(actual_result, expect_result)
+        actual_result = script_ops.numpy_function(plus, [1, 2], dtypes.int32)
+        expect_result = constant_op.constant(3, dtypes.int32)
+        self.assertAllEqual(actual_result, expect_result)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

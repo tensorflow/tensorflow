@@ -23,8 +23,6 @@ from tensorflow_estimator.python.estimator.canned import boosted_trees
 
 # Include attrs that start with single underscore.
 _HAS_DYNAMIC_ATTRIBUTES = True
-boosted_trees.__all__ = [
-    s for s in dir(boosted_trees) if not s.startswith('__')
-]
+boosted_trees.__all__ = [s for s in dir(boosted_trees) if not s.startswith("__")]
 
 from tensorflow_estimator.python.estimator.canned.boosted_trees import *

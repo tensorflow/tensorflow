@@ -14,7 +14,9 @@
 # ==============================================================================
 """Utility module that contains APIs usable in the generated code."""
 
-from tensorflow.python.autograph.utils.context_managers import control_dependency_on_returns
+from tensorflow.python.autograph.utils.context_managers import (
+    control_dependency_on_returns,
+)
 from tensorflow.python.autograph.utils.misc import alias_tensors
 from tensorflow.python.autograph.utils.py_func import wrap_py_func
 from tensorflow.python.autograph.utils.tensor_list import dynamic_list_append

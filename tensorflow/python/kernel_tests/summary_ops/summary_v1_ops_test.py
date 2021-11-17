@@ -29,44 +29,50 @@ from tensorflow.python.summary import summary
 
 
 class SummaryV1OpsTest(test.TestCase):
+    def _AsSummary(self, s):
+        summ = summary_pb2.Summary()
+        summ.ParseFromString(s)
+        return summ
 
-  def _AsSummary(self, s):
-    summ = summary_pb2.Summary()
-    summ.ParseFromString(s)
-    return summ
-
-  def testScalarSummary(self):
-    with self.cached_session() as sess:
-      const = constant_op.constant([10.0, 20.0])
-      summ = logging_ops.scalar_summary(["c1", "c2"], const, name="mysumm")
-      value = self.evaluate(summ)
-    self.assertEqual([], summ.get_shape())
-    self.assertProtoEquals("""
+    def testScalarSummary(self):
+        with self.cached_session() as sess:
+            const = constant_op.constant([10.0, 20.0])
+            summ = logging_ops.scalar_summary(["c1", "c2"], const, name="mysumm")
+            value = self.evaluate(summ)
+        self.assertEqual([], summ.get_shape())
+        self.assertProtoEquals(
+            """
       value { tag: "c1" simple_value: 10.0 }
       value { tag: "c2" simple_value: 20.0 }
-      """, self._AsSummary(value))
+      """,
+            self._AsSummary(value),
+        )
 
-  def testScalarSummaryDefaultName(self):
-    with self.cached_session() as sess:
-      const = constant_op.constant([10.0, 20.0])
-      summ = logging_ops.scalar_summary(["c1", "c2"], const)
-      value = self.evaluate(summ)
-    self.assertEqual([], summ.get_shape())
-    self.assertProtoEquals("""
+    def testScalarSummaryDefaultName(self):
+        with self.cached_session() as sess:
+            const = constant_op.constant([10.0, 20.0])
+            summ = logging_ops.scalar_summary(["c1", "c2"], const)
+            value = self.evaluate(summ)
+        self.assertEqual([], summ.get_shape())
+        self.assertProtoEquals(
+            """
       value { tag: "c1" simple_value: 10.0 }
       value { tag: "c2" simple_value: 20.0 }
-      """, self._AsSummary(value))
+      """,
+            self._AsSummary(value),
+        )
 
-  @test_util.run_deprecated_v1
-  def testMergeSummary(self):
-    with self.cached_session() as sess:
-      const = constant_op.constant(10.0)
-      summ1 = summary.histogram("h", const)
-      summ2 = logging_ops.scalar_summary("c", const)
-      merge = summary.merge([summ1, summ2])
-      value = self.evaluate(merge)
-    self.assertEqual([], merge.get_shape())
-    self.assertProtoEquals("""
+    @test_util.run_deprecated_v1
+    def testMergeSummary(self):
+        with self.cached_session() as sess:
+            const = constant_op.constant(10.0)
+            summ1 = summary.histogram("h", const)
+            summ2 = logging_ops.scalar_summary("c", const)
+            merge = summary.merge([summ1, summ2])
+            value = self.evaluate(merge)
+        self.assertEqual([], merge.get_shape())
+        self.assertProtoEquals(
+            """
       value {
         tag: "h"
         histo {
@@ -84,25 +90,27 @@ class SummaryV1OpsTest(test.TestCase):
         }
       }
       value { tag: "c" simple_value: 10.0 }
-    """, self._AsSummary(value))
+    """,
+            self._AsSummary(value),
+        )
 
-  def testMergeAllSummaries(self):
-    with ops.Graph().as_default():
-      const = constant_op.constant(10.0)
-      summ1 = summary.histogram("h", const)
-      summ2 = summary.scalar("o", const, collections=["foo_key"])
-      summ3 = summary.scalar("c", const)
-      merge = summary.merge_all()
-      self.assertEqual("MergeSummary", merge.op.type)
-      self.assertEqual(2, len(merge.op.inputs))
-      self.assertEqual(summ1, merge.op.inputs[0])
-      self.assertEqual(summ3, merge.op.inputs[1])
-      merge = summary.merge_all("foo_key")
-      self.assertEqual("MergeSummary", merge.op.type)
-      self.assertEqual(1, len(merge.op.inputs))
-      self.assertEqual(summ2, merge.op.inputs[0])
-      self.assertTrue(summary.merge_all("bar_key") is None)
+    def testMergeAllSummaries(self):
+        with ops.Graph().as_default():
+            const = constant_op.constant(10.0)
+            summ1 = summary.histogram("h", const)
+            summ2 = summary.scalar("o", const, collections=["foo_key"])
+            summ3 = summary.scalar("c", const)
+            merge = summary.merge_all()
+            self.assertEqual("MergeSummary", merge.op.type)
+            self.assertEqual(2, len(merge.op.inputs))
+            self.assertEqual(summ1, merge.op.inputs[0])
+            self.assertEqual(summ3, merge.op.inputs[1])
+            merge = summary.merge_all("foo_key")
+            self.assertEqual("MergeSummary", merge.op.type)
+            self.assertEqual(1, len(merge.op.inputs))
+            self.assertEqual(summ2, merge.op.inputs[0])
+            self.assertTrue(summary.merge_all("bar_key") is None)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

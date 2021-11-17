@@ -23,6 +23,6 @@ from tensorflow_estimator.python.estimator.inputs import queues
 
 # Include attrs that start with single underscore.
 _HAS_DYNAMIC_ATTRIBUTES = True
-queues.__all__ = [s for s in dir(queues) if not s.startswith('__')]
+queues.__all__ = [s for s in dir(queues) if not s.startswith("__")]
 
 from tensorflow_estimator.python.estimator.inputs.queues import *

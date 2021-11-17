@@ -23,6 +23,6 @@ from tensorflow_estimator.python.estimator import keras_lib
 
 # Include attrs that start with single underscore.
 _HAS_DYNAMIC_ATTRIBUTES = True
-keras_lib.__all__ = [s for s in dir(keras_lib) if not s.startswith('__')]
+keras_lib.__all__ = [s for s in dir(keras_lib) if not s.startswith("__")]
 
 from tensorflow_estimator.python.estimator.keras_lib import *

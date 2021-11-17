@@ -19,33 +19,32 @@ from tensorflow.python.platform import test
 
 
 class SpecialValuesTest(test.TestCase):
+    def test_undefined(self):
+        undefined_symbol = variables.Undefined("name")
+        undefined_symbol2 = variables.Undefined("name")
 
-  def test_undefined(self):
-    undefined_symbol = variables.Undefined('name')
-    undefined_symbol2 = variables.Undefined('name')
+        self.assertEqual(undefined_symbol.symbol_name, "name")
+        self.assertEqual(undefined_symbol2.symbol_name, "name")
+        self.assertNotEqual(undefined_symbol, undefined_symbol2)
 
-    self.assertEqual(undefined_symbol.symbol_name, 'name')
-    self.assertEqual(undefined_symbol2.symbol_name, 'name')
-    self.assertNotEqual(undefined_symbol, undefined_symbol2)
+    def test_undefined_operations(self):
+        undefined_symbol = variables.Undefined("name")
 
-  def test_undefined_operations(self):
-    undefined_symbol = variables.Undefined('name')
+        self.assertIsInstance(undefined_symbol.foo, variables.Undefined)
+        self.assertIsInstance(undefined_symbol[0], variables.Undefined)
+        self.assertNotIsInstance(undefined_symbol.__class__, variables.Undefined)
 
-    self.assertIsInstance(undefined_symbol.foo, variables.Undefined)
-    self.assertIsInstance(undefined_symbol[0], variables.Undefined)
-    self.assertNotIsInstance(undefined_symbol.__class__, variables.Undefined)
+    def test_read(self):
+        self.assertEqual(variables.ld(1), 1)
+        o = object()
+        self.assertEqual(variables.ld(o), o)
 
-  def test_read(self):
-    self.assertEqual(variables.ld(1), 1)
-    o = object()
-    self.assertEqual(variables.ld(o), o)
+        self.assertIsNone(variables.ld(None))
 
-    self.assertIsNone(variables.ld(None))
-
-  def test_read_undefined(self):
-    with self.assertRaisesRegex(UnboundLocalError, 'used before assignment'):
-      variables.ld(variables.Undefined('a'))
+    def test_read_undefined(self):
+        with self.assertRaisesRegex(UnboundLocalError, "used before assignment"):
+            variables.ld(variables.Undefined("a"))
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

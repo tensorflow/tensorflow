@@ -26,148 +26,151 @@ from tensorflow.python.platform import test
 
 
 class CombinationsTest(test.TestCase):
+    def test_run_all_keras_modes(self):
+        test_params = []
 
-  def test_run_all_keras_modes(self):
-    test_params = []
+        class ExampleTest(parameterized.TestCase):
+            def runTest(self):
+                pass
 
-    class ExampleTest(parameterized.TestCase):
+            @combinations.generate(combinations.keras_mode_combinations())
+            def testBody(self):
+                mode = "eager" if context.executing_eagerly() else "graph"
+                should_run_eagerly = testing_utils.should_run_eagerly()
+                test_params.append((mode, should_run_eagerly))
 
-      def runTest(self):
-        pass
+        e = ExampleTest()
+        if not tf2.enabled():
+            e.testBody_test_mode_graph_runeagerly_False()
+        e.testBody_test_mode_eager_runeagerly_True()
+        e.testBody_test_mode_eager_runeagerly_False()
 
-      @combinations.generate(combinations.keras_mode_combinations())
-      def testBody(self):
-        mode = "eager" if context.executing_eagerly() else "graph"
-        should_run_eagerly = testing_utils.should_run_eagerly()
-        test_params.append((mode, should_run_eagerly))
+        if not tf2.enabled():
+            self.assertLen(test_params, 3)
+            self.assertAllEqual(
+                test_params,
+                [
+                    ("graph", False),
+                    ("eager", True),
+                    ("eager", False),
+                ],
+            )
 
-    e = ExampleTest()
-    if not tf2.enabled():
-      e.testBody_test_mode_graph_runeagerly_False()
-    e.testBody_test_mode_eager_runeagerly_True()
-    e.testBody_test_mode_eager_runeagerly_False()
+            ts = unittest.makeSuite(ExampleTest)
+            res = unittest.TestResult()
+            ts.run(res)
+            self.assertLen(test_params, 6)
+        else:
+            self.assertLen(test_params, 2)
+            self.assertAllEqual(
+                test_params,
+                [
+                    ("eager", True),
+                    ("eager", False),
+                ],
+            )
 
-    if not tf2.enabled():
-      self.assertLen(test_params, 3)
-      self.assertAllEqual(test_params, [
-          ("graph", False),
-          ("eager", True),
-          ("eager", False),
-      ])
+            ts = unittest.makeSuite(ExampleTest)
+            res = unittest.TestResult()
+            ts.run(res)
+            self.assertLen(test_params, 4)
 
-      ts = unittest.makeSuite(ExampleTest)
-      res = unittest.TestResult()
-      ts.run(res)
-      self.assertLen(test_params, 6)
-    else:
-      self.assertLen(test_params, 2)
-      self.assertAllEqual(test_params, [
-          ("eager", True),
-          ("eager", False),
-      ])
+    def test_generate_keras_mode_eager_only(self):
+        result = combinations.keras_mode_combinations(mode=["eager"])
+        self.assertLen(result, 2)
+        self.assertEqual(result[0], {"mode": "eager", "run_eagerly": True})
+        self.assertEqual(result[1], {"mode": "eager", "run_eagerly": False})
 
-      ts = unittest.makeSuite(ExampleTest)
-      res = unittest.TestResult()
-      ts.run(res)
-      self.assertLen(test_params, 4)
+    def test_generate_keras_mode_skip_run_eagerly(self):
+        result = combinations.keras_mode_combinations(run_eagerly=[False])
+        if tf2.enabled():
+            self.assertLen(result, 1)
+            self.assertEqual(result[0], {"mode": "eager", "run_eagerly": False})
+        else:
+            self.assertLen(result, 2)
+            self.assertEqual(result[0], {"mode": "eager", "run_eagerly": False})
+            self.assertEqual(result[1], {"mode": "graph", "run_eagerly": False})
 
-  def test_generate_keras_mode_eager_only(self):
-    result = combinations.keras_mode_combinations(mode=["eager"])
-    self.assertLen(result, 2)
-    self.assertEqual(result[0], {"mode": "eager", "run_eagerly": True})
-    self.assertEqual(result[1], {"mode": "eager", "run_eagerly": False})
+    def test_run_all_keras_model_types(self):
+        model_types = []
+        models = []
 
-  def test_generate_keras_mode_skip_run_eagerly(self):
-    result = combinations.keras_mode_combinations(run_eagerly=[False])
-    if tf2.enabled():
-      self.assertLen(result, 1)
-      self.assertEqual(result[0], {"mode": "eager", "run_eagerly": False})
-    else:
-      self.assertLen(result, 2)
-      self.assertEqual(result[0], {"mode": "eager", "run_eagerly": False})
-      self.assertEqual(result[1], {"mode": "graph", "run_eagerly": False})
+        class ExampleTest(parameterized.TestCase):
+            def runTest(self):
+                pass
 
-  def test_run_all_keras_model_types(self):
-    model_types = []
-    models = []
+            @combinations.generate(combinations.keras_model_type_combinations())
+            def testBody(self):
+                model_types.append(testing_utils.get_model_type())
+                models.append(testing_utils.get_small_mlp(1, 4, input_dim=3))
 
-    class ExampleTest(parameterized.TestCase):
+        e = ExampleTest()
+        e.testBody_test_modeltype_functional()
+        e.testBody_test_modeltype_subclass()
+        e.testBody_test_modeltype_sequential()
 
-      def runTest(self):
-        pass
+        self.assertLen(model_types, 3)
+        self.assertAllEqual(model_types, ["functional", "subclass", "sequential"])
 
-      @combinations.generate(combinations.keras_model_type_combinations())
-      def testBody(self):
-        model_types.append(testing_utils.get_model_type())
-        models.append(testing_utils.get_small_mlp(1, 4, input_dim=3))
+        # Validate that the models are what they should be
+        self.assertTrue(models[0]._is_graph_network)
+        self.assertFalse(models[1]._is_graph_network)
+        self.assertNotIsInstance(models[0], keras_models.Sequential)
+        self.assertNotIsInstance(models[1], keras_models.Sequential)
+        self.assertIsInstance(models[2], keras_models.Sequential)
 
-    e = ExampleTest()
-    e.testBody_test_modeltype_functional()
-    e.testBody_test_modeltype_subclass()
-    e.testBody_test_modeltype_sequential()
+        ts = unittest.makeSuite(ExampleTest)
+        res = unittest.TestResult()
+        ts.run(res)
 
-    self.assertLen(model_types, 3)
-    self.assertAllEqual(model_types, [
-        "functional",
-        "subclass",
-        "sequential"
-    ])
+        self.assertLen(model_types, 6)
 
-    # Validate that the models are what they should be
-    self.assertTrue(models[0]._is_graph_network)
-    self.assertFalse(models[1]._is_graph_network)
-    self.assertNotIsInstance(models[0], keras_models.Sequential)
-    self.assertNotIsInstance(models[1], keras_models.Sequential)
-    self.assertIsInstance(models[2], keras_models.Sequential)
+    def test_combine_combinations(self):
+        test_cases = []
 
-    ts = unittest.makeSuite(ExampleTest)
-    res = unittest.TestResult()
-    ts.run(res)
+        @combinations.generate(
+            combinations.times(
+                combinations.keras_mode_combinations(),
+                combinations.keras_model_type_combinations(),
+            )
+        )
+        class ExampleTest(parameterized.TestCase):
+            def runTest(self):
+                pass
 
-    self.assertLen(model_types, 6)
+            @parameterized.named_parameters(dict(testcase_name="_arg", arg=True))
+            def testBody(self, arg):
+                del arg
+                mode = "eager" if context.executing_eagerly() else "graph"
+                should_run_eagerly = testing_utils.should_run_eagerly()
+                test_cases.append(
+                    (mode, should_run_eagerly, testing_utils.get_model_type())
+                )
 
-  def test_combine_combinations(self):
-    test_cases = []
+        ts = unittest.makeSuite(ExampleTest)
+        res = unittest.TestResult()
+        ts.run(res)
 
-    @combinations.generate(combinations.times(
-        combinations.keras_mode_combinations(),
-        combinations.keras_model_type_combinations()))
-    class ExampleTest(parameterized.TestCase):
+        expected_combinations = [
+            ("eager", False, "functional"),
+            ("eager", False, "sequential"),
+            ("eager", False, "subclass"),
+            ("eager", True, "functional"),
+            ("eager", True, "sequential"),
+            ("eager", True, "subclass"),
+        ]
 
-      def runTest(self):
-        pass
+        if not tf2.enabled():
+            expected_combinations.extend(
+                [
+                    ("graph", False, "functional"),
+                    ("graph", False, "sequential"),
+                    ("graph", False, "subclass"),
+                ]
+            )
 
-      @parameterized.named_parameters(dict(testcase_name="_arg",
-                                           arg=True))
-      def testBody(self, arg):
-        del arg
-        mode = "eager" if context.executing_eagerly() else "graph"
-        should_run_eagerly = testing_utils.should_run_eagerly()
-        test_cases.append((mode, should_run_eagerly,
-                           testing_utils.get_model_type()))
-
-    ts = unittest.makeSuite(ExampleTest)
-    res = unittest.TestResult()
-    ts.run(res)
-
-    expected_combinations = [
-        ("eager", False, "functional"),
-        ("eager", False, "sequential"),
-        ("eager", False, "subclass"),
-        ("eager", True, "functional"),
-        ("eager", True, "sequential"),
-        ("eager", True, "subclass"),
-    ]
-
-    if not tf2.enabled():
-      expected_combinations.extend([
-          ("graph", False, "functional"),
-          ("graph", False, "sequential"),
-          ("graph", False, "subclass"),
-      ])
-
-    self.assertAllEqual(sorted(test_cases), expected_combinations)
+        self.assertAllEqual(sorted(test_cases), expected_combinations)
 
 
 if __name__ == "__main__":
-  test.main()
+    test.main()

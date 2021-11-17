@@ -26,80 +26,82 @@ stacks = threading.local()
 
 
 def _control_ctx():
-  if not hasattr(stacks, 'control_status'):
-    stacks.control_status = [_default_control_status_ctx()]
-  return stacks.control_status
+    if not hasattr(stacks, "control_status"):
+        stacks.control_status = [_default_control_status_ctx()]
+    return stacks.control_status
 
 
-@tf_export('__internal__.autograph.control_status_ctx', v1=[])
+@tf_export("__internal__.autograph.control_status_ctx", v1=[])
 def control_status_ctx():
-  """Returns the current control context for autograph.
+    """Returns the current control context for autograph.
 
-  This method is useful when calling `tf.__internal__.autograph.tf_convert`,
-  The context will be used by tf_convert to determine whether it should convert
-  the input function. See the sample usage like below:
+    This method is useful when calling `tf.__internal__.autograph.tf_convert`,
+    The context will be used by tf_convert to determine whether it should convert
+    the input function. See the sample usage like below:
 
-  ```
-  def foo(func):
-    return tf.__internal__.autograph.tf_convert(
-       input_fn, ctx=tf.__internal__.autograph.control_status_ctx())()
-  ```
+    ```
+    def foo(func):
+      return tf.__internal__.autograph.tf_convert(
+         input_fn, ctx=tf.__internal__.autograph.control_status_ctx())()
+    ```
 
-  Returns:
-    The current control context of autograph.
-  """
-  ret = _control_ctx()[-1]
-  return ret
+    Returns:
+      The current control context of autograph.
+    """
+    ret = _control_ctx()[-1]
+    return ret
 
 
 class Status(enum.Enum):
-  UNSPECIFIED = 0
-  ENABLED = 1
-  DISABLED = 2
+    UNSPECIFIED = 0
+    ENABLED = 1
+    DISABLED = 2
 
 
 class ControlStatusCtx(object):
-  """A context that tracks whether autograph is enabled by the user."""
+    """A context that tracks whether autograph is enabled by the user."""
 
-  def __init__(self, status, options=None):
-    self.status = status
-    self.options = options
+    def __init__(self, status, options=None):
+        self.status = status
+        self.options = options
 
-  def __enter__(self):
-    _control_ctx().append(self)
-    return self
+    def __enter__(self):
+        _control_ctx().append(self)
+        return self
 
-  def __repr__(self):
-    return '{}[status={}, options={}]'.format(
-        self.__class__.__name__, self.status, self.options)
+    def __repr__(self):
+        return "{}[status={}, options={}]".format(
+            self.__class__.__name__, self.status, self.options
+        )
 
-  def __exit__(self, unused_type, unused_value, unused_traceback):
-    assert _control_ctx()[-1] is self
-    _control_ctx().pop()
+    def __exit__(self, unused_type, unused_value, unused_traceback):
+        assert _control_ctx()[-1] is self
+        _control_ctx().pop()
 
 
 class NullCtx(object):
-  """Helper substitute for contextlib.nullcontext."""
+    """Helper substitute for contextlib.nullcontext."""
 
-  def __enter__(self):
-    pass
+    def __enter__(self):
+        pass
 
-  def __exit__(self, unused_type, unused_value, unused_traceback):
-    pass
+    def __exit__(self, unused_type, unused_value, unused_traceback):
+        pass
 
 
 def _default_control_status_ctx():
-  return ControlStatusCtx(status=Status.UNSPECIFIED)
+    return ControlStatusCtx(status=Status.UNSPECIFIED)
 
 
 INSPECT_SOURCE_SUPPORTED = True
 try:
-  inspect.getsource(ag_logging.log)
+    inspect.getsource(ag_logging.log)
 except OSError:
-  INSPECT_SOURCE_SUPPORTED = False
-  ag_logging.warning(
-      'AutoGraph is not available in this environment: functions lack code'
-      ' information. This is typical of some environments like the interactive'
-      ' Python shell. See'
-      ' https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/limitations.md#access-to-source-code'
-      ' for more information.')
+    INSPECT_SOURCE_SUPPORTED = False
+    ag_logging.warning(
+        "AutoGraph is not available in this environment: functions lack code"
+        " information. This is typical of some environments like the interactive"
+        " Python shell. See"
+        " https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/limitations.md#access-to-source-code"
+        " for more information."
+    )

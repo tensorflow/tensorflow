@@ -20,8 +20,8 @@ from tensorflow.python.keras.saving.saved_model import model_serialization
 
 # FunctionalModel serialization is pretty much the same as Model serialization.
 class NetworkSavedModelSaver(model_serialization.ModelSavedModelSaver):
-  """Network serialization."""
+    """Network serialization."""
 
-  @property
-  def object_identifier(self):
-    return constants.NETWORK_IDENTIFIER
+    @property
+    def object_identifier(self):
+        return constants.NETWORK_IDENTIFIER

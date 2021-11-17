@@ -25,63 +25,62 @@ from tensorflow.python.platform import test
 
 
 class EnablingTF2Behavior(test.TestCase, parameterized.TestCase):
+    def __init__(self, methodName):
+        super().__init__(methodName)
+        self._set_default_seed = False
 
-  def __init__(self, methodName):
-    super().__init__(methodName)
-    self._set_default_seed = False
+    @combinations.generate(test_base.v1_only_combinations())
+    def test_tf1_enable_tf2_behaviour(self):
+        self.assertFalse(tf2.enabled())
+        self.assertFalse(_pywrap_tf2.is_enabled())
 
-  @combinations.generate(test_base.v1_only_combinations())
-  def test_tf1_enable_tf2_behaviour(self):
-    self.assertFalse(tf2.enabled())
-    self.assertFalse(_pywrap_tf2.is_enabled())
+        v2_compat.enable_v2_behavior()
+        self.assertTrue(tf2.enabled())
+        self.assertTrue(_pywrap_tf2.is_enabled())
 
-    v2_compat.enable_v2_behavior()
-    self.assertTrue(tf2.enabled())
-    self.assertTrue(_pywrap_tf2.is_enabled())
+        v2_compat.disable_v2_behavior()
+        self.assertFalse(tf2.enabled())
+        self.assertFalse(_pywrap_tf2.is_enabled())
 
-    v2_compat.disable_v2_behavior()
-    self.assertFalse(tf2.enabled())
-    self.assertFalse(_pywrap_tf2.is_enabled())
+    @combinations.generate(test_base.v1_only_combinations())
+    def test_tf1_disable_tf2_behaviour(self):
+        self.assertFalse(tf2.enabled())
+        self.assertFalse(_pywrap_tf2.is_enabled())
 
-  @combinations.generate(test_base.v1_only_combinations())
-  def test_tf1_disable_tf2_behaviour(self):
-    self.assertFalse(tf2.enabled())
-    self.assertFalse(_pywrap_tf2.is_enabled())
+        v2_compat.disable_v2_behavior()
+        self.assertFalse(tf2.enabled())
+        self.assertFalse(_pywrap_tf2.is_enabled())
 
-    v2_compat.disable_v2_behavior()
-    self.assertFalse(tf2.enabled())
-    self.assertFalse(_pywrap_tf2.is_enabled())
+        v2_compat.enable_v2_behavior()
+        self.assertTrue(tf2.enabled())
+        self.assertTrue(_pywrap_tf2.is_enabled())
 
-    v2_compat.enable_v2_behavior()
-    self.assertTrue(tf2.enabled())
-    self.assertTrue(_pywrap_tf2.is_enabled())
+    @combinations.generate(test_base.v2_only_combinations())
+    def test_tf2_enable_tf2_behaviour(self):
+        self.assertTrue(tf2.enabled())
+        self.assertTrue(_pywrap_tf2.is_enabled())
 
-  @combinations.generate(test_base.v2_only_combinations())
-  def test_tf2_enable_tf2_behaviour(self):
-    self.assertTrue(tf2.enabled())
-    self.assertTrue(_pywrap_tf2.is_enabled())
+        v2_compat.enable_v2_behavior()
+        self.assertTrue(tf2.enabled())
+        self.assertTrue(_pywrap_tf2.is_enabled())
 
-    v2_compat.enable_v2_behavior()
-    self.assertTrue(tf2.enabled())
-    self.assertTrue(_pywrap_tf2.is_enabled())
+        v2_compat.disable_v2_behavior()
+        self.assertFalse(tf2.enabled())
+        self.assertFalse(_pywrap_tf2.is_enabled())
 
-    v2_compat.disable_v2_behavior()
-    self.assertFalse(tf2.enabled())
-    self.assertFalse(_pywrap_tf2.is_enabled())
+    @combinations.generate(test_base.v2_only_combinations())
+    def test_tf2_disable_tf2_behaviour(self):
+        self.assertTrue(tf2.enabled())
+        self.assertTrue(_pywrap_tf2.is_enabled())
 
-  @combinations.generate(test_base.v2_only_combinations())
-  def test_tf2_disable_tf2_behaviour(self):
-    self.assertTrue(tf2.enabled())
-    self.assertTrue(_pywrap_tf2.is_enabled())
+        v2_compat.disable_v2_behavior()
+        self.assertFalse(tf2.enabled())
+        self.assertFalse(_pywrap_tf2.is_enabled())
 
-    v2_compat.disable_v2_behavior()
-    self.assertFalse(tf2.enabled())
-    self.assertFalse(_pywrap_tf2.is_enabled())
-
-    v2_compat.enable_v2_behavior()
-    self.assertTrue(tf2.enabled())
-    self.assertTrue(_pywrap_tf2.is_enabled())
+        v2_compat.enable_v2_behavior()
+        self.assertTrue(tf2.enabled())
+        self.assertTrue(_pywrap_tf2.is_enabled())
 
 
-if __name__ == '__main__':
-  test.main()
+if __name__ == "__main__":
+    test.main()

@@ -32,53 +32,55 @@ from typing_extensions import runtime_checkable
 
 
 class TraceType(abc.ABC):
-  """Represents the type of object(s) for Function Tracing purposes.
+    """Represents the type of object(s) for Function Tracing purposes.
 
-  `TraceType` is an abstract class that other classes might inherit from to
-  provide information regarding associated class(es) for the purposes of
-  Function Tracing. The typing logic provided through this mechanism will be
-  used to make decisions regarding usage of cached functions and retracing.
-  """
+    `TraceType` is an abstract class that other classes might inherit from to
+    provide information regarding associated class(es) for the purposes of
+    Function Tracing. The typing logic provided through this mechanism will be
+    used to make decisions regarding usage of cached functions and retracing.
+    """
 
-  @abc.abstractmethod
-  def is_subtype_of(self, other: "TraceType") -> bool:
+    @abc.abstractmethod
+    def is_subtype_of(self, other: "TraceType") -> bool:
+        pass
+
+    @abc.abstractmethod
+    def most_specific_common_supertype(
+        self, others: Sequence["TraceType"]
+    ) -> Optional["TraceType"]:
+        pass
+
+    @abc.abstractmethod
+    def __hash__(self) -> int:
+        pass
+
+    @abc.abstractmethod
+    def __eq__(self, other) -> bool:
+        pass
+
+
+class TracingContext:
+    """Contains information scoped to the tracing of multiple objects.
+
+    `TracingContext` is a container class for flags and variables that have
+    any kind of influence on the tracing behaviour of the class implementing
+    the __tf_tracing_type__. This context will be shared across all
+    __tf_tracing_type__ calls while constructing the TraceType for a particular
+    set of objects.
+    """
+
     pass
-
-  @abc.abstractmethod
-  def most_specific_common_supertype(
-      self, others: Sequence["TraceType"]) -> Optional["TraceType"]:
-    pass
-
-  @abc.abstractmethod
-  def __hash__(self) -> int:
-    pass
-
-  @abc.abstractmethod
-  def __eq__(self, other) -> bool:
-    pass
-
-
-class TracingContext():
-  """Contains information scoped to the tracing of multiple objects.
-
-  `TracingContext` is a container class for flags and variables that have
-  any kind of influence on the tracing behaviour of the class implementing
-  the __tf_tracing_type__. This context will be shared across all
-  __tf_tracing_type__ calls while constructing the TraceType for a particular
-  set of objects.
-  """
-  pass
 
 
 @runtime_checkable
 class SupportsTracingType(Protocol):
-  """The Trace Control Protocol for functions.
+    """The Trace Control Protocol for functions.
 
-  Classes that implement this protocol can expect the TensorFlow function
-  caching and function retracing mechanisms to treat instances of those
-  classes according to the behaviour specified by their TraceType.
-  """
+    Classes that implement this protocol can expect the TensorFlow function
+    caching and function retracing mechanisms to treat instances of those
+    classes according to the behaviour specified by their TraceType.
+    """
 
-  @abc.abstractmethod
-  def __tf_tracing_type__(self, context: TracingContext) -> TraceType:
-    pass
+    @abc.abstractmethod
+    def __tf_tracing_type__(self, context: TracingContext) -> TraceType:
+        pass

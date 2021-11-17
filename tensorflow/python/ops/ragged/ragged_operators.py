@@ -22,19 +22,22 @@ from tensorflow.python.util import tf_decorator
 
 
 def _right(operator):
-  """Right-handed version of an operator: swap args x and y."""
-  return tf_decorator.make_decorator(operator, lambda y, x: operator(x, y))
+    """Right-handed version of an operator: swap args x and y."""
+    return tf_decorator.make_decorator(operator, lambda y, x: operator(x, y))
 
 
 def ragged_hash(self):
-  """The operation invoked by the `RaggedTensor.__hash__` operator."""
-  g = getattr(self.row_splits, "graph", None)
-  # pylint: disable=protected-access
-  if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
-      (g is None or g.building_function)):
-    raise TypeError("RaggedTensor is unhashable.")
-  else:
-    return id(self)
+    """The operation invoked by the `RaggedTensor.__hash__` operator."""
+    g = getattr(self.row_splits, "graph", None)
+    # pylint: disable=protected-access
+    if (
+        ops.Tensor._USE_EQUALITY
+        and ops.executing_eagerly_outside_functions()
+        and (g is None or g.building_function)
+    ):
+        raise TypeError("RaggedTensor is unhashable.")
+    else:
+        return id(self)
 
 
 # Indexing
@@ -83,8 +86,8 @@ ragged_tensor.RaggedTensor.__rtruediv__ = _right(math_ops.truediv)
 
 # Dummy methods
 def _dummy_bool(_):
-  """Dummy method to prevent a RaggedTensor from being used as a Python bool."""
-  raise TypeError("RaggedTensor may not be used as a boolean.")
+    """Dummy method to prevent a RaggedTensor from being used as a Python bool."""
+    raise TypeError("RaggedTensor may not be used as a boolean.")
 
 
 ragged_tensor.RaggedTensor.__bool__ = _dummy_bool
