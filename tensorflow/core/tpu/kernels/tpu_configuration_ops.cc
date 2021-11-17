@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_embedding_engine_state_interface.h"
+#include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
 #include "tensorflow/core/tpu/kernels/tpu_fingerprint_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
@@ -305,6 +306,9 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, CreateTpuCompilationCache(rmgr, &compilation_cache));
     compilation_cache->Unref();
   }
+
+  OP_REQUIRES_OK(ctx, internal::SetTpuCancellationClosesChips(
+                          tpu_cancellation_closes_chips_));
 
   tpu::TpuCompilationCacheInterface* local_compilation_cache;
   Status s = rmgr->Lookup(rmgr->default_container(),

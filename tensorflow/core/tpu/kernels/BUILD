@@ -116,6 +116,7 @@ tf_kernel_library(
         ":tpu_compilation_cache_local_lookup",
         ":tpu_compilation_cache_lookup",
         ":tpu_compilation_cache_rpc_lookup",
+        ":tpu_execute_op_options",
         ":tpu_mesh_state_interface",
         ":tpu_embedding_engine_state_interface",
         ":tpu_op_consts",

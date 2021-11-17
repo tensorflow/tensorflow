@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_helpers.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
-#include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
 #include "tensorflow/core/tpu/tpu_init_mode.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -76,12 +76,15 @@ Status AddConfigurationNode(const string& configuration_device_name,
 Status AddHostConfigNode(const string& host_device_name,
                          Node* configuration_node, Graph* graph,
                          bool enable_whole_mesh_compilations,
+                         int tpu_cancellation_closes_chips,
                          Node** host_configuration_node) {
   NodeDef host_config_def;
   host_config_def.set_name(graph->NewName("configure_tpu_host"));
   host_config_def.set_op(kHostConfigureOp);
   host_config_def.set_device(host_device_name);
   AddNodeAttr("enable_whole_mesh_compilations", enable_whole_mesh_compilations,
+              &host_config_def);
+  AddNodeAttr(kTpuCancellationClosesChipsAttr, tpu_cancellation_closes_chips,
               &host_config_def);
   MergeDebugInfo(NodeDebugInfo(configuration_node->def()), &host_config_def);
 
@@ -270,8 +273,6 @@ Status DistributedTPUConfigurationRewritePass::Run(
             TF_RETURN_IF_ERROR(GetNodeAttr(configuration_node_def,
                                            kTpuCancellationClosesChipsAttr,
                                            &tpu_cancellation_closes_chips));
-            TF_RETURN_IF_ERROR(internal::SetTpuCancellationClosesChips(
-                tpu_cancellation_closes_chips));
 
             // Add the global TPU system configuration node.
             Node* configuration_node;
@@ -293,7 +294,8 @@ Status DistributedTPUConfigurationRewritePass::Run(
               Node* host_configuration_node;
               TF_RETURN_IF_ERROR(AddHostConfigNode(
                   host_device->name(), configuration_node, graph,
-                  enable_whole_mesh_compilations, &host_configuration_node));
+                  enable_whole_mesh_compilations, tpu_cancellation_closes_chips,
+                  &host_configuration_node));
               host_configuration_nodes.push_back(host_configuration_node);
             }
 
