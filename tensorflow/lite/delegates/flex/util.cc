@@ -14,8 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/util.h"
 
+#include "absl/strings/str_format.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+
 namespace tflite {
 namespace flex {
+
+static constexpr char kResourceVariablePrefix[] = "tflite_resource_variable";
 
 TfLiteStatus ConvertStatus(TfLiteContext* context,
                            const tensorflow::Status& status) {
@@ -169,6 +174,32 @@ const char* TfLiteTypeToTfTypeName(TfLiteType type) {
       return "variant";
   }
   return "invalid";
+}
+
+std::string TfLiteResourceIdentifier(const TfLiteTensor* tensor) {
+  // TODO(b/199782192): Create a util function to get Resource ID from a TF Lite
+  // resource tensor.
+  const int resource_id = tensor->data.i32[0];
+  return absl::StrFormat("%s:%d", kResourceVariablePrefix, resource_id);
+}
+
+bool GetTfLiteResourceTensorFromResourceHandle(
+    const tensorflow::ResourceHandle& resource_handle, TfLiteTensor* tensor) {
+  std::vector<std::string> parts = absl::StrSplit(resource_handle.name(), ':');
+  if (parts.size() != 2) {
+    return false;
+  }
+  const int kBytesRequired = sizeof(int32_t);
+  TfLiteTensorRealloc(kBytesRequired, tensor);
+  int resource_id;
+  if (parts[0] == kResourceVariablePrefix &&
+      absl::SimpleAtoi<int32_t>(parts[1], &resource_id)) {
+    // TODO(b/199782192): Create a util function to set the Resource ID of
+    // a TF Lite resource tensor.
+    GetTensorData<int32_t>(tensor)[0] = resource_id;
+    return true;
+  }
+  return false;
 }
 
 }  // namespace flex
