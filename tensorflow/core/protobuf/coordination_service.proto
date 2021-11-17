@@ -4,6 +4,8 @@ package tensorflow;
 
 import "tensorflow/core/framework/device_attributes.proto";
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
 // Request and response messages for registering a worker to the cluster leader.
 // Use `job` and `task` to represent the role of the worker, and use
 // `incarnation` to uniquely identify a worker process. Leader responds with its
