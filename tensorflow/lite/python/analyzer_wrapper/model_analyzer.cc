@@ -104,6 +104,9 @@ void dump_tensor_detail(std::stringstream& out_stream,
 void dump_tensor_list(std::stringstream& out_stream,
                       const flatbuffers::Vector<int32_t>* tensors,
                       const int subgraph_idx, bool verbose = false) {
+  if (tensors == nullptr) {
+    return;
+  }
   for (int i = 0; i < tensors->Length(); ++i) {
     const int tensor_idx = tensors->Get(i);
     if (verbose) {
