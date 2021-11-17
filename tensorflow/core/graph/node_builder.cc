@@ -117,6 +117,12 @@ NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
   return *this;
 }
 
+StatusOr<Node*> NodeBuilder::Finalize(Graph* graph, bool consume) {
+  Node* out;
+  TF_RETURN_IF_ERROR(Finalize(graph, &out, consume));
+  return out;
+}
+
 Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   // In case of error, set *created_node to nullptr.
   if (created_node != nullptr) {
