@@ -1809,6 +1809,23 @@ func @convert_reduce_to_sum(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
   return %1 : tensor<1xf32>
 }
 
+// CHECK-LABEL:   func @convert_int_reduce_to_sum(
+// CHECK-SAME:                                %[[VAL_0:.*]]: tensor<1x256xi32>) -> tensor<1xi32> {
+// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Sum"(%[[VAL_0]], %[[VAL_2]]) {keep_dims = false} : (tensor<1x256xi32>, tensor<1xi64>) -> tensor<1xi32>
+// CHECK:           return %[[VAL_3]] : tensor<1xi32>
+// CHECK:         }
+func @convert_int_reduce_to_sum(%arg0: tensor<1x256xi32>) -> tensor<1xi32> {
+  %0 = mhlo.constant dense<0> : tensor<i32>
+  %1 = "mhlo.reduce"(%arg0, %0) ( {
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
+    %2 = mhlo.add %arg1, %arg2 : tensor<i32>
+    "mhlo.return"(%2) : (tensor<i32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xi32>, tensor<i32>) -> tensor<1xi32>
+  return %1 : tensor<1xi32>
+}
+
 // CHECK-LABEL:   func @convert_reduce_to_max(
 // CHECK-SAME:                                %[[VAL_0:.*]]: tensor<1x256xf32>) -> tensor<1xf32> {
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() {value = dense<0xFF800000> : tensor<f32>} : () -> tensor<f32>

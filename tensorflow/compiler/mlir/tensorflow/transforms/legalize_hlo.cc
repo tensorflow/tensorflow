@@ -1297,10 +1297,22 @@ class ConvertReduceOpToTfSum
   using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
-    DenseFPElementsAttr init_attr;
-    if (!matchPattern(init_value, m_Constant(&init_attr)) ||
-        !init_attr.isSplat() || !init_attr.getSplatValue<APFloat>().isZero())
+    auto type = init_value.getType().cast<ShapedType>().getElementType();
+    if (type.isa<FloatType>()) {
+      DenseFPElementsAttr init_attr;
+      if (!matchPattern(init_value, m_Constant(&init_attr)) ||
+          !init_attr.isSplat() || !init_attr.getSplatValue<APFloat>().isZero())
+        return failure();
+    } else if (type.isa<IntegerType>()) {
+      DenseIntElementsAttr int_init_attr;
+      if (!matchPattern(init_value, m_Constant(&int_init_attr)) ||
+          !int_init_attr.isSplat() ||
+          !int_init_attr.getSplatValue<APInt>().isZero())
+        return failure();
+    } else {
       return failure();
+    }
+
     return success();
   }
 };
