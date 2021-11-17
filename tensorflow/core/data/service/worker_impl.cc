@@ -492,6 +492,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   request.set_worker_address(worker_address_);
   request.set_transfer_address(transfer_address_);
   *request.mutable_worker_tags() = config_.worker_tags();
+  request.set_worker_uid(worker_uid_);
   *request.mutable_current_tasks() = {current_tasks.begin(),
                                       current_tasks.end()};
   TF_ASSIGN_OR_RETURN(WorkerHeartbeatResponse response,

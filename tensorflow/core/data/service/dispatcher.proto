@@ -14,11 +14,13 @@ message TaskProgress {
   bool completed = 2;
 }
 
-// Next tag: 5
+// Next tag: 6
 message WorkerHeartbeatRequest {
   string worker_address = 1;
   string transfer_address = 3;
   repeated string worker_tags = 4;
+  // The UID of the worker Borg job, used for telemetry.
+  int64 worker_uid = 5;
   repeated int64 current_tasks = 2;
 }
 

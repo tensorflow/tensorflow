@@ -332,6 +332,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
         request->transfer_address());
     *update.mutable_register_worker()->mutable_worker_tags() =
         request->worker_tags();
+    update.mutable_register_worker()->set_worker_uid(request->worker_uid());
     TF_RETURN_IF_ERROR(Apply(update));
     TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
     TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, assigned_tasks));
@@ -777,6 +778,7 @@ Status DataServiceDispatcherImpl::CreatePendingTask(
   create_task->set_transfer_address(worker->transfer_address);
   *create_task->mutable_worker_tags() = {worker->tags.begin(),
                                          worker->tags.end()};
+  create_task->set_worker_uid(worker->uid);
   TF_RETURN_IF_ERROR(Apply(update));
   return Status::OK();
 }
@@ -796,6 +798,7 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   create_task->set_transfer_address(worker->transfer_address);
   *create_task->mutable_worker_tags() = {worker->tags.begin(),
                                          worker->tags.end()};
+  create_task->set_worker_uid(worker->uid);
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
   return Status::OK();
@@ -946,6 +949,7 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
                                          task->worker_tags.end()};
     task_info->set_task_id(task->task_id);
     task_info->set_job_id(job->job_id);
+    task_info->set_worker_uid(task->worker_uid);
     task_info->set_starting_round(task->starting_round);
   }
   response->set_job_finished(job->finished);
