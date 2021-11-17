@@ -513,8 +513,11 @@ Status XlaDevice::MakeTensorFromProto(XlaDeviceContext* device_context,
   if (alloc_attrs.on_host()) {
     *tensor = parsed;
   } else {
-    mutex_lock lock(mu_);
-    Allocator* allocator = GetAllocatorLocked(alloc_attrs);
+    Allocator* allocator;
+    {
+      mutex_lock lock(mu_);
+      allocator = GetAllocatorLocked(alloc_attrs);
+    }
     Tensor copy(allocator, parsed.dtype(), parsed.shape());
     TF_RETURN_IF_ERROR(
         device_context->CopyCPUTensorToDeviceSync(&parsed, this, &copy));
