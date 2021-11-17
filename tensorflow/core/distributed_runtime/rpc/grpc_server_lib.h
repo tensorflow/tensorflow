@@ -214,6 +214,10 @@ class GrpcServer : public ServerInterface {
   std::unique_ptr<Thread> eager_thread_ TF_GUARDED_BY(mu_);
   std::shared_ptr<WorkerSession> worker_session_;
 
+  // Experimental coordination service implementation, and RPC polling thread.
+  AsyncServiceInterface* coordination_service_ = nullptr;
+  std::unique_ptr<Thread> coordination_thread_ TF_GUARDED_BY(mu_);
+
   // TensorFlow profiler service implementation.
   std::unique_ptr<grpc::ProfilerService::Service> profiler_service_ = nullptr;
 
