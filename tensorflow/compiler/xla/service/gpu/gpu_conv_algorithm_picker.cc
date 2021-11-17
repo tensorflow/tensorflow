@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -103,7 +104,7 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
 }
 
 StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
-    const GpuConvConfig& config, se::Stream* stream) {
+    const GpuConvConfig& config, se::Stream* stream, bool use_cudnn_frontend) {
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
                       GetDNNConvKindFromCudnnConvKind(config.kind));
 
@@ -127,7 +128,7 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
       }
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
       TF_RETURN_IF_ERROR(stream_exec->GetFusedConvolveRunners(
-          /* use_cudnn_frontend = */ false,
+          use_cudnn_frontend,
           // This refers to the kind of convolution op inside the fusion, not
           // the whole fused graph.
           se::dnn::ConvolutionKind::FORWARD, input_type,
@@ -154,8 +155,8 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
       // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
       // allocator are unused; so, they're all provided as nullptr.
       TF_RETURN_IF_ERROR(stream_exec->GetConvolveRunners(
-          /* use_cudnn_frontend = */ false, kind, input_type, output_type,
-          stream, config.input_descriptor,
+          use_cudnn_frontend, kind, input_type, output_type, stream,
+          config.input_descriptor,
           /* input_data = */ DeviceMemoryBase(nullptr),
           config.filter_descriptor,
           /* filter_data = */ DeviceMemoryBase(nullptr),
@@ -473,8 +474,28 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
 
+  const bool cudnn_frontend_enabled = instr->parent()
+                                          ->parent()
+                                          ->config()
+                                          .debug_options()
+                                          .xla_gpu_enable_cudnn_frontend();
+  // Fused convolutions with identity activations are broken in that they
+  // implicitly do ReLU on some engines, and we can't reliably detect which
+  // ones.  TODO(awpr): this may be fixed in 8.2.5; consider letting this case
+  // through for newer versions.
+  const bool is_broken_identity_fused_conv =
+      config.fusion && config.fusion->mode == se::dnn::ActivationMode::kNone;
+  // All current versions of the frontend API lack support for int8x32
+  // convolutions.
+  const bool is_unsupported_int8x32 =
+      config.input_type == S8 &&
+      config.input_descriptor.layout() == se::dnn::kBatchDepthYX32;
+  const bool use_cudnn_frontend = cudnn_frontend_enabled &&
+                                  !is_broken_identity_fused_conv &&
+                                  !is_unsupported_int8x32;
+
   TF_ASSIGN_OR_RETURN(std::vector<MaybeFusedConvRunner> runners,
-                      GetAlgorithms(config, stream));
+                      GetAlgorithms(config, stream, use_cudnn_frontend));
 
   for (auto& runner_cache : runners) {
     auto alg = runner_cache.ToAlgorithmDesc();
