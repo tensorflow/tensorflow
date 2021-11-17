@@ -358,6 +358,8 @@ def make_zip_of_tests(options,
     for parameters in test_parameters:
       if True in parameters.get("fully_quantize", []):
         parameters.update({"fully_quantize": [True, False], "tf_ptq": [True]})
+        # TODO(b/199054047): Support 16x8 quantization in TF Quantization.
+        parameters.update({"quant_16x8": [False]})
         parameter_count += functools.reduce(
             operator.mul, [len(values) for values in parameters.values()])
 
