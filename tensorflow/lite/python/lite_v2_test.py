@@ -294,7 +294,12 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter.experimental_new_quantizer = mlir_quantizer
     quantized_model = converter.convert()
 
-    interpreter = Interpreter(model_content=quantized_model)
+    # Because assertions on the model later, we opt out applying default TFLite
+    # delegates (i.e. the XNNPACK delegate).
+    interpreter = Interpreter(
+        model_content=quantized_model,
+        experimental_op_resolver_type=OpResolverType
+        .BUILTIN_WITHOUT_DEFAULT_DELEGATES)
     interpreter.allocate_tensors()
     # The model should have only one sqrt op.
     op_details = interpreter._get_ops_details()
