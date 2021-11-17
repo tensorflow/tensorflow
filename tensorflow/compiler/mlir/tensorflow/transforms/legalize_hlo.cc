@@ -541,10 +541,8 @@ class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
   LogicalResult matchAndRewrite(
       mhlo::SliceOp slice_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    DenseIntElementsAttr strides = slice_op.strides();
     // Strides must be 1 otherwise we cannot legalize this `mhlo.slice` op.
-    if (!strides.isSplat() || strides.getSplatValue<APInt>() != 1)
-      return failure();
+    if (!AreStridesLegal(slice_op)) return failure();
 
     rewriter.setInsertionPointAfter(slice_op.getOperation());
     auto start_indices = slice_op.start_indices();
@@ -565,7 +563,40 @@ class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
     rewriter.replaceOpWithNewOp<SliceOp>(slice_op, slice_op.getType(),
                                          slice_op.operand(), start, size);
     return success();
-  };
+  }
+
+ private:
+  // Strides are legal if stride is 1, or equals to the entire input dimension
+  // length and output dimension length is 1.
+  bool AreStridesLegal(mhlo::SliceOp slice_op) const {
+    DenseIntElementsAttr strides = slice_op.strides();
+    if (strides.isSplat() && strides.getSplatValue<APInt>() == 1) {
+      return true;
+    }
+
+    auto input_type = slice_op.operand().getType().cast<ShapedType>();
+    auto output_type = slice_op.getResult().getType().cast<ShapedType>();
+    if (!input_type.hasStaticShape() || !output_type.hasStaticShape()) {
+      return false;
+    }
+
+    for (auto p : llvm::enumerate(strides.getValues<APInt>())) {
+      const int dim = p.index();
+      const int64_t stride = p.value().getSExtValue();
+      if (stride == 1) {
+        continue;
+      }
+
+      if (stride == input_type.getDimSize(dim) &&
+          output_type.getDimSize(dim) == 1) {
+        continue;
+      }
+
+      return false;
+    }
+
+    return true;
+  }
 };
 
 class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
