@@ -40,7 +40,6 @@ export PYTHON_BIN_PATH=$(which python)
 # Build the pip package
 # Pass PYENV_VERSION since we're using pyenv. See b/182399580
 bazel build \
-  --experimental_cc_shared_library \
   --config=release_cpu_macos \
   --action_env=PYENV_VERSION="$PYENV_VERSION" \
   tensorflow/tools/pip_package:build_pip_package

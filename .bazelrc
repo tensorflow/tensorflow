@@ -149,6 +149,7 @@ build --define=no_aws_support=true
 build --define=no_hdfs_support=true
 
 # TF now has `cc_shared_library` targets, so it needs the experimental flag
+# TODO(rostam): Remove when `cc_shared_library` is enabled by default
 build --experimental_cc_shared_library
 
 # Default options should come above this line.
