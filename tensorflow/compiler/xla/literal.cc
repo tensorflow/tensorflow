@@ -1097,7 +1097,7 @@ absl::optional<complex128> LiteralBase::GetAsComplex128(
   }
 }
 
-size_t LiteralBase::Hash() const {
+size_t LiteralBase::Hash(int64_t byte_limit) const {
   using tensorflow::Hash64;
   using tensorflow::Hash64Combine;
 
@@ -1112,7 +1112,7 @@ size_t LiteralBase::Hash() const {
         CHECK(LayoutUtil::IsDense(subshape.layout()));
         hash_value = Hash64Combine(
             hash_value, Hash64(static_cast<const char*>(untyped_data(index)),
-                               size_bytes(index)));
+                               std::min(byte_limit, size_bytes(index))));
       });
 
   return hash_value;
