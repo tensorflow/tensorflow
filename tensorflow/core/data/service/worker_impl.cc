@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/status.h"
@@ -111,7 +112,7 @@ LocalWorkers::AddressToWorkerMap* LocalWorkers::local_workers_ =
     new AddressToWorkerMap();
 
 DataServiceWorkerImpl::DataServiceWorkerImpl(const WorkerConfig& config)
-    : config_(ApplyWorkerDefaults(config)) {
+    : config_(ApplyWorkerDefaults(config)), worker_uid_(port::JobUid()) {
   metrics::RecordTFDataServiceWorkerCreated();
 }
 

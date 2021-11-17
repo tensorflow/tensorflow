@@ -69,6 +69,8 @@ string JobName() {
   return "";
 }
 
+int64_t JobUid() { return -1; }
+
 int NumSchedulableCPUs() {
 #if defined(__linux__) && !defined(__ANDROID__)
   cpu_set_t cpuset;
