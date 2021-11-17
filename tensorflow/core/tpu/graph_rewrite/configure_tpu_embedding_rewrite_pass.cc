@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_helpers.h"
 #include "tensorflow/core/tpu/tpu_embedding_configuration_proto_rewrite.h"
@@ -218,7 +219,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
       DistributedTPURewriteHelpers::ForConfigurationNodeMatchingType(
           kConfigureOp, graph, *options.device_set,
           [](const NodeDef& configuration_node_def,
-             const string& configuration_device_name,
+             const std::string& configuration_device_name,
              const std::vector<Device*>& host_devices,
              const std::vector<Node*>& input_dependencies,
              const std::vector<DistributedTPURewriteHelpers::OutputDependency>&
@@ -228,6 +229,18 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
               return errors::InvalidArgument("TPU job contains no CPU devices");
             }
             TF_RET_CHECK(!host_devices.empty());
+
+            auto get_updated_device_name =
+                [](absl::string_view initial_device_name)
+                -> xla::StatusOr<std::string> {
+              DeviceNameUtils::ParsedName device_spec;
+              TF_RET_CHECK(DeviceNameUtils::ParseFullName(initial_device_name,
+                                                          &device_spec));
+              // Keep job, replica, and task information, but change the
+              // '/device:TPU_SYSTEM:0' specification to '/device:CPU:0'.
+              device_spec.type = "CPU";
+              return DeviceNameUtils::ParsedNameToString(device_spec);
+            };
 
             // Must not use embedding_attr_string beyond the lifetime of
             // configuration_node_def.
@@ -250,23 +263,20 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
 
               // Execute the TPU embedding partitioner if configured to do so.
               Node* embedding_partitioner_node;
+              TF_ASSIGN_OR_RETURN(
+                  const std::string configuration_device_string,
+                  get_updated_device_name(configuration_device_name));
               TF_RETURN_IF_ERROR(AddPartitionerEmbeddingNode(
-                  configuration_device_name, updated_embedding_attr_string,
+                  configuration_device_string, updated_embedding_attr_string,
                   input_dependencies, graph, &embedding_partitioner_node));
 
               // Obtain the device strings for configuring the TPU embedding
               // core on each host.
               std::vector<std::string> host_device_strings(host_devices.size());
               for (int i = 0; i < host_devices.size(); ++i) {
-                DeviceNameUtils::ParsedName host_tpu_spec;
-                TF_RET_CHECK(DeviceNameUtils::ParseFullName(
-                    host_devices[i]->name(), &host_tpu_spec));
-                // Keep job, replica, and task information, but change the
-                // '/device:CPU:0' specification to '/device:TPU:0'.
-                host_tpu_spec.type = "TPU";
-                const auto host_tpu_device =
-                    DeviceNameUtils::ParsedNameToString(host_tpu_spec);
-                host_device_strings[i] = host_tpu_device;
+                TF_ASSIGN_OR_RETURN(
+                    host_device_strings[i],
+                    get_updated_device_name(host_devices[i]->name()));
               }
 
               // Add nodes that configure the HBM memory at each host.
@@ -308,7 +318,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
               // allocated are the same across all TPU worker tasks.
               Node* finalize_embedding_node;
               TF_RETURN_IF_ERROR(AddFinalizeEmbeddingNode(
-                  configuration_device_name, host_embedding_nodes, graph,
+                  configuration_device_string, host_embedding_nodes, graph,
                   &finalize_embedding_node));
 
               // Wait for the connect and finalize nodes to complete execution.
@@ -316,7 +326,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
               all_end_nodes.push_back(finalize_embedding_node);
 
               TF_RETURN_IF_ERROR(AddSynchronizationNode(
-                  configuration_node_def, host_devices.front()->name(),
+                  configuration_node_def, configuration_device_string,
                   all_end_nodes, output_dependencies, graph));
             }
 
