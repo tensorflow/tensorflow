@@ -25,6 +25,7 @@ from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.ops.options import AutoShardPolicy
 from tensorflow.python.data.ops.options import ExternalStatePolicy
 from tensorflow.python.eager import context
@@ -161,6 +162,13 @@ def _get_compression_proto(compression):
                    f"Must be one of {[COMPRESSION_AUTO, COMPRESSION_NONE]}.")
 
 
+def _decide_compression(compression, data_transfer_protocol):
+  if (compression == COMPRESSION_AUTO and data_transfer_protocol != "grpc" and
+      data_transfer_protocol is not None):
+    return COMPRESSION_NONE
+  return compression
+
+
 class _DataServiceDatasetV2(dataset_ops.DatasetSource):
   """A `Dataset` that reads elements from the tf.data service."""
 
@@ -176,6 +184,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
                num_consumers=None,
                max_outstanding_requests=None,
                task_refresh_interval_hint_ms=None,
+               compression="AUTO",
                target_workers="AUTO"):
     """Constructs a _DataServiceDatasetV2.
 
@@ -215,6 +224,8 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         `element_size` * `max_outstanding_requests` of memory.
       task_refresh_interval_hint_ms: (Optional.) A hint for how often to query
         the dispatcher for task changes.
+      compression: (Optional.) How the dataset's elements were compressed when
+        the dataset was registered, so they can be uncompressed if necessary.
       target_workers: (Optional.) Which workers to read from. If `"AUTO"`,
         tf.data runtime decides which workers to read from. If `"ANY"`, reads
         from any tf.data service workers. If `"LOCAL"`, only reads from local
@@ -267,27 +278,63 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         max_outstanding_requests,
         dtype=dtypes.int64,
         name="max_outstanding_requests")
-    self._element_spec = element_spec
+    if compat.forward_compatible(2021, 12, 10):
+      self._element_spec = element_spec
+    else:
+      # If we compress, the data service side dataset will produce scalar
+      # variants.
+      compression = _decide_compression(compression, data_transfer_protocol)
+      self._element_spec = (
+          tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
+          if compression == COMPRESSION_AUTO else element_spec)
+    uncompress_func = structured_function.StructuredFunctionWrapper(
+        lambda x: compression_ops.uncompress(x, output_spec=element_spec),
+        transformation_name="DataServiceDataset.uncompress()",
+        input_structure=tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant))
 
     compat_kwargs = {}
     if data_transfer_protocol is not None:
       compat_kwargs["data_transfer_protocol"] = data_transfer_protocol
 
-    variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v2(
-        dataset_id=self._dataset_id,
-        processing_mode=self._processing_mode,
-        address=self._address,
-        protocol=self._protocol,
-        job_name=self._job_name,
-        consumer_index=self._consumer_index,
-        num_consumers=self._num_consumers,
-        max_outstanding_requests=self._max_outstanding_requests,
-        task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
-        iteration_counter=gen_experimental_dataset_ops.dummy_iteration_counter(
-        ),
-        target_workers=target_workers,
-        **compat_kwargs,
-        **self._flat_structure)
+    if compat.forward_compatible(2021, 12, 10):
+      # If `uncompress` is `True`, the dataset will query the servers to find
+      # out the actual compression used. It is always set to `True` the first
+      # time the graph is built, and set to false when serializing, so we will
+      # uncompress at most once.
+      uncompress = True
+      variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v3(
+          dataset_id=self._dataset_id,
+          processing_mode=self._processing_mode,
+          address=self._address,
+          protocol=self._protocol,
+          job_name=self._job_name,
+          consumer_index=self._consumer_index,
+          num_consumers=self._num_consumers,
+          max_outstanding_requests=self._max_outstanding_requests,
+          task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
+          iteration_counter=(
+              gen_experimental_dataset_ops.dummy_iteration_counter()),
+          target_workers=target_workers,
+          uncompress=uncompress,
+          uncompress_fn=uncompress_func.function,
+          **compat_kwargs,
+          **self._flat_structure)
+    else:  # Before the forward compatibility window has passed, call the V2 op.
+      variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v2(
+          dataset_id=self._dataset_id,
+          processing_mode=self._processing_mode,
+          address=self._address,
+          protocol=self._protocol,
+          job_name=self._job_name,
+          consumer_index=self._consumer_index,
+          num_consumers=self._num_consumers,
+          max_outstanding_requests=self._max_outstanding_requests,
+          task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
+          iteration_counter=(
+              gen_experimental_dataset_ops.dummy_iteration_counter()),
+          target_workers=target_workers,
+          **compat_kwargs,
+          **self._flat_structure)
     super(_DataServiceDatasetV2, self).__init__(variant_tensor)
 
   @property
@@ -302,7 +349,7 @@ class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
   def __init__(self, dataset_id, processing_mode, address, element_spec,
                protocol, data_transfer_protocol, job_name, consumer_index,
                num_consumers, max_outstanding_requests,
-               task_refresh_interval_hint_ms, target_workers):
+               task_refresh_interval_hint_ms, compression, target_workers):
 
     self._wrapped = _DataServiceDatasetV2(
         dataset_id=dataset_id,
@@ -316,6 +363,7 @@ class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
         num_consumers=num_consumers,
         max_outstanding_requests=max_outstanding_requests,
         task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
+        compression=compression,
         target_workers=target_workers)
     super(_DataServiceDatasetV1, self).__init__(self._wrapped)
 
@@ -352,13 +400,6 @@ def _parse_service(service):
                      f"{service}.")
   # TODO(aaudibert): Considering validating reachability of address here.
   return (protocol, address)
-
-
-def _decide_compression(compression, data_transfer_protocol):
-  if (compression == COMPRESSION_AUTO and data_transfer_protocol != "grpc" and
-      data_transfer_protocol is not None):
-    return COMPRESSION_NONE
-  return compression
 
 
 def _distribute(processing_mode,
@@ -915,17 +956,11 @@ def _from_dataset_id(processing_mode,
     struct_pb.ParseFromString(encoded_spec)
     element_spec = nested_structure_coder.decode_proto(struct_pb)
 
-  # If we compress, the data service side dataset will produce scalar variants.
-  compression = _decide_compression(compression, data_transfer_protocol)
-  data_service_element_spec = (
-      tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
-      if compression == COMPRESSION_AUTO else element_spec)
-
   dataset = _DataServiceDataset(
       dataset_id=dataset_id,
       processing_mode=processing_mode,
       address=address,
-      element_spec=data_service_element_spec,
+      element_spec=element_spec,
       protocol=protocol,
       data_transfer_protocol=data_transfer_protocol,
       job_name=job_name,
@@ -933,11 +968,13 @@ def _from_dataset_id(processing_mode,
       num_consumers=num_consumers,
       max_outstanding_requests=max_outstanding_requests,
       task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
+      compression=compression,
       target_workers=target_workers)
-  if compression == COMPRESSION_AUTO:
-    dataset = dataset.map(
-        lambda x: compression_ops.uncompress(x, output_spec=element_spec),
-        num_parallel_calls=dataset_ops.AUTOTUNE)
+  if not compat.forward_compatible(2021, 12, 10):
+    if compression == COMPRESSION_AUTO:
+      dataset = dataset.map(
+          lambda x: compression_ops.uncompress(x, output_spec=element_spec),
+          num_parallel_calls=dataset_ops.AUTOTUNE)
 
   # Disable autosharding for shared jobs.
   if job_name is not None:
