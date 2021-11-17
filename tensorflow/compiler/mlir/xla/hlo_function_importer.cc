@@ -347,27 +347,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kCustomCall: {
       auto custom_call = Cast<HloCustomCallInstruction>(instruction);
-      if (custom_call->layout_constrained()) {
-        TF_ASSIGN_OR_RETURN(
-            mlir::ArrayAttr operand_layouts,
-            ExtractLayoutsFromShapes(custom_call->operand_shapes_with_layout(),
-                                     builder_));
-        attributes.push_back(
-            builder_->getNamedAttr("operand_layouts", operand_layouts));
-        mlir::ArrayAttr result_layouts;
-        if (custom_call->shape().IsTuple()) {
-          TF_ASSIGN_OR_RETURN(
-              result_layouts,
-              ExtractLayoutsFromTuple(custom_call->shape(), builder_));
-        } else {
-          TF_ASSIGN_OR_RETURN(
-              result_layouts,
-              ExtractLayoutsFromShapes({custom_call->shape()}, builder_));
-        }
-        attributes.push_back(
-            builder_->getNamedAttr("result_layouts", result_layouts));
-      }
-
       TF_ASSIGN_OR_RETURN(
           auto mlir_api_version,
           ConvertCustomCallApiVersion(custom_call->api_version()));

@@ -183,40 +183,6 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
   return xla::ConvertReplicaGroups(groups).ValueOrDie();
 }
 
-// Converts types and corresponding layouts into xla shapes with layouts.
-static std::vector<xla::Shape> ConvertTypesToShapesWithLayout(
-    mlir::TypeRange value_types, mlir::ArrayAttr layouts) {
-  std::vector<xla::Shape> shapes_with_layout;
-  for (auto type_and_layout : llvm::zip(value_types, layouts)) {
-    mlir::Type type = std::get<0>(type_and_layout);
-    mlir::Attribute layout = std::get<1>(type_and_layout);
-    assert(!type.isa<mlir::TupleType>() &&
-           "Exporting layout for tuples is not implemented yet");
-    shapes_with_layout.emplace_back(xla::TypeToShape(type));
-    auto& shape = shapes_with_layout.back();
-    shape.mutable_layout()->clear_minor_to_major();
-    for (auto l : layout.cast<mlir::DenseIntElementsAttr>()) {
-      shape.mutable_layout()->mutable_minor_to_major()->push_back(
-          l.getSExtValue());
-    }
-  }
-  return shapes_with_layout;
-}
-
-// CustomCallOp result can be of tuple type to pack multiple results into one
-// value. If the custom call result is a tuple, then result layouts represent
-// the layout of each element of the tuple. Nested tuples are currently not
-// supported for export.
-static xla::Shape GetCustomCallResultShapeWithLayout(mlir::Type type,
-                                                     mlir::ArrayAttr layouts) {
-  auto tuple_type = type.dyn_cast<mlir::TupleType>();
-  if (!tuple_type) return ConvertTypesToShapesWithLayout({type}, layouts)[0];
-
-  std::vector<xla::Shape> shapes_with_layouts =
-      ConvertTypesToShapesWithLayout(tuple_type.getTypes(), layouts);
-  return xla::ShapeUtil::MakeTupleShape(shapes_with_layouts);
-}
-
 // Converts StringRef to xla Transpose enum.
 static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
     llvm::StringRef transpose_str) {
@@ -908,28 +874,11 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.api_version());
   if (!xla_api_version.ok()) return failure();
   auto& value_map = *ctx.values;
-  if (!op.operand_layouts().hasValue() || !op.result_layouts().hasValue()) {
-    value_map[result] = xla::CustomCall(
-        ctx.builder, std::string(op.call_target_name()), args,
-        xla::TypeToShape(result.getType()), std::string(op.backend_config()),
-        op.has_side_effect(), /*output_operand_aliasing=*/{},
-        /*literal=*/nullptr,
-        /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
-        /*api_version=*/*xla_api_version);
-    return success();
-  }
-
-  auto operand_shapes_with_layout = ConvertTypesToShapesWithLayout(
-      op.getOperandTypes(), op.operand_layouts().getValue());
-  xla::Shape result_shape_with_layout = GetCustomCallResultShapeWithLayout(
-      result.getType(), op.result_layouts().getValue());
-  value_map[result] = xla::CustomCallWithLayout(
+  value_map[result] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), args,
-      result_shape_with_layout, operand_shapes_with_layout,
-      std::string(op.backend_config()), op.has_side_effect(),
-      /*output_operand_aliasing=*/{},
-      /*literal=*/nullptr,
-      /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+      xla::TypeToShape(result.getType()), std::string(op.backend_config()),
+      op.has_side_effect(), /*output_operand_aliasing=*/{},
+      /*literal=*/nullptr, /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/*xla_api_version);
   return success();
 }

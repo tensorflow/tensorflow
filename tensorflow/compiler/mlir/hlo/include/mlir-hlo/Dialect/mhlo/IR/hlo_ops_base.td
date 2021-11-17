@@ -111,11 +111,6 @@ def HLO_LayoutAttr : Attr<
   let convertFromStorage = IndexElementsAttr.convertFromStorage;
 }
 
-// An array of layout (1D tensor) attributes.
-def HLO_ArrayOfLayoutAttr : TypedArrayAttrBase<HLO_LayoutAttr,
-    "Array of layout (1D tensor of index type) attributes">;
-
-
 //===----------------------------------------------------------------------===//
 // Common convolution attributes
 //===----------------------------------------------------------------------===//

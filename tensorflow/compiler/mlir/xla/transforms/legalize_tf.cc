@@ -6036,15 +6036,15 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
     // using a string.
     if (!op._XlaSharding().hasValue()) return failure();
 
-    mlir::ArrayAttr empty_layout_attr;
     auto custom_call = rewriter.create<mhlo::CustomCallOp>(
         op.getLoc(), op.getType(), op.input(),
-        /*call_target_name=*/"Sharding",
-        /*has_side_effect=*/false,
-        /*backend_config=*/"",
-        /*api_version=*/mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL,
-        /*operand_layouts=*/empty_layout_attr,
-        /*result_layouts=*/empty_layout_attr);
+        /*call_target_name=*/rewriter.getStringAttr("Sharding"),
+        /*has_side_effect=*/rewriter.getBoolAttr(false),
+        /*backend_config=*/rewriter.getStringAttr(""),
+        /*api_version=*/
+        mhlo::CustomCallApiVersionAttr::get(
+            rewriter.getContext(),
+            mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL));
     custom_call->setAttr(kShardingAttr, op._XlaShardingAttr());
     rewriter.replaceOp(op, custom_call.getResult(0));
 

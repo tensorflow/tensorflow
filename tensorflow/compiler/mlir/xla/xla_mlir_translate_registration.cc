@@ -55,11 +55,6 @@ llvm::cl::opt<bool> with_layouts(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
-llvm::cl::opt<bool> print_layouts(
-    "print-layouts", llvm::cl::desc("Print layouts in the generated HLO text"),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
 llvm::cl::opt<bool> via_builder(
     "via-builder", llvm::cl::desc("Translate MHLO->XLA HLO via XLA Builder"),
     llvm::cl::init(false));
@@ -165,7 +160,7 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   HloModule* hlo_module = statusOrHloModule.ValueOrDie().get();
 
   output << hlo_module->ToString(
-      HloPrintOptions().set_include_layout_in_shapes(print_layouts));
+      HloPrintOptions().set_include_layout_in_shapes(with_layouts));
 
   // Output alias information as comments in the HLO text.
   hlo_module->input_output_alias_config().ForEachAlias(
